@@ -13,13 +13,16 @@ import {
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { strictEmailValidator } from '@shared/form-validators';
 import { HttpStatus } from '@shared/models';
-import { interval, take } from 'rxjs';
+import { getRetryAfterSeconds } from '@shared/utils';
+import { interval, Subscription, take } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 
 const REMEMBER_ME_STORAGE_KEY = 'auth.rememberMe';
+// Shown when a 429 carries no readable Retry-After and no server message, so a throttled login is never silent.
+const LOGIN_THROTTLED_FALLBACK_MESSAGE = 'Too many login attempts. Please try again later.';
 
 @Component({
     selector: 'app-login-page',
@@ -57,6 +60,8 @@ export class LoginPageComponent implements OnInit {
     readonly loading = signal(false);
     readonly throttleSecondsLeft = signal(0);
 
+    private throttleCountdown: Subscription | null = null;
+
     ngOnInit() {
         this.authService
             .getStatus()
@@ -71,7 +76,8 @@ export class LoginPageComponent implements OnInit {
 
     onSubmit(): void {
         this.form.markAllAsTouched();
-        if (this.form.invalid) return;
+        // Enter submits the form even while the button is disabled, so the in-flight and countdown guards live here too.
+        if (this.form.invalid || this.loading() || this.throttleSecondsLeft() > 0) return;
 
         this.loading.set(true);
         this.serverErrorsRef.clear();
@@ -92,7 +98,7 @@ export class LoginPageComponent implements OnInit {
                 },
                 error: (err: HttpErrorResponse) => {
                     if (err.status === HttpStatus.TooManyRequests) {
-                        this.handleThrottleError(err.error?.message);
+                        this.handleThrottleError(err);
                         return;
                     }
                     if (err.validationErrors?.length) {
@@ -107,24 +113,31 @@ export class LoginPageComponent implements OnInit {
             });
     }
 
-    handleThrottleError(message: string): void {
-        const seconds = Math.ceil(parseFloat(message.split(':')[1]) || 0);
-        this.throttleSecondsLeft.set(seconds);
-
-        interval(1000)
-            .pipe(take(seconds), takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => this.throttleSecondsLeft.update((v) => v - 1),
-                complete: () => this.throttleSecondsLeft.set(0),
-            });
-    }
-
     navToSignUp(): void {
         void this.router.navigateByUrl('sign-up');
     }
 
     navToForgotPassword(): void {
         void this.router.navigateByUrl('forgot-password');
+    }
+
+    private handleThrottleError(err: HttpErrorResponse): void {
+        const seconds = getRetryAfterSeconds(err);
+        if (!seconds) {
+            this.serverErrorsRef.setErrors([
+                { field: '', value: '', reason: err.error?.message ?? LOGIN_THROTTLED_FALLBACK_MESSAGE },
+            ]);
+            return;
+        }
+
+        this.throttleCountdown?.unsubscribe();
+        this.throttleSecondsLeft.set(seconds);
+        this.throttleCountdown = interval(1000)
+            .pipe(take(seconds), takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => this.throttleSecondsLeft.update((secondsLeft) => secondsLeft - 1),
+                complete: () => this.throttleSecondsLeft.set(0),
+            });
     }
 
     private readStoredRememberMe(): boolean {

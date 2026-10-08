@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from types import CoroutineType
 from typing import Any
 
+import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from loguru import logger
@@ -46,7 +47,7 @@ def _extract_finish_token_total(message_data: dict) -> int:
     """Extract total_tokens from a streamed custom-chunk's message_data, if any.
 
     Mirrors the extraction logic in
-    tables/services/redis_pubsub.py::_calculate_subgraph_token_usage so both
+    tables/services/session_token_usage.py::extract_token_usage so both
     sides agree on where token usage lives in a "finish" message: AgentNode
     (services/graph/nodes/agent_node.py) and TaskNode
     (services/graph/nodes/task_node.py) embed it as output["token_usage"].
@@ -189,11 +190,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 "execution_counts": {},
             }
 
-            await self.redis_service.aupdate_session_status(
-                session_id=session_id,
-                status="run",
-                variables=state["variables"].model_dump(),
-            )
+            await self.redis_service.aupdate_session_status(session_id=session_id, status="run")
             final_state = state  # Will be updated with last 'values' chunk
             async for stream_mode, chunk in graph.astream(
                 input=state,
@@ -251,7 +248,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                             # etc.) with no new status.
                             stop_event.set()
 
-                    self.redis_service.publish("graph:messages", data)
+                    await self.redis_service.aadd_graph_message(data)
                 elif stream_mode == "values":
                     final_state = chunk
 
@@ -276,7 +273,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             graph_end_message_data = asdict(graph_end_data)
             graph_end_message_data["uuid"] = str(uuid.uuid4())
 
-            self.redis_service.publish("graph:messages", graph_end_message_data)
+            await self.redis_service.aadd_graph_message(graph_end_message_data)
             await asyncio.sleep(0.05)
 
             org_id = get_session_org(session_id)
@@ -293,11 +290,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     )
                 )
 
-            await self.redis_service.aupdate_session_status(
-                session_id=session_id,
-                status="end",
-                variables=final_state["variables"].model_dump(),
+            await self._store_final_variables(
+                session_id=session_id, variables=final_state["variables"].model_dump()
             )
+            await self.redis_service.aupdate_session_status(session_id=session_id, status="end")
 
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
@@ -400,6 +396,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 )
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
+
+    async def _store_final_variables(self, session_id: int, variables: dict) -> None:
+        # A Redis outage must not lose the `end` status: the session still finished,
+        # only its final variables are missing. Anything else (unserialisable
+        # variables) propagates, so the session ends as `error`.
+        try:
+            await self.redis_service.aset_session_final_variables(
+                session_id=session_id, variables=variables
+            )
+        except redis.RedisError:
+            logger.exception("Failed to store final variables of session {}", session_id)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:

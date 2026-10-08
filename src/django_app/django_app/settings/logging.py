@@ -42,6 +42,11 @@ LOGGING = {
         "level": LOG_LEVEL,
     },
     "loggers": {
+        # Never DEBUG, whatever DJANGO_LOG_LEVEL says: with DEBUG on it logs every
+        # statement with its parameters, and one graph message batch is 15-30 MB of SQL.
+        "django.db.backends": {
+            "level": "INFO",
+        },
         "litellm": {
             "handlers": ["loguru"],
             "level": "WARNING",

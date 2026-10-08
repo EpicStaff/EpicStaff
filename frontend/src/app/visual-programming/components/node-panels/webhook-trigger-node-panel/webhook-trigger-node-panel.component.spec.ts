@@ -22,19 +22,18 @@ import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
-    INVALID_TEST_PAYLOAD_NOT_SAVED_MESSAGE,
-    TEST_PAYLOAD_SAVED_OTHER_CHANGES_NOT_SAVED_MESSAGE,
-    TriggerTestPayloadState,
-} from '../shared/test-payload-section/trigger-test-payload.state';
-import {
     PYTHON_CODE_RUNNING_MESSAGE,
-    RUN_PYTHON_CODE_LABEL,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
     SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
     SAVE_TO_RUN_LATEST_CODE_MESSAGE,
     STORED_GRAPH_OUTDATED_MESSAGE,
-    WebhookTriggerNodePanelComponent,
-} from './webhook-trigger-node-panel.component';
+} from '../shared/python-code-test-run/stored-python-code';
+import {
+    INVALID_TEST_PAYLOAD_NOT_SAVED_MESSAGE,
+    TEST_PAYLOAD_SAVED_OTHER_CHANGES_NOT_SAVED_MESSAGE,
+    TriggerTestPayloadState,
+} from '../shared/test-payload-section/trigger-test-payload.state';
+import { RUN_PYTHON_CODE_LABEL, WebhookTriggerNodePanelComponent } from './webhook-trigger-node-panel.component';
 
 const SAVED_PAYLOAD = { order: { id: '104' } };
 
@@ -569,19 +568,17 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         });
     });
 
-    it('runs the stored code with the test payload as trigger_payload', () => {
+    it('runs the stored code of the node, by its backend id, with the test payload as trigger_payload', () => {
         const runPanel = open();
         runPanel.onTestPayloadTextChange('{"order": {"id": "300"}}');
 
         runFromEditor();
 
         expect(runService.runPythonCode).toHaveBeenCalledTimes(1);
-        expect(runService.runPythonCode).toHaveBeenCalledWith(
-            expect.objectContaining({
-                python_code_id: 5,
-                variables: { trigger_payload: { order: { id: '300' } } },
-            })
-        );
+        expect(runService.runPythonCode).toHaveBeenCalledWith({
+            target: { type: 'webhook_trigger_node', id: DTO.id },
+            variables: { trigger_payload: { order: { id: '300' } } },
+        });
     });
 
     it('does not run while blocked', () => {

@@ -3019,3 +3019,200 @@ def test_litellm_client_drops_provider_unsupported_params(llm_config):
     kwargs = LiteLLMClient(llm_config, api_key=None)._build_kwargs([], [])
 
     assert kwargs["drop_params"] is True
+
+
+# ── Final-turn JSON parse fallback tests ─────────────────────────────────────
+
+
+async def _create_conversation_for_stream(graph, llm_config, user_a, org_a, default_role, user_message):
+    from asgiref.sync import sync_to_async
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(
+        user=user_a, org=org_a, role=default_role
+    )
+    assistant = await sync_to_async(FlowAssistant.objects.create)(
+        graph=graph, llm_config=llm_config
+    )
+    return await sync_to_async(_make_conversation_with_messages)(
+        assistant,
+        org_user,
+        [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": user_message},
+        ],
+    )
+
+
+async def _collect_stream_reply_events(conversation, user_message, fake_stream):
+    import fakeredis
+
+    fake_redis = fakeredis.FakeRedis(decode_responses=False)
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
+        mock_client = MagicMock()
+        mock_client.stream_completion = fake_stream
+        mock_get_client.return_value = mock_client
+
+        mock_redis_instance = MagicMock()
+        mock_redis_instance.redis_client = fake_redis
+        MockRedisService.return_value = mock_redis_instance
+
+        service = FlowAssistantService()
+        events = []
+        async for event in service.stream_reply(conversation, user_message):
+            events.append(event)
+    return events
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_parses_fenced_json_into_structured_event(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "show me the nodes"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    ef_tables = [
+        {
+            "id": "nodes",
+            "columns": [{"key": "node_name", "title": "Name"}],
+            "rows": [{"node_name": "__start__"}],
+        }
+    ]
+    fenced_response = (
+        "```json\n"
+        + json.dumps({"message": "Here are the nodes.", "ef_tables": ef_tables})
+        + "\n```"
+    )
+
+    async def fake_stream(messages, tools):
+        for index in range(0, len(fenced_response), 7):
+            yield TokenEvent(content=fenced_response[index : index + 7])
+        yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    structured_events = [e for e in events if e.type == "structured"]
+    assert len(structured_events) == 1
+    structured = structured_events[0]
+    assert structured.message == "Here are the nodes."
+    assert "```" not in structured.message
+    assert structured.ef_tables == ef_tables
+    assert structured.action_message == []
+    assert events[-1].type == "done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_unparseable_json_falls_back_to_message_field(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "show me the nodes"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+
+    async def fake_stream(messages, tools):
+        yield TokenEvent(content='{"message": "Hello", "ef_tables": [')
+        yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    structured_events = [e for e in events if e.type == "structured"]
+    assert len(structured_events) == 1
+    assert structured_events[0].message == "Hello"
+    assert structured_events[0].ef_tables == []
+    assert structured_events[0].action_message == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_final_plain_text_excludes_tool_iteration_narration(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    from asgiref.sync import sync_to_async
+
+    user_message = "what nodes are in this flow?"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    call_count = {"n": 0}
+
+    async def fake_stream(messages, tools):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            yield TokenEvent(content="Let me look at the flow first.")
+            yield ToolCallEvent(id="call_1", name="get_flow_overview", args={})
+            yield DoneEvent()
+        else:
+            yield TokenEvent(content="The flow has no nodes.")
+            yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    structured_events = [e for e in events if e.type == "structured"]
+    assert len(structured_events) == 1
+    assert structured_events[0].message == "The flow has no nodes."
+
+    messages_snapshot = await sync_to_async(lambda: list(conversation.messages))()
+    final_assistant_message = [
+        m for m in messages_snapshot if m.get("role") == "assistant" and not m.get("tool_calls")
+    ][-1]
+    assert final_assistant_message["content"] == "The flow has no nodes."
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_empty_final_turn_falls_back_to_tool_iteration_narration(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "what nodes are in this flow?"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    call_count = {"n": 0}
+
+    async def fake_stream(messages, tools):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            yield TokenEvent(content="Let me look at the flow first.")
+            yield ToolCallEvent(id="call_1", name="get_flow_overview", args={})
+            yield DoneEvent()
+        else:
+            yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    structured_events = [e for e in events if e.type == "structured"]
+    assert len(structured_events) == 1
+    assert structured_events[0].message == "Let me look at the flow first."
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_truncated_by_length_still_emits_structured_event(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "show me the nodes"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+
+    async def fake_stream(messages, tools):
+        yield TokenEvent(content='{"message": "Partial answer", "ef_tables": [{"id": "n')
+        yield DoneEvent(finish_reason="length")
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    structured_events = [e for e in events if e.type == "structured"]
+    assert len(structured_events) == 1
+    assert structured_events[0].message == "Partial answer"
+    assert structured_events[0].ef_tables == []
+    assert events[-1].type == "done"

@@ -1,5 +1,9 @@
 <div class="key-value-tables-page">
-    <aside class="key-value-tables-page__sidebar">
+    <aside
+        #sidebarEl
+        class="key-value-tables-page__sidebar"
+        [style.width.px]="sidebarWidth()"
+    >
         <app-key-value-table-list
             [tables]="keyValueTablesStorage.tables()"
             [selectedId]="selectedTableId()"
@@ -11,6 +15,12 @@
             (renameRequested)="onRename($event)"
             (deleteRequested)="onDelete($event)"
         />
+
+        <div
+            class="resizable-sidebar-handle"
+            [appResizableSidebar]="sidebarStorageKey"
+            [sidebarTarget]="sidebarEl"
+        ></div>
     </aside>
 
     <section class="key-value-tables-page__content">
