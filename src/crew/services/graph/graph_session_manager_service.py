@@ -255,7 +255,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 elif stream_mode == "values":
                     final_state = chunk
 
-                logger.debug(f"Mode: {stream_mode}. Chunk: {chunk}")
+                # Never log the chunk itself: it is the session's full state (variables, LLM
+                # replies), and crew's log mixes every organization's sessions.
+                logger.debug("Session {} streamed a {} chunk", session_id, stream_mode)
                 stop_event.check_stop()
 
             await asyncio.sleep(0.01)
