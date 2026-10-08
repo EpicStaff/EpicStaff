@@ -14,6 +14,7 @@ goes through `helpers.redaction`.
 
 import json
 import logging
+import os
 import time
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -25,12 +26,15 @@ from helpers.redaction import REDACTED, redact, redact_url, scrub
 
 logger = logging.getLogger("e2e.api")
 
+BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost").rstrip("/")
+
 REQUEST_TIMEOUT_SECONDS = 30
 BODY_EXCERPT_LENGTH = 2000
 CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "cookie"})
 FORBIDDEN_REQUEST_ARGUMENTS = frozenset({"auth", "cookies"})
 
 __all__ = [
+    "BASE_URL",
     "REDACTED",
     "ApiClient",
     "assert_error",

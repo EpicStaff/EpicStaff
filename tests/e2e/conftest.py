@@ -40,7 +40,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from helpers.api import ApiClient
+from helpers.api import BASE_URL, ApiClient
 from helpers.bootstrap import (
     API_KEY_PREFIX,
     EMAIL_DOMAIN,
@@ -52,12 +52,12 @@ from helpers.bootstrap import (
 )
 from helpers.flows import assert_session_ended, create_python_flow, start_session
 from helpers.polling import session_diagnostics, wait_for_session_status
-from helpers.redaction import protect, redact_url, scrub
+from helpers.redaction import Secret, protect, redact_url, scrub
 from helpers.timings import Timings
 
 # Shared resources for the feature tests (LLM configs, storage, RAG, agents). Session-scoped,
 # so every test file runs on its own and later flows reuse the same resources.
-pytest_plugins = ["fixtures.llm", "fixtures.knowledge", "fixtures.agents"]
+pytest_plugins = ["fixtures.llm", "fixtures.knowledge", "fixtures.agents", "fixtures.orgs"]
 
 logger = logging.getLogger("e2e.bootstrap")
 # httpx and httpcore log URLs and headers without redaction; helpers.api logs requests instead.
@@ -82,7 +82,6 @@ def scrubbing_record_factory(*args: object, **keyword_arguments: object) -> logg
 
 logging.setLogRecordFactory(scrubbing_record_factory)
 
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost").rstrip("/")
 # scripts/wait_for_stack.py resolves the same default.
 TIMINGS_DIR = Path(
     os.environ.get("E2E_TIMINGS_DIR") or Path(__file__).resolve().parent / ".timings"
@@ -260,8 +259,8 @@ def user_id(bootstrap: Bootstrap) -> int:
 
 
 @pytest.fixture(scope="session")
-def superadmin_client(bootstrap: Bootstrap, anonymous_client: ApiClient) -> Iterator[ApiClient]:
-    """Superadmin JWT, freshly logged in. Only for admin-only operations.
+def superadmin_access_token(bootstrap: Bootstrap, anonymous_client: ApiClient) -> Secret:
+    """A fresh superadmin JWT (a `Secret`). Only for admin-only operations.
 
     The first-setup token is not reused: access tokens live 15 minutes, shorter than a
     full run. One login per session stays well inside the 5/min per IP + email throttle.
@@ -273,8 +272,13 @@ def superadmin_client(bootstrap: Bootstrap, anonymous_client: ApiClient) -> Iter
                 json={"email": bootstrap.superadmin_email, "password": bootstrap.superadmin_password},
             ).json()
         )
-    client = ApiClient.with_jwt(BASE_URL, login["access"], bootstrap.org_id)
-    del login
+    return login["access"]
+
+
+@pytest.fixture(scope="session")
+def superadmin_client(bootstrap: Bootstrap, superadmin_access_token: Secret) -> Iterator[ApiClient]:
+    """Superadmin JWT in the bootstrap organization."""
+    client = ApiClient.with_jwt(BASE_URL, superadmin_access_token, bootstrap.org_id)
     yield client
     client.close()
 

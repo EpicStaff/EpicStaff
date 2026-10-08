@@ -112,3 +112,15 @@ def agent_rag_flow_save_payload(
             {"graph": graph_id, "start_temp_id": task_temp_id, "end_temp_id": end_temp_id},
         ],
     }
+
+
+def start_end_flow_save_payload(graph_id: int, save_version: int) -> dict:
+    """Bulk-save body for the smallest runnable flow: Start -> End, no sandbox, no LLM."""
+    start_temp_id = str(uuid.uuid4())
+    end_temp_id = str(uuid.uuid4())
+    return {
+        "save_version": save_version,
+        "start_node_list": [{"temp_id": start_temp_id, "graph": graph_id, "variables": {}}],
+        "end_node_list": [{"temp_id": end_temp_id, "graph": graph_id, "output_map": {}}],
+        "edge_list": [{"graph": graph_id, "start_temp_id": start_temp_id, "end_temp_id": end_temp_id}],
+    }
