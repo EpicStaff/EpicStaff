@@ -2,12 +2,18 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
-from rbac.authorship import RecordedLastEdit, record_last_edit, resolve_author, restore_last_edits
-from rbac.models import AuthorModel, LastEditTrackedModel, OrganizationUser, ResourceLastEdit
-
 from django.db import transaction
+from django.db.models import Q
+from rbac.authorship import (
+    RecordedLastEdit,
+    record_last_edit,
+    resolve_author,
+    restore_last_edits,
+)
+from rbac.authorship.user_summary import USER_SUMMARY_FIELDS
+from rbac.models import AuthorModel, LastEditTrackedModel, ResourceLastEdit
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
@@ -343,6 +349,49 @@ class GraphVersioningManager:
         ).select_related("telegram_bot_api_key_secret")
         return {str(row.pk): row.telegram_bot_api_key_secret.name for row in rows}
 
+    def resolve_node_authorship(
+        self, *, recorded_authorship: dict | None, recorded_last_edits: dict | None
+    ) -> dict[str, dict]:
+        """Return each recorded node's author and last edit, with users loaded in one query.
+
+        Keyed by the snapshot's node ids: every node with a ``node_authorship`` or a
+        ``node_last_edit`` entry. Users are instances carrying only the user-summary
+        columns, ``None`` when none was recorded, it was cleared, or the user no longer
+        exists; times are datetimes, ``None`` when not recorded. Empty for a snapshot
+        saved before node authorship was recorded.
+        """
+        recorded_authorship = recorded_authorship or {}
+        recorded_last_edits = recorded_last_edits or {}
+        node_ids = recorded_authorship.keys() | recorded_last_edits.keys()
+        recorded_by_node_id = {
+            node_id: (recorded_authorship.get(node_id, {}), recorded_last_edits.get(node_id, {}))
+            for node_id in node_ids
+        }
+        wanted_user_ids = {
+            user_id
+            for authorship, last_edit in recorded_by_node_id.values()
+            for user_id in (authorship.get("created_by"), last_edit.get("edited_by"))
+            if user_id is not None
+        }
+        users_by_id = (
+            get_user_model().objects.only(*USER_SUMMARY_FIELDS).in_bulk(wanted_user_ids)
+            if wanted_user_ids
+            else {}
+        )
+        return {
+            node_id: {
+                "created_by": users_by_id.get(authorship.get("created_by")),
+                "created_at": self._parse_recorded_time(authorship.get("created_at")),
+                "last_edited_by": users_by_id.get(last_edit.get("edited_by")),
+                "last_edited_at": self._parse_recorded_time(last_edit.get("edited_at")),
+            }
+            for node_id, (authorship, last_edit) in recorded_by_node_id.items()
+        }
+
+    @staticmethod
+    def _parse_recorded_time(recorded_time: str | None) -> datetime | None:
+        return datetime.fromisoformat(recorded_time) if recorded_time else None
+
     def collect_node_authorship(self, *, graph: Graph) -> dict[str, dict]:
         """Record each node's author id and ISO-8601 ``created_at``, keyed by node id."""
         authorship: dict[str, dict] = {}
@@ -358,47 +407,39 @@ class GraphVersioningManager:
         return authorship
 
     def restore_node_authorship(
-        self, *, graph: Graph, recorded_authorship: dict | None, node_mapper: IDMapper, user
+        self, *, graph: Graph, recorded_authorship: dict | None, node_mapper: IDMapper
     ) -> None:
-        """Give each recreated node its recorded ``created_at`` and, if still possible, author.
+        """Replay each recreated node's recorded author and ``created_at`` verbatim.
 
-        A recorded author who is no longer a member of the graph's organization, or no
-        recorded author, is replaced by ``user``. Nodes that were not recreated are skipped.
+        A restore replays recorded state and never makes the restoring user an author. A
+        node recorded without an author, or with no ``node_authorship`` entry at all (e.g.
+        a version saved before authorship was recorded), ends up without one; its
+        ``created_at`` is then left as the recreation set it. Recorded authors are not
+        checked against the organization's members: removing a member or deleting a user
+        clears them from every snapshot (``VersionSnapshotAuthorshipScrubber``).
         """
-        if not recorded_authorship:
+        recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
+        if not recreated_node_ids:
             return
 
-        recorded_by_new_id: dict[int, dict] = {}
-        for old_node_id, entry in recorded_authorship.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
-            if new_node_id is not None:
-                recorded_by_new_id[new_node_id] = entry
-        if not recorded_by_new_id:
-            return
-
-        member_ids = self._org_member_ids(
-            org_id=graph.org_id,
-            user_ids={entry["created_by"] for entry in recorded_by_new_id.values()},
-        )
-        restoring_author = resolve_author(user)
-        restoring_author_id = restoring_author.pk if restoring_author else None
+        recorded_by_new_id = self._recorded_by_new_node_id(recorded_authorship, node_mapper)
 
         for node_model in self._author_tracked_node_models():
             # Through the model manager: the graph's related manager would load each
             # row's deferred graph_id with its own query.
             nodes = list(
-                node_model.objects.filter(graph=graph, id__in=list(recorded_by_new_id)).only(
+                node_model.objects.filter(graph=graph, id__in=recreated_node_ids).only(
                     "id", "created_by", "created_at"
                 )
             )
             if not nodes:
                 continue
             for node in nodes:
-                entry = recorded_by_new_id[node.id]
-                recorded_author_id = entry["created_by"]
-                node.created_by_id = (
-                    recorded_author_id if recorded_author_id in member_ids else restoring_author_id
-                )
+                entry = recorded_by_new_id.get(node.id)
+                if entry is None:
+                    node.created_by_id = None
+                    continue
+                node.created_by_id = entry["created_by"]
                 node.created_at = datetime.fromisoformat(entry["created_at"])
             # Restore replays recorded state, so bypassing AuthorModel.save()'s author-change
             # guard and created_at's auto_now_add is intended. Must run after every step that
@@ -427,53 +468,57 @@ class GraphVersioningManager:
     def restore_node_last_edits(
         self, *, graph: Graph, recorded_last_edits: dict | None, node_mapper: IDMapper
     ) -> None:
-        """Give each recreated node its recorded last edit.
+        """Replay each recreated node's recorded last edit verbatim.
 
-        A recorded editor who is no longer a member of the graph's organization is
-        dropped and the time kept. Recreated nodes without a recorded entry keep the last
-        edit recorded when they were recreated; nodes that were not recreated are skipped.
+        A recreated node without a recorded entry (never edited when the version was
+        saved, or a version saved before last edits were recorded) ends up without a last
+        edit, discarding the one its recreation recorded. Nodes that were not recreated
+        are skipped. Recorded editors are not checked against the organization's members:
+        removing a member or deleting a user clears them from every snapshot
+        (``VersionSnapshotAuthorshipScrubber``).
         """
-        if not recorded_last_edits:
+        recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
+        if not recreated_node_ids:
             return
 
-        recorded_by_new_id: dict[int, dict] = {}
-        for old_node_id, entry in recorded_last_edits.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
-            if new_node_id is not None:
-                recorded_by_new_id[new_node_id] = entry
-        if not recorded_by_new_id:
-            return
-
-        member_ids = self._org_member_ids(
-            org_id=graph.org_id,
-            user_ids={entry["edited_by"] for entry in recorded_by_new_id.values()},
-        )
+        recorded_by_new_id = self._recorded_by_new_node_id(recorded_last_edits, node_mapper)
         restored: list[RecordedLastEdit] = []
+        never_edited_nodes = Q()
         for node_model in self._last_edit_tracked_node_models():
-            nodes = node_model.objects.filter(graph=graph, id__in=list(recorded_by_new_id))
-            for node in nodes.only("id"):
-                entry = recorded_by_new_id[node.id]
+            nodes = node_model.objects.filter(graph=graph, id__in=recreated_node_ids).only("id")
+            never_edited_ids = []
+            for node in nodes:
+                entry = recorded_by_new_id.get(node.id)
+                if entry is None:
+                    never_edited_ids.append(node.id)
+                    continue
                 restored.append(
                     RecordedLastEdit(
                         resource=node,
-                        edited_by_id=entry["edited_by"]
-                        if entry["edited_by"] in member_ids
-                        else None,
+                        edited_by_id=entry["edited_by"],
                         edited_at=datetime.fromisoformat(entry["edited_at"]),
                     )
                 )
+            if never_edited_ids:
+                never_edited_nodes |= Q(
+                    content_type=ContentType.objects.get_for_model(node_model),
+                    object_id__in=never_edited_ids,
+                )
+        if never_edited_nodes:
+            ResourceLastEdit.objects.filter(never_edited_nodes).delete()
         restore_last_edits(restored)
 
     @staticmethod
-    def _org_member_ids(*, org_id: int, user_ids: set[int | None]) -> set[int]:
-        user_ids = {user_id for user_id in user_ids if user_id is not None}
-        if not user_ids:
-            return set()
-        return set(
-            OrganizationUser.objects.filter(org_id=org_id, user_id__in=user_ids).values_list(
-                "user_id", flat=True
-            )
-        )
+    def _recorded_by_new_node_id(
+        recorded_by_old_node_id: dict | None, node_mapper: IDMapper
+    ) -> dict[int, dict]:
+        """Re-key a snapshot's per-node entries by recreated node id, dropping unmapped nodes."""
+        recorded_by_new_id: dict[int, dict] = {}
+        for old_node_id, entry in (recorded_by_old_node_id or {}).items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            if new_node_id is not None:
+                recorded_by_new_id[new_node_id] = entry
+        return recorded_by_new_id
 
     @staticmethod
     def _author_tracked_node_models() -> list[type[AuthorModel]]:

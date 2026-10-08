@@ -8,7 +8,15 @@ import { NodeModel } from '../core/models/node.model';
 
 type NodeAuthorshipKey = `${NodeType}:${number}`;
 
-const UNKNOWN_AUTHORSHIP: AuthorshipDetailsSource = {
+/**
+ * What a store finds a node by: the live store by type and backend id, the version preview's store by canvas id
+ * (its nodes are detached from the backend). The canvas id is optional because a caller may ask about a node that
+ * does not exist (e.g. the Domain window of a flow without a Start node).
+ */
+export type NodeAuthorshipLookup = Pick<NodeModel, 'type' | 'backendId'> & Partial<Pick<NodeModel, 'id'>>;
+
+/** No recorded author or editor: every field shows as "—". */
+export const UNKNOWN_NODE_AUTHORSHIP: AuthorshipDetailsSource = {
     created_by: null,
     created_at: null,
     last_edited_by: null,
@@ -16,14 +24,13 @@ const UNKNOWN_AUTHORSHIP: AuthorshipDetailsSource = {
 };
 
 /**
- * Who created and who last edited each saved node, as the API last returned it, for the side panel's
- * "Node details" dialog and the authorship footer of the Start and Note windows. Kept out of the canvas state on
- * purpose: nodes never carry authorship, so it can never be saved, counted as an edit, copied with a node or
- * restored by undo.
+ * Who created and who last edited each node on the canvas, read by the side panel's "Node Details" dialog and the
+ * authorship footer of the Start and Note windows. This store serves the live editor: saved nodes, as the API last
+ * returned them, keyed by type and backend id. Kept out of the canvas state on purpose: nodes never carry
+ * authorship, so it can never be saved, counted as an edit, copied with a node or restored by undo.
  *
  * Not `providedIn: 'root'`: the flow page provides it and replaces it on every graph load, and
- * FLOW_EDITOR_STATE_PROVIDERS gives the version preview its own instance, which nothing fills (a snapshot has no
- * authorship).
+ * FLOW_EDITOR_STATE_PROVIDERS puts a VersionPreviewNodeAuthorshipStore in its place for the version preview.
  */
 @Injectable()
 export class NodeAuthorshipStore {
@@ -35,9 +42,9 @@ export class NodeAuthorshipStore {
     }
 
     /** All-null (shown as "—") for a node not saved yet, or one no graph response has carried. */
-    public authorshipOf(node: Pick<NodeModel, 'type' | 'backendId'>): AuthorshipDetailsSource {
-        if (node.backendId == null) return UNKNOWN_AUTHORSHIP;
-        return this.authorshipByNode.get(`${node.type}:${node.backendId}`) ?? UNKNOWN_AUTHORSHIP;
+    public authorshipOf(node: NodeAuthorshipLookup): AuthorshipDetailsSource {
+        if (node.backendId == null) return UNKNOWN_NODE_AUTHORSHIP;
+        return this.authorshipByNode.get(`${node.type}:${node.backendId}`) ?? UNKNOWN_NODE_AUTHORSHIP;
     }
 
     private readGraph(graph: GraphDto): Map<NodeAuthorshipKey, AuthorshipDetailsSource> {

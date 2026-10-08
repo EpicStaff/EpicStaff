@@ -9,6 +9,8 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from rbac.governance.authorship import AuthorshipReleaseService
+from rbac.authorship import record_last_edit
+from rbac.governance.memberships import MembershipManagementService
 from rbac.models import OrganizationUser
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
@@ -20,6 +22,7 @@ from tables.models.graph_models import AgentNode, GraphNote, StartNode
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 RECORDED_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+EDITED_AT = datetime(2024, 2, 3, 4, 5, 6, tzinfo=UTC)
 UNKNOWN_USER_ID = 987654321
 
 
@@ -130,16 +133,34 @@ def membership_losses(acme, beta, role_member, member_only):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("membership_loss", ["left-org", "member-of-another-org-only"])
-def test_restore_gives_restoring_user_the_nodes_of_an_author_who_is_not_a_member(
-    service, flow, admin_acme, member_agent_node, membership_losses, membership_loss
+def test_restore_replays_a_recorded_author_who_is_no_longer_a_member(
+    service, flow, admin_acme, member_only, member_agent_node, membership_losses, membership_loss
 ):
+    """Membership is not re-checked on restore: removing a member through the service
+    scrubs them from the snapshot, so a recorded id is replayed as is."""
     version = service.save_version(flow, name="v1")
     membership_losses[membership_loss]()
 
     _restore(service, version, admin_acme)
 
     restored = _only_node(flow.agent_node_list.all())
-    assert restored.created_by_id == admin_acme.id
+    assert restored.created_by_id == member_only.id
+    assert restored.created_at == RECORDED_AT
+
+
+@pytest.mark.django_db
+def test_restore_leaves_nodes_of_an_author_scrubbed_by_member_removal_unauthored(
+    service, flow, acme, admin_acme, member_only, member_agent_node
+):
+    version = service.save_version(flow, name="v1")
+    membership = OrganizationUser.objects.get(user=member_only, org=acme)
+    MembershipManagementService().remove_member(actor=admin_acme, membership_id=membership.id)
+    version.refresh_from_db()
+
+    _restore(service, version, admin_acme)
+
+    restored = _only_node(flow.agent_node_list.all())
+    assert restored.created_by_id is None
     assert restored.created_at == RECORDED_AT
 
 
@@ -162,22 +183,6 @@ def test_restore_gives_back_recorded_authorship_to_an_author_who_rejoined_the_or
 
 
 @pytest.mark.django_db
-def test_restore_gives_restoring_user_the_nodes_of_an_unknown_recorded_author(
-    service, flow, admin_acme, member_agent_node
-):
-    version = service.save_version(flow, name="v1")
-    for entry in version.snapshot["node_authorship"].values():
-        entry["created_by"] = UNKNOWN_USER_ID
-    version.save(update_fields=["snapshot"])
-
-    _restore(service, version, admin_acme)
-
-    restored = _only_node(flow.agent_node_list.all())
-    assert restored.created_by_id == admin_acme.id
-    assert restored.created_at == RECORDED_AT
-
-
-@pytest.mark.django_db
 def test_restore_takes_author_from_node_authorship_not_from_node_data(
     service, flow, admin_acme, member_only, member_agent_node
 ):
@@ -194,7 +199,7 @@ def test_restore_takes_author_from_node_authorship_not_from_node_data(
 
 
 @pytest.mark.django_db
-def test_restore_gives_restoring_user_a_node_recorded_without_author(
+def test_restore_leaves_a_node_recorded_without_author_unauthored(
     service, flow, admin_acme, unauthored_note
 ):
     version = service.save_version(flow, name="v1")
@@ -202,7 +207,7 @@ def test_restore_gives_restoring_user_a_node_recorded_without_author(
     _restore(service, version, admin_acme)
 
     restored = _only_node(flow.graph_note_list.all())
-    assert restored.created_by_id == admin_acme.id
+    assert restored.created_by_id is None
     assert restored.created_at == RECORDED_AT
 
 
@@ -217,13 +222,13 @@ def test_restore_applies_recorded_authorship_across_node_types(
 
     assert _only_node(flow.agent_node_list.all()).created_by_id == member_only.id
     assert _only_node(flow.start_node_list.all()).created_by_id == member_only.id
-    assert _only_node(flow.graph_note_list.all()).created_by_id == admin_acme.id
+    assert _only_node(flow.graph_note_list.all()).created_by_id is None
     for relation_name in ("agent_node_list", "start_node_list", "graph_note_list"):
         assert _only_node(getattr(flow, relation_name).all()).created_at == RECORDED_AT
 
 
 @pytest.mark.django_db
-def test_restore_of_snapshot_without_node_authorship_authors_nodes_with_restoring_user(
+def test_restore_of_snapshot_without_node_authorship_leaves_nodes_unauthored(
     service, flow, admin_acme, member_agent_node
 ):
     version = service.save_version(flow, name="v1")
@@ -234,8 +239,40 @@ def test_restore_of_snapshot_without_node_authorship_authors_nodes_with_restorin
     _restore(service, version, admin_acme)
 
     restored = _only_node(flow.agent_node_list.all())
-    assert restored.created_by_id == admin_acme.id
+    assert restored.created_by_id is None
     assert restored.created_at >= restore_started_at
+
+
+@pytest.mark.django_db
+def test_restore_leaves_a_node_missing_from_node_authorship_unauthored(
+    service, flow, admin_acme, member_only, member_agent_node, unauthored_note
+):
+    GraphNote.objects.filter(pk=unauthored_note.pk).update(created_by=member_only)
+    version = service.save_version(flow, name="v1")
+    del version.snapshot["node_authorship"][str(unauthored_note.id)]
+    version.save(update_fields=["snapshot"])
+    restore_started_at = timezone.now()
+
+    _restore(service, version, admin_acme)
+
+    restored_agent = _only_node(flow.agent_node_list.all())
+    assert restored_agent.created_by_id == member_only.id
+    assert restored_agent.created_at == RECORDED_AT
+    restored_note = _only_node(flow.graph_note_list.all())
+    assert restored_note.created_by_id is None
+    assert restored_note.created_at >= restore_started_at
+
+
+@pytest.mark.django_db
+def test_restore_does_not_author_the_graph_with_restoring_user(service, acme, admin_acme):
+    unauthored_flow = Graph.objects.create(name="unauthored-flow", org=acme)
+    GraphNote.objects.create(graph=unauthored_flow, content="note")
+    version = service.save_version(unauthored_flow, name="v1")
+
+    _restore(service, version, admin_acme)
+
+    unauthored_flow.refresh_from_db()
+    assert unauthored_flow.created_by_id is None
 
 
 @pytest.mark.django_db
@@ -301,7 +338,7 @@ def test_restore_skips_recorded_authorship_of_a_node_dropped_by_filtering(
     assert restored.created_at == RECORDED_AT
 
 
-def _count_restore_queries(manager, graph, user) -> int:
+def _count_restore_queries(manager, graph) -> int:
     recorded_authorship = manager.collect_node_authorship(graph=graph)
     node_mapper = IDMapper()
     for node_id in recorded_authorship:
@@ -311,14 +348,13 @@ def _count_restore_queries(manager, graph, user) -> int:
             graph=graph,
             recorded_authorship=recorded_authorship,
             node_mapper=node_mapper,
-            user=user,
         )
     return len(context.captured_queries)
 
 
 @pytest.mark.django_db
 def test_restore_node_authorship_query_count_does_not_grow_with_node_count(
-    manager, acme, admin_acme, member_only
+    manager, acme, member_only
 ):
     small_flow = Graph.objects.create(name="small", org=acme)
     large_flow = Graph.objects.create(name="large", org=acme)
@@ -326,8 +362,8 @@ def test_restore_node_authorship_query_count_does_not_grow_with_node_count(
     for index in range(4):
         AgentNode.objects.create(graph=large_flow, node_name=f"agent {index}", created_by=member_only)
 
-    assert _count_restore_queries(manager, small_flow, admin_acme) == _count_restore_queries(
-        manager, large_flow, admin_acme
+    assert _count_restore_queries(manager, small_flow) == _count_restore_queries(
+        manager, large_flow
     )
 
 
@@ -340,3 +376,107 @@ def test_snapshot_conversion_keeps_node_authorship(manager):
     )
 
     assert converted["node_authorship"] == node_authorship
+
+
+# ---- preview_version ----
+
+
+@pytest.mark.django_db
+def test_preview_resolves_each_nodes_recorded_author_and_last_edit(
+    service, flow, admin_acme, member_only, member_agent_node, unauthored_note
+):
+    record_last_edit(member_agent_node, admin_acme, edited_at=EDITED_AT)
+    version = service.save_version(flow, name="v1")
+
+    preview = service.preview_version(version)
+
+    assert preview["node_authorship"] == {
+        str(member_agent_node.id): {
+            "created_by": member_only,
+            "created_at": RECORDED_AT,
+            "last_edited_by": admin_acme,
+            "last_edited_at": EDITED_AT,
+        },
+        str(unauthored_note.id): {
+            "created_by": None,
+            "created_at": RECORDED_AT,
+            "last_edited_by": None,
+            "last_edited_at": None,
+        },
+    }
+    assert "node_authorship" not in preview["snapshot"]
+    assert "node_last_edit" not in preview["snapshot"]
+
+
+@pytest.mark.django_db
+def test_preview_includes_a_node_recorded_only_with_a_last_edit(
+    service, flow, member_only, member_agent_node
+):
+    version = service.save_version(flow, name="v1")
+    version.snapshot["node_authorship"] = {}
+    version.snapshot["node_last_edit"] = {
+        str(member_agent_node.id): {"edited_by": member_only.id, "edited_at": EDITED_AT.isoformat()}
+    }
+    version.save(update_fields=["snapshot"])
+
+    node_authorship = service.preview_version(version)["node_authorship"]
+
+    assert node_authorship == {
+        str(member_agent_node.id): {
+            "created_by": None,
+            "created_at": None,
+            "last_edited_by": member_only,
+            "last_edited_at": EDITED_AT,
+        }
+    }
+
+
+@pytest.mark.django_db
+def test_preview_resolves_scrubbed_and_deleted_users_to_none_keeping_the_times(
+    service, flow, member_agent_node, django_user_model
+):
+    departed = django_user_model.objects.create_user(
+        email="departed@example.com", password="StrongPass123!"
+    )
+    record_last_edit(member_agent_node, departed, edited_at=EDITED_AT)
+    version = service.save_version(flow, name="v1")
+    version.snapshot["node_authorship"][str(member_agent_node.id)]["created_by"] = None
+    version.save(update_fields=["snapshot"])
+    departed.delete()
+
+    entry = service.preview_version(version)["node_authorship"][str(member_agent_node.id)]
+
+    assert entry == {
+        "created_by": None,
+        "created_at": RECORDED_AT,
+        "last_edited_by": None,
+        "last_edited_at": EDITED_AT,
+    }
+
+
+@pytest.mark.django_db
+def test_preview_loads_every_recorded_user_in_one_query(
+    manager, flow, admin_acme, member_only, member_agent_node, unauthored_note
+):
+    record_last_edit(member_agent_node, admin_acme, edited_at=EDITED_AT)
+    record_last_edit(unauthored_note, member_only, edited_at=EDITED_AT)
+    recorded_authorship = manager.collect_node_authorship(graph=flow)
+    recorded_last_edits = manager.collect_node_last_edits(graph=flow)
+
+    with CaptureQueriesContext(connection) as context:
+        resolved = manager.resolve_node_authorship(
+            recorded_authorship=recorded_authorship, recorded_last_edits=recorded_last_edits
+        )
+
+    assert len(context.captured_queries) == 1
+    assert {entry["last_edited_by"] for entry in resolved.values()} == {admin_acme, member_only}
+
+
+@pytest.mark.django_db
+def test_preview_of_a_legacy_version_has_empty_node_authorship(service, flow, member_agent_node):
+    version = service.save_version(flow, name="v1")
+    del version.snapshot["node_authorship"]
+    del version.snapshot["node_last_edit"]
+    version.save(update_fields=["snapshot"])
+
+    assert service.preview_version(version)["node_authorship"] == {}

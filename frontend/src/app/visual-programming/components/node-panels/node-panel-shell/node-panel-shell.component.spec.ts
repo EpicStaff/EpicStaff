@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { AuthorshipDetailsDialogService } from '@shared/components';
+import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { of } from 'rxjs';
 
@@ -12,6 +12,7 @@ import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview
 import { FlowService } from '../../../services/flow.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
 import { ConditionalEdgeNodePanelComponent } from '../conditional-edge-node-panel/conditional-edge-node-panel.component';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
@@ -194,7 +195,12 @@ describe('NodePanelShellComponent', () => {
         // The panels' own templates are irrelevant here and emptied; the shell header is rendered for real.
         async function mountDetails(
             node: NodeModel,
-            options: { isPreview?: boolean; canUpdateFlows?: boolean; loadedGraph?: boolean } = {}
+            options: {
+                isPreview?: boolean;
+                canUpdateFlows?: boolean;
+                loadedGraph?: boolean;
+                versionAuthorship?: ReadonlyMap<string, AuthorshipDetailsSource>;
+            } = {}
         ): Promise<{ fixture: ComponentFixture<NodePanelShellComponent>; open: ReturnType<typeof vi.fn> }> {
             const open = vi.fn();
             TestBed.configureTestingModule({
@@ -206,7 +212,13 @@ describe('NodePanelShellComponent', () => {
                     },
                     { provide: AuthorshipDetailsDialogService, useValue: { open } },
                     { provide: FlowsApiService, useValue: { getGraphsLight: () => of([]) } },
-                    NodeAuthorshipStore,
+                    // As the flow page (live editor) or FLOW_EDITOR_STATE_PROVIDERS (version preview) provide it.
+                    ...(options.versionAuthorship
+                        ? [
+                              VersionPreviewNodeAuthorshipStore,
+                              { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
+                          ]
+                        : [NodeAuthorshipStore]),
                 ],
                 errorOnUnknownProperties: false,
             });
@@ -216,6 +228,10 @@ describe('NodePanelShellComponent', () => {
             TestBed.overrideComponent(SubGraphNodePanelComponent, { set: { template: '', imports: [] } });
             // The flow page fills the store from every graph response; a version preview never does.
             if (options.loadedGraph ?? true) TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph);
+            // A version preview fills its store from the version, by canvas node id.
+            if (options.versionAuthorship) {
+                TestBed.inject(VersionPreviewNodeAuthorshipStore).replaceFromVersion(options.versionAuthorship);
+            }
             TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
             TestBed.inject(SidePanelService).setSelectedNodeId(node.id);
 
@@ -289,6 +305,20 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', UNKNOWN, detailsButton(fixture));
+        });
+
+        it('opens with the authorship the previewed version recorded for a node detached from the backend', async () => {
+            const previewNode = { ...savedPythonNode, backendId: null };
+            const recorded = authorshipOfRow(livePython);
+            const { fixture, open } = await mountDetails(previewNode, {
+                isPreview: true,
+                loadedGraph: false,
+                versionAuthorship: new Map([[previewNode.id, recorded]]),
+            });
+
+            detailsButton(fixture)!.click();
+
+            expect(open).toHaveBeenCalledWith('Node Details', recorded, detailsButton(fixture));
         });
 
         it('shows no author for a node that is not saved yet', async () => {

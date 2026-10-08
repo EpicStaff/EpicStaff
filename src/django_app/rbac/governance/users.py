@@ -14,7 +14,10 @@ from rbac.exceptions import (
     SelfAccountDeletionError,
     UserNotFoundError,
 )
-from rbac.governance.authorship import AuthorshipReleaseService
+from rbac.governance.authorship import (
+    AuthorshipReleaseService,
+    VersionSnapshotAuthorshipScrubber,
+)
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.delete_collector import (
     build_affected_resources,
@@ -319,6 +322,11 @@ class UserManagementService(CrossOrgResourceService):
         """Permanently delete a user account, refusing self-deletion and removal of the last active superadmin.
 
         `verification_phrase` must be exactly `delete-<user email>`, compared against the unlocked read of the user before any lock is taken.
+
+        The user is cleared from the authorship recorded in every flow version snapshot, of
+        every organization, in the same transaction: a superadmin holds no memberships yet
+        may have authored flows in any organization, and restoring a version replays the
+        recorded ids, which would then point at no user.
         """
         UserModel = get_user_model()  # noqa: N806
         instance = self._target_user_or_404(target_user_id)
@@ -331,6 +339,11 @@ class UserManagementService(CrossOrgResourceService):
         external = self._user_external_artifacts(instance)
         # Captured before the delete: after it, the row these read from is gone.
         snapshot = self._user_delete_snapshot(instance)
+        # Before the locks below, so scanning every version snapshot never extends how
+        # long they are held; a guard failing after it rolls the scrub back.
+        scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_in_every_organization(
+            user_id=instance.pk
+        )
 
         # Re-fetch under lock and re-check the last-active-superadmin guard
         # against current state. Locks the active-superadmin set FIRST, in pk
@@ -366,10 +379,12 @@ class UserManagementService(CrossOrgResourceService):
         transaction.on_commit(lambda: self._cleanup_user_delete_external(snapshot))
 
         logger.info(
-            "UserManagementService.delete_user actor={a} target={t} resources={r}",
+            "UserManagementService.delete_user actor={a} target={t} resources={r} "
+            "scrubbed_versions={v}",
             a=getattr(actor, "email", "system"),
             t=instance.email,
             r=affected,
+            v=scrubbed_versions,
         )
         return payload
 

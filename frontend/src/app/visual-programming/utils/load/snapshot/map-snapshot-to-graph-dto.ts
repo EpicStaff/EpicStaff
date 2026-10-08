@@ -4,6 +4,7 @@ import { GetGraphLightRequest, GraphDto } from '../../../../features/flows/model
 import {
     GraphVersionSnapshot,
     SnapshotNode,
+    SnapshotNodeAuthorship,
     SnapshotNodeType,
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
@@ -78,7 +79,11 @@ type SnapshotNodeAdapters = {
  */
 const NOT_PERSISTED = { graph: 0, created_at: '', updated_at: '' } as const;
 
-/** The export carries no authorship (backend import/export serializers exclude it): author and last edit are unknown. */
+/**
+ * The export carries no authorship (backend import/export serializers exclude it): author and last edit are unknown
+ * on the rows. The preview reads what the version recorded from the response's `node_authorship` instead
+ * ({@link mapNodeAuthorshipToCanvas}).
+ */
 const NO_AUTHORSHIP: AuthorshipFields = { created_by: null, last_edited_by: null, last_edited_at: null };
 
 const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
@@ -240,6 +245,29 @@ export function buildPreviewFlowModel(
         flow: { ...loadedFlow, nodes: loadedFlow.nodes.map((node) => ({ ...node, backendId: null })) },
         snapshotIdToNodeUuid,
     };
+}
+
+/**
+ * The version's recorded node authorship (keyed by snapshot node id) re-keyed by canvas node id, for the preview's
+ * node details. Only the four authorship fields are kept; a node without a canvas counterpart (skipped while
+ * loading) is dropped.
+ */
+export function mapNodeAuthorshipToCanvas(
+    nodeAuthorship: Readonly<Record<string, SnapshotNodeAuthorship>>,
+    snapshotIdToNodeUuid: ReadonlyMap<number, string>
+): Map<string, SnapshotNodeAuthorship> {
+    const authorshipByNodeId = new Map<string, SnapshotNodeAuthorship>();
+    for (const [snapshotNodeId, authorship] of Object.entries(nodeAuthorship)) {
+        const nodeId = snapshotIdToNodeUuid.get(Number(snapshotNodeId));
+        if (nodeId === undefined) continue;
+        authorshipByNodeId.set(nodeId, {
+            created_by: authorship.created_by ?? null,
+            created_at: authorship.created_at ?? null,
+            last_edited_by: authorship.last_edited_by ?? null,
+            last_edited_at: authorship.last_edited_at ?? null,
+        });
+    }
+    return authorshipByNodeId;
 }
 
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {

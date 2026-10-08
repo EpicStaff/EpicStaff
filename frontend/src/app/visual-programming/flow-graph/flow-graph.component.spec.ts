@@ -17,6 +17,7 @@ import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
+import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createStartNode } from '../utils/load';
 import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
@@ -65,7 +66,12 @@ function mount(
             { provide: PermissionsService, useValue: { can: () => canUpdateFlows } },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
             // Provided by the flow page (live editor) or by FLOW_EDITOR_STATE_PROVIDERS (version preview).
-            NodeAuthorshipStore,
+            ...(isPreview
+                ? [
+                      VersionPreviewNodeAuthorshipStore,
+                      { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
+                  ]
+                : [NodeAuthorshipStore]),
         ],
     });
     TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
@@ -163,9 +169,25 @@ describe('FlowGraphComponent', () => {
             // Opened with this editor's injector, so the dialog sees this editor's read-only state.
             for (const [, config] of dialogOpen.mock.calls) {
                 expect(config.injector.get(FlowReadOnlyService).isReadOnly()).toBe(true);
-                // The preview's own store is never filled (a snapshot has no authorship): the footer shows dashes.
+                // Nothing filled this preview's own store: the footer shows dashes.
                 expect(config.data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
             }
+        });
+
+        it('passes the Start authorship the version recorded to the domain dialog (toolbar and Start node)', () => {
+            dialogOpen.mockReturnValue({ closed: of(null) });
+            const [start] = flowService.nodes();
+            const recorded = {
+                ...UNKNOWN_AUTHORSHIP,
+                created_by: liveStart.created_by,
+                created_at: liveStart.created_at,
+            };
+            TestBed.inject(VersionPreviewNodeAuthorshipStore).replaceFromVersion(new Map([[start.id, recorded]]));
+
+            component.onDomainClick();
+            component.onOpenNodePanel(start);
+
+            expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([recorded, recorded]);
         });
 
         it('does not open the note dialog', () => {

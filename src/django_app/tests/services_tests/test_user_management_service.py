@@ -18,7 +18,8 @@ import threading
 import pytest
 from django.contrib.auth import get_user_model
 
-from tables.models.graph_models import Graph, GraphNote
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models.graph_models import Graph, GraphNote, GraphVersion
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
@@ -343,6 +344,79 @@ def test_deleting_a_user_preserves_their_authored_content(actor, target_user):
 
     graph.refresh_from_db()
     assert graph.created_by is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("target_is_superadmin", [False, True], ids=["member", "superadmin"])
+def test_deleting_a_user_scrubs_them_from_version_snapshots_of_every_org(
+    actor, target_user, django_user_model, target_is_superadmin
+):
+    """A superadmin holds no memberships yet may author flows in any organization."""
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    member_org = Organization.objects.create(name="Scrub Member Org")
+    other_org = Organization.objects.create(name="Scrub Other Org")
+    if target_is_superadmin:
+        target_user.is_superadmin = True
+        target_user.save(update_fields=["is_superadmin"])
+    else:
+        OrganizationUser.objects.create(user=target_user, org=member_org, role=role)
+    colleague = django_user_model.objects.create_user(
+        email="scrub-colleague@x.com", password="StrongPass123!"
+    )
+    member_flow = Graph.objects.create(name="member-flow", org=member_org)
+    GraphNote.objects.create(graph=member_flow, content="note", created_by=target_user)
+    other_flow = Graph.objects.create(name="other-flow", org=other_org)
+    GraphNote.objects.create(graph=other_flow, content="note", created_by=target_user)
+    colleague_flow = Graph.objects.create(name="colleague-flow", org=other_org)
+    GraphNote.objects.create(graph=colleague_flow, content="note", created_by=colleague)
+    versioning_service = GraphVersioningService()
+    member_version = versioning_service.save_version(member_flow, name="member-v1")
+    other_version = versioning_service.save_version(other_flow, name="other-v1")
+    colleague_version = versioning_service.save_version(colleague_flow, name="colleague-v1")
+
+    UserManagementService().delete_user(
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
+    )
+
+    assert _recorded_node_authors(member_version) == {None}
+    assert _recorded_node_authors(other_version) == {None}
+    assert _recorded_node_authors(colleague_version) == {colleague.id}
+
+
+def _recorded_node_authors(version) -> set[int | None]:
+    snapshot = GraphVersion.objects.get(pk=version.pk).snapshot
+    return {entry["created_by"] for entry in snapshot["node_authorship"].values()}
+
+
+@pytest.mark.django_db
+def test_delete_user_refused_by_the_locked_last_superadmin_recheck_rolls_back_the_scrub(
+    actor, target_user, monkeypatch
+):
+    """The scrub runs before the locked re-check; a refusal there must undo it."""
+    target_user.is_superadmin = True
+    target_user.save(update_fields=["is_superadmin"])
+    get_user_model().objects.filter(pk=actor.pk).update(is_superadmin=False)
+    flow = Graph.objects.create(
+        name="last-superadmin-flow", org=Organization.objects.create(name="Scrub Rollback Org")
+    )
+    GraphNote.objects.create(graph=flow, content="note", created_by=target_user)
+    version = GraphVersioningService().save_version(flow, name="v1")
+    # Lets the call past the unlocked pre-check, as when a concurrent demotion lands
+    # between that check and the locked one.
+    monkeypatch.setattr(
+        UserManagementService, "_assert_deletable_user", staticmethod(lambda actor, instance: None)
+    )
+
+    with pytest.raises(LastSuperadminError):
+        UserManagementService().delete_user(
+            actor=actor,
+            target_user_id=target_user.pk,
+            verification_phrase=f"delete-{target_user.email}",
+        )
+
+    assert _recorded_node_authors(version) == {target_user.pk}
 
 
 @pytest.mark.django_db

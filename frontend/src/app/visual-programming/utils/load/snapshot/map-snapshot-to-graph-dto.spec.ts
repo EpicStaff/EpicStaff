@@ -34,6 +34,7 @@ import {
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
     buildPreviewFlowModel,
+    mapNodeAuthorshipToCanvas,
     mapSnapshotToGraphDto,
     SNAPSHOT_NODE_LIST_KEY,
     UnmappedGraphDtoNodeList,
@@ -244,6 +245,38 @@ describe('buildPreviewFlowModel', () => {
         const subgraph = result.flow.nodes.find((node) => node.type === NodeType.SUBGRAPH);
         expect(subgraph?.isBlocked).toBe(true);
         expect(byId(ID.agent).data).toMatchObject({ agent_definition: null });
+    });
+});
+
+describe('mapNodeAuthorshipToCanvas', () => {
+    const grace = { id: 9, display_name: 'Grace Hopper', avatar_url: null };
+    const recorded = {
+        created_by: grace,
+        created_at: '2026-03-12T13:28:23Z',
+        last_edited_by: null,
+        last_edited_at: '2026-04-01T09:05:00Z',
+    };
+    const snapshotIdToNodeUuid = new Map([
+        [1, 'start-canvas-id'],
+        [2, 'python-canvas-id'],
+    ]);
+
+    it('re-keys the recorded authorship from snapshot node ids to canvas node ids', () => {
+        expect(mapNodeAuthorshipToCanvas({ '2': recorded }, snapshotIdToNodeUuid)).toEqual(
+            new Map([['python-canvas-id', recorded]])
+        );
+    });
+
+    it('drops an entry whose node is not on the canvas', () => {
+        expect(mapNodeAuthorshipToCanvas({ '3': recorded }, snapshotIdToNodeUuid)).toEqual(new Map());
+    });
+
+    it('keeps only the four authorship fields', () => {
+        const withExtra = { ...recorded, node_name: 'Python' } as typeof recorded;
+
+        expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToNodeUuid).get('python-canvas-id')).toEqual(
+            recorded
+        );
     });
 });
 

@@ -66,6 +66,7 @@ class PreparedVersion:
 class VersionPreview(TypedDict):
     snapshot: dict
     warnings: list[dict]
+    node_authorship: dict[str, dict]
 
 
 class GraphVersioningService:
@@ -74,8 +75,10 @@ class GraphVersioningService:
 
     @transaction.atomic
     def save_version(self, graph: Graph, name: str, description: str = "") -> GraphVersion:
-        """
-        Create a named version snapshot of the given graph.
+        """Create a named version snapshot of the given graph.
+
+        Records every node's author and last edit as they are, and changes none: saving
+        a version is not an edit of the graph.
         """
         snapshot = self._manager.create_snapshot(graph)
         snapshot["version"] = IMPORT_VERSION
@@ -97,6 +100,8 @@ class GraphVersioningService:
         """
         Create a brand-new Graph from a version snapshot.
         The new graph is fully independent — own id/uuid, zero GraphVersion rows.
+        ``user`` authors and last edits the new graph and every node in it; the
+        version's recorded node authorship is not replayed.
         """
         source_graph = version.graph
         prepared = self._prepare(version)
@@ -144,7 +149,8 @@ class GraphVersioningService:
 
         Credential-named fields in the graph-level ``metadata`` are nulled, since old
         snapshots can hold them in plaintext. The recorded ``node_authorship`` and
-        ``node_last_edit`` are omitted.
+        ``node_last_edit`` move out of the snapshot into ``node_authorship``, their users
+        loaded in one query.
 
         Key-Value nodes carry the live id of the table a restore by ``user`` would bind, not
         the stored id (see ``GraphVersioningManager.bind_key_value_tables``).
@@ -152,6 +158,10 @@ class GraphVersioningService:
         Returns:
             ``snapshot``: the filtered snapshot, with the version's original node ids.
             ``warnings``: the dependency-filtering warnings, keyed by those same ids.
+            ``node_authorship``: each recorded node's author and last editor with their
+            times, keyed by the version's original node ids (see
+            ``GraphVersioningManager.resolve_node_authorship``); empty for a version
+            saved before node authorship was recorded.
         """
         prepared = self._prepare(version)
         snapshot = {
@@ -162,11 +172,15 @@ class GraphVersioningService:
         }
         if "metadata" in snapshot:
             snapshot = {**snapshot, "metadata": _scrub_plaintext_secrets(snapshot["metadata"])}
-        snapshot.pop("node_authorship", None)
-        snapshot.pop("node_last_edit", None)
+        recorded_authorship = snapshot.pop("node_authorship", None)
+        recorded_last_edits = snapshot.pop("node_last_edit", None)
         return {
             "snapshot": snapshot,
             "warnings": list(prepared.filter_warnings),
+            "node_authorship": self._manager.resolve_node_authorship(
+                recorded_authorship=recorded_authorship,
+                recorded_last_edits=recorded_last_edits,
+            ),
         }
 
     @transaction.atomic
@@ -195,12 +209,13 @@ class GraphVersioningService:
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
         user:
-            The acting user: it authors every recreated node and last edits the graph and
-            every node without a recorded ``node_last_edit``. A version's recorded
-            ``node_authorship`` and ``node_last_edit`` are replayed, keeping recorded users
-            who are still members of the graph's organization. It becomes the graph's
-            author when the graph has none, and gates re-binding of key-value tables.
-            When ``None``, no last edit is recorded and no author is claimed.
+            The acting user: it last edits the graph and gates re-binding of key-value
+            tables. It never becomes an author, of the graph or of a node, nor a node's
+            last editor. A version's recorded ``node_authorship`` and ``node_last_edit``
+            are replayed verbatim, without re-checking membership (removing a member or
+            deleting a user scrubs them from every snapshot); a node with no recorded
+            author or last edit is restored without one. When ``None``, no last edit is
+            recorded.
 
         Returns
         -------
@@ -239,7 +254,6 @@ class GraphVersioningService:
             graph=graph,
             recorded_authorship=prepared.converted_snapshot.get("node_authorship"),
             node_mapper=node_mapper,
-            user=user,
         )
         self._manager.restore_node_last_edits(
             graph=graph,

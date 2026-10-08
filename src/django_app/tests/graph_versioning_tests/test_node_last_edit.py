@@ -10,6 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from rbac.authorship import record_last_edit
+from rbac.governance.memberships import MembershipManagementService
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser, ResourceLastEdit
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -22,7 +23,6 @@ from tables.models.graph_models import AgentNode, GraphNote, StartNode
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 RECORDED_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
-UNKNOWN_USER_ID = 987654321
 
 
 def _last_edit_of(instance) -> ResourceLastEdit | None:
@@ -156,27 +156,35 @@ def membership_losses(acme, beta, role_member, member_only):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("membership_loss", ["left-org", "member-of-another-org-only"])
-def test_restore_drops_the_editor_who_is_no_longer_a_member_but_keeps_the_time(
-    service, flow, admin_acme, member_edited_agent_node, membership_losses, membership_loss
+def test_restore_replays_a_recorded_editor_who_is_no_longer_a_member(
+    service,
+    flow,
+    admin_acme,
+    member_only,
+    member_edited_agent_node,
+    membership_losses,
+    membership_loss,
 ):
+    """Membership is not re-checked on restore: removing a member through the service
+    scrubs them from the snapshot, so a recorded id is replayed as is."""
     version = service.save_version(flow, name="v1")
     membership_losses[membership_loss]()
 
     _restore(service, version, admin_acme)
 
     last_edit = _last_edit_of(_only_node(flow.agent_node_list.all()))
-    assert last_edit.edited_by_id is None
+    assert last_edit.edited_by_id == member_only.id
     assert last_edit.edited_at == RECORDED_AT
 
 
 @pytest.mark.django_db
-def test_restore_drops_an_unknown_recorded_editor_but_keeps_the_time(
-    service, flow, admin_acme, member_edited_agent_node
+def test_restore_keeps_the_time_of_an_editor_scrubbed_by_member_removal(
+    service, flow, acme, admin_acme, member_only, member_edited_agent_node
 ):
     version = service.save_version(flow, name="v1")
-    for entry in version.snapshot["node_last_edit"].values():
-        entry["edited_by"] = UNKNOWN_USER_ID
-    version.save(update_fields=["snapshot"])
+    membership = OrganizationUser.objects.get(user=member_only, org=acme)
+    MembershipManagementService().remove_member(actor=admin_acme, membership_id=membership.id)
+    version.refresh_from_db()
 
     _restore(service, version, admin_acme)
 
@@ -186,33 +194,27 @@ def test_restore_drops_an_unknown_recorded_editor_but_keeps_the_time(
 
 
 @pytest.mark.django_db
-def test_restore_records_restoring_user_on_a_node_without_recorded_last_edit(
+def test_restore_leaves_a_node_without_recorded_last_edit_without_one(
     service, flow, admin_acme, never_edited_note
 ):
     version = service.save_version(flow, name="v1")
-    restore_started_at = timezone.now()
 
     _restore(service, version, admin_acme)
 
-    last_edit = _last_edit_of(_only_node(flow.graph_note_list.all()))
-    assert last_edit.edited_by_id == admin_acme.id
-    assert last_edit.edited_at >= restore_started_at
+    assert _last_edit_of(_only_node(flow.graph_note_list.all())) is None
 
 
 @pytest.mark.django_db
-def test_restore_of_snapshot_without_node_last_edit_records_restoring_user(
+def test_restore_of_snapshot_without_node_last_edit_leaves_nodes_without_one(
     service, flow, admin_acme, member_edited_agent_node
 ):
     version = service.save_version(flow, name="v1")
     del version.snapshot["node_last_edit"]
     version.save(update_fields=["snapshot"])
-    restore_started_at = timezone.now()
 
     _restore(service, version, admin_acme)
 
-    last_edit = _last_edit_of(_only_node(flow.agent_node_list.all()))
-    assert last_edit.edited_by_id == admin_acme.id
-    assert last_edit.edited_at >= restore_started_at
+    assert _last_edit_of(_only_node(flow.agent_node_list.all())) is None
 
 
 @pytest.mark.django_db
@@ -227,7 +229,7 @@ def test_restore_applies_recorded_last_edits_across_node_types(
 
     assert _last_edit_of(_only_node(flow.agent_node_list.all())).edited_by_id == member_only.id
     assert _last_edit_of(_only_node(flow.start_node_list.all())).edited_by_id == member_only.id
-    assert _last_edit_of(_only_node(flow.graph_note_list.all())).edited_by_id == admin_acme.id
+    assert _last_edit_of(_only_node(flow.graph_note_list.all())) is None
 
 
 @pytest.mark.django_db

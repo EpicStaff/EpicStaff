@@ -16,7 +16,10 @@ from rbac.exceptions import (
     SelfMembershipModificationError,
     UserNotFoundError,
 )
-from rbac.governance.authorship import AuthorshipReleaseService
+from rbac.governance.authorship import (
+    AuthorshipReleaseService,
+    VersionSnapshotAuthorshipScrubber,
+)
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
 from rbac.models import Organization, OrganizationUser, Role
@@ -198,6 +201,9 @@ class MembershipManagementService(CrossOrgResourceService):
     def remove_member(self, actor, membership_id):
         """Remove a membership and clear the user's authorship in that org.
 
+        Clears the user as author and last editor of the org's resources and of the
+        flow version snapshots recorded in it, in the same transaction.
+
         A membership the caller cannot see → 404 (no-leak; see change_role);
         own → 403; visible but lacking MEMBERSHIPS.DELETE → 403. No
         last-org-admin guard by design."""
@@ -211,12 +217,16 @@ class MembershipManagementService(CrossOrgResourceService):
         released = AuthorshipReleaseService().release(
             user_id=membership.user_id, org_id=membership.org_id
         )
+        scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_in_organization(
+            user_id=membership.user_id, org_id=membership.org_id
+        )
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m} "
-            "released_authorship={r}",
+            "released_authorship={r} scrubbed_versions={v}",
             a=getattr(actor, "email", "system"),
             m=membership_id,
             r=released,
+            v=scrubbed_versions,
         )
 
     # ---- internals ----

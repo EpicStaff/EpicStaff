@@ -3,6 +3,7 @@ from django.apps import apps
 from django.urls import reverse
 from rest_framework import status
 
+from rbac.governance.memberships import MembershipManagementService
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser
 from tables.graph_versioning.services import GraphVersioningService
@@ -181,7 +182,9 @@ def test_partial_export_carries_no_author_anywhere(source_flow):
         for node in getattr(source_flow, relation_name).all()
     ]
 
-    result = GraphPartialExportService(entity_registry).export(node_refs)
+    result = GraphPartialExportService(entity_registry).export(
+        node_refs, org_id=source_flow.org_id
+    )
 
     assert not result.has_errors, result.errors
     assert _keys_named(result.data, AUTHOR_KEY) == []
@@ -265,7 +268,11 @@ def test_partial_import_authors_every_new_node_with_importer(
         if node_type not in STRUCTURAL_NODE_TYPES
         for node in getattr(source_flow, relation_name).all()
     ]
-    export_data = GraphPartialExportService(entity_registry).export(node_refs).data
+    export_data = (
+        GraphPartialExportService(entity_registry)
+        .export(node_refs, org_id=source_flow.org_id)
+        .data
+    )
     existing_node_keys = set(_node_authors(source_flow))
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
@@ -311,11 +318,14 @@ def test_version_restore_keeps_recorded_node_author_who_is_still_a_member(
 
 
 @pytest.mark.django_db
-def test_version_restore_authors_nodes_of_a_former_member_with_restoring_user(
+def test_version_restore_leaves_nodes_of_a_former_member_unauthored(
     client_as, admin_acme, member_only, acme, source_flow
 ):
     version = GraphVersioningService().save_version(graph=source_flow, name="v1")
-    OrganizationUser.objects.filter(user=member_only, org=acme).delete()
+    MembershipManagementService().remove_member(
+        actor=admin_acme,
+        membership_id=OrganizationUser.objects.get(user=member_only, org=acme).id,
+    )
     source_flow.refresh_from_db()
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
@@ -329,7 +339,7 @@ def test_version_restore_authors_nodes_of_a_former_member_with_restoring_user(
     assert response.status_code == status.HTTP_200_OK, response.content
     node_authors = _node_authors(source_flow)
     assert len(node_authors) == len(NODE_RELATIONS)
-    assert set(node_authors.values()) == {admin_acme.id}
+    assert set(node_authors.values()) == {None}
 
 
 @pytest.mark.django_db
@@ -361,7 +371,9 @@ def _restore(client, version, graph: Graph):
 
 
 @pytest.mark.django_db
-def test_version_restore_claims_unauthored_graph(client_as, admin_acme, acme, source_flow):
+def test_version_restore_leaves_unauthored_graph_unauthored(
+    client_as, admin_acme, acme, source_flow
+):
     Graph.objects.filter(pk=source_flow.pk).update(created_by=None)
     version = GraphVersioningService().save_version(graph=source_flow, name="v1")
     client = client_as(admin_acme)
@@ -371,7 +383,7 @@ def test_version_restore_claims_unauthored_graph(client_as, admin_acme, acme, so
 
     assert response.status_code == status.HTTP_200_OK, response.content
     source_flow.refresh_from_db()
-    assert source_flow.created_by_id == admin_acme.id
+    assert source_flow.created_by_id is None
 
 
 @pytest.mark.django_db
@@ -408,7 +420,7 @@ def version_with_node_authors(request, source_flow, member_only):
 
 
 @pytest.mark.django_db
-def test_version_restore_ignores_author_stored_in_snapshot(
+def test_version_restore_ignores_author_stored_in_snapshot_and_leaves_nodes_unauthored(
     client_as, admin_acme, acme, source_flow, version_with_node_authors
 ):
     client = client_as(admin_acme)
@@ -419,7 +431,7 @@ def test_version_restore_ignores_author_stored_in_snapshot(
     assert response.status_code == status.HTTP_200_OK, response.content
     node_authors = _node_authors(source_flow)
     assert len(node_authors) == len(NODE_RELATIONS)
-    assert set(node_authors.values()) == {admin_acme.id}
+    assert set(node_authors.values()) == {None}
 
 
 @pytest.mark.django_db

@@ -238,7 +238,20 @@ export interface GraphVersionSnapshot {
     secret_declarations?: SnapshotSecretDeclarations;
 }
 
+/**
+ * Who created one node and who last edited it, as recorded when the version was saved. A user is null when
+ * unknown or no longer a member of the flow's organization; the timestamps are kept either way.
+ */
+export interface SnapshotNodeAuthorship extends AuthorshipFields {
+    created_at: string | null;
+}
+
 export interface PreviewGraphVersionResponse {
     snapshot: GraphVersionSnapshot;
     warnings: RestoreWarning[];
+    /**
+     * Keyed by the snapshot node id (`SnapshotNode.id`, as a string). Empty for versions saved before snapshots
+     * recorded node authorship; a node missing from it has no recorded author or editor.
+     */
+    node_authorship: Record<string, SnapshotNodeAuthorship>;
 }

@@ -89,6 +89,7 @@ from tables.filters import (
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.graph_versioning.serializers import (
     GraphVersionCreateSerializer,
+    GraphVersionPreviewResponseSerializer,
     GraphVersionReadSerializer,
     GraphVersionUpdateSerializer,
     RestoreVersionInputSerializer,
@@ -1115,16 +1116,14 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "`key_value_table` is the id of the flow organization's table a restore by the "
             "caller would bind (same id and name, else same name), or null when none matches "
             "or the caller lacks the node mode's Key-Value table permissions; "
-            "`key_value_table_name` is the name stored in the version."
+            "`key_value_table_name` is the name stored in the version. `node_authorship` "
+            "maps each snapshot node id to the node's author and last editor with their "
+            "times, as recorded when the version was saved; a user removed from the "
+            "organization or deleted is null, and the map is empty for a version saved "
+            "before node authorship was recorded."
         ),
         responses={
-            200: inline_serializer(
-                name="GraphVersionPreviewResponse",
-                fields={
-                    "snapshot": serializers.DictField(),
-                    "warnings": serializers.ListField(child=serializers.DictField()),
-                },
-            ),
+            200: GraphVersionPreviewResponseSerializer,
             403: OpenApiResponse(description="The caller has no FLOWS READ permission."),
             404: OpenApiResponse(description="No such version in the caller's organization."),
         },
@@ -1237,7 +1236,10 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     def preview(self, request, *args, **kwargs):
         version = self.get_object()
         result = GraphVersioningService().preview_version(version, user=request.user)
-        return Response(result, status=status.HTTP_200_OK)
+        return Response(
+            GraphVersionPreviewResponseSerializer(result, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class IdempotentNodeCreateMixin:
