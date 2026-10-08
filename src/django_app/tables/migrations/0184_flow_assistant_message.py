@@ -164,5 +164,6 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             copy_messages_to_rows,
             reverse_code=delete_message_rows,
+            elidable=True,
         ),
     ]
