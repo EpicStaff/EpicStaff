@@ -15,6 +15,7 @@ from helpers.redaction import scrub
 
 MOCK_LLM_URL = os.environ.get("E2E_MOCK_LLM_URL", "http://localhost:18080").rstrip("/")
 EMBEDDINGS_PATH = "/v1/embeddings"
+CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 
 
 class MockLlmClient:

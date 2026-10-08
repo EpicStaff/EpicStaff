@@ -1,6 +1,7 @@
 """Create flow A and run flows to a terminal status (shared by warm-up, flow, SSE, load tests)."""
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from helpers.api import ApiClient
@@ -43,8 +44,10 @@ def runtime_node_name(node: dict) -> str:
     return f"{node['node_name']} #{node['id']}"
 
 
-def create_python_flow(client: ApiClient, name: str) -> CreatedFlow:
-    """Create a graph and bulk-save flow A (Start -> Python `a + b` -> End) into it."""
+def create_flow(
+    client: ApiClient, name: str, build_payload: Callable[[int, int], dict]
+) -> CreatedFlow:
+    """Create a graph and bulk-save `build_payload(graph_id, save_version)` into it."""
     created = client.post(
         "/api/graphs/",
         json={"name": name, "time_to_live": GRAPH_TIME_TO_LIVE_SECONDS},
@@ -52,9 +55,14 @@ def create_python_flow(client: ApiClient, name: str) -> CreatedFlow:
     ).json()
     saved = client.post(
         f"/api/graphs/{created['id']}/save/",
-        json=python_flow_save_payload(created["id"], created["save_version"]),
+        json=build_payload(created["id"], created["save_version"]),
     ).json()
     return CreatedFlow(created, saved)
+
+
+def create_python_flow(client: ApiClient, name: str) -> CreatedFlow:
+    """Create flow A: Start -> Python `a + b` -> End."""
+    return create_flow(client, name, python_flow_save_payload)
 
 
 def start_session(client: ApiClient, graph_id: int, variables: dict) -> dict:
