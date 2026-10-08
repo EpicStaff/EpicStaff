@@ -88,6 +88,8 @@ import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.m
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
+import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
+import { routeAllCurved } from '../core/routing/curved-route-all';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
@@ -126,7 +128,10 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     providers: [
         {
             provide: F_CONNECTION_BUILDERS,
-            useFactory: () => ({ orthogonal: new OrthogonalPathBuilder() }),
+            useFactory: () => ({
+                orthogonal: new OrthogonalPathBuilder(),
+                'adaptive-curve': new CurvedPathBuilder(),
+            }),
         },
         KeyValueEntryDraftsService,
     ],
@@ -349,6 +354,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.lastSeenFullSaveRequest = requestCount;
                 this.emitSave();
             }
+        });
+
+        effect(() => {
+            this.flowSettings.edgeStyle(); // track the signal
+            untracked(() => this.rerouteSegmentConnections());
         });
 
         // `f-canvas` uses selective content projection and drops any element that
@@ -1212,7 +1222,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const connections = this.flowService.connections();
-        const routes = routeAll(this.flowService.nodes(), connections);
+        const nodes = this.flowService.nodes();
+        const routes =
+            this.flowSettings.edgeStyle() === 'adaptive-curve'
+                ? routeAllCurved(nodes, connections)
+                : routeAll(nodes, connections);
         for (const conn of connections) {
             const points = routes.get(conn.id);
             if (points && !waypointsEqual(conn.waypoints ?? [], points)) {

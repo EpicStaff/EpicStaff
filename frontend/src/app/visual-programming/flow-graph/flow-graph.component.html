@@ -147,7 +147,7 @@
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
-                    fType="orthogonal"
+                    [fType]="flowSettings.edgeStyle()"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
@@ -242,7 +242,7 @@
                         [waypoints]="connection.waypoints ?? []"
                         (waypointsChange)="onWaypointsChanged(connection.id, $event)"
                         [radius]="5"
-                        [visibility]="true"
+                        [visibility]="flowSettings.edgeStyle() === 'orthogonal'"
                     ></f-connection-waypoints>
                 </f-connection>
             }

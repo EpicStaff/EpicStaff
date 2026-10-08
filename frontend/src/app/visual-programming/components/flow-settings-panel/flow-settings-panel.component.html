@@ -39,6 +39,14 @@
             />
         </div>
 
+        <div class="form-section form-section--toggle">
+            <span class="section-label">Curved connections</span>
+            <app-toggle-switch
+                [checked]="flowSettings.edgeStyle() === 'adaptive-curve'"
+                (checkedChange)="flowSettings.edgeStyle.set($event ? 'adaptive-curve' : 'orthogonal')"
+            />
+        </div>
+
         <div class="form-section">
             <span class="section-label">Timezone</span>
             <app-timezone-selector
