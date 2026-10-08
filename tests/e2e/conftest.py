@@ -260,10 +260,10 @@ def user_id(bootstrap: Bootstrap) -> int:
 
 @pytest.fixture(scope="session")
 def superadmin_access_token(bootstrap: Bootstrap, anonymous_client: ApiClient) -> Secret:
-    """A fresh superadmin JWT (a `Secret`). Only for admin-only operations.
+    """A superadmin JWT from its own login (a `Secret`). Only for admin-only operations.
 
-    The first-setup token is not reused: access tokens live 15 minutes, shorter than a
-    full run. One login per session stays well inside the 5/min per IP + email throttle.
+    Logged in once per session (login is throttled to 5/min per IP + email). e2e.env sets
+    DJANGO_JWT_ACCESS_LIFETIME=2h so the token outlives a full run; the default 15m does not.
     """
     with bootstrap_step(9, "superadmin login", bootstrap):
         login = protect(

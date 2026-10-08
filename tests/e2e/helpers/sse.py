@@ -7,7 +7,8 @@ while it waits, so the collector closes it itself: once the session is terminal 
 `end`, once `graph_end` arrived), or when a hard deadline passes.
 
 `messages` data comes in two shapes: the live Redis payload and a stored database row. Both
-carry `uuid`, `name` and `message_data`; the collector keys messages by `uuid`.
+carry `uuid`, `name` and `message_data`; the collector keys messages by `uuid`. An
+`event: fatal-error` from the server also ends collection.
 """
 
 import json
@@ -22,6 +23,7 @@ from helpers.polling import TERMINAL_SESSION_STATUSES
 from helpers.redaction import register_secret
 
 SSE_CONNECT_TIMEOUT_SECONDS = 10
+FATAL_ERROR_EVENT = "fatal-error"
 
 
 @dataclass(frozen=True)
@@ -38,8 +40,12 @@ class SessionStream:
     content_type: str = ""
     events: list[SseEvent] = field(default_factory=list)
     messages: dict[str, dict] = field(default_factory=dict)
+    message_arrival_seconds: dict[str, float] = field(default_factory=dict)
     statuses: list[str] = field(default_factory=list)
     terminal_status_after_seconds: float | None = None
+    fatal_error: object = None
+    # Why collection stopped: done, fatal_error, read_timeout or deadline.
+    stop_reason: str = ""
 
     @property
     def first_event_after_seconds(self) -> float | None:
@@ -58,6 +64,19 @@ class SessionStream:
 
     def has_graph_end(self) -> bool:
         return "graph_end" in self.message_types()
+
+    def arrival_of(self, name: str, message_type: str) -> float | None:
+        """When the first message of `message_type` from node `name` arrived."""
+        for uuid, message in self.messages.items():
+            if message.get("name") == name and message["message_data"].get("message_type") == message_type:
+                return self.message_arrival_seconds[uuid]
+        return None
+
+    def summary(self) -> str:
+        return (
+            f"stop_reason={self.stop_reason!r} statuses={self.statuses} "
+            f"messages={len(self.messages)} events={len(self.events)} fatal_error={self.fatal_error!r}"
+        )
 
 
 def issue_sse_ticket(client: ApiClient) -> dict:
@@ -111,11 +130,11 @@ def collect_session_stream(
     read_timeout: float,
     deadline_seconds: float,
 ) -> SessionStream:
-    """Subscribe and collect until the session is done or `deadline_seconds` pass.
+    """Subscribe and collect until the session is done, a fatal error, or `deadline_seconds`.
 
     `read_timeout` bounds the silence between two reads; the stream has no heartbeat, so it
-    must exceed the longest quiet stretch of the run. Returns what arrived either way; the
-    caller asserts on completeness.
+    must exceed the longest quiet stretch of the run. Returns what arrived either way, with
+    `stop_reason` set; the caller asserts on completeness.
     """
     stream = SessionStream()
     started = time.monotonic()
@@ -130,18 +149,29 @@ def collect_session_stream(
         try:
             for event in parse_sse_lines(response.iter_lines(), started):
                 record_event(stream, event)
-                if stream_is_done(stream) or time.monotonic() - started > deadline_seconds:
+                if event.event == FATAL_ERROR_EVENT:
+                    stream.fatal_error = event.data
+                    stream.stop_reason = "fatal_error"
+                    break
+                if stream_is_done(stream):
+                    stream.stop_reason = "done"
+                    break
+                if time.monotonic() - started > deadline_seconds:
+                    stream.stop_reason = "deadline"
                     break
         except httpx.ReadTimeout:
             # Silence longer than read_timeout: return what arrived; assertions explain.
-            pass
+            stream.stop_reason = "read_timeout"
     return stream
 
 
 def record_event(stream: SessionStream, event: SseEvent) -> None:
     stream.events.append(event)
     if event.event == "messages" and isinstance(event.data, dict):
-        stream.messages.setdefault(str(event.data["uuid"]), event.data)
+        uuid = str(event.data["uuid"])
+        if uuid not in stream.messages:
+            stream.messages[uuid] = event.data
+            stream.message_arrival_seconds[uuid] = event.received_after_seconds
     elif event.event == "status" and isinstance(event.data, dict):
         stream.statuses.append(event.data["status"])
         if (

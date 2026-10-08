@@ -19,9 +19,9 @@ services:
       - ../tests/e2e/mock_llm/server.py:/app/server.py:ro
     networks:
       - backend-network
-    # Published so the tests on the host can read the call log at /__calls.
+    # Published on loopback only, so the tests on the host can read the call log at /__calls.
     ports:
-      - "18080:8080"
+      - "127.0.0.1:18080:8080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 5s

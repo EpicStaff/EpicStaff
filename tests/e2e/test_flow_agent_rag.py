@@ -21,7 +21,7 @@ from helpers.flows import (
     wait_for_graph_end,
 )
 from helpers.mock_llm import CHAT_COMPLETIONS_PATH, MockLlmClient
-from helpers.payloads import agent_rag_flow_save_payload
+from helpers.payloads import AGENT_RAG_QUESTION, agent_rag_flow_save_payload
 from helpers.polling import session_diagnostics
 from helpers.timings import Timings
 
@@ -128,7 +128,7 @@ def test_knowledge_node_records_its_retrieval(
 ) -> None:
     knowledge_name = node_message_name(agent_rag_flow, "knowledge_node_list")
     [retrieval] = extracted_chunks_of(agent_rag_messages, knowledge_name)
-    assert retrieval["knowledge_query"] == "What is the token?"
+    assert retrieval["knowledge_query"] == AGENT_RAG_QUESTION
     assert any(knowledge_token in chunk["text"] for chunk in retrieval["chunks"]), retrieval
 
 
