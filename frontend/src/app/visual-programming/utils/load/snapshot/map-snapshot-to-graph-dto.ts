@@ -194,19 +194,6 @@ export function mapSnapshotToGraphDto(
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
         ...nodeLists,
         edge_list: (snapshot.edge_list ?? []).map((edge) => ({ ...edge, graph: 0 })),
-        conditional_edge_list: (snapshot.conditional_edge_list ?? []).map((edge) => ({
-            ...edge,
-            graph: 0,
-            python_code: toLivePythonCode(
-                edge.python_code,
-                resolveDeclaredSecrets(
-                    snapshot.secret_declarations?.conditional_edges?.find(
-                        (declaration) => declaration.source_node_id === edge.source_node_id
-                    )?.names,
-                    secretsByName
-                )
-            ),
-        })),
     };
 }
 

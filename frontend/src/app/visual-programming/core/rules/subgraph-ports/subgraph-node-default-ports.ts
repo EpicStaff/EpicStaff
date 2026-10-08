@@ -10,7 +10,6 @@ export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
             'project-out',
             'python-out',
             'file-extractor-out',
-            'edge-out',
             'table-out',
             'llm-out-right',
             'start-start',
@@ -36,7 +35,6 @@ export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-out',
             'llm-out-left',
             'file-extractor-in',

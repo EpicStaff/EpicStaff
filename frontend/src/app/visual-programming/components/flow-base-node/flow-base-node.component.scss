@@ -7,27 +7,7 @@
 
     border-radius: 16px;
 
-    .node-name-wrapper {
-        position: absolute;
-        top: -24px;
-        width: 100%;
-        display: flex;
-        pointer-events: none;
-    }
-
-    .node-name-label {
-        background-color: var(--color-nodes-actionbar-bg);
-        color: var(--gray-204);
-        font-size: 0.75rem;
-        padding: 2px 6px;
-        border-radius: 3px;
-        white-space: nowrap;
-        opacity: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
+    // Outside-the-box bar, only used by NOTE (no header row to embed into).
     // Header-based node types reuse this class inside .node-action-bar (see below).
     .actions {
         display: flex;
@@ -306,10 +286,6 @@
         //       display: block;
         // }
 
-        .node-name-label {
-            opacity: 1;
-        }
-
         .port-wrapper .port-label {
             opacity: 1;
         }
@@ -349,9 +325,6 @@
     &.f-selected {
         z-index: 1000 !important;
 
-        .node-name-label {
-            opacity: 1;
-        }
         .port-wrapper .port-label {
             opacity: 1;
         }
@@ -462,37 +435,6 @@
 :host(.type-table) {
     height: auto !important;
     min-height: fit-content;
-}
-
-:host(.type-edge) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    --edge-node-border-color: var(--color-divider-subtle);
-
-    .port-position-left {
-        left: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    .port-position-right {
-        right: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    width: auto;
-    height: auto;
-
-    &.f-selected {
-        --edge-node-border-color: var(--vp-selected-node-border-color);
-    }
 }
 
 :host(.type-note) {

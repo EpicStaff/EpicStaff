@@ -13,7 +13,6 @@ export const DEFAULT_TASK_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-out',
             'python-out',
-            'edge-out',
             'start-start',
             'table-out',
             'llm-out-right',
@@ -41,7 +40,6 @@ export const DEFAULT_TASK_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
             'llm-out-left',
             'file-extractor-in',

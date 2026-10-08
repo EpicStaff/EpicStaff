@@ -36,7 +36,6 @@ export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
             'llm-out-left',
             'end-in',

@@ -31,7 +31,6 @@ import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
     DecisionTableNodeModel,
-    EdgeNodeModel,
     EndNodeModel,
     GraphNoteModel,
     KeyValueNodeModel,
@@ -48,7 +47,6 @@ import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
-import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 
@@ -61,7 +59,6 @@ import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.co
         NgStyle,
         NgTemplateOutlet,
         ClickOrDragDirective,
-        ConditionalEdgeNodeComponent,
         DecisionTableNodeComponent,
         ClassificationDecisionTableNodeComponent,
         GraphNoteComponent,
@@ -170,8 +167,6 @@ export class FlowBaseNodeComponent implements OnInit {
                 return 'type-llm';
             case NodeType.PYTHON:
                 return 'type-python';
-            case NodeType.EDGE:
-                return 'type-edge';
             case NodeType.START:
                 return 'type-start';
             case NodeType.TABLE:
@@ -203,10 +198,6 @@ export class FlowBaseNodeComponent implements OnInit {
 
     public get pythonNode() {
         return this.node.type === NodeType.PYTHON ? (this.node as PythonNodeModel) : null;
-    }
-
-    public get edgeNode() {
-        return this.node.type === NodeType.EDGE ? (this.node as EdgeNodeModel) : null;
     }
 
     public get decisionTableNode(): DecisionTableNodeModel | null {

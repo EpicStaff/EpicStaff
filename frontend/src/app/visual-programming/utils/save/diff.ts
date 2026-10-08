@@ -482,14 +482,7 @@ function getPlainConnections(flow: FlowModel): ConnectionModel[] {
         const source = nodeById.get(conn.sourceNodeId);
         const target = nodeById.get(conn.targetNodeId);
         if (!source || !target) return false;
-        if (
-            source.type === NodeType.TABLE ||
-            source.type === NodeType.CLASSIFICATION_TABLE ||
-            source.type === NodeType.EDGE
-        )
-            return false;
-        if (target.type === NodeType.EDGE) return false;
-        return true;
+        return source.type !== NodeType.TABLE && source.type !== NodeType.CLASSIFICATION_TABLE;
     });
 }
 

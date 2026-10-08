@@ -1,7 +1,6 @@
 import { BasePort } from '../models/port.model';
 import { DEFAULT_AGENT_NODE_PORTS } from './agent-ports/agent-node-default-ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from './edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from './end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from './file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from './key-value-ports/key-value-default-ports';
@@ -24,7 +23,6 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries
         ...DEFAULT_LLM_NODE_PORTS,
         ...DEFAULT_TOOL_NODE_PORTS,
         ...DEFAULT_PYTHON_NODE_PORTS,
-        ...DEFAULT_EDGE_NODE_PORTS,
         ...DEFAULT_START_NODE_PORTS,
         ...DEFAULT_TABLE_NODE_PORTS,
         ...DEFAULT_FILE_EXTRACTOR_NODE_PORTS,

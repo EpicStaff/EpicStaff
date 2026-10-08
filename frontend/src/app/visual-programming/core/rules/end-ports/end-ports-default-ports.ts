@@ -10,7 +10,6 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'project-out',
             'python-out',
             'file-extractor-out',
-            'edge-out',
             'table-out',
             'llm-out-right',
             'subgraph-out',

@@ -4,7 +4,6 @@ export enum NodeType {
     TOOL = 'tool',
     LLM = 'llm',
     PYTHON = 'python',
-    EDGE = 'edge',
     START = 'start',
     TABLE = 'table',
     CLASSIFICATION_TABLE = 'classification-decision-table',

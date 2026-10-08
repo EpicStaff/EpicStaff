@@ -9,7 +9,6 @@ export const DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
             'llm-out-left',
             'file-extractor-in',

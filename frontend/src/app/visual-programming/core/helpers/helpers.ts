@@ -9,7 +9,6 @@ import { obstacleRect } from '../routing/obstacles';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
@@ -64,8 +63,6 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_TOOL_NODE_PORTS;
         case NodeType.PYTHON:
             return DEFAULT_PYTHON_NODE_PORTS;
-        case NodeType.EDGE:
-            return DEFAULT_EDGE_NODE_PORTS;
         case NodeType.START:
             return DEFAULT_START_NODE_PORTS;
         case NodeType.TABLE:
@@ -289,7 +286,6 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
             allowedConnections: [
                 'project-out',
                 'python-out',
-                'edge-out',
                 'table-out',
                 'start-start',
                 'llm-out-right',
@@ -315,7 +311,6 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
                     'llm-out-left',
                     'end-in',
@@ -505,7 +500,6 @@ export function generatePortsForClassificationDecisionTableNode(
             allowedConnections: [
                 'project-out',
                 'python-out',
-                'edge-out',
                 'table-out',
                 'start-start',
                 'llm-out-right',
@@ -539,7 +533,6 @@ export function generatePortsForClassificationDecisionTableNode(
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
                     'llm-out-left',
                     'end-in',

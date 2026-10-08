@@ -4,7 +4,6 @@ import { GetGraphLightRequest } from '../../../features/flows/models/graph.model
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from './agent-node.model';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
-import { CustomConditionalEdgeModelForNode } from './conditional-edge.model';
 import { DecisionTableNode } from './decision-table.model';
 import { KeyValueNodeData } from './key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from './knowledge-retriever-node.model';
@@ -63,11 +62,6 @@ export interface ToolNodeModel extends BaseNodeModel {
 export interface LLMNodeModel extends BaseNodeModel {
     type: NodeType.LLM;
     data: GetLlmConfigRequest;
-}
-
-export interface EdgeNodeModel extends BaseNodeModel {
-    type: NodeType.EDGE;
-    data: CustomConditionalEdgeModelForNode;
 }
 
 export interface DecisionTableNodeModel extends BaseNodeModel {
@@ -158,7 +152,6 @@ export type NodeModel =
     | ToolNodeModel
     | LLMNodeModel
     | PythonNodeModel
-    | EdgeNodeModel
     | StartNodeModel
     | DecisionTableNodeModel
     | GraphNoteModel
