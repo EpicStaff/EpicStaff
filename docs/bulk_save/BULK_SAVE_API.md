@@ -54,7 +54,6 @@ All keys are optional. Omitting a key or passing an empty list for it means "no 
   "telegram_trigger_node_list":    [],
 
   "edge_list":              [],
-  "conditional_edge_list":  [],
 
   "deleted": {
     "task_node_ids":                [],
@@ -69,8 +68,7 @@ All keys are optional. Omitting a key or passing an empty list for it means "no 
     "graph_note_list":              [],
     "webhook_trigger_node_ids":     [],
     "telegram_trigger_node_ids":    [],
-    "edge_ids":                     [],
-    "conditional_edge_ids":         []
+    "edge_ids":                     []
   }
 }
 ```
@@ -101,19 +99,6 @@ Regular edges connect two nodes. Each endpoint (start / end) is referenced by **
 
 **Rule:** For each end (start and end independently), provide exactly one of the `_node_id` or `_temp_id` variant. Providing both or neither is a validation error.
 
-### Conditional Edge List Items (`conditional_edge_list`)
-
-Conditional edges have a single source node and carry routing logic (a Python code reference).
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | integer | No | Omit to create; include to update. |
-| `graph` | integer | Yes | The graph id. |
-| `source_node_id` | integer | Conditional | Real DB id of the source node. Required if `source_temp_id` is absent. |
-| `source_temp_id` | UUID string | Conditional | `temp_id` of a new node in this same request. Required if `source_node_id` is absent. |
-| `python_code` | object | Yes | Nested dict with `code`, `entrypoint`, and `libraries`. |
-| `input_map` | object | No | Default `{}`. |
-
 ### `deleted` Object
 
 Every key in `deleted` is optional and defaults to an empty list. Pass a list of integer ids to delete. All ids are validated as belonging to the target graph — an id from a different graph is a validation error.
@@ -129,7 +114,7 @@ The service performs a strict two-pass cycle:
 **Pass 1 — Validation (no DB writes):**
 1. Validate all deletion ids (must belong to this graph).
 2. Validate every item in every node list against its serializer.
-3. Validate every edge and conditional edge item, including node reference resolution.
+3. Validate every edge item, including node reference resolution.
 4. Collect all errors across all entity types.
 
 If any error is found anywhere, the entire request is rejected with HTTP 400 and the full error map. No database write occurs.
@@ -344,7 +329,7 @@ No database writes have occurred. The response body contains a structured error 
 Error shape per section:
 
 - **Node list errors** (`task_node_list`, `python_node_list`, etc.): array of `{ "index": <int>, "errors": <object or string> }`. `index` is the zero-based position of the failing item in the submitted list.
-- **Edge list errors** (`edge_list`, `conditional_edge_list`): same `{ "index", "errors" }` shape. May also include a top-level string for cross-edge reference failures (e.g. referencing a non-existent real node id).
+- **Edge list errors** (`edge_list`): same `{ "index", "errors" }` shape. May also include a top-level string for cross-edge reference failures (e.g. referencing a non-existent real node id).
 - **Deletion errors** (`deleted`): array of plain strings, each naming the delete key and the invalid ids.
 
 ### HTTP 404 — Graph Not Found
@@ -535,12 +520,12 @@ All database writes for a single request execute inside one database transaction
 | File | Description |
 |---|---|
 | `tables/views/model_view_sets.py` | `GraphViewSet.save_flow` action — HTTP boundary, input validation, error formatting, success response |
-| `tables/serializers/graph_bulk_save_serializers.py` | `GraphBulkSaveInputSerializer`, per-node bulk serializers, `EdgeBulkSerializer`, `ConditionalEdgeBulkSerializer`, `DeletedEntitiesSerializer` |
+| `tables/serializers/graph_bulk_save_serializers.py` | `GraphBulkSaveInputSerializer`, per-node bulk serializers, `EdgeBulkSerializer`, `DeletedEntitiesSerializer` |
 | `tables/services/graph_bulk_save_service/service.py` | `GraphBulkSaveService` — two-pass validation and atomic write orchestration |
 | `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY` — single source of truth mapping list keys, delete keys, models, and serializers |
 | `tables/services/graph_bulk_save_service/factories/` | `NodeSaveableFactory` ABC, `DefaultNodeSaveableFactory`, `DecisionTableNodeSaveableFactory` |
 | `tables/services/graph_bulk_save_service/saveables.py` | Saveable wrapper classes for deferred node and edge writes; temp_id resolution |
-| `tables/models/graph_models.py` | All graph model definitions (`TaskNode`, `AgentNode`, `PythonNode`, `Edge`, `ConditionalEdge`, etc.) |
+| `tables/models/graph_models.py` | All graph model definitions (`TaskNode`, `AgentNode`, `PythonNode`, `Edge`, etc.) |
 | `tables/exceptions.py` | `BulkSaveValidationError` — raised by the service, caught in the view |
 | `tables/swagger_schemas/graph_bulk_save_schema.py` | Swagger/OpenAPI schema definition for the endpoint |
 | `tests/api_tests/bulk_save_test/test_bulk_save.py` | Integration tests covering create, update, delete, temp_id edge wiring, and error cases |
