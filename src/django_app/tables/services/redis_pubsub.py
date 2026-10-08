@@ -109,7 +109,7 @@ class RedisPubSub:
                         )
                         return
 
-                    if session.status in [
+                    if data["status"] in [
                         Session.SessionStatus.END,
                         Session.SessionStatus.ERROR,
                     ]:
