@@ -275,6 +275,7 @@ class RedisPubSub:
             return
 
         path = data.path.rstrip("/")
+        close_old_connections()
 
         try:
             WebhookTriggerService().handle_webhook_trigger(
@@ -297,6 +298,7 @@ class RedisPubSub:
     def request_webhook_update_handler(self, message: dict):
         try:
             logger.debug("Received request to update webhook")
+            close_old_connections()
             registered = WebhookTriggerService().register_webhooks()
             if not registered:
                 raise ValueError("0 services listened for registration")
