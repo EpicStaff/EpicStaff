@@ -57,9 +57,10 @@ class DecisionTableNodeSubgraph:
         if self.redis_service is None:
             return
         data = graph_message.to_payload()
-        self.redis_service.add_graph_message(data)
+        encoded_data = GraphMessage.encode_payload(data)
+        self.redis_service.add_graph_message(data["uuid"], encoded_data)
         try:
-            emit_session_audit_event(data)
+            emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 

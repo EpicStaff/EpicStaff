@@ -1,3 +1,4 @@
+import json
 import uuid
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import UTC, datetime
@@ -43,6 +44,14 @@ class GraphMessage:
             payload["message_data"] = dataclass_to_shallow_dict(self.message_data)
         payload["uuid"] = str(uuid.uuid4())
         return payload
+
+    @staticmethod
+    def encode_payload(payload: dict) -> str:
+        """JSON of a `to_payload()` dict, encoded once for the stream and the audit trail.
+
+        The payload shares values with live flow state; the encoded string is the snapshot.
+        """
+        return json.dumps(payload, default=encode_dataclass_as_dict)
 
 
 @dataclass

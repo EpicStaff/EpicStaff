@@ -1,5 +1,4 @@
 import json
-from collections.abc import Callable
 
 from pydantic import BaseModel
 
@@ -9,12 +8,18 @@ class StreamEnvelope(BaseModel):
     correlation_id: str
     payload: dict
 
-    def to_fields(self, json_default: Callable[[object], object] | None = None) -> dict[str, str]:
-        """Stream entry fields; ``json_default`` is passed to ``json.dumps`` as ``default``."""
+    def to_fields(self) -> dict[str, str]:
+        return self.encoded_fields(self.type, self.correlation_id, json.dumps(self.payload))
+
+    @staticmethod
+    def encoded_fields(
+        envelope_type: str, correlation_id: str, encoded_payload: str
+    ) -> dict[str, str]:
+        """Stream entry fields for a payload the producer has already encoded as JSON."""
         return {
-            "type": self.type,
-            "correlation_id": self.correlation_id,
-            "payload": json.dumps(self.payload, default=json_default),
+            "type": envelope_type,
+            "correlation_id": correlation_id,
+            "payload": encoded_payload,
         }
 
     @classmethod

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from functools import lru_cache
 
 from cachetools import TTLCache
@@ -92,23 +93,30 @@ def _value_or_empty_dict(value):
     return {} if value is None else value
 
 
-def emit_session_audit_event(data: dict) -> None:
+def emit_session_audit_event(encoded_message: str) -> None:
     """
-    Dispatches one custom-stream-shaped message dict into the audit pipeline.
-    Reusable from any call site that already adds `data` to the graph
+    Dispatches one custom-stream-shaped message into the audit pipeline.
+    Reusable from any call site that already adds the message to the graph
     message stream (the main run_session astream loop, and any subgraph
     node that has to write directly - see classification_decision_table_node.py's
     _publish_message and decision_table_node.py's, both of which bypass the
     parent graph's astream because subgraph StreamWriter chunks don't
     propagate to it).
 
-    `data` must already carry a "uuid" - the same id used as the primary
-    pipeline's dedup/identity key, reused here as the audit event id.
+    `encoded_message` is the exact JSON appended to the stream. The writer keeps
+    what it is given until a later batch flush, and the message dict shares
+    values with live flow state, so the audit decodes its own copy here rather
+    than holding references a running node may still change. It must already
+    carry a "uuid" - the same id used as the primary pipeline's dedup/identity
+    key, reused here as the audit event id.
 
     Never blocks the primary pipeline: every message type, start included,
     is dispatched as a fire-and-forget asyncio task (track_audit_task) that
     only enqueues onto the shared AuditClient's background batch loop.
     """
+    if not AUDIT_TRAIL_ENABLED:
+        return
+    data = json.loads(encoded_message)
     session_id = data.get("session_id")
     org_id, flow_name = None, None
     if session_id is not None:

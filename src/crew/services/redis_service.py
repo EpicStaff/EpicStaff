@@ -7,7 +7,6 @@ import time
 import redis
 import redis.asyncio as aioredis
 from loguru import logger
-from models.graph_models import encode_dataclass_as_dict
 from redis import Redis
 from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
@@ -242,28 +241,29 @@ class RedisService(metaclass=SingletonMeta):
         self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
         logger.info(f"Message published to channel '{channel}'.")
 
-    async def aadd_graph_message(self, message: dict) -> None:
-        """Append a graph session message to the stream django_app persists from.
+    async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:
+        """Append a graph session message, already encoded as JSON, to the stream
+        django_app persists from.
 
         Unlike a publish, the entry waits in Redis until django_app has stored it.
         """
         await self.aioredis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message, json_default=encode_dataclass_as_dict),
+            graph_message_fields(message_uuid, encoded_message),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
-        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
+        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
 
-    def add_graph_message(self, message: dict) -> None:
+    def add_graph_message(self, message_uuid: str, encoded_message: str) -> None:
         """Synchronous ``aadd_graph_message`` for code without an event loop to await on."""
         self.sync_redis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message, json_default=encode_dataclass_as_dict),
+            graph_message_fields(message_uuid, encoded_message),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
-        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
+        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
 
     async def aupdate_session_status(self, session_id: int, status: str, **kwargs):
         message = {

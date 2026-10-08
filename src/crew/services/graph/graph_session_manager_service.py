@@ -197,8 +197,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     final_state = chunk
                 elif stream_mode == "custom":
                     data = chunk.to_payload()
+                    encoded_data = GraphMessage.encode_payload(data)
                     try:
-                        emit_session_audit_event(data)
+                        emit_session_audit_event(encoded_data)
                     except Exception as audit_exc:
                         # Audit must never break the primary pipeline - this
                         # dispatch call must never propagate, no matter what
@@ -225,7 +226,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                             # etc.) with no new status.
                             stop_event.set()
 
-                    await self.redis_service.aadd_graph_message(data)
+                    await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
                 elif stream_mode == "values":
                     final_state = chunk
 
@@ -246,7 +247,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 },
             )
             graph_end_payload = graph_end_data.to_payload()
-            await self.redis_service.aadd_graph_message(graph_end_payload)
+            await self.redis_service.aadd_graph_message(
+                graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
+            )
             await asyncio.sleep(0.05)
 
             org_id = get_session_org(session_id)
