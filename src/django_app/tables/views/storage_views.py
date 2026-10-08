@@ -85,30 +85,6 @@ def _with_descendants(entries: list[dict]) -> Iterator[dict]:
         yield entry
         yield from _with_descendants(entry.get("children") or [])
 
-_USER_ID_KEYS = ("created_by", "last_edited_by")
-
-
-def _replace_user_ids_with_summaries(entries: list[dict], request) -> None:
-    """Swap, in place, the author and editor ids in each entry for their user summaries.
-
-    The storage manager reports `created_by` and `last_edited_by` as ids; this renders
-    them for the response. Folder `children` are walked recursively and every author
-    and editor loads in one query. A user deleted since renders as None.
-    """
-    all_entries = list(_with_descendants(entries))
-    summaries = user_summaries_by_id(
-        (entry[key] for entry in all_entries for key in _USER_ID_KEYS), request
-    )
-    for entry in all_entries:
-        for key in _USER_ID_KEYS:
-            entry[key] = summaries.get(entry[key])
-
-
-def _with_descendants(entries: list[dict]) -> Iterator[dict]:
-    for entry in entries:
-        yield entry
-        yield from _with_descendants(entry.get("children") or [])
-
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]

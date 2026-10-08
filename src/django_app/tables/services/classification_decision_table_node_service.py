@@ -83,12 +83,10 @@ class ClassificationDecisionTableNodeService:
         node = serializer.save()
 
         children_untouched = (
-            (
             partial
             and condition_groups_data is None
             and prompt_configs_data is None
             and sections_data is None
-        )
         )
         if not children_untouched:
             sync_classification_decision_table_children(

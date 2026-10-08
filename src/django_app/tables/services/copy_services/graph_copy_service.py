@@ -1,5 +1,5 @@
-from rbac.authorship import record_last_edits, resolve_author
 from django.db import transaction
+from rbac.authorship import record_last_edits, resolve_author
 from tables.models import Graph, Label
 from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
@@ -34,7 +34,7 @@ class GraphCopyService(BaseCopyService):
                 enable_persistent_variables=graph.enable_persistent_variables,
                 org_id=target_org_id,
                 created_by=resolve_author(user),
-        )
+            )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(

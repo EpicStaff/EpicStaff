@@ -1,6 +1,6 @@
-from rbac.authorship import resolve_author
-
 import uuid
+
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper

@@ -1,7 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
 from rbac.authorship import record_last_edit, resolve_author
-from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
 from tables.serializers.utils.description_sanitizer import sanitize_description
