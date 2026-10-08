@@ -1,9 +1,22 @@
+from typing import TYPE_CHECKING
+
 from application.ports import AbstractUnitOfWork
-from domain.ports.repositories import AbstractGraphRagRepository, AbstractNaiveRagRepository
+from common.lazy_import import LazyImport
+from domain.ports.repositories import (
+    AbstractGraphRagRepository,
+    AbstractNaiveRagRepository,
+)
 from infrastructure.database.config import SessionLocal
-from infrastructure.database.repositories.graph import GraphRagSQLAlchemyRepository
 from infrastructure.database.repositories.naive import NaiveRagSQLAlchemyRepository
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+if TYPE_CHECKING:
+    from infrastructure.database.repositories.graph import GraphRagSQLAlchemyRepository
+else:
+    GraphRagSQLAlchemyRepository = LazyImport(
+        "infrastructure.database.repositories.graph",
+        obj="GraphRagSQLAlchemyRepository",
+    )
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork):

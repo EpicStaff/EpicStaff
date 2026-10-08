@@ -138,7 +138,8 @@ class ClassificationDecisionTableNodeService:
                     entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
                     node_id=node.id,
                 )
-            ]
+            ],
+            org_id=org_id,
         )
         if result.has_errors:
             return NodeExportResult(errors=result.errors)

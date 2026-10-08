@@ -10,6 +10,8 @@ import audioop
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from google.genai import types
+
 from infrastructure.providers.gemini.event_handlers.gemini_server_event_handler import (
     GeminiServerEventHandler,
 )
@@ -383,6 +385,146 @@ def test_reset_clears_all_state(handler):
 @pytest.mark.asyncio
 @patch(_DB_PATCH, new_callable=AsyncMock)
 async def test_db_save_called_for_every_event(mock_db, handler):
+    # A MagicMock is not a pydantic message: its model_dump() iterates as empty, so it
+    # never matches the audio-only shape and is always recorded. The MagicMock-based
+    # tests above rely on this; the audio-only skip is covered with real SDK objects below.
     response = _make_response()
     await handler.handle_event(response)
+    mock_db.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Audio-only messages are not recorded (unless raw audio persistence is on)
+# ---------------------------------------------------------------------------
+
+def _audio_part(**part_fields):
+    return types.Part(
+        inline_data=types.Blob(data=b"\x00\x01" * 8, mime_type="audio/pcm;rate=24000"),
+        **part_fields,
+    )
+
+
+def _sdk_message(
+    *,
+    audio: bool = True,
+    parts: list | None = None,
+    transcript: str | None = None,
+    **server_content_fields,
+):
+    if parts is None and audio:
+        parts = [_audio_part()]
+    return types.LiveServerMessage(
+        server_content=types.LiveServerContent(
+            model_turn=types.Content(parts=parts) if parts else None,
+            output_transcription=types.Transcription(text=transcript) if transcript else None,
+            **server_content_fields,
+        )
+    )
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_audio_only_message_is_not_recorded(mock_config, mock_db, handler):
+    mock_config.PERSIST_RAW_AUDIO = False
+
+    await handler.handle_event(_sdk_message())
+
+    mock_db.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_message_of_several_audio_chunks_is_not_recorded(mock_config, mock_db, handler):
+    mock_config.PERSIST_RAW_AUDIO = False
+    message = types.LiveServerMessage(
+        server_content=types.LiveServerContent(
+            model_turn=types.Content(role="model", parts=[_audio_part(), _audio_part()])
+        )
+    )
+
+    await handler.handle_event(message)
+
+    mock_db.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(_sdk_message(generation_complete=True), id="generation_complete"),
+        pytest.param(
+            _sdk_message(
+                grounding_metadata=types.GroundingMetadata(web_search_queries=["weather"])
+            ),
+            id="grounding_metadata",
+        ),
+        pytest.param(
+            _sdk_message(input_transcription=types.Transcription(text="hi")),
+            id="input_transcription",
+        ),
+        pytest.param(
+            types.LiveServerMessage(
+                server_content=_sdk_message().server_content,
+                usage_metadata=types.UsageMetadata(total_token_count=5),
+            ),
+            id="usage_metadata",
+        ),
+        pytest.param(_sdk_message(parts=[_audio_part(thought=True)]), id="thought_audio_part"),
+        pytest.param(
+            _sdk_message(parts=[types.Part(inline_data=types.Blob(data=b"x", mime_type="image/png"))]),
+            id="image_inline_data",
+        ),
+        pytest.param(
+            _sdk_message(parts=[_audio_part(), types.Part(text="hi")]), id="audio_and_text_parts"
+        ),
+        # An explicit falsy value still counts as set: the check never interprets fields.
+        pytest.param(_sdk_message(turn_complete=False), id="explicit_turn_complete_false"),
+    ],
+)
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_audio_message_carrying_anything_else_is_still_recorded(
+    mock_config, mock_db, handler, message
+):
+    mock_config.PERSIST_RAW_AUDIO = False
+
+    await handler.handle_event(message)
+
+    mock_db.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_audio_message_with_a_transcript_is_still_recorded(mock_config, mock_db, handler):
+    mock_config.PERSIST_RAW_AUDIO = False
+
+    await handler.handle_event(_sdk_message(transcript="hello"))
+
+    mock_db.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_turn_complete_message_is_still_recorded(mock_config, mock_db, handler):
+    mock_config.PERSIST_RAW_AUDIO = False
+
+    await handler.handle_event(_sdk_message(audio=False, turn_complete=True))
+
+    mock_db.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch(_DB_PATCH, new_callable=AsyncMock)
+@patch("infrastructure.providers.gemini.event_handlers.gemini_server_event_handler.config")
+async def test_audio_only_message_is_recorded_when_raw_audio_persistence_is_on(
+    mock_config, mock_db, handler
+):
+    mock_config.PERSIST_RAW_AUDIO = True
+
+    await handler.handle_event(_sdk_message())
+
     mock_db.assert_awaited_once()

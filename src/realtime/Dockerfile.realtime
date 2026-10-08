@@ -68,7 +68,7 @@ COPY --from=builder /app /app
 
 # Add virtualenv to PATH.
 # TIKTOKEN_CACHE_DIR points at the pre-baked cache from the builder stage
-# (EST-3245: chat-buffer tokenizer must not fetch from
+# (chat-buffer tokenizer must not fetch from
 # openaipublic.blob.core.windows.net at runtime).
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \

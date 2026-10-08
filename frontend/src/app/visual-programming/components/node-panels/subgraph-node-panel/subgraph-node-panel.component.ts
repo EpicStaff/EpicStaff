@@ -58,7 +58,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
     }
 
     public get activeColor(): string {
-        return this.node().color || '#00bfa5';
+        return 'var(--accent-color)';
     }
 
     public get inputMapPairs(): FormArray {

@@ -91,7 +91,7 @@ def generate_env_file(
                 )
 
     content = "".join(content)
-    env_file.write_text(content, encoding="utf-8")
+    env_file.write_text(content, encoding="utf-8", newline="\n")
 
 
 def main():

@@ -48,7 +48,7 @@ export class FullLLMConfigService {
     });
 
     /**
-     * Backwards-compatible alias consumed by the agent-definitions feature (EST-2914).
+     * Backwards-compatible alias consumed by the agent-definitions feature.
      * Points at the same reactive signal as `fullLLMConfigs`.
      */
     public readonly fullConfigs: Signal<FullLLMConfig[]> = this.fullLLMConfigs;

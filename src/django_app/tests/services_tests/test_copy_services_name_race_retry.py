@@ -1,5 +1,4 @@
-"""
-EST-4002: bulk-copy races.
+"""Bulk-copy races.
 
 History of this file, since the fix went through two iterations before
 landing on the real root cause:
@@ -31,9 +30,12 @@ from typing import Callable
 import pytest
 from django.db import IntegrityError, connection
 
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models import Graph
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
+from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyService
 from tables.services.copy_services.python_code_tool_copy_service import (
     PythonCodeToolCopyService,
@@ -187,6 +189,73 @@ def test_mcp_tool_concurrent_copies_of_same_source_get_unique_names():
     }
 
 
+# ---- (b2) flow names are deduplicated per org, so concurrent flow
+# copies and create-flow-from-version calls in the same org must serialize on
+# the same (org, clean_base) advisory lock as the tool copies ----
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_concurrent_copies_of_different_sources_sharing_clean_base():
+    org = Organization.objects.create(name="Org GraphNamespaceLock")
+    source_a = Graph.objects.create(name="SharedFlow #2", org=org)
+    source_b = Graph.objects.create(name="SharedFlow #3", org=org)
+    source_c = Graph.objects.create(name="SharedFlow #333", org=org)
+
+    outcomes = _run_concurrently(
+        [
+            lambda: GraphCopyService().copy(source_a, org_id=org.id).name,
+            lambda: GraphCopyService().copy(source_b, org_id=org.id).name,
+            lambda: GraphCopyService().copy(source_c, org_id=org.id).name,
+        ]
+    )
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {"SharedFlow #4", "SharedFlow #5", "SharedFlow #6"}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_concurrent_copies_of_same_source_get_unique_names():
+    org = Organization.objects.create(name="Org GraphSameSourceLock")
+    source = Graph.objects.create(name="ConcurrentFlow", org=org)
+
+    outcomes = _run_concurrently(
+        [lambda: GraphCopyService().copy(source, org_id=org.id).name for _ in range(5)]
+    )
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {
+        "ConcurrentFlow #2",
+        "ConcurrentFlow #3",
+        "ConcurrentFlow #4",
+        "ConcurrentFlow #5",
+        "ConcurrentFlow #6",
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_create_graph_from_same_version_get_unique_names():
+    org = Organization.objects.create(name="Org GraphFromVersionLock")
+    source = Graph.objects.create(name="VersionedFlow", org=org)
+    version = GraphVersioningService().save_version(source, name="v1")
+
+    def _create_from_version() -> str:
+        result = GraphVersioningService().create_graph_from_version(version)
+        return Graph.objects.get(pk=result["graph_id"]).name
+
+    outcomes = _run_concurrently([_create_from_version for _ in range(4)])
+
+    for outcome in outcomes:
+        assert not isinstance(outcome, Exception), outcome
+    assert set(outcomes) == {
+        "VersionedFlow from v1",
+        "VersionedFlow from v1 #2",
+        "VersionedFlow from v1 #3",
+        "VersionedFlow from v1 #4",
+    }
+
+
 # ---- (c) fallback 400 path: a forced/unrelated collision still raises
 # IntegrityError immediately (no retry to mask it), so mixins.py's existing
 # except IntegrityError -> clean 400 handler still has something to catch ----
@@ -201,7 +270,7 @@ def test_python_code_tool_copy_still_raises_integrity_error_on_forced_collision(
     _make_python_code_tool(org, name="RaceTool #2")
 
     monkeypatch.setattr(
-        "tables.services.copy_services.python_code_tool_copy_service.ensure_unique_identifier",
+        "tables.services.copy_services.helpers.ensure_unique_identifier",
         lambda base_name, existing_names: "RaceTool #2",
     )
 
@@ -217,7 +286,7 @@ def test_mcp_tool_copy_still_raises_integrity_error_on_forced_collision(
     _make_mcp_tool(org, name="RaceMcp #2")
 
     monkeypatch.setattr(
-        "tables.services.copy_services.mcp_tool_copy_service.ensure_unique_identifier",
+        "tables.services.copy_services.helpers.ensure_unique_identifier",
         lambda base_name, existing_names: "RaceMcp #2",
     )
 

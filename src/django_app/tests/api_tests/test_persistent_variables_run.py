@@ -67,7 +67,7 @@ def test_run_merges_org_variables_into_session(org_client, default_org, monkeypa
 
 
 @pytest.mark.django_db
-def test_run_forbidden_for_non_member(default_org):
+def test_run_hidden_from_non_member(default_org):
     graph = _flow(default_org, flag=False, org_paths=[], defaults={})
     outsider = get_user_model().objects.create_user(
         email="outsider@example.com", password="OutsiderPass123!"
@@ -78,7 +78,7 @@ def test_run_forbidden_for_non_member(default_org):
     resp = client.post(
         reverse("run-session"), {"graph_id": graph.id, "variables": {}}, format="json"
     )
-    assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.content
+    assert resp.status_code == status.HTTP_404_NOT_FOUND, resp.content
 
 
 @pytest.mark.django_db

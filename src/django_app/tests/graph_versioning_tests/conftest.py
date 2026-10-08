@@ -26,7 +26,7 @@ def agent_definition(default_org):
         organization=default_org,
         name="versioned-agent",
         description="agent used by the versioning tests",
-        instructions="be brief",
+        instruction_list=[{"name": "Instruction_1.md", "content": "be brief"}],
     )
 
 

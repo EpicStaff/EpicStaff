@@ -65,6 +65,15 @@
             gap: 1.5rem;
         }
 
+        .error-banner {
+            padding: 0.75rem 1rem;
+            background-color: var(--scarlet-500-alpha-10);
+            border: 1px solid var(--scarlet-500-alpha-30);
+            border-radius: 8px;
+            color: var(--scarlet-500);
+            font-size: 0.875rem;
+        }
+
         .form-section {
             .section-header {
                 display: flex;

@@ -85,6 +85,25 @@ class FileValidator:
     def is_unsupported_archive(self, filename: str) -> bool:
         return os.path.splitext(filename)[1].lower() in self.BLOCKED_ARCHIVE_EXTENSIONS
 
+    def _name_problem(self, filename: str, size: int | None) -> str | None:
+        """Why this name/size may not be uploaded, or None when it may."""
+        if self.is_unsupported_archive(filename):
+            ext = os.path.splitext(filename)[1].lower()
+            return f"'{ext}' archives are not supported. Use ZIP or TAR instead."
+        if self.is_executable_filename(filename):
+            return f"'{filename}' has a blocked executable extension"
+        if size is not None and size > self._limits.max_file_bytes:
+            return (
+                f"'{filename}' is too large: {size} bytes, over the limit of "
+                f"{self._limits.max_file_bytes} bytes"
+            )
+        return None
+
+    def validate_name(self, filename: str) -> None:
+        """400 if the name may not be uploaded (blocked or unsupported extension)."""
+        if problem := self._name_problem(filename, None):
+            raise serializers.ValidationError(problem)
+
     def scan_archive_for_executables(self, file_obj) -> list[str]:
         """
         Inspect a ZIP or TAR archive in memory and return entry paths that
@@ -214,24 +233,10 @@ class FileValidator:
 
         for f in files:
             total_bytes += f.size
-
-            # Block unsupported archive formats first
-            if self.is_unsupported_archive(f.name):
-                ext = os.path.splitext(f.name)[1].lower()
-                detail_lines.append(f"'{ext}' archives are not supported. Use ZIP or TAR instead.")
-                continue
-
-            # Block executable file extensions
-            if self.is_executable_filename(f.name):
-                detail_lines.append(f"'{f.name}' has a blocked executable extension")
-                continue
-
-            # Reject a file too large to accept before inspecting its contents
-            if f.size > self._limits.max_file_bytes:
-                detail_lines.append(
-                    f"'{f.name}' is too large: {f.size} bytes, over the limit of "
-                    f"{self._limits.max_file_bytes} bytes"
-                )
+            # Block unsupported archives, executables and oversized files before reading
+            problem = self._name_problem(f.name, f.size)
+            if problem:
+                detail_lines.append(problem)
                 continue
 
             # Scan ZIP/TAR contents for executables

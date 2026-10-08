@@ -46,7 +46,7 @@ def _assert_parent_error(resp):
     assert "parent" in message.lower()
 
 
-# ---- self-parent (EST-3618) ----
+# ---- self-parent ----
 
 
 @pytest.mark.django_db

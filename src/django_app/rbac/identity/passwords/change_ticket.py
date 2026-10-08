@@ -25,7 +25,8 @@ class PasswordChangeTicketService:
 
     @property
     def ttl_seconds(self) -> int:
-        return settings.PASSWORD_CHANGE_TICKET_TTL
+        # Env.time() yields float seconds; redis-py accepts only int for `ex`.
+        return int(settings.PASSWORD_CHANGE_TICKET_TTL)
 
     def _redis(self):
         return get_redis_connection("default")

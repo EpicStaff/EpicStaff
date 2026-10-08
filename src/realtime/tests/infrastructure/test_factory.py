@@ -84,7 +84,7 @@ def test_create_openai_when_unknown_provider(MockOpenai, factory, rt_tools, on_s
 def test_create_elevenlabs_when_provider_elevenlabs(
     MockElevenLabs, factory, rt_tools, on_server_event
 ):
-    config = _make_config(rt_provider="elevenlabs")
+    config = _make_config(rt_provider="elevenlabs", rt_agent_definition_id=17)
     factory.create(
         config=config,
         rt_tools=rt_tools,
@@ -93,6 +93,8 @@ def test_create_elevenlabs_when_provider_elevenlabs(
         on_server_event=on_server_event,
     )
     MockElevenLabs.assert_called_once()
+    assert MockElevenLabs.call_args.kwargs["rt_agent_definition_id"] == 17
+    assert MockElevenLabs.call_args.kwargs["org_id"] == 1
 
 
 @patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")

@@ -31,10 +31,11 @@ class AgentSessionMessageSerializer(serializers.ModelSerializer):
 
 class SessionTriggerSerializer(serializers.ModelSerializer):
     trigger_id = serializers.IntegerField(read_only=True, allow_null=True)
+    is_test_run = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = SessionTrigger
-        fields = ("trigger_type", "trigger_id")
+        fields = ("trigger_type", "trigger_id", "is_test_run")
 
 
 class SessionPrincipalSerializer(serializers.ModelSerializer):

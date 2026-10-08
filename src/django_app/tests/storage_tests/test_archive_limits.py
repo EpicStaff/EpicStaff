@@ -2,18 +2,18 @@
 
 FileValidator rejects a bomb up front from archive headers, which is the
 effective gate for uploads. This guard is the second layer, at the point where
-bytes are actually allocated: `_iter_archive_entries` buffers every member with
-`zf.read()` and hands it to `upload()` one at a time, so without a running total
-2000 individually-honest entries still add up to an unbounded resident set, and
-any caller reaching the backend directly rather than through
-StorageUploadSerializer gets no header check at all.
+bytes actually move: `iter_archive_members` hands back a reader per
+member and the guard is charged as it is read, so without a running total 2000
+individually-honest entries still add up to an unbounded write, and any caller
+reaching the extraction directly gets no header check at all.
 """
 
 from io import BytesIO
 
 import pytest
 
-from tables.services.storage_service.archive_limits import (
+from tables.services.storage_service.archive_unpacking.extraction_guard import (
+    GuardedMemberReader,
     ArchiveExtractionGuard,
     ArchiveLimitExceeded,
 )
@@ -43,10 +43,21 @@ def test_rejects_entry_past_the_count_cap():
         g.account_entry()
 
 
+def _read_all(guard, data: bytes, name: str, chunk: int = 64 * 1024) -> bytes:
+    """Drain a member through the guarded reader the way extraction does."""
+    reader = GuardedMemberReader(BytesIO(data), guard, name)
+    parts = []
+    while True:
+        piece = reader.read(chunk)
+        if not piece:
+            return b"".join(parts)
+        parts.append(piece)
+
+
 def test_reads_a_member_within_the_byte_budget():
     g = guard(max_total_bytes=1_000)
 
-    data = g.read_member(BytesIO(b"x" * 500), "a.txt")
+    data = _read_all(g, b"x" * 500, "a.txt")
 
     assert data == b"x" * 500
     assert g.bytes_read == 500
@@ -56,37 +67,39 @@ def test_rejects_a_member_past_the_byte_budget():
     g = guard(max_total_bytes=100)
 
     with pytest.raises(ArchiveLimitExceeded, match="bytes"):
-        g.read_member(BytesIO(b"x" * 500), "big.txt")
+        _read_all(g, b"x" * 500, "big.txt")
 
 
 def test_byte_budget_accumulates_across_members():
     """No single member is oversized; only their sum is."""
     g = guard(max_total_bytes=250)
 
-    g.read_member(BytesIO(b"x" * 100), "a.txt")
-    g.read_member(BytesIO(b"x" * 100), "b.txt")
+    _read_all(g, b"x" * 100, "a.txt")
+    _read_all(g, b"x" * 100, "b.txt")
 
     with pytest.raises(ArchiveLimitExceeded, match="bytes"):
-        g.read_member(BytesIO(b"x" * 100), "c.txt")
+        _read_all(g, b"x" * 100, "c.txt")
 
 
 def test_stops_reading_before_buffering_the_whole_oversized_member():
     """The point of the guard is to not allocate the bomb while rejecting it."""
     g = guard(max_total_bytes=1_000)
+    chunk = 64 * 1024
 
     with pytest.raises(ArchiveLimitExceeded):
-        g.read_member(BytesIO(b"x" * 50_000_000), "bomb.bin")
+        _read_all(g, b"x" * 50_000_000, "bomb.bin", chunk=chunk)
 
-    assert g.bytes_read <= 1_000 + ArchiveExtractionGuard.CHUNK_BYTES
+    assert g.bytes_read <= 1_000 + chunk
 
 
 def test_rejection_names_the_offending_member():
     g = guard(max_total_bytes=10)
 
     with pytest.raises(ArchiveLimitExceeded, match="bomb.bin"):
-        g.read_member(BytesIO(b"x" * 500), "bomb.bin")
+        _read_all(g, b"x" * 500, "bomb.bin")
 
 
-def test_limit_error_is_a_value_error_so_the_upload_view_returns_400():
-    """storage_views.upload maps ValueError to a ValidationError response."""
+def test_limit_error_is_a_value_error_so_the_upload_returns_400():
+    """upload_archive maps ValueError to a ValidationError response."""
     assert issubclass(ArchiveLimitExceeded, ValueError)
+

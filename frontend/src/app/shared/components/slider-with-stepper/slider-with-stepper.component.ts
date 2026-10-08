@@ -27,7 +27,8 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     min = input<number>(0);
     max = input<number>(100);
     step = input<number>(1);
-    decimals = input<number>(0);
+    /** Digits kept after rounding; defaults to the precision of `step`. */
+    decimals = input<number | undefined>(undefined);
     optional = input<boolean>(false);
 
     value = model<number | null>(null);
@@ -41,10 +42,12 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
 
     enabled = computed(() => this.value() !== null);
 
+    private precision = computed(() => this.decimals() ?? this.countFractionDigits(this.step()));
+
     displayValue = computed(() => {
         const val = this.value();
         if (val === null || val === undefined) return '0';
-        return this.decimals() > 0 ? val.toFixed(this.decimals()) : val.toString();
+        return this.precision() > 0 ? val.toFixed(this.precision()) : val.toString();
     });
 
     sliderPercentage = computed(() => {
@@ -103,8 +106,13 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     }
 
     private roundToDecimals(value: number): number {
-        const factor = Math.pow(10, this.decimals());
+        const factor = Math.pow(10, this.precision());
         return Math.round(value * factor) / factor;
+    }
+
+    private countFractionDigits(value: number): number {
+        const fraction = value.toString().split('.')[1];
+        return fraction ? fraction.length : 0;
     }
 
     private updateValue(value: number | null) {

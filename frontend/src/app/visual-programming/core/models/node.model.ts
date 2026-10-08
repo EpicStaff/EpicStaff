@@ -42,7 +42,6 @@ export interface StartNodeModel extends BaseNodeModel {
 }
 export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
-    python_code_id: number | null;
     data: CustomPythonCode;
     test_input: Record<string, string | number | boolean>;
 }
@@ -101,6 +100,7 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
     data: {
         webhook_trigger: WebhookTriggerWrite | null;
         python_code: CustomPythonCode;
+        test_payload: Record<string, unknown>;
     };
 }
 
@@ -110,6 +110,7 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
         telegram_bot_api_key_secret_id: number | null;
         webhook_trigger: WebhookTriggerWrite | null;
         fields: TelegramTriggerNodeField[];
+        test_payload: Record<string, unknown>;
     };
 }
 

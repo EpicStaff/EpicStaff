@@ -1,6 +1,8 @@
 from collections import defaultdict
 from copy import deepcopy
 
+from django.db import transaction
+
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
@@ -12,7 +14,6 @@ from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
-from tables.import_export.utils import ensure_unique_identifier
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
     ConditionalEdge,
@@ -23,6 +24,7 @@ from tables.models import (
     WebhookTrigger,
 )
 from tables.models.graph_models import StartNode, TelegramTriggerNode
+from tables.services.copy_services.helpers import next_copy_name
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
@@ -788,11 +790,6 @@ class GraphVersioningManager:
         snapshot_copy["description"] = (
             f'Flow created from "{version_name}" version of "{graph_name}" flow'
         )
-        snapshot_copy["name"] = ensure_unique_identifier(
-            base_name=new_graph_name,
-            existing_names=list(Graph.objects.values_list("name", flat=True)),
-        )
-
         snapshot_copy.pop("id", None)
         snapshot_copy.pop("uuid", None)
 
@@ -806,9 +803,12 @@ class GraphVersioningManager:
         edges_data = snapshot_copy.pop("edge_list", [])
         cond_edges_data = snapshot_copy.pop("conditional_edge_list", [])
 
-        serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
-        serializer.is_valid(raise_exception=True)
-        graph = serializer.save(org_id=org_id)
+        with transaction.atomic():
+            snapshot_copy["name"] = next_copy_name(Graph, org_id=org_id, base_name=new_graph_name)
+
+            serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
+            serializer.is_valid(raise_exception=True)
+            graph = serializer.save(org_id=org_id)
 
         start_node = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(

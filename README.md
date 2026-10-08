@@ -81,20 +81,25 @@ Choose your operating system below, open your **Terminal** (or PowerShell on Win
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 60 | % {[char]$_}) }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^DJANGO_SECRET_KEY=.*", "DJANGO_SECRET_KEY=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker network create mcp-network; docker compose up --build
+git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; Copy-Item .env.example .env; $savefiles = "$HOME/savefiles"; $file = ".env"; $key = { $bytes = [byte[]]::new(48); [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); [Convert]::ToBase64String($bytes) -replace '[=+/]' }; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" -replace "^DJANGO_SECRET_KEY=.*", "DJANGO_SECRET_KEY=$(& $key)" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create media_data; docker volume create opensearch_data; docker network create mcp-network; docker compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i '' "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker network create mcp-network && cd src && docker compose up --build
+git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 
 `DJANGO_SECRET_KEY` is required — the stack refuses to start without it.
 Generate it once and keep it: changing it signs out every user, and see
 [docs/signing-keys.md](docs/signing-keys.md) for the full details.
+
+Savefiles is deprecated and will be removed: use `epicstaff_storage` instead. Until then, on Linux,
+if the `CREW_SAVEFILES_PATH` folder is not owned by uid 1000, the sandbox makes uid 1000 its owner
+(the folder itself, not its contents). Files already in it keep their owner: if agent code must
+write into them, run `sudo chown -R 1000 <folder>` once.
 
 The blocks above copy `src/.env.example` to `src/.env`. If you have Python,
 you can instead generate `src/.env` from the single source of truth

@@ -8,7 +8,7 @@ import { MarkdownComponent } from 'ngx-markdown';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
-import { AgentDefinition } from '../../../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction } from '../../../../models/agent-definition.model';
 import { DetailCrumb, DetailHeaderComponent } from '../detail-header/detail-header.component';
 
 type DocMode = 'preview' | 'markdown';
@@ -31,11 +31,13 @@ export class AgentDocPreviewComponent {
     private readonly permissionService = inject(PermissionsService);
 
     agent = input.required<AgentDefinition>();
+    instruction = input.required<AgentInstruction>();
     showSidebar = input<boolean>(true);
     initialEditMode = input<boolean>(false);
 
-    readonly toggleSidebar = output<void>();
+    /** The edited instruction's new content; the parent saves it into `instruction_list`. */
     readonly save = output<string>();
+    readonly toggleSidebar = output<void>();
     readonly openAgent = output<number>();
 
     readonly mode = signal<DocMode>('preview');
@@ -44,7 +46,7 @@ export class AgentDocPreviewComponent {
     private initialModeApplied = false;
 
     constructor() {
-        effect(() => this.draft.set(this.agent().instructions ?? ''));
+        effect(() => this.draft.set(this.instruction().content));
         effect(() => {
             const edit = this.initialEditMode();
             if (!this.initialModeApplied) {
@@ -55,11 +57,11 @@ export class AgentDocPreviewComponent {
         });
     }
 
-    readonly fileName = 'Boot_Instructions.md';
     readonly crumbs = computed<DetailCrumb[]>(() => [
         { label: 'AGENTS' },
         { label: this.agent().name, icon: 'agents-tab', navAgentId: this.agent().id },
-        { label: this.fileName },
+        { label: 'Instructions' },
+        { label: this.instruction().name },
     ]);
 
     readonly monacoOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
@@ -83,7 +85,7 @@ export class AgentDocPreviewComponent {
 
     onEditorBlur(): void {
         const value = this.draft();
-        if (value === (this.agent().instructions ?? '')) return;
+        if (value === this.instruction().content) return;
         this.save.emit(value);
     }
 

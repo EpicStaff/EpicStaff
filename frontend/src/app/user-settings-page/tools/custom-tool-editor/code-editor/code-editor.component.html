@@ -1,6 +1,69 @@
 <!-- Editor Header -->
 
-@if (showHeader) {
+@if (showHeader && compactHeader()) {
+    <!-- Same look as the JSON editor's header; the actions stay real buttons for keyboard users. -->
+    <div class="editor-header editor-header--compact">
+        <div class="left-section">
+            <span class="editor-title">
+                <app-svg-icon
+                    icon="python"
+                    size="1.2rem"
+                    class="python-icon"
+                />
+                Python3
+            </span>
+            <span class="editor-subtitle">(entrypoint "main")</span>
+        </div>
+        <div class="right-section">
+            @if (headerAction(); as action) {
+                <!-- aria-disabled, not disabled: the button stays focusable, so its tooltip (also its
+                     aria-describedby description) tells keyboard and screen reader users why it cannot be used. -->
+                <button
+                    type="button"
+                    class="action-icon"
+                    [attr.aria-label]="action.label"
+                    [attr.aria-disabled]="isActionDisabled()"
+                    [matTooltip]="actionTooltip()"
+                    matTooltipPosition="above"
+                    (click)="onAction()"
+                >
+                    <app-svg-icon
+                        [icon]="action.icon"
+                        size="1rem"
+                    />
+                </button>
+            }
+            <button
+                type="button"
+                class="action-icon"
+                aria-label="Copy code"
+                matTooltip="Copy code"
+                matTooltipPosition="above"
+                (click)="copyCode()"
+            >
+                <app-svg-icon
+                    icon="copy"
+                    size="1rem"
+                />
+            </button>
+            @if (allowExpand()) {
+                <button
+                    type="button"
+                    class="action-icon"
+                    [attr.aria-label]="expandLabel()"
+                    [matTooltip]="expandLabel()"
+                    matTooltipPosition="above"
+                    (click)="onExpand()"
+                >
+                    <app-svg-icon
+                        icon="editor-expand"
+                        size="0.875rem"
+                    />
+                </button>
+            }
+        </div>
+    </div>
+} @else if (showHeader) {
     <div class="editor-header">
         <div class="left-section">
             <span class="editor-title">
@@ -21,6 +84,16 @@
                 matTooltipPosition="above"
                 (onClick)="copyCode()"
             ></app-icon-button>
+            @if (allowExpand()) {
+                <app-icon-button
+                    icon="editor-expand"
+                    size="2rem"
+                    [ariaLabel]="expandLabel()"
+                    [matTooltip]="expandLabel()"
+                    matTooltipPosition="above"
+                    (onClick)="onExpand()"
+                ></app-icon-button>
+            }
         </div>
     </div>
 }
@@ -28,6 +101,7 @@
 <!-- Editor Container -->
 <div
     class="editor-container"
+    [style.height.px]="editorHeight()"
     #editorContainer
 >
     <ngx-monaco-editor

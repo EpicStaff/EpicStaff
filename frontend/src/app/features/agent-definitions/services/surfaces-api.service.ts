@@ -6,13 +6,7 @@ import { map, Observable } from 'rxjs';
 import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
-import {
-    CombinedSurface,
-    CreateSurfaceRequest,
-    PartialUpdateSurfaceRequest,
-    Surface,
-    UpdateSurfaceRequest,
-} from '../models/surface.model';
+import { CombinedSurface, CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../models/surface.model';
 
 @Injectable({ providedIn: 'root' })
 export class SurfacesApiService {
@@ -46,10 +40,6 @@ export class SurfacesApiService {
 
     create(body: CreateSurfaceRequest): Observable<Surface> {
         return this.http.post<Surface>(this.baseUrl, body, { headers: this.httpHeaders });
-    }
-
-    update(id: number, body: UpdateSurfaceRequest): Observable<Surface> {
-        return this.http.put<Surface>(`${this.baseUrl}${id}/`, body, { headers: this.httpHeaders });
     }
 
     partialUpdate(id: number, body: PartialUpdateSurfaceRequest): Observable<Surface> {

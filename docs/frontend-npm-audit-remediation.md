@@ -1,4 +1,4 @@
-# Frontend npm audit Remediation (EST-3802)
+# Frontend npm audit Remediation
 
 Purpose: evidence that the frontend dependency findings raised by the security audit are
 closed. The audit's frontend items were an end-of-life Angular runtime (B‑01) and 48

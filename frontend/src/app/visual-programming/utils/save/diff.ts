@@ -232,6 +232,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
+        test_payload: node.data.test_payload ?? {},
         metadata: toNodeMetadata(node),
     };
 }
@@ -242,6 +243,7 @@ function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
         telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
+        test_payload: node.data.test_payload ?? {},
         metadata: toNodeMetadata(node),
     };
 }

@@ -1,4 +1,3 @@
-from io import BytesIO
 
 import pytest
 
@@ -23,8 +22,8 @@ def fake_manager_backend():
 
 
 def _seed_file(backend, org_id, rel_path, content=b"data"):
-    """Upload a file under org_<id>/<rel_path> into the backend."""
-    backend.upload(f"org_{org_id}/{rel_path}", BytesIO(content))
+    """Store a file under org_<id>/<rel_path> in the backend."""
+    backend.put_bytes(f"org_{org_id}/{rel_path}", content)
 
 
 class TestReconcileTree:

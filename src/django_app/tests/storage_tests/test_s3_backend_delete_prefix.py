@@ -12,6 +12,7 @@ def test_delete_prefix_refuses_an_empty_resolved_prefix():
             access_key="key",
             secret_key="secret",
             organization_prefix="",
+            part_size=8,
         )
     with pytest.raises(ValueError):
         backend.delete_prefix("")
@@ -25,6 +26,7 @@ def test_delete_prefix_still_works_for_a_normal_org_prefix():
             access_key="key",
             secret_key="secret",
             organization_prefix="org_7/",
+            part_size=8,
         )
         mock_client = mock_boto3.client.return_value
         mock_paginator = mock_client.get_paginator.return_value

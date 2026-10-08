@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -17,8 +18,8 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { ModelTypes } from '@shared/models';
-import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
+import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
+import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -28,7 +29,10 @@ import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-r
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { RealtimeProvider } from '../realtime-config-dialog/realtime-config-dialog.component';
 
-export type ConfigTab = 'llm' | 'realtime';
+export type ConfigTab = 'llm' | 'realtime' | 'embedding';
+
+const DUPLICATE_EMBEDDING_NAME_MESSAGE =
+    'An embedding configuration with this name already exists. Please choose a different name.';
 
 @Component({
     selector: 'app-add-configuration-dialog',
@@ -58,6 +62,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     private readonly openaiStorage = inject(OpenAIRealtimeConfigStorageService);
     private readonly elevenLabsStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
     private readonly toast = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
     readonly dialogRef = inject(DialogRef);
@@ -68,6 +73,16 @@ export class AddConfigurationDialogComponent implements OnInit {
     selectedProvider = signal<RealtimeProvider>('openai');
     isSubmitting = signal(false);
     errorMessage = signal<string | null>(null);
+    readonly submitLabel = computed(() => {
+        switch (this.activeTab()) {
+            case 'llm':
+                return 'Add LLM';
+            case 'realtime':
+                return 'Create Realtime';
+            case 'embedding':
+                return 'Add Embedding';
+        }
+    });
 
     readonly realtimeProviders: { key: RealtimeProvider; label: string }[] = [
         { key: 'openai', label: 'OpenAI' },
@@ -98,6 +113,12 @@ export class AddConfigurationDialogComponent implements OnInit {
         api_key_secret_id: [null as number | null],
         model_name: ['gemini-3.1-flash-live-preview', Validators.required],
         voice_recognition_prompt: [''],
+    });
+
+    embeddingForm = this.fb.nonNullable.group({
+        model: [null as number | null, Validators.required],
+        api_key_secret_id: [null as number | null, Validators.required],
+        custom_name: ['', Validators.required],
     });
 
     protected readonly ModelTypes = ModelTypes;
@@ -153,10 +174,16 @@ export class AddConfigurationDialogComponent implements OnInit {
     }
 
     onSubmit(): void {
-        if (this.activeTab() === 'llm') {
-            this.submitLlm();
-        } else {
-            this.submitRealtime();
+        switch (this.activeTab()) {
+            case 'llm':
+                this.submitLlm();
+                break;
+            case 'realtime':
+                this.submitRealtime();
+                break;
+            case 'embedding':
+                this.submitEmbedding();
+                break;
         }
     }
 
@@ -213,6 +240,49 @@ export class AddConfigurationDialogComponent implements OnInit {
             }),
             takeUntilDestroyed(this.destroyRef)
         ).subscribe();
+    }
+
+    private submitEmbedding(): void {
+        const { model, api_key_secret_id, custom_name } = this.embeddingForm.getRawValue();
+        if (this.embeddingForm.invalid || model === null || this.isSubmitting()) {
+            this.embeddingForm.markAllAsTouched();
+            return;
+        }
+
+        const trimmedName = custom_name.trim();
+        const normalizedName = trimmedName.toLowerCase();
+        const isDuplicate = this.embeddingConfigStorage
+            .configs()
+            .some((config) => config.custom_name.toLowerCase() === normalizedName);
+        if (isDuplicate) {
+            this.toast.error(DUPLICATE_EMBEDDING_NAME_MESSAGE);
+            return;
+        }
+
+        const request: CreateEmbeddingConfigRequest = { model, api_key_secret_id, custom_name: trimmedName };
+        this.isSubmitting.set(true);
+        this.embeddingConfigStorage
+            .createConfig(request)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => {
+                    this.isSubmitting.set(false);
+                    this.toast.success('Embedding configuration created successfully.');
+                    this.dialogRef.close(true);
+                },
+                error: (error: HttpErrorResponse) => {
+                    this.isSubmitting.set(false);
+                    this.toast.error(this.parseEmbeddingError(error));
+                },
+            });
+    }
+
+    private parseEmbeddingError(error: HttpErrorResponse): string {
+        const nameError = error?.error?.custom_name?.[0] as string | undefined;
+        if (nameError?.toLowerCase().includes('already exists')) {
+            return DUPLICATE_EMBEDDING_NAME_MESSAGE;
+        }
+        return 'Failed to create embedding configuration.';
     }
 
     onCancel(): void {

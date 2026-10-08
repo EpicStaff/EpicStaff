@@ -15,6 +15,7 @@ export const EP_CHAT_EVENT_TYPES = {
     APP_REFRESH_CACHE: 'app.refreshCache',
     APP_TOGGLE_DOCK: 'app.toggleDock',
     AGENT_DISCONNECTED: 'agent.disconnected',
+    AUTH_TOKEN_EXPIRED: 'auth.tokenExpired',
 } as const;
 
 export type EpChatEventType = (typeof EP_CHAT_EVENT_TYPES)[keyof typeof EP_CHAT_EVENT_TYPES];

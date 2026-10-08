@@ -1,4 +1,4 @@
-import { TriggerType } from '../../services/flows-sessions.service';
+import { SessionRunType, SessionTrigger, TriggerType } from '../../services/flows-sessions.service';
 
 export interface TriggerDisplay {
     label: string;
@@ -19,4 +19,15 @@ export const UNKNOWN_TRIGGER_DISPLAY: TriggerDisplay = { label: 'Other', icon: n
 export function getTriggerDisplay(triggerType: string): TriggerDisplay {
     const known = (TRIGGER_DISPLAY as Record<string, TriggerDisplay>)[triggerType];
     return known ?? { ...UNKNOWN_TRIGGER_DISPLAY, label: triggerType };
+}
+
+export function isTestRunTrigger(trigger: SessionTrigger | null | undefined): boolean {
+    return trigger?.is_test_run === true;
+}
+
+export const SESSION_RUN_TYPE_LABELS: Record<SessionRunType, string> = { live: 'Live', test: 'Test' };
+
+/** Sessions without a trigger (older runs) count as live. */
+export function getSessionRunType(trigger: SessionTrigger | null | undefined): SessionRunType {
+    return isTestRunTrigger(trigger) ? 'test' : 'live';
 }

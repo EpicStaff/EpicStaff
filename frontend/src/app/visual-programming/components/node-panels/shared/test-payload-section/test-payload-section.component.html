@@ -1,0 +1,64 @@
+@if (collapsible()) {
+    <button
+        type="button"
+        class="section-toggle"
+        [attr.aria-expanded]="open()"
+        (click)="toggleOpen()"
+    >
+        <app-svg-icon
+            class="section-toggle__chevron"
+            [class.section-toggle__chevron--closed]="!open()"
+            icon="chevron-down-filled"
+            size="8px"
+        />
+        <span>{{ title }}</span>
+    </button>
+}
+
+@if (!collapsible() || open()) {
+    <div class="editor-card">
+        <app-json-editor
+            [jsonData]="text()"
+            title="JSON Editor"
+            [subtitle]="collapsible() ? '' : title"
+            [showHeader]="true"
+            [allowCopy]="true"
+            [allowExpand]="allowExpand()"
+            [expandLabel]="expandLabel()"
+            [fullHeight]="fullHeight()"
+            [resizable]="false"
+            [editorHeight]="editorHeight()"
+            [readonly]="readonly()"
+            [actionIcon]="editorActionIcon()"
+            [actionLabel]="actionLabel()"
+            [actionDisabledReason]="actionDisabledReason()"
+            (jsonChange)="onTextChange($event)"
+            (expand)="expand.emit()"
+            (action)="action.emit()"
+        />
+    </div>
+}
+
+@if (hints().length) {
+    <ul
+        class="payload-messages payload-messages--hint"
+        role="status"
+        aria-live="polite"
+    >
+        @for (hint of hints(); track $index) {
+            <li>{{ hint }}</li>
+        }
+    </ul>
+}
+
+@if (errors().length) {
+    <ul
+        class="payload-messages payload-messages--error"
+        role="status"
+        aria-live="polite"
+    >
+        @for (error of errors(); track $index) {
+            <li>{{ error }}</li>
+        }
+    </ul>
+}

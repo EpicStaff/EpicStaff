@@ -2,11 +2,15 @@
 
 export type ExplorerSectionId = 'agents' | 'storage' | 'surfaces' | 'knowledge';
 
+/** Which agent detail sections a selection opens: both, or one with the other collapsed. */
+export type AgentFocus = 'all' | 'instructions' | 'surfaces';
+
+export type AgentSelection = { kind: 'agent'; id: number; focus: AgentFocus };
+
 export type ExplorerSelection =
-    | { kind: 'agent'; id: number }
+    | AgentSelection
     | { kind: 'surface'; id: number; ownerAgentId?: number }
-    | { kind: 'agent-surfaces'; id: number }
-    | { kind: 'agent-doc'; id: number; docType: 'boot' }
+    | { kind: 'agent-doc'; id: number; instructionIndex: number }
     | { kind: 'draft-agent'; id: null }
     | { kind: 'draft-surface'; id: null }
     | { kind: 'storage'; path: string }

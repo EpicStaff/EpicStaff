@@ -126,7 +126,7 @@ export class CollectionsStorageService implements StorageService {
         this.collectionsLoaded.set(true);
     }
 
-    // Backend has no guaranteed ORDER BY on the collections list endpoint (EST-3983),
+    // Backend has no guaranteed ORDER BY on the collections list endpoint,
     // so newest-first is enforced here rather than relying on array/insertion order.
     private sortByCreatedAtDesc<T extends { created_at: string }>(items: T[]): T[] {
         return [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

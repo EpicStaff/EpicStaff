@@ -1,4 +1,3 @@
-from io import BytesIO
 from unittest.mock import patch
 
 import pytest
@@ -23,7 +22,7 @@ def second_org(db):
 
 
 def _seed_file(backend, org_id: int, rel_path: str, content: bytes = b"data"):
-    backend.upload(f"org_{org_id}/{rel_path}", BytesIO(content))
+    backend.put_bytes(f"org_{org_id}/{rel_path}", content)
 
 
 @pytest.fixture

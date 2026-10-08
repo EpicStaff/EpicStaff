@@ -11,6 +11,7 @@ authors = [
 ]
 requires-python = "==3.12.10"
 dependencies = [
+    "cachetools==5.5.2",
     "datamodel-code-generator==0.64.0",
     "httpx==0.28.1",
     "langchain-core==1.6.2",

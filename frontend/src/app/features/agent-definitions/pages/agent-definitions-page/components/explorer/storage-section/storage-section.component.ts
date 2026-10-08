@@ -31,7 +31,7 @@ export class StorageSectionComponent implements OnInit {
 
     selectItem = output<StorageItem>();
 
-    // TODO(EST-2946): storage search deferred — the tree shows unfiltered data for now.
+    // TODO: storage search deferred — the tree shows unfiltered data for now.
     readonly items = computed(() => this.facade.treeData());
 
     ngOnInit(): void {

@@ -118,22 +118,36 @@ class BaseRBACValidator(ABC):
             return []
         return [FieldError("email", self._echo("email", value), reason)]
 
+    def _prospective_user(self, email: Any):
+        """Return an unsaved User carrying `email`, for the similarity check.
+
+        Since Django 5.1 `UserAttributeSimilarityValidator` calls
+        `user._meta.get_field(...)` to render its error, so a plain namespace
+        is not enough. An *unsaved* User instance gives us `_meta` without
+        touching the DB.
+        """
+        return get_user_model()(email=email)
+
     def _validate_password_field(
         self,
         value: Any,
-        user_hints: dict | None = None,
+        *,
+        user,
         field_name: str = "password",
     ) -> list[FieldError]:
+        """Run AUTH_PASSWORD_VALIDATORS on `value`.
+
+        `user` is the account the password is for — the real one, or
+        `_prospective_user(email)` for one being created — so the
+        similarity-to-email check has something to compare. Pass None
+        where the account is not known yet: Django then skips only that
+        check, and every other validator still runs.
+        """
         required = self._require_nonblank_string(field_name, value)
         if required:
             return required
-        # `UserAttributeSimilarityValidator` only runs when `user=` is passed,
-        # and since Django 5.1 it calls `user._meta.get_field(...)` to render
-        # its error — so a plain namespace is not enough. An *unsaved* User
-        # instance gives us `_meta` without touching the DB.
-        user_stub = get_user_model()(**(user_hints or {}))
         try:
-            validate_password(value, user=user_stub)
+            validate_password(value, user=user)
         except DjangoValidationError as exc:
             return [
                 FieldError(field_name, self._echo(field_name, value), msg) for msg in exc.messages

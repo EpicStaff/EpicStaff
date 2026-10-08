@@ -30,10 +30,10 @@ describe('FilesListPageComponent header search', () => {
             providers: [
                 provideRouter([
                     {
-                        path: 'files',
+                        path: 'storage',
                         component: FilesListPageComponent,
                         children: [
-                            { path: 'storage', component: TabStubComponent },
+                            { path: 'files', component: TabStubComponent },
                             { path: 'key-value-tables', component: TabStubComponent },
                         ],
                     },
@@ -45,23 +45,27 @@ describe('FilesListPageComponent header search', () => {
 
     it('is gone on Key-Value Tables, which searches keys in its own grid, and back on another tab', async () => {
         const harness = await RouterTestingHarness.create();
-        await harness.navigateByUrl('/files/key-value-tables');
+        await harness.navigateByUrl('/storage/key-value-tables');
         expect(headerSearch(harness)).toBeNull();
 
-        await harness.navigateByUrl('/files/storage');
+        await harness.navigateByUrl('/storage/files');
+        expect(headerSearch(harness)?.placeholder).toBe('Search collections, folders, files...');
+
+        // The tab comes from the path, not from a folder named like another tab in the query.
+        await harness.navigateByUrl('/storage/files?path=/key-value-tables');
         expect(headerSearch(harness)?.placeholder).toBe('Search collections, folders, files...');
     });
 
-    it('clears the search term when the Files tab changes, not within the same tab', async () => {
+    it('clears the search term when the Storage tab changes, not within the same tab', async () => {
         const harness = await RouterTestingHarness.create();
-        await harness.navigateByUrl('/files/storage');
+        await harness.navigateByUrl('/storage/files');
         const search = harness.routeDebugElement!.injector.get(FilesSearchService);
 
         search.setSearchTerm('report');
-        await harness.navigateByUrl('/files/storage?page=2');
+        await harness.navigateByUrl('/storage/files?page=2');
         expect(search.searchTerm()).toBe('report');
 
-        await harness.navigateByUrl('/files/key-value-tables');
+        await harness.navigateByUrl('/storage/key-value-tables');
         expect(search.searchTerm()).toBe('');
     });
 });
@@ -75,10 +79,10 @@ describe('FilesListPageComponent header create button', () => {
             providers: [
                 provideRouter([
                     {
-                        path: 'files',
+                        path: 'storage',
                         component: FilesListPageComponent,
                         children: [
-                            { path: 'storage', component: TabStubComponent },
+                            { path: 'files', component: TabStubComponent },
                             { path: 'key-value-tables', component: TabStubComponent },
                         ],
                     },
@@ -90,10 +94,10 @@ describe('FilesListPageComponent header create button', () => {
         const headerButton = () => harness.routeNativeElement?.querySelector('.header-actions app-button');
 
         // Positive control: the same permissions do render the header button on another tab.
-        await harness.navigateByUrl('/files/storage');
+        await harness.navigateByUrl('/storage/files');
         expect(headerButton()?.textContent?.trim()).toBe('Add files');
 
-        await harness.navigateByUrl('/files/key-value-tables');
+        await harness.navigateByUrl('/storage/key-value-tables');
         expect(headerButton()).toBeNull();
     });
 });

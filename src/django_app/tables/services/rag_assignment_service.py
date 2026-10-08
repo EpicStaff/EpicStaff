@@ -24,6 +24,7 @@ from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagSearchConfig,
 )
 from tables.services.rag_registry import resolve_rag_in_collection
+from tables.validators.search_config_validator import validate_proportion_sum
 
 
 class RagAssignmentService:
@@ -696,14 +697,23 @@ class SearchConfigService:
             SearchConfigService.update_node_graph_drift_search_config(node, **drift)
 
     @staticmethod
-    def _update_node_config(model, node, valid_fields, kwargs):
-        """get_or_create the node-bound row and set only provided non-None fields."""
+    def _update_node_config(model, node, valid_fields, kwargs, proportion_fields=None):
+        """get_or_create the node-bound row and set only provided non-None fields.
+
+        When one of ``proportion_fields`` is written, their sum is validated on the merged
+        row (stored + incoming): the input serializer only sees the fields sent in a
+        partial update. Raises ``serializers.ValidationError``; callers must run inside a
+        transaction so the rejected write leaves nothing behind.
+        """
         config, _ = model.objects.get_or_create(knowledge_node=node)
         updated = False
         for field, value in kwargs.items():
             if field in valid_fields and value is not None:
                 setattr(config, field, value)
                 updated = True
+        if proportion_fields and any(kwargs.get(field) is not None for field in proportion_fields):
+            merged_values = {field: getattr(config, field) for field in proportion_fields}
+            validate_proportion_sum(merged_values, *proportion_fields)
         if updated:
             config.save()
         return config
@@ -733,6 +743,7 @@ class SearchConfigService:
             node,
             SearchConfigService._LOCAL_FIELDS,
             kwargs,
+            proportion_fields=("text_unit_prop", "community_prop"),
         )
 
     @staticmethod
@@ -751,4 +762,5 @@ class SearchConfigService:
             node,
             SearchConfigService._DRIFT_FIELDS,
             kwargs,
+            proportion_fields=("local_search_text_unit_prop", "local_search_community_prop"),
         )

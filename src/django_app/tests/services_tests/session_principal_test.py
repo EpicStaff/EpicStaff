@@ -31,7 +31,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     don't need a fully built graph or a live Redis connection."""
     sm = session_manager or SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, token_budget=None: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
     )
     monkeypatch.setattr(
         sm.redis_service,

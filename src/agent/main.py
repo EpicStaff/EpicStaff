@@ -22,14 +22,102 @@ from app.tools.mcp.gateway import McpToolGateway
 from loguru import logger
 
 from shared.knowledge.client import KnowledgeClient
-from shared.redis_streams import RedisStreamClient, StreamEnvelope
+from shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
+
+
+async def _process_message(
+    client: RedisStreamClient, handler: RequestHandler, message: StreamMessage
+) -> None:
+    # Runs as a background task nobody awaits: an exception escaping it would only
+    # surface as asyncio's "Task exception was never retrieved", outside loguru.
+    try:
+        try:
+            envelope = StreamEnvelope.from_fields(message.fields)
+
+        except Exception as parse_error:
+            logger.error(
+                "failed to parse message message_id={} error={} — dropping (poison pill)",
+                message.message_id,
+                parse_error,
+            )
+            await client.ack(
+                settings.AGENT_REQUEST_STREAM,
+                settings.AGENT_CONSUMER_GROUP,
+                message.message_id,
+            )
+            return
+
+        # create_task copied the context, so this tag stays on this run's log lines.
+        with logger.contextualize(correlation_id=envelope.correlation_id):
+            await handler.handle(
+                envelope=envelope,
+                message_id=message.message_id,
+                stream=message.stream,
+            )
+
+    except Exception:
+        logger.exception("failed to process message_id={}", message.message_id)
+
+
+async def consume_requests(
+    client: RedisStreamClient,
+    handler: RequestHandler,
+    consumer_name: str,
+    max_concurrent_runs: int,
+    stop: asyncio.Event,
+) -> None:
+    """Handle request-stream messages concurrently until ``stop`` is set.
+
+    Reads only as many messages as there are free run slots, so messages this
+    replica cannot start yet stay unclaimed in the stream for other replicas
+    instead of waiting in this consumer's pending list. On stop, or when reading
+    the stream fails, returns or raises only after every in-flight run has
+    finished, so no run is cancelled before publishing its result.
+    """
+    in_flight: set[asyncio.Task] = set()
+
+    try:
+        while not stop.is_set():
+            free_slots = max_concurrent_runs - len(in_flight)
+
+            if free_slots == 0:
+                await asyncio.wait(in_flight, return_when=asyncio.FIRST_COMPLETED)
+                continue
+
+            messages = await client.read(
+                streams={settings.AGENT_REQUEST_STREAM: ">"},
+                group=settings.AGENT_CONSUMER_GROUP,
+                consumer=consumer_name,
+                count=free_slots,
+                block_ms=5000,
+            )
+
+            for message in messages:
+                task = asyncio.create_task(_process_message(client, handler, message))
+                in_flight.add(task)
+                task.add_done_callback(in_flight.discard)
+
+    finally:
+        await asyncio.gather(*in_flight, return_exceptions=True)
 
 
 async def main() -> None:
     configure_litellm(settings.AGENT_DROP_UNSUPPORTED_LLM_PARAMS)
 
     logger.remove()
-    logger.add(sys.stderr, level=settings.LOG_LEVEL, backtrace=True, diagnose=False)
+    logger.configure(extra={"correlation_id": "-"})
+    logger.add(
+        sys.stderr,
+        level=settings.LOG_LEVEL,
+        format=(
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
+            "{extra[correlation_id]} | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<level>{message}</level>"
+        ),
+        backtrace=True,
+        diagnose=False,
+    )
 
     consumer_name = f"{socket.gethostname()}-{uuid4().hex[:8]}"
 
@@ -98,39 +186,13 @@ async def main() -> None:
     except NotImplementedError:
         pass
 
-    logger.info("waiting for messages (consumer={})", consumer_name)
+    logger.info(
+        "waiting for messages (consumer={}, max_concurrent_runs={})",
+        consumer_name,
+        settings.AGENT_MAX_CONCURRENT_RUNS,
+    )
 
-    while not stop.is_set():
-        messages = await client.read(
-            streams={settings.AGENT_REQUEST_STREAM: ">"},
-            group=settings.AGENT_CONSUMER_GROUP,
-            consumer=consumer_name,
-            count=10,
-            block_ms=5000,
-        )
-
-        for message in messages:
-            try:
-                envelope = StreamEnvelope.from_fields(message.fields)
-
-            except Exception as parse_error:
-                logger.error(
-                    "failed to parse message message_id={} error={} — dropping (poison pill)",
-                    message.message_id,
-                    parse_error,
-                )
-                await client.ack(
-                    settings.AGENT_REQUEST_STREAM,
-                    settings.AGENT_CONSUMER_GROUP,
-                    message.message_id,
-                )
-                continue
-
-            await handler.handle(
-                envelope=envelope,
-                message_id=message.message_id,
-                stream=message.stream,
-            )
+    await consume_requests(client, handler, consumer_name, settings.AGENT_MAX_CONCURRENT_RUNS, stop)
 
     await loader.close()
     await client.close()

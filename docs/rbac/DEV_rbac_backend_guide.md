@@ -184,7 +184,8 @@ first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
-  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`.
+  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`,
+  `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
   `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
   `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
@@ -211,21 +212,35 @@ or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomicall
 `GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
 `sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
-Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
+Throttling (`rbac/throttles.py`; `NotifyEmailThrottle` lives in `tables/throttles.py`) — every
+anonymous credential-adjacent endpoint is covered. Exceeding any bucket returns `429` with
+`Retry-After`; where a view lists two throttles, a request must pass both.
 
 | Throttle | Endpoint(s) | Bucket | Default rate |
 |---|---|---|---|
-| `LoginThrottle` | login, swagger-token, profile password-change request | `ip\|email` | 5/min |
+| `LoginThrottle` | login, swagger-token | `ip\|email` | 5/min |
+| `LoginThrottle` | profile password-change request | `ip` (the body has no `email`) | 5/min |
+| `LoginIpThrottle` | login, swagger-token | `ip` | 20/min |
 | `PasswordResetRequestThrottle` | password-reset request | `ip\|email` | 5/hour |
+| `PasswordResetRequestIpThrottle` | password-reset request | `ip` | 20/hour |
 | `PasswordResetConfirmThrottle` | password-reset confirm | `ip` | 10/hour |
 | `TokenRefreshThrottle` | token refresh | `ip` | 30/min |
 | `NotifyEmailThrottle` | notify/email | authenticated user id | 10/hour |
 
-The last two key on IP alone because their requests carry no identifier to compose with — the
-refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the
-token being guessed, so keying on it would give an attacker a fresh bucket per attempt. Both
-subclass DRF's `AnonRateThrottle`, which supplies the IP key; their views set
-`authentication_classes = []`, so every caller is anonymous and the throttle always applies.
+The `ip|email` buckets limit what one address can do to one account without one user's attempts
+using up the allowance of everyone behind the same NAT. They never stop an address that names a
+new email on each request, since every email is a fresh bucket; that is what `LoginIpThrottle` and
+`PasswordResetRequestIpThrottle` cap. `LoginThrottle` takes the email from the request body
+whatever the view, so on the password-change request, whose body carries only
+`current_password`, its key is the caller's IP alone, in the same `login` scope as logins that
+send no email. A caller who adds an `email` field there picks the bucket instead.
+
+`PasswordResetConfirmThrottle` and `TokenRefreshThrottle` key on IP alone because their requests
+carry no identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on
+confirm the only caller-supplied value is the token being guessed, so keying on it would give an
+attacker a fresh bucket per attempt. All four IP-only throttles subclass DRF's `AnonRateThrottle`,
+which supplies the IP key and skips authenticated callers; their views set no authentication
+classes, so every caller is anonymous and the throttle always applies.
 
 HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
 `settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403

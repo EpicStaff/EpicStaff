@@ -107,10 +107,10 @@
     { "name": "vertex_ai/openai/gpt-oss-20b-maas", "recommended": false }
   ],
   "google_ai": [
-    { "name": "gemini/gemini-2.0-flash", "recommended": false },
-    { "name": "gemini/gemini-2.5-pro", "recommended": false },
     { "name": "gemini/gemini-flash-latest", "recommended": false },
     { "name": "gemini/gemini-flash-lite-latest", "recommended": false },
+    { "name": "gemini/gemini-2.0-flash", "recommended": false, "deprecated": true },
+    { "name": "gemini/gemini-2.5-pro", "recommended": false, "deprecated": true },
     { "name": "gemini/gemini-pro", "recommended": false, "deprecated": true },
     { "name": "gemini/gemini-1.5-pro", "recommended": false, "deprecated": true },
     { "name": "gemini/gemini-1.5-flash-preview-0514", "recommended": false, "deprecated": true },
@@ -121,22 +121,26 @@
     { "name": "gemini/gemini-2.5-flash-lite-preview-09-2025", "recommended": false, "deprecated": true }
   ],
   "gemini": [
+    { "name": "gemini/gemini-3.8-flash", "recommended": true },
+    { "name": "gemini/gemini-3.7-flash", "recommended": false },
+    { "name": "gemini/gemini-3.6-flash", "recommended": false },
     { "name": "gemini/gemini-3.5-flash", "recommended": true },
+    { "name": "gemini/gemini-3.5-flash-lite", "recommended": false },
     { "name": "gemini/gemini-3.1-pro-preview", "recommended": true },
     { "name": "gemini/gemini-3.1-flash-lite", "recommended": false },
     { "name": "gemini/gemini-3.1-flash-lite-preview", "recommended": false },
     { "name": "gemini/gemini-3-pro-preview", "recommended": false },
     { "name": "gemini/gemini-3-flash-preview", "recommended": false },
-    { "name": "gemini/gemini-2.5-pro", "recommended": true },
     { "name": "gemini/gemini-2.5-flash", "recommended": true },
     { "name": "gemini/gemini-2.5-flash-lite", "recommended": false },
-    { "name": "gemini/gemini-2.0-flash", "recommended": true },
-    { "name": "gemini/gemini-2.0-flash-001", "recommended": false },
-    { "name": "gemini/gemini-2.0-flash-lite", "recommended": false },
-    { "name": "gemini/gemini-2.0-flash-lite-001", "recommended": false },
     { "name": "gemini/gemini-flash-latest", "recommended": false },
     { "name": "gemini/gemini-flash-lite-latest", "recommended": false },
-    { "name": "gemini/gemini-pro-latest", "recommended": false }
+    { "name": "gemini/gemini-pro-latest", "recommended": false },
+    { "name": "gemini/gemini-2.5-pro", "recommended": false, "deprecated": true },
+    { "name": "gemini/gemini-2.0-flash", "recommended": false, "deprecated": true },
+    { "name": "gemini/gemini-2.0-flash-001", "recommended": false, "deprecated": true },
+    { "name": "gemini/gemini-2.0-flash-lite", "recommended": false, "deprecated": true },
+    { "name": "gemini/gemini-2.0-flash-lite-001", "recommended": false, "deprecated": true }
   ],
   "anthropic": [
     { "name": "claude-opus-4-8", "recommended": true },
@@ -356,7 +360,9 @@
     { "name": "galadriel/mistral-nemo", "recommended": false }
   ],
   "groq": [
-    { "name": "groq/llama-3.1-8b-instant", "recommended": false },
+    { "name": "groq/openai/gpt-oss-120b", "recommended": true },
+    { "name": "groq/openai/gpt-oss-20b", "recommended": false },
+    { "name": "groq/llama-3.1-8b-instant", "recommended": false, "deprecated": true },
     { "name": "groq/llama-3.1-70b-versatile", "recommended": false, "deprecated": true },
     { "name": "groq/llama3-8b-8192", "recommended": false, "deprecated": true },
     { "name": "groq/llama3-70b-8192", "recommended": false, "deprecated": true },
@@ -372,6 +378,11 @@
     { "name": "deepseek/deepseek-reasoner", "recommended": false }
   ],
   "fireworks_ai": [
+    { "name": "fireworks_ai/gpt-oss-120b", "recommended": true },
+    { "name": "fireworks_ai/glm-5p3", "recommended": false },
+    { "name": "fireworks_ai/glm-5p3-flash", "recommended": false },
+    { "name": "fireworks_ai/kimi-k3", "recommended": false },
+    { "name": "fireworks_ai/minimax-m3", "recommended": false },
     { "name": "fireworks_ai/llama-v3p2-1b-instruct", "recommended": false, "deprecated": true },
     { "name": "fireworks_ai/llama-v3p2-3b-instruct", "recommended": false, "deprecated": true },
     { "name": "fireworks_ai/llama-v3p2-11b-vision-instruct", "recommended": false, "deprecated": true },

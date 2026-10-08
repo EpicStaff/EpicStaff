@@ -8,7 +8,6 @@ import { FullLLMConfigService, RealtimeVoice, RealtimeVoicesService } from '@sha
 import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../../../../../configure-models/services/llms/openai-realtime-config-storage.service';
-import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
 import {
     AdvancedTabComponent,
     ExecutionTabComponent,
@@ -25,15 +24,15 @@ export interface AgentAdditionalSettingsData {
     elevenlabs_config: number | null;
     gemini_config: number | null;
     voice: string | null;
-    max_iter: number | null;
-    max_rpm: number | null;
-    max_execution_time: number | null;
-    max_retry_limit: number | null;
-    cache: boolean | null;
-    max_tool_calls: number | null;
-    tool_timeout: number | null;
-    max_consecutive_failures: number | null;
-    schema_max_retries: number | null;
+    max_iter: number;
+    max_rpm: number;
+    max_execution_time: number;
+    max_retry_limit: number;
+    cache: boolean;
+    max_tool_calls: number;
+    tool_timeout: number;
+    max_consecutive_failures: number;
+    schema_max_retries: number;
 }
 
 export interface AgentAdditionalSettingsResult {
@@ -113,29 +112,26 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
         openai_config: [this.data.openai_config],
         elevenlabs_config: [this.data.elevenlabs_config],
         gemini_config: [this.data.gemini_config],
-        voice: [this.data.voice ?? 'alloy'],
-        max_iter: [this.data.max_iter ?? 10, [Validators.min(1), Validators.max(30)]],
-        max_rpm: [this.data.max_rpm ?? 10, [Validators.min(1), Validators.max(30)]],
-        max_execution_time: [this.data.max_execution_time ?? 60, [Validators.min(1), Validators.max(600)]],
-        max_retry_limit: [this.data.max_retry_limit ?? 3, [Validators.min(0), Validators.max(10)]],
+        voice: [this.data.voice ?? 'alloy', [Validators.maxLength(100)]],
+        max_iter: [this.data.max_iter, [Validators.required, Validators.min(1), Validators.max(90)]],
+        max_rpm: [this.data.max_rpm, [Validators.required, Validators.min(1), Validators.max(240)]],
+        max_execution_time: [
+            Math.round(this.data.max_execution_time / 60),
+            [Validators.required, Validators.min(1), Validators.max(30)],
+        ],
+        max_retry_limit: [this.data.max_retry_limit, [Validators.required, Validators.min(0), Validators.max(10)]],
         schema_max_retries: [
-            this.data.schema_max_retries ?? AGENT_TOOL_DEFAULTS.schema_max_retries,
-            [Validators.min(0), Validators.max(20)],
+            this.data.schema_max_retries,
+            [Validators.required, Validators.min(0), Validators.max(20)],
         ],
-        max_tool_calls: [
-            this.data.max_tool_calls ?? AGENT_TOOL_DEFAULTS.max_tool_calls,
-            [Validators.min(1), Validators.max(100)],
-        ],
-        tool_timeout: [
-            this.data.tool_timeout ?? AGENT_TOOL_DEFAULTS.tool_timeout,
-            [Validators.min(1), Validators.max(600)],
-        ],
+        max_tool_calls: [this.data.max_tool_calls, [Validators.required, Validators.min(1), Validators.max(300)]],
+        tool_timeout: [this.data.tool_timeout, [Validators.required, Validators.min(10), Validators.max(1800)]],
         max_consecutive_failures: [
-            this.data.max_consecutive_failures ?? AGENT_TOOL_DEFAULTS.max_consecutive_failures,
-            [Validators.min(1), Validators.max(20)],
+            this.data.max_consecutive_failures,
+            [Validators.required, Validators.min(1), Validators.max(20)],
         ],
         // Cache is not implemented on the backend runtime yet — shown but disabled.
-        cache: [{ value: this.data.cache ?? false, disabled: true }],
+        cache: [{ value: this.data.cache, disabled: true }],
     });
 
     ngOnInit(): void {
@@ -172,11 +168,18 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
         const v = this.form.getRawValue();
         this.dialogRef.close({
             ...v,
+            max_execution_time: this.executionTimeInSeconds(v.max_execution_time),
             voice: v.voice ?? '',
             openai_config: provider === 'openai' ? v.openai_config : null,
             elevenlabs_config: provider === 'elevenlabs' ? v.elevenlabs_config : null,
             gemini_config: provider === 'gemini' ? v.gemini_config : null,
         } as AgentAdditionalSettingsResult);
+    }
+
+    // The control shows rounded minutes; an unchanged value must not turn e.g. 90s into 120s.
+    private executionTimeInSeconds(minutes: number): number {
+        const storedSeconds = this.data.max_execution_time;
+        return minutes === Math.round(storedSeconds / 60) ? storedSeconds : minutes * 60;
     }
 
     private initialProvider(): RealtimeProvider {

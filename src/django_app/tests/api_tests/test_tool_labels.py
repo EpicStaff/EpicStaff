@@ -347,7 +347,7 @@ def test_labels_plus_other_field_patch_on_built_in_tool_rejected(
     assert list(built_in_python_code_tool.labels.values_list("id", flat=True)) == []
 
 
-# ---- EST-3773: two orgs labeling the same shared built-in tool ----
+# ---- two orgs labeling the same shared built-in tool ----
 
 
 @pytest.fixture

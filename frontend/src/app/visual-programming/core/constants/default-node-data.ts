@@ -106,10 +106,12 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
                 "#       return ...  # updated values applied to the flow's domain variables\n",
             entrypoint: 'main',
         },
+        test_payload: {},
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
         telegram_bot_api_key_secret_id: null,
         fields: [],
+        test_payload: {},
     }),
     [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {
         const rawTz = Intl.DateTimeFormat().resolvedOptions().timeZone;

@@ -78,6 +78,7 @@ class RealtimeAgentClientFactory:
                 language=config.language,
                 org_id=config.org_id,
                 user_id=config.user_id,
+                rt_agent_definition_id=config.rt_agent_definition_id,
             )
             client.is_twilio = is_twilio
             return client

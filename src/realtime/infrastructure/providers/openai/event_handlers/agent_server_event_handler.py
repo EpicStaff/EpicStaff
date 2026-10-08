@@ -126,9 +126,7 @@ class ServerEventHandler:
         pass
 
     async def handle_function_call_done(self, data: dict[str, Any]) -> None:
-        logger.info(
-            f"OpenAI: Calling tool '{data['name']}' with args: {str(data.get('arguments') or '')[:200]}"
-        )
+        logger.info("OpenAI: Calling tool '{}' (call_id={})", data["name"], data["call_id"])
         await self.client.call_tool(
             call_id=data["call_id"],
             tool_name=data["name"],

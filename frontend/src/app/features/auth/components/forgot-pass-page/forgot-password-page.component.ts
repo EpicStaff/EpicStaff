@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -9,12 +10,19 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { strictEmailValidator } from '@shared/form-validators';
-import { finalize, tap } from 'rxjs';
+import { HttpStatus } from '@shared/models';
+import { getRetryAfterSeconds } from '@shared/utils';
+import { finalize } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 
-type PageState = 'request' | 'email-sent';
+type PageState = 'request' | 'email-sent' | 'reset-unavailable';
+
+// Mirrors the server's account-neutral wording, used when the response carries no detail.
+const RESET_REQUESTED_FALLBACK_MESSAGE = 'If the email is registered, a reset link has been sent.';
+const RESET_REQUEST_FAILED_MESSAGE = 'Could not request a password reset. Please try again.';
+const SECONDS_PER_MINUTE = 60;
 
 @Component({
     selector: 'app-forgot-password',
@@ -36,7 +44,7 @@ export class ForgotPasswordPageComponent {
     private destroyRef = inject(DestroyRef);
 
     state = signal<PageState>('request');
-    submittedEmail = signal('');
+    protected readonly resetRequestedMessage = signal(RESET_REQUESTED_FALLBACK_MESSAGE);
     loading = signal(false);
 
     readonly emailControl = new FormControl('', {
@@ -54,16 +62,35 @@ export class ForgotPasswordPageComponent {
             .requestResetPassword({ email })
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                tap(() => this.submittedEmail.set(this.emailControl.getRawValue())),
                 finalize(() => this.loading.set(false))
             )
             .subscribe({
-                next: () => this.state.set('email-sent'),
-                error: (err) => this.toast.error(err.error.message),
+                next: (response) => {
+                    // Without SMTP the server creates no reset link, so the page must not claim one was sent.
+                    if (!response.smtp_configured) {
+                        this.state.set('reset-unavailable');
+                        return;
+                    }
+                    // The server answers identically for every email so it never reveals whether an account exists;
+                    // the page shows that wording instead of promising a link was sent.
+                    this.resetRequestedMessage.set(response.detail?.trim() || RESET_REQUESTED_FALLBACK_MESSAGE);
+                    this.state.set('email-sent');
+                },
+                error: (err: HttpErrorResponse) => this.toast.error(this.describeRequestError(err)),
             });
     }
 
     navToLogin(): void {
         void this.router.navigate(['/login']);
+    }
+
+    private describeRequestError(err: HttpErrorResponse): string {
+        if (err.status !== HttpStatus.TooManyRequests) return err.error?.message ?? RESET_REQUEST_FAILED_MESSAGE;
+
+        const seconds = getRetryAfterSeconds(err);
+        if (!seconds) return 'Too many reset requests. Please try again later.';
+        // The limit is hourly, so the wait reads better in whole minutes than in seconds.
+        const minutes = Math.ceil(seconds / SECONDS_PER_MINUTE);
+        return `Too many reset requests. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
     }
 }

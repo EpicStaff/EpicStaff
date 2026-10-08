@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from loguru import logger
-from shared.models.agent_service import AgentRequest
 
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
@@ -14,6 +13,7 @@ from app.runners.task_execution import (
     _schema_max_retries,
     run_task_through_loop,
 )
+from shared.models.agent_service import AgentRequest
 
 
 class SingleTaskRunner(Runner):
