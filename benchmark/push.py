@@ -21,7 +21,8 @@ def contains_secret(run_dir: Path, secret: str | None) -> bool:
     needle = secret.encode()
     overlap = len(needle) - 1
 
-    for path in run_dir.iterdir():
+    # every level: push copies subfolders too (copytree), so a secret there would be published
+    for path in run_dir.rglob("*"):
         if path.is_dir() or path.name in NEVER_PUSHED:
             continue
 

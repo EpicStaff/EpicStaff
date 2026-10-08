@@ -12,12 +12,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from config import AbortRules, Case, PassRules
-from load import SessionRecord
+from config import AbortRules, Case, PassRules, redacted_case_text
+from load import INTERRUPTED, RUNNER_STATUSES, SessionRecord
 
 SCHEMA_VERSION = 1
 TOOL_VERSION = "1.0.0"
 MIN_MEASURED = 10
+# Unfinished sessions could be the slowest ones: once they are more than 5% of a level, its p95
+# is unknown until they end.
+UNFINISHED_LIMIT = 0.05
 MIN_FIT_R2 = 0.5  # weaker memory-vs-running fits are noise and stay out of the headline
 SESSION_COLUMNS = [
     "phase",
@@ -65,6 +68,7 @@ STEP_COLUMNS = [
     "sent",
     "completed",
     "failed",
+    "interrupted",
     "throughput_per_min",
     "error_rate",
     *[f"{name}_{key}" for name in DURATIONS for key in STAT_KEYS],
@@ -151,6 +155,9 @@ EVENT_COLUMNS = ["session_id", "service", "checkpoint", "ts", "node_name", "extr
 
 @dataclass
 class Window:
+    """One level: settle from start_ts, measure sessions sent until end_ts (the end of the
+    hold), then keep the load until those sessions have ended (finish_end_ts), and judge."""
+
     phase: str
     level: int
     kind: str
@@ -160,6 +167,23 @@ class Window:
     end_ts: float
     abort_reason: str | None = None
     live_verdict: str | None = None
+    finish_end_ts: float | None = None  # None: judged at end_ts (dev runs, aborted levels)
+
+    @property
+    def verdict_ts(self) -> float:
+        """When the level was judged: sessions without an end by then are unfinished."""
+        return self.end_ts if self.finish_end_ts is None else self.finish_end_ts
+
+    def measures(self, session: dict) -> bool:
+        """A session (row, or `vars()` of a record) sent in this level's measured window.
+        Sessions sent while the measured ones finish have kind `finish` and are never measured."""
+        return (
+            session["phase"] == self.phase
+            and session["segment"] == self.segment
+            and session["level"] == self.level
+            and session["kind"] == self.kind
+            and self.settle_end_ts <= session["intended_ts"] <= self.end_ts
+        )
 
 
 @dataclass
@@ -281,11 +305,13 @@ def session_row(record: SessionRecord, events: list[dict], now: float | None = N
     end_event = first.get(("crew", "session_end"))
     end_ts = float(end_event["ts"]) if end_event else record.done_ts
     status = record.end_status
-    if status not in ("http_error", "timeout") and end_event:
+    if status not in RUNNER_STATUSES and end_event:
         status = end_event.get("status") or status
-    censored = end_ts is None and now is not None and record.sent_ts is not None
-    if censored:
-        end_ts = now
+    still_running = end_ts is None and now is not None and record.sent_ts is not None
+    if still_running:
+        end_ts, status = now, None
+    # the e2e of a running or runner-stopped session is only a lower bound of its duration
+    censored = still_running or status == INTERRUPTED
     received_ts, slot_ts = ts("crew", "received"), ts("crew", "slot_acquired")
     llm = pair_spans(events, "llm_start", "llm_end", lambda event: event.get("correlation_id"))
     executions = pair_spans(
@@ -325,7 +351,7 @@ def session_row(record: SessionRecord, events: list[dict], now: float | None = N
         "received_ts": received_ts,
         "slot_ts": slot_ts,
         "end_ts": end_ts,
-        "status": None if censored else status,
+        "status": status,
         "censored": censored,
         "error_reason": (record.error or (end_event or {}).get("reason") or None)
         if status != "end"
@@ -358,20 +384,58 @@ def build_rows(
 
 
 def measured(rows: list[dict], window: Window) -> list[dict]:
+    return [row for row in rows if window.measures(row)]
+
+
+def is_failed(row: dict) -> bool:
+    """Ended with a status other than `end`. A session that has not ended yet, or that the
+    runner stopped because the run was interrupted, has not failed."""
+    return not row["censored"] and row["status"] not in (None, "end")
+
+
+def _latency_rules(rows: list[dict], rules: PassRules) -> list[tuple]:
+    """(label, limit, known values, lower bounds, unfinished count) per p95 rule.
+
+    Unfinished sessions (still running when judged, stopped by an interrupt, or never seen to
+    end) give only lower bounds: the e2e so far, or the queue wait so far for those still
+    queued.
+    """
+    ok = [row for row in rows if row["status"] == "end"]
+    unfinished = [row for row in rows if row["censored"] or row["status"] is None]
+    still_queued = [row for row in unfinished if row["queue_wait_s"] is None]
     return [
-        row
-        for row in rows
-        if row["phase"] == window.phase
-        and row["segment"] == window.segment
-        and row["level"] == window.level
-        and row["kind"] == window.kind
-        and row["intended_ts"] >= window.settle_end_ts
+        (
+            "e2e",
+            rules.p95_e2e_s,
+            [row["e2e_s"] for row in ok if row["e2e_s"] is not None],
+            [row["e2e_s"] for row in unfinished if row["e2e_s"] is not None],
+            len(unfinished),
+        ),
+        (
+            "queue wait",
+            rules.p95_queue_wait_s,
+            [row["queue_wait_s"] for row in ok + unfinished if row["queue_wait_s"] is not None],
+            [
+                row["end_ts"] - row["received_ts"]
+                for row in still_queued
+                if row["end_ts"] is not None and row["received_ts"] is not None
+            ],
+            len(still_queued),
+        ),
     ]
 
 
 def judge(
     rows: list[dict], window: Window, rules: PassRules, abort: AbortRules
 ) -> tuple[str, list[str]]:
+    """pass / fail / invalid for one window's measured rows (live rows or final rows).
+
+    The runner judges a level only once its measured sessions have ended (or hit
+    session_timeout_s), so normally every row has its true duration. A rule fails when it
+    fails even with every unfinished session at its lower bound. It can pass only when at
+    least MIN_MEASURED sessions ended by the verdict time and no more than UNFINISHED_LIMIT
+    of them are unfinished: a safety net for an interrupted level or missing end times.
+    """
     lag_p99 = (
         percentile([row["gen_lag_ms"] for row in rows if row["gen_lag_ms"] is not None], 0.99) or 0
     )
@@ -379,28 +443,43 @@ def judge(
         return "invalid", [f"generator-limited: lag p99 {lag_p99:.0f} ms"]
     if window.abort_reason:
         return "fail", [window.abort_reason]
-    timed = [row for row in rows if row["e2e_s"] is not None]
-    if len(timed) < MIN_MEASURED:
-        return "invalid", [f"too few measured sessions ({len(timed)}); raise ladder.hold_s"]
+    finished = [
+        row
+        for row in rows
+        if not row["censored"] and row["end_ts"] is not None and row["end_ts"] <= window.verdict_ts
+    ]
+    proven, estimated, unknown = [], [], []
+    for label, limit, known, bounds, unfinished in _latency_rules(rows, rules):
+        if limit is None or not (known or bounds):
+            continue  # rule off, or no checkpoints for it (crew wrote no BENCH lines)
+        at_least = percentile(known + bounds, 0.95)
+        if len(known) + len(bounds) >= MIN_MEASURED and at_least > limit:
+            proven.append(f"p95 {label} {at_least:.1f} s > {limit:g} s")
+        elif unfinished > UNFINISHED_LIMIT * len(rows):
+            unknown.append(
+                f"p95 {label} unknown: {unfinished} of {len(rows)} measured sessions had not"
+                " ended when the level was judged"
+            )
+        else:
+            p95 = percentile(known, 0.95)
+            if p95 is not None and p95 > limit:
+                estimated.append(f"p95 {label} {p95:.1f} s > {limit:g} s")
+    if len(finished) < MIN_MEASURED:
+        if proven:
+            return "fail", proven
+        return "invalid", [
+            f"too few measured sessions ended ({len(finished)}); raise ladder.hold_s"
+        ]
     reasons = []
-    failed = sum(1 for row in rows if row["status"] not in (None, "end"))
-    error_rate = failed / len(rows)
+    error_rate = sum(1 for row in rows if is_failed(row)) / len(rows)
     if error_rate > rules.max_error_rate:
         reasons.append(f"error rate {error_rate:.1%} > {rules.max_error_rate:.1%}")
-    ok = [row for row in timed if row["status"] in ("end", None)]
-    p95_e2e = percentile([row["e2e_s"] for row in ok], 0.95)
-    if rules.p95_e2e_s is not None and p95_e2e is not None and p95_e2e > rules.p95_e2e_s:
-        reasons.append(f"p95 e2e {p95_e2e:.1f} s > {rules.p95_e2e_s:g} s")
-    p95_queue = percentile(
-        [row["queue_wait_s"] for row in ok if row["queue_wait_s"] is not None], 0.95
-    )
-    if (
-        rules.p95_queue_wait_s is not None
-        and p95_queue is not None
-        and p95_queue > rules.p95_queue_wait_s
-    ):
-        reasons.append(f"p95 queue wait {p95_queue:.1f} s > {rules.p95_queue_wait_s:g} s")
-    return ("fail" if reasons else "pass"), reasons
+    reasons += proven + estimated
+    if reasons:
+        return "fail", reasons
+    if unknown:
+        return "invalid", unknown
+    return "pass", []
 
 
 def bottleneck(context: dict) -> str:
@@ -514,6 +593,7 @@ def _step_and_container_rows(data, rows, baselines, crew_cap):
             if window_mean is not None and baseline is not None:
                 per_container_extra[name] = window_mean - baseline
         ok = [row for row in window_rows if row["status"] == "end"]
+        failed = sum(1 for row in window_rows if is_failed(row))
         step = {
             "phase": window.phase,
             "segment": window.segment,
@@ -525,13 +605,10 @@ def _step_and_container_rows(data, rows, baselines, crew_cap):
             "steady_s": round(steady_s, 1),
             "sent": len(window_rows),
             "completed": len(ok),
-            "failed": sum(1 for row in window_rows if row["status"] not in (None, "end")),
+            "failed": failed,
+            "interrupted": sum(1 for row in window_rows if row["status"] == INTERRUPTED),
             "throughput_per_min": round(len(finished_ok) / steady_s * 60, 2),
-            "error_rate": round(
-                sum(1 for row in window_rows if row["status"] not in (None, "end"))
-                / max(len(window_rows), 1),
-                4,
-            ),
+            "error_rate": round(failed / max(len(window_rows), 1), 4),
             "cpu_s_per_session": round(sum(cpu.values()) / len(finished_ok), 3)
             if finished_ok
             else None,
@@ -741,7 +818,7 @@ def _sample_session_ids(rows: list[dict]) -> set[int]:
     )
     middle = len(ok) // 2
     chosen = ok[:100] + ok[max(0, middle - 50) : middle + 50] + ok[-100:]
-    chosen += [row for row in rows if row["status"] not in (None, "end")][:150]
+    chosen += [row for row in rows if is_failed(row)][:150]
     chosen += [row for row in rows if row["cold"]]
     return {row["session_id"] for row in chosen if row["session_id"] is not None}
 
@@ -929,6 +1006,6 @@ def analyze(data: RunData, out_dir: Path) -> dict:
         _event_rows(by_session, _sample_session_ids(rows)),
     )
     _write_csv(out_dir / "events_full.csv.gz", EVENT_COLUMNS, _event_rows(by_session, None))
-    (out_dir / "case.toml").write_text(data.case.source_text, encoding="utf-8")
+    (out_dir / "case.toml").write_text(redacted_case_text(data.case.source_text), encoding="utf-8")
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
     return meta

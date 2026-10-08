@@ -24,7 +24,7 @@ from config import (
     bisect_next,
     ladder_levels,
 )
-from load import Controller
+from load import FINISH_KIND, INTERRUPTED, RUNNER_STATUSES, Controller
 from sample import Sampler
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -41,6 +41,8 @@ LOG_LEVEL_VARIABLES = {
 API_ERROR_PERSIST_S = 10  # a failing sessions API this long makes the level fail
 BENCH_LEVELS = ("BENCH", "DEBUG", "TRACE")
 CAP_VARIABLES = ("CREW_MAX_CONCURRENT_SESSIONS", "AGENT_MAX_CONCURRENT_RUNS")
+FINISH_MARGIN_S = 5  # past a level's finish cap: a few controller ticks for the timeout rule
+FALLBACK_REFRESH_S = 5  # how often fallback mode asks the sessions API whether sessions ended
 
 
 @dataclass
@@ -132,7 +134,8 @@ def plan_text(case: Case, variants: list[Variant]) -> str:
     if case.kind == "dev":
         lines.append(f"dev: {case.dev.sessions} sessions, {case.dev.concurrency} in flight")
         return "\n".join(lines)
-    per_level = ladder.settle_s + ladder.hold_s
+    # worst case a level also waits a full session_timeout_s for its measured sessions to end
+    per_level = ladder.settle_s + ladder.hold_s + ladder.session_timeout_s
     drain = ladder.session_timeout_s + 95
     segment = 60 + ladder.baseline_s + ladder.cooldown_s + drain
     smoke = len(case.phases) * (segment + 60)
@@ -284,12 +287,9 @@ class PhaseRunner:
                 hold_s = (
                     ladder.session_timeout_s * 4 if max_starts else self.settle_s + ladder.hold_s
                 )
+                abort_check = self._abort_check(controller, sampler, counts)
                 reason = controller.hold(
-                    level,
-                    hold_s,
-                    ladder.session_timeout_s,
-                    self._abort_check(controller, sampler, counts),
-                    max_starts=max_starts,
+                    level, hold_s, ladder.session_timeout_s, abort_check, max_starts=max_starts
                 )
                 window = analyze.Window(
                     self.phase.name,
@@ -301,6 +301,8 @@ class PhaseRunner:
                     time.time(),
                     reason,
                 )
+                if reason is None and not max_starts:  # a dev run's hold already waited
+                    window.abort_reason = self._finish_measured(controller, window, abort_check)
                 if self.fallback:
                     # crew has no BENCH lines: end times only exist in the sessions API
                     try:
@@ -355,8 +357,14 @@ class PhaseRunner:
                 print(f"[{self.phase.name}] stopping in-flight sessions...")
                 # stop what is still running before cleanup deletes it; in fallback mode drop the
                 # API-based count so drain only waits for pending HTTP and never calls the API
+                counted_by_api = controller.external_in_flight is not None
                 controller.external_in_flight = None
-                self._safe("drain", lambda: controller.drain(0))
+                self._safe("drain", lambda: controller.drain(0, stop_status=INTERRUPTED))
+                if counted_by_api:  # the controller knew counts, not ids, so it stopped nothing
+                    self._safe(
+                        "stop unfinished sessions",
+                        lambda: self._stop_unfinished(controller.records),
+                    )
             if load_start is not None and len(self.segments) < segment_no:
                 # interrupted mid-segment: keep what was measured
                 now = time.time()
@@ -374,6 +382,39 @@ class PhaseRunner:
             self._safe("controller close", controller.close)
             self.events += [event for follower in followers for event in follower.events]
         return results
+
+    def _finish_measured(
+        self, controller: Controller, window: analyze.Window, abort_check
+    ) -> str | None:
+        """Keep the level's load until every session the hold measured has ended, so the verdict
+        uses their true durations instead of lower bounds. Sessions sent meanwhile get kind
+        FINISH_KIND and are never measured. Each measured session's own session_timeout_s caps
+        the wait: one still running then is stopped as `timeout`, a failure. Sets
+        window.finish_end_ts; returns an abort reason or None."""
+        measured = [record for record in controller.records if window.measures(vars(record))]
+        timeout_s = self.case.ladder.session_timeout_s
+        last_refresh = 0.0
+
+        def all_ended() -> bool:
+            nonlocal last_refresh
+            if self.fallback and time.time() - last_refresh >= FALLBACK_REFRESH_S:
+                # without BENCH lines end times exist only in the sessions API
+                last_refresh = time.time()
+                with contextlib.suppress(ApiError):
+                    self._apply_sessions_api(measured)
+            return all(record.done for record in measured)
+
+        controller.set_context(self.phase.name, window.level, FINISH_KIND, window.segment)
+        # by timeout_s after the hold the timeout rule has stopped every measured session; the
+        # margin only gives that rule a last tick
+        reason = controller.hold(
+            window.level, timeout_s + FINISH_MARGIN_S, timeout_s, abort_check, until=all_ended
+        )
+        if self.fallback and not all(record.done for record in measured):
+            # fallback control cannot time sessions out by id: stop the rest through the API
+            self._stop_unfinished(measured, status="timeout")
+        window.finish_end_ts = time.time()
+        return reason
 
     def _safe(self, step: str, action) -> None:
         try:
@@ -426,20 +467,35 @@ class PhaseRunner:
         if self.fallback:
             self._apply_sessions_api(self.records)
 
-    def _apply_sessions_api(self, records: list) -> None:
+    def _apply_sessions_api(self, records: list) -> dict[int, dict]:
+        """Set end times and statuses from the sessions API; returns its rows by session id."""
         if not records:
-            return
+            return {}
         since = datetime.fromtimestamp(min(r.intended_ts for r in records), UTC).isoformat()
         by_id = {row["id"]: row for row in self.api.sessions_since(self.phase.graph_id, since)}
         for record in records:
             row = by_id.get(record.session_id)
-            if (
-                row
-                and row.get("finished_at")
-                and record.end_status not in ("http_error", "timeout")
-            ):
+            if row and row.get("finished_at") and record.end_status not in RUNNER_STATUSES:
                 record.done_ts = datetime.fromisoformat(row["finished_at"]).timestamp()
                 record.end_status = row.get("status")
+        return by_id
+
+    def _stop_unfinished(self, records: list, status: str = INTERRUPTED) -> None:
+        """Fallback mode knows no ids live: stop those of `records` the API still has pending
+        or running, and mark them `status`. On an interrupt this keeps cleanup from deleting
+        sessions crew is still executing; at the finish cap it enforces session_timeout_s."""
+        rows = self._apply_sessions_api(records)
+        for record in records:
+            row = rows.get(record.session_id)
+            if not record.done and row and row.get("status") in ("pending", "run"):
+                try:
+                    self.api.stop_session(record.session_id)
+                except ApiError as error:  # one failed stop must not leave the others running
+                    print(
+                        f"[{self.phase.name}] could not stop session {record.session_id}: {error}"
+                    )
+                    continue
+                record.done_ts, record.end_status = time.time(), status
 
     def cleanup(self) -> None:
         ids = [record.session_id for record in self.records if record.session_id]
@@ -457,6 +513,66 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
     images, limits, crash, interrupted = {}, {}, None, False
     project = stack.detect_project()
     meta_git = stack.git_info(options.repo)
+    overrides = {**case.env, **variant.env}
+
+    def save() -> Path:
+        """Analyze what the phases collected into the run folder. Reads the variables of
+        run_variant as they are when it is called."""
+        run_labels = [
+            *labels,
+            *[
+                f"fallback-control:{phase_runner.phase.name}"
+                for phase_runner in phases
+                if phase_runner.fallback
+            ],
+            *(["dirty-tree"] if meta_git["dirty"] else []),
+            *([] if options.build else ["build-unverified"]),
+        ]
+        host = stack.host_info()
+        name = run_dir_name(
+            created.strftime("%Y-%m-%d_%H%M"),
+            host["hostname"],
+            meta_git["ref"],
+            meta_git["sha"],
+            case.name,
+            variant.name,
+        )
+        meta = {
+            "run_id": name,
+            "created_at": created.isoformat(timespec="seconds"),
+            "note": options.note,
+            "kind": case.kind,
+            "case": {
+                "name": case.name,
+                "hash": case.case_hash,
+                "variant": variant.name,
+                "overrides": allowlisted(overrides),
+            },
+            "git": {**meta_git, "built": options.build},
+            "images": images,
+            "host": host,
+            "container_limits": limits,
+            "env": {key: value for key, value in allowlisted(env).items() if value != "<set>"},
+            "labels": run_labels,
+            "smoke": smoke,
+            "graphs": graphs,
+        }
+        data = analyze.RunData(
+            case,
+            variant.name,
+            meta,
+            [r for p in phases for r in p.records],
+            [w for p in phases for w in p.windows],
+            [s for p in phases for s in p.segments],
+            [e for p in phases for e in p.events],
+            [t for p in phases for t in p.timeline],
+            [c for p in phases for c in p.container_timeline],
+        )
+        run_dir = options.results_dir / name
+        analyze.analyze(data, run_dir)
+        print(f"\nRun folder: {run_dir}")
+        return run_dir
+
     with contextlib.ExitStack() as exits:
         root = (
             exits.enter_context(stack.Worktree(options.repo, variant.ref))
@@ -466,57 +582,67 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
         if variant.ref:
             meta_git = {**stack.git_info(root), "ref": variant.ref}
         compose = stack.Compose(root / "src", env_path, project)
-        overrides = {**case.env, **variant.env}
         try:
-            with stack.EnvOverride(env_path, overrides):
-                compose.up(build=options.build)
-                env = stack.read_env_file(env_path)
-                graphs = _resolve_graphs(api, case)
-                _report(evaluate_stack(_stack_facts(compose, api, case, env, graphs), case))
-                smoke = (
-                    run_smoke(case, api, compose, options, env)
-                    if options.smoke
-                    else {
-                        "ran": False,
-                        "passed": None,
-                        "details": "",
-                        "e2e_p95_s": {},
-                        "llm_p95_s": {},
-                    }
-                )
-                settle_s = max(
-                    [case.ladder.settle_s, *[v for v in smoke.get("e2e_p95_s", {}).values() if v]]
-                )
-                for phase in case.phases:
-                    phase_runner = PhaseRunner(case, phase, api, compose, options, env, settle_s)
-                    phases.append(phase_runner)
+            try:
+                with stack.EnvOverride(env_path, overrides):
+                    compose.up(build=options.build)
+                    env = stack.read_env_file(env_path)
+                    graphs = _resolve_graphs(api, case)
+                    _report(evaluate_stack(_stack_facts(compose, api, case, env, graphs), case))
+                    smoke = (
+                        run_smoke(case, api, compose, options, env)
+                        if options.smoke
+                        else {
+                            "ran": False,
+                            "passed": None,
+                            "details": "",
+                            "e2e_p95_s": {},
+                            "llm_p95_s": {},
+                        }
+                    )
+                    settle_s = max(
+                        [
+                            case.ladder.settle_s,
+                            *[v for v in smoke.get("e2e_p95_s", {}).values() if v],
+                        ]
+                    )
+                    for phase in case.phases:
+                        phase_runner = PhaseRunner(
+                            case, phase, api, compose, options, env, settle_s
+                        )
+                        phases.append(phase_runner)
+                        try:
+                            if case.kind == "dev":
+                                phase_runner.run_dev(case.dev.sessions, case.dev.concurrency)
+                            else:
+                                phase_runner.run_capacity()
+                        except KeyboardInterrupt:
+                            interrupted = True
+                            labels.append("interrupted")
+                            print("\n[run] interrupted: saving what was measured")
+                            break
+                        except Exception as error:
+                            crash = error
+                            labels.append(f"crashed:{type(error).__name__}")
+                            print(f"\n[run] phase {phase.name} crashed; saving what was measured")
+                            break
+                        finally:
+                            for step in (phase_runner.finish_fallback, phase_runner.cleanup):
+                                try:
+                                    step()
+                                except Exception as step_error:
+                                    print(f"[{phase.name}] {step.__name__} failed: {step_error!r}")
                     try:
-                        if case.kind == "dev":
-                            phase_runner.run_dev(case.dev.sessions, case.dev.concurrency)
-                        else:
-                            phase_runner.run_capacity()
-                    except KeyboardInterrupt:
-                        interrupted = True
-                        labels.append("interrupted")
-                        print("\n[run] interrupted: saving what was measured")
-                        break
-                    except Exception as error:
-                        crash = error
-                        labels.append(f"crashed:{type(error).__name__}")
-                        print(f"\n[run] phase {phase.name} crashed; saving what was measured")
-                        break
-                    finally:
-                        for step in (phase_runner.finish_fallback, phase_runner.cleanup):
-                            try:
-                                step()
-                            except Exception as step_error:
-                                print(f"[{phase.name}] {step.__name__} failed: {step_error!r}")
-                try:
-                    images, limits = compose.images(), _container_limits(compose)
-                except stack.StackError as error:
-                    print(f"could not read images/limits: {error}")
+                        images, limits = compose.images(), _container_limits(compose)
+                    except Exception as error:  # unknown image ids must not cost the measurements
+                        print(f"could not read images/limits: {error}")
+            finally:
+                # .env is restored by now. Save before re-applying the stack below: that takes
+                # minutes, and a second Ctrl+C during it must not lose the measurements.
+                if phases:
+                    run_dir = save()
         finally:
-            # .env is restored by now: re-apply the original settings with the MAIN checkout's compose
+            # re-apply the original settings with the MAIN checkout's compose
             main_compose = stack.Compose(options.repo / "src", env_path, project)
             try:
                 main_compose.up(build=False)
@@ -525,56 +651,6 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
                     f"\n!!! re-applying the original .env failed: {error}"
                     f"\n!!! run: {shlex.join(main_compose.cmd('up', '-d'))}\n"
                 )
-    labels += [
-        f"fallback-control:{phase_runner.phase.name}"
-        for phase_runner in phases
-        if phase_runner.fallback
-    ]
-    labels += ["dirty-tree"] if meta_git["dirty"] else []
-    labels += [] if options.build else ["build-unverified"]
-    host = stack.host_info()
-    name = run_dir_name(
-        created.strftime("%Y-%m-%d_%H%M"),
-        host["hostname"],
-        meta_git["ref"],
-        meta_git["sha"],
-        case.name,
-        variant.name,
-    )
-    meta = {
-        "run_id": name,
-        "created_at": created.isoformat(timespec="seconds"),
-        "note": options.note,
-        "kind": case.kind,
-        "case": {
-            "name": case.name,
-            "hash": case.case_hash,
-            "variant": variant.name,
-            "overrides": allowlisted(overrides),
-        },
-        "git": {**meta_git, "built": options.build},
-        "images": images,
-        "host": host,
-        "container_limits": limits,
-        "env": {key: value for key, value in allowlisted(env).items() if value != "<set>"},
-        "labels": labels,
-        "smoke": smoke,
-        "graphs": graphs,
-    }
-    data = analyze.RunData(
-        case,
-        variant.name,
-        meta,
-        [r for p in phases for r in p.records],
-        [w for p in phases for w in p.windows],
-        [s for p in phases for s in p.segments],
-        [e for p in phases for e in p.events],
-        [t for p in phases for t in p.timeline],
-        [c for p in phases for c in p.container_timeline],
-    )
-    run_dir = options.results_dir / name
-    analyze.analyze(data, run_dir)
-    print(f"\nRun folder: {run_dir}")
     if crash is not None:
         raise crash
     if interrupted:

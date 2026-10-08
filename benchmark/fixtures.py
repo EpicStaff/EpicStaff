@@ -18,7 +18,7 @@ from pathlib import Path
 import analyze
 import push
 from config import load_case
-from load import SessionRecord
+from load import FINISH_KIND, SessionRecord
 
 HERE = Path(__file__).resolve().parent
 # container: (baseline MB, MB per running session, share of a session's CPU, MB kept after cooldown)
@@ -162,6 +162,21 @@ def _run(
     seed: int,
     kind: str,
 ) -> Path:
+    run_dir = out_dir / name
+    analyze.analyze(build_run(name, case_file, levels, fail_from, seed, kind), run_dir)
+    return run_dir
+
+
+def build_run(
+    name: str,
+    case_file: str,
+    levels: tuple[int, ...],
+    fail_from: int | None,
+    seed: int,
+    kind: str,
+) -> analyze.RunData:
+    """The data a run collects, before analysis. Each level runs like the runner does it:
+    settle, hold, then the same load until the hold's sessions have ended (kind `finish`)."""
     rng = random.Random(seed)
     case = load_case(
         HERE / "cases" / case_file,
@@ -186,40 +201,51 @@ def _run(
             run_s = idle_run_s * (1 + running / 800)
             queue_s = run_s * (level - running) / running  # Little's law for the queued rest
             start, settle_end, end = clock, clock + 30, clock + 210
+            mean_e2e = 0.1 + queue_s + run_s
+            # closed loop: each user starts its next session at once
+            next_sent = [start + user * mean_e2e / level for user in range(level)]
+            finish_end = end
+            for session_kind in (kind, FINISH_KIND):
+                # first up to the end of the hold, then until the hold's sessions have ended
+                send_until = end if session_kind == kind else finish_end
+                for user in range(level):
+                    while next_sent[user] < send_until:
+                        sent = next_sent[user]
+                        session_id += 1
+                        queue = (
+                            queue_s * rng.uniform(0.7, 1.3) if queue_s else rng.uniform(0.03, 0.08)
+                        )
+                        slot = sent + 0.1 + queue
+                        done = slot + run_s * rng.uniform(0.85, 1.15)
+                        records.append(
+                            SessionRecord(
+                                phase.name,
+                                level,
+                                session_kind,
+                                1,
+                                sent,
+                                sent + 0.001,
+                                8,
+                                200,
+                                session_id,
+                                None,
+                                done,
+                                "end",
+                            )
+                        )
+                        events += _session_events(session_id, sent, slot, done)
+                        if session_kind == kind and sent >= settle_end:
+                            finish_end = max(finish_end, done)
+                        next_sent[user] = done + 0.05
             windows.append(
                 analyze.Window(
-                    phase.name, level, kind, 1, start, settle_end, end, live_verdict=None
+                    phase.name, level, kind, 1, start, settle_end, end, finish_end_ts=finish_end
                 )
             )
-            mean_e2e = 0.1 + queue_s + run_s
-            for user in range(level):  # closed loop: each user starts its next session at once
-                sent = start + user * mean_e2e / level
-                while sent < end:
-                    session_id += 1
-                    queue = queue_s * rng.uniform(0.7, 1.3) if queue_s else rng.uniform(0.03, 0.08)
-                    slot = sent + 0.1 + queue
-                    done = slot + run_s * rng.uniform(0.85, 1.15)
-                    records.append(
-                        SessionRecord(
-                            phase.name,
-                            level,
-                            kind,
-                            1,
-                            sent,
-                            sent + 0.001,
-                            8,
-                            200,
-                            session_id,
-                            None,
-                            done,
-                            "end",
-                        )
-                    )
-                    events += _session_events(session_id, sent, slot, done)
-                    sent = done + 0.05
             cores = cpu_s_per_session * running / run_s  # sessions finished per second x CPU-s
-            _samples(samples, rng, phase.name, level, start, 105, running, cores)
-            clock = end
+            sample_count = round((finish_end - start) / SAMPLE_S)
+            _samples(samples, rng, phase.name, level, start, sample_count, running, cores)
+            clock = finish_end
             if fail_from is not None and level >= fail_from:
                 break
         _samples(samples, rng, phase.name, 0, clock, 30, cooldown=True)
@@ -234,7 +260,7 @@ def _run(
         "kind": case.kind,
         "case": {"name": case.name, "hash": case.case_hash, "variant": "default", "overrides": {}},
         "git": {
-            "ref": "feat/EST-4430-benchmark",
+            "ref": "feat/session-benchmark",
             "sha": f"{seed:07d}abcdef",
             "dirty": False,
             "built": True,
@@ -250,12 +276,7 @@ def _run(
             for phase in case.phases
         },
     }
-    run_dir = out_dir / name
-    analyze.analyze(
-        analyze.RunData(case, "default", meta, records, windows, segments, events, *samples),
-        run_dir,
-    )
-    return run_dir
+    return analyze.RunData(case, "default", meta, records, windows, segments, events, *samples)
 
 
 def write_capacity_run(

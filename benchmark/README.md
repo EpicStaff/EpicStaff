@@ -1,0 +1,293 @@
+# EpicStaff session benchmark
+
+One tool that runs real sessions against a running EpicStaff stack, writes flat result files, and compares runs in a browser viewer. Plain Python standard library, Python 3.11 or newer (`tomllib`). It talks to the stack only through `docker` / `docker compose`, the HTTP API, and host files under `/proc` and `/sys/fs/cgroup` (Linux; Docker Desktop falls back to `docker stats`).
+
+## 1. What it measures
+
+- **Capacity**: how many sessions the server runs at the same time (sustained, within the pass rules) before it breaks, and which resource breaks first.
+- **Cost of one session**: CPU-seconds, MB per concurrent session, LLM tokens, time per stage and per node. These are per-session numbers, so they compare across load levels.
+- **Better or worse**: did a change improve capacity on the server, or a 1-minute developer check on a laptop. Any set of runs opens in one viewer, which says when two runs did not measure the same thing.
+
+## 2. Quick start
+
+All commands run from the repository root. The API key is read from the environment only.
+
+```bash
+export DJANGO_API_KEY='<org API key>'      # required by every command that talks to the stack, and by `push`
+export BENCH_ORG_ID=1                      # default 1
+export BENCH_API=http://localhost          # default http://localhost
+```
+
+**Developer check (laptop).** Build the payload flow in your local UI first (5 Python nodes, no LLM, no RAG) and note its graph id.
+
+```bash
+python benchmark/bench.py dev --graph payload=<id> --note "before fix"
+# ... change code ...
+python benchmark/bench.py dev --graph payload=<id> --note "after fix"
+python benchmark/bench.py compare benchmark/results/<before-run> benchmark/results/<after-run>
+```
+
+Defaults: 100 sessions, 25 in flight, no ladder, no verdict. Options: `--sessions N`, `--concurrency N`, `--no-restart`, `--no-build`, `--case <name-or-path>` (default `dev`).
+
+**Server capacity run.**
+
+```bash
+python benchmark/bench.py preflight benchmark/cases/server.toml
+python benchmark/bench.py plan benchmark/cases/server.toml
+python benchmark/bench.py run benchmark/cases/server.toml --note "after EST-1234"
+python benchmark/bench.py compare benchmark/results/<run-a> benchmark/results/<run-b>
+python benchmark/bench.py push benchmark/results/<run-a>
+```
+
+A case argument is used as a path if it exists, otherwise looked up under `benchmark/cases/`; `server` and `server.toml` therefore work from anywhere. Graph ids come from the case file or `--graph <phase>=<id>` (repeatable), for example `--graph payload=17 --graph complex=18`.
+
+| Command | What it does |
+|---|---|
+| `preflight <case>` | Host and stack checks without running load. Exit 2 on any error. |
+| `plan <case>` | Prints variants, ladder levels per phase and the worst-case duration. Does not touch the stack. |
+| `smoke <case>` | First variant only, ladder cut to its first level, no bisect. |
+| `run <case>` | Full run, one run folder per variant. |
+| `dev` | Developer check: payload phase only, fixed load, no verdict. |
+| `compare <run>...` | Terminal comparison; the first run is the baseline, the others show Δ %. |
+| `push <run>... [--yes]` | Copies run folders into the results repo, section 3 step 8. |
+
+`preflight`, `plan`, `smoke` and `run` accept `--graph PHASE=ID`, `--variant a,b`, `--set KEY=VALUE` (repeatable), `--ref <git-ref>`, `--note`, `--no-build`, `--no-smoke`. `--set` and `--ref` add an ad-hoc variant named `<variant>-adhoc` on top of the chosen ones.
+
+Exit codes: 0 ok, 2 case error or pre-flight error, 3 smoke failed, 130 Ctrl+C, other non-zero on a crash.
+
+## 3. Server setup
+
+Done once, on the machine that runs the benchmark and pushes results.
+
+1. Deploy key:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/epicstaff_benchmarks -N "" -C "epicstaff-perfomance benchmarks"
+   ```
+2. GitHub, `EpicStaff/epicstaff-benchmarks`, Settings, Deploy keys, Add. Paste `~/.ssh/epicstaff_benchmarks.pub` and tick **Allow write access** (needs repo admin).
+3. `~/.ssh/config`:
+   ```
+   Host github-benchmarks
+     HostName github.com
+     User git
+     IdentityFile ~/.ssh/epicstaff_benchmarks
+     IdentitiesOnly yes
+   ```
+   Test with `ssh -T github-benchmarks`. If port 22 is blocked, use `HostName ssh.github.com` and `Port 443`.
+4. Clone and set the commit identity:
+   ```bash
+   git clone github-benchmarks:EpicStaff/epicstaff-benchmarks.git ~/epicstaff-benchmarks
+   git -C ~/epicstaff-benchmarks config user.name "EpicStaff Benchmarks"
+   git -C ~/epicstaff-benchmarks config user.email "<address>"
+   ```
+5. In `~/.bashrc`: `export BENCH_RESULTS_REPO=~/epicstaff-benchmarks`
+6. API key: create one in the EpicStaff UI for the benchmark organization. Keep it in `~/.epicstaff-bench.env` with `chmod 600`, containing `export DJANGO_API_KEY=...` and `export BENCH_ORG_ID=...`. Run `source ~/.epicstaff-bench.env` before a run.
+7. Flows: build both flows in the UI. This is the operator's job, on every server: the payload flow, the `complex` flow with its LLM config and key, and its RAG collection. Put their graph ids into `benchmark/cases/server.toml` (or pass `--graph`). The smoke run proves each flow completes.
+8. Run: `python3 benchmark/bench.py preflight benchmark/cases/server.toml`, then `plan`, then `run --note "..."`, then `push`.
+
+Never put secrets into case files: a copy of the file is stored in every run folder as `case.toml`.
+
+The first live run on a server should be watched. The orchestration paths (docker, compose, live API) have no automated tests; only the analysis, ladder, config and env-restore logic do (`python -m unittest discover -s benchmark -p "test_*.py"`).
+
+## 4. Case file reference
+
+TOML. Unknown keys in `[ladder]`, `[pass]`, `[abort]`, `[dev]` are rejected, so typos fail fast. Defaults below are the code defaults; `benchmark/cases/server.toml` overrides some of them (shown in the last column).
+
+### Top level
+
+| Key | Default | Meaning |
+|---|---|---|
+| `name` | required | Case name, part of the run folder name. |
+| `kind` | `"capacity"` | `capacity` (ladder, verdict) or `dev` (one fixed load, no verdict). |
+
+### `[env]`
+
+`.env` overrides applied to `src/.env` for every phase of every variant, and restored afterwards. Values may be strings, numbers or booleans. A variant's `env` is merged on top. Keys that are not in the allowlist (`*_LOG_LEVEL`, `CREW_MAX_CONCURRENT_SESSIONS`, `AGENT_MAX_CONCURRENT_RUNS`, `*_SGI_WORKERS`, `KNOWLEDGE_MAX_PROCESS_WORKERS`, `*_CPUS`, `*_MEM_LIMIT`) keep their name but never their value in `meta.json`.
+
+| Key in `server.toml` | Value | Why |
+|---|---|---|
+| `CREW_MAX_CONCURRENT_SESSIONS` | `100000` | Otherwise the ladder measures crew's cap (default 25). |
+| `AGENT_MAX_CONCURRENT_RUNS` | `100000` | Otherwise agents stall at 10 runs per replica. |
+| `DJANGO_LOG_LEVEL`, `CREW_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `SANDBOX_LOG_LEVEL` | `"BENCH"` | Turns the checkpoint lines on (section 8). `dev.toml` sets the four log levels only. |
+
+### `[ladder]`
+
+| Key | Default | `server.toml` | Meaning |
+|---|---|---|---|
+| `start` | 25 | 25 | First concurrency level (sessions held in flight). |
+| `factor` | 2.0 | 2 | Next level = `round(level x factor)` (at least +1). Must be > 1. |
+| `max` | 20000 | 20000 | Hard ceiling. Must be >= `start`. |
+| `hold_s` | 180 | 180 | Measured window per level. |
+| `settle_s` | 30 | 30 | Excluded from stats after each level change. Raised automatically to the smoke run's p95 session time (not when `--no-smoke`). |
+| `baseline_s` | 20 | 20 | Baseline sampling before load. |
+| `cooldown_s` | 120 | 120 | Sampling after drain. `dev.toml`: 10. |
+| `bisect_steps` | 2 | 2 | Refinement probes between last pass and first fail. |
+| `session_timeout_s` | 900 | 900 | A session older than this is stopped and counted as failed `timeout`. `dev.toml`: 300. |
+
+### `[pass]` (all must hold in the measured window)
+
+| Key | Default | `server.toml` | Meaning |
+|---|---|---|---|
+| `p95_e2e_s` | none (rule off) | 120 | p95 end-to-end seconds. |
+| `p95_queue_wait_s` | none (rule off) | 5 | p95 seconds waiting for a crew slot. |
+| `max_error_rate` | 0.01 | 0.01 | Failed share of measured sessions. |
+
+A `[[phase]]` can override any of these with `pass = { ... }`.
+
+### `[abort]` (any one stops the level at once)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `error_rate_30s` | 0.05 | Error rate over the last 30 s (needs 20 finished sessions; not used in fallback mode). |
+| `host_min_available_ram_pct` | 5 | Host available RAM floor. |
+| `container_restart` | true | Any container restart or OOM kill. |
+| `generator_lag_p99_ms` | 500 | p99 of `sent_ts - intended_ts`. Above it the level is `invalid` ("generator-limited"), the ladder stops, and no server verdict is given for it. |
+
+### `[dev]`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `sessions` | 100 | Sessions to start (`--sessions` overrides). |
+| `concurrency` | 25 | Sessions in flight (`--concurrency` overrides). |
+
+### `[[phase]]` (at least one; names unique)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `name` | required | Phase name. `--graph <name>=<id>` refers to it. |
+| `graph_id` | required (case file or `--graph`) | Positive integer. Server-specific. |
+| `variables` | none | Table sent as the session's start variables. |
+| `pass` | `{}` | Per-phase override of `[pass]`. |
+
+`server.toml` has two sequential phases with separate verdicts: `payload` (a big payload through 5 Python nodes, no LLM) and `complex` (start-node variables only; the flow calls agents, RAG and so on; `pass = { p95_e2e_s = 300 }`). `dev.toml` has `payload` only.
+
+### `[[variant]]` (one run per variant; default is a single `default`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `name` | required | Part of the run folder name. |
+| `env` | `{}` | Extra `.env` overrides for this variant. |
+| `ref` | none | Git ref to build in a temporary worktree. |
+
+### Case hash and graph hash
+
+- **Case hash** = SHA-256 of the parsed TOML without `[[variant]]` and without the phases' `graph_id`, so all variants of one case share it and a server-specific graph id does not matter. It hashes what is in the file, not the effective values: writing a default explicitly (for example `factor = 2.0` where the file had nothing) changes the hash and makes two runs look like different workloads.
+- **Graph hash** is recorded per phase: the runner reads `GET /api/graphs/<id>/` and hashes the response without timestamps and `save_version`. A UI edit between two runs changes it and the viewer shows "different workload".
+
+## 5. How a run works
+
+`run` executes this per variant:
+
+1. **Pre-flight.** Errors stop the run, warnings are printed. Host checks: docker reachable, no leftover `src/.env.bench-backup`, load1 not above half the vCPUs, at least 20 % RAM available (the load and RAM checks need `/proc`, so they are Linux-only). After the build: containers healthy, each phase graph readable (this is also where a wrong id, org or rejected API key shows up), no leftover `pending`/`run` sessions on the phase graphs, container log driver `json-file` or `local`. Warnings: BENCH not active on a service, `CREW_MAX_CONCURRENT_SESSIONS` or `AGENT_MAX_CONCURRENT_RUNS` below `ladder.max`, no container memory limits (a break can then take the host down; the host-RAM abort guard is the only protection).
+2. **Env and build.** `src/.env` is backed up to `src/.env.bench-backup`, the overrides are written, and `docker compose up -d --build` runs (`--no-build` skips the build and labels the run `build-unverified`). If a previous run crashed hard and left the backup behind, the next run refuses to start and prints `mv src/.env.bench-backup src/.env`; check the file, then do that.
+3. **Resolve graphs** and record the graph hash per phase.
+4. **Smoke** (skip with `--no-smoke`): per phase, concurrency 2 for 60 s. The run stops with exit 3 if no session ends with `end`, any session fails, or a checkpoint is missing from a service that has BENCH active. The reason is printed, for example a missing LLM key or RAG collection on this server.
+5. **Per phase**, one *segment* for the ladder and one for every bisect probe. Each segment: restart `django_app crew agent sandbox knowledge_new` and wait healthy, one cold session (recorded with `cold=1`, excluded from aggregates), baseline sampling, the ladder levels (settle + hold at each, stop at the first level that is not a pass), drain (wait for in-flight sessions up to `session_timeout_s`, then stop the rest), cooldown sampling.
+6. **Bisect.** Between the last passing level P and the first failing level F, probe `(P + F) // 2`, up to `bisect_steps`, and stop early when `(F - P) / P` is 10 % or less. Every probe starts with the restart, cold session and baseline above.
+7. **Cleanup.** The phase's sessions are deleted through the API (batches of 500).
+8. **Always** (also on Ctrl+C or a crash): stop load and log followers, restore `src/.env` from the backup, run `docker compose up -d` from the main checkout to apply the original settings, write what was collected, analyze, print `Run folder: ...`.
+
+### Ctrl+C and crashes
+
+- **Ctrl+C**: stops load, stops in-flight sessions, analyzes what was measured, prints the run folder, skips the remaining variants, exits 130. The run is labelled `interrupted`.
+- **Crash**: analyzed the same way, labelled `crashed:<ExceptionType>`, traceback printed, non-zero exit.
+
+### `--ref` runs
+
+`--ref <git-ref>` (or a variant `ref`) builds that ref in a temporary `git worktree`; `src/nginx/certs` is copied into it because it is gitignored. The worktree is removed afterwards, but the stack keeps that ref's images under the main compose file until the next `--build`. To get back to your checkout's code:
+
+```bash
+cd <your checkout>/src && docker compose up -d --build
+```
+
+### Fallback mode (branches without BENCH lines)
+
+If crew produces no `session_end` line (an old branch, or `CREW_LOG_LEVEL` not BENCH), the run does not fail. In-flight counts come from the API (`GET /api/sessions/statuses/`, once per second) and end times from the sessions list after each level. Such a phase is labelled `fallback-control:<phase>`. Limits: stuck sessions cannot be identified, so `session_timeout_s` is not enforced and `error_rate_30s` is not used; an API that stays unreachable for 10 s or more while counting fails the level. Per-node and per-stage timings are empty without BENCH lines.
+
+### Definitions
+
+| Term | Meaning |
+|---|---|
+| **Measured session** | A session sent at a level after that level's `settle_s` window (cold sessions never count). The level verdict uses only these. A level with fewer than 10 measured sessions is `invalid`; raise `hold_s`. |
+| **Throughput** | Sessions finished with status `end` per minute during the measured window of a level (`throughput_per_min`). |
+| **Platform overhead** | `platform_overhead_s` = session end-to-end time minus time spent in LLM calls. It is the number that compares branches when the LLM is noisy. |
+| **Bottleneck** | Set at the first failing level. First match wins: container restart/OOM, host RAM under the guard, host CPU at 90 % or more, a container at 90 % of its CPU limit, crew slots full with sessions queued, agent queue wait growing (p95 more than double the previous level and above 1 s), Postgres connections at 90 % of `max_connections`, otherwise "no saturated resource found". |
+| **Capacity estimate** | At the highest passing level, the smallest of these bounds, with the limiting one named: `cpu` = vCPU x p50 e2e / CPU-seconds per session; `ram` = baseline available host RAM / MB per concurrent session; `CREW_MAX_CONCURRENT_SESSIONS`; `AGENT_MAX_CONCURRENT_RUNS` (only when the phase made LLM calls). |
+| **MB per concurrent session** | Slope of container RAM against running sessions over the phase. The headline sums only containers whose fit has r² of at least 0.5; weaker fits are noise and stay out of it (they remain in `container_phases.csv`). |
+| **Cold session** | The first session after the restart; reported separately in `meta.json`. |
+
+Resource costs are means (total / finished sessions, because capacity is additive); durations are percentiles with the mean alongside. A verdict that changes between the live ladder decision and the final analysis is labelled `verdict-revised:<phase>:<level>`.
+
+## 6. Output files
+
+Each run is one flat folder in `benchmark/results/`, named `<YYYY-MM-DD_HHMM>_<host>_<ref-slug>_<sha7>_<case>-<variant>`. The file schema is version 1; the column lists are the `*_COLUMNS` constants in `analyze.py`.
+
+| File | One row per | Contents |
+|---|---|---|
+| `meta.json` | run | `schema_version`, `tool_version`, `run_id`, `created_at`, `note`, `kind`, `case` (name, hash, variant, overrides), `git` (ref, sha, dirty, built), `images`, `host` (hostname, vcpu, ram_mb, kernel, docker, virtualization), `container_limits`, `env` (allowlist only), `labels`, `smoke`, `phases` (per phase: graph id, name and hash, variables hash, verdict, provider health, capacity estimate, cold session). |
+| `case.toml` | - | The exact case file used. |
+| `sessions.csv.gz` | session | `phase, segment, level, kind, cold, session_id`, send timing (`intended_ts, sent_ts, gen_lag_ms, api_ms, http_status`), checkpoint times (`arrival_ts, received_ts, slot_ts, end_ts`), `status, censored, error_reason`, durations (`e2e_s, dispatch_s, queue_wait_s, run_s, llm_s, agent_queue_s, python_s, other_s, platform_overhead_s`), `llm_calls, tokens, cost_usd`. |
+| `steps.csv` | phase x level | `phase, segment, level, kind` (ladder, bisect, dev), `target, inflight_mean, running_mean, steady_s, sent, completed, failed, throughput_per_min, error_rate`, `p50/p90/p95/p99/max/mean` of `e2e_s, queue_wait_s, run_s, llm_s, platform_overhead_s`, `cpu_s_per_session, mb_per_concurrent, gen_lag_p99_ms, verdict` (pass, fail, invalid), `live_verdict, fail_reasons, bottleneck`. |
+| `containers.csv` | phase x level x container | `cpu_s, cpu_s_per_session, cpu_pct_mean, cpu_pct_max, mem_mean_mb, mem_peak_mb, restarts, oom_kills`. |
+| `container_phases.csv` | phase x container | `baseline_mb, mb_per_concurrent` (slope), `r2, retained_mb_after_cooldown`. |
+| `nodes.csv` | phase x level x node | `node_name, node_type, count, p50_s, p95_s, mean_s, max_s, error_count`. |
+| `timeline.csv` | sample (every 2 s) | `ts, rel_s, phase, segment, level, target, inflight, running, queued, completed, failed, host_cpu_pct, host_mem_avail_mb, host_mem_avail_pct, load1, pg_connections, pg_max_connections, redis_used_mb, runner_cpu_pct`. |
+| `container_timeline.csv` | sample x container | `ts, rel_s, phase, segment, level, container, cpu_pct, mem_mb, restarts, oom_kills`. |
+| `events_sample.csv` | checkpoint | `session_id, service, checkpoint, ts, node_name, extra_json` for a sample of sessions: 100 fastest, 100 around the median, 100 slowest, up to 150 failures, the cold ones. |
+| `events_full.csv.gz` | checkpoint | Same columns, every checkpoint. Never pushed (size); stays on the machine. |
+
+Resource sampling is every 2 s: CPU and memory from the host's cgroup v2 counters on Linux (exact CPU, sampled memory), `docker stats` on Docker Desktop. Peak memory is the sampled maximum in the window.
+
+`bench compare` prints, per phase, the headline numbers at each run's highest passing level (a dev run's single level): max passing concurrency, throughput, p50 and p95 e2e, p95 platform overhead, p95 queue wait, error rate, CPU-seconds per session, MB per concurrent session, and p50 per node. The first run is the baseline; the others show Δ %. It lists differing metadata and prints `!! different workload` when the case or graph hashes differ.
+
+## 7. Viewer
+
+`benchmark/viewer.html` is one static page (Chart.js from cdnjs, no build, no backend). `bench push` copies it to the results repo as `index.html`.
+
+- **Served mode** (the results repo): from the repo root run `python3 -m http.server`, open `http://localhost:8000/`. The page reads `benchmarks/index.json` (button "Load index.json" if it does not load by itself). It also works from GitHub Pages if the repo is public.
+- **Local mode** (dev runs, anything not pushed): open `benchmark/viewer.html` from disk, press "Open run folders..." or drop folders on the page. It accepts one run folder or a parent folder of runs (for example `benchmark/results/`). Both modes can be mixed. Opened from disk the page cannot fetch `index.json`; that is expected, use local mode.
+- **Run list**: run number (`#N` from the index, `local` for unpushed), date, kind, case and variant, ref, sha, host, note, labels. Tick runs to select them; the first selected is the baseline, change it with the radio button.
+- **Comparing runs**: tabs Verdicts, Curves, Time breakdown, Timeline, Nodes, Containers, Waterfall. A table lists every `meta.json` field that differs between the selected runs. Δ vs the baseline is shown only between runs of the same kind (green better, red worse). The LLM phase shows the provider-health flag next to the deltas.
+- **"Different workload - not comparable" banner**: shown when the case hash or any phase's graph differs between the selected runs, for example after a flow was edited in the UI, or after an explicit default was added to the case file. The comparison stays visible; read the numbers with that in mind.
+- A run with an unknown `schema_version` is refused with a message.
+
+## 8. Product side
+
+The benchmark relies on **BENCH checkpoints** in the product code: loguru records at custom level `BENCH` (15, between DEBUG and INFO), registered in `src/shared/bench_log.py`. Each is written as one compact JSON line on stdout, `{"bench":1,"ts":<epoch>,"checkpoint":"...", ...}`; the runner follows `docker logs -f` of the four instrumented containers and reads these lines.
+
+Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox`, `agent` and `django_app` (`CREW_LOG_LEVEL`, `SANDBOX_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `DJANGO_LOG_LEVEL`). `DEBUG` and `TRACE` also show them. The case files set BENCH through their `[env]` and the runner applies and restores `src/.env`, so you normally never edit it by hand. Webhook, realtime and knowledge do not accept `BENCH` (their level goes to uvicorn, which has no such level), so they are not instrumented.
+
+**At the default `INFO` level the checkpoints are not printed and not evaluated: INFO hides everything**, so production behaviour is unchanged. At BENCH the normal log lines are unchanged and the checkpoints are not duplicated into them.
+
+| Service | Checkpoints | Fields |
+|---|---|---|
+| django_app | `request_received`, `session_created`, `published` | `session_id`; `arrival_ts` (real arrival time); `received_n` (listeners that got the session) |
+| crew | `received`, `slot_acquired`, `compiled` | `session_id` |
+| crew | `session_end` | `session_id`, `status` (`end`, `cancelled`, ...), `reason` |
+| crew | `node_start`, `node_end` | `session_id`, `node_name`, `node_type`; `ok` on end |
+| crew | `agent_dispatched` | `correlation_id` (session id comes from the log context) |
+| crew | `sandbox_dispatched` | `session_id`, `execution_id` |
+| agent | `request_consumed`, `result_published` | `correlation_id`; `ok` on result |
+| agent | `llm_start`, `llm_end` | `correlation_id`, `model`; token usage, `ok`, `error_type` on end (provider errors, including 429 after retries, are counted) |
+| agent | `sandbox_dispatched` | `session_id`, `execution_id` |
+| sandbox | `exec_start`, `exec_end` | `session_id`, `execution_id`; `returncode` on end |
+
+## 9. Known limits
+
+- **No container CPU/RAM limits yet.** They come with a separate ticket. Until then a break test can push the host into OOM; the host-RAM abort guard (default 5 %) and the pre-flight warning are the only protection, and hardware presets (variants that set limit variables) are not available. Do not run a high ladder on a machine you cannot afford to lose.
+- **No repeats.** One run per configuration. Run-to-run noise is not measured; the provider-health line (LLM p95 more than 2x the smoke run's p95 sets `slow_provider`) is the only noise signal.
+- **LLM noise in `complex`.** Real provider latency and rate limits move the numbers. Compare branches on platform overhead and on the `payload` phase, which has no LLM.
+- **Generator ceiling.** The load generator is stdlib Python (64 sender threads, 30 s HTTP timeout) on the same host. When it cannot keep up, `sent_ts - intended_ts` grows; a level whose p99 lag exceeds `generator_lag_p99_ms` is marked `invalid` with "generator-limited", the ladder stops there, and no server verdict is given. The runner's own CPU is in `timeline.csv` (`runner_cpu_pct`).
+- **Linux server assumed.** Exact CPU needs the host cgroup tree; on Docker Desktop CPU comes from `docker stats` and is coarser. Host load and RAM pre-flight checks are skipped without `/proc`.
+- **Demo data.** `python benchmark/fixtures.py <dir>` writes three synthetic run folders (two capacity runs, one dev run) for trying the viewer. They are fake numbers, never push them.
+
+## Tests
+
+```bash
+python -m unittest discover -s benchmark -p "test_*.py" -v
+```
+
+## Security notes
+
+- The API key is read from `DJANGO_API_KEY` only and never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file except `events_full.csv.gz`), so it needs the variable set. It also needs `BENCH_RESULTS_REPO`.
+- `bench push` requires a clean results clone, runs `git pull --ff-only`, prints the exact `git add`, `git commit`, `git push` commands, and runs them only after you answer `y` (or pass `--yes`). It copies each run folder without `events_full.csv.gz` and rebuilds `benchmarks/index.json` (existing run numbers are kept, new runs get the next number).
+- `meta.json` keeps environment values only for the allowlist; error reasons are truncated to 300 characters.

@@ -9,6 +9,16 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+# The runner stopped the session because the run itself was stopped (Ctrl+C or a crash), not
+# because the session misbehaved: its duration is unknown, and it is not a failure.
+INTERRUPTED = "interrupted"
+# Statuses the runner sets itself. Crew's later session_end (e.g. "stop" after our stop call)
+# must not overwrite them.
+RUNNER_STATUSES = ("http_error", "timeout", INTERRUPTED)
+# Kind of the sessions sent after a level's hold, while the load is kept until the sessions
+# the hold measured have ended. They keep the load steady but are never measured.
+FINISH_KIND = "finish"
+
 
 @dataclass
 class SessionRecord:
@@ -123,8 +133,11 @@ class Controller:
                 self._pending_http += 1
             self._pool.submit(self._send, record)
 
-    def _expire(self, now: float, timeout_s: float) -> list[concurrent.futures.Future]:
-        """Time out sessions older than `timeout_s`; returns the stop futures it submitted."""
+    def _expire(
+        self, now: float, timeout_s: float, status: str = "timeout"
+    ) -> list[concurrent.futures.Future]:
+        """Stop sessions older than `timeout_s` and mark them `status`; returns the stop futures
+        it submitted."""
         if self.external_in_flight is not None:
             return []  # fallback control knows counts, not ids: nothing to expire or stop
         with self._lock:
@@ -134,7 +147,7 @@ class Controller:
             for record in expired:
                 self._in_flight.pop(record.session_id)
                 self._running.discard(record.session_id)
-                record.done_ts, record.end_status = now, "timeout"
+                record.done_ts, record.end_status = now, status
         return [self._stop_pool.submit(self._safe_stop, record.session_id) for record in expired]
 
     def _safe_stop(self, session_id: int) -> None:
@@ -164,7 +177,8 @@ class Controller:
                 "inflight": inflight,
                 "running": len(self._running),
                 "completed": sum(record.ok for record in done),
-                "failed": sum(not record.ok for record in done),
+                # as in the result files: a session stopped by an interrupt has not failed
+                "failed": sum(record.end_status not in ("end", INTERRUPTED) for record in done),
             }
 
     def recent_error_rate(
@@ -194,9 +208,10 @@ class Controller:
         abort_check: Callable[[], str | None],
         max_starts: int | None = None,
         tick_s: float = 0.25,
+        until: Callable[[], bool] | None = None,
     ) -> str | None:
         """Keep `target` sessions in flight for `duration_s` (or until `max_starts` sessions have
-        started and finished). Returns the abort reason, or None."""
+        started and finished, or until `until()` is true). Returns the abort reason, or None."""
         deadline = self._clock() + duration_s
         started = 0
         while self._clock() < deadline:
@@ -205,6 +220,8 @@ class Controller:
             reason = abort_check()
             if reason:
                 return reason
+            if until is not None and until():
+                return None
             in_flight = self.in_flight_count()
             if max_starts is not None and started >= max_starts and in_flight == 0:
                 return None
@@ -217,10 +234,11 @@ class Controller:
             time.sleep(tick_s)
         return None
 
-    def drain(self, timeout_s: float) -> int:
-        """Wait for in-flight sessions; stop the ones still running after `timeout_s`.
-        Returns the number of sessions it stopped (0 in fallback mode). Can block up to
-        `timeout_s` + 35 s + 60 s."""
+    def drain(self, timeout_s: float, stop_status: str = "timeout") -> int:
+        """Wait for in-flight sessions; stop the ones still running after `timeout_s` and mark
+        them `stop_status` (INTERRUPTED when the run itself is being stopped, so they do not
+        count as timeouts). Returns the number of sessions it stopped (0 in fallback mode).
+        Can block up to `timeout_s` + 35 s + 60 s."""
         deadline = time.monotonic() + timeout_s
         while self.in_flight_count() > 0 and time.monotonic() < deadline:
             time.sleep(0.25)
@@ -231,7 +249,7 @@ class Controller:
                 if self._pending_http == 0:
                     break
             time.sleep(0.05)
-        futures = self._expire(self._clock(), timeout_s=-1)
+        futures = self._expire(self._clock(), timeout_s=-1, status=stop_status)
         concurrent.futures.wait(futures, timeout=60)
         return len(futures)
 

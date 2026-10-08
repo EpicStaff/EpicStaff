@@ -3,7 +3,7 @@
 
 python benchmark/bench.py preflight cases/server.toml
 python benchmark/bench.py plan cases/server.toml
-python benchmark/bench.py run cases/server.toml --note "after EST-1234"
+python benchmark/bench.py run cases/server.toml --note "after the agent fix"
 python benchmark/bench.py dev --graph payload=17 --note "before fix"
 python benchmark/bench.py compare <run-folder> <run-folder> ...
 python benchmark/bench.py push <run-folder> ...

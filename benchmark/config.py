@@ -14,6 +14,7 @@ ENV_ALLOWLIST = re.compile(
     r"^(\w+_LOG_LEVEL|CREW_MAX_CONCURRENT_SESSIONS|AGENT_MAX_CONCURRENT_RUNS|\w+_SGI_WORKERS"
     r"|KNOWLEDGE_MAX_PROCESS_WORKERS|\w+_CPUS|\w+_MEM_LIMIT)$"
 )
+REDACTED = "<redacted>"
 
 
 class CaseError(ValueError):
@@ -210,6 +211,78 @@ def parse_assignments(items: list[str], value_type=str) -> dict:
 def allowlisted(env: dict[str, str]) -> dict[str, str]:
     """Values safe to store in meta.json; other keys keep their name, never their value."""
     return {key: (value if ENV_ALLOWLIST.match(key) else "<set>") for key, value in env.items()}
+
+
+def redacted_case_text(text: str) -> str:
+    """The case file to store in a run folder, which may be pushed to a shared repo.
+
+    `text` itself, unless an `[env]` or variant `env` value is outside the allowlist (it may be
+    a secret): then the parsed case written back as TOML with those values replaced by
+    REDACTED. Comments and layout are lost in that case; the case hash in meta.json is
+    always computed from the original file.
+    """
+    data = tomllib.loads(text)
+    tables = [data.get("env", {}), *(variant.get("env", {}) for variant in data.get("variant", []))]
+    secret_keys = [
+        (table, key) for table in tables for key in table if not ENV_ALLOWLIST.match(key)
+    ]
+    if not secret_keys:
+        return text
+    for table, key in secret_keys:
+        table[key] = REDACTED
+    return (
+        f'# Stored copy of the case: env values outside the allowlist are replaced by "{REDACTED}".\n'
+        "# Comments and layout of the original file are not kept.\n"
+        f"{_toml_document(data)}"
+    )
+
+
+def _toml_document(data: dict) -> str:
+    """`data` as TOML: plain keys first, then tables, then arrays of tables (TOML's order)."""
+
+    def is_table_array(value) -> bool:
+        return (
+            isinstance(value, list)
+            and bool(value)
+            and all(isinstance(item, dict) for item in value)
+        )
+
+    def assignments(table: dict) -> list[str]:
+        return [f"{_toml_key(key)} = {_toml_value(value)}" for key, value in table.items()]
+
+    plain = {
+        key: value
+        for key, value in data.items()
+        if not isinstance(value, dict) and not is_table_array(value)
+    }
+    lines = assignments(plain)
+    for key, value in data.items():
+        if isinstance(value, dict):
+            lines += ["", f"[{_toml_key(key)}]", *assignments(value)]
+        elif is_table_array(value):
+            for item in value:
+                lines += ["", f"[[{_toml_key(key)}]]", *assignments(item)]
+    return "\n".join(lines) + "\n"
+
+
+def _toml_key(key: str) -> str:
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else _toml_value(key)
+
+
+def _toml_value(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return repr(value)  # also inf and nan, which TOML spells the same way
+    if isinstance(value, str):
+        # JSON's escapes are valid TOML; TOML also needs DEL escaped, which JSON leaves raw
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
+    if isinstance(value, list):
+        return f"[{', '.join(_toml_value(item) for item in value)}]"
+    if isinstance(value, dict):
+        pairs = ", ".join(f"{_toml_key(key)} = {_toml_value(item)}" for key, item in value.items())
+        return f"{{ {pairs} }}"
+    return value.isoformat()  # TOML dates and times
 
 
 def _require(table: dict, key: str, expected_type: type, path: Path):

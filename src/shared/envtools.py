@@ -30,7 +30,8 @@ class Env:
     NONE_VALUE = "none"
     LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
     # Services that emit benchmark checkpoints (src/shared/bench_log.py) also accept BENCH (15).
-    # uvicorn has no BENCH level, so services that pass their level to uvicorn keep LOG_LEVELS.
+    # The rest keep LOG_LEVELS: webhook passes its level to uvicorn, which has no BENCH level,
+    # and realtime and knowledge_new are not instrumented.
     LOG_LEVELS_WITH_BENCH = (
         "TRACE",
         "DEBUG",

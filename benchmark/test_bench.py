@@ -3,6 +3,8 @@
 Run from the repo root:  python -m unittest discover -s benchmark -p "test_*.py"
 """
 
+import csv
+import dataclasses
 import itertools
 import json
 import shutil
@@ -10,6 +12,7 @@ import tempfile
 import textwrap
 import threading
 import time as time_module
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -389,9 +392,16 @@ class ControllerTest(unittest.TestCase):
     def test_holds_target_and_drains(self):
         fake = FakeStack(duration_s=0.05)
         controller = make_controller(fake)
+        # hold until three rounds of sessions have started, not for a fixed time: on a loaded
+        # machine the sender and timer threads can be too slow to refill within a short hold
         self.assertIsNone(
             controller.hold(
-                target=5, duration_s=0.6, timeout_s=10, abort_check=lambda: None, tick_s=0.05
+                target=5,
+                duration_s=30,
+                timeout_s=10,
+                abort_check=lambda: None,
+                tick_s=0.05,
+                until=lambda: len(controller.records) > 10,
             )
         )
         controller.drain(timeout_s=5)
@@ -514,6 +524,24 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(sorted(fake.stopped), [1, 2])
         controller.close()
 
+    def test_interrupt_drain_marks_stopped_sessions_interrupted_not_timeout(self):
+        fake = FakeStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.hold(target=2, duration_s=0.2, timeout_s=10, abort_check=lambda: None)
+        self.assertEqual(controller.drain(timeout_s=0, stop_status=load.INTERRUPTED), 2)
+        self.assertEqual({record.end_status for record in controller.records}, {load.INTERRUPTED})
+        controller.close()
+
+    def test_status_does_not_count_interrupted_sessions_as_failed(self):
+        controller = make_controller(FakeStack())
+        for status in ("end", "error", load.INTERRUPTED):
+            controller.records.append(
+                load.SessionRecord("payload", 5, "ladder", 1, 1.0, done_ts=2.0, end_status=status)
+            )
+        status = controller.status()
+        self.assertEqual((status["completed"], status["failed"]), (1, 1))
+        controller.close()
+
     def test_recent_error_rate_is_none_in_fallback_mode(self):
         controller = make_controller(FakeStack())
         controller.external_in_flight = lambda: 0
@@ -610,6 +638,17 @@ class AnalyzeTest(unittest.TestCase):
         self.assertTrue(row["censored"])
         self.assertEqual(row["e2e_s"], 30)
 
+    def test_interrupted_session_stays_interrupted_and_censored(self):
+        # crew reports the stop the runner sent; that must not turn it into a failure
+        stopped = crew_events(4, received=11.0, slot=12.0, end=30.5, status="stop")
+        events, _ = analyze.index_events(stopped)
+        row = analyze.session_row(
+            record(4, intended=10, sent=10, done=30.0, status=load.INTERRUPTED), events[4]
+        )
+        self.assertEqual(row["status"], load.INTERRUPTED)
+        self.assertTrue(row["censored"])
+        self.assertFalse(analyze.is_failed(row))
+
     def test_percentiles(self):
         self.assertIsNone(analyze.percentile([], 0.5))
         self.assertEqual(analyze.percentile([1, 2, 3, 4], 0.5), 2.5)
@@ -617,22 +656,97 @@ class AnalyzeTest(unittest.TestCase):
 
 
 class JudgeTest(unittest.TestCase):
-    def rows(self, count, e2e, status="end", lag=1.0):
+    def rows(self, count, e2e, status="end", lag=1.0, censored=False, queue_wait=0.5):
+        """`count` session rows. A censored row was still running at the window end (`e2e` is
+        its lower bound); a finished one was sent at 20 s and ended `e2e` seconds later."""
+        end = WINDOW.end_ts if censored else 20 + e2e
+        sent = end - e2e
         return [
             {
                 "phase": "payload",
                 "segment": 1,
                 "level": 10,
                 "kind": "ladder",
-                "intended_ts": 20,
+                "intended_ts": sent,
+                "sent_ts": sent,
+                "received_ts": sent + 0.1,
+                "slot_ts": sent + 0.1 + queue_wait if queue_wait is not None else None,
+                "end_ts": end,
                 "e2e_s": e2e,
-                "queue_wait_s": 0.5,
+                "queue_wait_s": queue_wait,
                 "status": status,
-                "censored": False,
+                "censored": censored,
                 "gen_lag_ms": lag,
             }
             for _ in range(count)
         ]
+
+    def running(self, count, lower_bound, queue_wait=0.5):
+        return self.rows(count, lower_bound, status=None, censored=True, queue_wait=queue_wait)
+
+    def test_window_where_nothing_finished_is_invalid_not_pass(self):
+        verdict, reasons = analyze.judge(
+            self.running(400, 60), WINDOW, PassRules(p95_e2e_s=120), AbortRules()
+        )
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("too few measured sessions", reasons[0])
+        self.assertIn("raise ladder.hold_s", reasons[0])
+
+    def test_running_sessions_already_over_the_rule_fail(self):
+        verdict, reasons = analyze.judge(
+            self.running(400, 130), WINDOW, PassRules(p95_e2e_s=120), AbortRules()
+        )
+        self.assertEqual(verdict, "fail")
+        self.assertIn("p95 e2e", reasons[0])
+
+    def test_more_than_five_percent_still_running_is_invalid(self):
+        # only after an interrupt or without end times: the runner waits for measured sessions
+        rows = self.rows(100, 5) + self.running(10, 8)
+        verdict, reasons = analyze.judge(rows, WINDOW, PassRules(p95_e2e_s=10), AbortRules())
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("p95 e2e unknown", reasons[0])
+        self.assertIn("had not ended when the level was judged", reasons[0])
+
+    def test_few_still_running_sessions_do_not_block_a_pass(self):
+        rows = self.rows(100, 5) + self.running(5, 8)
+        verdict, _ = analyze.judge(rows, WINDOW, PassRules(p95_e2e_s=10), AbortRules())
+        self.assertEqual(verdict, "pass")
+
+    def test_more_than_five_percent_still_queued_is_invalid(self):
+        # queued for 2.9 s so far: under the 5 s rule, so no breach is proven yet
+        rows = self.rows(100, 5) + self.running(10, 3, queue_wait=None)
+        verdict, reasons = analyze.judge(rows, WINDOW, PassRules(p95_queue_wait_s=5), AbortRules())
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("p95 queue wait unknown", reasons[0])
+
+    def test_queue_wait_rule_without_checkpoints_is_skipped(self):
+        rows = self.rows(100, 5, queue_wait=None) + self.running(10, 8, queue_wait=None)
+        for row in rows:
+            row["received_ts"] = None  # fallback mode: crew wrote no BENCH lines
+        verdict, _ = analyze.judge(rows, WINDOW, PassRules(p95_queue_wait_s=5), AbortRules())
+        self.assertEqual(verdict, "pass")
+
+    def test_sessions_ending_after_the_verdict_do_not_count_towards_the_minimum(self):
+        # the level was judged at the end of the hold (100 s); these ended at 220 s
+        rows = self.rows(20, 200)
+        verdict, reasons = analyze.judge(rows, WINDOW, PassRules(p95_e2e_s=300), AbortRules())
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("too few measured sessions", reasons[0])
+
+    def test_sessions_longer_than_the_hold_count_once_the_level_waited_for_them(self):
+        waited = dataclasses.replace(WINDOW, finish_end_ts=230)
+        rows = self.rows(20, 200)
+        self.assertEqual(
+            analyze.judge(rows, waited, PassRules(p95_e2e_s=300), AbortRules()), ("pass", [])
+        )
+        verdict, reasons = analyze.judge(rows, waited, PassRules(p95_e2e_s=120), AbortRules())
+        self.assertEqual(verdict, "fail")
+        self.assertIn("p95 e2e 200.0 s", reasons[0])
+
+    def test_interrupted_sessions_are_not_failures(self):
+        rows = self.rows(40, 5) + self.rows(2, 3, status=load.INTERRUPTED, censored=True)
+        verdict, reasons = analyze.judge(rows, WINDOW, PassRules(p95_e2e_s=10), AbortRules())
+        self.assertEqual((verdict, reasons), ("pass", []))
 
     def test_pass(self):
         self.assertEqual(
@@ -820,6 +934,71 @@ class RobustnessTest(unittest.TestCase):
         self.assertIsNone(metrics["crew"]["restarts"])
         self.assertIsNone(metrics["crew"]["oom_kills"])
 
+    def test_interrupted_sessions_are_reported_apart_from_failures(self):
+        data = synthetic_run(mem_slope=0.3)
+        for session_id in (90, 91):  # still running when Ctrl+C stopped the drain
+            data.records.append(
+                record(session_id, intended=60, sent=60, done=105, status=load.INTERRUPTED)
+            )
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual((step["failed"], step["interrupted"]), ("0", "2"))
+        self.assertEqual(float(step["error_rate"]), 0)
+        self.assertNotEqual(step["verdict"], "fail")
+
+    def test_finish_sessions_are_not_measured(self):
+        data = synthetic_run(mem_slope=0.3)
+        data.windows[0].finish_end_ts = 140
+        # sent while the level waited for its measured sessions: slow and failing, never counted
+        for session_id in (80, 81):
+            data.records.append(
+                record(
+                    session_id,
+                    intended=101,
+                    sent=101,
+                    done=139,
+                    status="error",
+                    kind=load.FINISH_KIND,
+                )
+            )
+        # same kind as the level but sent after the hold ended: outside the measured window
+        data.records.append(record(82, intended=102, sent=102, done=138, status="error"))
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual((step["sent"], step["failed"], step["verdict"]), ("12", "0", "pass"))
+
+    def test_stored_case_redacts_env_values_outside_the_allowlist(self):
+        text = CASE_TOML.replace(
+            'CREW_LOG_LEVEL = "BENCH"', 'CREW_LOG_LEVEL = "BENCH"\nDB_PASSWORD = "hunter2"'
+        ).replace(
+            "env = { CREW_MAX_CONCURRENT_SESSIONS = 50 }",
+            'env = { CREW_MAX_CONCURRENT_SESSIONS = 50, OPENAI_API_KEY = "sk-secret" }',
+        )
+        case = config.load_case(write_case(text))
+        data = synthetic_run(mem_slope=0.3)
+        data.case = case
+        data.meta["case"] = {"hash": case.case_hash}
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        stored = (out / "case.toml").read_text(encoding="utf-8")
+        self.assertNotIn("hunter2", stored)
+        self.assertNotIn("sk-secret", stored)
+        expected = tomllib.loads(text)
+        expected["env"]["DB_PASSWORD"] = config.REDACTED
+        expected["variant"][1]["env"]["OPENAI_API_KEY"] = config.REDACTED
+        self.assertEqual(tomllib.loads(stored), expected)  # nothing else changed
+        meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["case"]["hash"], config.case_hash(tomllib.loads(text)))
+
+    def test_stored_case_without_secrets_is_an_exact_copy(self):
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(synthetic_run(mem_slope=0.3), out)
+        self.assertEqual((out / "case.toml").read_text(encoding="utf-8"), CASE_TOML)
+
     def test_analyze_does_not_mutate_input_labels(self):
         data = synthetic_run(mem_slope=0.3, labels=["mine"])
         data.windows[0].live_verdict = "fail"
@@ -947,6 +1126,13 @@ class PushTest(unittest.TestCase):
         content = "a" * (push.CHUNK_SIZE - 500) + secret + "b" * 100
         csv_path.write_text(content, encoding="utf-8")
         self.assertTrue(push.contains_secret(run_dir, secret))
+
+    def test_secret_in_a_subfolder_is_found(self):
+        # push copies subfolders too, so the scan must look into them
+        run_dir = fake_run(Path(tempfile.mkdtemp()), "nested", 100, 1.0)
+        (run_dir / "extra").mkdir()
+        (run_dir / "extra" / "notes.txt").write_text("key=secret-key-789", encoding="utf-8")
+        self.assertTrue(push.contains_secret(run_dir, "secret-key-789"))
 
     def test_corrupt_gzip_raises_system_exit(self):
         folder = Path(tempfile.mkdtemp())
@@ -1126,11 +1312,9 @@ class PlanTest(unittest.TestCase):
 
     def test_run_dir_name_is_slugged(self):
         name = runner.run_dir_name(
-            "2026-10-07_1432", "host", "feat/EST-4430-x", "a1b2c3d4", "server-capacity", "default"
+            "2026-10-07_1432", "host", "feat/bench-x", "a1b2c3d4", "server-capacity", "default"
         )
-        self.assertEqual(
-            name, "2026-10-07_1432_host_feat-EST-4430-x_a1b2c3d_server-capacity-default"
-        )
+        self.assertEqual(name, "2026-10-07_1432_host_feat-bench-x_a1b2c3d_server-capacity-default")
 
 
 class SmokeJudgementTest(unittest.TestCase):
@@ -1192,6 +1376,10 @@ class WorktreeCertsTest(unittest.TestCase):
 class FakeSessionsApi:
     def __init__(self, counts=None, rows=None):
         self.counts, self.rows = list(counts or []), rows or []
+        self.stopped = []
+
+    def stop_session(self, session_id):
+        self.stopped.append(session_id)
 
     def in_flight(self, graph_id):
         value = self.counts.pop(0)
@@ -1268,6 +1456,172 @@ class FallbackApiTest(unittest.TestCase):
         self.assertEqual((records[2].end_status, records[2].done_ts), ("timeout", None))
         self.assertEqual((records[3].end_status, records[3].done_ts), (None, None))
         self.assertEqual((records[4].end_status, records[4].done_ts), ("http_error", None))
+
+    def test_interrupt_in_fallback_mode_stops_the_sessions_the_api_still_runs(self):
+        rows = [
+            {"id": 1, "status": "run", "finished_at": None},
+            {"id": 2, "status": "end", "finished_at": "2026-10-07T10:00:00Z"},
+            {"id": 3, "status": "pending", "finished_at": None},
+            {"id": 9, "status": "run", "finished_at": None},  # another client's session
+        ]
+        fake_api = FakeSessionsApi(rows=rows)
+        phase_runner = make_phase_runner(fake_api)
+        records = []
+        for session_id in (1, 2, 3):
+            session_record = load.SessionRecord("payload", 25, "ladder", 1, intended_ts=1.0)
+            session_record.session_id = session_id
+            records.append(session_record)
+        phase_runner._stop_unfinished(records)
+        self.assertEqual(fake_api.stopped, [1, 3])
+        self.assertEqual(
+            [session_record.end_status for session_record in records],
+            [load.INTERRUPTED, "end", load.INTERRUPTED],
+        )
+
+
+class FinishExtensionTest(unittest.TestCase):
+    """After the hold, a level keeps its load until the sessions it measured have ended."""
+
+    def hold_window(self, controller, target):
+        start = time_module.time()
+        controller.hold(target, 0.1, 10, abort_check=lambda: None, tick_s=0.02)
+        return analyze.Window("payload", 5, "ladder", 1, start, start, time_module.time())
+
+    def test_live_verdict_waits_for_the_measured_sessions_to_end(self):
+        class SlowFirstStack(FakeStack):
+            calls = 0
+
+            def start(self):
+                self.duration_s = 0.5 if self.calls == 0 else 0.05
+                self.calls += 1
+                return super().start()
+
+        fake = SlowFirstStack()
+        controller = make_controller(fake)
+        phase_runner = make_phase_runner(FakeSessionsApi())
+        window = self.hold_window(controller, target=2)
+        self.assertIsNone(phase_runner._finish_measured(controller, window, lambda: None))
+        controller.close()
+        measured = [record for record in controller.records if window.measures(vars(record))]
+        self.assertTrue(all(record.end_status == "end" for record in measured))
+        slowest_end = max(record.done_ts for record in measured)
+        self.assertGreater(slowest_end, window.end_ts)  # ended after the hold
+        self.assertGreaterEqual(window.finish_end_ts, slowest_end)  # and the verdict waited
+        finish = [record for record in controller.records if record.kind == load.FINISH_KIND]
+        self.assertTrue(finish)  # the second slot kept running while the first one finished
+        # >=: the Windows clock can give the first one the same reading as the hold's end
+        self.assertTrue(all(record.intended_ts >= window.end_ts for record in finish))
+        self.assertFalse(any(window.measures(vars(record)) for record in finish))
+        rows = analyze.build_rows(controller.records, [], now=window.finish_end_ts)
+        self.assertFalse(any(row["censored"] for row in analyze.measured(rows, window)))
+
+    def test_measured_sessions_still_running_at_the_cap_time_out_and_fail_the_level(self):
+        fake = FakeStack(duration_s=None)  # never ends
+        controller = make_controller(fake)
+        phase_runner = make_phase_runner(FakeSessionsApi())
+        ladder = dataclasses.replace(phase_runner.case.ladder, session_timeout_s=0.3)
+        phase_runner.case = dataclasses.replace(phase_runner.case, ladder=ladder)
+        window = self.hold_window(controller, target=12)
+        phase_runner._finish_measured(controller, window, lambda: None)
+        controller.close()
+        measured = [record for record in controller.records if window.measures(vars(record))]
+        self.assertEqual(len(measured), 12)
+        self.assertEqual({record.end_status for record in measured}, {"timeout"})
+        self.assertLessEqual({record.session_id for record in measured}, set(fake.stopped))
+        rows = analyze.build_rows(controller.records, [], now=window.finish_end_ts)
+        # a loaded test machine delays the sender threads; the lag guard is not under test here
+        no_lag_guard = AbortRules(generator_lag_p99_ms=float("inf"))
+        verdict, reasons = analyze.judge(
+            analyze.measured(rows, window), window, PassRules(), no_lag_guard
+        )
+        self.assertEqual(verdict, "fail", reasons)
+        self.assertIn("error rate 100.0%", reasons[0])
+
+
+def live_verdict(data, window, rules):
+    """The verdict the runner takes at the end of a level, from what it knows by then."""
+    now = window.verdict_ts
+    records = [
+        dataclasses.replace(item, done_ts=None, end_status=None) if item.done_ts > now else item
+        for item in data.records
+        if item.intended_ts <= now
+    ]
+    events = [event for event in data.events if float(event["ts"]) <= now]
+    rows = analyze.build_rows(records, events, now=now)
+    return analyze.judge(analyze.measured(rows, window), window, rules, data.case.abort)[0]
+
+
+class FixtureReplayTest(unittest.TestCase):
+    def test_live_and_final_verdicts_agree(self):
+        # 12 s payload and 24 s complex sessions, 180 s hold: the case that stalled the ladder
+        data = fixtures.build_run("replay", "server.toml", (10, 20, 40), 40, 1, "ladder")
+        rules = {phase.name: phase.pass_rules for phase in data.case.phases}
+        final_rows = analyze.build_rows(data.records, data.events)
+        verdicts = {}
+        for window in data.windows:
+            final, _ = analyze.judge(
+                analyze.measured(final_rows, window), window, rules[window.phase], data.case.abort
+            )
+            live = live_verdict(data, window, rules[window.phase])
+            verdicts[(window.phase, window.level)] = (live, final)
+        expected = {}
+        for phase in ("payload", "complex"):
+            expected |= {(phase, 10): ("pass", "pass"), (phase, 20): ("pass", "pass")}
+            expected[(phase, 40)] = ("fail", "fail")
+        self.assertEqual(verdicts, expected)
+
+
+class RunVariantSaveTest(unittest.TestCase):
+    def test_second_interrupt_still_writes_the_run_folder_before_the_stack_is_reapplied(self):
+        repo = Path(tempfile.mkdtemp())
+        (repo / "src").mkdir()
+        env_path = repo / "src" / ".env"
+        env_path.write_text("A=1\n", encoding="utf-8")
+        results = repo / "results"
+        case = config.load_case(write_case())
+        options = runner.Options(
+            "http://x", "key", "1", build=False, smoke=False, results_dir=results, repo=repo
+        )
+        folders_when_reapplied = []
+
+        def compose_up(build):
+            if env_path.read_text(encoding="utf-8") == "A=1\n":  # the original .env is back
+                folders_when_reapplied.append(
+                    sorted(path.name for path in results.iterdir()) if results.exists() else []
+                )
+
+        compose = mock.Mock()
+        compose.up.side_effect = compose_up
+        compose.images.side_effect = KeyboardInterrupt  # the second Ctrl+C
+        phase_runner = mock.Mock(fallback=False, records=[], windows=[], segments=[], events=[])
+        phase_runner.timeline, phase_runner.container_timeline = [], []
+        phase_runner.run_capacity.side_effect = KeyboardInterrupt  # the first Ctrl+C
+        host_facts = {
+            "docker_ok": True,
+            "load1": None,
+            "vcpu": 4,
+            "mem_avail_pct": None,
+            "backup_exists": False,
+        }
+        git = {"ref": "dev", "sha": "abc1234", "dirty": False}
+        with (
+            mock.patch.object(runner, "_host_facts", return_value=host_facts),
+            mock.patch.object(runner, "_resolve_graphs", return_value={}),
+            mock.patch.object(runner, "_stack_facts", return_value={}),
+            mock.patch.object(runner, "evaluate_stack", return_value=[]),
+            mock.patch.object(runner, "PhaseRunner", return_value=phase_runner),
+            mock.patch.object(runner.stack, "Compose", return_value=compose),
+            mock.patch.object(runner.stack, "detect_project", return_value="src"),
+            mock.patch.object(runner.stack, "git_info", return_value=git),
+            mock.patch.object(runner.stack, "host_info", return_value={"hostname": "host"}),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            runner.run_variant(case, case.variants[0], options)
+        self.assertEqual(env_path.read_text(encoding="utf-8"), "A=1\n")
+        (run_dir,) = results.iterdir()
+        self.assertEqual(folders_when_reapplied, [[run_dir.name]])
+        meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+        self.assertIn("interrupted", meta["labels"])
 
 
 class WorktreeCleanupTest(unittest.TestCase):
