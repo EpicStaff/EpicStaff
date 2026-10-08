@@ -57,6 +57,7 @@
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
               "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
+              "node_modules/driver.js/dist/driver.css",
               "src/styles.scss"
             ],
             "scripts": [],

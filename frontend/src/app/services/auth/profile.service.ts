@@ -104,6 +104,13 @@ export class ProfileService {
         return this.http.delete<void>(`${this.baseUrl}avatar/`).pipe(tap(() => this.updateUser({ avatar_url: null })));
     }
 
+    /** Idempotent: the backend returns the full profile, which replaces the cached user. */
+    markQuickStartTourCompleted(): Observable<GetMeResponse> {
+        return this.http
+            .post<GetMeResponse>(`${this.baseUrl}quickstart-tour/complete/`, null)
+            .pipe(tap((user) => this.setUser(user)));
+    }
+
     requestPasswordChange(dto: PasswordChangeVerifyRequest): Observable<PasswordChangeVerifyResponse> {
         return this.http.post<PasswordChangeVerifyResponse>(`${this.baseUrl}password-change/request/`, dto);
     }

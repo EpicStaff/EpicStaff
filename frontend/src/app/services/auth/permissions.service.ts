@@ -112,6 +112,13 @@ export class PermissionsService implements StorageService {
         );
     }
 
+    /** Quickstart creates LLM configs and then updates the defaults, so it needs both. */
+    canApplyQuickstart(): boolean {
+        return (
+            this.can(ResourceCode.LlmConfigs, ActionCode.Create) && this.can(ResourceCode.LlmConfigs, ActionCode.Update)
+        );
+    }
+
     get isSuperadmin(): boolean {
         return this._isSuperadmin();
     }

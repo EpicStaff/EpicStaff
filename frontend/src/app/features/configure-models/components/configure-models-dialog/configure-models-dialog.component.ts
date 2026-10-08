@@ -6,6 +6,7 @@ import { AppSvgIconComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../quick-start-tour/quick-start-tour-anchors';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { ConfigureModelsTab } from '../../interfaces/configure-models-tab.interface';
 import { DefaultLlmsSectionComponent } from '../default-llms-section/default-llms-section.component';
@@ -37,6 +38,7 @@ export class ConfigureModelsDialogComponent implements OnInit {
     private readonly permissionService = inject(PermissionsService);
 
     public readonly tabIds = ConfigureModelsTabId;
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
     public readonly tabs: ConfigureModelsTab[] = [
         {
             id: ConfigureModelsTabId.QUICKSTART,

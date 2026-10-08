@@ -13,8 +13,24 @@ export const SETTINGS_DIALOG_SIZE = {
 })
 export class ConfigureModelsDialogService {
     private readonly dialog: Dialog = inject(Dialog);
+    private openDialogRef: DialogRef<void> | null = null;
 
+    /**
+     * Opens the Settings dialog, or returns the already open one — there is only ever one. The Quick Start tour
+     * relies on this: clicking the Settings icon during the tour runs both the sidenav handler and the tour's own.
+     */
     public open(): DialogRef<void> {
-        return this.dialog.open<void>(ConfigureModelsDialogComponent, SETTINGS_DIALOG_SIZE);
+        if (this.openDialogRef) {
+            return this.openDialogRef;
+        }
+
+        const dialogRef = this.dialog.open<void>(ConfigureModelsDialogComponent, SETTINGS_DIALOG_SIZE);
+        this.openDialogRef = dialogRef;
+        dialogRef.closed.subscribe(() => (this.openDialogRef = null));
+        return dialogRef;
+    }
+
+    public close(): void {
+        this.openDialogRef?.close();
     }
 }

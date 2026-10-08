@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.functions import Lower
+from django.utils import timezone
 from loguru import logger
 
 from rbac.access.resolver import PermissionResolver
@@ -117,6 +118,21 @@ class UserProfileService:
             display_name is None,
         )
         return user
+
+    def complete_quickstart_tour(self, user) -> None:
+        """Record that the user finished or skipped the Quick Start tour.
+
+        Idempotent: the first timestamp wins. The conditional UPDATE runs as a
+        single statement, so concurrent calls (two tabs closing the tour at once)
+        cannot overwrite it. `updated_at` is deliberately left alone — this is a
+        UI preference, not a profile edit.
+        """
+        User = get_user_model()  # noqa: N806
+        marked = User.objects.filter(pk=user.pk, quickstart_tour_completed_at__isnull=True).update(
+            quickstart_tour_completed_at=timezone.now()
+        )
+        if marked:
+            logger.info("profile.quickstart_tour_completed user_id={}", user.pk)
 
     # ---- avatar ----
 

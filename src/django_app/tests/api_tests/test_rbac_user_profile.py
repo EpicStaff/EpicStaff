@@ -8,11 +8,13 @@ created via the ApiKey model directly.
 """
 
 import io
+from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -600,6 +602,101 @@ class TestPasswordChangeConfirm:
 
 
 # ===========================================================================
+# TestProfileQuickstartTourComplete
+# ===========================================================================
+
+
+@pytest.mark.django_db
+class TestProfileQuickstartTourComplete:
+    URL = "/api/profile/quickstart-tour/complete/"
+    PROFILE_URL = "/api/profile/"
+
+    def test_fresh_user_profile_reports_tour_not_completed(
+        self, authed_client, member_acme
+    ):
+        resp = authed_client(member_acme).get(self.PROFILE_URL)
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["quickstart_tour_completed"] is False
+
+    def test_post_marks_tour_completed_and_returns_profile(
+        self, authed_client, member_acme
+    ):
+        client = authed_client(member_acme)
+        resp = client.post(self.URL)
+        assert resp.status_code == status.HTTP_200_OK
+        body = resp.json()
+        assert body["id"] == member_acme.id
+        assert body["quickstart_tour_completed"] is True
+        member_acme.refresh_from_db()
+        assert member_acme.quickstart_tour_completed_at is not None
+        assert client.get(self.PROFILE_URL).json()["quickstart_tour_completed"] is True
+
+    def test_second_post_keeps_first_timestamp(self, authed_client, member_acme):
+        client = authed_client(member_acme)
+        client.post(self.URL)
+        member_acme.refresh_from_db()
+        first_completed_at = member_acme.quickstart_tour_completed_at
+
+        resp = client.post(self.URL)
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["quickstart_tour_completed"] is True
+        member_acme.refresh_from_db()
+        assert member_acme.quickstart_tour_completed_at == first_completed_at
+
+    def test_post_does_not_overwrite_an_existing_timestamp(
+        self, authed_client, member_acme
+    ):
+        earlier = timezone.now() - timedelta(days=30)
+        member_acme.quickstart_tour_completed_at = earlier
+        member_acme.save(update_fields=["quickstart_tour_completed_at"])
+
+        authed_client(member_acme).post(self.URL)
+        member_acme.refresh_from_db()
+        assert member_acme.quickstart_tour_completed_at == earlier
+
+    def test_post_does_not_touch_updated_at(self, authed_client, member_acme):
+        updated_at_before = member_acme.updated_at
+        authed_client(member_acme).post(self.URL)
+        member_acme.refresh_from_db()
+        assert member_acme.updated_at == updated_at_before
+
+    def test_post_marks_only_the_caller(
+        self, authed_client, member_acme, orphan_user
+    ):
+        authed_client(member_acme).post(self.URL)
+        orphan_user.refresh_from_db()
+        assert orphan_user.quickstart_tour_completed_at is None
+
+    def test_user_api_key_marks_the_key_owner(
+        self, api_client, member_acme, issue_api_key
+    ):
+        raw_key, _ = issue_api_key(user=member_acme)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+        resp = api_client.post(self.URL)
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["id"] == member_acme.id
+        member_acme.refresh_from_db()
+        assert member_acme.quickstart_tour_completed_at is not None
+
+    def test_returns_401_when_unauthenticated(self, api_client):
+        resp = api_client.post(self.URL)
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_returns_403_for_env_api_key(
+        self, api_client, env_api_key_credentials, member_acme
+    ):
+        api_client.credentials(HTTP_X_API_KEY=env_api_key_credentials)
+        resp = api_client.post(self.URL)
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        member_acme.refresh_from_db()
+        assert member_acme.quickstart_tour_completed_at is None
+
+    def test_get_is_not_allowed(self, authed_client, member_acme):
+        resp = authed_client(member_acme).get(self.URL)
+        assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+# ===========================================================================
 # TestRemovedEndpoints — sanity guard against re-registration
 # ===========================================================================
 
@@ -650,6 +747,23 @@ def test_profile_valid_header_returns_active_permissions(
     # regular_user is Org Admin (conftest) — should have export on flows.
     assert body["active_permissions"]["role"]["name"] == "Org Admin"
     assert "export" in body["active_permissions"]["permissions"]["flows"]
+
+
+@pytest.mark.django_db
+def test_quickstart_tour_complete_keeps_active_org_context(
+    auth_client, regular_user, default_org
+):
+    # The frontend replaces its cached profile with this response, so it must
+    # carry the same active-org data as GET /api/profile/.
+    response = auth_client.post(
+        "/api/profile/quickstart-tour/complete/",
+        HTTP_X_ORGANIZATION_ID=str(default_org.id),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["quickstart_tour_completed"] is True
+    assert body["active_organization_id"] == default_org.id
+    assert body["active_permissions"]["role"]["name"] == "Org Admin"
 
 
 @pytest.mark.django_db
