@@ -120,9 +120,24 @@ def test_scan_finds_author_exposing_serializers():
     } <= names
 
 
+# Renders the authorship a graph version recorded, for the version preview only: it is never
+# a change-detection state or an internal payload, so it has no id-only rendering to keep.
+RECORDED_AUTHORSHIP_CLASS_NAMES = frozenset({"GraphVersionNodeAuthorshipSerializer"})
+
+
+def test_recorded_authorship_exemptions_name_scanned_serializers():
+    names = {serializer_class.__name__ for serializer_class in AUTHOR_EXPOSING_CLASSES}
+
+    assert RECORDED_AUTHORSHIP_CLASS_NAMES <= names
+
+
 @pytest.mark.parametrize(
     "serializer_class",
-    AUTHOR_EXPOSING_CLASSES,
+    [
+        serializer_class
+        for serializer_class in AUTHOR_EXPOSING_CLASSES
+        if serializer_class.__name__ not in RECORDED_AUTHORSHIP_CLASS_NAMES
+    ],
     ids=lambda serializer_class: serializer_class.__name__,
 )
 def test_change_detection_state_keeps_the_author_id(serializer_class):

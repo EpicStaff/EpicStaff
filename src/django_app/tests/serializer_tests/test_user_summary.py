@@ -54,8 +54,11 @@ def test_summary_without_request_has_relative_avatar_url(author):
 @pytest.mark.parametrize("display_name", ["", None])
 def test_blank_display_name_renders_as_null_without_email_fallback(display_name, django_user_model):
     user = django_user_model.objects.create_user(
-        email="nameless@example.com", password="StrongPass123!", display_name=display_name
+        email="nameless@example.com", password="StrongPass123!"
     )
+    # `create_user` derives a name from the email; a blank one is only reachable afterwards.
+    django_user_model.objects.filter(pk=user.pk).update(display_name=display_name)
+    user.refresh_from_db()
 
     assert represent_user_summary(user, None) == {
         "id": user.id,
@@ -88,7 +91,7 @@ def test_summaries_by_id_load_every_user_in_one_query(author, django_user_model)
     assert len(captured.captured_queries) == 1
     assert summaries == {
         author.id: represent_user_summary(author, None),
-        colleague.id: {"id": colleague.id, "display_name": None, "avatar_url": None},
+        colleague.id: {"id": colleague.id, "display_name": colleague.display_name, "avatar_url": None},
     }
 
 

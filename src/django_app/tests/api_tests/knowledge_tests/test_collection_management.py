@@ -590,7 +590,7 @@ class TestCollectionAuthorship:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.json()["created_by"] == {
             "id": regular_user.pk,
-            "display_name": None,
+            "display_name": regular_user.display_name,
             "avatar_url": None,
         }
 
