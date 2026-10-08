@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
                 'indexes': [models.Index(fields=['org'], name='tables_audi_org_id_dd7995_idx')],
-                'constraints': [models.UniqueConstraint(fields=('org', 'name'), name='unique_audit_filter_preset_name_per_org')],
+                'constraints': [models.UniqueConstraint(fields=('org', 'created_by', 'name'), name='unique_audit_filter_preset_name_per_user')],
             },
         ),
         migrations.RunSQL(
