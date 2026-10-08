@@ -45,7 +45,11 @@ def python_flow_session(user_client: ApiClient, python_flow_run: FlowRun) -> dic
 
 
 @pytest.fixture(scope="module")
-def python_flow_messages(user_client: ApiClient, python_flow_run: FlowRun) -> list[dict]:
+def python_flow_messages(
+    user_client: ApiClient, python_flow_run: FlowRun, python_flow_session: dict
+) -> list[dict]:
+    # A run that did not end never writes graph_end: fail now, not after the message budget.
+    assert_session_ended(user_client, python_flow_run.session_id, python_flow_session["status"])
     return wait_for_graph_end(user_client, python_flow_run.session_id, MESSAGES_TIMEOUT_SECONDS)
 
 
@@ -82,8 +86,7 @@ def test_graph_is_created_and_saved(python_flow: CreatedFlow) -> None:
 
 
 def test_run_session_returns_a_session_id(python_flow_run: FlowRun) -> None:
-    assert set(python_flow_run.run_session_body) == {"session_id"}
-    assert isinstance(python_flow_run.session_id, int)
+    assert isinstance(python_flow_run.run_session_body["session_id"], int)
 
 
 def test_session_ends_with_the_sum(

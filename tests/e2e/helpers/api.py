@@ -30,7 +30,14 @@ BODY_EXCERPT_LENGTH = 2000
 CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "cookie"})
 FORBIDDEN_REQUEST_ARGUMENTS = frozenset({"auth", "cookies"})
 
-__all__ = ["REDACTED", "ApiClient", "assert_error", "body_excerpt", "describe_response"]
+__all__ = [
+    "REDACTED",
+    "ApiClient",
+    "assert_error",
+    "body_excerpt",
+    "describe_response",
+    "page_results",
+]
 
 
 def body_excerpt(response: httpx.Response) -> str:
@@ -194,6 +201,14 @@ class ApiClient:
 
     def delete(self, path: str, **arguments: object) -> httpx.Response:
         return self.request("DELETE", path, **arguments)
+
+
+def page_results(body: object) -> list:
+    """Items of a list endpoint, paginated (`{"count", "results"}`) or not."""
+    if isinstance(body, dict) and "results" in body:
+        return body["results"]
+    assert isinstance(body, list), f"Expected a list or a page, got {type(body).__name__}"
+    return body
 
 
 def assert_error(response: httpx.Response, status_code: int, code: str) -> dict:

@@ -12,6 +12,7 @@ Value = TypeVar("Value")
 
 TERMINAL_SESSION_STATUSES = frozenset({"end", "error", "stop", "expired"})
 MESSAGES_PAGE_LIMIT = 200
+MESSAGES_MAX_PAGES = 10
 LAST_VALUE_EXCERPT_LENGTH = 2000
 
 
@@ -47,11 +48,28 @@ def poll(
 
 
 def fetch_session_messages(client: ApiClient, session_id: int) -> list[dict]:
-    response = client.get(
-        "/api/graph-session-messages/",
-        params={"session_id": session_id, "limit": MESSAGES_PAGE_LIMIT},
+    """All messages of a session, page by page (offset-based, not the absolute `next` URL).
+
+    Raises:
+        AssertionError: The session has more than MESSAGES_MAX_PAGES pages; never truncates.
+    """
+    messages: list[dict] = []
+    for page in range(MESSAGES_MAX_PAGES):
+        body = client.get(
+            "/api/graph-session-messages/",
+            params={
+                "session_id": session_id,
+                "limit": MESSAGES_PAGE_LIMIT,
+                "offset": page * MESSAGES_PAGE_LIMIT,
+            },
+        ).json()
+        messages.extend(body["results"])
+        if len(messages) >= body["count"] or not body["results"]:
+            return messages
+    raise AssertionError(
+        f"session {session_id} has {body['count']} messages, more than "
+        f"{MESSAGES_MAX_PAGES} pages of {MESSAGES_PAGE_LIMIT}; raise MESSAGES_MAX_PAGES"
     )
-    return response.json()["results"]
 
 
 def summarize_message(message: dict) -> str:

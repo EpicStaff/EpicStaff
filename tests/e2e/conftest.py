@@ -22,11 +22,13 @@ retries the run-session listener gate (see its docstring); every test runs after
 
 Environment:
     E2E_BASE_URL      nginx base URL, default http://localhost
+    E2E_MOCK_LLM_URL  mock-llm as published on the host, default http://localhost:18080
+                      (read by helpers/mock_llm.py; scripts/wait_for_stack.py repeats the
+                      default because it stays stdlib-only and independent of the suite)
     E2E_TIMINGS_DIR   where timings.json is written, default tests/e2e/.timings; a
                       stack_ready.json from scripts/wait_for_stack.py in it is merged in
 """
 
-import json
 import logging
 import os
 import re
@@ -48,9 +50,14 @@ from helpers.bootstrap import (
     new_password,
     unique_suffix,
 )
-from helpers.redaction import protect, redact_url, scrub
 from helpers.flows import assert_session_ended, create_python_flow, start_session
 from helpers.polling import session_diagnostics, wait_for_session_status
+from helpers.redaction import protect, redact_url, scrub
+from helpers.timings import Timings
+
+# Shared resources for the feature tests (LLM configs, storage, RAG, agents). Session-scoped,
+# so every test file runs on its own and later flows reuse the same resources.
+pytest_plugins = ["fixtures.llm", "fixtures.knowledge", "fixtures.agents"]
 
 logger = logging.getLogger("e2e.bootstrap")
 # httpx and httpcore log URLs and headers without redaction; helpers.api logs requests instead.
@@ -87,35 +94,6 @@ LISTENER_GATE_PATTERN = re.compile(r"received by \((\d+)\) listeners")
 REQUIRED_LISTENERS = 2
 LISTENER_GATE_RETRY_SECONDS = 60
 WARM_UP_RUN_TIMEOUT_SECONDS = 300
-
-
-class Timings:
-    """Named durations collected during the run, written to timings.json at session end."""
-
-    def __init__(self, directory: Path) -> None:
-        self.directory = directory
-        self.measurements: dict[str, float] = {}
-
-    def record(self, name: str, seconds: float) -> None:
-        self.measurements[name] = round(seconds, 2)
-        logger.info("timing %s = %.2fs", name, seconds)
-
-    @contextmanager
-    def measure(self, name: str) -> Iterator[None]:
-        started = time.monotonic()
-        yield
-        self.record(name, time.monotonic() - started)
-
-    def write(self) -> Path:
-        report: dict[str, float] = {}
-        stack_ready_file = self.directory / "stack_ready.json"
-        if stack_ready_file.exists():
-            report.update(json.loads(stack_ready_file.read_text()))
-        report.update(self.measurements)
-        self.directory.mkdir(parents=True, exist_ok=True)
-        timings_file = self.directory / "timings.json"
-        timings_file.write_text(json.dumps(report, indent=2, sort_keys=True))
-        return timings_file
 
 
 @contextmanager
