@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -58,6 +58,9 @@ wheels = [
 name = "foundation"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+]
 
 [package.optional-dependencies]
 litestar = [
@@ -65,7 +68,10 @@ litestar = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.24.0" }]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.24.0" },
+]
 provides-extras = ["litestar"]
 
 [[package]]

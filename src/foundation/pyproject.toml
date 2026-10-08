@@ -6,7 +6,9 @@ authors = [
     { name = "BogdanTimchenkoHYS", email = "bogdan.timchenko@hys-enterprise.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "httpx>=0.28.1",
+]
 
 [project.optional-dependencies]
 litestar = [
