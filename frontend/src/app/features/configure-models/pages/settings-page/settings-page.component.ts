@@ -39,7 +39,7 @@ export class SettingsPageComponent {
         },
         {
             routerLink: 'voice',
-            icon: 'voice',
+            iconClass: 'ti ti-phone',
             label: 'Voice / Twilio',
             isPermitted: () => this.permissionsService.can(ResourceCode.Voice, ActionCode.Read),
         },
