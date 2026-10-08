@@ -9,15 +9,19 @@
         height: 100%;
         // The table list scrolls its own rows, so its header stays put.
         overflow: hidden;
-        // The regular divider, not the subtle one the other Files tabs use: next to the grid's own borders the
-        // subtle one did not read as a separation.
+        // The regular divider, not the subtle one the Storage page's other tabs use: next to the grid's own borders
+        // the subtle one did not read as a separation.
         border-right: 1px solid var(--color-divider-regular);
     }
 
+    // The entries grid is as tall as its rows, so this area scrolls it, apart from the table list.
     &__content {
         flex: 1;
         min-width: 0;
         height: 100%;
-        overflow: hidden;
+        overflow-y: auto;
+        // A cell focused from the keyboard scrolls clear of the grid's sticky column header: the headerHeight pinned
+        // in ENTRIES_GRID_THEME (key-value-entries-grid.component.ts). Change both together.
+        scroll-padding-top: 48px;
     }
 }

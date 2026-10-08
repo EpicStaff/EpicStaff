@@ -1,6 +1,6 @@
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { Component, computed, input, output, signal } from '@angular/core';
-import { ButtonComponent, IconButtonComponent, SearchComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, IconButtonComponent, SearchComponent } from '@shared/components';
 
 import { KeyValueTable } from '../../models/key-value-table.model';
 
@@ -14,7 +14,7 @@ interface TruncatedName {
 
 @Component({
     selector: 'app-key-value-table-list',
-    imports: [ButtonComponent, IconButtonComponent, OverlayModule, SearchComponent],
+    imports: [AppSvgIconComponent, ButtonComponent, IconButtonComponent, OverlayModule, SearchComponent],
     templateUrl: './key-value-table-list.component.html',
     styleUrls: ['./key-value-table-list.component.scss'],
 })

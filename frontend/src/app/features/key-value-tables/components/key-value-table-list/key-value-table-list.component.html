@@ -38,12 +38,20 @@
                 (focus)="showFullName(nameElement, table.name)"
                 (blur)="hideFullName()"
             >
-                <span
-                    #nameElement
-                    class="table-list__name"
-                    >{{ table.name }}</span
-                >
-                <span class="table-list__count">{{ table.entry_count }} entries</span>
+                <app-svg-icon
+                    class="table-list__icon"
+                    icon="database"
+                    width="16px"
+                    height="18px"
+                />
+                <span class="table-list__text">
+                    <span
+                        #nameElement
+                        class="table-list__name"
+                        >{{ table.name }}</span
+                    >
+                    <span class="table-list__count">{{ table.entry_count }} entries</span>
+                </span>
             </button>
             @if (canRename() || canDelete()) {
                 <div class="table-list__actions">

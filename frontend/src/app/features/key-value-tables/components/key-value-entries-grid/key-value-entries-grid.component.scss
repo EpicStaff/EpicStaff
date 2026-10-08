@@ -1,15 +1,11 @@
+// As tall as its content: the grid takes its rows' full height and the page around it scrolls.
 :host {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
+    display: block;
 }
 
 .entries-grid {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
     gap: 16px;
     padding: 16px 24px;
     color: var(--color-text-primary);
@@ -46,8 +42,6 @@
 
     &__body {
         display: flex;
-        flex: 1;
-        min-height: 0;
 
         // A page, sort or search on its way: the rows stay, dimmed, under the grid's loading overlay.
         &[aria-busy='true'] ::ng-deep .ag-row {
@@ -59,7 +53,6 @@
     &__grid {
         flex: 1;
         min-width: 0;
-        height: 100%;
     }
 
     // Fills the cell renderer. Not selectable for everyone, read-only users included, on purpose: the copy button
@@ -113,17 +106,17 @@
         }
     }
 
+    // Fills the cell, taking over its padding, so all of the hover tint is the link. The label ellipsizes; the arrow
+    // stays at the right end of the cell.
     &__session-link {
-        display: block;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 100%;
+        min-width: 0;
+        padding: 0 calc(var(--ag-cell-horizontal-padding) - 1px);
         color: var(--accent-color);
         text-decoration: none;
-
-        &:hover {
-            text-decoration: underline;
-        }
     }
 
     // No session wrote the entry: muted, as secondary text is elsewhere, but still readable.
@@ -164,9 +157,38 @@
         opacity: 1;
     }
 
-    // Edge to edge: the grid cell itself takes the tint, not a padded box inside it.
-    .ag-cell.entries-grid__cell--editable:not(.ag-cell-inline-editing):hover {
+    // Sticky column header. The header row sits in .ag-grid-pinned-top-rows, already `position: sticky; top: 0`
+    // inside AG Grid's own scroll container, .ag-grid-viewport. As tall as its rows (autoHeight), that never scrolls,
+    // so the header would never stick: no wrapper may be a scroll container, and the header sticks to the page's
+    // scrolling content area instead. `clip` still clips to the rounded corners without being one.
+    // ponytail: overrides AG Grid 36.1 internals (.ag-grid-viewport, .ag-root.ag-layout-auto-height, the sticky
+    // .ag-grid-pinned-top-rows); recheck the sticky header on every AG Grid upgrade, and if its DOM moved, put the
+    // header outside the grid (a page-level sticky row driven by the grid's column API) instead of chasing class names.
+    .ag-root-wrapper,
+    .ag-root.ag-layout-auto-height {
+        overflow: clip;
+    }
+
+    .ag-grid-viewport {
+        overflow: visible;
+    }
+
+    // Wide enough for every column, so the grid has nothing to scroll sideways (the page does it).
+    .ag-root-wrapper {
+        box-sizing: content-box;
+        min-width: var(--entries-grid-columns-min-width, 0px);
+    }
+
+    // Edge to edge: the grid cell itself takes the tint, not a padded box inside it. Editable cells (double-click to
+    // edit) and session links (click to open the session).
+    .ag-cell.entries-grid__cell--editable:not(.ag-cell-inline-editing):hover,
+    .ag-cell.entries-grid__cell--link:hover {
         background-color: var(--color-ghost-btn-active);
+    }
+
+    // Its padding moves onto the link, which fills it.
+    .ag-cell.entries-grid__cell--link {
+        padding: 0;
     }
 
     .ag-cell.entries-grid__cell--saving {

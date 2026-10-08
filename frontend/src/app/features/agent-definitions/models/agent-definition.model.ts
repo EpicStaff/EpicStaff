@@ -7,11 +7,12 @@ export interface AgentDefaultSurface {
     place: AgentSurfacePlace;
 }
 
-export type InstructionsFormat = 'text' | 'markdown';
+export type AgentMetadata = Record<string, unknown>;
 
-export interface AgentMetadata {
-    instructions_format?: InstructionsFormat;
-    [key: string]: unknown;
+/** One named instruction document. List order = the order the agent reads them in. */
+export interface AgentInstruction {
+    name: string;
+    content: string;
 }
 
 export interface AgentDefinition {
@@ -19,7 +20,9 @@ export interface AgentDefinition {
     organization: number;
     name: string;
     description: string;
+    /** Read-only: every `instruction_list` content joined by a blank line, compiled by the backend. */
     instructions: string;
+    instruction_list: AgentInstruction[];
     llm_config: number | null;
     fcm_llm_config: number | null;
     agent_definition_realtime_config_id: number | null;
@@ -40,7 +43,7 @@ export interface AgentDefinition {
 
 export interface CreateAgentDefinitionRequest {
     name: string;
-    instructions: string;
+    instruction_list?: AgentInstruction[];
     description?: string;
     llm_config?: number | null;
     fcm_llm_config?: number | null;

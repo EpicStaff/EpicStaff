@@ -26,7 +26,7 @@ def client(client_as, admin_acme, acme):
 def _create(client, **fields):
     return client.post(
         reverse("agentdefinition-list"),
-        {"name": "agent", "instructions": "do things", **fields},
+        {"name": "agent", "instruction_list": [{"name": "Instruction_1.md", "content": "do things"}], **fields},
         format="json",
     )
 
@@ -55,7 +55,7 @@ class TestAgentDefinitionNameUniqueness:
 
         response = client.put(
             reverse("agentdefinition-detail", args=[other_agent.id]),
-            {"name": "existing-agent", "instructions": "do other things"},
+            {"name": "existing-agent", "instruction_list": [{"name": "Instruction_1.md", "content": "do other things"}]},
             format="json",
         )
 
@@ -208,3 +208,128 @@ class TestAgentDefinitionDefaultSurfaces:
 
         assert response.status_code == 201, response.json()
         assert len(response.json()["default_surfaces"]) == 2
+
+
+DUPLICATE_INSTRUCTION_NAME_MESSAGE = (
+    "An instruction with that name already exists. Please enter a unique name."
+)
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionInstructionList:
+    def test_create_round_trips_ordered_instruction_list_and_compiled_instructions(
+        self, client
+    ):
+        instruction_list = [
+            {"name": "Persona.md", "content": "You are a researcher."},
+            {"name": "Empty.md", "content": "   "},
+            {"name": "Rules.md", "content": "Cite sources."},
+        ]
+
+        response = client.post(
+            reverse("agentdefinition-list"),
+            {"name": "multi-instruction-agent", "instruction_list": instruction_list},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["instruction_list"] == instruction_list
+        assert body["instructions"] == "You are a researcher.\n\nCite sources."
+        agent_definition = AgentDefinition.objects.get(id=body["id"])
+        assert agent_definition.instruction_list == instruction_list
+
+    def test_create_strips_instruction_name(self, client):
+        response = client.post(
+            reverse("agentdefinition-list"),
+            {
+                "name": "stripped-name-agent",
+                "instruction_list": [{"name": "  Rules.md  ", "content": "x"}],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.json()["instruction_list"] == [{"name": "Rules.md", "content": "x"}]
+
+    def test_create_with_duplicate_instruction_names_case_insensitive_returns_400(
+        self, client
+    ):
+        response = client.post(
+            reverse("agentdefinition-list"),
+            {
+                "name": "duplicate-instruction-agent",
+                "instruction_list": [
+                    {"name": "Rules.md", "content": "a"},
+                    {"name": "RULES.md", "content": "b"},
+                ],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert DUPLICATE_INSTRUCTION_NAME_MESSAGE in str(response.json())
+        assert not AgentDefinition.objects.filter(name="duplicate-instruction-agent").exists()
+
+    @pytest.mark.parametrize(
+        "instruction",
+        [
+            {"name": "   ", "content": "x"},
+            {"name": "a" * 256, "content": "x"},
+            {"content": "x"},
+            {"name": "Rules.md"},
+            {"name": "Rules.md", "content": "x", "extra": "y"},
+            "plain string",
+        ],
+    )
+    def test_create_with_invalid_instruction_returns_400(
+        self, client, instruction
+    ):
+        response = client.post(
+            reverse("agentdefinition-list"),
+            {"name": "invalid-instruction-agent", "instruction_list": [instruction]},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert not AgentDefinition.objects.filter(name="invalid-instruction-agent").exists()
+
+    def test_create_with_legacy_instructions_field_returns_400(self, client):
+        response = client.post(
+            reverse("agentdefinition-list"),
+            {"name": "legacy-instructions-agent", "instructions": "You are a researcher."},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "instructions" in str(response.json())
+        assert not AgentDefinition.objects.filter(name="legacy-instructions-agent").exists()
+
+    def test_partial_update_replaces_instruction_list_in_new_order(self, client, acme):
+        agent_definition = AgentDefinition.objects.create(
+            organization=acme,
+            name="reorder-agent",
+            instruction_list=[
+                {"name": "First.md", "content": "one"},
+                {"name": "Second.md", "content": "two"},
+            ],
+        )
+
+        response = client.patch(
+            reverse("agentdefinition-detail", args=[agent_definition.id]),
+            {
+                "instruction_list": [
+                    {"name": "Second.md", "content": "two"},
+                    {"name": "First.md", "content": "one"},
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        agent_definition.refresh_from_db()
+        assert [item["name"] for item in agent_definition.instruction_list] == [
+            "Second.md",
+            "First.md",
+        ]
+        assert agent_definition.instructions == "two\n\none"
