@@ -1,3 +1,1 @@
-from .graph_metrics import GraphMetricsOrchestrator
-
-__all__ = ["GraphMetricsOrchestrator"]
+"""Metrics strategies. The graph metrics orchestrator is imported lazily from the factory."""

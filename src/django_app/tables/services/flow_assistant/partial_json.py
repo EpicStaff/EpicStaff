@@ -135,8 +135,19 @@ def extract_message_field(buffer: str) -> str:
 def try_parse_full(buffer: str) -> dict | None:
     """Attempt to parse ``buffer`` as complete JSON.
 
-    Returns the parsed ``dict`` on success, or ``None`` if ``buffer`` is not
-    yet valid JSON (i.e. the stream is still in progress).
+    Strict first: when ``buffer`` is valid JSON as a whole, the parsed ``dict``
+    is returned as-is (with or without a ``message`` key).
+
+    Lenient fallback for models that ignore ``response_format``: the first JSON
+    object is decoded from the first ``{`` onward, so a surrounding markdown
+    code fence (```` ```json ````) or prose before / after it is ignored.  The
+    lenient result is accepted only when it is a ``dict`` whose ``message`` is
+    a string, so arbitrary JSON embedded in prose is not mistaken for the
+    structured reply.
+
+    Returns ``None`` when neither attempt yields a ``dict`` — including
+    truncated JSON (the stream is still in progress or was cut off); cancel and
+    disconnect paths rely on that.
 
     Used at end-of-stream to obtain the full structured payload
     (``ef_tables``, ``action_message``, canonical ``message``).
@@ -147,4 +158,20 @@ def try_parse_full(buffer: str) -> dict | None:
             return result
         return None
     except (json.JSONDecodeError, ValueError):
+        pass
+
+    lenient_result = _decode_first_object(buffer)
+    if isinstance(lenient_result, dict) and isinstance(lenient_result.get("message"), str):
+        return lenient_result
+    return None
+
+
+def _decode_first_object(text: str) -> object | None:
+    object_start = text.find("{")
+    if object_start == -1:
         return None
+    try:
+        decoded, _ = json.JSONDecoder().raw_decode(text, object_start)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return decoded

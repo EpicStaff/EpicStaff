@@ -6,6 +6,8 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class ToolUsageSerializer(serializers.Serializer):
@@ -77,6 +79,13 @@ class RunSessionSerializer(serializers.Serializer):
         return attrs
 
 
+class SessionTestRunSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    node_type = serializers.ChoiceField(choices=sorted(TEST_RUN_STRATEGIES))
+    node_id = serializers.IntegerField()
+    payload = serializers.JSONField(validators=[validate_trigger_payload])
+
+
 class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
 
@@ -146,6 +155,11 @@ class BulkExportSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="List of entity IDs",
     )
+
+    def validate_ids(self, ids: list[int]) -> list[int]:
+        # Callers compare the number of rows found against len(ids), so a
+        # repeated id would otherwise be reported as a missing entity.
+        return list(dict.fromkeys(ids))
 
 
 class GraphNodesPartialExportSerializer(serializers.Serializer):

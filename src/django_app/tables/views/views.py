@@ -71,6 +71,7 @@ from tables.serializers.serializers import (
     RunPythonCodeSerializer,
     RunSessionSerializer,
     SessionExportAllSerializer,
+    SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.services.converter_service import ConverterService
@@ -89,6 +90,8 @@ from tables.services.session_access import (
 )
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.services.trigger_test_run.service import SessionTestRunService
 from tables.swagger_schemas.default_config_schemas import (
     QUICKSTART_APPLY_POST,
     QUICKSTART_GET,
@@ -106,6 +109,7 @@ from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
     GET_UPDATES_GET,
     RUN_SESSION_POST,
+    RUN_SESSION_TEST_POST,
     SESSION_BULK_DELETE_POST,
     SESSION_DESTROY_DELETE,
     SESSION_LIST_GET,
@@ -130,6 +134,7 @@ redis_service = RedisService()
 # TODO: fix. Do we need init converter_service here? Instance is not used.
 converter_service = ConverterService()
 session_manager_service = SessionManagerService()
+session_test_run_service = SessionTestRunService(session_manager_service=session_manager_service)
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
@@ -477,6 +482,46 @@ class RunSession(APIView):
         }
 
 
+class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
+    """Test-run a flow from one of its trigger nodes with a designer-written payload."""
+
+    _NODE_ORG_PATH = "graph__org_id"
+
+    @extend_schema(**RUN_SESSION_TEST_POST)
+    def post(self, request):
+        # Running a flow executes its stored code, a contributor-level action
+        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
+        # body validation and the node lookup, so a caller without it always
+        # gets the same 403 — whatever the body and whether or not the node
+        # exists — and never costs the payload size check.
+        assert_org_permission(
+            user=request.user,
+            org_id=self.get_active_org_id(),
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        serializer = SessionTestRunSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        strategy = TEST_RUN_STRATEGIES[validated_data["node_type"]]
+
+        node = self.get_in_active_org_or_404(
+            strategy.node_model,
+            validated_data["node_id"],
+            org_path=self._NODE_ORG_PATH,
+            graph_id=validated_data["graph_id"],
+        )
+
+        session_id = session_test_run_service.run(
+            strategy=strategy,
+            node=node,
+            payload=validated_data["payload"],
+            user=request.user,
+            api_key=request.auth if isinstance(request.auth, ApiKey) else None,
+        )
+        return Response(data={"session_id": session_id}, status=status.HTTP_201_CREATED)
+
+
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
@@ -640,8 +685,7 @@ class InitRealtimeAPIView(APIView):
             # definition's own `organization` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
-            # API-key-authenticated requests (see IsApiKeyAuthenticated /
-            # ApiKeyAuthentication).
+            # API-key-authenticated requests (see ApiKeyAuthentication).
             #
             # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it

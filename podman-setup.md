@@ -54,6 +54,7 @@ podman network create mcp-network
 podman volume create sandbox_venvs
 podman volume create crew_pgdata
 podman volume create crew_config
+podman volume create opensearch_data
 ```
 
 ---
@@ -78,8 +79,10 @@ podman build -t frontend -f ../frontend/Dockerfile.fe ../frontend
 ### Redis
 
 ```bash
-podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   docker.io/library/redis:latest
+podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   -v "$PWD/redis.conf":/usr/local/etc/redis/redis.conf:ro   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   docker.io/library/redis:latest   redis-server /usr/local/etc/redis/redis.conf --port ${REDIS_PORT}
 ```
+
+Run this from `EpicStaff/src` so `redis.conf` is found. The config file sets the pub/sub output buffer limit (`client-output-buffer-limit pubsub`). Without it Redis uses its much smaller default and can disconnect a slow subscriber when large session events arrive in bursts. The graph message stream also needs Redis 7 or newer.
 
 ---
 
@@ -134,7 +137,7 @@ podman run -d   --name crew   --network backend-network   --network mcp-network 
 ### Sandbox
 
 ```bash
-podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   -v ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}   --env-file .env   -t   -i   sandbox
+podman run -d   --name sandbox   --cap-add NET_ADMIN   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   -v ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}   --env-file .env   -t   -i   sandbox
 ```
 
 Savefiles is deprecated and will be removed: use `epicstaff_storage` instead.

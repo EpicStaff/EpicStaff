@@ -1,0 +1,27 @@
+<button
+    class="date-filter__trigger"
+    type="button"
+    cdkOverlayOrigin
+    #trigger="cdkOverlayOrigin"
+    [class.is-set]="range().after || range().before"
+    (click)="toggle()"
+>
+    {{ label() }}
+</button>
+
+<ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="trigger"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="overlayPositions"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="transparent-backdrop"
+    (backdropClick)="closed()"
+    (detach)="closed()"
+>
+    <app-date-range-picker
+        [value]="range()"
+        (apply)="onApply($event)"
+        (clear)="onClear()"
+    />
+</ng-template>

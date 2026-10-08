@@ -1,4 +1,4 @@
-"""EST-4267: node and edge ids in a partial-export request are caller input.
+"""Node and edge ids in a partial-export request are caller input.
 
 They must be resolved inside the caller's organisation. An id owned by another
 organisation has to look exactly like an id that does not exist, and must not

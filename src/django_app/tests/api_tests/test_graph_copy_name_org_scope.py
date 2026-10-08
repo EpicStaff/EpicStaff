@@ -1,4 +1,4 @@
-"""EST-4265: flow copy and create-flow-from-version pick the new flow name from the
+"""Flow copy and create-flow-from-version pick the new flow name from the
 caller's own organization only.
 
 Before the fix both paths deduplicated the generated name against EVERY

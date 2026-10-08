@@ -12,6 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import egress_firewall
 import settings
 from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
@@ -626,6 +627,23 @@ except Exception:
             return CodeResultData(
                 execution_id=context["execution_id"],
                 stderr=message,
+                stdout="",
+                returncode=1,
+            )
+
+        if settings.BLOCK_PRIVATE_NETWORK and not egress_firewall.is_active():
+            logger.error(
+                "Sandbox private-network isolation unavailable (egress firewall not "
+                "installed); refusing to execute {}.",
+                context["execution_id"],
+            )
+            return CodeResultData(
+                execution_id=context["execution_id"],
+                stderr=(
+                    "Sandbox private-network isolation unavailable: the egress firewall could "
+                    "not be installed at startup; refusing to execute. "
+                    f"Set {settings.BLOCK_PRIVATE_NETWORK_ENV_VAR}=false to run without it."
+                ),
                 stdout="",
                 returncode=1,
             )

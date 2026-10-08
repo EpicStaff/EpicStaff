@@ -620,7 +620,7 @@ async def _voice_stream_handler(
     await service.execute()
 
 
-# The channel token is deliberately a URL path segment (see EST-4312). Twilio
+# The channel token is deliberately a URL path segment. Twilio
 # addresses a webhook by URL alone, so the channel has to be identifiable from it.
 # Knowing the token by itself grants nothing:
 #   - POST /voice/{channel_token} fails closed (403/503) unless the request carries

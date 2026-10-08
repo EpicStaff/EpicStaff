@@ -10,12 +10,12 @@ from pathlib import Path
 
 def load_json_auto(path: Path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except UnicodeDecodeError:
         pass
 
-    with open(path, "r", encoding="utf-16") as f:
+    with open(path, encoding="utf-16") as f:
         return json.load(f)
 
 
@@ -82,9 +82,7 @@ def main() -> int:
         # dockerfile abs: relative to context
         dockerfile_path = Path(str(dockerfile))
         dockerfile_abs = (
-            dockerfile_path
-            if dockerfile_path.is_absolute()
-            else (context_abs / dockerfile_path)
+            dockerfile_path if dockerfile_path.is_absolute() else (context_abs / dockerfile_path)
         ).resolve()
 
         # safety: must be inside repo

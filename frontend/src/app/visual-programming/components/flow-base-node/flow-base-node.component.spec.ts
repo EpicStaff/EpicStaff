@@ -13,25 +13,36 @@ import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.ma
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
 
-const KEY_VALUE_NODE = mapKeyValueNodeToModel({
-    id: 12,
-    graph: 1,
-    node_name: 'Key-Value #1',
-    key_value_table: 3,
-    mode: 'write',
-    entries: [
-        { key: 'profile', value: 'variables.user' },
-        { key: 'plan', value: 'variables.plan' },
-    ],
-    input_map: {},
-    output_variable_path: null,
-    metadata: {},
-});
+const KEY_VALUE_NODE = {
+    ...mapKeyValueNodeToModel({
+        id: 12,
+        graph: 1,
+        node_name: 'Key-Value #1',
+        key_value_table: 3,
+        mode: 'write',
+        entries: [
+            { key: 'profile', value: 'variables.user' },
+            { key: 'plan', value: 'variables.plan' },
+        ],
+        input_map: {},
+        output_variable_path: null,
+        metadata: {},
+    }),
+    nodeNumber: 1,
+};
 
-describe('FlowBaseNodeComponent key-value caption', () => {
+describe('FlowBaseNodeComponent key-value summary', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
-    const caption = (): HTMLElement | null => fixture.nativeElement.querySelector('.key-value-caption');
+    const summaryTab = (): HTMLElement | null => fixture.nativeElement.querySelector('.node-number-badge.has-summary');
+    const summaryParts = (): string[] =>
+        Array.from<HTMLElement>(summaryTab()!.querySelectorAll('.summary > span:not(.summary-separator)')).map((part) =>
+            part.textContent!.trim()
+        );
+    const separators = (): string[] =>
+        Array.from<HTMLElement>(summaryTab()!.querySelectorAll('.summary-separator')).map((separator) =>
+            separator.textContent!.trim()
+        );
     const noTableBadge = (): HTMLElement | undefined =>
         Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.llm-warning-badge')).find(
             (badge) => badge.textContent!.trim() === 'No table'
@@ -57,15 +68,22 @@ describe('FlowBaseNodeComponent key-value caption', () => {
         fixture.detectChanges();
     }
 
-    it('sums up mode, table and keys under the node, the table name cut short, in full on hover of the caption', () => {
+    it('sums up mode, table and keys after the node number, the table name cut short, in full on hover', () => {
         render(KEY_VALUE_NODE);
 
-        expect(caption()!.textContent!.trim()).toBe('Write · Very very long tabl… · 2 keys');
-        expect(caption()!.title).toBe('Write · Very very long table name · 2 keys');
-        // Screen readers get the summary once, from the header icon.
-        expect(caption()!.getAttribute('aria-hidden')).toBe('true');
+        expect(summaryTab()!.querySelector('.node-number')!.textContent!.trim()).toBe('#1');
+        expect(summaryParts()).toEqual(['Write', 'Very very long tabl…', '2 keys']);
+        expect(separators()).toEqual(['-', '/', '/']);
+        expect(summaryTab()!.title).toBe('Write / Very very long table name / 2 keys');
+    });
+
+    it('reads the summary once to screen readers, from the header icon, with the table name in full', () => {
+        render(KEY_VALUE_NODE);
+
+        expect(summaryTab()!.querySelector('.summary')!.getAttribute('aria-hidden')).toBe('true');
+        expect(summaryTab()!.querySelector('.node-number')!.closest('[aria-hidden]')).toBeNull();
         expect(fixture.nativeElement.querySelector('.icon-wrapper [role="img"]').getAttribute('aria-label')).toBe(
-            'Write · Very very long table name · 2 keys'
+            'Write / Very very long table name / 2 keys'
         );
     });
 
@@ -117,6 +135,6 @@ describe('FlowBaseNodeComponent key-value caption', () => {
             ports: null,
         });
 
-        expect(caption()).toBeNull();
+        expect(summaryTab()).toBeNull();
     });
 });

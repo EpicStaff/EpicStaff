@@ -2,7 +2,7 @@ const target = process.env.PROXY_TARGET || 'http://localhost';
 
 module.exports = [
   {
-    context: ['/api', '/webhooks', '/static', '/media'],
+    context: ['/api', '/auditor', '/webhooks', '/static', '/media'],
     target,
     changeOrigin: true,
     secure: false,
