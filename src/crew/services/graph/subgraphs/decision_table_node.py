@@ -57,7 +57,7 @@ class DecisionTableNodeSubgraph:
         if self.redis_service is None:
             return
         data = graph_message.to_payload()
-        self.redis_service.publish_encoded("graph:messages", GraphMessage.encode_payload(data))
+        self.redis_service.add_graph_message(data)
         try:
             emit_session_audit_event(data)
         except Exception as audit_exc:

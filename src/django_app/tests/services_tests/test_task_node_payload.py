@@ -82,7 +82,7 @@ def agent(db, org):
     return AgentDefinition.objects.create(
         organization=org,
         name="task-node-payload-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
@@ -217,27 +217,10 @@ class TestBuildGraphDataTaskNode:
         self, graph, task_node, agent, surface_a, surface_b, py_tool
     ):
         DefaultAgentDefinitionConfig.objects.update_or_create(
-            pk=1,
-            defaults={
-                "max_iter": 15,
-                "max_rpm": 20,
-                "max_execution_time": 300,
-                "cache": True,
-                "max_retry_limit": 3,
-                "default_temperature": 0.7,
-                "max_tool_calls": 10,
-                "tool_timeout": 120,
-                "max_consecutive_failures": 4,
-                "schema_max_retries": 2,
-            },
+            pk=1, defaults={"default_temperature": 0.7}
         )
-        agent.max_iter = None
         agent.default_temperature = None
         agent.max_rpm = 5
-        agent.max_tool_calls = None
-        agent.tool_timeout = None
-        agent.max_consecutive_failures = None
-        agent.schema_max_retries = None
         agent.save()
 
         SurfacePythonTool.objects.create(
@@ -261,26 +244,17 @@ class TestBuildGraphDataTaskNode:
         assert task_data.agent_definition.max_iter == 15
         assert task_data.agent_definition.max_rpm == 5
         assert task_data.agent_definition.default_temperature == 0.7
-        assert task_data.agent_definition.max_tool_calls == 10
-        assert task_data.agent_definition.tool_timeout == 120
-        assert task_data.agent_definition.max_consecutive_failures == 4
+        assert task_data.agent_definition.max_tool_calls == 15
+        assert task_data.agent_definition.tool_timeout == 300
+        assert task_data.agent_definition.max_consecutive_failures == 3
         assert task_data.agent_definition.schema_max_retries == 2
         tools_by_id = {t.python_tool: t.mode for t in task_data.surface.python_tools}
         assert tools_by_id[py_tool.pk] == "deny"
 
     @pytest.mark.django_db
-    def test_agent_explicit_tool_limits_override_defaults(
+    def test_agent_explicit_tool_limits_are_passed_through(
         self, graph, task_node, agent
     ):
-        DefaultAgentDefinitionConfig.objects.update_or_create(
-            pk=1,
-            defaults={
-                "max_tool_calls": 10,
-                "tool_timeout": 120,
-                "max_consecutive_failures": 4,
-                "schema_max_retries": 5,
-            },
-        )
         agent.max_tool_calls = 7
         agent.tool_timeout = 45
         agent.max_consecutive_failures = 2
@@ -326,16 +300,10 @@ class TestBuildGraphDataTaskNode:
 
 class TestDefaultAgentDefinitionConfigSeededDefaults:
     @pytest.mark.django_db
-    def test_null_exec_fields_fall_back_to_seeded_defaults(
+    def test_null_default_temperature_falls_back_to_seeded_default(
         self, graph, task_node, agent
     ):
-        agent.max_iter = None
-        agent.max_rpm = None
-        agent.max_execution_time = None
-        agent.cache = None
-        agent.max_retry_limit = None
         agent.default_temperature = None
-        agent.schema_max_retries = None
         agent.save()
         task_node.agent_definition = agent
         task_node.save()
@@ -344,19 +312,19 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         graph_data = SessionManagerService()._build_graph_data(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
-        assert agent_data.max_iter == 25
-        assert agent_data.max_rpm == 10
-        assert agent_data.max_execution_time == 60
+        assert agent_data.default_temperature == 0.7
+        assert agent_data.max_iter == 15
+        assert agent_data.max_rpm == 30
+        assert agent_data.max_execution_time == 600
         assert agent_data.cache is False
         assert agent_data.max_retry_limit == 3
-        assert agent_data.default_temperature == 0.7
         assert agent_data.schema_max_retries == 2
 
     @pytest.mark.django_db
     def test_explicit_exec_fields_are_not_overridden_by_seeded_defaults(
         self, graph, task_node, agent
     ):
-        agent.max_iter = 99
+        agent.max_iter = 42
         agent.max_rpm = 42
         agent.max_execution_time = 120
         agent.cache = True
@@ -371,7 +339,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         graph_data = SessionManagerService()._build_graph_data(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
-        assert agent_data.max_iter == 99
+        assert agent_data.max_iter == 42
         assert agent_data.max_rpm == 42
         assert agent_data.max_execution_time == 120
         assert agent_data.cache is True

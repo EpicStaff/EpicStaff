@@ -25,7 +25,6 @@ x-communication-env: &communication-env
   CODE_EXEC_CHANNEL: ${CODE_EXEC_CHANNEL:?}
   SESSION_EVENT_UPDATE_CHANNEL: ${SESSION_EVENT_UPDATE_CHANNEL:?}
   SESSION_EVENT_CHANNEL: ${SESSION_EVENT_CHANNEL:?}
-  SESSION_STATUS_CHANNEL: ${SESSION_STATUS_CHANNEL:?}
   SESSION_SCHEMA_CHANNEL: ${SESSION_SCHEMA_CHANNEL:?}
   SCHEDULE_CHANNEL: ${SCHEDULE_CHANNEL:?}
   STOP_SESSION_CHANNEL: ${STOP_SESSION_CHANNEL:?}
@@ -34,8 +33,6 @@ x-communication-env: &communication-env
   KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE_CHANNEL:?}
   KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL:?}
   KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL:?}
-  GRAPH_MESSAGES_CHANNEL: ${GRAPH_MESSAGES_CHANNEL:?}
-  GRAPH_MESSAGE_UPDATE_CHANNEL: ${GRAPH_MESSAGE_UPDATE_CHANNEL:?}
   WEBHOOK_MESSAGE_CHANNEL: ${WEBHOOK_MESSAGE_CHANNEL:?}
   REQUEST_WEBHOOK_UPDATE_CHANNEL: ${REQUEST_WEBHOOK_UPDATE_CHANNEL:?}
   STORAGE_MUTATION_CHANNEL: ${STORAGE_MUTATION_CHANNEL:?}
@@ -65,6 +62,9 @@ services:
       context: .
       dockerfile: ./django_app/Dockerfile.dj
     container_name: django_app
+    # The graph message stream consumer is named after the hostname; a fixed one lets a
+    # recreated container resume the entries its predecessor left unacknowledged at once.
+    hostname: django_app
     command: ./entrypoint.sh
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env]
@@ -95,10 +95,13 @@ services:
       DJANGO_PASSWORD_RESET_TOKEN_TTL: ${DJANGO_PASSWORD_RESET_TOKEN_TTL:?}
       DJANGO_PASSWORD_CHANGE_TICKET_TTL: ${DJANGO_PASSWORD_CHANGE_TICKET_TTL:?}
       DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE:?}
+      DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE:?}
       DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE: ${DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE:?}
       DJANGO_NOTIFY_EMAIL_THROTTLE_RATE: ${DJANGO_NOTIFY_EMAIL_THROTTLE_RATE:?}
       DJANGO_LOGIN_THROTTLE_RATE: ${DJANGO_LOGIN_THROTTLE_RATE:?}
+      DJANGO_LOGIN_IP_THROTTLE_RATE: ${DJANGO_LOGIN_IP_THROTTLE_RATE:?}
       DJANGO_TOKEN_REFRESH_THROTTLE_RATE: ${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:?}
+      DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:?}
       DJANGO_FIRST_SETUP_MODE: ${DJANGO_FIRST_SETUP_MODE:?}
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
       DJANGO_FRONTEND_PASSWORD_RESET_PATH: ${DJANGO_FRONTEND_PASSWORD_RESET_PATH:?}
@@ -120,8 +123,10 @@ services:
       DJANGO_UPLOAD_IDLE_TIMEOUT: ${DJANGO_UPLOAD_IDLE_TIMEOUT:?}
       DJANGO_UPLOAD_MAX_DURATION: ${DJANGO_UPLOAD_MAX_DURATION:?}
       DJANGO_ARCHIVE_UPLOAD_CONCURRENCY: ${DJANGO_ARCHIVE_UPLOAD_CONCURRENCY:?}
-      DJANGO_MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
+      # glibc reads only the unprefixed name, so the DJANGO_ setting is mapped to it here.
+      MALLOC_ARENA_MAX: ${DJANGO_MALLOC_ARENA_MAX:?}
       DJANGO_MALLOC_TRIM_INTERVAL: ${DJANGO_MALLOC_TRIM_INTERVAL:?}
+      DJANGO_GRAPH_MESSAGE_BATCH_SIZE: ${DJANGO_GRAPH_MESSAGE_BATCH_SIZE:-50}
 
       WEBHOOK_USE_TUNNEL: ${WEBHOOK_USE_TUNNEL:?}
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL:?}
@@ -266,14 +271,16 @@ services:
       - backend-network
       - sandbox-network
     volumes:
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
     environment:
       REDIS_PORT: ${REDIS_PORT:?}
       REDIS_USER: ${REDIS_USER:?}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    # The config file must stay the first argument: it carries the pub/sub output buffer
+    # limit. The flags after it override same-named directives in the file.
     command: >
-      sh -c "redis-server --port $${REDIS_PORT}
+      sh -c "redis-server /usr/local/etc/redis/redis.conf --port $${REDIS_PORT}
       $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}
       $${REDIS_USER:+--user \"$${REDIS_USER}\" on \">$${REDIS_PASSWORD}\" ~* &* +@all}"
     healthcheck:
@@ -306,6 +313,7 @@ services:
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
+      CREW_GRAPH_MESSAGE_STREAM_MAXLEN: ${CREW_GRAPH_MESSAGE_STREAM_MAXLEN:-2000}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_KEY: ${DJANGO_API_KEY:?}
@@ -458,7 +466,7 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx
+    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
     container_name: epicstaff-nginx
     ports:
       - "80:80"
