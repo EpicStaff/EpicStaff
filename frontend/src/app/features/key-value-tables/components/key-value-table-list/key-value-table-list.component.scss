@@ -125,9 +125,9 @@
         flex-shrink: 0;
     }
 
-    // Looks like matTooltip (same tokens and shadow). Shifted left by the row padding (offsetX in the component), it
-    // starts 8px inside the 280px sidebar; 296px wide, it ends where the entries grid title starts (24px past the
-    // sidebar).
+    // Looks like matTooltip (same tokens and shadow). Shifted left past the icon, its gap and the row padding (offsetX
+    // in the component), it starts 8px inside the 280px sidebar; 296px wide, it ends where the entries grid title
+    // starts (24px past the sidebar).
     &__full-name {
         max-width: 296px;
         padding: 4px 8px;

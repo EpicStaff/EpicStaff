@@ -44,8 +44,8 @@ export class KeyValueTableListComponent {
     // would cross the sidebar's left edge; this one starts at the name's left edge and grows to the right.
     protected readonly truncatedName = signal<TruncatedName | null>(null);
     protected readonly namePositions: ConnectedPosition[] = [
-        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetX: -12, offsetY: -8 },
-        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetX: -12, offsetY: 8 },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetX: -44, offsetY: -8 },
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetX: -44, offsetY: 8 },
     ];
 
     protected showFullName(element: HTMLElement, name: string): void {
