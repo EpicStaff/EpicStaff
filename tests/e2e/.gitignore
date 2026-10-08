@@ -1,0 +1,5 @@
+# Timing reports written by the suite and by scripts/wait_for_stack.py.
+.timings/
+# JUnit reports (`pytest --junitxml=...`).
+junit*.xml
+.pytest_cache/

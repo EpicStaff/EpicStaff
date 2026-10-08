@@ -1,0 +1,46 @@
+# Override for the end-to-end suite. Use it together with the main compose file, from the
+# repo root:
+#   docker compose -p epicstaff-e2e --env-file src/.env --env-file tests/e2e/e2e.env \
+#     -f src/docker-compose.yaml -f tests/e2e/docker-compose.e2e.yaml up -d
+#
+# Relative paths in every -f file resolve against the directory of the FIRST file (src/),
+# not against this file — hence ../tests/e2e/... below.
+
+services:
+  # OpenAI-compatible stub that answers chat completions and embeddings deterministically.
+  # Runs the stock pinned Python image with the script mounted, so no Dockerfile is needed.
+  mock-llm:
+    image: python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
+    container_name: mock-llm
+    # PID 1 forwards SIGTERM to the server, so `down` stops it at once instead of after 10 s.
+    init: true
+    command: ["python", "-u", "/app/server.py"]
+    volumes:
+      - ../tests/e2e/mock_llm/server.py:/app/server.py:ro
+    networks:
+      - backend-network
+    # Published so the tests on the host can read the call log at /__calls.
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+# The main file declares these as external, shared with the dev stack. Here they are
+# project-local, so `down -v` removes them and an e2e run never touches the dev database.
+volumes:
+  crew_pgdata:
+    external: false
+    name: e2e_crew_pgdata
+  sandbox_venvs:
+    external: false
+    name: e2e_sandbox_venvs
+  media_data:
+    external: false
+    name: e2e_media_data
+  opensearch_data:
+    external: false
+    name: e2e_opensearch_data
