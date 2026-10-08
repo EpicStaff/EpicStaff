@@ -247,8 +247,9 @@ class SessionGraphBuilder:
         Compiles a state graph from a given session schema.
 
         This method constructs and compiles a state graph based on the nodes and edges
-        defined in the provided session data. It iterates over crew nodes, python nodes,
-        and LLM nodes, adding each to the graph. Additionally, it processes edges and
+        defined in the provided session data. It iterates over every node list in the
+        schema (task, agent, python, knowledge and the rest), adding each node to the
+        graph. Additionally, it processes edges and
         conditional edges to establish connections between nodes and sets the entry point
         of the graph.
 
