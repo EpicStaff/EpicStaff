@@ -1,4 +1,4 @@
-import { CustomPythonCode, GetLlmConfigRequest, NodeType, WebhookTriggerWrite } from '@shared/models';
+import { CustomPythonCode, NodeType, WebhookTriggerWrite } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
@@ -59,10 +59,6 @@ export interface AgentNodeModel extends BaseNodeModel {
 export interface ToolNodeModel extends BaseNodeModel {
     type: NodeType.TOOL;
     data: ToolConfig;
-}
-export interface LLMNodeModel extends BaseNodeModel {
-    type: NodeType.LLM;
-    data: GetLlmConfigRequest;
 }
 
 export interface EdgeNodeModel extends BaseNodeModel {
@@ -156,7 +152,6 @@ export type NodeModel =
     | AgentNodeModel
     | TaskNodeModel
     | ToolNodeModel
-    | LLMNodeModel
     | PythonNodeModel
     | EdgeNodeModel
     | StartNodeModel

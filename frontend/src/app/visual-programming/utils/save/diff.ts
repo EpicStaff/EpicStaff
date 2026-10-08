@@ -14,7 +14,6 @@ import {
     GraphNoteModel,
     KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
-    LLMNodeModel,
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
@@ -171,16 +170,6 @@ function toAgentComparable(node: AgentNodeModel): unknown {
                 return aKey.localeCompare(bKey);
             }),
         })),
-        metadata: toNodeMetadata(node),
-    };
-}
-
-function toLlmComparable(node: LLMNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        llm_config: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
         metadata: toNodeMetadata(node),
     };
 }
@@ -407,11 +396,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<AgentNodeModel>(previous.nodes, NodeType.AGENT),
             nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
             toAgentComparable
-        ),
-        llmNodes: diffNodesByBackendId(
-            nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),
-            nodesByType<LLMNodeModel>(current.nodes, NodeType.LLM),
-            toLlmComparable
         ),
         fileExtractorNodes: diffNodesByBackendId(
             nodesByType<FileExtractorNodeModel>(previous.nodes, NodeType.FILE_EXTRACTOR),

@@ -14,7 +14,6 @@ import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-por
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
 import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from '../rules/knowledge-retriever-ports/knowledge-retriever-default-ports';
-import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from '../rules/schedule-trigger-ports/schedule-trigger-default-ports';
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
@@ -58,8 +57,6 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_TASK_NODE_PORTS;
         case NodeType.AGENT:
             return DEFAULT_AGENT_NODE_PORTS;
-        case NodeType.LLM:
-            return DEFAULT_LLM_NODE_PORTS;
         case NodeType.TOOL:
             return DEFAULT_TOOL_NODE_PORTS;
         case NodeType.PYTHON:
@@ -292,7 +289,6 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                 'edge-out',
                 'table-out',
                 'start-start',
-                'llm-out-right',
                 'file-extractor-out',
             ],
             position: 'left',
@@ -317,7 +313,6 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                     'python-in',
                     'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',
@@ -508,7 +503,6 @@ export function generatePortsForClassificationDecisionTableNode(
                 'edge-out',
                 'table-out',
                 'start-start',
-                'llm-out-right',
                 'file-extractor-out',
             ],
             position: 'left',
@@ -541,7 +535,6 @@ export function generatePortsForClassificationDecisionTableNode(
                     'python-in',
                     'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',

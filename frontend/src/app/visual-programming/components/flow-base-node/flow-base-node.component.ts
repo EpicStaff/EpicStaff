@@ -35,7 +35,6 @@ import {
     EndNodeModel,
     GraphNoteModel,
     KeyValueNodeModel,
-    LLMNodeModel,
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
@@ -166,8 +165,6 @@ export class FlowBaseNodeComponent implements OnInit {
                 return 'type-task';
             case NodeType.TOOL:
                 return 'type-tool';
-            case NodeType.LLM:
-                return 'type-llm';
             case NodeType.PYTHON:
                 return 'type-python';
             case NodeType.EDGE:
@@ -195,10 +192,6 @@ export class FlowBaseNodeComponent implements OnInit {
 
     public get toolNode() {
         return this.node.type === NodeType.TOOL ? (this.node as ToolNodeModel) : null;
-    }
-
-    public get llmNode() {
-        return this.node.type === NodeType.LLM ? (this.node as LLMNodeModel) : null;
     }
 
     public get pythonNode() {
