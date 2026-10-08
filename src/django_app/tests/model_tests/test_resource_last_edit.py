@@ -214,6 +214,7 @@ EXPECTED_TRACKED_MODEL_NAMES = {
     "Surface",
     "StorageFile",
     "SourceCollection",
+    "KeyValueTable",
 }
 
 

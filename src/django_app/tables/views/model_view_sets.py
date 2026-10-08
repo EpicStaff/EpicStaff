@@ -2620,14 +2620,17 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     }
     queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
-    # These actions never serialize a table, so they skip counting its entries.
-    _actions_without_entry_count = frozenset({"usage", "lookup_entries", "destroy"})
+    # These actions never serialize a table, so they skip counting its entries and
+    # loading its authorship.
+    _actions_without_table_representation = frozenset({"usage", "lookup_entries", "destroy"})
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.action in self._actions_without_entry_count:
+        if self.action in self._actions_without_table_representation:
             return queryset
-        return queryset.annotate(entry_count=Count("entries"))
+        return queryset.annotate(entry_count=Count("entries")).prefetch_related(
+            *authorship_prefetches()
+        )
 
     def perform_destroy(self, instance: KeyValueTable) -> None:
         KeyValueTableService().delete_table(instance)
@@ -2653,7 +2656,9 @@ class KeyValueTableEntryPagination(LimitOffsetPagination):
     max_limit = 100
 
 
-class KeyValueTableEntryViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableEntryViewSet(
+    OrgScopedChildViewSetMixin, LastEditDestroyViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     org_filter_path = "table__org_id"

@@ -21,6 +21,7 @@ from tables.models import (
     GeminiRealtimeConfig,
     Graph,
     GraphNote,
+    KeyValueTable,
     Label,
     OpenAIRealtimeConfig,
     RealtimeChannel,
@@ -323,6 +324,7 @@ def test_python_code_tool_patch_without_change_records_nothing(
         ("realtimechannel", RealtimeChannel, "name"),
         ("webhooktrigger", WebhookTrigger, "path"),
         ("agentdefinition", AgentDefinition, "name"),
+        ("key-value-tables", KeyValueTable, "name"),
     ],
     ids=[
         "embedding-config",
@@ -332,6 +334,7 @@ def test_python_code_tool_patch_without_change_records_nothing(
         "realtime-channel",
         "webhook-trigger",
         "agent-definition",
+        "key-value-table",
     ],
 )
 def test_patch_resending_unchanged_values_and_created_at_records_nothing(
