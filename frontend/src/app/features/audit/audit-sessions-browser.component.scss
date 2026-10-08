@@ -39,10 +39,16 @@ $panel-width: 480px;
 }
 
 .audit-browser__panel {
+    position: relative;
     flex: 0 0 $panel-width;
     min-height: 0;
     border-left: 1px solid var(--color-divider-regular);
     background-color: var(--color-sidenav-background);
+}
+
+.audit-browser__viewer {
+    position: absolute;
+    inset: 0;
 }
 
 .audit-browser__toolbar {
@@ -288,7 +294,8 @@ $panel-width: 480px;
     text-overflow: ellipsis;
     cursor: pointer;
 
-    &:focus-visible {
+    &:focus-visible,
+    &.is-viewed {
         outline: 1px solid var(--accent-color);
     }
 }

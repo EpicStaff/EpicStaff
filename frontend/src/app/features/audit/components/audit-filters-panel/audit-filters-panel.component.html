@@ -257,12 +257,37 @@
                     (scopeChange)="setMatchScope($event)"
                 />
 
-                <label
-                    class="filters-panel__section"
-                    for="audit-query"
-                >
-                    Query
-                </label>
+                <div class="filters-panel__query-header">
+                    <label
+                        class="filters-panel__section"
+                        for="audit-query"
+                    >
+                        Query
+                    </label>
+                    <button
+                        class="filters-panel__copy"
+                        type="button"
+                        [disabled]="isQueryEmpty()"
+                        (click)="copyQuery()"
+                    >
+                        <app-svg-icon
+                            icon="copy"
+                            size="14px"
+                        />
+                        Copy
+                    </button>
+                </div>
+                <div class="filters-panel__operators">
+                    @for (operator of queryOperators; track operator.label) {
+                        <button
+                            class="filters-panel__operator"
+                            type="button"
+                            (click)="insertField(queryInput, operator.text, operator.caretFromEnd)"
+                        >
+                            {{ operator.label }}
+                        </button>
+                    }
+                </div>
                 <textarea
                     #queryInput
                     id="audit-query"

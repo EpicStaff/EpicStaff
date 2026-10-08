@@ -109,6 +109,27 @@ export const QUERY_EXAMPLES: string[] = [
     'input : order1234 and output : Greetings',
 ];
 
+export interface QueryOperatorChip {
+    label: string;
+    text: string;
+    // Where the cursor lands, counted back from the end of the inserted text; 0 or absent = after it.
+    caretFromEnd?: number;
+}
+
+export const QUERY_OPERATORS: QueryOperatorChip[] = [
+    { label: 'AND', text: ' and ' },
+    { label: 'NOT', text: ' not ' },
+    { label: 'IN', text: ' in ()', caretFromEnd: 1 },
+    { label: 'OR', text: ' or ' },
+    // the grammar only knows `is` as `is empty` / `is not empty`, so the chips insert the whole phrase
+    { label: 'IS EMPTY', text: ' is empty' },
+    { label: 'IS NOT EMPTY', text: ' is not empty' },
+    { label: '>', text: ' > ' },
+    { label: '<', text: ' < ' },
+    { label: '==', text: ' == ' },
+    { label: '!=', text: ' != ' },
+];
+
 export const QUERY_FIELDS: string[] = [
     'kind',
     'session_id',
@@ -126,5 +147,4 @@ export const QUERY_FIELDS: string[] = [
     'task',
     'prompt',
     'message_text',
-    'id',
 ];

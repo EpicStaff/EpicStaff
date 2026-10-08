@@ -1,4 +1,3 @@
-import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -46,10 +45,7 @@ import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
-import {
-    AuditValueDialogComponent,
-    AuditValueDialogData,
-} from './components/audit-value-dialog/audit-value-dialog.component';
+import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
@@ -70,6 +66,14 @@ const SEARCH_DEBOUNCE_MS = 400;
 const EXPORT_POLL_INTERVAL_MS = 1_000;
 const EXPORT_TIMEOUT_MS = 5 * 60_000;
 
+interface ViewedValue {
+    rowId: string;
+    field: string;
+    rowName: string;
+    value: string;
+    isPlainText: boolean;
+}
+
 @Component({
     selector: 'app-audit-sessions-browser',
     standalone: true,
@@ -80,6 +84,7 @@ const EXPORT_TIMEOUT_MS = 5 * 60_000;
         AuditFilterChipsComponent,
         AuditHighlightComponent,
         AuditJsonPipe,
+        AuditValueViewerComponent,
         ActionDropdownButtonComponent,
         HasPermissionDirective,
     ],
@@ -96,7 +101,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
     private toastService = inject(ToastService);
-    private dialog = inject(Dialog);
     // Read once: an org switch remounts this page, so a later org change must not redirect writes.
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
     private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'applied');
@@ -112,6 +116,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
     public isFiltersPanelOpen = signal<boolean>(false);
+    protected viewedValue = signal<ViewedValue | null>(null);
+    private valueViewerTrigger: HTMLElement | null = null;
     private rawEvents = signal<AuditSessionEvent[]>([]);
     private cursorStack = signal<(string | null)[]>([null]);
     private nextCursor = signal<string | null>(null);
@@ -269,6 +275,12 @@ export class AuditSessionsBrowserComponent implements OnInit {
     }
 
     public toggleFiltersPanel(): void {
+        if (this.viewedValue()) {
+            this.viewedValue.set(null);
+            this.valueViewerTrigger = null;
+            this.isFiltersPanelOpen.set(true);
+            return;
+        }
         this.isFiltersPanelOpen.update((isOpen) => !isOpen);
     }
 
@@ -453,11 +465,22 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.exportFiltered(item.value as ExportFormat);
     }
 
-    protected openValue(field: string, row: AuditRow, value: string, isPlainText = false): void {
-        const rowName = row.event.name || row.nameLabel;
-        this.dialog.open<void, AuditValueDialogData>(AuditValueDialogComponent, {
-            data: { title: rowName ? `${field} — ${rowName}` : field, value, isPlainText },
-        });
+    protected openValue(trigger: HTMLElement, field: string, row: AuditRow, value: string, isPlainText = false): void {
+        const rowName = row.event.name || row.nameLabel || '';
+        this.valueViewerTrigger = trigger;
+        this.viewedValue.set({ rowId: row.event.id, field, rowName, value, isPlainText });
+    }
+
+    protected isValueViewed(field: string, row: AuditRow): boolean {
+        const viewed = this.viewedValue();
+        return viewed?.rowId === row.event.id && viewed.field === field;
+    }
+
+    // the panel is not a dialog, so focus is handed back to the cell by hand instead of falling to <body>
+    protected closeValueViewer(): void {
+        this.viewedValue.set(null);
+        this.valueViewerTrigger?.focus();
+        this.valueViewerTrigger = null;
     }
 }
 

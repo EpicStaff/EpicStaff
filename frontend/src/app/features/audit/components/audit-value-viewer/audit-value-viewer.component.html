@@ -1,0 +1,35 @@
+<div class="audit-value-viewer__header">
+    <h2 class="audit-value-viewer__title">
+        <app-svg-icon
+            class="audit-value-viewer__icon"
+            icon="brackets"
+            size="1.2rem"
+        />
+        {{ title() }}
+        <span class="audit-value-viewer__subtitle">— {{ subtitle() }}</span>
+    </h2>
+    <app-copy-button
+        class="audit-value-viewer__copy"
+        [text]="value()"
+    />
+    <button
+        class="audit-value-viewer__close"
+        type="button"
+        aria-label="Close viewer"
+        matTooltip="Close"
+        matTooltipPosition="above"
+        (click)="closed.emit()"
+    >
+        <app-svg-icon
+            icon="x"
+            size="1rem"
+        />
+    </button>
+</div>
+<app-json-editor
+    [jsonData]="value()"
+    [showHeader]="false"
+    [readonly]="true"
+    [fullHeight]="true"
+    [editorOptions]="editorOptions()"
+/>

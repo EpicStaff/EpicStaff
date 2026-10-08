@@ -1,7 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, input, model, OnInit, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    inject,
+    input,
+    model,
+    OnInit,
+    output,
+    signal,
+} from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
+import { ToastService } from '../../../../services/notifications';
 import {
     AuditConditionGroup,
     AuditEnumOption,
@@ -20,6 +32,7 @@ import {
     NODE_TYPE_OPTIONS,
     QUERY_EXAMPLES,
     QUERY_FIELDS,
+    QUERY_OPERATORS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
 import { AuditEventKind, AuditEventStatus, AuditNodeType } from '../../models/audit-session.models';
@@ -29,6 +42,7 @@ import {
     isFieldAvailable,
     isFieldEnabled,
 } from '../../utils/audit-filter-compatibility.util';
+import { insertQueryText } from '../../utils/insert-query-text.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
 import { AuditDateFilterComponent } from '../audit-date-filter/audit-date-filter.component';
@@ -86,8 +100,13 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly queryExamples = QUERY_EXAMPLES;
     public readonly queryFields = QUERY_FIELDS;
 
+    public readonly queryOperators = QUERY_OPERATORS;
+
     public activeTab = signal<AuditFilterTab>('builder');
     public isCreatingPreset = signal(false);
+    public readonly isQueryEmpty = computed(() => !this.filter().query.trim());
+
+    private readonly toastService = inject(ToastService);
 
     public ngOnInit(): void {
         this.activeTab.set(this.filter().mode);
@@ -148,12 +167,21 @@ export class AuditFiltersPanelComponent implements OnInit {
         this.filter.update((current) => ({ ...current, query, mode: 'query' }));
     }
 
-    // paste where cursor is and cursors appear after pasted word
-    public insertField(textarea: HTMLTextAreaElement, field: string): void {
-        const start = textarea.selectionStart;
-        const query = textarea.value.slice(0, start) + field + textarea.value.slice(textarea.selectionEnd);
+    public copyQuery(): void {
+        copyWithFeedback(this.filter().query, this.toastService);
+    }
+
+    // Replaces the selection with the text and puts the cursor after it (or `caretFromEnd` chars before its end).
+    public insertField(textarea: HTMLTextAreaElement, field: string, caretFromEnd = 0): void {
+        const { query, caret } = insertQueryText(
+            textarea.value,
+            textarea.selectionStart,
+            textarea.selectionEnd,
+            field,
+            caretFromEnd
+        );
         textarea.value = query;
-        textarea.setSelectionRange(start + field.length, start + field.length);
+        textarea.setSelectionRange(caret, caret);
         textarea.focus();
         this.filter.update((current) => ({ ...current, query, mode: 'query' }));
     }

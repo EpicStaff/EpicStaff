@@ -5,7 +5,7 @@
 
     <div
         class="audit-browser__toolbar"
-        [class.audit-browser__toolbar--panel-open]="isFiltersPanelOpen()"
+        [class.audit-browser__toolbar--panel-open]="isFiltersPanelOpen() || viewedValue()"
     >
         <input
             #searchInput
@@ -225,11 +225,15 @@
                                         let-isPlainText="isPlainText"
                                     >
                                         @if (text) {
+                                            @let isViewed = isValueViewed(field, row);
                                             <button
+                                                #valueButton
                                                 class="audit-value-cell"
                                                 type="button"
-                                                aria-haspopup="dialog"
-                                                (click)="openValue(field, row, text, isPlainText)"
+                                                aria-controls="audit-value-viewer"
+                                                [attr.aria-expanded]="isViewed"
+                                                [class.is-viewed]="isViewed"
+                                                (click)="openValue(valueButton, field, row, text, isPlainText)"
                                             >
                                                 <app-audit-highlight
                                                     [text]="text"
@@ -333,19 +337,33 @@
             </footer>
         </div>
 
-        @if (isFiltersPanelOpen()) {
+        @if (isFiltersPanelOpen() || viewedValue()) {
             <aside class="audit-browser__panel">
-                <app-audit-filters-panel
-                    [flowNames]="flowNames()"
-                    [agentOptions]="agentOptions()"
-                    [toolOptions]="toolOptions()"
-                    [(filter)]="draftFilter"
-                    (closed)="closeFiltersPanel()"
-                    (applied)="applyFilters()"
-                    (cleared)="clearFilters()"
-                    (presetApplied)="applyFilters($event)"
-                    [queryError]="queryError()"
-                />
+                @if (isFiltersPanelOpen()) {
+                    <app-audit-filters-panel
+                        [flowNames]="flowNames()"
+                        [agentOptions]="agentOptions()"
+                        [toolOptions]="toolOptions()"
+                        [(filter)]="draftFilter"
+                        (closed)="closeFiltersPanel()"
+                        (applied)="applyFilters()"
+                        (cleared)="clearFilters()"
+                        (presetApplied)="applyFilters($event)"
+                        [queryError]="queryError()"
+                    />
+                }
+                @if (viewedValue(); as viewed) {
+                    <!-- covers the filters panel instead of replacing it, so the panel keeps its tabs, scroll and open groups -->
+                    <app-audit-value-viewer
+                        id="audit-value-viewer"
+                        class="audit-browser__viewer"
+                        [field]="viewed.field"
+                        [rowName]="viewed.rowName"
+                        [value]="viewed.value"
+                        [isPlainText]="viewed.isPlainText"
+                        (closed)="closeValueViewer()"
+                    />
+                }
             </aside>
         }
     </div>
