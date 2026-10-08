@@ -66,8 +66,13 @@
     border: none;
     color: var(--white);
 
-    &:hover {
+    &:hover:not(:disabled) {
         opacity: 0.9;
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 }
 

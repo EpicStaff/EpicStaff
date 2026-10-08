@@ -74,7 +74,9 @@ def _node_to_dict(spec: NodeTypeSpec, node) -> dict:
 
     # "node_name" is skipped here because it's already surfaced as result["name"]
     # via spec.display_name() above — including it in config too would duplicate it.
-    skip = {"id", "metadata", "content_hash", "node_name"}
+    # "test_payload" is a designer-written sample that may hold real customer data;
+    # it never reaches the LLM.
+    skip = {"id", "metadata", "content_hash", "node_name", "test_payload"}
     config: dict = {}
     for field in node._meta.fields:
         if field.is_relation:

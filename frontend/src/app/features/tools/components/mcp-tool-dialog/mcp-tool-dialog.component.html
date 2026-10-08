@@ -68,10 +68,10 @@
                 <app-input-number
                     label="Timeout (seconds)"
                     placeholder="30"
-                    tooltipText="Maximum time in seconds to wait for a request response. Leave empty for default timeout."
+                    tooltipText="Maximum time in seconds to wait for a request response (1–1800)."
                     formControlName="timeout"
                     [min]="1"
-                    [max]="2147483647"
+                    [max]="1800"
                 />
                 <app-validation-errors [control]="form.get('timeout')!" />
             </div>
@@ -86,8 +86,14 @@
                     [items]="secretItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
+                    [readonly]="!canUseSecrets()"
+                    readonlyEmptyPlaceholder="No secret"
                 />
-                @if (!form.get('auth_secret_id')?.value) {
+                @if (!canUseSecrets()) {
+                    <app-hint-message>
+                        Changing the auth secret requires the <strong>Use</strong> permission on Secrets.
+                    </app-hint-message>
+                } @else if (!form.get('auth_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
                     </app-hint-message>
@@ -98,11 +104,11 @@
             <div>
                 <app-input-number
                     label="Init Timeout (seconds)"
-                    placeholder="30"
-                    tooltipText="Maximum time in seconds to wait for session initialization. Default is 10 seconds."
+                    placeholder="10"
+                    tooltipText="Maximum time in seconds to wait for session initialization (1–120). Default is 10 seconds."
                     formControlName="init_timeout"
                     [min]="1"
-                    [max]="2147483647"
+                    [max]="120"
                 />
                 <app-validation-errors [control]="form.get('init_timeout')!" />
             </div>

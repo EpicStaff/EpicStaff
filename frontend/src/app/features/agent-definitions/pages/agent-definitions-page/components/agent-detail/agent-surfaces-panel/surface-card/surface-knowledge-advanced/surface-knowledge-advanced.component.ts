@@ -22,6 +22,7 @@ import { RAG_SUGGEST_API } from '@shared/services';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { ToastService } from '../../../../../../../../../services/notifications';
 import { CollectionsApiService } from '../../../../../../../../knowledge-sources/services/collections-api.service';
 import { AgentsService } from '../../../../../../../../staff/services/staff.service';
 import { SurfaceKnowledge } from '../../../../../../../models/surface.model';
@@ -50,6 +51,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
     private readonly collectionsApi = inject(CollectionsApiService);
+    private readonly toast = inject(ToastService);
 
     collections = input.required<SurfaceCollectionOption[]>();
     knowledge = input.required<SurfaceKnowledge[]>();
@@ -59,7 +61,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
      * so suggested-params requests know which LLM's context window to use. */
     llmConfigId = input<number | null>(null);
     /** Shared surfaces have no owning agent to source an LLM from — suggested
-     * params are out of scope for them by product decision (EST-3986). */
+     * params are out of scope for them by product decision. */
     suggestionsDisabled = input<boolean>(false);
 
     readonly knowledgeChange = output<SurfaceKnowledge>();
@@ -87,6 +89,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     });
     readonly ragTabSearchConfigs = signal<AgentSearchConfigs | null>(null);
     readonly currentGraphMethod = signal<GraphSearchMethod | null>(null);
+    readonly invalidConfig = signal<boolean>(false);
 
     private readonly ragKindItems: SelectItem[] = [
         { name: 'Naive RAG', value: 'naive' },
@@ -191,27 +194,34 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     }
 
     selectCollection(id: number): void {
+        if (id === this.activeCollectionId()) return;
+        // Switching rebuilds the form from the saved knowledge, so an unsaveable edit would be lost;
+        // the inline invalid-settings message explains why the switch is refused.
+        this.flush();
+        if (this.invalidConfig()) return;
         this.activeCollectionId.set(id);
     }
 
     ngOnDestroy(): void {
-        this.flushPending();
+        this.flush();
         this.formSub.unsubscribe();
+        if (this.invalidConfig()) this.toast.warning('Invalid retrieval settings were discarded.');
     }
 
-    /** Emits synchronously whatever emitCurrent() had debounced for the collection
-     * being left, instead of letting the unsubscribe below cancel it silently. */
-    private flushPending(): void {
+    /** Emits synchronously whatever emitCurrent() has debounced and refreshes invalidConfig,
+     * so a host can read the latest knowledge and validity before building its payload. */
+    flush(): void {
         if (this.pendingCollectionId != null && this.pendingRagTabForm) {
             this.emitCurrent(this.pendingCollectionId, this.pendingRagTabForm);
         }
     }
 
     private rebuildForm(collectionId: number | null): void {
-        this.flushPending();
+        this.flush();
         this.formSub.unsubscribe();
         this.formSub = new Subscription();
         this.lastEmitted = null;
+        this.invalidConfig.set(false);
 
         if (collectionId == null) {
             this.pendingCollectionId = null;
@@ -297,6 +307,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
         const ragValue = ragTabForm.get('rag')?.value as { rag_type: RagKind } | null;
         const ragType = ragValue?.rag_type ?? null;
         const raw = searchConfigsCtrl.getRawValue();
+        const storedDrift = this.knowledge().find((k) => k.collection === collectionId)?.graph_drift_search_config;
 
         let item: SurfaceKnowledge | null = null;
 
@@ -334,6 +345,8 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
                 graph_drift_search_config:
                     method === 'drift'
                         ? {
+                              reduce_temperature: storedDrift?.reduce_temperature,
+                              local_search_temperature: storedDrift?.local_search_temperature,
                               ...raw.drift,
                               prompt: raw.drift.prompt || null,
                               reduce_prompt: raw.drift.reduce_prompt || null,
@@ -342,7 +355,16 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
             };
         }
 
-        if (!item || searchConfigsCtrl.invalid) return;
+        // Graph payloads carry only the selected method, so the hidden methods' validity is irrelevant.
+        const invalid =
+            ragType === 'graph'
+                ? !!(
+                      searchConfigsCtrl.get('search_method')?.invalid ||
+                      searchConfigsCtrl.get(raw.search_method)?.invalid
+                  )
+                : searchConfigsCtrl.invalid;
+        this.invalidConfig.set(invalid);
+        if (!item || invalid) return;
         const json = JSON.stringify(item);
         if (json === this.lastEmitted) return;
         this.lastEmitted = json;

@@ -31,6 +31,15 @@
         >
             Realtime
         </button>
+        <span class="tab-divider">/</span>
+        <button
+            class="tab"
+            [class.active]="activeTab() === 'embedding'"
+            (click)="setActiveTab('embedding')"
+            type="button"
+        >
+            Embedding
+        </button>
     </div>
 
     @if (activeTab() === 'llm') {
@@ -399,6 +408,56 @@
         }
     }
 
+    @if (activeTab() === 'embedding') {
+        <form
+            class="form"
+            [formGroup]="embeddingForm"
+        >
+            <section class="section">
+                <h3 class="section-title">MODEL INFORMATION</h3>
+                <div>
+                    <app-llm-model-selector
+                        formControlName="model"
+                        label="Provider"
+                        placeholder="Select provider"
+                        tooltipText="The AI provider and model this configuration will use (e.g. OpenAI text-embedding-3-small)"
+                        [provider]="ModelTypes.EMBEDDING"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="embeddingForm.controls.model" />
+                </div>
+                <div>
+                    <app-select
+                        formControlName="api_key_secret_id"
+                        label="API Key"
+                        variant="boxed"
+                        placeholder="Select a secret"
+                        tooltipText="The stored secret holding this provider's API key"
+                        [items]="secretItems()"
+                        [showSearch]="true"
+                        searchPlaceholder="Search a secret..."
+                    />
+                    @if (!embeddingForm.controls.api_key_secret_id.value) {
+                        <app-hint-message>
+                            Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                        </app-hint-message>
+                    }
+                    <app-validation-errors [control]="embeddingForm.controls.api_key_secret_id" />
+                </div>
+                <div>
+                    <app-custom-input
+                        formControlName="custom_name"
+                        label="Configuration Name"
+                        placeholder="Enter a custom name"
+                        tooltipText="A friendly name to identify this configuration across the app"
+                        [required]="true"
+                    />
+                    <app-validation-errors [control]="embeddingForm.controls.custom_name" />
+                </div>
+            </section>
+        </form>
+    }
+
     <div class="footer">
         <app-button
             type="outline-primary"
@@ -413,7 +472,7 @@
             @if (isSubmitting()) {
                 Creating…
             } @else {
-                {{ activeTab() === 'llm' ? 'Add LLM' : 'Create Realtime' }}
+                {{ submitLabel() }}
             }
         </app-button>
     </div>

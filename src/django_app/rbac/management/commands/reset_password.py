@@ -9,7 +9,6 @@ from rbac.exceptions import (
     UserNotFoundError,
 )
 from rbac.identity.passwords.recovery import PasswordRecoveryService
-from rbac.validation.auth import AuthValidationService
 
 
 class Command(BaseCommand):
@@ -18,8 +17,8 @@ class Command(BaseCommand):
         "Usage: python manage.py reset_password <email> "
         "[--generate | --password <pw>]. Without a flag, prompts twice for the "
         "new password via getpass. Validates strength using the same "
-        "AUTH_PASSWORD_VALIDATORS the HTTP API uses. Invalidates all "
-        "outstanding JWT refresh tokens for the user on success."
+        "AUTH_PASSWORD_VALIDATORS the HTTP API uses. On success, blacklists all "
+        "outstanding JWT refresh tokens and revokes all personal API keys of the user."
     )
 
     _GENERATED_PASSWORD_BYTES = 16
@@ -42,19 +41,17 @@ class Command(BaseCommand):
         new_password = self._resolve_password(options)
         generated = options["generate"]
 
-        validator = AuthValidationService()
         service = PasswordRecoveryService()
 
+        # `cli_reset` validates the password against the account it resolves
+        # (including similarity to its email) before writing anything.
         try:
-            validator.validate_new_password({"new_password": new_password})
+            service.cli_reset(email=email, new_password=new_password)
         except FormValidationError as exc:
             raise CommandError(
                 "Password validation failed:\n  "
                 + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
             ) from exc
-
-        try:
-            service.cli_reset(email=email, new_password=new_password)
         except UserNotFoundError as exc:
             raise CommandError(f"No user with email '{email}'.") from exc
 

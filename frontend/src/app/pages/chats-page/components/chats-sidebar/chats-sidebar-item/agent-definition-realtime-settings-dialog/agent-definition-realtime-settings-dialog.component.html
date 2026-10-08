@@ -43,6 +43,9 @@
         <!-- Content -->
         <div class="dialog-content">
             <div class="scrollable-content">
+                @if (errorMessage()) {
+                    <div class="error-banner">{{ errorMessage() }}</div>
+                }
                 <!-- Provider Selection -->
                 <app-radio-button
                     label="Voice Provider"
@@ -106,6 +109,7 @@
                                 type="text"
                                 class="input-field"
                                 formControlName="voice"
+                                maxlength="100"
                                 placeholder="ElevenLabs Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM)"
                             />
                         </div>
@@ -131,6 +135,7 @@
                             type="text"
                             class="input-field"
                             formControlName="wakeword"
+                            maxlength="255"
                             placeholder="Hey, Assistant"
                         />
                     </div>
@@ -149,6 +154,7 @@
                             type="text"
                             class="input-field"
                             formControlName="stopword"
+                            maxlength="255"
                             placeholder="Enter a stopword"
                         />
                     </div>
@@ -202,8 +208,8 @@
             <button
                 class="btn create"
                 type="button"
-                [disabled]="submitting()"
-                [class.disabled]="submitting()"
+                [disabled]="submitting() || settingsForm()?.invalid"
+                [class.disabled]="submitting() || settingsForm()?.invalid"
                 (click)="onConfirm()"
             >
                 Save

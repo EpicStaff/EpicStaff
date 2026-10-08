@@ -23,6 +23,7 @@
                 type="button"
                 class="local-surface-dialog__btn local-surface-dialog__btn--confirm"
                 aria-label="Confirm"
+                [disabled]="surfaceCard()?.knowledgeInvalid()"
                 (click)="onConfirm()"
             >
                 <app-svg-icon

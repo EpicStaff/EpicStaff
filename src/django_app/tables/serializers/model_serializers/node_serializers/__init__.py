@@ -29,6 +29,7 @@ from .trigger_serializers import (
     TelegramTriggerNodeFieldSerializer,
     TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramWebhookInfoSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "TelegramTriggerNodeFieldSerializer",
     "TelegramTriggerNodeReadSerializer",
     "TelegramTriggerNodeSerializer",
+    "TelegramWebhookInfoSerializer",
     "WebhookTriggerNodeReadSerializer",
     "WebhookTriggerNodeSerializer",
 ]

@@ -1,3 +1,4 @@
+from .audit_filter_preset_models import AuditFilterPreset
 from .base_models import (
     AbstractDefaultFillableModel,
     ActiveManager,
@@ -173,6 +174,7 @@ __all__ = [
     "AgentTag",
     "AudioFormatChoices",
     "AudioTranscriptionNode",
+    "AuditFilterPreset",
     "BaseGlobalNode",
     "BaseGraphEntity",
     "BaseNode",

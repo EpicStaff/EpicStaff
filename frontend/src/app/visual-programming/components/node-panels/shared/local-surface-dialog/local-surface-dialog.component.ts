@@ -35,7 +35,7 @@ export class LocalSurfaceDialogComponent {
     private readonly dialogRef = inject<DialogRef<InlineSurface | null>>(DialogRef);
     private readonly data = inject<LocalSurfaceDialogData>(DIALOG_DATA);
 
-    private readonly surfaceCard = viewChild(SurfaceCardComponent);
+    protected readonly surfaceCard = viewChild(SurfaceCardComponent);
 
     readonly isCreateMode = this.data.mode === 'create';
     readonly title = this.isCreateMode ? 'Create Local Surface' : 'Edit Local Surface';
@@ -49,6 +49,9 @@ export class LocalSurfaceDialogComponent {
             this.dialogRef.close(null);
             return;
         }
+
+        card.flushPendingKnowledge();
+        if (card.knowledgeInvalid()) return;
 
         const payload = card.buildCreateRequest('');
         const result: InlineSurface = {

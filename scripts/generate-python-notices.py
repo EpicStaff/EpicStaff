@@ -30,6 +30,7 @@ Idempotent — re-running overwrites the backend region in place.
 
 Usage (from repository root):
     python scripts/generate-python-notices.py
+    python scripts/generate-python-notices.py --check   # CI: fail if stale
 
 Requires: Python 3.12+ with uv installed (`uv` must be on PATH).
 Only stdlib is imported by this script itself.
@@ -55,17 +56,12 @@ NOTICES_SKELETON_FILE = SCRIPTS_DIR / "notices-skeleton.md"
 BACKEND_BEGIN_MARKER = "<!-- BEGIN GENERATED: backend -->"
 BACKEND_END_MARKER = "<!-- END GENERATED: backend -->"
 
-SERVICES = [
-    "src/django_app",
-    "src/crew",
-    "src/agent",
-    "src/manager",
-    "src/knowledge",
-    "src/realtime",
-    "src/sandbox",
-    "src/webhook",
-    "src/voice_app",
-]
+# Every backend service with a pyproject.toml, discovered the same way as the
+# Makefile's uv_services so a new or renamed service is never silently skipped.
+SERVICES = sorted(
+    pyproject.parent.relative_to(REPO_ROOT).as_posix()
+    for pyproject in REPO_ROOT.glob("src/*/pyproject.toml")
+)
 
 BOOTSTRAP_PACKAGES = {
     "pip",
@@ -88,9 +84,7 @@ FIRST_PARTY_AUTHOR_DOMAINS: tuple[str, ...] = ("hys-enterprise.com",)
 # `uv sync --no-group`. Anything else a service declares (graphrag,
 # dotdict, secfloor, ...) is a production group and stays installed, matching
 # what that service's Dockerfile actually ships.
-DEV_GROUP_NAMES: frozenset[str] = frozenset(
-    {"dev", "test", "tests", "lint", "typing", "docs"}
-)
+DEV_GROUP_NAMES: frozenset[str] = frozenset({"dev", "test", "tests", "lint", "typing", "docs"})
 
 # C6 — SPDX overrides for packages whose PyPI metadata declares the wrong license.
 # Each entry confirmed by reading the actual shipped LICENSE body text from the wheel.
@@ -168,7 +162,7 @@ def dev_group_names(svc_dir: Path) -> list[str]:
 
 def project_name(svc_dir: Path) -> str | None:
     """The service's own root/self package name, e.g. "webhook",
-    "epicstaff-graph" for crew, "realtime", "knowledge", "voice-app". Used to
+    "epicstaff-graph" for crew, "realtime", "knowledge", "auditor". Used to
     exclude a service's own first-party package from the notices even if it
     ended up installed in the venv (stale venv predating
     `--no-install-project`, or a developer running a plain `uv sync
@@ -197,9 +191,7 @@ def uv_sync_cmd(svc_dir: Path) -> list[str]:
     return cmd
 
 
-def run(
-    cmd: list[str], cwd: Path | None = None, check: bool = True
-) -> subprocess.CompletedProcess:
+def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
     log("$ " + " ".join(str(c) for c in cmd))
     return subprocess.run(
         cmd,
@@ -245,9 +237,7 @@ def bootstrap_venv(svc_dir: Path) -> Path | None:
     excluded = dev_group_names(svc_dir)
     excluded_desc = ",".join(excluded) if excluded else "(none)"
     if already_has_venv:
-        log(
-            f"  {svc_dir.name}: .venv exists — reconciling (--no-group {excluded_desc})"
-        )
+        log(f"  {svc_dir.name}: .venv exists — reconciling (--no-group {excluded_desc})")
     else:
         log(f"  {svc_dir.name}: no .venv — bootstrapping (--no-group {excluded_desc})")
 
@@ -269,9 +259,7 @@ def bootstrap_venv(svc_dir: Path) -> Path | None:
             run(uv_sync_cmd(svc_dir), cwd=svc_dir)
             log(f"  {svc_dir.name}: uv sync done")
         except subprocess.CalledProcessError as retry_exc:
-            log(
-                f"  {svc_dir.name}: uv sync failed after relock: {retry_exc.stderr.strip()[:400]}"
-            )
+            log(f"  {svc_dir.name}: uv sync failed after relock: {retry_exc.stderr.strip()[:400]}")
             return None
 
     if not venv_dir.exists() or not venv_python(venv_dir).exists():
@@ -324,9 +312,7 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         # pip module may not exist at all.
         run(["uv", "pip", "install", "--python", str(py), "pip-licenses"], check=True)
     except subprocess.CalledProcessError as exc:
-        log(
-            f"  pip-licenses install failed for {svc_dir.name}: {exc.stderr.strip()[:300]}"
-        )
+        log(f"  pip-licenses install failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
         return []
 
     try:
@@ -438,9 +424,7 @@ def collect_packages() -> dict[tuple[str, str], dict]:
             }
 
     if skipped:
-        log(
-            f"services skipped (bootstrap failed or no pyproject.toml): {', '.join(skipped)}"
-        )
+        log(f"services skipped (bootstrap failed or no pyproject.toml): {', '.join(skipped)}")
 
     return packages
 
@@ -457,12 +441,8 @@ def derive_copyright(pkg: dict) -> str:
     return ""
 
 
-def build_markdown(
-    packages: dict[tuple[str, str], dict], provenance: dict[str, str]
-) -> str:
-    sorted_pkgs = sorted(
-        packages.values(), key=lambda p: (p["name"].lower(), p["version"])
-    )
+def build_markdown(packages: dict[tuple[str, str], dict], provenance: dict[str, str]) -> str:
+    sorted_pkgs = sorted(packages.values(), key=lambda p: (p["name"].lower(), p["version"]))
 
     dist: dict[str, int] = defaultdict(int)
     for pkg in sorted_pkgs:
@@ -479,7 +459,7 @@ def build_markdown(
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
         "(`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, "
-        "`src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "`src/sandbox`, `src/webhook`, `src/auditor`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")
@@ -508,9 +488,7 @@ def build_markdown(
     lines.append("| Package | Version | License | Note |")
     lines.append("|---|---|---|---|")
     for v in VENDORED:
-        lines.append(
-            f"| `{v['name']}` | {v['version']} | {v['license']} | {v['note']} |"
-        )
+        lines.append(f"| `{v['name']}` | {v['version']} | {v['license']} | {v['note']} |")
     lines.append("")
     lines.append(
         "Vendored libraries live inside the repository tree (not pulled from PyPI at install time). "
@@ -554,11 +532,7 @@ def build_markdown(
             lines.append("")
             continue
         if license_text:
-            safe = (
-                license_text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
+            safe = license_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             lines.append("<details><summary>License text</summary>")
             lines.append("")
             lines.append("<pre>")
@@ -571,11 +545,7 @@ def build_markdown(
             lines.append("> No LICENSE file shipped by upstream wheel.")
             lines.append("")
         if notice_text:
-            safe = (
-                notice_text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
+            safe = notice_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             lines.append("<details><summary>NOTICE</summary>")
             lines.append("")
             lines.append("<pre>")
@@ -651,12 +621,43 @@ def splice_backend_region(document: str, body: str) -> str:
     return spliced.rstrip("\n") + "\n"
 
 
+def current_lock_hashes() -> str:
+    return ", ".join(f"{Path(svc).name}:{lock_hash(REPO_ROOT / svc)}" for svc in SERVICES)
+
+
+def check() -> int:
+    """CI guard: compare the lock hashes stamped in the backend header with
+    the current uv.lock files. Needs no venvs and no network."""
+    stamp = "<!-- lock-hashes: "
+    document = NOTICES_FILE.read_text(encoding="utf-8")
+    stamped = next(
+        (
+            line[len(stamp) : -len(" -->")]
+            for line in document.splitlines()
+            if line.startswith(stamp) and line.endswith(" -->")
+        ),
+        None,
+    )
+    actual = current_lock_hashes()
+    if stamped == actual:
+        log(f"backend notices in sync: {actual}")
+        return 0
+    log(
+        "THIRD-PARTY-NOTICES.md backend region is stale.\n\n"
+        f"  header records  {stamped}\n"
+        f"  uv.lock files   {actual}\n\n"
+        "Regenerate and commit the result:\n\n"
+        "  python scripts/generate-python-notices.py\n"
+    )
+    return 1
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--check"]:
+        return check()
     sha = get_git_sha()
     date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    lock_hashes_str = ", ".join(
-        f"{Path(svc).name}:{lock_hash(REPO_ROOT / svc)}" for svc in SERVICES
-    )
+    lock_hashes_str = current_lock_hashes()
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")
 
