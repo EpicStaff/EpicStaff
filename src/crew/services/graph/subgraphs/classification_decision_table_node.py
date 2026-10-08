@@ -24,6 +24,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 # litellm reports json_schema support for these providers, but their APIs reject it
 # ("This response_format type is unavailable now") and only accept json_object.
@@ -125,6 +126,7 @@ class ClassificationDecisionTableNodeSubgraph:
         stop_event: StopEvent,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -135,6 +137,7 @@ class ClassificationDecisionTableNodeSubgraph:
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
         )
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
@@ -256,6 +259,7 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -383,6 +387,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "variables": state["variables"].model_dump(),
             },
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -443,6 +448,7 @@ def main(**kwargs) -> dict:
             python_code_data=python_code_data,
             inputs={"variables": variables_dict},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:

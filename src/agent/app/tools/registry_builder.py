@@ -20,6 +20,7 @@ from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import CollectionSpec, SearchConfigEntry
 from shared.models.knowledge import GraphRagSearchConfig
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import McpToolData, PythonCodeToolData
 
 _INVALID_TOOL_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
@@ -134,7 +135,9 @@ class ToolRegistryBuilder:
 
         return self
 
-    def add_python_code_tool(self, data: PythonCodeToolData) -> Self:
+    def add_python_code_tool(
+        self, data: PythonCodeToolData, storage_credentials: StorageCredentials | None = None
+    ) -> Self:
         """Register a python-code tool. Name, description, and schema come from ``data``."""
         self._check_built()
         clean_name = sanitize_tool_name(data.name)
@@ -144,7 +147,9 @@ class ToolRegistryBuilder:
             description=data.description,
             parameters_schema=data.args_schema.model_dump(),
         )
-        executor = PythonCodeToolExecutor(self._sandbox, data)
+        executor = PythonCodeToolExecutor(
+            self._sandbox, data, storage_credentials=storage_credentials
+        )
         self._registry.register(spec, executor)
         return self
 

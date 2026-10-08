@@ -281,7 +281,7 @@ The sandbox sets these in the user-code process env for storage-enabled executio
 | Variable | Purpose |
 |----------|---------|
 | `STORAGE_ENDPOINT` | S3 endpoint URL |
-| `STORAGE_ACCESS_KEY` | Per-execution scoped access key (MinIO Admin API service account, revoked after the run) |
+| `STORAGE_ACCESS_KEY` | Scoped access key minted by `django_app` (MinIO Admin API service account) — one per Test-run execution, or one reused for the whole session/realtime chat; revoked when its owner reaches a terminal state. See [Storage Backend Guide](STORAGE_BACKEND_GUIDE.md) → Service Account Credential Management. |
 | `STORAGE_SECRET_KEY` | Secret for that scoped key |
 | `STORAGE_BUCKET_NAME` | Target bucket name |
 | `STORAGE_ORG_PREFIX` | Org prefix used by SDK (set per execution context) |

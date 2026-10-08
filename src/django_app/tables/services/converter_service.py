@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from loguru import logger
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
@@ -37,6 +38,12 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from storage_credentials.exceptions import (
+    CredentialScopeValidationError,
+    TemporaryCredentialIssueError,
+)
+from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -198,7 +205,7 @@ class ConverterService(metaclass=SingletonMeta):
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
         org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
-            return f"org_{org_id}"
+            return org_storage_prefix(org_id)
         return None
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
@@ -323,6 +330,44 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider=rt_provider,
         )
 
+        # Check if any tools require storage and mint credentials if needed
+        try:
+            union_allowed_paths = set()
+            needs_storage = False
+
+            for tool in surface_resolution.tools:
+                tool_data = tool.data
+                if isinstance(tool_data, PythonCodeToolData) and tool_data.python_code.use_storage:
+                    needs_storage = True
+                    if tool_data.python_code.storage_allowed_paths:
+                        union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
+
+            if needs_storage:
+                if not union_allowed_paths:
+                    # Resolved before any mint attempt -- same class of
+                    # problem as RealtimeSurfaceService's fail-closed check,
+                    # same exception type and status code (400, not 500).
+                    raise CredentialScopeValidationError(
+                        "This agent's tools need file storage access, but no files are "
+                        "attached. Attach the required files or folders."
+                    )
+                rt_agent_chat_data.storage_credentials = (
+                    session_credential_service.issue_for_realtime_chat(
+                        realtime_agent_chat=rt_agent_chat,
+                        storage_allowed_paths=list(union_allowed_paths),
+                        org_id=ad.organization_id,
+                    )
+                )
+        except (TemporaryCredentialIssueError, CredentialScopeValidationError):
+            raise
+        except Exception as error:
+            logger.exception(
+                "Failed to mint temporary storage credentials for realtime chat {}: {}",
+                rt_agent_chat.id,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
+
         return rt_agent_chat_data
 
     def convert_python_code_to_pydantic(
@@ -383,6 +428,12 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # `storage_allowed_paths_override` may be a list shared across
+                # several tool conversions in the same caller loop (see
+                # `base_node_payload_service._build_tool_pool`) -- rebuild rather
+                # than `.append()` so we never mutate a caller-owned list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if storage_org_prefix_override is not None:
                 storage_org_prefix = storage_org_prefix_override
             elif graph_id is not None:
@@ -447,6 +498,10 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # See `convert_python_code_tool_to_pydantic` -- rebuild instead of
+                # `.append()` to avoid mutating a caller-owned override list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if graph_id is not None:
                 storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 

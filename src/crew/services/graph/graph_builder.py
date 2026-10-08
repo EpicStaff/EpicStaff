@@ -39,6 +39,7 @@ from src.shared.models import (
     SessionData,
     SubGraphData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 from utils import map_variables_to_input
 
 
@@ -87,6 +88,7 @@ class SessionGraphBuilder:
         python_code_data: PythonCodeData,
         then: str | None = None,
         input_map: dict | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         """
         Adds a conditional edge to the graph from the given from_node to the then node,
@@ -97,6 +99,8 @@ class SessionGraphBuilder:
             python_code_data (PythonCodeData): The condition to evaluate.
             input_map (dict | None): A mapping of input variables to be passed to the condition
                 (defaults to an empty dictionary if not provided).
+            storage_credentials (StorageCredentials | None): Temporary storage credentials
+                forwarded to the condition code when it requires storage access.
 
         Returns:
             None
@@ -122,6 +126,7 @@ class SessionGraphBuilder:
                 inputs=input_,
                 stop_event=self.stop_event,
                 additional_global_kwargs=additional_global_kwargs,
+                storage_credentials=storage_credentials,
             )
 
             result = json.loads(python_code_execution_data["result_data"])
@@ -147,7 +152,11 @@ class SessionGraphBuilder:
 
         self._graph_builder.add_node(node.node_name, inner)
 
-    def add_decision_table_node(self, decision_table_node_data: DecisionTableNodeData) -> str:
+    def add_decision_table_node(
+        self,
+        decision_table_node_data: DecisionTableNodeData,
+        storage_credentials: StorageCredentials | None = None,
+    ) -> str:
         """
         Adds a decision table node to the graph builder.
         Args:
@@ -162,6 +171,7 @@ class SessionGraphBuilder:
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
             run_code_execution_service=self.python_code_executor_service,
+            storage_credentials=storage_credentials,
             redis_service=self.redis_service,
         )
         subgraph: CompiledStateGraph = builder.build()
@@ -175,7 +185,9 @@ class SessionGraphBuilder:
         self._graph_builder.add_conditional_edges(decision_table_node_data.node_name, condition)
 
     def add_classification_decision_table_node(
-        self, node_data: ClassificationDecisionTableNodeData
+        self,
+        node_data: ClassificationDecisionTableNodeData,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
         subgraph_builder = StateGraph(State)
         builder = ClassificationDecisionTableNodeSubgraph(
@@ -184,6 +196,7 @@ class SessionGraphBuilder:
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
             redis_service=self.redis_service,
+            storage_credentials=storage_credentials,
         )
         subgraph: CompiledStateGraph = builder.build()
 
@@ -207,9 +220,14 @@ class SessionGraphBuilder:
         unique_subgraph_list: list[SubGraphData],
         stop_event,
         org_id: int,
+        storage_credentials: StorageCredentials | None = None,
     ) -> str:
         """
         Adds a subgraph node to the graph builder.
+
+        Args:
+            storage_credentials: Temporary storage credentials forwarded into the
+                subgraph so nodes nested inside it can reach storage.
         """
         builder = SubGraphNode(
             session_id=self.session_id,
@@ -218,6 +236,7 @@ class SessionGraphBuilder:
             graph_builder=StateGraph(State),
             session_graph_builder=self,
             stop_event=stop_event,
+            storage_credentials=storage_credentials,
             org_id=org_id,
         )
 
@@ -276,6 +295,7 @@ class SessionGraphBuilder:
                 task_node_data=task_node_data,
                 agent_task_service=self.agent_task_service,
                 remembered_outputs_store=self.remembered_outputs_store,
+                storage_credentials=session_data.storage_credentials,
             )
             self.add_node(task_node)
 
@@ -298,6 +318,7 @@ class SessionGraphBuilder:
                 stop_event=self.stop_event,
                 agent_node_data=agent_node_data,
                 agent_task_service=self.agent_task_service,
+                storage_credentials=session_data.storage_credentials,
             )
             self.add_node(agent_node)
 
@@ -310,6 +331,7 @@ class SessionGraphBuilder:
                 input_map=python_node_data.input_map,
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_credentials=session_data.storage_credentials,
             )
             self.add_node(python_node)
 
@@ -341,6 +363,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
                 storage_org_prefix=file_extractor_node_data.storage_org_prefix,
                 org_id=file_extractor_node_data.org_id,
+                storage_credentials=session_data.storage_credentials,
             )
             self.add_node(file_extractor_node)
 
@@ -368,6 +391,7 @@ class SessionGraphBuilder:
                 storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
                 storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
                 org_id=audio_transcription_node_data.org_id,
+                storage_credentials=session_data.storage_credentials,
             )
             self.add_node(audio_transcription_node)
 
@@ -380,18 +404,26 @@ class SessionGraphBuilder:
                 python_code_data=conditional_edge_data.python_code,
                 then=conditional_edge_data.then,
                 input_map=conditional_edge_data.input_map,
+                storage_credentials=session_data.storage_credentials,
             )
 
         for decision_table_node_data in schema.decision_table_node_list:
-            self.add_decision_table_node(decision_table_node_data=decision_table_node_data)
+            self.add_decision_table_node(
+                decision_table_node_data=decision_table_node_data,
+                storage_credentials=session_data.storage_credentials,
+            )
         for ct_node_data in schema.classification_decision_table_node_list:
-            self.add_classification_decision_table_node(node_data=ct_node_data)
+            self.add_classification_decision_table_node(
+                node_data=ct_node_data,
+                storage_credentials=session_data.storage_credentials,
+            )
 
         for subgraph_node_data in schema.subgraph_node_list:
             self.add_subgraph_node(
                 subgraph_node_data=subgraph_node_data,
                 unique_subgraph_list=session_data.unique_subgraph_list,
                 stop_event=self.stop_event,
+                storage_credentials=session_data.storage_credentials,
                 org_id=session_data.org_id,
             )
 
@@ -403,6 +435,7 @@ class SessionGraphBuilder:
                     stop_event=self.stop_event,
                     python_code_executor_service=self.python_code_executor_service,
                     python_code_data=webhook_trigger_node_data.python_code,
+                    storage_credentials=session_data.storage_credentials,
                 )
             )
         for telegram_trigger_node_data in schema.telegram_trigger_node_data_list:

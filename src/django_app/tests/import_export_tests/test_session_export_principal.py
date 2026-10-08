@@ -42,7 +42,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     monkeypatch.setattr(
         sm.redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id=None: 2,
+        lambda **kwargs: 2,
     )
     return sm
 

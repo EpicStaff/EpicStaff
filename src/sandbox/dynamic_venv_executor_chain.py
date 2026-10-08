@@ -19,10 +19,10 @@ from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
 from savefiles_ownership import ensure_savefiles_writable
-from secret_scrubber import scrub
-from services.storage_credential_manager import StorageCredentialManager
+from secret_scrubber import build_masking_values, masking_enabled, scrub
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData
+from src.shared.models.storage_scope import StorageCredentials
 from utils.environment import build_base_env
 from utils.logger import logger
 
@@ -679,6 +679,19 @@ except Exception:
             }
             argv = [sys.executable, str(LAUNCHER_PATH), json.dumps(plan), *argv]
 
+        # Temporary storage credentials are masked unconditionally -- they
+        # are never a "user secret" the developer might legitimately want to
+        # see, unlike what MASK_SECRET/masking_enabled() gates. User secrets
+        # are included in the masking set only when masking_enabled() is True,
+        # preserving today's opt-out behavior for them exactly.
+        masking_values = build_masking_values(
+            (context.get("secrets") or {}) if masking_enabled() else {},
+            {
+                "STORAGE_ACCESS_KEY": context.get("temp_storage_access_key"),
+                "STORAGE_SECRET_KEY": context.get("temp_storage_secret_key"),
+            },
+        )
+
         process = await asyncio.create_subprocess_exec(
             *argv,
             stdout=asyncio.subprocess.PIPE,
@@ -689,9 +702,6 @@ except Exception:
             **drop_kwargs,
         )
 
-        secrets = context.get("secrets") or {}
-        mask_secrets = settings.MASK_SECRET
-
         comm_task = asyncio.ensure_future(process.communicate())
         done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
 
@@ -700,8 +710,7 @@ except Exception:
                 process=process,
                 comm_task=comm_task,
                 context=context,
-                secrets=secrets,
-                mask_secrets=mask_secrets,
+                masking_values=masking_values,
             )
 
         stdout, stderr = comm_task.result()
@@ -710,9 +719,8 @@ except Exception:
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
 
-        if mask_secrets:
-            stderr = scrub(text=stderr, secrets=secrets)
-            stdout = scrub(text=stdout, secrets=secrets)
+        stderr = scrub(text=stderr, secrets=masking_values)
+        stdout = scrub(text=stdout, secrets=masking_values)
 
         if stderr:
             logger.info("Error: {}", stderr)
@@ -727,9 +735,7 @@ except Exception:
             try:
                 with open(result_file_path, encoding="utf-8") as file:  # noqa: ASYNC230
                     raw_result = file.read()
-                result_data = (
-                    scrub(text=raw_result, secrets=secrets) if mask_secrets else raw_result
-                )
+                result_data = scrub(text=raw_result, secrets=masking_values)
             except Exception:
                 logger.exception("Exception reading result file")
 
@@ -749,8 +755,7 @@ except Exception:
         process: asyncio.subprocess.Process,
         comm_task: asyncio.Task,
         context: dict[str, Any],
-        secrets: dict[str, str],
-        mask_secrets: bool,
+        masking_values: dict[str, str],
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
@@ -791,9 +796,8 @@ except Exception:
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        if mask_secrets:
-            stdout = scrub(text=stdout, secrets=secrets)
-            stderr = scrub(text=stderr, secrets=secrets)
+        stdout = scrub(text=stdout, secrets=masking_values)
+        stderr = scrub(text=stderr, secrets=masking_values)
 
         timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
         if not killed:
@@ -813,11 +817,9 @@ class DynamicVenvExecutorChain:
         self,
         output_path: str | Path,
         base_venv_path: str | Path,
-        storage_credential_manager: StorageCredentialManager,
     ):
         self.output_path = output_path
         self.base_venv_path = base_venv_path
-        self.storage_credential_manager = storage_credential_manager
 
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
@@ -845,6 +847,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
+        storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
@@ -902,36 +905,41 @@ class DynamicVenvExecutorChain:
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
         }
-        temp_access_key: str | None = None
         if use_storage:
-            try:
-                if not storage_org_prefix:
-                    raise ValueError("storage_org_prefix is required when use_storage is set")
-                policy = self.storage_credential_manager.build_policy(
-                    allowed_bucket=settings.STORAGE_BUCKET_NAME,
-                    org_prefix=storage_org_prefix,
-                    allowed_paths=storage_allowed_paths,
+            # Fail-closed: code that requests storage access must have valid
+            # credentials already provided via storage_credentials parameter.
+            # These are injected by crew/agent at task publication time and
+            # carry a trusted org scope.
+            if storage_credentials is None:
+                logger.error(
+                    "Execution requested storage access but no storage_credentials provided, "
+                    "execution_id={}",
+                    execution_id,
                 )
-                (
-                    temp_access_key,
-                    temp_secret_key,
-                ) = await self.storage_credential_manager.create(policy)
-            except Exception as e:
-                logger.error("Failed to provision scoped storage credentials: {}", e)
                 return CodeResultData(
                     execution_id=execution_id,
-                    stderr=f"Failed to provision scoped storage credentials: {e}",
+                    stderr="Storage access requested but no credentials provided.",
                     stdout="",
                     returncode=1,
                 )
-            context["temp_storage_access_key"] = temp_access_key
-            context["temp_storage_secret_key"] = temp_secret_key
+            context["temp_storage_access_key"] = storage_credentials.access_key
+            context["temp_storage_secret_key"] = storage_credentials.secret_key
 
         try:
             result = await self.chain.handle(context)
-        finally:
-            if temp_access_key is not None:
-                await self.storage_credential_manager.revoke(temp_access_key)
+        except Exception:
+            # venv creation or library install blowing up (subprocess spawn
+            # failure, OOM, disk error, ...) must not propagate past this
+            # point. stderr travels to the SSE stream and the LLM tool
+            # observation, so it carries fixed text only; the detail stays
+            # in the log.
+            logger.exception("Execution chain failed")
+            return CodeResultData(
+                execution_id=execution_id,
+                stderr="Execution chain failed.",
+                stdout="",
+                returncode=1,
+            )
 
         logger.info(result)
         return result

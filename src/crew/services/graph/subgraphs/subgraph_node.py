@@ -13,6 +13,7 @@ from models.graph_models import (
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
+from src.shared.models.storage_scope import StorageCredentials
 from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
 
@@ -28,6 +29,7 @@ class SubGraphNode:
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.unique_subgraph_list = unique_subgraph_list
         self.subgraph_node_data = subgraph_node_data
@@ -43,6 +45,7 @@ class SubGraphNode:
         )
         self.session_graph_builder = session_graph_builder
         self.stop_event = stop_event
+        self.storage_credentials = storage_credentials
 
     def build(self, initial_state) -> CompiledStateGraph:
         """
@@ -62,7 +65,11 @@ class SubGraphNode:
         return subgraph_builder.compile_from_schema(temp_session_data)
 
     def _create_temp_session_data(self, initial_state):
-        """Create temporary session data for subgraph building."""
+        """Create temporary session data for subgraph building.
+
+        Carries the parent session's storage credentials so storage-demanding nodes
+        nested inside the subgraph are built with the same credentials.
+        """
         from src.shared.models import SessionData
 
         return SessionData(
@@ -70,6 +77,7 @@ class SubGraphNode:
             graph=self.subgraph_data.data,
             unique_subgraph_list=self.unique_subgraph_list,
             initial_state=initial_state,
+            storage_credentials=self.storage_credentials,
             org_id=self.org_id,
         )
 

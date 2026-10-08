@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-_SENSITIVE = {
+_SENSITIVE = (
     "api_key",
+    "access_key",
+    "secret_key",
     "auth",
     "authorization",
     "headers",
@@ -11,7 +13,7 @@ _SENSITIVE = {
     "password",
     "token",
     "secret",
-}
+)
 
 
 def redact(value):

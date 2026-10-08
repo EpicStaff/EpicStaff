@@ -14,7 +14,8 @@ RUN_PYTHON_CODE_POST = {
             examples=[
                 OpenApiExample(
                     "Execution started",
-                    value={"execution_id": "17-07-2026_19-01-11-924@e66d"},
+                    value={"execution_id": "14-09-2026_19-01-11-924@e66d"},
+                    description="Format: DD-MM-YYYY_HH-MM-SS-mmm@<4 hex chars>",
                     response_only=True,
                 ),
             ],

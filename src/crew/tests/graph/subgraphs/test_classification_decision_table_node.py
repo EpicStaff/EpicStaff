@@ -116,7 +116,12 @@ from dotdict import DotDict, DotObject, DotList
 
 
 async def fake_run_code(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     ns: dict = {}
     exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
@@ -131,7 +136,12 @@ async def fake_run_code(
 
 
 async def fake_run_code_error(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     return {
         "returncode": 1,
@@ -647,7 +657,12 @@ async def test_prompt_with_output_schema_calls_llm_and_stores_result(monkeypatch
 
 
 async def fake_run_code_raises(
-    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
 ):
     raise RuntimeError("sandbox unreachable")
 
@@ -719,7 +734,12 @@ def record_run_code(monkeypatch) -> list[dict]:
     calls: list[dict] = []
 
     async def recording_run_code(
-        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None
+        self,
+        python_code_data,
+        inputs,
+        stop_event=None,
+        additional_global_kwargs=None,
+        storage_credentials=None,
     ):
         calls.append(inputs)
         return await fake_run_code(self, python_code_data, inputs, stop_event)

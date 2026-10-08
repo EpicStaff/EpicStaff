@@ -31,8 +31,11 @@ _DELETE_OBJECTS_BATCH = 1000
 _NAME_TAKEN_CODES = frozenset(
     {"PreconditionFailed", "412", "ConditionalRequestConflict", "409", "XMinioParentIsObject"}
 )
-# The store rejects the key itself.
-_INVALID_NAME_CODES = frozenset({"400", "XMinioInvalidObjectName"})
+# The store rejects the key itself. InvalidArgument/KeyTooLongError are RustFS's
+# own codes for this (RustFS never sends MinIO's vendor-specific XMinioInvalidObjectName).
+_INVALID_NAME_CODES = frozenset(
+    {"400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"}
+)
 
 
 def _drop_expect_on_empty_body(request, **kwargs):

@@ -1,10 +1,12 @@
 import asyncio
 import signal
+from zoneinfo import ZoneInfo
 
 import settings
 from db.config import AsyncSessionLocal
 from helpers.logger import logger
 from repositories.session_repository import SessionRepository
+from repositories.temp_storage_account_repository import TempStorageAccountRepository
 from services.audit_export_cleanup_service import (
     ExportCleanupService,
     build_export_redis_client,
@@ -12,6 +14,7 @@ from services.audit_export_cleanup_service import (
 from services.redis_service import RedisService
 from services.schedule_service import ScheduleService
 from services.session_timeout_service import SessionTimeoutService
+from services.storage_account_cleanup_service import StorageAccountCleanupService
 from sqlalchemy import text
 
 redis_service = RedisService(
@@ -36,6 +39,12 @@ export_cleanup_service = ExportCleanupService(
     redis_client=redis_export_service,
     sweep_interval_seconds=settings.AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS,
     export_data_dir=settings.AUDITOR_EXPORT_DATA_DIR,
+)
+
+temp_storage_account_repository = TempStorageAccountRepository(AsyncSessionLocal)
+storage_account_cleanup_service = StorageAccountCleanupService(
+    repository=temp_storage_account_repository,
+    timezone=ZoneInfo(settings.TIMEZONE),
 )
 
 
@@ -91,6 +100,9 @@ async def main():
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
 
+        await storage_account_cleanup_service.start()
+        logger.info("StorageAccountCleanupService started successfully.")
+
         await export_cleanup_service.start()
         logger.info("ExportCleanupService started successfully.")
 
@@ -107,6 +119,7 @@ async def shutdown():
 
     if schedule_service.scheduler.running:
         schedule_service.scheduler.shutdown(wait=False)
+    storage_account_cleanup_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()
     await export_cleanup_service.stop()

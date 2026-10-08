@@ -9,6 +9,7 @@ from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
 from src.shared.models import AgentNodeData
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class AgentNode(BaseNode):
@@ -21,6 +22,7 @@ class AgentNode(BaseNode):
         stop_event: StopEvent,
         agent_node_data: AgentNodeData,
         agent_task_service: AgentTaskService,
+        storage_credentials: StorageCredentials | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -31,6 +33,7 @@ class AgentNode(BaseNode):
         )
         self.agent_node_data = agent_node_data
         self.agent_task_service = agent_task_service
+        self.storage_credentials = storage_credentials
 
     def get_output_variable_value(self, output: Any) -> Any:
         return agent_output_variable_value(output)
@@ -61,7 +64,10 @@ class AgentNode(BaseNode):
         )
 
         result = await self.agent_task_service.run_agent_node(
-            agent_node_data, self.stop_event, on_event=on_agent_event
+            agent_node_data,
+            self.stop_event,
+            on_event=on_agent_event,
+            storage_credentials=self.storage_credentials,
         )
 
         return {

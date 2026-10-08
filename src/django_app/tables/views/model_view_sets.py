@@ -65,6 +65,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
@@ -1635,6 +1636,9 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         chat.duration_seconds = request.data.get("duration_seconds")
         chat.end_reason = request.data.get("end_reason", "completed")
         chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+
+        session_credential_service.revoke_for_realtime_chat(chat.id)
+
         return Response({"detail": "Updated"})
 
 
@@ -2530,6 +2534,10 @@ class SecretViewSet(
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    # system=True rows (e.g. org-level MinIO credentials) are internal to
+    # storage_credentials and must never be visible through this API — not
+    # even their existence. `Secret.objects` (the default manager) already
+    # excludes them by construction; no explicit filter is needed here.
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
 

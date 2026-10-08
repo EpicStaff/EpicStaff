@@ -16,6 +16,7 @@ from src.shared.redis_keys import (
     SESSION_STATUS_CHANNEL_PATTERN,
     session_final_variables_key,
 )
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import (
     Session,
     SessionStorageFile,
@@ -86,6 +87,8 @@ class RedisPubSub:
             logger.debug("Received message from session_status_handler: {}", message)
             data = json.loads(message["data"])
             close_old_connections()
+            should_revoke_credentials = False
+            session_id_for_revoke = None
             with transaction.atomic():
                 # Locked so the token total read below cannot interleave with
                 # GraphMessageStore storing it: whichever runs second stores the full one.
@@ -132,6 +135,16 @@ class RedisPubSub:
                     )
                     return
 
+                # Defer credential revocation to after transaction commit to avoid holding
+                # a lock during a potentially long network call (10-15s with retries).
+                if data["status"] in [
+                    Session.SessionStatus.END,
+                    Session.SessionStatus.ERROR,
+                    Session.SessionStatus.STOP,
+                    Session.SessionStatus.EXPIRED,
+                ]:
+                    should_revoke_credentials = True
+                    session_id_for_revoke = session.id
             # After the commit: the row lock is released, so these steps do not hold
             # back GraphMessageStore, and a failure in them cannot undo the status.
             if data["status"] in [
@@ -139,6 +152,14 @@ class RedisPubSub:
                 Session.SessionStatus.ERROR,
             ]:
                 self._persist_finished_session(session, final_variables)
+
+            # Revoke credentials after transaction commits, not holding any lock.
+            # Failure is not fatal — the row can be retried or manually cleaned later.
+            if should_revoke_credentials and session_id_for_revoke is not None:
+                transaction.on_commit(
+                    lambda: session_credential_service.revoke_for_session(session_id_for_revoke),
+                    robust=True,
+                )
 
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
@@ -170,6 +191,7 @@ class RedisPubSub:
         return json.loads(raw_variables)
 
     def code_results_handler(self, message: dict):
+        result = None
         try:
             logger.debug("Received message from code_result_handler: {}", message)
             result = CodeResultData.model_validate_json(message["data"])
@@ -178,6 +200,11 @@ class RedisPubSub:
                 logger.debug(f"No pending execution for {result.execution_id}, skipping")
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
+        finally:
+            # Attempt to revoke temporary storage credentials for this execution
+            # (revocation failure is not fatal to result persistence)
+            if result is not None:
+                session_credential_service.revoke_for_test_run(result.execution_id)
 
     def storage_mutations_handler(self, message: dict):
         try:

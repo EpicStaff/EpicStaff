@@ -21,6 +21,8 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
+from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.resource_names import org_storage_prefix
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
@@ -118,15 +120,29 @@ class RealtimeSurfaceService:
         allowed_tool_ids = [
             entry["python_tool"] for entry in python_tool_entries if entry["mode"] == "allow"
         ]
-        return [
-            self.converter_service.convert_tool_to_base_tool_pydantic(
-                python_tool,
-                storage_allowed_paths_override=storage_allowed_paths,
-                storage_org_prefix_override=storage_org_prefix,
-                org_id_override=org_id,
+        tools = []
+        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids):
+            if python_tool.use_storage and storage_org_prefix is None:
+                # Fail closed, like converter_service: silently dropping the tool
+                # would start the realtime agent without a capability its surface
+                # grants, which reads as a broken tool rather than a scope problem.
+                # This is a resolvable configuration issue, not an infra/mint
+                # failure (nothing has attempted to mint yet) -- same exception
+                # CredentialScopeValidator raises, same 400.
+                raise CredentialScopeValidationError(
+                    f"Tool '{python_tool.name}' needs file storage access, but no files are "
+                    "attached to this agent's surface. Attach the required files or folders."
+                )
+
+            tools.append(
+                self.converter_service.convert_tool_to_base_tool_pydantic(
+                    python_tool,
+                    storage_allowed_paths_override=storage_allowed_paths,
+                    storage_org_prefix_override=storage_org_prefix,
+                    org_id_override=org_id,
+                )
             )
-            for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids)
-        ]
+        return tools
 
     def _resolve_storage_grants(
         self, storage_item_entries: list[dict], org_id: int | None
@@ -156,7 +172,7 @@ class RealtimeSurfaceService:
             return [], None
 
         allowed_paths = [storage_file.path for storage_file in storage_files]
-        storage_org_prefix = f"org_{org_id}"
+        storage_org_prefix = org_storage_prefix(org_id)
         return allowed_paths, storage_org_prefix
 
     def _warn_on_mcp_tools(self, mcp_tool_entries: list[dict]) -> None:

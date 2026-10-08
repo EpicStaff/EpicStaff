@@ -2,7 +2,7 @@
 nonexistent X-Organization-Id.
 
 Superadmin bypasses membership but the org must still exist as a real id
-(see tables/services/rbac/org_context_service.py docstring). Before the
+(see rbac/access/org_context.py docstring). Before the
 fix, a superadmin sending a bogus org id hit Organization.objects.get()
 unguarded downstream and got an uncaught DoesNotExist -> 500. Now it
 raises OrganizationNotFoundError -> clean 404.
