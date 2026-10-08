@@ -5,4 +5,5 @@ export * from './provider-icons.constants';
 export * from './rag.constants';
 export * from './realtime-voice.constants';
 export * from './role-labels.constants';
+export * from './sidebar-width.constants';
 export * from './steps';
