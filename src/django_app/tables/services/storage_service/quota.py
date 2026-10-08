@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
@@ -38,13 +40,22 @@ def ensure_fits_quota(org_id: int, size: int, replacing=()) -> None:
 
 
 def record_files_within_quota(
-    org_id: int, files: list[tuple[str, int]], folders=(), *, user: object | None = None
+    org_id: int,
+    files: list[tuple[str, int]],
+    folders=(),
+    *,
+    user: object | None = None,
+    authors_by_path: Mapping[str, int | None] | None = None,
 ) -> None:
     """Write rows for stored files [(path, size)] and empty folders, or raise 413 if they don't fit.
-    The org row lock serializes the quota check across concurrent writers of one org."""
+    The org row lock serializes the quota check across concurrent writers of one org.
+    `authors_by_path` overrides the author of the rows it names that get inserted; see
+    `StorageFileSync.on_bulk_upload`."""
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=org_id)
         ensure_fits_quota(
             org_id, sum(size for _, size in files), replacing=[path for path, _ in files]
         )
-        StorageFileSync.on_bulk_upload(org_id, files, folders, user=user)
+        StorageFileSync.on_bulk_upload(
+            org_id, files, folders, user=user, authors_by_path=authors_by_path
+        )

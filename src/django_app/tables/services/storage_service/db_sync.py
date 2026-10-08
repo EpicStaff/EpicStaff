@@ -1,5 +1,7 @@
+from collections.abc import Mapping
+
 from django.db import transaction
-from django.db.models import QuerySet, Value
+from django.db.models import Value
 from django.db.models.functions import Concat, Substr
 from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
@@ -42,31 +44,6 @@ def _ancestor_paths(path: str) -> list[str]:
     return ancestors
 
 
-def _claim_unauthored(rows: QuerySet[StorageFile], author: User | None) -> None:
-    """Make `author` the author of the rows in `rows` that have none.
-
-    The NULL check runs in the UPDATE itself, so a concurrent claim is never overwritten.
-    """
-    if author is not None:
-        rows.filter(created_by__isnull=True).update(created_by=author)
-
-
-def _create_missing_rows(org: Organization, rows: list[StorageFile], user: object | None) -> None:
-    """Insert `rows`, leaving paths already tracked untouched; `user` last edits the inserted ones."""
-    # NOTE: the already-tracked paths are read before the insert, so a row that a
-    # concurrent writer inserts between the read and the insert is taken for one inserted
-    # here and recorded as last edited by `user`. Accepted: only the last edit is wrong.
-    tracked_paths = set(
-        StorageFile.objects.filter(org=org, path__in=[row.path for row in rows]).values_list(
-            "path", flat=True
-        )
-    )
-    StorageFile.objects.bulk_create(rows, ignore_conflicts=True)
-    new_paths = [row.path for row in rows if row.path not in tracked_paths]
-    if new_paths:
-        record_last_edits(StorageFile.objects.filter(org=org, path__in=new_paths), user)
-
-
 def _create_missing_folders(
     org: Organization, folder_paths: list[str], author: User | None
 ) -> list[StorageFile]:
@@ -99,8 +76,8 @@ class StorageFileSync:
     All path arguments are org-relative (no org_X/ prefix).
 
     `user` is the acting user (system callers pass none): rows a call creates are authored
-    and last edited by it, and an existing row the call edits is last edited by it and
-    claimed by it when unauthored.
+    and last edited by it, and an existing row the call edits is only last edited by it;
+    its author, or the lack of one, is kept.
     """
 
     @staticmethod
@@ -142,8 +119,6 @@ class StorageFileSync:
                 update_fields.append("s3_modified")
 
             file_row.save(update_fields=update_fields)
-            if file_row.created_by_id is None:
-                _claim_unauthored(StorageFile.objects.filter(pk=file_row.pk), author)
 
         created_folders = _create_missing_folders(org, _ancestor_paths(path), author)
         record_last_edits([file_row, *created_folders], user)
@@ -163,16 +138,36 @@ class StorageFileSync:
 
     @staticmethod
     def on_bulk_upload(
-        org_id: int, files: list[tuple[str, int]], folders=(), *, user: object | None = None
+        org_id: int,
+        files: list[tuple[str, int]],
+        folders=(),
+        *,
+        user: object | None = None,
+        authors_by_path: Mapping[str, int | None] | None = None,
     ) -> None:
-        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs."""
+        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs.
+
+        Args:
+            authors_by_path: Author id of each inserted row whose path it names, overriding
+                `user`; a cross-org move uses it so moved rows keep their own authors. It
+                only applies to rows this call inserts: an existing file or folder keeps
+                its author. Paths it does not name (e.g. new ancestor folders) are
+                authored by `user`.
+        """
         folder_paths = {folder.rstrip("/") + "/" for folder in folders}
         for path in [*(path for path, _ in files), *folder_paths]:
             folder_paths.update(_ancestor_paths(path))
 
-        # `user` authors the rows created here and last edits the files and the new folders;
-        # folders that already existed are left as they are.
+        # `user` authors the rows created here, unless `authors_by_path` names them, and last
+        # edits the files and the new folders; folders that already existed are left as they are.
         author = resolve_author(user)
+        author_overrides = authors_by_path or {}
+
+        def author_id_of(path: str) -> int | None:
+            if path in author_overrides:
+                return author_overrides[path]
+            return author.pk if author is not None else None
+
         existing_folder_paths = (
             set(
                 StorageFile.objects.filter(org_id=org_id, path__in=folder_paths).values_list(
@@ -191,7 +186,7 @@ class StorageFileSync:
                     name=_name_of(path),
                     item_type="folder",
                     parent_path=_parent_of(path),
-                    created_by=author,
+                    created_by_id=author_id_of(path),
                 )
                 for path in sorted(folder_paths)
             ],
@@ -207,10 +202,11 @@ class StorageFileSync:
                     item_type="file",
                     parent_path=_parent_of(path),
                     size=size,
-                    created_by=author,
+                    created_by_id=author_id_of(path),
                 )
                 for path, size in files
             ],
+            # NOTE: never add created_by to update_fields: an existing file keeps its author.
             update_conflicts=True,
             unique_fields=["org", "path"],
             update_fields=["name", "item_type", "parent_path", "size", "updated_at"],
@@ -250,10 +246,10 @@ class StorageFileSync:
 
         A `dst` without "/" first tries a single-row file update; otherwise (src was a
         folder) every row under `src` gets the `dst` prefix and a recomputed name and
-        parent_path. The moved entry's own row is last edited by `user` and claimed by it
-        when unauthored; rows beneath a moved folder keep their authors and last edits.
+        parent_path. The moved entry's own row is last edited by `user` and keeps its
+        author, or the lack of one; rows beneath a moved folder keep their authors and last
+        edits.
         """
-        author = resolve_author(user)
         with transaction.atomic():
             updated = 0
 
@@ -264,9 +260,7 @@ class StorageFileSync:
                     parent_path=_parent_of(dst),
                 )
                 if updated:
-                    moved_file = StorageFile.objects.filter(org_id=org_id, path=dst)
-                    _claim_unauthored(moved_file, author)
-                    record_last_edits(moved_file, user)
+                    record_last_edits(StorageFile.objects.filter(org_id=org_id, path=dst), user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -284,138 +278,4 @@ class StorageFileSync:
                     row.name = _name_of(row.path)
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
-                _claim_unauthored(
-                    StorageFile.objects.filter(org_id=org_id, path=dst_prefix), author
-                )
                 record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
-
-    @staticmethod
-    def on_copy(org_id: int, actual_dst_paths: list[str], *, user: object | None = None) -> None:
-        """
-        Sync a copy from the backend's actual destination paths ("/"-suffixed = folders).
-
-        Every path's ancestor folders are created too, so intermediate directories exist
-        even if the copy created no direct child of them. Rows that already exist are left
-        untouched; the created rows are last edited by `user`.
-        """
-        org = Organization.objects.get(id=org_id)
-        author = resolve_author(user)
-        folder_paths: set[str] = set()
-        rows = []
-
-        for path in actual_dst_paths:
-            folder_paths.update(_ancestor_paths(path))
-
-            if path.endswith("/"):
-                folder_paths.add(path)
-                continue
-
-            rows.append(
-                StorageFile(
-                    org=org,
-                    path=path,
-                    name=_name_of(path),
-                    item_type="file",
-                    parent_path=_parent_of(path),
-                    created_by=author,
-                )
-            )
-
-        for folder_path in folder_paths:
-            rows.append(
-                StorageFile(
-                    org=org,
-                    path=folder_path,
-                    name=_name_of(folder_path),
-                    item_type="folder",
-                    parent_path=_parent_of(folder_path),
-                    created_by=author,
-                )
-            )
-
-        _create_missing_rows(org, rows, user)
-
-    @staticmethod
-    def on_move_cross_org(
-        src_org_id: int,
-        src_path: str,
-        dst_org_id: int,
-        actual_dst_path: str,
-        *,
-        user: object | None = None,
-    ) -> None:
-        """
-        Sync a cross-org move using the actual destination path returned by
-        the backend: an exact file path, or a folder base path ending in "/".
-        Destination rows are new rows authored and last edited by `user`; an
-        existing destination file is last edited by it and claimed by it when
-        unauthored.
-        """
-        dst_org = Organization.objects.get(id=dst_org_id)
-        author = resolve_author(user)
-
-        with transaction.atomic():
-            if not actual_dst_path.endswith("/"):
-                source_row = StorageFile.objects.filter(org_id=src_org_id, path=src_path).first()
-
-                dest_row, created = StorageFile.objects.get_or_create(
-                    org=dst_org,
-                    path=actual_dst_path,
-                    defaults={
-                        "name": _name_of(actual_dst_path),
-                        "item_type": "file",
-                        "parent_path": _parent_of(actual_dst_path),
-                        "size": source_row.size if source_row else None,
-                        "s3_modified": source_row.s3_modified if source_row else None,
-                        "created_by": author,
-                    },
-                )
-
-                if not created:
-                    if source_row is not None:
-                        dest_row.size = source_row.size
-                        dest_row.s3_modified = source_row.s3_modified
-                        dest_row.save(update_fields=["size", "s3_modified"])
-                    if dest_row.created_by_id is None:
-                        _claim_unauthored(StorageFile.objects.filter(pk=dest_row.pk), author)
-
-                created_folders = _create_missing_folders(
-                    dst_org, _ancestor_paths(actual_dst_path), author
-                )
-                record_last_edits([dest_row, *created_folders], user)
-
-                StorageFile.objects.filter(org_id=src_org_id, path=src_path).delete()
-                return
-
-            src_prefix = src_path.rstrip("/") + "/"
-            source_rows = list(
-                StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix)
-            )
-
-            translated_rows = []
-            for row in source_rows:
-                if row.path == src_prefix:
-                    new_path = actual_dst_path
-                else:
-                    new_path = actual_dst_path + row.path[len(src_prefix) :]
-
-                translated_rows.append(
-                    StorageFile(
-                        org=dst_org,
-                        path=new_path,
-                        name=_name_of(new_path),
-                        item_type=row.item_type,
-                        parent_path=_parent_of(new_path),
-                        size=row.size,
-                        s3_modified=row.s3_modified,
-                        created_by=author,
-                    )
-                )
-
-            _create_missing_rows(dst_org, translated_rows, user)
-            created_folders = _create_missing_folders(
-                dst_org, _ancestor_paths(actual_dst_path), author
-            )
-            record_last_edits(created_folders, user)
-
-            StorageFile.objects.filter(org_id=src_org_id, path__startswith=src_prefix).delete()

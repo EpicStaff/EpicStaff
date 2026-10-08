@@ -2,12 +2,11 @@
 
 import json
 from datetime import UTC, datetime
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.contrib.contenttypes.models import ContentType
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -15,13 +14,17 @@ from rest_framework import serializers, status
 
 from rbac.authorship import record_last_edit
 from rbac.models import ResourceLastEdit
+from tables.exceptions import StorageUnavailable
 from tables.models import Graph, StorageFile
 from tables.services import redis_pubsub
 from tables.services.storage_service.dataclasses import FileInfo
+from tables.services.storage_service.base import StorageUnreachable
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.reconciler import StorageReconciler
+from tables.services.storage_service.upload import file_upload
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, async_chunks
+from tests.storage_tests.storage_writes import store_object, stream_upload
 from tests.user_summary_helpers import expected_user_summary
 
 pytestmark = pytest.mark.django_db
@@ -82,66 +85,114 @@ def _seed(org, path: str, editor) -> None:
     record_last_edit(_row(org, path), editor, edited_at=PREVIOUS_EDIT_AT)
 
 
-def _upload(client, path: str, filename: str, content: bytes = b"data"):
-    payload = {"files": SimpleUploadedFile(filename, content, content_type="text/plain")}
-    if path:
-        payload["path"] = path
-    return client.post("/api/storage/upload/", payload)
+def _make_commits_fail(monkeypatch, backend) -> None:
+    """Make the store refuse every write, so an upload fails after writing its row."""
+
+    def commit_fails(*_args, **_kwargs):
+        raise StorageUnreachable("storage went away")
+
+    monkeypatch.setattr(backend, "put_bytes", commit_fails)
+
+
+@sync_to_async
+def _editor_id_async(org, path: str) -> int | None:
+    return _editor_id(org, path)
 
 
 # ---- writes ----
 
 
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.usefixtures("stream_backend")
 class TestUpload:
-    def test_upload_records_file_and_new_ancestor_folders(self, client_in_org, admin_acme, acme):
+    async def test_upload_records_file_and_new_ancestor_folders(self, admin_acme, acme):
         upload_started_at = timezone.now()
 
-        response = _upload(client_in_org(admin_acme, acme), "a/b", "report.txt")
+        response = await stream_upload(admin_acme, acme, "a/b", "report.txt")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
+        assert response.status_code == 200, response.text
         for path in ("a/b/report.txt", "a/", "a/b/"):
-            last_edit = _last_edit(acme, path)
+            last_edit = await sync_to_async(_last_edit)(acme, path)
             assert last_edit.edited_by_id == admin_acme.id
             assert last_edit.edited_at >= upload_started_at
 
-    def test_upload_into_existing_folder_leaves_its_last_edit(
-        self, client_in_org, manager, admin_acme, member_only, acme
+    async def test_upload_into_existing_folder_leaves_its_last_edit(
+        self, manager, admin_acme, member_only, acme
     ):
-        manager.mkdir(acme.id, "shared", user=member_only)
-        _seed(acme, "shared/", member_only)
+        await sync_to_async(manager.mkdir)(acme.id, "shared", user=member_only)
+        await sync_to_async(_seed)(acme, "shared/", member_only)
 
-        response = _upload(client_in_org(admin_acme, acme), "shared", "report.txt")
+        response = await stream_upload(admin_acme, acme, "shared", "report.txt")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        _assert_untouched(acme, "shared/", member_only)
-        assert _editor_id(acme, "shared/report.txt") == admin_acme.id
+        assert response.status_code == 200, response.text
+        await sync_to_async(_assert_untouched)(acme, "shared/", member_only)
+        assert await _editor_id_async(acme, "shared/report.txt") == admin_acme.id
 
-    def test_reupload_by_another_user_records_that_user(
-        self, client_in_org, admin_acme, member_only, acme
+    async def test_reupload_by_another_user_records_that_user(
+        self, backend, admin_acme, member_only, acme
     ):
-        _upload(client_in_org(admin_acme, acme), "", "report.txt", b"first")
-        _seed(acme, "report.txt", admin_acme)
-
-        response = _upload(client_in_org(member_only, acme), "", "report.txt", b"second!")
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert _editor_id(acme, "report.txt") == member_only.id
-
-    def test_archive_upload_records_every_extracted_row(
-        self, client_in_org, admin_acme, acme, sample_zip
-    ):
-        uploaded_file = SimpleUploadedFile(
-            "sample.zip", sample_zip.read(), content_type="application/zip"
+        await sync_to_async(store_object)(
+            backend, acme.id, "report.txt", b"first", user=admin_acme
         )
+        await sync_to_async(_seed)(acme, "report.txt", admin_acme)
 
-        response = client_in_org(admin_acme, acme).post(
-            "/api/storage/upload/", {"path": "bundle", "files": uploaded_file}
+        response = await stream_upload(member_only, acme, "", "report.txt", b"second!")
+
+        assert response.status_code == 200, response.text
+        assert await _editor_id_async(acme, "report.txt") == member_only.id
+
+    async def test_failed_overwrite_puts_back_the_previous_last_edit(
+        self, backend, monkeypatch, admin_acme, member_only, acme
+    ):
+        await sync_to_async(store_object)(
+            backend, acme.id, "report.txt", b"old", user=admin_acme
         )
+        await sync_to_async(_seed)(acme, "report.txt", admin_acme)
+        _make_commits_fail(monkeypatch, backend)
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        paths = StorageFile.objects.filter(org=acme).values_list("path", flat=True)
-        assert len(paths) == 5
-        assert {_editor_id(acme, path) for path in paths} == {admin_acme.id}
+        with pytest.raises(StorageUnavailable):
+            await file_upload.upload_file(
+                acme.id,
+                "",
+                "report.txt",
+                async_chunks(b"new!"),
+                4,
+                backend=backend,
+                user=member_only,
+            )
+
+        assert (await StorageFile.objects.aget(org=acme, path="report.txt")).size == 3
+        await sync_to_async(_assert_untouched)(acme, "report.txt", admin_acme)
+
+    async def test_failed_overwrite_of_a_never_edited_file_leaves_no_last_edit(
+        self, backend, monkeypatch, member_only, acme
+    ):
+        await sync_to_async(store_object)(backend, acme.id, "report.txt", b"old")
+        _make_commits_fail(monkeypatch, backend)
+
+        with pytest.raises(StorageUnavailable):
+            await file_upload.upload_file(
+                acme.id,
+                "",
+                "report.txt",
+                async_chunks(b"new!"),
+                4,
+                backend=backend,
+                user=member_only,
+            )
+
+        assert (await StorageFile.objects.aget(org=acme, path="report.txt")).size == 3
+        assert await sync_to_async(_last_edit)(acme, "report.txt") is None
+
+    async def test_archive_upload_records_every_extracted_row(self, admin_acme, acme, sample_zip):
+        response = await stream_upload(admin_acme, acme, "", "bundle.zip", sample_zip.read())
+
+        assert response.status_code == 200, response.text
+        rows = StorageFile.objects.filter(org=acme).values_list("path", flat=True)
+        paths = [path async for path in rows]
+        assert len(paths) == 4
+        assert {await _editor_id_async(acme, path) for path in paths} == {admin_acme.id}
 
 
 class TestMkdir:
@@ -170,10 +221,10 @@ class TestMkdir:
 
 class TestCopy:
     def test_copy_records_every_new_row_and_leaves_existing_rows(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         manager.mkdir(acme.id, "docs", user=admin_acme)
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
         manager.mkdir(acme.id, "backup", user=admin_acme)
         for path in ("docs/", "docs/a.txt", "backup/"):
             _seed(acme, path, admin_acme)
@@ -191,9 +242,9 @@ class TestCopy:
 
 class TestRenameAndMove:
     def test_rename_records_the_renamed_file(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
-        manager.upload(acme.id, "draft.txt", BytesIO(b"x"), user=admin_acme)
+        store_object(backend, acme.id, "draft.txt", b"x", user=admin_acme)
         _seed(acme, "draft.txt", admin_acme)
 
         response = client_in_org(member_only, acme).post(
@@ -204,11 +255,11 @@ class TestRenameAndMove:
         assert _editor_id(acme, "final.txt") == member_only.id
 
     def test_move_of_folder_records_only_the_folder_row(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         manager.mkdir(acme.id, "archive", user=admin_acme)
         manager.mkdir(acme.id, "docs/nested", user=admin_acme)
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
         for path in ("archive/", "docs/", "docs/nested/", "docs/a.txt"):
             _seed(acme, path, admin_acme)
 
@@ -222,10 +273,10 @@ class TestRenameAndMove:
             _assert_untouched(acme, path, admin_acme)
 
     def test_move_of_file_records_only_the_file_row(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         manager.mkdir(acme.id, "archive", user=admin_acme)
-        manager.upload(acme.id, "report.txt", BytesIO(b"r"), user=admin_acme)
+        store_object(backend, acme.id, "report.txt", b"r", user=admin_acme)
         for path in ("archive/", "report.txt"):
             _seed(acme, path, admin_acme)
 
@@ -240,9 +291,9 @@ class TestRenameAndMove:
 
 class TestCrossOrgTransfers:
     def test_cross_org_copy_records_destination_rows(
-        self, client_in_org, manager, superadmin, admin_acme, acme, beta
+        self, backend, client_in_org, manager, superadmin, admin_acme, acme, beta
     ):
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
         _seed(acme, "docs/a.txt", admin_acme)
 
         response = client_in_org(superadmin, acme).post(
@@ -262,10 +313,10 @@ class TestCrossOrgTransfers:
         _assert_untouched(acme, "docs/a.txt", admin_acme)
 
     def test_cross_org_move_of_folder_records_every_destination_row(
-        self, client_in_org, manager, superadmin, admin_acme, acme, beta
+        self, backend, client_in_org, manager, superadmin, admin_acme, acme, beta
     ):
         manager.mkdir(acme.id, "docs", user=admin_acme)
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
 
         response = client_in_org(superadmin, acme).post(
             "/api/storage/move/",
@@ -284,9 +335,9 @@ class TestCrossOrgTransfers:
         assert {_editor_id(beta, path) for path in paths} == {superadmin.id}
 
     def test_cross_org_move_of_file_records_destination_file(
-        self, client_in_org, manager, superadmin, admin_acme, acme, beta
+        self, backend, client_in_org, manager, superadmin, admin_acme, acme, beta
     ):
-        manager.upload(acme.id, "report.txt", BytesIO(b"r"), user=admin_acme)
+        store_object(backend, acme.id, "report.txt", b"r", user=admin_acme)
 
         response = client_in_org(superadmin, acme).post(
             "/api/storage/move/",
@@ -330,10 +381,10 @@ class TestAddToGraph:
         assert _editor_id(acme, "untracked.txt") == admin_acme.id
 
     def test_add_to_graph_leaves_tracked_row(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         graph = Graph.objects.create(name="storage-flow", org=acme)
-        manager.upload(acme.id, "tracked.txt", BytesIO(b"t"), user=member_only)
+        store_object(backend, acme.id, "tracked.txt", b"t", user=member_only)
         _seed(acme, "tracked.txt", member_only)
 
         response = client_in_org(admin_acme, acme).post(
@@ -368,8 +419,10 @@ class TestSystemWritesRecordNothing:
         assert StorageFile.objects.filter(org=acme).count() == 2
         assert not ResourceLastEdit.objects.exists()
 
-    def test_redis_overwrite_leaves_existing_last_edit(self, monkeypatch, manager, member_only, acme):
-        manager.upload(acme.id, "out/result.txt", BytesIO(b"r"), user=member_only)
+    def test_redis_overwrite_leaves_existing_last_edit(
+        self, backend, monkeypatch, manager, member_only, acme
+    ):
+        store_object(backend, acme.id, "out/result.txt", b"r", user=member_only)
         _seed(acme, "out/result.txt", member_only)
         monkeypatch.setattr(
             redis_pubsub.RedisPubSub, "_create_redis_client", lambda self: MagicMock()
@@ -390,16 +443,16 @@ class TestSystemWritesRecordNothing:
         _assert_untouched(acme, "out/result.txt", member_only)
 
     def test_reconciler_records_nothing(self, backend, acme):
-        backend.upload(f"org_{acme.id}/docs/b.txt", BytesIO(b"b"))
+        backend.put_bytes(f"org_{acme.id}/docs/b.txt", b"b")
 
         StorageReconciler(backend).reconcile_tree(acme.id)
 
         assert StorageFile.objects.filter(org=acme).count() == 2
         assert not ResourceLastEdit.objects.exists()
 
-    def test_manager_calls_without_user_record_nothing(self, manager, acme):
+    def test_manager_calls_without_user_record_nothing(self, backend, manager, acme):
         manager.mkdir(acme.id, "docs")
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"))
+        store_object(backend, acme.id, "docs/a.txt", b"a")
         manager.copy(acme.id, "docs", "copy")
         manager.rename(acme.id, "docs/a.txt", "docs/b.txt")
 
@@ -411,11 +464,11 @@ class TestSystemWritesRecordNothing:
 
 
 @pytest.fixture
-def edited_tree(manager, admin_acme, member_only, acme):
+def edited_tree(backend, manager, admin_acme, member_only, acme):
     """Folder `docs/` edited by admin_acme, `docs/a.txt` by member_only, `docs/b.txt` by no one."""
     manager.mkdir(acme.id, "docs", user=admin_acme)
-    manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=member_only)
-    manager.upload(acme.id, "docs/b.txt", BytesIO(b"b"))
+    store_object(backend, acme.id, "docs/a.txt", b"a", user=member_only)
+    store_object(backend, acme.id, "docs/b.txt", b"b")
     _seed(acme, "docs/", admin_acme)
     _seed(acme, "docs/a.txt", member_only)
 
@@ -503,9 +556,9 @@ class TestListingOutput:
         }
 
     def test_listing_never_shows_another_orgs_entries(
-        self, client_in_org, manager, admin_acme, superadmin, acme, beta
+        self, backend, client_in_org, manager, admin_acme, superadmin, acme, beta
     ):
-        manager.upload(beta.id, "secret.txt", BytesIO(b"s"), user=superadmin)
+        store_object(backend, beta.id, "secret.txt", b"s", user=superadmin)
 
         response = client_in_org(admin_acme, acme).get("/api/storage/list/", {"path": ""})
 
@@ -530,14 +583,14 @@ def _count_listing_queries(client, url: str, params: dict) -> int:
     ids=["list", "tree", "search"],
 )
 def test_listing_query_count_does_not_grow_with_entries(
-    client_in_org, manager, admin_acme, acme, url, params
+    backend, client_in_org, manager, admin_acme, acme, url, params
 ):
     client = client_in_org(admin_acme, acme)
     manager.mkdir(acme.id, "docs", user=admin_acme)
-    manager.upload(acme.id, "docs/first.txt", BytesIO(b"1"), user=admin_acme)
+    store_object(backend, acme.id, "docs/first.txt", b"1", user=admin_acme)
     few_entries = _count_listing_queries(client, url, params)
     for index in range(4):
-        manager.upload(acme.id, f"docs/more-{index}.txt", BytesIO(b"n"), user=admin_acme)
+        store_object(backend, acme.id, f"docs/more-{index}.txt", b"n", user=admin_acme)
 
     assert _count_listing_queries(client, url, params) == few_entries
 
@@ -559,22 +612,22 @@ def _count_user_queries(client, url: str, params: dict) -> int:
     ids=["list", "tree", "search"],
 )
 def test_listing_resolves_every_editor_in_one_user_query(
-    client_in_org, manager, admin_acme, member_only, acme, url, params
+    backend, client_in_org, manager, admin_acme, member_only, acme, url, params
 ):
     client = client_in_org(admin_acme, acme)
     manager.mkdir(acme.id, "docs", user=admin_acme)
     manager.mkdir(acme.id, "docs/nested", user=member_only)
-    manager.upload(acme.id, "docs/first.txt", BytesIO(b"1"), user=admin_acme)
-    manager.upload(acme.id, "docs/second.txt", BytesIO(b"2"), user=member_only)
-    manager.upload(acme.id, "docs/nested/third.txt", BytesIO(b"3"), user=member_only)
+    store_object(backend, acme.id, "docs/first.txt", b"1", user=admin_acme)
+    store_object(backend, acme.id, "docs/second.txt", b"2", user=member_only)
+    store_object(backend, acme.id, "docs/nested/third.txt", b"3", user=member_only)
 
     assert _count_user_queries(client, url, params) == 1
 
 
 def test_listing_ignores_last_edit_of_another_model_with_the_same_id(
-    client_in_org, manager, admin_acme, superadmin, acme, beta
+    backend, client_in_org, manager, admin_acme, superadmin, acme, beta
 ):
-    manager.upload(acme.id, "report.txt", BytesIO(b"r"))
+    store_object(backend, acme.id, "report.txt", b"r")
     file_row = _row(acme, "report.txt")
     foreign_graph = Graph.objects.create(pk=file_row.pk, name="beta-flow", org=beta)
     record_last_edit(foreign_graph, superadmin, edited_at=PREVIOUS_EDIT_AT)

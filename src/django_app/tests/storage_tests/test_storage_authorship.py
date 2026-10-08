@@ -1,18 +1,24 @@
+import io
 import json
-from io import BytesIO
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
+from asgiref.sync import sync_to_async
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework import serializers, status
 
+from rbac.models import OrganizationUser
 from tables.models import Graph, StorageFile
 from tables.services import redis_pubsub
 from tables.services.storage_service.dataclasses import FileInfo
 from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.path_utils import storage_key
 from tables.services.storage_service.reconciler import StorageReconciler
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.storage_writes import store_object, stream_upload
 from tests.user_summary_helpers import expected_user_summary
 
 pytestmark = pytest.mark.django_db
@@ -48,76 +54,101 @@ def _author_id(org, path: str) -> int | None:
     return StorageFile.objects.values_list("created_by_id", flat=True).get(org=org, path=path)
 
 
-def _upload(client, path: str, filename: str, content: bytes = b"data"):
-    payload = {"files": SimpleUploadedFile(filename, content, content_type="text/plain")}
-    if path:
-        payload["path"] = path
-    return client.post("/api/storage/upload/", payload)
+@sync_to_async
+def _author_id_async(org, path: str) -> int | None:
+    return _author_id(org, path)
 
 
+@sync_to_async
+def _last_editor_id_async(org, path: str) -> int | None:
+    file_row = StorageFile.objects.get(org=org, path=path)
+    return file_row.last_edits.get().edited_by_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.usefixtures("stream_backend")
 class TestUpload:
-    def test_upload_authors_file_and_new_ancestor_folders(self, client_in_org, admin_acme, acme):
-        response = _upload(client_in_org(admin_acme, acme), "a/b", "report.txt")
+    async def test_upload_authors_file_and_new_ancestor_folders(self, admin_acme, acme):
+        response = await stream_upload(admin_acme, acme, "a/b", "report.txt")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert _author_id(acme, "a/b/report.txt") == admin_acme.id
-        assert _author_id(acme, "a/") == admin_acme.id
-        assert _author_id(acme, "a/b/") == admin_acme.id
+        assert response.status_code == 200, response.text
+        assert await _author_id_async(acme, "a/b/report.txt") == admin_acme.id
+        assert await _author_id_async(acme, "a/") == admin_acme.id
+        assert await _author_id_async(acme, "a/b/") == admin_acme.id
 
-    def test_upload_into_existing_folder_leaves_folder_author(
-        self, client_in_org, manager, admin_acme, acme
+    async def test_upload_into_existing_folder_leaves_folder_author(
+        self, manager, admin_acme, acme
     ):
-        manager.mkdir(acme.id, "shared")
+        await sync_to_async(manager.mkdir)(acme.id, "shared")
 
-        response = _upload(client_in_org(admin_acme, acme), "shared", "report.txt")
+        response = await stream_upload(admin_acme, acme, "shared", "report.txt")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert _author_id(acme, "shared/") is None
-        assert _author_id(acme, "shared/report.txt") == admin_acme.id
+        assert response.status_code == 200, response.text
+        assert await _author_id_async(acme, "shared/") is None
+        assert await _author_id_async(acme, "shared/report.txt") == admin_acme.id
 
-    def test_reupload_by_another_user_keeps_author(
-        self, client_in_org, admin_acme, member_only, acme
+    async def test_reupload_by_another_user_keeps_author(
+        self, backend, admin_acme, member_only, acme
     ):
-        _upload(client_in_org(admin_acme, acme), "", "report.txt", b"first")
+        await sync_to_async(store_object)(
+            backend, acme.id, "report.txt", b"first", user=admin_acme
+        )
 
-        response = _upload(client_in_org(member_only, acme), "", "report.txt", b"second!")
+        response = await stream_upload(member_only, acme, "", "report.txt", b"second!")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        row = StorageFile.objects.get(org=acme, path="report.txt")
+        assert response.status_code == 200, response.text
+        row = await StorageFile.objects.aget(org=acme, path="report.txt")
         assert row.created_by_id == admin_acme.id
         assert row.size == len(b"second!")
 
-    def test_reupload_over_unauthored_file_claims_it(
-        self, client_in_org, manager, member_only, acme
+    async def test_reupload_over_unauthored_file_leaves_it_unauthored(
+        self, backend, member_only, acme
     ):
-        manager.upload(acme.id, "report.txt", BytesIO(b"system"))
+        await sync_to_async(store_object)(backend, acme.id, "report.txt", b"system")
 
-        response = _upload(client_in_org(member_only, acme), "", "report.txt")
+        response = await stream_upload(member_only, acme, "", "report.txt")
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert _author_id(acme, "report.txt") == member_only.id
+        assert response.status_code == 200, response.text
+        assert await _author_id_async(acme, "report.txt") is None
 
-    def test_archive_upload_authors_every_extracted_row(
-        self, client_in_org, admin_acme, acme, sample_zip
-    ):
-        uploaded_file = SimpleUploadedFile(
-            "sample.zip", sample_zip.read(), content_type="application/zip"
-        )
+    async def test_archive_upload_authors_every_extracted_row(self, admin_acme, acme, sample_zip):
+        response = await stream_upload(admin_acme, acme, "", "bundle.zip", sample_zip.read())
 
-        response = client_in_org(admin_acme, acme).post(
-            "/api/storage/upload/", {"path": "bundle", "files": uploaded_file}
-        )
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
+        assert response.status_code == 200, response.text
         rows = StorageFile.objects.filter(org=acme, path__startswith="bundle/")
-        assert set(rows.values_list("path", flat=True)) == {
+        authors = {path: author async for path, author in rows.values_list("path", "created_by_id")}
+        assert set(authors) == {
             "bundle/",
-            "bundle/sample/",
-            "bundle/sample/hello.txt",
-            "bundle/sample/sub/",
-            "bundle/sample/sub/world.txt",
+            "bundle/hello.txt",
+            "bundle/sub/",
+            "bundle/sub/world.txt",
         }
-        assert set(rows.values_list("created_by_id", flat=True)) == {admin_acme.id}
+        assert set(authors.values()) == {admin_acme.id}
+
+    async def test_archive_upload_authors_and_records_an_empty_folder(self, admin_acme, acme):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive_file:
+            archive_file.writestr("a.txt", b"a")
+            archive_file.writestr(zipfile.ZipInfo("empty/"), b"")
+        archive = buffer.getvalue()
+
+        response = await stream_upload(admin_acme, acme, "", "bundle.zip", archive)
+
+        assert response.status_code == 200, response.text
+        assert await _author_id_async(acme, "bundle/empty/") == admin_acme.id
+        assert await _last_editor_id_async(acme, "bundle/empty/") == admin_acme.id
+
+    async def test_upload_with_the_system_api_key_has_no_author_and_a_null_editor(
+        self, issue_api_key, acme
+    ):
+        raw_key, _ = await sync_to_async(issue_api_key)(user=None, name="storage-system-key")
+
+        response = await stream_upload(None, acme, "", "report.txt", api_key=raw_key)
+
+        assert response.status_code == 200, response.text
+        assert await _author_id_async(acme, "report.txt") is None
+        assert await _last_editor_id_async(acme, "report.txt") is None
 
 
 class TestMkdir:
@@ -133,10 +164,10 @@ class TestMkdir:
 
 class TestCopy:
     def test_copy_authors_every_new_row_by_actor(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         manager.mkdir(acme.id, "docs", user=admin_acme)
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
 
         response = client_in_org(member_only, acme).post(
             "/api/storage/copy/",
@@ -154,12 +185,30 @@ class TestCopy:
         assert set(copied.values_list("created_by_id", flat=True)) == {member_only.id}
         assert _author_id(acme, "docs/a.txt") == admin_acme.id
 
+    def test_copy_onto_an_existing_row_keeps_its_author(
+        self, backend, client_in_org, admin_acme, member_only, acme
+    ):
+        # A row whose object is gone: the copy lands on its path again.
+        StorageFile.objects.create(
+            org=acme, path="backup/a.txt", name="a.txt", size=1, created_by=admin_acme
+        )
+        store_object(backend, acme.id, "a.txt", b"copied", user=admin_acme)
+
+        response = client_in_org(member_only, acme).post(
+            "/api/storage/copy/", {"from_path": "a.txt", "to_path": "backup"}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.data
+        row = StorageFile.objects.get(org=acme, path="backup/a.txt")
+        assert row.created_by_id == admin_acme.id
+        assert row.size == len(b"copied")
+
 
 class TestRenameAndMove:
-    def test_rename_of_unauthored_file_claims_it(
-        self, client_in_org, manager, member_only, acme
+    def test_rename_of_unauthored_file_leaves_it_unauthored(
+        self, backend, client_in_org, manager, member_only, acme
     ):
-        manager.upload(acme.id, "draft.txt", BytesIO(b"x"))
+        store_object(backend, acme.id, "draft.txt", b"x")
 
         response = client_in_org(member_only, acme).post(
             "/api/storage/rename/",
@@ -168,12 +217,12 @@ class TestRenameAndMove:
         )
 
         assert response.status_code == status.HTTP_200_OK, response.data
-        assert _author_id(acme, "final.txt") == member_only.id
+        assert _author_id(acme, "final.txt") is None
 
     def test_rename_of_authored_file_keeps_author(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
-        manager.upload(acme.id, "draft.txt", BytesIO(b"x"), user=admin_acme)
+        store_object(backend, acme.id, "draft.txt", b"x", user=admin_acme)
 
         response = client_in_org(member_only, acme).post(
             "/api/storage/rename/",
@@ -184,13 +233,13 @@ class TestRenameAndMove:
         assert response.status_code == status.HTTP_200_OK, response.data
         assert _author_id(acme, "final.txt") == admin_acme.id
 
-    def test_move_of_folder_claims_only_the_folder_row(
-        self, client_in_org, manager, admin_acme, member_only, acme
+    def test_move_of_folder_leaves_unauthored_rows_unauthored(
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         manager.mkdir(acme.id, "archive", user=admin_acme)
         manager.mkdir(acme.id, "docs")
         manager.mkdir(acme.id, "docs/nested")
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"))
+        store_object(backend, acme.id, "docs/a.txt", b"a")
 
         response = client_in_org(member_only, acme).post(
             "/api/storage/move/",
@@ -199,14 +248,16 @@ class TestRenameAndMove:
         )
 
         assert response.status_code == status.HTTP_200_OK, response.data
-        assert _author_id(acme, "archive/docs/") == member_only.id
+        assert _author_id(acme, "archive/docs/") is None
         assert _author_id(acme, "archive/docs/nested/") is None
         assert _author_id(acme, "archive/docs/a.txt") is None
         assert _author_id(acme, "archive/") == admin_acme.id
 
-    def test_move_of_unauthored_file_claims_it(self, client_in_org, manager, member_only, acme):
+    def test_move_of_unauthored_file_leaves_it_unauthored(
+        self, backend, client_in_org, manager, member_only, acme
+    ):
         manager.mkdir(acme.id, "archive")
-        manager.upload(acme.id, "report.txt", BytesIO(b"r"))
+        store_object(backend, acme.id, "report.txt", b"r")
 
         response = client_in_org(member_only, acme).post(
             "/api/storage/move/",
@@ -215,15 +266,15 @@ class TestRenameAndMove:
         )
 
         assert response.status_code == status.HTTP_200_OK, response.data
-        assert _author_id(acme, "archive/report.txt") == member_only.id
+        assert _author_id(acme, "archive/report.txt") is None
         assert _author_id(acme, "archive/") is None
 
 
 class TestCrossOrgTransfers:
     def test_cross_org_copy_authors_destination_rows_by_superadmin(
-        self, client_in_org, manager, superadmin, admin_acme, acme, beta
+        self, backend, client_in_org, manager, superadmin, admin_acme, acme, beta
     ):
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
 
         response = client_in_org(superadmin, acme).post(
             "/api/storage/copy/",
@@ -241,11 +292,11 @@ class TestCrossOrgTransfers:
         assert _author_id(beta, "inbox/") == superadmin.id
         assert _author_id(acme, "docs/a.txt") == admin_acme.id
 
-    def test_cross_org_move_of_folder_authors_destination_rows_by_superadmin(
-        self, client_in_org, manager, superadmin, admin_acme, acme, beta
+    def test_cross_org_move_drops_authors_who_are_not_destination_members(
+        self, backend, client_in_org, manager, superadmin, admin_acme, acme, beta
     ):
         manager.mkdir(acme.id, "docs", user=admin_acme)
-        manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=admin_acme)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=admin_acme)
 
         response = client_in_org(superadmin, acme).post(
             "/api/storage/move/",
@@ -260,13 +311,165 @@ class TestCrossOrgTransfers:
 
         assert response.status_code == status.HTTP_200_OK, response.data
         moved = StorageFile.objects.filter(org=beta)
-        assert set(moved.values_list("path", flat=True)) == {
-            "inbox/",
-            "inbox/docs/",
-            "inbox/docs/a.txt",
+        # admin_acme is no member of beta, so the moved rows lose their author; the
+        # ancestor folder the move created is a new row authored by the mover.
+        assert dict(moved.values_list("path", "created_by_id")) == {
+            "inbox/": superadmin.id,
+            "inbox/docs/": None,
+            "inbox/docs/a.txt": None,
         }
-        assert set(moved.values_list("created_by_id", flat=True)) == {superadmin.id}
         assert not StorageFile.objects.filter(org=acme).exists()
+
+
+@pytest.fixture
+def member_of_both(django_user_model, acme, beta, role_member):
+    user = django_user_model.objects.create_user(
+        email="member-of-both@example.com", password="StrongPass123!"
+    )
+    for member_org in (acme, beta):
+        OrganizationUser.objects.create(user=user, org=member_org, role=role_member)
+    return user
+
+
+def _authors_in(org) -> dict[str, int | None]:
+    return dict(StorageFile.objects.filter(org=org).values_list("path", "created_by_id"))
+
+
+class TestCrossOrgMoveAuthorship:
+    """A cross-org move is not a creation: moved rows keep only authors the destination knows."""
+
+    def test_moved_file_keeps_an_author_who_is_a_destination_member(
+        self, backend, manager, superadmin, member_of_both, acme, beta
+    ):
+        store_object(backend, acme.id, "a.txt", b"a", user=member_of_both)
+
+        manager.move_cross_org(acme.id, "a.txt", beta.id, "", user=superadmin)
+
+        assert _authors_in(beta) == {"a.txt": member_of_both.id}
+        assert _authors_in(acme) == {}
+
+    def test_moved_file_loses_an_author_who_is_no_destination_member(
+        self, backend, manager, superadmin, member_only, acme, beta
+    ):
+        store_object(backend, acme.id, "a.txt", b"a", user=member_only)
+
+        manager.move_cross_org(acme.id, "a.txt", beta.id, "", user=superadmin)
+
+        assert _authors_in(beta) == {"a.txt": None}
+
+    def test_moved_unauthored_file_stays_unauthored(self, backend, manager, superadmin, acme, beta):
+        store_object(backend, acme.id, "a.txt", b"a")
+
+        manager.move_cross_org(acme.id, "a.txt", beta.id, "", user=superadmin)
+
+        assert _authors_in(beta) == {"a.txt": None}
+
+    def test_moved_file_without_a_source_row_is_unauthored(
+        self, backend, manager, superadmin, acme, beta
+    ):
+        backend.put_bytes(storage_key(acme.id, "untracked.txt"), b"u")
+
+        manager.move_cross_org(acme.id, "untracked.txt", beta.id, "", user=superadmin)
+
+        assert _authors_in(beta) == {"untracked.txt": None}
+
+    def test_mover_authors_only_the_new_ancestor_folders(
+        self, backend, manager, superadmin, member_of_both, acme, beta
+    ):
+        store_object(backend, acme.id, "a.txt", b"a", user=member_of_both)
+
+        manager.move_cross_org(acme.id, "a.txt", beta.id, "inbox/new", user=superadmin)
+
+        assert _authors_in(beta) == {
+            "inbox/": superadmin.id,
+            "inbox/new/": superadmin.id,
+            "inbox/new/a.txt": member_of_both.id,
+        }
+
+    def test_existing_destination_file_keeps_its_own_author(
+        self, backend, manager, superadmin, member_of_both, admin_acme, acme, beta
+    ):
+        # A destination row whose object is gone: the copy lands on its path again.
+        StorageFile.objects.create(
+            org=beta, path="a.txt", name="a.txt", size=1, created_by=member_of_both
+        )
+        store_object(backend, acme.id, "a.txt", b"moved", user=admin_acme)
+
+        manager.move_cross_org(acme.id, "a.txt", beta.id, "", user=superadmin)
+
+        row = StorageFile.objects.get(org=beta, path="a.txt")
+        assert row.created_by_id == member_of_both.id
+        assert row.size == len(b"moved")
+
+    def test_folder_move_applies_the_rule_to_every_nested_row(
+        self, backend, manager, superadmin, member_of_both, member_only, acme, beta
+    ):
+        manager.mkdir(acme.id, "docs/sub", user=member_of_both)
+        store_object(backend, acme.id, "docs/kept.txt", b"k", user=member_of_both)
+        store_object(backend, acme.id, "docs/dropped.txt", b"d", user=member_only)
+        store_object(backend, acme.id, "docs/sub/unauthored.txt", b"u")
+        StorageFile.objects.filter(org=acme, path="docs/sub/").update(created_by=member_only)
+
+        manager.move_cross_org(acme.id, "docs", beta.id, "inbox", user=superadmin)
+
+        assert _authors_in(beta) == {
+            "inbox/": superadmin.id,
+            "inbox/docs/": member_of_both.id,
+            "inbox/docs/kept.txt": member_of_both.id,
+            "inbox/docs/dropped.txt": None,
+            "inbox/docs/sub/": None,
+            "inbox/docs/sub/unauthored.txt": None,
+        }
+        assert _authors_in(acme) == {}
+
+    def test_folder_moved_onto_a_taken_name_keeps_the_rule_and_the_existing_folder(
+        self, backend, manager, superadmin, member_of_both, member_only, acme, beta
+    ):
+        manager.mkdir(beta.id, "inbox/docs", user=member_only)
+        manager.mkdir(acme.id, "docs", user=member_of_both)
+        store_object(backend, acme.id, "docs/a.txt", b"a", user=member_only)
+
+        manager.move_cross_org(acme.id, "docs", beta.id, "inbox", user=superadmin)
+
+        assert _authors_in(beta) == {
+            "inbox/": member_only.id,
+            "inbox/docs/": member_only.id,
+            "inbox/docs (1)/": member_of_both.id,
+            "inbox/docs (1)/a.txt": None,
+        }
+
+    def test_folder_move_query_count_does_not_grow_with_moved_rows(
+        self, backend, manager, superadmin, django_user_model, acme, beta, role_member
+    ):
+        def folder_with_children(name, child_count):
+            for index in range(child_count):
+                author = django_user_model.objects.create_user(
+                    email=f"{name}-{index}@example.com", password="StrongPass123!"
+                )
+                for member_org in (acme, beta):
+                    OrganizationUser.objects.create(user=author, org=member_org, role=role_member)
+                store_object(backend, acme.id, f"{name}/{index}.txt", b"x", user=author)
+
+        def count_move_queries(name):
+            with CaptureQueriesContext(connection) as captured:
+                manager.move_cross_org(acme.id, name, beta.id, "moved", user=superadmin)
+            return len(captured.captured_queries)
+
+        for name, child_count in (("warm-up", 1), ("small", 1), ("large", 4)):
+            folder_with_children(name, child_count)
+        count_move_queries("warm-up")
+
+        small_count = count_move_queries("small")
+        large_count = count_move_queries("large")
+
+        assert small_count == large_count
+        moved_authors = {
+            path: author
+            for path, author in _authors_in(beta).items()
+            if path.startswith("moved/large/") and not path.endswith("/")
+        }
+        assert len(moved_authors) == 4
+        assert None not in moved_authors.values()
 
 
 class TestAddToGraph:
@@ -295,10 +498,10 @@ class TestAddToGraph:
         assert _author_id(acme, "untracked.txt") == admin_acme.id
 
     def test_add_to_graph_leaves_tracked_row_author(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
         graph = Graph.objects.create(name="storage-flow", org=acme)
-        manager.upload(acme.id, "tracked.txt", BytesIO(b"t"), user=member_only)
+        store_object(backend, acme.id, "tracked.txt", b"t", user=member_only)
 
         response = client_in_org(admin_acme, acme).post(
             "/api/storage/add-to-graph/",
@@ -343,8 +546,8 @@ class TestSystemWritesLeaveAuthorEmpty:
             size=1,
             created_by=admin_acme,
         )
-        backend.upload(f"org_{acme.id}/docs/a.txt", BytesIO(b"grown"))
-        backend.upload(f"org_{acme.id}/docs/b.txt", BytesIO(b"b"))
+        backend.put_bytes(f"org_{acme.id}/docs/a.txt", b"grown")
+        backend.put_bytes(f"org_{acme.id}/docs/b.txt", b"b")
 
         StorageReconciler(backend).reconcile_tree(acme.id)
 
@@ -370,11 +573,11 @@ def _assert_authorship(entry: dict, org, path: str, author) -> None:
 
 
 @pytest.fixture
-def authored_tree(manager, admin_acme, member_only, acme):
+def authored_tree(backend, manager, admin_acme, member_only, acme):
     """`docs/` authored by admin_acme, `docs/a.txt` by member_only, `docs/b.txt` by no one."""
     manager.mkdir(acme.id, "docs", user=admin_acme)
-    manager.upload(acme.id, "docs/a.txt", BytesIO(b"a"), user=member_only)
-    manager.upload(acme.id, "docs/b.txt", BytesIO(b"b"))
+    store_object(backend, acme.id, "docs/a.txt", b"a", user=member_only)
+    store_object(backend, acme.id, "docs/b.txt", b"b")
 
 
 class TestListingOutput:
@@ -460,9 +663,9 @@ class TestListingOutput:
         assert response.data[0]["created_at"] == _creation_time(acme, "docs/a.txt")
 
     def test_deleted_author_renders_as_null(
-        self, client_in_org, manager, admin_acme, member_only, acme
+        self, backend, client_in_org, manager, admin_acme, member_only, acme
     ):
-        manager.upload(acme.id, "orphan.txt", BytesIO(b"o"), user=member_only)
+        store_object(backend, acme.id, "orphan.txt", b"o", user=member_only)
         file_row = StorageFile.objects.get(org=acme, path="orphan.txt")
         member_only.delete()
         client = client_in_org(admin_acme, acme)
@@ -477,9 +680,9 @@ class TestListingOutput:
         assert info.data["created_at"] == _creation_time(acme, "orphan.txt")
 
     def test_info_of_another_orgs_file_is_not_found(
-        self, client_in_org, manager, admin_acme, superadmin, acme, beta
+        self, backend, client_in_org, manager, admin_acme, superadmin, acme, beta
     ):
-        manager.upload(beta.id, "beta-only.txt", BytesIO(b"b"), user=superadmin)
+        store_object(backend, beta.id, "beta-only.txt", b"b", user=superadmin)
 
         response = client_in_org(admin_acme, acme).get(
             "/api/storage/info/", {"path": "beta-only.txt"}

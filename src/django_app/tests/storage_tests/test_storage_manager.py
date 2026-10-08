@@ -36,29 +36,6 @@ class TestPathHelpers:
 
 @pytest.mark.django_db
 class TestDelegation:
-    def test_upload_delegates_to_backend_with_org_key_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        mock_backend.upload.return_value = UploadResult(
-            path="org_{}/docs/f.txt".format(org.id), size=10
-        )
-        result = storage_manager.upload(
-            org.id, "docs/f.txt", BytesIO(b"data"), user=org_user.user
-        )
-        args = mock_backend.upload.call_args[0]
-        assert args[0] == f"org_{org.id}/docs/f.txt"
-        assert result.path == "docs/f.txt"
-        patch_sync.on_upload.assert_called_once_with(
-            org.id, "docs/f.txt", size=10, user=org_user.user
-        )
-
-    def test_upload_without_user_syncs_as_system_write(
-        self, storage_manager, mock_backend, org, patch_sync
-    ):
-        mock_backend.upload.return_value = UploadResult(path=f"org_{org.id}/f.txt", size=1)
-        storage_manager.upload(org.id, "f.txt", BytesIO(b"d"))
-        patch_sync.on_upload.assert_called_once_with(org.id, "f.txt", size=1, user=None)
-
     def test_mkdir_delegates_to_backend_and_syncs_with_user(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
@@ -104,16 +81,27 @@ class TestDelegation:
             storage_manager.rename(org.id, "old.txt", "new.txt")
         mock_backend.rename.assert_not_called()
 
-    def test_copy_strips_org_prefix_from_returned_keys_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
+    def test_copy_strips_org_prefix_from_returned_keys_and_records_them(
+        self, storage_manager, mock_backend, org, org_user, mocker
     ):
+        record_files = mocker.patch(
+            "tables.services.storage_service.manager.record_files_within_quota"
+        )
         mock_backend.copy.return_value = [
-            f"org_{org.id}/dest/a.txt",
-            f"org_{org.id}/dest/b.txt",
+            (f"org_{org.id}/dest/src/", 0),
+            (f"org_{org.id}/dest/src/a.txt", 1),
+            (f"org_{org.id}/dest/src/b.txt", 2),
         ]
+
         storage_manager.copy(org.id, "src", "dest", user=org_user.user)
-        patch_sync.on_copy.assert_called_once_with(
-            org.id, ["dest/a.txt", "dest/b.txt"], user=org_user.user
+
+        mock_backend.copy.assert_called_once_with(f"org_{org.id}/src", f"org_{org.id}/dest")
+        record_files.assert_called_once_with(
+            org.id,
+            [("dest/src/a.txt", 1), ("dest/src/b.txt", 2)],
+            ["dest/src/"],
+            user=org_user.user,
+            authors_by_path=None,
         )
 
     def test_info_strips_org_prefix_from_result_path(
@@ -132,126 +120,60 @@ class TestDelegation:
         assert result.path == "docs/f.txt"
 
 
-# --- _is_archive ---
-
-
-class TestIsArchive:
-    def test_is_archive_true_for_zip(self):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("a.txt", "data")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "archive.zip") is True
-
-    def test_is_archive_true_for_tar(self):
-        buf = BytesIO()
-        with tarfile.open(fileobj=buf, mode="w") as tf:
-            info = tarfile.TarInfo("a.txt")
-            info.size = 4
-            tf.addfile(info, BytesIO(b"data"))
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "archive.tar") is True
-
-    def test_is_archive_false_for_docx(self):
-        # .docx is actually a ZIP but should NOT be treated as archive
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("[Content_Types].xml", "<Types/>")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "document.docx") is False
-
-    def test_is_archive_false_for_xlsx(self):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("sheet.xml", "<data/>")
-        buf.seek(0)
-        assert StorageManager._is_archive(buf, "spreadsheet.xlsx") is False
-
-    def test_is_archive_false_for_plain_text(self):
-        buf = BytesIO(b"just plain text")
-        assert StorageManager._is_archive(buf, "readme.txt") is False
-
-
-# --- upload_file dispatch ---
-
-
-@pytest.mark.django_db
-class TestUploadFile:
-    def test_upload_file_extracts_archive_when_detected(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("inner.txt", "content")
-        buf.seek(0)
-        buf.name = "bundle.zip"
-
-        mock_backend.upload_archive.return_value = [f"org_{org.id}/inner.txt"]
-        result = storage_manager.upload_file(org.id, "", buf, user=org_user.user)
-        assert isinstance(result, ArchiveUploadResult)
-        mock_backend.upload_archive.assert_called_once()
-        patch_sync.on_upload.assert_called_once_with(org.id, "inner.txt", user=org_user.user)
-
-    def test_upload_file_stores_regular_file_when_not_archive(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        buf = BytesIO(b"plain content")
-        buf.name = "notes.txt"
-        mock_backend.upload.return_value = UploadResult(
-            path=f"org_{org.id}/notes.txt", size=13
-        )
-        result = storage_manager.upload_file(org.id, "", buf, user=org_user.user)
-        assert isinstance(result, FileUploadResult)
-        assert result.path == "notes.txt"
-        patch_sync.on_upload.assert_called_once_with(
-            org.id, "notes.txt", size=13, user=org_user.user
-        )
-
-
 # --- Cross-org ---
 
 
 @pytest.mark.django_db
 class TestCrossOrg:
-    def test_copy_cross_org_checks_both_orgs(
-        self,
-        storage_manager,
-        mock_backend,
-        org,
-        org_user,
-        second_org,
-        second_org_user,
-        patch_sync,
-    ):
-        mock_backend.copy.return_value = [f"org_{second_org.id}/dest.txt"]
-        storage_manager.copy_cross_org(
-            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
-        )
-        mock_backend.copy.assert_called_once()
-        patch_sync.on_copy.assert_called_once_with(
-            second_org.id, ["dest.txt"], user=org_user.user
+    @pytest.fixture
+    def record_files(self, mocker):
+        return mocker.patch(
+            "tables.services.storage_service.manager.record_files_within_quota"
         )
 
-    def test_move_cross_org_delegates_to_backend_and_syncs(
-        self,
-        storage_manager,
-        mock_backend,
-        org,
-        org_user,
-        second_org,
-        second_org_user,
-        patch_sync,
+    def test_copy_cross_org_records_the_copies_authored_by_the_copier(
+        self, storage_manager, mock_backend, org, org_user, second_org, record_files
     ):
-        mock_backend.move.return_value = f"org_{second_org.id}/dest.txt"
+        mock_backend.copy.return_value = [(f"org_{second_org.id}/inbox/src.txt", 3)]
+
+        storage_manager.copy_cross_org(
+            org.id, "src.txt", second_org.id, "inbox", user=org_user.user
+        )
+
+        mock_backend.copy.assert_called_once_with(
+            f"org_{org.id}/src.txt", f"org_{second_org.id}/inbox"
+        )
+        record_files.assert_called_once_with(
+            second_org.id,
+            [("inbox/src.txt", 3)],
+            [],
+            user=org_user.user,
+            authors_by_path=None,
+        )
+        mock_backend.delete.assert_not_called()
+
+    def test_move_cross_org_copies_records_with_kept_authors_then_deletes_the_source(
+        self, storage_manager, mock_backend, org, org_user, second_org, record_files, patch_sync
+    ):
+        StorageFile.objects.create(
+            org=org, path="src.txt", name="src.txt", created_by=org_user.user
+        )
+        mock_backend.copy.return_value = [(f"org_{second_org.id}/inbox/src.txt", 3)]
+
         storage_manager.move_cross_org(
-            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
+            org.id, "src.txt", second_org.id, "inbox", user=org_user.user
         )
-        mock_backend.move.assert_called_once_with(
-            f"org_{org.id}/src.txt", f"org_{second_org.id}/dest.txt"
+
+        # org_user is no member of second_org, so the moved file keeps no author.
+        record_files.assert_called_once_with(
+            second_org.id,
+            [("inbox/src.txt", 3)],
+            [],
+            user=org_user.user,
+            authors_by_path={"inbox/src.txt": None},
         )
-        patch_sync.on_move_cross_org.assert_called_once_with(
-            org.id, "src.txt", second_org.id, "dest.txt", user=org_user.user
-        )
+        mock_backend.delete.assert_called_once_with(f"org_{org.id}/src.txt")
+        patch_sync.on_delete.assert_called_once_with(org.id, "src.txt")
 
 
 @pytest.mark.django_db

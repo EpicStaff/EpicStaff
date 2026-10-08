@@ -1,7 +1,6 @@
 import pytest
 from django.utils import timezone
 
-from rbac.models import Organization
 from tables.models import StorageFile
 from tables.services.storage_service.db_sync import StorageFileSync, _parent_of
 
@@ -191,89 +190,6 @@ class TestOnMove:
         assert row.s3_modified == modified
 
 
-class TestOnCopy:
-    def test_on_copy_creates_all_paths(self, org):
-        StorageFileSync.on_copy(org.id, ["copy/a.txt", "copy/b.txt"])
-        assert StorageFile.objects.filter(org=org).count() == 3
-
-    def test_on_copy_ignores_duplicate_conflicts(self, org):
-        StorageFile.objects.create(org=org, path="dup.txt", name="dup.txt")
-        StorageFileSync.on_copy(org.id, ["dup.txt", "new.txt"])
-        assert StorageFile.objects.filter(org=org).count() == 2
-
-    def test_on_copy_sets_item_type_file(self, org):
-        StorageFileSync.on_copy(org.id, ["dest/copy.txt"])
-        row = StorageFile.objects.get(org=org, path="dest/copy.txt")
-        assert row.item_type == "file"
-        assert row.parent_path == "dest/"
-
-    def test_on_copy_creates_folder_row_and_ancestors(self, org):
-        StorageFileSync.on_copy(org.id, ["dest/docs/", "dest/docs/a.txt"])
-        assert StorageFile.objects.filter(
-            org=org, path="dest/docs/", item_type="folder"
-        ).exists()
-        assert StorageFile.objects.filter(
-            org=org, path="dest/", item_type="folder"
-        ).exists()
-        assert StorageFile.objects.filter(
-            org=org, path="dest/docs/a.txt", item_type="file"
-        ).exists()
-        assert StorageFile.objects.filter(org=org).count() == 3
-
-
-class TestCrossOrg:
-    def test_on_move_cross_org_file_deletes_source_creates_dest(self, org, second_org):
-        StorageFile.objects.create(org=org, path="moved.txt")
-        StorageFileSync.on_move_cross_org(
-            org.id, "moved.txt", second_org.id, "landed.txt"
-        )
-        assert not StorageFile.objects.filter(org=org, path="moved.txt").exists()
-        assert StorageFile.objects.filter(org=second_org, path="landed.txt").exists()
-
-    def test_on_move_cross_org_file_preserves_size_and_modified(self, org, second_org):
-        modified = timezone.now()
-        StorageFile.objects.create(
-            org=org, path="moved.txt", size=99, s3_modified=modified
-        )
-        StorageFileSync.on_move_cross_org(
-            org.id, "moved.txt", second_org.id, "landed.txt"
-        )
-        row = StorageFile.objects.get(org=second_org, path="landed.txt")
-        assert row.size == 99
-        assert row.s3_modified == modified
-
-    def test_on_move_cross_org_folder_translates_children_and_deletes_source(
-        self, org, second_org
-    ):
-        StorageFile.objects.create(
-            org=org, path="docs/", name="docs", item_type="folder"
-        )
-        StorageFile.objects.create(
-            org=org, path="docs/a.txt", name="a.txt", parent_path="docs/"
-        )
-        StorageFile.objects.create(
-            org=org, path="docs/sub/b.txt", name="b.txt", parent_path="docs/sub/"
-        )
-
-        StorageFileSync.on_move_cross_org(
-            org.id, "docs", second_org.id, "archive/docs/"
-        )
-
-        assert StorageFile.objects.filter(org=org, path__startswith="docs").count() == 0
-        assert StorageFile.objects.filter(
-            org=second_org, path="archive/docs/", item_type="folder"
-        ).exists()
-        assert StorageFile.objects.filter(
-            org=second_org, path="archive/docs/a.txt"
-        ).exists()
-        assert StorageFile.objects.filter(
-            org=second_org, path="archive/docs/sub/b.txt"
-        ).exists()
-        assert StorageFile.objects.filter(
-            org=second_org, path="archive/", item_type="folder"
-        ).exists()
-
-
 class TestAuthorship:
     @pytest.fixture
     def actor(self, org_user):
@@ -286,7 +202,7 @@ class TestAuthorship:
     def test_writes_without_user_leave_rows_unauthored(self, org):
         StorageFileSync.on_upload(org.id, "a/file.txt")
         StorageFileSync.on_mkdir(org.id, "b/c")
-        StorageFileSync.on_copy(org.id, ["d/copy.txt"])
+        StorageFileSync.on_bulk_upload(org.id, [("d/copy.txt", 1)])
 
         assert set(StorageFile.objects.values_list("created_by_id", flat=True)) == {None}
 
@@ -297,46 +213,48 @@ class TestAuthorship:
 
         assert set(StorageFile.objects.values_list("created_by_id", flat=True)) == {None}
 
-    def test_on_copy_conflict_keeps_existing_row_author(self, org, actor, colleague):
-        StorageFile.objects.create(org=org, path="dup.txt", name="dup.txt", created_by=colleague)
+    def test_on_upload_authors_new_file_and_new_ancestor_folders(self, org, actor):
+        StorageFile.objects.create(org=org, path="a/", name="a", item_type="folder")
 
-        StorageFileSync.on_copy(org.id, ["dup.txt", "new.txt"], user=actor)
+        StorageFileSync.on_upload(org.id, "a/b/file.txt", size=4, user=actor)
 
-        assert StorageFile.objects.get(org=org, path="dup.txt").created_by_id == colleague.id
-        assert StorageFile.objects.get(org=org, path="new.txt").created_by_id == actor.id
+        assert StorageFile.objects.get(org=org, path="a/b/file.txt").created_by_id == actor.id
+        assert StorageFile.objects.get(org=org, path="a/b/").created_by_id == actor.id
+        assert StorageFile.objects.get(org=org, path="a/").created_by_id is None
 
-    def test_on_move_cross_org_onto_unauthored_file_claims_it(
-        self, org, second_org, actor
-    ):
-        StorageFile.objects.create(org=org, path="moved.txt", size=3)
-        StorageFile.objects.create(org=second_org, path="landed.txt", size=1)
+    def test_on_upload_overwrite_of_unauthored_file_leaves_it_unauthored(self, org, actor):
+        StorageFile.objects.create(org=org, path="report.txt", name="report.txt", size=1)
 
-        StorageFileSync.on_move_cross_org(
-            org.id, "moved.txt", second_org.id, "landed.txt", user=actor
+        StorageFileSync.on_upload(org.id, "report.txt", size=7, user=actor)
+
+        row = StorageFile.objects.get(org=org, path="report.txt")
+        assert row.size == 7
+        assert row.created_by_id is None
+
+    def test_on_upload_overwrite_of_authored_file_keeps_author(self, org, actor, colleague):
+        StorageFile.objects.create(
+            org=org, path="report.txt", name="report.txt", size=1, created_by=colleague
         )
 
-        row = StorageFile.objects.get(org=second_org, path="landed.txt")
-        assert row.created_by_id == actor.id
-        assert row.size == 3
+        StorageFileSync.on_upload(org.id, "report.txt", size=7, user=actor)
 
-    def test_on_move_cross_org_onto_authored_file_keeps_author(
-        self, org, second_org, actor, colleague
-    ):
-        StorageFile.objects.create(org=org, path="moved.txt")
-        StorageFile.objects.create(org=second_org, path="landed.txt", created_by=colleague)
+        assert StorageFile.objects.get(org=org, path="report.txt").created_by_id == colleague.id
 
-        StorageFileSync.on_move_cross_org(
-            org.id, "moved.txt", second_org.id, "landed.txt", user=actor
-        )
+    def test_on_move_of_unauthored_folder_leaves_it_unauthored(self, org, actor):
+        StorageFile.objects.create(org=org, path="docs/", name="docs", item_type="folder")
+        StorageFile.objects.create(org=org, path="docs/a.txt", name="a.txt")
 
-        row = StorageFile.objects.get(org=second_org, path="landed.txt")
-        assert row.created_by_id == colleague.id
+        StorageFileSync.on_move(org.id, "docs/", "archive/", user=actor)
 
-    def test_on_move_claim_ignores_rows_in_other_orgs(self, org, second_org, actor):
+        assert StorageFile.objects.get(org=org, path="archive/").created_by_id is None
+        assert StorageFile.objects.get(org=org, path="archive/a.txt").created_by_id is None
+
+    def test_on_move_of_unauthored_file_leaves_it_unauthored(self, org, second_org, actor):
         StorageFile.objects.create(org=org, path="old.txt")
         StorageFile.objects.create(org=second_org, path="new.txt")
 
         StorageFileSync.on_move(org.id, "old.txt", "new.txt", user=actor)
 
-        assert StorageFile.objects.get(org=org, path="new.txt").created_by_id == actor.id
+        assert not StorageFile.objects.filter(org=org, path="old.txt").exists()
+        assert StorageFile.objects.get(org=org, path="new.txt").created_by_id is None
         assert StorageFile.objects.get(org=second_org, path="new.txt").created_by_id is None
