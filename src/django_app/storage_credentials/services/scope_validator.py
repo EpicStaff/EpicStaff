@@ -37,12 +37,7 @@ class CredentialScopeValidator:
                 "added (missing session_id) and no graph-level storage files are configured.",
                 org_id,
             )
-            raise CredentialScopeValidationError(
-                "storage_allowed_paths is empty; refusing to scope a "
-                "temporary credential to the entire org prefix. Attach the "
-                "required files or folders to the flow, or ensure a session "
-                "is present."
-            )
+            raise CredentialScopeValidationError()
 
         scoped_folders: set[str] = set()
         for path in storage_allowed_paths:

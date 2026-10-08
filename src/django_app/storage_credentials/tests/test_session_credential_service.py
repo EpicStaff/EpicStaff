@@ -502,7 +502,7 @@ class TestScopeValidationRejectsBadPaths(TestCase):
         )
 
     def test_parent_traversal_path_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="Path traversal"):
+        with pytest.raises(CredentialScopeValidationError, match="isn't allowed"):
             self._issue(["../org_999/secrets/"])
 
         mock_gateway_class.assert_not_called()
@@ -511,14 +511,16 @@ class TestScopeValidationRejectsBadPaths(TestCase):
         ).exists()
 
     def test_nested_traversal_segment_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="Path traversal"):
+        with pytest.raises(CredentialScopeValidationError, match="isn't allowed"):
             self._issue(["reports/../../org_999/"])
 
         mock_gateway_class.assert_not_called()
 
     def test_empty_allowed_paths_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="refusing to scope"):
+        with pytest.raises(CredentialScopeValidationError) as exc_info:
             self._issue([])
+
+        assert str(exc_info.value) == CredentialScopeValidationError.default_detail
 
         mock_gateway_class.assert_not_called()
         assert not TemporaryStorageAccount.objects.filter(
@@ -526,7 +528,7 @@ class TestScopeValidationRejectsBadPaths(TestCase):
         ).exists()
 
     def test_blank_path_entry_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="empty path"):
+        with pytest.raises(CredentialScopeValidationError, match="is empty"):
             self._issue(["   "])
 
         mock_gateway_class.assert_not_called()

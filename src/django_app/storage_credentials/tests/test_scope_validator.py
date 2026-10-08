@@ -90,12 +90,8 @@ def test_empty_storage_allowed_paths_error_message_leaks_no_internals(validator)
 
     message = str(exc_info.value)
 
-    assert message == (
-        "storage_allowed_paths is empty; refusing to scope a "
-        "temporary credential to the entire org prefix. Attach the "
-        "required files or folders to the flow, or ensure a session "
-        "is present."
-    )
+    assert message == CredentialScopeValidationError.default_detail
+
     for internal_reference in (
         "converter_service",
         ".py",
