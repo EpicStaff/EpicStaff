@@ -93,6 +93,7 @@ export class StoragePageComponent {
         this.facade.init({ watchRefreshTick: true });
 
         effect(() => {
+            this.facade.treeData();
             const isSearching = this.filesSearchService.searchTerm().trim().length > 0;
             if (isSearching && this.facade.searchTreeData() === null) {
                 untracked(() => this.facade.loadSearchTree());

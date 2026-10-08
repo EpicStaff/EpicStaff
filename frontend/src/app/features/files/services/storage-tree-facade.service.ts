@@ -174,13 +174,11 @@ export class StorageTreeFacade {
             });
     }
 
+    /** Drops the search tree, and any request for it sent before the change, which may answer with the old tree.
+     *  Called right after treeData is reloaded; the page reloads the search tree only while a search is active. */
     private invalidateSearchTree(): void {
+        this.searchTreeRequest?.unsubscribe();
         this.searchTreeData.set(null);
-        if (this.searchTreeRequest && !this.searchTreeRequest.closed) {
-            // A request sent before the change may answer with the old tree: send a fresh one.
-            this.searchTreeRequest.unsubscribe();
-            this.loadSearchTree();
-        }
     }
 
     private collectExpandedPaths(nodes: StorageItem[]): string[] {

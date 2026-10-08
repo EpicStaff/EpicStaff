@@ -89,7 +89,7 @@
                                     [style.padding-left.px]="32 + node.level * 20"
                                     (click)="selectFolder(node.path)"
                                 >
-                                    @if (node.hasChildren) {
+                                    @if (node.hasChildren && !searchQuery().trim()) {
                                         <button
                                             class="copy-to-dialog__chevron-btn"
                                             [class.copy-to-dialog__chevron-btn--open]="node.isExpanded"
