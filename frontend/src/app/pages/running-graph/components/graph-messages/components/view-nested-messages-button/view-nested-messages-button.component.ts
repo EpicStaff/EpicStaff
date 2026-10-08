@@ -73,7 +73,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             }
 
             .show-nested-btn--open {
-                color: var(--color-white);
+                color: var(--message-accent-color, var(--color-nodes-flow-link));
                 background-color: transparent;
             }
 
@@ -84,7 +84,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 justify-content: center;
                 transform: rotate(0deg);
                 transition: transform 0.2s ease;
-                color: var(--color-white);
             }
 
             .play-nested-arrow--open {
@@ -92,7 +91,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     transform 0.2s ease,
                     color 0.2s ease;
                 transform: rotate(90deg);
-                color: var(--message-accent-color, var(--color-nodes-flow-link));
             }
         `,
     ],

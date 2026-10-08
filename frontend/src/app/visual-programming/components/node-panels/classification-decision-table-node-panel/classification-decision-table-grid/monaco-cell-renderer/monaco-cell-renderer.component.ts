@@ -83,7 +83,7 @@ function ensureMonacoLoaded(): Promise<void> {
                 overflow: hidden;
                 display: flex;
                 align-items: center;
-                padding: 0 8px;
+                padding: 0 8px 0 0;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
                 font-size: 0.75rem;

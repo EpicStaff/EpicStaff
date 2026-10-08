@@ -231,7 +231,11 @@
         gap: 0.5rem;
         font-size: 0.875rem;
         font-weight: 500;
-        color: var(--white-alpha-80);
+        color: var(--color-text-secondary);
+
+        app-svg-icon {
+            color: var(--gold-500);
+        }
     }
 
     .side-editor-pane-actions {

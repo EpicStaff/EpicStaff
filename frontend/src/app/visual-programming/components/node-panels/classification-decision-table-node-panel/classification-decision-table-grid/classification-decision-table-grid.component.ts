@@ -1546,6 +1546,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             editable: true,
             flex: 1,
+            minWidth: 120,
             cellRenderer: MonacoCellRendererComponent,
             cellEditor: ExpressionBuilderCellEditorComponent,
             cellEditorPopup: true,
@@ -1578,6 +1579,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             editable: true,
             flex: 1,
+            minWidth: 105,
             cellRenderer: MonacoCellRendererComponent,
             cellEditor: ExpressionBuilderCellEditorComponent,
             cellEditorPopup: true,
@@ -1661,6 +1663,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             field: 'group_name',
             editable: true,
             flex: 1,
+            minWidth: 140,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
@@ -1739,7 +1742,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             field: 'prompt_id',
             editable: true,
             singleClickEdit: true,
-            width: 150,
+            minWidth: 100,
             cellRenderer: PromptTooltipRendererComponent,
             cellRendererParams: () => ({
                 prompts: this.prompts(),
@@ -1829,7 +1832,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerComponent: ColumnHeaderMenuComponent,
             headerComponentParams: { ...this.makeMenuHeaderParams('route_code', 'Route Code'), showDragGrip: true },
             field: 'route_code',
-            minWidth: 150,
+            minWidth: 110,
             editable: true,
             flex: 1,
             cellStyle: {
@@ -1842,8 +1845,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerName: 'Continue',
             field: 'continue_flag',
             editable: true,
-            width: 65,
-            minWidth: 50,
+            minWidth: 80,
             cellDataType: 'boolean',
             suppressMovable: true,
             cellStyle: {

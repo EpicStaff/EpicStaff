@@ -277,9 +277,7 @@ $grid-above-btns-height: 24px;
     position: relative;
     width: 100%;
     overflow: visible;
-    padding-left: 28px;
-    padding-top: $grid-header-gap;
-    padding-bottom: $grid-header-gap;
+    padding: $grid-header-gap 24px $grid-header-gap 28px;
     flex: 1;
     min-height: 0;
 
