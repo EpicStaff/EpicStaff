@@ -1,5 +1,3 @@
-import json
-
 from clients.key_value import KeyValueClient
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -35,14 +33,9 @@ from src.crew.services.graph.subgraphs.classification_decision_table_node import
 from src.shared.models import (
     ClassificationDecisionTableNodeData,
     DecisionTableNodeData,
-    PythonCodeData,
     SessionData,
     SubGraphData,
 )
-from utils import map_variables_to_input
-
-
-class ReturnCodeError(Exception): ...
 
 
 class SessionGraphBuilder:
@@ -80,60 +73,6 @@ class SessionGraphBuilder:
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
         self.stop_event = stop_event
-
-    def add_conditional_edges(
-        self,
-        from_node: str,
-        python_code_data: PythonCodeData,
-        then: str | None = None,
-        input_map: dict | None = None,
-    ):
-        """
-        Adds a conditional edge to the graph from the given from_node to the then node,
-        if the condition (python_code_data) is true.
-
-        Args:
-            from_node (str): The node from which the edge should be added.
-            python_code_data (PythonCodeData): The condition to evaluate.
-            input_map (dict | None): A mapping of input variables to be passed to the condition
-                (defaults to an empty dictionary if not provided).
-
-        Returns:
-            None
-        """
-
-        if input_map is None:
-            input_map = {}
-
-        # name = f"{from_node}_conditional_edge"
-        # @psutil_wrapper
-        async def inner_decision_function(state: State):
-            input_ = map_variables_to_input(state["variables"], input_map)
-            additional_global_kwargs = {
-                **input_,
-                "state": {
-                    "variables": state["variables"].model_dump(),
-                    "state_history": state["state_history"],
-                },
-            }
-
-            python_code_execution_data = await self.python_code_executor_service.run_code(
-                python_code_data=python_code_data,
-                inputs=input_,
-                stop_event=self.stop_event,
-                additional_global_kwargs=additional_global_kwargs,
-            )
-
-            result = json.loads(python_code_execution_data["result_data"])
-
-            assert isinstance(result, str), "output should be a string for decision edge"
-
-            return result
-
-        self._graph_builder.add_conditional_edges(
-            source=from_node,
-            path=inner_decision_function,
-        )
 
     def add_edge(self, start_key: str, end_key: str):
         self._graph_builder.add_edge(start_key, end_key)
@@ -248,9 +187,8 @@ class SessionGraphBuilder:
 
         This method constructs and compiles a state graph based on the nodes and edges
         defined in the provided session data. It iterates over crew nodes, python nodes,
-        and LLM nodes, adding each to the graph. Additionally, it processes edges and
-        conditional edges to establish connections between nodes and sets the entry point
-        of the graph.
+        and LLM nodes, adding each to the graph. Additionally, it processes edges to
+        establish connections between nodes and sets the entry point of the graph.
 
         Args:
             session_data (SessionData): The data containing the graph schema with nodes
@@ -373,14 +311,6 @@ class SessionGraphBuilder:
 
         for edge in schema.edge_list:
             self.add_edge(edge.start_key, edge.end_key)
-
-        for conditional_edge_data in schema.conditional_edge_list:
-            self.add_conditional_edges(
-                from_node=conditional_edge_data.source,
-                python_code_data=conditional_edge_data.python_code,
-                then=conditional_edge_data.then,
-                input_map=conditional_edge_data.input_map,
-            )
 
         for decision_table_node_data in schema.decision_table_node_list:
             self.add_decision_table_node(decision_table_node_data=decision_table_node_data)
