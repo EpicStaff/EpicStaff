@@ -214,7 +214,6 @@ def _make_chain(tmp_path: Path) -> tuple[DynamicVenvExecutorChain, _RecordingCha
     chain = DynamicVenvExecutorChain(
         output_path=tmp_path / "out",
         base_venv_path=tmp_path / "venvs",
-        storage_credential_manager=_NoStorageManager(),
     )
     recording_chain = _RecordingChain()
     chain.chain = recording_chain
