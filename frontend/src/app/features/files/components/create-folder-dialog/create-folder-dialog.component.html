@@ -1,4 +1,8 @@
-<div class="create-folder-dialog">
+<div
+    class="create-folder-dialog"
+    (appEnterSubmit)="onConfirm()"
+    [appEnterSubmitDisabled]="!isValid() || isUploading()"
+>
     <div class="create-folder-dialog__header">
         <h2 class="create-folder-dialog__title">Add files</h2>
         <div class="create-folder-dialog__header-actions">
