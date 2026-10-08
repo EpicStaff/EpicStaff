@@ -1,4 +1,3 @@
-from io import BytesIO
 from unittest.mock import patch
 
 import pytest
@@ -9,7 +8,7 @@ from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
 from tables.models import SourceCollection, DocumentMetadata, StorageFile
 from tables.services.storage_service.manager import StorageManager
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import BaseRagType, GraphRag, NaiveRag
 from rbac.models import Organization, OrganizationUser, Role
@@ -218,7 +217,7 @@ def storage_manager():
 
 
 def _stored_file(storage_manager, org, path, content=b"content"):
-    storage_manager.upload(org.id, path, BytesIO(content))
+    seed_file(storage_manager._backend, org.id, path, content)
     return StorageFile.objects.get(org=org, path=path)
 
 

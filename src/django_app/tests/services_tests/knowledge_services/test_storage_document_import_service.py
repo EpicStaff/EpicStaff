@@ -1,5 +1,3 @@
-from io import BytesIO
-
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -23,7 +21,7 @@ from tables.services.knowledge_services.storage_document_import_service import (
 )
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
 pytestmark = pytest.mark.django_db
 
@@ -98,7 +96,7 @@ def collection(acme):
 
 
 def _store(storage_manager, org, path: str, content: bytes) -> StorageFile:
-    storage_manager.upload(org.id, path, BytesIO(content))
+    seed_file(storage_manager._backend, org.id, path, content)
     return StorageFile.objects.get(org=org, path=path)
 
 

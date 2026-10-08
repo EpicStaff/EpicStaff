@@ -1,4 +1,3 @@
-from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,7 +12,7 @@ from rbac.models.api_key import ApiKey
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection, StorageFile
 from tables.views.knowledge_views.document_management_views import _audit_actor
 from tables.services.storage_service.manager import StorageManager
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
 pytestmark = pytest.mark.django_db
 
@@ -40,7 +39,7 @@ def storage_manager():
 
 
 def _store(storage_manager, org, path: str, content: bytes) -> StorageFile:
-    storage_manager.upload(org.id, path, BytesIO(content))
+    seed_file(storage_manager._backend, org.id, path, content)
     return StorageFile.objects.get(org=org, path=path)
 
 

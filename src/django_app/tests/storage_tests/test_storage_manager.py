@@ -6,6 +6,7 @@ from tables.services.storage_service.dataclasses import (
     FolderInfo,
 )
 from tables.services.storage_service.manager import StorageManager
+from tests.storage_tests.in_memory_backend import seed_file
 
 
 @pytest.fixture(autouse=True)
@@ -513,7 +514,7 @@ class TestStorageIdExposure:
 class TestObjectSize:
     def test_returns_the_backend_size_even_when_the_index_has_none(self, fake_backend, org):
         manager = StorageManager(fake_backend)
-        manager.upload(org.id, "copied/report.txt", BytesIO(b"twelve bytes"))
+        seed_file(fake_backend, org.id, "copied/report.txt", b"twelve bytes")
         StorageFile.objects.filter(org=org, path="copied/report.txt").update(size=None)
 
         assert manager.object_size(org.id, "copied/report.txt") == len(b"twelve bytes")
@@ -524,14 +525,14 @@ class TestObjectSize:
 
     def test_object_under_another_orgs_prefix_is_not_found(self, fake_backend, org, second_org):
         manager = StorageManager(fake_backend)
-        manager.upload(second_org.id, "shared/report.txt", BytesIO(b"theirs"))
+        seed_file(fake_backend, second_org.id, "shared/report.txt", b"theirs")
 
         with pytest.raises(FileNotFoundError):
             manager.object_size(org.id, "shared/report.txt")
 
     def test_folder_raises_file_not_found(self, fake_backend, org):
         manager = StorageManager(fake_backend)
-        manager.upload(org.id, "docs/a.txt", BytesIO(b"a"))
+        seed_file(fake_backend, org.id, "docs/a.txt", b"a")
 
         with pytest.raises(FileNotFoundError):
             manager.object_size(org.id, "docs")

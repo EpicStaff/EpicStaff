@@ -353,7 +353,7 @@ class StorageDocumentImportService:
         downloaded_bytes = 0
         for candidate in importable:
             try:
-                content = self._storage_manager.download(org_id, candidate.path)
+                content = self._storage_manager.download(org_id, candidate.path).content
             except FileNotFoundError as error:
                 raise self._missing_object(
                     org_id, candidate.storage_file_id, candidate.path
