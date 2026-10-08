@@ -3,12 +3,12 @@ from __future__ import annotations
 from django.db import IntegrityError
 from rbac.scoping.fields import (
     OrganizationScopedPrimaryKeyRelatedField,
+    OrganizationScopedUniqueValidator,
     OrgScopedPrimaryKeyRelatedField,
 )
 from rest_framework import serializers
 from tables.models.llm_models import LLMConfig
 
-from agents.exceptions import AgentDefinitionConflictError
 from agents.models.agent_models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -30,8 +30,41 @@ class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
     place = serializers.ChoiceField(choices=SurfacePlace.choices)
 
 
+class InstructionSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, trim_whitespace=True)
+    content = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            unknown_keys = set(data) - set(self.fields)
+            if unknown_keys:
+                raise serializers.ValidationError(
+                    {key: "Unknown field." for key in sorted(unknown_keys)}
+                )
+        return super().to_internal_value(data)
+
+
+class InstructionListField(serializers.ListField):
+    """Ordered list of named instructions; names must be unique case-insensitively."""
+
+    child = InstructionSerializer()
+
+    def to_internal_value(self, data):
+        instruction_list = super().to_internal_value(data)
+        seen_names = set()
+        for instruction in instruction_list:
+            normalized_name = instruction["name"].casefold()
+            if normalized_name in seen_names:
+                raise serializers.ValidationError(
+                    "An instruction with that name already exists. Please enter a unique name."
+                )
+            seen_names.add(normalized_name)
+        return [dict(instruction) for instruction in instruction_list]
+
+
 class AgentDefinitionReadSerializer(serializers.ModelSerializer):
     default_surfaces = serializers.SerializerMethodField()
+    instructions = serializers.CharField(read_only=True)
     agent_definition_realtime_config_id = serializers.SerializerMethodField()
     has_realtime_definition = serializers.SerializerMethodField()
 
@@ -67,6 +100,7 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
             "organization",
             "name",
             "description",
+            "instruction_list",
             "instructions",
             "llm_config",
             "fcm_llm_config",
@@ -88,6 +122,9 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+DUPLICATE_NAME_MESSAGE = "An agent with this name already exists in the organization."
+
+
 class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
@@ -100,19 +137,23 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     default_surfaces = AgentDefaultSurfaceWriteSerializer(many=True, required=False)
-    max_tool_calls = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    tool_timeout = serializers.IntegerField(required=False, allow_null=True, min_value=1)
-    max_consecutive_failures = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
+    instruction_list = InstructionListField(required=False)
+    name = serializers.CharField(
+        max_length=255,
+        validators=[
+            OrganizationScopedUniqueValidator(
+                queryset=AgentDefinition.objects.all(),
+                message=DUPLICATE_NAME_MESSAGE,
+            )
+        ],
     )
-    schema_max_retries = serializers.IntegerField(required=False, allow_null=True, min_value=0)
 
     class Meta:
         model = AgentDefinition
         fields = [
             "name",
             "description",
-            "instructions",
+            "instruction_list",
             "llm_config",
             "fcm_llm_config",
             "max_iter",
@@ -130,6 +171,13 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        # Released clients still send the old single `instructions` text; refuse it loudly
+        # instead of saving the agent without them.
+        if "instructions" in self.initial_data:
+            raise serializers.ValidationError(
+                {"instructions": "This field is read-only. Send instruction_list instead."}
+            )
+
         default_surfaces_data = attrs.get("default_surfaces")
 
         if default_surfaces_data is not None:
@@ -146,7 +194,8 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         try:
             instance = super().create(validated_data)
         except IntegrityError as exc:
-            raise AgentDefinitionConflictError() from exc
+            # Backstop for a concurrent insert that slipped past the unique validator.
+            raise serializers.ValidationError({"name": [DUPLICATE_NAME_MESSAGE]}) from exc
 
         AgentDefinitionSurfaceService.set_default_surfaces(
             agent_definition=instance,
@@ -160,7 +209,8 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         try:
             instance = super().update(instance, validated_data)
         except IntegrityError as exc:
-            raise AgentDefinitionConflictError() from exc
+            # Backstop for a concurrent insert that slipped past the unique validator.
+            raise serializers.ValidationError({"name": [DUPLICATE_NAME_MESSAGE]}) from exc
 
         if default_surfaces_data is not None:
             AgentDefinitionSurfaceService.set_default_surfaces(

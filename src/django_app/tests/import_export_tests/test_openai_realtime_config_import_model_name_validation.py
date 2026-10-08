@@ -1,5 +1,5 @@
 """Coverage for `OpenAIRealtimeModelNameValidationMixin.validate_model_name`
-(EST-3146) on the REAL import path -- through
+on the REAL import path -- through
 `OpenAIRealtimeConfigStrategy.create_entity`, not an isolated serializer
 instantiation.
 

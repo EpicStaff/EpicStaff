@@ -3,8 +3,8 @@ export interface ResetPasswordRequest {
 }
 
 export interface ResetPasswordResponse {
-    detail: string;
-    smtp_configured: boolean;
+    detail?: string | null;
+    smtp_configured?: boolean;
 }
 
 export interface ConfirmResetPasswordRequest {

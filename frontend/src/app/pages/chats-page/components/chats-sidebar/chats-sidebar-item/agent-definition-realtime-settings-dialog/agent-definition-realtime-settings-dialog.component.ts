@@ -1,7 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     HelpTooltipComponent,
     RadioButtonComponent,
@@ -10,6 +11,7 @@ import {
     VoiceSelectorComponent,
 } from '@shared/components';
 import { AVAILABLE_LANGUAGES, AVAILABLE_VOICES } from '@shared/constants';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import {
@@ -97,9 +99,9 @@ export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {
 
         this.settingsForm.set(
             this.fb.group({
-                voice: [rt.voice],
-                wakeword: [rt.wake_word],
-                stopword: [rt.stop_prompt],
+                voice: [rt.voice, [Validators.maxLength(100)]],
+                wakeword: [rt.wake_word, [Validators.maxLength(255)]],
+                stopword: [rt.stop_prompt, [Validators.maxLength(255)]],
                 preferredLanguage: [rt.language],
                 voice_recognition_prompt: [rt.voice_recognition_prompt],
                 openai_config: [rt.openai_config],
@@ -141,7 +143,7 @@ export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {
         if (this.submitting()) return;
 
         const form = this.settingsForm();
-        if (!form) return;
+        if (!form || form.invalid) return;
 
         this.submitting.set(true);
         this.errorMessage.set(null);
@@ -152,7 +154,7 @@ export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {
             voice: v.voice,
             wake_word: v.wakeword,
             stop_prompt: v.stopword,
-            language: v.preferredLanguage,
+            language: v.preferredLanguage || null,
             voice_recognition_prompt: v.voice_recognition_prompt,
             openai_config: provider === 'openai' ? v.openai_config : null,
             elevenlabs_config: provider === 'elevenlabs' ? v.elevenlabs_config : null,
@@ -167,9 +169,12 @@ export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {
                     this.toastService.success('Realtime settings updated successfully');
                     this.dialogRef.close(updated);
                 },
-                error: () => {
-                    this.errorMessage.set('Failed to update settings. Please try again.');
-                    this.toastService.error('Failed to update settings. Please try again.');
+                error: (error: HttpErrorResponse) => {
+                    const fallback = 'Failed to update settings. Please try again.';
+                    const isClientError = error.status >= 400 && error.status < 500;
+                    const message = isClientError ? extractHttpErrorMessage(error, fallback) : fallback;
+                    this.errorMessage.set(message);
+                    this.toastService.error(message);
                 },
             });
     }

@@ -236,6 +236,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
             attrs["search_method"] = graph["search_method"]
         return super().validate(attrs)
 
+    @transaction.atomic
     def create(self, validated_data):
         search_configs_data = validated_data.pop("search_configs", None)
         node = super().create(validated_data)
@@ -243,6 +244,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
             SearchConfigService.apply_node_search_configs(node, search_configs_data)
         return node
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         search_configs_data = validated_data.pop("search_configs", None)
         node = super().update(instance, validated_data)

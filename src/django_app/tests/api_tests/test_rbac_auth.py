@@ -48,9 +48,20 @@ from rbac.identity.passwords.token_repository import (
     hash_token,
 )
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
+from utils.logger import logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
+CONSOLE_EMAIL = "django.core.mail.backends.console.EmailBackend"
 OPAQUE_RESET_CODE = "invalid_or_expired_reset_token"
+
+
+@pytest.fixture
+def captured_log_messages():
+    """Collect every loguru message emitted while the test runs, at every level."""
+    messages: list[str] = []
+    sink_id = logger.add(messages.append, level="TRACE", format="{message}")
+    yield messages
+    logger.remove(sink_id)
 
 
 # ---------------- First-setup ----------------
@@ -815,32 +826,119 @@ def test_password_reset_request_known_user_creates_token_and_sends_email(
 
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
-def test_password_reset_request_smtp_off_still_creates_token(api_client, regular_user):
+def test_password_reset_request_smtp_off_issues_no_token_and_sends_nothing(
+    api_client, regular_user
+):
+    """Without SMTP the request is ignored, and a known email is indistinguishable
+    from an unknown one."""
     cache.clear()
     mail.outbox = []
+    url = reverse("password_reset_request")
+
+    known = api_client.post(url, data={"email": regular_user.email}, format="json")
+    unknown = api_client.post(
+        url, data={"email": "nobody@example.com"}, format="json"
+    )
+
+    assert known.status_code == unknown.status_code == 200
+    assert known.json() == unknown.json()
+    assert known.json()["smtp_configured"] is False
+    assert known.json()["detail"] == (
+        "Password reset by email isn't available on this server. "
+        "Ask your administrator to reset your password."
+    )
+    assert PasswordResetToken.objects.count() == 0
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_keeps_a_pending_grant(
+    api_client, regular_user
+):
+    """An anonymous caller must not be able to cancel a grant issued earlier."""
+    cache.clear()
+    pending, _raw_token = PasswordResetTokenRepository().create_for_user(regular_user)
+
+    api_client.post(
+        reverse("password_reset_request"),
+        data={"email": regular_user.email},
+        format="json",
+    )
+
+    assert PasswordResetToken.objects.filter(pk=pending.pk).exists()
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=CONSOLE_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_writes_no_reset_link_anywhere(
+    api_client, regular_user, capsys, captured_log_messages
+):
+    """With the shipped no-SMTP default (console backend) nothing that carries a
+    reset link reaches stdout, stderr or the application log.
+
+    The console backend writes to `sys.stdout`, which `capsys` captures, and
+    loguru output is collected by a sink — so a link sent by either route would
+    show up below.
+    """
+    cache.clear()
+
     r = api_client.post(
         reverse("password_reset_request"),
         data={"email": regular_user.email},
         format="json",
     )
+
     assert r.status_code == 200
-    assert r.json()["smtp_configured"] is False
-    assert PasswordResetToken.objects.filter(user=regular_user).count() == 1
+    assert PasswordResetToken.objects.count() == 0
+    stdout, stderr = capsys.readouterr()
+    written = "\n".join([stdout, stderr, *captured_log_messages])
+    assert "token=" not in written
+    assert settings.FRONTEND_PASSWORD_RESET_PATH not in written
+    assert regular_user.email not in written
 
 
 @pytest.mark.django_db
-@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL)
-def test_password_reset_request_unknown_email_is_uniform(api_client, regular_user):
-    """No-enumeration guard: identical body, no token row, no email."""
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_logs_one_operator_hint_per_window(
+    api_client, regular_user, captured_log_messages
+):
+    """The endpoint is anonymous and rotating emails beats its throttle, so the
+    operator hint must not grow with the number of requests."""
     cache.clear()
+    url = reverse("password_reset_request")
+
+    for index in range(3):
+        api_client.post(url, data={"email": f"probe{index}@example.com"}, format="json")
+
+    hints = [
+        message
+        for message in captured_log_messages
+        if "password_reset_request_ignored_smtp_not_configured" in message
+    ]
+    assert len(hints) == 1
+    assert "manage.py reset_password" in hints[0]
+    assert "probe" not in hints[0]
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+def test_password_reset_request_unknown_email_is_uniform(api_client, regular_user):
+    """No-enumeration guard with SMTP on: an unknown email gets the same body as a
+    known one, but no token row and no email."""
+    cache.clear()
+    url = reverse("password_reset_request")
+    known = api_client.post(url, data={"email": regular_user.email}, format="json")
+    PasswordResetToken.objects.all().delete()
     mail.outbox = []
-    r = api_client.post(
-        reverse("password_reset_request"),
-        data={"email": "nobody@example.com"},
-        format="json",
+
+    unknown = api_client.post(
+        url, data={"email": "nobody@example.com"}, format="json"
     )
-    assert r.status_code == 200
-    assert "detail" in r.json() and "smtp_configured" in r.json()
+
+    assert known.status_code == unknown.status_code == 200
+    assert unknown.json() == known.json()
+    assert unknown.json()["smtp_configured"] is True
     assert PasswordResetToken.objects.count() == 0
     assert mail.outbox == []
 
@@ -928,6 +1026,7 @@ def test_password_reset_request_email_failure_does_not_break_response(
 
 
 @pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
 def test_password_reset_request_throttle_blocks_after_limit(api_client, regular_user):
     cache.clear()
     url = reverse("password_reset_request")
@@ -938,6 +1037,7 @@ def test_password_reset_request_throttle_blocks_after_limit(api_client, regular_
 
 
 @pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
 def test_password_reset_request_throttle_is_per_email(api_client, regular_user):
     cache.clear()
     url = reverse("password_reset_request")
@@ -980,6 +1080,33 @@ def test_password_reset_confirm_happy_path(api_client, regular_user, jwt_tokens)
         BlacklistedToken.objects.filter(token__user=regular_user).count()
         == OutstandingToken.objects.filter(user=regular_user).count()
     )
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_revokes_the_users_api_keys(
+    api_client, regular_user, superadmin_user, issue_api_key
+):
+    """A key minted during an account takeover must not survive the reset."""
+    raw_key, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
+    _token, raw_token = _issue_token(regular_user)
+
+    r = api_client.post(
+        reverse("password_reset_confirm"),
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
+        format="json",
+    )
+
+    assert r.status_code == 200
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
+    api_client.credentials(HTTP_X_API_KEY=raw_key)
+    assert api_client.get("/api/profile/").status_code == 401
 
 
 @pytest.mark.django_db
@@ -1144,6 +1271,32 @@ def test_admin_password_reset_superadmin_succeeds(
 
 
 @pytest.mark.django_db
+def test_admin_password_reset_revokes_the_users_api_keys(
+    api_client, superadmin_user, regular_user, issue_api_key
+):
+    _, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
+    )
+
+    r = api_client.post(
+        reverse("admin_password_reset"),
+        data={"user_id": regular_user.id, "new_password": "AdminSet123!"},
+        format="json",
+    )
+
+    assert r.status_code == 204
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
+
+
+@pytest.mark.django_db
 def test_admin_password_reset_non_superadmin_returns_403(auth_client, regular_user):
     """Non-superadmin is rejected at the IsSuperadmin permission class layer
     with the project's standard 403 envelope (code: permission_denied). The
@@ -1219,7 +1372,7 @@ def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_use
 
 
 # ------------------------------------------------------------------
-# PrintableAsciiPasswordValidator — unit tests (EST-2418)
+# PrintableAsciiPasswordValidator — unit tests
 # ------------------------------------------------------------------
 from django.core.exceptions import ValidationError as _DjangoValidationError
 
@@ -1280,7 +1433,7 @@ class TestPrintableAsciiPasswordValidator:
 
 
 # ------------------------------------------------------------------
-# Password alphabet — integration tests across all 4 endpoints (EST-2418)
+# Password alphabet — integration tests across all 4 endpoints
 # ------------------------------------------------------------------
 
 _BAD_PASSWORDS = [
@@ -1375,7 +1528,7 @@ class TestAdminPasswordResetAlphabet:
 
 
 # ------------------------------------------------------------------
-# Email whitespace + throttle non-string guard (EST-2418)
+# Email whitespace + throttle non-string guard
 # ------------------------------------------------------------------
 
 _BAD_EMAILS_WHITESPACE = [

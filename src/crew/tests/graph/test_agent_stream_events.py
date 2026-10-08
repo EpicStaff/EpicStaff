@@ -5,7 +5,7 @@ from src.shared.redis_streams import StreamEnvelope
 
 
 def make_forwarder(
-    custom_session_message_writer, stream_message_type="agent_node_stream"
+    custom_session_message_writer, stream_message_type="agent_node_stream", agent_id=99
 ):
     return AgentStreamEventForwarder(
         custom_session_message_writer=custom_session_message_writer,
@@ -14,6 +14,7 @@ def make_forwarder(
         writer=MagicMock(),
         execution_order=0,
         stream_message_type=stream_message_type,
+        agent_id=agent_id,
     )
 
 
@@ -42,12 +43,14 @@ def test_knowledge_search_envelope_writes_extracted_chunks_without_incrementing_
     knowledge_message = calls[0].kwargs["message_data"]
     assert knowledge_message == {
         "message_type": "extracted_chunks",
+        "agent_id": 99,
         "collection_id": 7,
         "chunks": [{"text": "chunk"}],
     }
 
     tool_call_message = calls[1].kwargs["message_data"]
     assert tool_call_message["step_id"] == 1
+    assert tool_call_message["agent_id"] == 99
 
 
 def test_known_envelope_types_map_to_generic_stream_message_with_incrementing_step_id():
@@ -81,6 +84,7 @@ def test_known_envelope_types_map_to_generic_stream_message_with_incrementing_st
     for message in written_messages:
         assert message["message_type"] == "task_node_stream"
         assert message["is_final"] is False
+        assert message["agent_id"] == 99
         assert message["data"] == {"key": "value"}
 
 
@@ -105,6 +109,7 @@ def test_write_calls_use_configured_session_id_node_name_writer_and_execution_or
         writer=stream_writer,
         execution_order=3,
         stream_message_type="agent_node_stream",
+        agent_id=7,
     )
 
     forwarder(

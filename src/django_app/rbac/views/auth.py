@@ -1,13 +1,12 @@
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
@@ -45,6 +44,7 @@ from rbac.schemas.auth import (
 from rbac.serializers.auth import (
     AdminPasswordResetSerializer,
     LoginSerializer,
+    PasswordBoundTokenRefreshSerializer,
     PasswordResetConfirmResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestResponseSerializer,
@@ -52,8 +52,10 @@ from rbac.serializers.auth import (
     TokenIntrospectRequestSerializer,
 )
 from rbac.throttles import (
+    LoginIpThrottle,
     LoginThrottle,
     PasswordResetConfirmThrottle,
+    PasswordResetRequestIpThrottle,
     PasswordResetRequestThrottle,
     TokenRefreshThrottle,
 )
@@ -62,7 +64,7 @@ from rbac.validation.auth import AuthValidationService
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
-    throttle_classes = [LoginThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle]
 
     _validator = AuthValidationService()
 
@@ -218,25 +220,27 @@ class TokenIntrospectView(APIView):
         serializer.is_valid(raise_exception=True)
         token = serializer.validated_data["token"]
 
+        # The same rule as Bearer authentication: signature, expiry, token
+        # type, user exists and is active, and the password binding.
+        jwt_authentication = JwtAuthentication()
         try:
-            access = AccessToken(token)
-        except TokenError:
+            access = jwt_authentication.get_validated_token(token)
+            user = jwt_authentication.get_user(access)
+        except (InvalidToken, AuthenticationFailed, TokenError):
             return Response({"active": False}, status=status.HTTP_200_OK)
 
-        user_id = access.get("user_id")
         org_ids = list(
-            OrganizationUser.objects.filter(user_id=user_id).values_list("org_id", flat=True)
+            OrganizationUser.objects.filter(user_id=user.pk).values_list("org_id", flat=True)
         )
-        is_superadmin = get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
 
         return Response(
             {
                 "active": True,
-                "user_id": user_id,
+                "user_id": user.pk,
                 "email": access.get("email"),
                 "scopes": access.get("scopes", []),
                 "org_ids": org_ids,
-                "is_superadmin": is_superadmin,
+                "is_superadmin": user.is_superadmin,
             },
             status=status.HTTP_200_OK,
         )
@@ -268,7 +272,7 @@ class ApiKeyValidateView(APIView):
 class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [LoginThrottle]
+    throttle_classes = [LoginThrottle, LoginIpThrottle]
 
     @extend_schema(**SWAGGER_TOKEN_POST)
     def post(self, request):
@@ -295,13 +299,20 @@ class PasswordResetRequestView(APIView):
     """Anonymous password-reset initiation.
 
     Uniform 200 response by design — does not reveal whether the email
-    exists. The response also flags whether SMTP is configured so the
-    frontend can guide the user to the CLI fallback when it is not.
+    exists. The response also flags whether SMTP is configured; without it
+    self-service reset is disabled and `detail` sends the user to an
+    administrator, matching the frontend's "reset unavailable" copy.
     """
+
+    _DETAIL_LINK_SENT = "If the email is registered, a reset link has been sent."
+    _DETAIL_RESET_UNAVAILABLE = (
+        "Password reset by email isn't available on this server. "
+        "Ask your administrator to reset your password."
+    )
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRequestThrottle]
+    throttle_classes = [PasswordResetRequestThrottle, PasswordResetRequestIpThrottle]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -313,11 +324,13 @@ class PasswordResetRequestView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_password_reset_request(request.data)
-        result = self._service.request_reset(cleaned["email"])
+        smtp_configured = self._service.request_reset(cleaned["email"])["smtp_configured"]
         return Response(
             {
-                "detail": "If the email is registered, a reset link has been sent.",
-                "smtp_configured": result["smtp_configured"],
+                "detail": (
+                    self._DETAIL_LINK_SENT if smtp_configured else self._DETAIL_RESET_UNAVAILABLE
+                ),
+                "smtp_configured": smtp_configured,
             },
             status=status.HTTP_200_OK,
         )
@@ -409,10 +422,12 @@ class CookieTokenRefreshView(APIView):
         # Read persistence intent before rotation so it survives on the new token.
         remember_me = read_remember_me_claim(refresh_value)
 
-        serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
+        serializer = PasswordBoundTokenRefreshSerializer(data={"refresh": refresh_value})
         try:
             serializer.is_valid(raise_exception=True)
-        except TokenError:
+        # AuthenticationFailed: the token's user is deactivated. The cookie is
+        # as dead as an expired one, so it is cleared the same way.
+        except (TokenError, AuthenticationFailed):
             response = Response(
                 {"detail": "Token is invalid or expired."},
                 status=status.HTTP_401_UNAUTHORIZED,

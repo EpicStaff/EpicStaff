@@ -519,6 +519,29 @@ class TestPasswordChangeConfirm:
         ).count()
         assert post_blacklisted > pre_blacklisted
 
+    def test_personal_api_keys_revoked(
+        self, authed_client, member_acme, orphan_user, issue_api_key
+    ):
+        _, own_key = issue_api_key(user=member_acme)
+        _, other_users_key = issue_api_key(user=orphan_user)
+        _, system_key = issue_api_key(user=None)
+
+        client = authed_client(member_acme)
+        ticket = self._issue_ticket(client, "StrongPass123!")
+        resp = client.post(
+            self.CONFIRM_URL,
+            {"ticket": ticket, "new_password": "BrandNewPass456!"},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        own_key.refresh_from_db()
+        other_users_key.refresh_from_db()
+        system_key.refresh_from_db()
+        assert own_key.revoked_at is not None
+        assert other_users_key.revoked_at is None
+        assert system_key.revoked_at is None
+
     def test_ticket_is_single_use(self, authed_client, member_acme):
         client = authed_client(member_acme)
         ticket = self._issue_ticket(client, "StrongPass123!")
