@@ -1,5 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
-import { ButtonComponent, IconButtonComponent, SearchComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, IconButtonComponent, SearchComponent } from '@shared/components';
 
 import { KeyValueTable } from '../../models/key-value-table.model';
 
@@ -8,7 +8,7 @@ const FILTER_THRESHOLD = 8;
 
 @Component({
     selector: 'app-key-value-table-list',
-    imports: [ButtonComponent, IconButtonComponent, SearchComponent],
+    imports: [AppSvgIconComponent, ButtonComponent, IconButtonComponent, SearchComponent],
     templateUrl: './key-value-table-list.component.html',
     styleUrls: ['./key-value-table-list.component.scss'],
 })

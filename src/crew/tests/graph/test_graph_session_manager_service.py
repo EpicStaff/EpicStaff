@@ -117,16 +117,21 @@ def _session_data(session_id: int, token_budget: int | None = None) -> SessionDa
         initial_state["__token_budget__"] = token_budget
     return SessionData(
         id=session_id,
+        org_id=1,
         graph=GraphData(name="g", entrypoint="__end__", end_node=None),
         initial_state=initial_state,
     )
 
 
 def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
+    class FakeRememberedOutputsStore:
+        async def clear(self, session_id):
+            return None
+
     class FakeSessionGraphBuilder:
         def __init__(self, *args, **kwargs):
             self.end_node_result = end_node_result or {}
-            self.remembered_outputs_store = Mock(clear=AsyncMock())
+            self.remembered_outputs_store = FakeRememberedOutputsStore()
 
         def compile_from_schema(self, session_data):
             return compiled_graph
@@ -480,3 +485,24 @@ async def test_streamed_state_is_not_rendered_for_debug_logs_at_info_level(
     ]
     assert statuses == ["run", "end"]
     assert _ReprCountingStr.render_count == 0
+
+
+@pytest.mark.asyncio
+async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypatch):
+    def broken_audit_writer():
+        raise RuntimeError("audit client misconfigured")
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        broken_audit_writer,
+    )
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+
+    await service.run_session(_session_data(46), StopEvent())
+
+    statuses = [
+        call.kwargs.get("status")
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert "end" in statuses
+    assert "error" not in statuses

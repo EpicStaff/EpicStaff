@@ -113,7 +113,7 @@ def test_create_subgraph_sessions_creates_one_trigger_row_per_child(
 def test_create_subgraph_sessions_copies_root_principal_for_user_run(
     default_org, regular_user
 ):
-    # EST-4126: subgraph (subflow) sessions were left with no SessionPrincipal at
+    # Subgraph (subflow) sessions were left with no SessionPrincipal at
     # all, so the acting user was lost on any child session and export crashed.
     # The child's principal must mirror the root's, not be marked as automation.
     root_graph = Graph.objects.create(name="root-principal", org=default_org)

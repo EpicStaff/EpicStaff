@@ -10,7 +10,7 @@ import {
     ReactiveFormsModule,
 } from '@angular/forms';
 import { SelectDropdownComponent, SelectDropdownTriggerDirective } from '@shared/components';
-import { ActionCode, NodeType } from '@shared/models';
+import { ActionCode, KEY_VALUE_MODE_COLORS, NodeType } from '@shared/models';
 import { NEVER, Observable, of, Subject } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -2675,6 +2675,16 @@ describe('KeyValueNodePanelComponent', () => {
             expect(modeNames(panel)).toEqual(names);
             expect(lockable(panel)).toEqual([false, false, false]);
             expect(notice(fixture)).toBeNull();
+        });
+
+        it('marks each mode with the dot colour of its node stripe', () => {
+            const { panel } = createPanel(readNode, { actions: [Create, Read, Update, Delete] });
+
+            expect(panel['modeItems']().map((item) => [item.value, item.dotColor])).toEqual([
+                ['read', KEY_VALUE_MODE_COLORS.read],
+                ['write', KEY_VALUE_MODE_COLORS.write],
+                ['delete', KEY_VALUE_MODE_COLORS.delete],
+            ]);
         });
 
         it('locks mode, table and keys of a node whose saved mode the user may not configure, keeping it as saved', () => {

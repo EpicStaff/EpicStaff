@@ -3,12 +3,16 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.db import connection
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.access.builtin_roles import BuiltInRoleSeeder
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.identity.api_keys.generator import ApiKeyGenerator
+from rbac.identity.passwords import reset_dispatcher
+
+from .helpers import InlineExecutor
 
 # Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
@@ -22,7 +26,14 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
     `BuiltInRoleSeeder` is the same code `manage.py seed_builtin_roles` runs at
     container start, so tests see exactly the state in
     `rbac/access/builtin_roles.json`.
+
+    pytest-django creates test databases only when a collected test needs
+    one. A run of database-free tests alone leaves the connection on the
+    real database from `.env`, and flushing that would wipe a developer's
+    data, so the flush only ever targets a database Django created for tests.
     """
+    if not connection.settings_dict["NAME"].startswith("test_"):
+        return
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
         BuiltInRoleSeeder().seed()
@@ -51,6 +62,22 @@ def heal_builtin_roles(request):
         return
     if not Role.objects.filter(is_built_in=True).exists():
         BuiltInRoleSeeder().seed()
+
+
+@pytest.fixture(autouse=True)
+def run_password_reset_jobs_inline(monkeypatch):
+    """Run password-reset jobs on the test thread instead of the worker pool.
+
+    A pool thread has its own database connection, outside the test's
+    transaction: it would not see the test's rows, and its writes would land
+    after the test's assertions, or after the test.
+    """
+    monkeypatch.setattr(
+        reset_dispatcher,
+        "default_dispatcher",
+        reset_dispatcher.PasswordResetDispatcher(executor=InlineExecutor(), max_in_flight=1),
+    )
+    yield
 
 
 @pytest.fixture(autouse=True)
