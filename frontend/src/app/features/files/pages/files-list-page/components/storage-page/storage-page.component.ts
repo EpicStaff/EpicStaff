@@ -3,9 +3,11 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -58,9 +60,12 @@ export class StoragePageComponent {
 
     protected readonly sidebarTargetElement = computed(() => this.sidebarEl()?.nativeElement);
 
-    readonly filteredTreeData = computed(() =>
-        filterStorageItems(this.facade.treeData(), this.filesSearchService.searchTerm())
-    );
+    readonly filteredTreeData = computed(() => {
+        const term = this.filesSearchService.searchTerm();
+        if (!term.trim()) return this.facade.treeData();
+        // Until the whole tree arrives, search what is already loaded.
+        return filterStorageItems(this.facade.searchTreeData() ?? this.facade.treeData(), term);
+    });
 
     readonly onOpenCreateFolder = (folderPath: string): void => {
         this.facade.openCreateFolderDialog(folderPath);
@@ -87,6 +92,13 @@ export class StoragePageComponent {
         });
 
         this.facade.init({ watchRefreshTick: true });
+
+        effect(() => {
+            const isSearching = this.filesSearchService.searchTerm().trim().length > 0;
+            if (isSearching && this.facade.searchTreeData() === null) {
+                untracked(() => this.facade.loadSearchTree());
+            }
+        });
     }
 
     toggleSidebar(): void {

@@ -3,7 +3,7 @@ import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
-import { EMPTY, forkJoin, Subject } from 'rxjs';
+import { EMPTY, forkJoin, Subject, Subscription } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
@@ -25,6 +25,7 @@ import {
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo } from '../models/storage.models';
 import { getFileExtension } from '../utils/storage-file.utils';
+import { toStorageItems } from '../utils/storage-tree.utils';
 import { describeUploadFailures } from '../utils/upload-error.utils';
 import { StorageApiService } from './storage-api.service';
 import { StorageUploadService } from './storage-upload.service';
@@ -51,6 +52,7 @@ export class StorageTreeFacade {
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
+    readonly searchTreeData = signal<StorageItem[] | null>(null);
 
     readonly selectInTree = new Subject<StorageItem>();
     readonly renameInTree = new Subject<StorageItem>();
@@ -59,6 +61,7 @@ export class StorageTreeFacade {
 
     private watchRefreshTick = false;
     private suppressNextTick = false;
+    private searchTreeRequest: Subscription | null = null;
 
     private readonly blockedUploadExtensions = new Set([
         'exe',
@@ -126,6 +129,7 @@ export class StorageTreeFacade {
             .subscribe({
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
+                    this.invalidateSearchTree();
                     this.afterTreeLoad?.();
                 },
                 error: () => this.error.set('Failed to load storage files'),
@@ -146,6 +150,7 @@ export class StorageTreeFacade {
             .subscribe({
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
+                    this.invalidateSearchTree();
                     this.notifyStorageChanged();
                     if (all.size) {
                         this.restoreExpandedPaths([...all], () => onDone?.());
@@ -155,6 +160,27 @@ export class StorageTreeFacade {
                 },
                 error: () => this.toastService.error('Failed to load storage files'),
             });
+    }
+
+    loadSearchTree(): void {
+        if (this.searchTreeRequest && !this.searchTreeRequest.closed) return;
+        this.searchTreeRequest = this.storageApiService
+            .tree()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                // Search covers at most the 50 000 entries the tree endpoint returns; beyond that it is truncated.
+                next: (response) => this.searchTreeData.set(toStorageItems(response.tree.children)),
+                error: () => this.toastService.error('Failed to search storage files'),
+            });
+    }
+
+    private invalidateSearchTree(): void {
+        this.searchTreeData.set(null);
+        if (this.searchTreeRequest && !this.searchTreeRequest.closed) {
+            // A request sent before the change may answer with the old tree: send a fresh one.
+            this.searchTreeRequest.unsubscribe();
+            this.loadSearchTree();
+        }
     }
 
     private collectExpandedPaths(nodes: StorageItem[]): string[] {
