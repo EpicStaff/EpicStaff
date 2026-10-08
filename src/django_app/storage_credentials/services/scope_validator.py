@@ -18,11 +18,15 @@ class CredentialScopeValidator:
         """Returns the concrete set of folders the temporary account should
         be scoped to (already namespaced under `storage_org_prefix`)."""
         if not org_id or not storage_org_prefix:
-            raise CredentialScopeValidationError("Scope is missing org_id or storage_org_prefix.")
+            raise CredentialScopeValidationError(
+                "This request is missing required information to access file storage."
+            )
 
         normalized_org_prefix = storage_org_prefix.strip().strip("/")
         if not normalized_org_prefix:
-            raise CredentialScopeValidationError("storage_org_prefix is empty.")
+            raise CredentialScopeValidationError(
+                "This request is missing required information to access file storage."
+            )
 
         if not storage_allowed_paths:
             # Fail closed: an empty/missing storage_allowed_paths must not
@@ -44,13 +48,9 @@ class CredentialScopeValidator:
         for path in storage_allowed_paths:
             normalized_path = path.strip().lstrip("/")
             if not normalized_path:
-                raise CredentialScopeValidationError(
-                    "storage_allowed_paths contains an empty path."
-                )
+                raise CredentialScopeValidationError("One of the configured file paths is empty.")
             if ".." in normalized_path.split("/"):
-                raise CredentialScopeValidationError(
-                    f"Path traversal in storage_allowed_paths: '{path}'"
-                )
+                raise CredentialScopeValidationError(f"This file path isn't allowed: '{path}'.")
             scoped_folders.add(f"{normalized_org_prefix}/{normalized_path}")
 
         return scoped_folders

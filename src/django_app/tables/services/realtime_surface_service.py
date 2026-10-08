@@ -130,8 +130,8 @@ class RealtimeSurfaceService:
                 # failure (nothing has attempted to mint yet) -- same exception
                 # CredentialScopeValidator raises, same 400.
                 raise CredentialScopeValidationError(
-                    f"Python tool {python_tool.name} requires storage but scope not resolved "
-                    f"for realtime agent (org {org_id})"
+                    f"Tool '{python_tool.name}' needs file storage access, but no files are "
+                    "attached to this agent's surface. Attach the required files or folders."
                 )
 
             tools.append(

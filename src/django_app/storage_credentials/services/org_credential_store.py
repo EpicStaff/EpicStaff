@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from loguru import logger
 from rbac.models import Organization
 from tables.models import Secret
 from tables.services.secrets.encryption import secret_encryption
@@ -42,9 +43,8 @@ class OrgCredentialStore:
             org_id=org_id, name=SECRET_NAME_ORG_STORAGE_USER, system=True
         ).first()
         if secret is None:
-            raise OrgStorageCredentialMissingError(
-                f"No active org-level storage credential for org_id={org_id}."
-            )
+            logger.error("No active org-level storage credential for org_id={}.", org_id)
+            raise OrgStorageCredentialMissingError()
         plaintext = secret_encryption.decrypt(encryptedtext=secret.value)
         access_key, _, secret_key = plaintext.partition(_CREDENTIAL_SEPARATOR)
         return OrgStorageCredentials(access_key=access_key, secret_key=secret_key)

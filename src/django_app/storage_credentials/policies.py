@@ -30,10 +30,10 @@ def _normalize_path(path: str) -> str:
     normalized = posixpath.normpath(stripped) if stripped else ""
     if normalized in ("", "."):
         raise CredentialScopeValidationError(
-            "Empty path is not allowed (would grant bucket-wide access)."
+            "A specific file or folder must be selected — storage-wide access isn't allowed."
         )
     if normalized.startswith(".."):
-        raise CredentialScopeValidationError(f"Path traversal in path: '{path}'")
+        raise CredentialScopeValidationError(f"This file path isn't allowed: '{path}'.")
     return f"{normalized}/*" if stripped.endswith("/") else normalized
 
 
@@ -49,7 +49,9 @@ def build_org_user_policy(bucket: str, org_prefix: str) -> dict[str, Any]:
     """
     normalized_prefix = org_prefix.strip().rstrip("/")
     if not normalized_prefix:
-        raise CredentialScopeValidationError("org_prefix must not be empty.")
+        raise CredentialScopeValidationError(
+            "This organization isn't set up for file storage yet. Please contact support."
+        )
 
     resource = f"arn:aws:s3:::{bucket}/{normalized_prefix}/*"
     bucket_arn = f"arn:aws:s3:::{bucket}"
@@ -104,7 +106,10 @@ def build_temporary_policy(bucket: str, allowed_folders: set[str]) -> dict[str, 
     revocation mechanism this design relies on.
     """
     if not allowed_folders:
-        raise CredentialScopeValidationError("No folders provided.")
+        raise CredentialScopeValidationError(
+            "This request doesn't specify which files it needs. Check the file "
+            "attachments in your flow."
+        )
 
     bucket_arn = f"arn:aws:s3:::{bucket}"
     prefixes = sorted(_normalize_path(folder) for folder in allowed_folders)

@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from loguru import logger
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
@@ -347,7 +348,8 @@ class ConverterService(metaclass=SingletonMeta):
                     # problem as RealtimeSurfaceService's fail-closed check,
                     # same exception type and status code (400, not 500).
                     raise CredentialScopeValidationError(
-                        f"Storage needed but no paths found in realtime agent tools for org {ad.organization_id}"
+                        "This agent's tools need file storage access, but no files are "
+                        "attached. Attach the required files or folders."
                     )
                 rt_agent_chat_data.storage_credentials = (
                     session_credential_service.issue_for_realtime_chat(
@@ -359,9 +361,12 @@ class ConverterService(metaclass=SingletonMeta):
         except (TemporaryCredentialIssueError, CredentialScopeValidationError):
             raise
         except Exception as error:
-            raise TemporaryCredentialIssueError(
-                f"Failed to mint temporary storage credentials for realtime chat {rt_agent_chat.id}: {error}"
-            ) from error
+            logger.exception(
+                "Failed to mint temporary storage credentials for realtime chat {}: {}",
+                rt_agent_chat.id,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
 
         return rt_agent_chat_data
 
