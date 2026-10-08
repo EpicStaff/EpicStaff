@@ -1,5 +1,6 @@
 """Wiring coverage for ExecuteCodeHandler's isolation plan: the network
-restriction and the Landlock signal isolation decision.
+restriction, the Landlock signal isolation decision and the refusal when the
+private-network egress firewall is required but not installed.
 
 Parent-side only, no real kernel confinement: `abi_version()`,
 `settings.BLOCK_NETWORK` and `settings.REQUIRE_SIGNAL_ISOLATION` are
@@ -21,6 +22,7 @@ pytest.importorskip(
 )
 
 import dynamic_venv_executor_chain
+import egress_firewall
 import settings
 from dynamic_venv_executor_chain import LAUNCHER_PATH, ExecuteCodeHandler
 from utils.logger import logger
@@ -314,3 +316,42 @@ class TestSignalIsolationWithNetworkBlockAndStorage:
         assert plan["network"] == {"mode": "allow_ports", "ports": [9000]}
         assert plan["isolate_signals"] is True
         assert plan["jail"] is not None
+
+
+class TestPrivateNetworkFirewall:
+    async def _handle(self, tmp_path, monkeypatch, *, block_private_network, firewall_active):
+        monkeypatch.setattr(settings, "BLOCK_PRIVATE_NETWORK", block_private_network)
+        monkeypatch.setattr(egress_firewall, "is_active", lambda: firewall_active)
+        return await _handle(tmp_path, monkeypatch, abi=6, require_signal_isolation=True)
+
+    @pytest.mark.asyncio
+    async def test_refuses_without_spawning_when_required_but_not_installed(
+        self, tmp_path, monkeypatch
+    ):
+        result, recorded = await self._handle(
+            tmp_path, monkeypatch, block_private_network=True, firewall_active=False
+        )
+
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert "private-network isolation unavailable" in result.stderr
+        assert "SANDBOX_BLOCK_PRIVATE_NETWORK=false" in result.stderr
+        assert "argv" not in recorded
+
+    @pytest.mark.asyncio
+    async def test_runs_when_required_and_installed(self, tmp_path, monkeypatch):
+        result, recorded = await self._handle(
+            tmp_path, monkeypatch, block_private_network=True, firewall_active=True
+        )
+
+        assert result.returncode == 0
+        assert "argv" in recorded
+
+    @pytest.mark.asyncio
+    async def test_runs_when_not_required(self, tmp_path, monkeypatch):
+        result, recorded = await self._handle(
+            tmp_path, monkeypatch, block_private_network=False, firewall_active=False
+        )
+
+        assert result.returncode == 0
+        assert "argv" in recorded

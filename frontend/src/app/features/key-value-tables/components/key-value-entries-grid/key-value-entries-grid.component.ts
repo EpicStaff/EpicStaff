@@ -20,6 +20,7 @@ import {
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import {
+    AppSvgIconComponent,
     ButtonComponent,
     ConfirmationDialogService,
     CopyButtonComponent,
@@ -30,6 +31,7 @@ import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { copyWithFeedback, deepEqual, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
+    AgGridEvent,
     AllCommunityModule,
     CellEditingStoppedEvent,
     CellKeyDownEvent,
@@ -61,7 +63,6 @@ import {
 
 import { ToastService } from '../../../../services/notifications';
 import { copyableValue, editableValue, previewText } from '../../helpers/entry-value-preview';
-import { overlayScrollbarOptions } from '../../helpers/overlay-scrollbar-options';
 import {
     KeyValueEntryOrdering,
     KeyValueEntrySortField,
@@ -95,11 +96,17 @@ const ENTRIES_GRID_THEME = themeQuartz.withParams({
     foregroundColor: 'var(--color-text-primary)',
     headerBackgroundColor: 'var(--color-input-background)',
     headerTextColor: 'var(--color-text-primary)',
+    // Quartz's own height, pinned: the page's scroll-padding-top (key-value-tables-page.component.scss) keeps a
+    // focused cell clear of the sticky header by this much.
+    headerHeight: 48,
     // Every other row a shade off the background, in either theme.
     oddRowBackgroundColor: { ref: 'foregroundColor', mix: 0.03 },
     borderColor: 'var(--color-divider-regular)',
     rowHoverColor: { ref: 'accentColor', mix: 0.06 },
-    columnBorder: { style: 'solid', width: 1, color: 'var(--color-divider-subtle)' },
+    columnBorder: { style: 'solid', width: 1, color: 'var(--color-divider-regular)' },
+    headerColumnBorder: { style: 'solid', width: 1, color: 'var(--color-divider-regular)' },
+    // The resize handle's own line sat next to the header column border as a second one; the handle still resizes.
+    headerColumnResizeHandleColor: 'transparent',
 });
 
 // Sorted by the server (`ordering`); the grid only shows the header state, so rows keep the server's order.
@@ -192,6 +199,7 @@ function parseValue(text: string): { value: unknown } | null {
     selector: 'app-key-value-entries-grid',
     imports: [
         AgGridAngular,
+        AppSvgIconComponent,
         ButtonComponent,
         CopyButtonComponent,
         PaginationControlsComponent,
@@ -238,6 +246,10 @@ export class KeyValueEntriesGridComponent {
     // The one new-entry row, above the entries; dropped on a table switch.
     readonly draft = linkedSignal<number, EntryDraft | null>({ source: this.tableId, computation: () => null });
     readonly loading = signal(false);
+    // The narrowest the columns go: flex columns at their minimum, the others at their width. The grid is kept at
+    // least this wide and the page scrolls sideways instead, since a grid that scrolled sideways itself would be a
+    // scroll container its header could not stick out of.
+    protected readonly columnsMinWidth = signal(0);
     // Rejected commits by `rowId:column`, kept so no typed text is lost however the editor was left.
     private readonly rejectedEdits = linkedSignal<number, Map<string, RejectedEdit>>({
         source: this.tableId,
@@ -291,6 +303,8 @@ export class KeyValueEntriesGridComponent {
                 flex: 1,
                 minWidth: 160,
                 cellRendererSelector: () => this.templateRenderer(this.sessionCell),
+                // The link fills the cell, which takes the editable cells' hover tint; "Manual edit" does not.
+                cellClassRules: { 'entries-grid__cell--link': ({ data }) => !!data?.sessionLink },
             },
             {
                 ...SERVER_SORTED,
@@ -373,8 +387,12 @@ export class KeyValueEntriesGridComponent {
         animateRows: false,
         suppressMultiSort: true,
         suppressColumnVirtualisation: true,
-        // Keeps an overlay scrollbar (Firefox on GTK, macOS) from covering the last column.
-        ...overlayScrollbarOptions(inject(DOCUMENT)),
+        // As tall as its rows, so the page scrolls instead of the grid. Empty or loading, the grid keeps AG Grid's
+        // minimum body height (autoHeightMinBodyHeight), room enough for its overlays.
+        domLayout: 'autoHeight',
+        // Popup editors (the value editor is taller than a few rows) go in the body, not the grid, which is only as
+        // tall as its rows and clips them. AG Grid keeps an open popup on its cell as the page scrolls.
+        popupParent: inject(DOCUMENT).body,
         defaultColDef: { sortable: false, resizable: true, suppressMovable: true },
     };
 
@@ -408,6 +426,14 @@ export class KeyValueEntriesGridComponent {
 
     protected onGridReady(event: GridReadyEvent<EntryGridRow>): void {
         this.gridApi = event.api;
+        this.onColumnsChanged(event);
+    }
+
+    protected onColumnsChanged({ api }: AgGridEvent<EntryGridRow>): void {
+        const width = api
+            .getAllDisplayedColumns()
+            .reduce((sum, column) => sum + (column.getFlex() ? column.getMinWidth() : column.getActualWidth()), 0);
+        this.columnsMinWidth.set(width);
     }
 
     // One new-entry row at a time: a second click goes back to its key.

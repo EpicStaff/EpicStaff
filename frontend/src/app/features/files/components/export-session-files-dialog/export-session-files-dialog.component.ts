@@ -137,7 +137,7 @@ export class ExportSessionFilesDialogComponent {
     onDeepLink(event: Event, node: TreeNode): void {
         event.stopPropagation();
         this.dialogRef.close();
-        this.router.navigate(['/files/storage'], { queryParams: { path: node.path } });
+        this.router.navigate(['/storage/files'], { queryParams: { path: node.path } });
     }
 
     getFileIcon(node: TreeNode): string {

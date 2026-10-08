@@ -1,0 +1,74 @@
+# Code owners for changes that must be reviewed by a human.
+#
+# The list is deliberately narrow: only files that rarely change and where any
+# change can leak data across organizations, lose data, break every install at
+# startup, or weaken the build and release pipeline. Riskier edits to files that
+# change often (migrations, docker-compose, shared models, flow save) are
+# reviewed case by case, not through this file.
+#
+# An approval from any one owner listed on a line is enough. When several lines
+# match a file, the last matching line wins.
+
+# Backend, pipelines and Docker
+/src/django_app/rbac/access/gates.py                          @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/access/org_context.py                    @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/access/bitmask.py                        @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/scoping/                                 @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/models/org_scoped.py                     @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/models/enums.py                          @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/identity/                                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/governance/organization_deletion.py      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/rbac/management/commands/clean_auth_data.py   @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/django_app/settings/rest_framework.py         @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/django_app/settings/jwt.py                    @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/django_app/settings/cors.py                   @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tables/services/secrets/encryption.py         @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tables/services/secrets/secret_resolver.py    @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tables/services/storage_service/path_utils.py @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/entrypoint.sh                                 @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tests/settings.py                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/shared/envtools.py                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/crewdb/                                                  @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+
+# Import/export backward compatibility: the export format version and the
+# converters that upgrade older export files and stored flow version snapshots
+/src/django_app/tables/import_export/constants.py             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tables/import_export/version_conversions/     @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tests/import_export_tests/test_version_conversions.py      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/django_app/tests/import_export_tests/test_legacy_entity_tolerance.py  @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+
+# Sandbox isolation boundary for user code
+/src/sandbox/jail.py                                          @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/landlock.py                                      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/launcher.py                                      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/seccomp.py                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/network_policy.py                                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/isolation.py                                     @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/egress_firewall.py                               @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/secret_scrubber.py                               @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/utils/environment.py                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/services/storage_credential_manager.py           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+
+# Public edge, images and pipelines
+/src/webhook/app/controllers/webhook_routes.py                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/nginx/templates/                                         @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+**/Dockerfile*                                                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.github/workflows/                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.github/scripts/                                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.github/CODEOWNERS                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+
+# Legal and policy
+/LICENSE.md                                                   @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/CLA.md                                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/SECURITY.md                                                  @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/CONTRIBUTING.md                                              @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/CODE_OF_CONDUCT.md                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/signatures/                                                  @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+
+# Frontend
+/frontend/src/app/services/auth/auth.service.ts               @ElenaPrygunHYS @AndreyKrasnoyarskiy
+/frontend/src/app/core/interceptors/auth.interceptor.ts       @ElenaPrygunHYS @AndreyKrasnoyarskiy
+/frontend/src/app/core/interceptors/active-org.interceptor.ts @ElenaPrygunHYS @AndreyKrasnoyarskiy
+/frontend/src/app/services/config/config.service.ts           @ElenaPrygunHYS @AndreyKrasnoyarskiy
+/frontend/src/app/shared/components/blob-preview/             @ElenaPrygunHYS @AndreyKrasnoyarskiy
+/frontend/public/epicchat-widget/                             @ElenaPrygunHYS @AndreyKrasnoyarskiy
