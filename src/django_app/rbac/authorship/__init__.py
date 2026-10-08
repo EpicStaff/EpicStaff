@@ -10,7 +10,7 @@ from rbac.authorship.last_edit import (
 )
 from rbac.authorship.policy import org_member_ids, resolve_author
 from rbac.authorship.prefetch import authorship_prefetches
-from rbac.authorship.serializers import (
+from rbac.authorship.serializer_mixins import (
     AuthorStampingSerializerMixin,
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
@@ -21,7 +21,7 @@ from rbac.authorship.user_summary import (
     represent_user_summary,
     user_summaries_by_id,
 )
-from rbac.authorship.views import LastEditDestroyViewSetMixin
+from rbac.authorship.view_mixins import LastEditDestroyViewSetMixin
 
 __all__ = [
     "LAST_EDIT_TRACKER_CONTEXT_KEY",

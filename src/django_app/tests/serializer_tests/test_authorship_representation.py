@@ -13,7 +13,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from rbac.authorship.last_edit import OMIT_AUTHORSHIP_CONTEXT_KEY
-from rbac.authorship.serializers import LastEditFieldsSerializerMixin
+from rbac.authorship.serializer_mixins import LastEditFieldsSerializerMixin
 from rbac.authorship.user_summary import UserSummarySerializer
 
 SCANNED_APPS = ("tables", "agents", "rbac")
