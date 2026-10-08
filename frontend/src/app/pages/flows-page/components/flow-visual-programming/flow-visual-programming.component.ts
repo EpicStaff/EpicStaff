@@ -198,7 +198,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
-        return buildFlowModelFromGraphDto(graph, this.availableFlowLights());
+        return buildFlowModelFromGraphDto(graph);
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
@@ -433,8 +433,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 tap(({ graph, flows }) => {
-                    // Update graphState and availableFlowLights so loadedFlowState()
-                    // recomputes via buildFlowModelFromGraphDto (the shared post-load pipeline).
+                    // Update graphState so loadedFlowState() recomputes via
+                    // buildFlowModelFromGraphDto (the shared post-load pipeline); also refresh availableFlowLights.
                     this.graphState.set(graph);
                     this.availableFlowLights.set(flows);
 
