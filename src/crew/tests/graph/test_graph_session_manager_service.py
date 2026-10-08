@@ -9,10 +9,13 @@ accounting / stop-triggering logic that lives in run_session() itself.
 
 from __future__ import annotations
 
+import importlib
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import redis
 from dotdict import DotDict
 
 from models.graph_models import FinishMessageData, GraphMessage
@@ -94,7 +97,8 @@ def _reset_singleton():
 def service():
     redis_service = Mock()
     redis_service.aupdate_session_status = AsyncMock()
-    redis_service.publish = Mock()
+    redis_service.aset_session_final_variables = AsyncMock()
+    redis_service.aadd_graph_message = AsyncMock()
 
     svc = GraphSessionManagerService(
         redis_service=redis_service,
@@ -349,6 +353,195 @@ async def test_edge_case_9_terminal_status_published_after_all_nodes_complete(
     assert end_position == len(statuses) - 1, (
         f"Terminal status at index {end_position} but total calls {len(statuses)}"
     )
+    
+    
+@pytest.mark.asyncio
+async def test_streamed_messages_and_graph_end_go_to_the_stream_before_end_status(
+    service, monkeypatch
+):
+    session_id = 31
+    _patch_builder(
+        monkeypatch, FakeCompiledGraph([make_finish_chunk(session_id, total_tokens=5)])
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    calls = [
+        (name, call_args, call_kwargs)
+        for name, call_args, call_kwargs in service.redis_service.mock_calls
+        if name in ("aadd_graph_message", "aupdate_session_status")
+    ]
+    added_messages = [call_args[0] for name, call_args, _ in calls if name == "aadd_graph_message"]
+    assert [message["message_data"]["message_type"] for message in added_messages] == [
+        "finish",
+        "graph_end",
+    ]
+    assert all(message["session_id"] == session_id for message in added_messages)
+    assert len({message["uuid"] for message in added_messages}) == 2
+    assert [name for name, _, call_kwargs in calls if call_kwargs.get("status") != "run"] == [
+        "aadd_graph_message",
+        "aadd_graph_message",
+        "aupdate_session_status",
+    ]
+
+
+def _redis_calls(service, *names):
+    return [
+        (name, call_kwargs)
+        for name, _, call_kwargs in service.redis_service.mock_calls
+        if name in names
+    ]
+
+
+@pytest.mark.asyncio
+async def test_end_writes_final_variables_before_publishing_end_status(
+    service, monkeypatch
+):
+    session_id = 40
+    final_state = {
+        "variables": DotDict({"final_result": "done", "counter": 3}),
+        "state_history": [],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    assert _redis_calls(
+        service, "aupdate_session_status", "aset_session_final_variables"
+    ) == [
+        ("aupdate_session_status", {"session_id": session_id, "status": "run"}),
+        (
+            "aset_session_final_variables",
+            {
+                "session_id": session_id,
+                "variables": {"final_result": "done", "counter": 3},
+            },
+        ),
+        ("aupdate_session_status", {"session_id": session_id, "status": "end"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_end_is_published_when_final_variables_write_fails(service, monkeypatch):
+    session_id = 41
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+    service.redis_service.aset_session_final_variables.side_effect = (
+        redis.ConnectionError("redis down")
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+
+
+@pytest.mark.asyncio
+async def test_unserialisable_final_variables_end_the_session_as_error(
+    service, monkeypatch
+):
+    session_id = 44
+    final_state = {
+        "variables": DotDict({"finished_at": datetime(2026, 1, 1)}),
+        "state_history": [],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    # Serialises like the real RedisService.aset_session_final_variables does.
+    def _serialise_like_redis_service(session_id, variables):
+        json.dumps(variables)
+
+    service.redis_service.aset_session_final_variables.side_effect = (
+        _serialise_like_redis_service
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    status_calls = service.redis_service.aupdate_session_status.call_args_list
+    assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
+    assert "not JSON serializable" in status_calls[-1].kwargs["error"]
+
+
+@pytest.mark.asyncio
+async def test_stopped_session_does_not_write_final_variables(service, monkeypatch):
+    session_id = 42
+    chunks = [
+        make_finish_chunk(session_id, total_tokens=100),
+        make_finish_chunk(session_id, total_tokens=100),
+    ]
+    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
+
+    await service.run_session(_session_data(session_id, token_budget=150), StopEvent())
+
+    service.redis_service.aset_session_final_variables.assert_not_called()
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_failed_session_does_not_write_final_variables(service, monkeypatch):
+    session_id = 43
+
+    class FailingGraph:
+        async def astream(self, input, config, stream_mode):
+            raise RuntimeError("node crashed")
+            yield
+
+    _patch_builder(monkeypatch, FailingGraph())
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    service.redis_service.aset_session_final_variables.assert_not_called()
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "error"]
+
+
+class _ReprCountingStr(str):
+    """A state value that counts how often it is rendered into a log line."""
+
+    render_count = 0
+
+    def __repr__(self):
+        type(self).render_count += 1
+        return super().__repr__()
+
+
+@pytest.fixture
+def production_log_level():
+    """Reapply the service's INFO-level loguru setup, as configured in production."""
+    import utils.logger
+
+    importlib.reload(utils.logger)
+    yield
+
+
+@pytest.mark.asyncio
+async def test_streamed_state_is_not_rendered_for_debug_logs_at_info_level(
+    service, monkeypatch, production_log_level
+):
+    _ReprCountingStr.render_count = 0
+    final_state = {
+        "variables": DotDict({}),
+        "state_history": [_ReprCountingStr("large node output")],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    await service.run_session(_session_data(45), StopEvent())
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+    assert _ReprCountingStr.render_count == 0
 
 
 @pytest.mark.asyncio
@@ -362,7 +555,7 @@ async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypat
     )
     _patch_builder(monkeypatch, FakeCompiledGraph([]))
 
-    await service.run_session(_session_data(40), StopEvent())
+    await service.run_session(_session_data(46), StopEvent())
 
     statuses = [
         call.kwargs.get("status")

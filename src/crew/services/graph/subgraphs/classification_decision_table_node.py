@@ -140,13 +140,13 @@ class ClassificationDecisionTableNodeSubgraph:
         self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
-        """Publish a GraphMessage directly to Redis.
+        """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead - and, since that
+        astream, so we write to Redis directly instead - and, since that
         also means _emit_session_audit_event's own interception point (the
         parent's astream loop) never sees these chunks either, dispatch to
         the audit pipeline explicitly here too, right alongside the primary
-        publish (same data dict, same uuid, so both pipelines agree on the
+        write (same data dict, same uuid, so both pipelines agree on the
         event's identity)."""
         if self.redis_service is None:
             return
@@ -166,7 +166,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "timestamp": graph_message.timestamp,
             }
         data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
+        self.redis_service.add_graph_message(data)
         try:
             emit_session_audit_event(data)
         except Exception as audit_exc:

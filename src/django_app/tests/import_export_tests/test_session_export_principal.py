@@ -2,6 +2,7 @@ import csv
 import io
 import uuid
 
+import fakeredis
 import pytest
 from django.utils import timezone
 
@@ -14,7 +15,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models.graph_models import Graph, GraphSessionMessage, ScheduleTriggerNode
 from tables.models.session_models import Session
-from tables.services.redis_pubsub import RedisPubSub
+from tables.services.graph_message_store import GraphMessageStore
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -191,7 +192,7 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
         output={"result": "ok"},
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session_id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session_id)
 
     child_session = Session.objects.get(parent_session_id=root_session_id)
     _add_message(child_session.id)

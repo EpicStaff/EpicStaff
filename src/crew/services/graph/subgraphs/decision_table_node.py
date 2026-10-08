@@ -77,7 +77,7 @@ class DecisionTableNodeSubgraph:
                 "timestamp": graph_message.timestamp,
             }
         data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
+        self.redis_service.add_graph_message(data)
         try:
             emit_session_audit_event(data)
         except Exception as audit_exc:

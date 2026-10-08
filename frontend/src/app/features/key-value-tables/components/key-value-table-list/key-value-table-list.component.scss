@@ -125,6 +125,25 @@
         flex-shrink: 0;
     }
 
+    // Looks like matTooltip (same tokens and shadow). Shifted left past the icon, its gap and the row padding (offsetX
+    // in the component), it starts 8px inside the 280px sidebar; 296px wide, it ends where the entries grid title
+    // starts (24px past the sidebar).
+    &__full-name {
+        max-width: 296px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: var(--mat-tooltip-container-color);
+        color: var(--mat-tooltip-supporting-text-color);
+        font-size: 0.75rem;
+        line-height: 1rem;
+        overflow-wrap: anywhere;
+        box-shadow:
+            0 6px 10px 4px rgba(0, 0, 0, 0.15),
+            0 2px 3px 0 rgba(0, 0, 0, 0.3);
+        // Never under the pointer, so it cannot steal the row's hover.
+        pointer-events: none;
+    }
+
     &__empty {
         padding: 16px 12px;
         font-size: var(--text-body-size);
