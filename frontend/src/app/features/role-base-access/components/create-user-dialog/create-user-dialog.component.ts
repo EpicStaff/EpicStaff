@@ -57,7 +57,14 @@ export class CreateUserDialogComponent implements OnInit {
     editMode = computed(() => this.editUser() !== null);
     existingMemberships = computed<FullMembership[]>(() => this.editUser()?.memberships ?? []);
     superadminActive = computed(() => this.userDetailsStep()?.superadminValue() ?? false);
-    submitDisabled = computed(() => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting());
+    // A selected org without a role would be silently dropped by `getAssignments()`. Superadmins skip
+    // org assignments entirely (and the step is disabled), so a role-less row cannot block them.
+    private hasRoleLessOrg = computed(
+        () => !this.superadminActive() && (this.assignToOrgStep()?.hasInvalidRow() ?? false)
+    );
+    submitDisabled = computed(
+        () => !(this.userDetailsStep()?.isFormValid() ?? false) || this.isSubmitting() || this.hasRoleLessOrg()
+    );
 
     ngOnInit(): void {
         this.loadOrganizations();

@@ -11,7 +11,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { ActionCode, FullMembership, GetRoleResponse, ResourceCode, UserRole } from '@shared/models';
+import { ActionCode, FullMembership, ResourceCode, UserRole } from '@shared/models';
 import { catchError, concat, EMPTY, map, Observable, of, toArray } from 'rxjs';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
@@ -21,7 +21,15 @@ import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { RolesService } from '../../../services/admin/roles.service';
-import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
+import {
+    adminUsersToAggregated,
+    aggregateMembershipsByUser,
+    haveSameIds,
+    newRoleLessRows,
+    rbacErrorMessage,
+    roleToSelectItem,
+    withRole,
+} from '../../../utils';
 import { UserAvatarComponent } from '../../user-avatar/user-avatar.component';
 
 interface MembershipSnapshot {
@@ -59,7 +67,12 @@ export class OrgMembersEditorComponent implements OnInit {
     searchTerm = signal('');
     isUsersLoading = signal(true);
     selectedUsers = signal<TableRow[]>([]);
-    selectionIds = signal<number[]>([]);
+    /**
+     * Fed to the table's `initialSelectedIds`, which re-applies the ids and emits `selectionChange`
+     * on every new value. Changing only when the id set changes lets that round trip settle.
+     */
+    selectionIds = computed(() => [...this.selectedUserIds()], { equal: haveSameIds });
+    bulkRoleId = signal<number | null>(null);
     selectedUserIds = computed(() => new Set(this.selectedUsers().map((r) => r['id'] as number)));
     readonly roleItems = signal<SelectItem[]>([]);
 
@@ -73,14 +86,16 @@ export class OrgMembersEditorComponent implements OnInit {
     });
     readonly hasInvalidRow = computed(() => this.selectedUsers().some((row) => row['role'] == null));
 
-    filteredUsers = computed(() => {
+    /**
+     * Search as the table's display-only `rowVisible` filter: hidden rows keep their selection.
+     * A new function per search term is what tells the table to re-filter; `null` shows all rows.
+     */
+    matchesSearch = computed<((row: TableRow) => boolean) | null>(() => {
         const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.usersTableData();
-        return this.usersTableData().filter(
-            (row) =>
-                (row['name'] as string)?.toLowerCase().includes(term) ||
-                (row['email'] as string)?.toLowerCase().includes(term)
-        );
+        if (!term) return null;
+        return (row) =>
+            (row['name'] as string)?.toLowerCase().includes(term) ||
+            (row['email'] as string)?.toLowerCase().includes(term);
     });
 
     readonly columns: AppTableColumnDef[] = [
@@ -129,7 +144,25 @@ export class OrgMembersEditorComponent implements OnInit {
     }
 
     onSelection(items: TableRow[]): void {
-        this.selectedUsers.set(items);
+        const previouslySelectedIds = this.selectedUserIds();
+        const bulkRoleId = this.bulkRoleId();
+        let selection = items;
+
+        if (bulkRoleId !== null) {
+            // Only role-less rows that just joined the selection follow the bulk role,
+            // so manual overrides and existing members keep the role they already have.
+            const idsToAssign = new Set(
+                newRoleLessRows(items, previouslySelectedIds)
+                    .filter((r) => this.isRowEditable(r))
+                    .map((r) => r['id'] as number)
+            );
+            if (idsToAssign.size) {
+                this.setRoleInTableData(idsToAssign, bulkRoleId);
+                selection = withRole(items, idsToAssign, bulkRoleId);
+            }
+        }
+
+        this.selectedUsers.set(selection);
     }
 
     onRoleSelected(row: TableRow, value: unknown): void {
@@ -140,8 +173,30 @@ export class OrgMembersEditorComponent implements OnInit {
         if (this.selectedUserIds().has(rowId)) {
             this.selectedUsers.update((rows) => rows.map(patch));
         } else {
-            this.selectionIds.set([...this.selectionIds(), rowId]);
+            this.selectedUsers.update((rows) => [...rows, patch(row)]);
         }
+    }
+
+    onBulkRoleSelected(value: unknown): void {
+        if (typeof value !== 'number') return;
+        this.bulkRoleId.set(value);
+
+        const idsToAssign = new Set(
+            this.selectedUsers()
+                .filter((r) => this.isRowEditable(r))
+                .map((r) => r['id'] as number)
+        );
+        if (!idsToAssign.size) return;
+        this.setRoleInTableData(idsToAssign, value);
+        this.selectedUsers.update((rows) => withRole(rows, idsToAssign, value));
+    }
+
+    /**
+     * Updates the table data only. Callers patch the selection too: the table emits selected rows
+     * as snapshots and does not re-emit when its data changes.
+     */
+    private setRoleInTableData(userIds: Set<number>, roleId: number): void {
+        this.usersTableData.update((rows) => withRole(rows, userIds, roleId));
     }
 
     private toastAndContinue(err: HttpErrorResponse, fallback: string): Observable<boolean> {
@@ -191,16 +246,14 @@ export class OrgMembersEditorComponent implements OnInit {
 
                 if (this.isEditMode() && this.organizationId() !== null) {
                     const original = new Map<number, MembershipSnapshot>();
-                    const preselected: number[] = [];
                     for (const u of users) {
                         const m = this.membershipInThisOrg(u);
                         if (m) {
                             original.set(u.id, { membershipId: m.id, roleId: m.role.id });
-                            preselected.push(u.id);
                         }
                     }
                     this.originalMembershipByUserId.set(original);
-                    this.selectionIds.set(preselected);
+                    this.selectedUsers.set(this.usersTableData().filter((row) => original.has(row['id'] as number)));
                 }
 
                 this.isUsersLoading.set(false);
@@ -262,8 +315,4 @@ export class OrgMembersEditorComponent implements OnInit {
         }
         return updates;
     }
-}
-
-function roleToSelectItem(role: GetRoleResponse): SelectItem<number> {
-    return { name: role.name, value: role.id };
 }
