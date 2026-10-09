@@ -54,6 +54,11 @@ class ConversationService(IChatModeController):
         # Each word is a separate trigger: a transcript matches when it contains ANY of
         # them (OR), not the whole wake phrase in order.
         self._wake_words = self._parse_wake_words(realtime_agent_chat_data.wake_word)
+        self._buffer, self._summ_buffer_client = self._initialize_buffer(
+            max_buffer_tokens=2000, max_chunks_tokens=4000
+        )
+        self._previous_words: list[str] = []
+        self._current_chat_mode = ChatMode.CONVERSATION
         # With a wake word configured the agent must stay silent until it is spoken.
         self.current_chat_mode = ChatMode.LISTEN if self._wake_words else ChatMode.CONVERSATION
 
@@ -65,6 +70,22 @@ class ConversationService(IChatModeController):
             realtime_agent_chat_data=realtime_agent_chat_data,
             chat_mode_controller=chat_mode_controller,
         )
+
+    # ------------------------------------------------------------------
+    # Chat mode — a property, not a plain field, so entering LISTEN can never
+    # skip the buffer flush below no matter where in this class it is assigned.
+    # ------------------------------------------------------------------
+
+    @property
+    def current_chat_mode(self) -> ChatMode:
+        return self._current_chat_mode
+
+    @current_chat_mode.setter
+    def current_chat_mode(self, mode: ChatMode) -> None:
+        if mode == ChatMode.LISTEN and self._current_chat_mode != ChatMode.LISTEN:
+            self._buffer.flush()
+            self._previous_words = []
+        self._current_chat_mode = mode
 
     # ------------------------------------------------------------------
     # IChatModeController
@@ -87,10 +108,6 @@ class ConversationService(IChatModeController):
             rt_agent_client_task = None
             rt_transcription_client_task = None
 
-            buffer, summ_buffer_client = self._initialize_buffer(
-                max_buffer_tokens=2000, max_chunks_tokens=4000
-            )
-
             rt_tools = await self.tool_manager_service.get_realtime_tool_models(
                 connection_key=self.realtime_agent_chat_data.connection_key
             )
@@ -104,7 +121,7 @@ class ConversationService(IChatModeController):
                 is_twilio=False,
             )
 
-            rt_transcription_client = self._maybe_create_transcription_client(buffer)
+            rt_transcription_client = self._maybe_create_transcription_client(self._buffer)
 
             if rt_transcription_client is None and self.current_chat_mode == ChatMode.LISTEN:
                 # Without transcription nothing can detect the wake word, so staying in
@@ -132,30 +149,28 @@ class ConversationService(IChatModeController):
 
             logger.info("WebSocket connection established")
 
-            previous_words: list[str] = []
-
             while True:
                 if (
                     self.current_chat_mode == ChatMode.LISTEN
                     and rt_transcription_client is not None
                 ):
                     client = rt_transcription_client
-                    last_words: list[str] = buffer.get_last_input()
+                    last_words: list[str] = self._buffer.get_last_input()
 
-                    if last_words != previous_words:
-                        previous_words = last_words
+                    if last_words != self._previous_words:
+                        self._previous_words = last_words
                         if any(trigger in last_words for trigger in self._wake_words):
-                            final_buffer = buffer.get_final_buffer()
+                            final_buffer = self._buffer.get_final_buffer()
 
                             await rt_agent_client.send_conversation_item_to_server(final_buffer)
                             await rt_agent_client.request_response()
 
-                            buffer.flush()
+                            self._buffer.flush()
                             self.current_chat_mode = ChatMode.CONVERSATION
 
-                    if not buffer.check_free_buffer():
+                    if not self._buffer.check_free_buffer():
                         logger.debug("Starting summarization of the buffer process...")
-                        await summ_buffer_client.summarize_buffer()
+                        await self._summ_buffer_client.summarize_buffer()
 
                 else:
                     client = rt_agent_client

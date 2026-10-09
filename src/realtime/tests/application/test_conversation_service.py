@@ -256,9 +256,12 @@ class ExecutedClients(NamedTuple):
 
 
 async def _run_execute_with_transcription(
-    service, transcribed_text: str
+    service, transcribed_text: str, prime_buffer=None
 ) -> ExecutedClients:
     """Drive execute() through one loop turn with `transcribed_text` already buffered.
+
+    `prime_buffer`, if given, runs first with the real buffer — e.g. to simulate
+    text transcribed (or a mode change) before the turn under test.
 
     Returns both mocked clients so the caller can assert which one received the
     audio message and whether the handover to the agent happened.
@@ -273,6 +276,8 @@ async def _run_execute_with_transcription(
     transcription_client.process_message = AsyncMock(return_value=None)
 
     def create_transcription_client(config, on_server_event, buffer):
+        if prime_buffer is not None:
+            prime_buffer(buffer)
         buffer.append(transcribed_text)
         return transcription_client
 
@@ -300,6 +305,31 @@ async def test_wake_word_in_transcript_hands_over_to_conversation(make_service, 
     clients.rt_agent_client.request_response.assert_awaited_once()
     # The handover turn itself is still transcribed — the agent takes over from the next turn.
     clients.transcription_client.process_message.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stop_then_wake_word_does_not_replay_earlier_turn(make_service):
+    """Stop-word mid-conversation must flush the buffer: the next wake-word handover
+    should send only what was said after the stop, not the whole session history."""
+    service = make_service(wake_word="hey agent")
+
+    def prime_buffer(buffer):
+        # Simulate: the agent is already mid-conversation (a previous wake-word
+        # handover already happened), an earlier turn was transcribed, and only
+        # then does the user say the stop phrase (StopAgentToolExecutor calls
+        # set_chat_mode(LISTEN) mid-session) — a real CONVERSATION->LISTEN transition.
+        service.set_chat_mode(ChatMode.CONVERSATION)
+        buffer.append("please remember my address is 42 main street")
+        service.set_chat_mode(ChatMode.LISTEN)
+
+    clients = await _run_execute_with_transcription(
+        service, "ok agent, what time is it", prime_buffer=prime_buffer
+    )
+
+    assert service.current_chat_mode == ChatMode.CONVERSATION
+    sent_text = clients.rt_agent_client.send_conversation_item_to_server.await_args.args[0]
+    assert "42 main street" not in sent_text
+    assert "what time is it" in sent_text
 
 
 @pytest.mark.asyncio
