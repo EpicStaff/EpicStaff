@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
             name='custom_name',
             field=models.TextField(null=True, unique=True)
         ),
-        migrations.RunPython(populate_custom_name),
+        migrations.RunPython(populate_custom_name, elidable=True),
         migrations.AlterField(
             model_name='configllm',
             name='custom_name',

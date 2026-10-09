@@ -1571,7 +1571,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     """
 
     rbac_resource_type = ResourceType.VOICE
-    org_filter_path = "rt_agent__agent__org_id"
+    org_filter_path = "rt_agent_definition__agent_definition__organization_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1790,7 +1790,7 @@ class ConversationRecordingViewSet(
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_chat", "recording_type"]
     rbac_resource_type = ResourceType.VOICE
-    org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
+    org_filter_path = "rt_agent_chat__rt_agent_definition__agent_definition__organization_id"
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
 

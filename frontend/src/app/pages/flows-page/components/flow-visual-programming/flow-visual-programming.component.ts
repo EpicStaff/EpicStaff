@@ -35,7 +35,7 @@ import {
     ResourceCode,
 } from '@shared/models';
 import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
     defaultIfEmpty,
@@ -645,7 +645,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                                 title: 'Unpack Subflow',
                                 message:
                                     `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
-                                    `Unpack <strong>${subflowName}</strong> into the current graph?`,
+                                    `Unpack <strong>${escapeHtml(subflowName)}</strong> into the current graph?`,
                                 confirmText: 'Unpack',
                                 cancelText: 'Cancel',
                                 type: 'warning',
@@ -1621,8 +1621,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // picks a restore option; Cancel leaves them in the preview.
         const hasUnsaved = this.hasUnsavedChanges();
         const message = hasUnsaved
-            ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
-            : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
+            ? `You have unsaved changes. Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`
+            : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
         this.unsavedChangesDialog
             .confirm({

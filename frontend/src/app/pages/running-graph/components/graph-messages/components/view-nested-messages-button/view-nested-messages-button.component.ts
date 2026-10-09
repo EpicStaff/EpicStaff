@@ -44,9 +44,11 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             }
 
             .view-nested-button {
-                background-color: var(--color-nodes-flow-link);
-                color: var(--color-white);
-                border: 2px solid rgba(0, 191, 165, 0.4);
+                background-color: var(--message-accent-color, var(--color-nodes-flow-link));
+                color: var(--graphite-900);
+                height: 28px;
+                border: 2px solid
+                    color-mix(in srgb, var(--message-accent-color, var(--color-nodes-flow-link)) 40%, transparent);
                 border-radius: 6px;
                 padding: 0.125rem 0.5rem;
                 font-size: var(--text-body-medium-size);
@@ -66,11 +68,12 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .view-nested-button:hover {
                 background-color: transparent;
-                color: var(--color-nodes-flow-link);
-                border-color: var(--color-nodes-flow-link);
+                color: var(--message-accent-color, var(--color-nodes-flow-link));
+                border-color: var(--message-accent-color, var(--color-nodes-flow-link));
             }
 
             .show-nested-btn--open {
+                color: var(--message-accent-color, var(--color-nodes-flow-link));
                 background-color: transparent;
             }
 
@@ -81,7 +84,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 justify-content: center;
                 transform: rotate(0deg);
                 transition: transform 0.2s ease;
-                color: var(--color-white);
             }
 
             .play-nested-arrow--open {
@@ -89,7 +91,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     transform 0.2s ease,
                     color 0.2s ease;
                 transform: rotate(90deg);
-                color: var(--color-nodes-flow-link);
             }
         `,
     ],

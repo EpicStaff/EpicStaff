@@ -85,8 +85,6 @@
                         message="Check your connection and try again."
                         (retry)="retrySection(provider.key)"
                     />
-                } @else if (provider.configs.length === 0) {
-                    <p class="empty-hint">No {{ provider.label }} yet.</p>
                 } @else {
                     <div class="grid">
                         @for (c of provider.configs; track c.id) {
@@ -126,6 +124,10 @@
                     </div>
                 }
             </div>
+        }
+
+        @if (hasNoConfigs()) {
+            <p class="empty-hint">No configurations yet.</p>
         }
     }
 </section>
