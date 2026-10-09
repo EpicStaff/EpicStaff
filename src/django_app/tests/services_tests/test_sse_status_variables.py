@@ -6,6 +6,7 @@ from asgiref.sync import sync_to_async
 
 from tables.models.graph_models import Graph
 from tables.models.session_models import Session
+from tables.utils.mixins import SerializedEvent
 from tables.views import sse_views
 from tables.views.sse_views import RunSessionSSEView
 
@@ -59,7 +60,7 @@ async def _live_events(view, messages):
     return [
         event
         async for event in view.get_live_updates(_FinitePubSub(messages))
-        if event["event"] != "done"
+        if not isinstance(event, dict) or event["event"] != "done"
     ]
 
 
@@ -195,7 +196,8 @@ async def test_graph_message_is_sent_as_received_without_a_redis_lookup(fake_asy
 
     events = await _live_events(_view_for(5), [live_message])
 
-    assert events == [{"event": "messages", "data": graph_message}]
+    # Forwarded as the published string: neither parsed nor encoded again.
+    assert events == [SerializedEvent(event="messages", data=live_message["data"])]
     assert await fake_async_redis.keys("*") == []
 
 

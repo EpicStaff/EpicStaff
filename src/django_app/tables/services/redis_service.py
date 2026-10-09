@@ -18,6 +18,7 @@ from src.shared.models import (
 )
 from src.shared.redis_keys import session_messages_channel
 from tables.services.secrets import secret_resolver
+from tables.utils.base64_preview import trim_base64_file_data
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -170,7 +171,8 @@ class RedisService(metaclass=SingletonMeta):
         replays it from there.
         """
         self.redis_client.publish(
-            channel=session_messages_channel(session_id), message=json.dumps(data)
+            channel=session_messages_channel(session_id),
+            message=json.dumps(trim_base64_file_data(data)),
         )
         logger.info("Published user graph message {} of session {}", data.get("uuid"), session_id)
 

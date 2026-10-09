@@ -4,6 +4,7 @@ import json
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
+from dataclasses import dataclass
 from functools import partial
 
 from asgiref.sync import sync_to_async
@@ -31,6 +32,14 @@ def _log_sse_state(action: str, view_name: str) -> None:
         f"SSE {action} | view={view_name} active={_active_sse_count} "
         f"rss={rss_mb:.1f}MB redis_used={redis_used} redis_avail={redis_avail}"
     )
+
+
+@dataclass(frozen=True)
+class SerializedEvent:
+    """An event whose data is already JSON, sent as it is instead of encoded again."""
+
+    event: str
+    data: str
 
 
 def _close_database_connection() -> None:
@@ -144,7 +153,11 @@ class SSEMixin(View, ABC):
 
                 logger.debug("_data_generator item: {}", item)
                 last_sent = time.monotonic()
-                if isinstance(item, dict):
+                if isinstance(item, SerializedEvent):
+                    yield f"event: {item.event}\n"
+                    # A line break would end the data field early; each line gets its own.
+                    yield "".join(f"data: {line}\n" for line in item.data.split("\n")) + "\n"
+                elif isinstance(item, dict):
                     if "event" in item:
                         yield f"event: {item['event']}\n"
 

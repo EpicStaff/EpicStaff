@@ -9,6 +9,7 @@ from asgiref.sync import sync_to_async
 
 from tables.models.graph_models import Graph
 from tables.models.session_models import Session
+from tables.utils.mixins import SerializedEvent
 from tables.views import sse_views
 from tables.views.sse_views import RunSessionSSEView
 
@@ -109,8 +110,10 @@ async def test_message_arriving_after_the_finished_status_is_still_sent(fake_asy
         ]
     )
 
-    assert [event["event"] for event in events] == ["status", "messages", "done"]
-    assert events[1]["data"]["uuid"] == "late-uuid"
+    assert [event["event"] for event in (events[0], events[2])] == ["status", "done"]
+    assert events[1] == SerializedEvent(
+        event="messages", data=_graph_message("late-uuid")["data"]
+    )
 
 
 @pytest.mark.asyncio

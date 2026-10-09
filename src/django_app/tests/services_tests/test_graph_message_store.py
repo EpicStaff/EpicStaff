@@ -830,3 +830,26 @@ def test_status_handler_persists_results_after_releasing_the_session_lock(
     session.refresh_from_db()
     assert outcomes == [{"result": "locked"}]
     assert session.status == Session.SessionStatus.END
+
+
+def test_file_data_is_published_as_a_preview_and_stored_whole(graph, store, redis_client):
+    session = _session(graph)
+    subscriber = redis_client.pubsub()
+    subscriber.subscribe(f"session:update:{session.id}:messages")
+    file_data = "A" * 10_000
+    payload = _payload(
+        session.id,
+        message_type="start",
+        input={"files": [{"name": "report.pdf", "base64_data": file_data}]},
+    )
+
+    store.persist_batch([payload])
+
+    published = _published(subscriber)
+    subscriber.close()
+    published_message = json.loads(published[0]["data"])
+    assert published_message["message_data"]["input"]["files"] == [
+        {"name": "report.pdf", "base64_data": "A" * 50}
+    ]
+    stored = GraphSessionMessage.objects.get(session=session)
+    assert stored.message_data["input"]["files"][0]["base64_data"] == file_data

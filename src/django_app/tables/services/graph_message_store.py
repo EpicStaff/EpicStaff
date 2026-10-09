@@ -20,6 +20,7 @@ from tables.services.session_token_usage import (
     sum_token_usage,
 )
 from tables.services.trigger_spec import TriggerSpec
+from tables.utils.base64_preview import trim_base64_file_data_in_json
 from utils.logger import logger
 
 # Rows per INSERT statement. Building the statement for one ~300 KB message costs the
@@ -89,8 +90,9 @@ class GraphMessageStore:
         After the rows are committed, this adds the usage of every message not counted
         yet to its session's total, finishes every session that sent ``graph_end``
         (token total and subgraph sessions), refreshes the stored total of finished
-        sessions the batch carries usage for, and publishes each received string
-        unchanged on its session's messages channel.
+        sessions the batch carries usage for, and publishes each received string on its
+        session's messages channel, unchanged unless it carries base64 file data, which
+        is cut to a preview once here rather than by every SSE stream.
 
         Raises:
             django.db.OperationalError, django.db.InterfaceError, redis.RedisError:
@@ -280,7 +282,10 @@ class GraphMessageStore:
             return
         pipeline = self.redis_client.pipeline(transaction=False)
         for message in messages:
-            pipeline.publish(session_messages_channel(message.session_id), message.payload)
+            pipeline.publish(
+                session_messages_channel(message.session_id),
+                trim_base64_file_data_in_json(message.payload),
+            )
         pipeline.execute()
 
     def create_subgraph_sessions(self, root_session_id: int) -> None:

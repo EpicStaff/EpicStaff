@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import time
 from dataclasses import dataclass
@@ -21,7 +20,8 @@ from tables.models.session_models import Session
 from tables.services.redis_service import RedisService
 from tables.services.session_access import get_accessible_session
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
-from tables.utils.mixins import SSEMixin
+from tables.utils.base64_preview import trim_base64_file_data
+from tables.utils.mixins import SerializedEvent, SSEMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -109,7 +109,7 @@ class RunSessionSSEView(SSEMixin):
 
     def _messages_event(self, message: dict) -> dict:
         self._sent_message_uuids.add(str(message["uuid"]))
-        message["message_data"] = self._trim_base64_file_data(message["message_data"])
+        message["message_data"] = trim_base64_file_data(message["message_data"])
         return {"event": "messages", "data": message}
 
     async def _send_held_live_messages(self):
@@ -151,15 +151,17 @@ class RunSessionSSEView(SSEMixin):
                 self.__log(event="messages", state="held", data=message_uuid)
                 yield self._messages_event(rows_by_uuid[message_uuid])
 
-    async def _handle_graph_session_messages(self, data):
+    async def _handle_graph_session_messages(self, raw_data: str):
         # Only this session's channel is subscribed, so the message is the caller's.
-        yield {"event": "messages", "data": data}
+        # Its publisher already cut the file data, so it is sent without being parsed.
+        yield SerializedEvent(event="messages", data=raw_data)
 
     def _note_status(self, status: str) -> None:
         if status in FINISHED_STATUSES and self._finished_at is None:
             self._finished_at = time.monotonic()
 
-    async def _handle_session_statuses(self, data):
+    async def _handle_session_statuses(self, raw_data: str):
+        data = json.loads(raw_data)
         self.__log(event="status", state="update", data=data["status"])
         self._note_status(data["status"])
         status_data = data.get("status_data", {})
@@ -258,7 +260,7 @@ class RunSessionSSEView(SSEMixin):
             if handler is None:
                 return
 
-            async for item in handler(json.loads(message["data"])):
+            async for item in handler(message["data"]):
                 logger.debug("get_live_updates data: {}", item)
                 yield item
 
@@ -294,22 +296,3 @@ class RunSessionSSEView(SSEMixin):
         """
         logger.info("Started run session SSE")
         return await super().get(request, *args, **kwargs)
-
-    def _trim_base64_file_data(self, message_data: dict) -> dict:
-        """Trim base64 file data in message content to reduce payload size."""
-        trimmed_data = copy.deepcopy(message_data)
-
-        def trim_data_fields(obj):
-            """Recursively traverse and trim 'base64_data' fields."""
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    if key == "base64_data" and isinstance(value, str) and len(value) > 50:
-                        obj[key] = value[:50]
-                    else:
-                        trim_data_fields(value)
-            elif isinstance(obj, list):
-                for item in obj:
-                    trim_data_fields(item)
-
-        trim_data_fields(trimmed_data)
-        return trimmed_data
