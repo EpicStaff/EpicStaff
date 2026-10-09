@@ -49,6 +49,12 @@ class ConditionalEdgeSerializer(
         model = ConditionalEdge
         fields = "__all__"
 
+    def validate(self, attrs):
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        source_node_id = attrs.get("source_node_id", getattr(self.instance, "source_node_id", None))
+        assert_node_ref_in_graph(source_node_id, graph, "source_node_id")
+        return attrs
+
 
 class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
