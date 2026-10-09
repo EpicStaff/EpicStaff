@@ -149,7 +149,7 @@ def test_built_in_tool_still_cannot_be_deleted(client_a, org_a, built_in_python_
     assert PythonCodeTool.objects.filter(id=built_in_python_code_tool.id).exists()
 
 
-# ---- EST-3782: copy must carry over tool-scope labels ----
+# ---- copy must carry over tool-scope labels ----
 
 
 @pytest.mark.django_db
@@ -194,7 +194,7 @@ def test_copy_of_mcp_tool_inherits_labels(client_a, org_a):
     assert list(copy.labels.values_list("id", flat=True)) == [label.id]
 
 
-# ---- EST-3773: copying a shared built-in tool must not carry another org's labels ----
+# ---- copying a shared built-in tool must not carry another org's labels ----
 
 
 @pytest.mark.django_db
@@ -215,7 +215,7 @@ def test_copy_of_built_in_tool_does_not_carry_other_org_labels(
     assert list(copy.labels.values_list("id", flat=True)) == []
 
 
-# ---- EST-4000: copy-name numbering must be org-scoped (and built-in-aware) ----
+# ---- copy-name numbering must be org-scoped (and built-in-aware) ----
 
 
 @pytest.fixture
@@ -266,7 +266,7 @@ def test_python_code_tool_copy_name_avoids_built_in_collision(client_a, org_a):
     assert copy.name == "Duplicated #3"
 
 
-# ---- EST-4002: a concurrent-copy name race must surface cleanly, not leak
+# ---- a concurrent-copy name race must surface cleanly, not leak
 # raw DB internals ----
 
 

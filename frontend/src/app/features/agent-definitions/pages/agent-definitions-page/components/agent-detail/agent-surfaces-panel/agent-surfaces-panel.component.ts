@@ -364,6 +364,7 @@ export class AgentSurfacesPanelComponent {
         const place = this.draftCategoryId();
         const card = this.draftSurfaceCard();
         if (!place || !card) return;
+        if (card.refuseIfKnowledgeInvalid()) return;
         this.draftMaterializing = true;
         this.knownSurfaceIdsBeforeCreate.set(new Set(this.surfaces().map((s) => s.id)));
         this.createSurface.emit({ body: card.buildCreateRequest(name), place });

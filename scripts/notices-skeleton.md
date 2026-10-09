@@ -44,7 +44,7 @@ The generator invokes `npx --yes license-checker --production --json` internally
 
 ### Backend (Python)
 
-Whenever any backend service's `pyproject.toml` dependencies change (`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`):
+Whenever any backend service's `pyproject.toml` dependencies change (`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/auditor`):
 
 ```powershell
 python scripts/generate-python-notices.py

@@ -1,5 +1,3 @@
-export type AgentDocType = 'boot';
-
 export type BranchTreeNode = BranchGroupNode | BranchSurfaceNode | BranchAgentNode | BranchAgentDocNode;
 
 export interface BranchGroupNode {
@@ -27,13 +25,12 @@ export interface BranchAgentNode {
     children: BranchTreeNode[];
 }
 
-// TODO(EST-2946): backend doc storage
+/** One entry of an agent's `instruction_list`, identified by its position (names change on rename). */
 export interface BranchAgentDocNode {
     kind: 'agent-doc';
     agentId: number;
-    docType: AgentDocType;
+    instructionIndex: number;
     label: string;
-    placeholder: true;
 }
 
 export function nodeKey(node: BranchTreeNode): string {
@@ -45,6 +42,6 @@ export function nodeKey(node: BranchTreeNode): string {
         case 'agent':
             return `agent:${node.agentId}`;
         case 'agent-doc':
-            return `agent-doc:${node.agentId}:${node.docType}`;
+            return `agent-doc:${node.agentId}:${node.instructionIndex}`;
     }
 }

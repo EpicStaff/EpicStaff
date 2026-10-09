@@ -29,7 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cla_version import parse_version_from_text, version_tuple  # noqa: E402
+from cla_version import parse_version_from_text, version_tuple
 
 CLA_PATH = "CLA.md"
 
@@ -39,6 +39,7 @@ def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
         ["git", *args],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -48,13 +49,10 @@ def cla_changed(base_sha: str, head_sha: str) -> bool:
     Three dots, not two: diff from the merge base, so a CLA.md change that
     arrived via a merge from main is not attributed to this pull request.
     """
-    result = run_git(
-        ["diff", "--name-only", f"{base_sha}...{head_sha}", "--", CLA_PATH]
-    )
+    result = run_git(["diff", "--name-only", f"{base_sha}...{head_sha}", "--", CLA_PATH])
     if result.returncode != 0:
         print(
-            f"::error::git diff {base_sha}...{head_sha} failed: "
-            f"{result.stderr.strip()}",
+            f"::error::git diff {base_sha}...{head_sha} failed: {result.stderr.strip()}",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -168,15 +166,13 @@ def main() -> int:
 
     base_version = parse_version_from_text(base_text, source=f"{base_sha}:{CLA_PATH}")
 
-    with open(CLA_PATH, "r", encoding="utf-8") as cla_file:
+    with open(CLA_PATH, encoding="utf-8") as cla_file:
         head_first_line = cla_file.readline()
 
     head_version = parse_version_from_text(head_first_line, source=CLA_PATH)
 
     if version_tuple(head_version) > version_tuple(base_version):
-        print(
-            f"{CLA_PATH} changed and the version was raised: {base_version} -> {head_version}"
-        )
+        print(f"{CLA_PATH} changed and the version was raised: {base_version} -> {head_version}")
         return 0
 
     report_failure(
