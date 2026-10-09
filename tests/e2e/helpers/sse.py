@@ -5,11 +5,14 @@ to Redis first, then replays the session: every cached and stored message, then 
 `status` event read from the database. After that it streams live `messages` / `status`
 events from Redis pubsub. The first `status` event is therefore the boundary: events up to
 and including it are the `replay` phase, events after it the `live` phase. (`memory` events
-also follow the initial status during replay; the suite does not assert on them.)
+also follow the initial status during replay, so they are replay data that gets labelled
+`live`; the suite does not assert on them.)
 
 The server never closes the stream and sends no heartbeat while it waits, so the collector
 closes it itself: once the session is terminal (and, for `end`, once `graph_end` arrived),
-on an `event: fatal-error`, or when a hard deadline passes.
+on an `event: fatal-error`, when the caller's `stop_at_boundary` predicate says so, or when
+a hard deadline passes. The deadline is checked between events, so the real bound is
+`deadline_seconds` plus `read_timeout`.
 
 `messages` data comes in two shapes: the live Redis payload and a stored database row. Both
 carry `uuid`, `name` and `message_data`; the collector keys messages by `uuid` and keeps the
@@ -19,7 +22,7 @@ first arrival.
 import dataclasses
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import httpx
@@ -57,7 +60,7 @@ class SessionStream:
     # Index into `events` of the first `status` event (the replay/live boundary).
     boundary_index: int | None = None
     fatal_error: object = None
-    # Why collection stopped: done, fatal_error, read_timeout or deadline.
+    # Why collection stopped: done, fatal_error, boundary, read_timeout or deadline.
     stop_reason: str = ""
 
     @property
@@ -73,12 +76,8 @@ class SessionStream:
     def final_status(self) -> str | None:
         return self.statuses[-1] if self.statuses else None
 
-    def message_types(self, name: str | None = None) -> list[str]:
-        return [
-            message["message_data"].get("message_type")
-            for message in self.messages.values()
-            if name is None or message.get("name") == name
-        ]
+    def message_types(self) -> list[str]:
+        return [message["message_data"].get("message_type") for message in self.messages.values()]
 
     def has_graph_end(self) -> bool:
         return "graph_end" in self.message_types()
@@ -175,8 +174,12 @@ def collect_session_stream(
     *,
     read_timeout: float,
     deadline_seconds: float,
+    stop_at_boundary: Callable[[SessionStream], bool] | None = None,
 ) -> SessionStream:
     """Subscribe and collect until the session is done, a fatal error, or `deadline_seconds`.
+
+    `stop_at_boundary` is called once, right after the replay/live boundary status arrived;
+    when it returns True collection stops with `stop_reason` "boundary".
 
     `read_timeout` bounds the silence between two reads; the stream has no heartbeat, so it
     must exceed the longest quiet stretch of the run. Returns what arrived either way, with
@@ -198,6 +201,13 @@ def collect_session_stream(
                 if event.event == FATAL_ERROR_EVENT:
                     stream.fatal_error = event.data
                     stream.stop_reason = "fatal_error"
+                    break
+                if (
+                    stop_at_boundary is not None
+                    and stream.boundary_index == len(stream.events) - 1
+                    and stop_at_boundary(stream)
+                ):
+                    stream.stop_reason = "boundary"
                     break
                 if stream_is_done(stream):
                     stream.stop_reason = "done"

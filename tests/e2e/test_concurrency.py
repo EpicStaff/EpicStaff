@@ -23,7 +23,7 @@ from datetime import datetime
 import httpx
 import pytest
 
-from helpers.api import ApiClient
+from helpers.api import ApiClient, UnexpectedStatusError
 from helpers.bootstrap import unique_suffix
 from helpers.flows import CreatedFlow, create_python_flow, start_session
 from helpers.polling import session_diagnostics, wait_for_session_status
@@ -37,6 +37,9 @@ RUN_TIMEOUT_SECONDS = 420
 # Above this p95 the run is reported as slow (a warning, not a failure).
 SLOW_P95_SECONDS = 180
 REASON_LENGTH = 200
+# 10 pollers at the default 0.25 s recycle the single gunicorn worker; p50/p95 come from
+# server timestamps, so poll speed does not matter here.
+CONCURRENCY_POLL_INTERVAL_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -75,7 +78,7 @@ def nearest_rank_percentile(values: list[float], percentile: float) -> float:
     return ordered[max(0, math.ceil(percentile / 100 * len(ordered)) - 1)]
 
 
-def describe(error: Exception) -> str:
+def describe_error(error: Exception) -> str:
     return scrub(f"{type(error).__name__}: {error}")
 
 
@@ -106,16 +109,22 @@ def parallel_runs(
                 {"a": first_addend, "b": second_addend},
             )["session_id"]
         except (AssertionError, httpx.HTTPError) as error:
-            return ParallelRun(first_addend, second_addend, None, "start_failed", describe(error), {})
+            return ParallelRun(first_addend, second_addend, None, "start_failed", describe_error(error), {})
         try:
-            status = wait_for_session_status(user_client, session_id, RUN_TIMEOUT_SECONDS)
+            status = wait_for_session_status(
+                user_client, session_id, RUN_TIMEOUT_SECONDS, CONCURRENCY_POLL_INTERVAL_SECONDS
+            )
             session = user_client.get(f"/api/sessions/{session_id}/").json()
+        except UnexpectedStatusError as error:
+            return ParallelRun(
+                first_addend, second_addend, session_id, "request_failed", describe_error(error), {}
+            )
         except AssertionError as error:
-            return ParallelRun(first_addend, second_addend, session_id, "timeout", describe(error), {})
+            return ParallelRun(first_addend, second_addend, session_id, "timeout", describe_error(error), {})
         except httpx.HTTPError as error:
             # A single request that fails (e.g. times out while the stack is saturated).
             return ParallelRun(
-                first_addend, second_addend, session_id, "request_failed", describe(error), {}
+                first_addend, second_addend, session_id, "request_failed", describe_error(error), {}
             )
         return ParallelRun(
             first_addend, second_addend, session_id, status, failure_reason(session), session

@@ -13,7 +13,7 @@ from helpers.flows import (
     assert_session_ended,
     create_python_flow,
     run_flow_and_wait,
-    runtime_node_name,
+    runtime_name_of,
     wait_for_graph_end,
 )
 from helpers.payloads import PYTHON_NODE_NAME, PYTHON_SUM_CODE
@@ -51,11 +51,6 @@ def python_flow_messages(
     # A run that did not end never writes graph_end: fail now, not after the message budget.
     assert_session_ended(user_client, python_flow_run.session_id, python_flow_session["status"])
     return wait_for_graph_end(user_client, python_flow_run.session_id, MESSAGES_TIMEOUT_SECONDS)
-
-
-def python_node_message_name(flow: CreatedFlow) -> str:
-    [python_node] = flow.saved["python_node_list"]
-    return runtime_node_name(python_node)
 
 
 def messages_of_type(messages: list[dict], message_type: str, name: str | None = None) -> list[dict]:
@@ -107,7 +102,7 @@ def test_session_messages_trace_the_run(
     [graph_end] = messages_of_type(python_flow_messages, "graph_end")
     assert graph_end["message_data"]["end_node_result"] == {"result": EXPECTED_RESULT}
 
-    node_name = python_node_message_name(python_flow)
+    node_name = runtime_name_of(python_flow, "python_node_list")
     [python_message] = messages_of_type(python_flow_messages, "python", node_name)
     execution = python_message["message_data"]["python_code_execution_data"]
     assert execution["returncode"] == 0, execution

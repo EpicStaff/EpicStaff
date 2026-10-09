@@ -67,6 +67,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     product bug in parallel venv creation). Running it last keeps the rest of the suite
     independent of that bug; it also means a full run meets an already-built venv and does
     not exercise the race (run test_concurrency.py alone on a fresh stack for that).
+
+    Plugins that reorder later break "last": `--ff` / `--nf` reorder after this hook, and
+    xdist (`-n`) spreads tests across workers.
     """
     items.sort(key=lambda item: item.get_closest_marker("load") is not None)
 

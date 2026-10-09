@@ -111,13 +111,18 @@ def session_diagnostics(client: ApiClient, session_id: int) -> str:
     return "\n".join(lines)
 
 
-def wait_for_session_status(client: ApiClient, session_id: int, timeout: float) -> str:
+def wait_for_session_status(
+    client: ApiClient,
+    session_id: int,
+    timeout: float,
+    interval: float = SESSION_POLL_INTERVAL_SECONDS,
+) -> str:
     """Poll the cheap get-updates endpoint until the session is terminal; return its status."""
     return poll(
         lambda: client.get(f"/api/sessions/{session_id}/get-updates/").json()["status"],
         lambda status: status in TERMINAL_SESSION_STATUSES,
         timeout=timeout,
-        interval=SESSION_POLL_INTERVAL_SECONDS,
+        interval=interval,
         describe=f"session {session_id} to reach a terminal status",
         diagnostics=lambda: session_diagnostics(client, session_id),
     )

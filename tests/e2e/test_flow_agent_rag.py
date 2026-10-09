@@ -17,7 +17,7 @@ from helpers.flows import (
     assert_session_ended,
     create_flow,
     run_flow_and_wait,
-    runtime_node_name,
+    runtime_name_of,
     wait_for_graph_end,
 )
 from helpers.mock_llm import CHAT_COMPLETIONS_PATH, MockLlmClient
@@ -71,11 +71,6 @@ def agent_rag_messages(
     return wait_for_graph_end(user_client, agent_rag_run.session_id, MESSAGES_TIMEOUT_SECONDS)
 
 
-def node_message_name(flow: CreatedFlow, node_list: str) -> str:
-    [node] = flow.saved[node_list]
-    return runtime_node_name(node)
-
-
 def message_text(content: object) -> str:
     """OpenAI message content: a string or a list of `{"type": "text", "text": ...}` parts."""
     if isinstance(content, list):
@@ -126,7 +121,7 @@ def extracted_chunks_of(messages: list[dict], node_name: str) -> list[dict]:
 def test_knowledge_node_records_its_retrieval(
     agent_rag_flow: CreatedFlow, agent_rag_messages: list[dict], knowledge_token: str
 ) -> None:
-    knowledge_name = node_message_name(agent_rag_flow, "knowledge_node_list")
+    knowledge_name = runtime_name_of(agent_rag_flow, "knowledge_node_list")
     [retrieval] = extracted_chunks_of(agent_rag_messages, knowledge_name)
     assert retrieval["knowledge_query"] == AGENT_RAG_QUESTION
     assert any(knowledge_token in chunk["text"] for chunk in retrieval["chunks"]), retrieval
@@ -141,7 +136,7 @@ def test_agent_tool_call_is_recorded_as_a_knowledge_search(
     and sends the richer `agent.knowledge_search` envelope instead
     (agent/app/emitters/redis_tool_events.py), which crew writes as `extracted_chunks`.
     """
-    task_name = node_message_name(agent_rag_flow, "task_node_list")
+    task_name = runtime_name_of(agent_rag_flow, "task_node_list")
     [search] = extracted_chunks_of(agent_rag_messages, task_name)
     assert search["agent_id"] == e2e_agent["id"]
     assert search["rag_type"] == "naive"

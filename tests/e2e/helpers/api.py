@@ -37,11 +37,16 @@ __all__ = [
     "BASE_URL",
     "REDACTED",
     "ApiClient",
+    "UnexpectedStatusError",
     "assert_error",
     "body_excerpt",
     "describe_response",
     "page_results",
 ]
+
+
+class UnexpectedStatusError(AssertionError):
+    """A response carried a status other than the expected one."""
 
 
 def body_excerpt(response: httpx.Response) -> str:
@@ -72,7 +77,7 @@ def status_is_expected(status_code: int, expect: int | Iterable[int] | None) -> 
 def check_status(response: httpx.Response, expect: int | Iterable[int] | None) -> None:
     if not status_is_expected(response.status_code, expect):
         allowed = {expect} if isinstance(expect, int) else set(expect)
-        raise AssertionError(
+        raise UnexpectedStatusError(
             f"Expected status {sorted(allowed)}, got {response.status_code}: "
             f"{describe_response(response)}"
         )

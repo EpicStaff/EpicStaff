@@ -45,6 +45,12 @@ def runtime_node_name(node: dict) -> str:
     return f"{node['node_name']} #{node['id']}"
 
 
+def runtime_name_of(flow: CreatedFlow, node_list: str) -> str:
+    """Runtime name of the only node in `node_list` (e.g. `"task_node_list"`) of a saved flow."""
+    [node] = flow.saved[node_list]
+    return runtime_node_name(node)
+
+
 def create_flow(
     client: ApiClient, name: str, build_payload: Callable[[int, int], dict]
 ) -> CreatedFlow:
