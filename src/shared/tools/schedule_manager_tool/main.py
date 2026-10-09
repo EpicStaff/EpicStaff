@@ -63,6 +63,9 @@ VALID_ACTIONS = {"create", "list", "update", "delete"}
 VALID_RUN_MODES = {"once", "repeat"}
 VALID_UNITS = {"seconds", "minutes", "hours", "days", "weeks", "months"}
 VALID_END_TYPES = {"never", "on_date", "after_n_runs"}
+# The API renders these as principal objects (display name + avatar URL);
+# stripped so the agent cannot relay colleagues' identities to chat users.
+AUTHORSHIP_KEYS = frozenset({"created_by", "last_edited_by", "last_edited_at"})
 
 
 def _api_base_url() -> str:
@@ -135,6 +138,12 @@ def _maybe_jitter_start(start_date_time, apply_jitter: bool, jitter_max: int):
     offset = random.randint(1, jitter_max - 1)
     jittered = dt + timedelta(seconds=offset)
     return jittered.isoformat(), offset
+
+
+def _without_authorship(schedule):
+    if not isinstance(schedule, dict):
+        return schedule
+    return {key: value for key, value in schedule.items() if key not in AUTHORSHIP_KEYS}
 
 
 def _fetch_node(client, base_url: str, headers: dict, schedule_id):
@@ -262,7 +271,7 @@ def _do_create(client, base_url, headers, graph_id, args):
             f"{response.status_code}: {response.text[:300]}"
         )
 
-    result = response.json()
+    result = _without_authorship(response.json())
     note = (
         f" (start_date_time jittered by +{jitter_offset}s to avoid herding)"
         if jitter_offset
@@ -298,7 +307,7 @@ def _do_list(client, base_url, headers, graph_id, args):
             "graph_id": graph_id,
             "count_returned": len(results),
             "truncated": truncated,
-            "schedules": results,
+            "schedules": [_without_authorship(schedule) for schedule in results],
         }
     )
 
@@ -365,7 +374,7 @@ def _do_update(client, base_url, headers, graph_id, args):
             f"{response.status_code}: {response.text[:300]}"
         )
 
-    result = response.json()
+    result = _without_authorship(response.json())
     note = (
         f" (start_date_time jittered by +{jitter_offset}s to avoid herding)"
         if jitter_offset

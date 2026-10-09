@@ -52,7 +52,7 @@ class CopyActionMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(
-            self.copy_serializer_class(new_instance).data,
+            self.copy_serializer_class(new_instance, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
         )
 

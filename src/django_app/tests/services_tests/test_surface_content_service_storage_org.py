@@ -60,7 +60,7 @@ class TestSurfaceServiceCrossOrgStorage:
 
         with pytest.raises(SurfaceValidationError):
             SurfaceService.create_surface(
-                organization_id=org.pk,
+                org_id=org.pk,
                 validated_data={
                     "name": "cross-org-create",
                     "storage_items": [
@@ -82,7 +82,7 @@ class TestSurfaceServiceCrossOrgStorage:
     def test_update_surface_with_foreign_org_storage_file_raises_and_writes_nothing(
         self, org, foreign_storage_file
     ):
-        surface = Surface.objects.create(organization=org, name="cross-org-update")
+        surface = Surface.objects.create(org=org, name="cross-org-update")
         before_items = SurfaceStorageItem.objects.count()
 
         with pytest.raises(SurfaceValidationError):

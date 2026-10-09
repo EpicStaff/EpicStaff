@@ -68,8 +68,10 @@ async def upload_archive(
     backend=None,
     validator: FileValidator | None = None,
     authorize_overwrite: Callable[[], None] | None = None,
+    user: object | None = None,
 ) -> dict:
-    """Unpack an uploaded archive into a new storage folder, or store it as is if not an archive."""
+    """Unpack an uploaded archive into a new storage folder, or store it as is if not an archive.
+    `user` authors the rows the upload creates and last edits them."""
     backend = backend or get_storage_backend(organization_prefix="")
     validator = validator or FileValidator()
     target = target_path(org_id, path, filename, validator)  # before the body is read
@@ -103,7 +105,7 @@ async def upload_archive(
                 # Validate the archive, unpack it into storage and write its rows;
                 # returns the response {"path", "extracted"} or _NOT_AN_ARCHIVE.
                 result = await sync_to_async(_unpack_to_storage)(
-                    org_id, path, filename, buffered, backend, validator
+                    org_id, path, filename, buffered, backend, validator, user
                 )
             except (
                 ValueError,
@@ -126,11 +128,12 @@ async def upload_archive(
                     total,
                     backend,
                     authorize_overwrite,
+                    user=user,
                 )
             return result
 
 
-def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
+def _unpack_to_storage(org_id, path, filename, buffered, backend, validator, user):
     """Validate the buffered archive, unpack it into a new "<name> (n)" folder and record it.
     On failure only the objects this call created are removed, never by name or prefix."""
     free = org_free_bytes(org_id)
@@ -176,7 +179,7 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
         for directory in empty_dirs:
             created.append(f"{folder_key}/{directory}/")
             backend.mkdir(f"{folder_key}/{directory}")
-        record_files_within_quota(org_id, files, [f"{folder}/{d}" for d in empty_dirs])
+        record_files_within_quota(org_id, files, [f"{folder}/{d}" for d in empty_dirs], user=user)
     except BaseException:
         backend.discard_keys(created)
         raise

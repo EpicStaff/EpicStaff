@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrganizationScopedUniqueValidator,
-    OrgScopedPrimaryKeyRelatedField,
-)
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
 from tables.models.llm_models import LLMConfig
 
@@ -26,7 +23,7 @@ class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
 
 
 class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
-    surface = OrganizationScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
+    surface = OrgScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
     place = serializers.ChoiceField(choices=SurfacePlace.choices)
 
 
@@ -62,7 +59,7 @@ class InstructionListField(serializers.ListField):
         return [dict(instruction) for instruction in instruction_list]
 
 
-class AgentDefinitionReadSerializer(serializers.ModelSerializer):
+class AgentDefinitionReadSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     default_surfaces = serializers.SerializerMethodField()
     instructions = serializers.CharField(read_only=True)
     agent_definition_realtime_config_id = serializers.SerializerMethodField()
@@ -97,7 +94,9 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
         model = AgentDefinition
         fields = [
             "id",
-            "organization",
+            "org",
+            "created_by",
+            "created_at",
             "name",
             "description",
             "instruction_list",
@@ -125,7 +124,9 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
 DUPLICATE_NAME_MESSAGE = "An agent with this name already exists in the organization."
 
 
-class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
+class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
+    last_edit_state_serializer_class = AgentDefinitionReadSerializer
+
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
@@ -141,7 +142,7 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
     name = serializers.CharField(
         max_length=255,
         validators=[
-            OrganizationScopedUniqueValidator(
+            OrgScopedUniqueValidator(
                 queryset=AgentDefinition.objects.all(),
                 message=DUPLICATE_NAME_MESSAGE,
             )

@@ -48,6 +48,39 @@
                         </div>
                         <div class="trigger-card__actions">
                             <button
+                                #menuTriggerButton
+                                #menuTrigger="cdkMenuTriggerFor"
+                                type="button"
+                                class="trigger-card__action"
+                                aria-label="More actions"
+                                title="More"
+                                [cdkMenuTriggerFor]="menu"
+                                [cdkMenuPosition]="menuPositions"
+                                [class.trigger-card__action--active]="menuTrigger.isOpen()"
+                            >
+                                <i
+                                    class="ti ti-dots-vertical"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                            <ng-template #menu>
+                                <div
+                                    cdkMenu
+                                    class="trigger-card-menu"
+                                >
+                                    <!-- Every item needs (keydown.escape): see onMenuItemEscape(). -->
+                                    <button
+                                        cdkMenuItem
+                                        type="button"
+                                        class="trigger-card-menu__item"
+                                        (cdkMenuItemTriggered)="onViewDetails(trigger, menuTriggerButton)"
+                                        (keydown.escape)="onMenuItemEscape($event, menuTrigger, menuTriggerButton)"
+                                    >
+                                        View Details
+                                    </button>
+                                </div>
+                            </ng-template>
+                            <button
                                 *appHasPermission="[ResourceCode.Webhooks, ActionCode.Update]"
                                 type="button"
                                 class="trigger-card__action"

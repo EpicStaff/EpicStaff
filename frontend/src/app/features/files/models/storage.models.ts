@@ -1,4 +1,8 @@
-export interface StorageItem {
+import { AuthorshipFields } from '@shared/models';
+
+// Also built client-side from other shapes (e.g. picker tree nodes), so the read-only author,
+// creation time and last-edit fields are optional.
+export interface StorageItem extends Partial<AuthorshipFields> {
     id?: number | null;
     name: string;
     path: string;
@@ -8,9 +12,11 @@ export interface StorageItem {
     modified?: string;
     children?: StorageItem[];
     isExpanded?: boolean;
+    /** Read-only ISO 8601 creation time; null for implied folders and untracked entries. */
+    created_at?: string | null;
 }
 
-export interface StorageFileRecord {
+export interface StorageFileRecord extends AuthorshipFields {
     id: number;
     path: string;
     name: string;
@@ -23,7 +29,7 @@ export interface StorageFileRecord {
     updated_at: string;
 }
 
-export interface StorageTreeNode {
+export interface StorageTreeNode extends AuthorshipFields {
     id: number | null;
     name: string;
     path: string;
@@ -31,6 +37,8 @@ export interface StorageTreeNode {
     size: number;
     modified: string | null;
     children: StorageTreeNode[] | null;
+    /** Read-only ISO 8601 creation time; null for implied folders and untracked entries. */
+    created_at: string | null;
 }
 
 export interface StorageTreeResponse {

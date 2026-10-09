@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 import { RagStatusConfiguration } from './base-rag.model';
 import { CollectionDocument } from './document.model';
 import { CollectionDetailsGraphRag } from './graph-rag.model';
@@ -24,11 +26,10 @@ export enum CollectionStatus {
 
 type FullRagConfiguration = CollectionDetailsNaiveRag | CollectionDetailsGraphRag;
 
-export interface CreateCollectionDtoResponse {
+export interface CreateCollectionDtoResponse extends AuthorshipFields {
     collection_id: number;
     collection_name: string;
     description: string | null;
-    user_id: string;
     status: CollectionStatus;
     document_count: number;
     rag_configurations: FullRagConfiguration[];
@@ -36,11 +37,10 @@ export interface CreateCollectionDtoResponse {
     updated_at: string;
 }
 
-export interface GetCollectionRequest {
+export interface GetCollectionRequest extends AuthorshipFields {
     collection_id: number;
     collection_name: string;
     description: string | null;
-    user_id: string;
     status: CollectionStatus;
     document_count: number;
     rag_configurations: RagStatusConfiguration[];

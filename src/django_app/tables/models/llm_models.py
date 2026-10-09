@@ -1,5 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
@@ -67,7 +68,7 @@ class DefaultLLMConfig(DefaultBaseModel):
     is_visible = models.BooleanField(default=True)
 
 
-class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
+class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     custom_name = models.TextField()
     model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
     temperature = models.FloatField(
@@ -107,6 +108,9 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     timeout = models.FloatField(default=120.0, null=True, blank=True)
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

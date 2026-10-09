@@ -11,14 +11,35 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import { KeyValueTableDialogComponent } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
+import { KeyValueTableListComponent } from '../../components/key-value-table-list/key-value-table-list.component';
 import { KeyValueTable, KeyValueTableUsage } from '../../models/key-value-table.model';
 import { KeyValueTablesApiService } from '../../services/key-value-tables-api.service';
 import { KeyValueTablesStorageService } from '../../services/key-value-tables-storage.service';
 import { KeyValueTablesPageComponent } from './key-value-tables-page.component';
 
 const TABLES: KeyValueTable[] = [
-    { id: 1, name: 'profiles', description: '', entry_count: 0, created_at: '', updated_at: '' },
-    { id: 2, name: 'orders', description: '', entry_count: 0, created_at: '', updated_at: '' },
+    {
+        id: 1,
+        name: 'profiles',
+        description: '',
+        entry_count: 0,
+        created_at: '',
+        updated_at: '',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
+    },
+    {
+        id: 2,
+        name: 'orders',
+        description: '',
+        entry_count: 0,
+        created_at: '',
+        updated_at: '',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
+    },
 ];
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
@@ -149,13 +170,15 @@ describe('KeyValueTablesPageComponent delete table', () => {
         const triggerRefresh = vi.spyOn(TestBed.inject(KeyValueTablesStorageService), 'triggerRefresh');
         const toastSuccess = vi.spyOn(TestBed.inject(ToastService), 'success');
         const message = (): string => confirmation.confirm.mock.calls.at(-1)?.[0].message ?? '';
-        const trashButtons = (): HTMLButtonElement[] =>
+        const menuTriggers = (): HTMLButtonElement[] =>
             Array.from(
-                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-                    'app-icon-button[ariaLabel="Delete table"] button'
-                )
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.table-list__hover-btn')
             );
-        return { fixture, api, confirmation, message, trashButtons, triggerRefresh, toastSuccess };
+        // What the row menu's Delete emits; the menu itself is covered by the list's own spec.
+        const list = fixture.debugElement.query(By.directive(KeyValueTableListComponent))
+            .componentInstance as KeyValueTableListComponent;
+        const requestDelete = (table: KeyValueTable): void => list.deleteRequested.emit(table);
+        return { fixture, api, confirmation, message, menuTriggers, requestDelete, triggerRefresh, toastSuccess };
     }
 
     function renderPage(usage: Observable<KeyValueTableUsage>, confirmed = true) {
@@ -224,17 +247,17 @@ describe('KeyValueTablesPageComponent delete table', () => {
         expect(api.deleteTable).not.toHaveBeenCalled();
     });
 
-    it('asks for usage, opens the dialog and deletes once on a double click', () => {
+    it('asks for usage, opens the dialog and deletes once when the delete is requested repeatedly', () => {
         const usage = new Subject<KeyValueTableUsage>();
-        const { fixture, api, confirmation, trashButtons } = setUpPage(usage);
-        expect(trashButtons()).toHaveLength(2);
+        const { fixture, api, confirmation, menuTriggers, requestDelete } = setUpPage(usage);
+        expect(menuTriggers()).toHaveLength(2);
 
-        trashButtons()[0].click();
+        requestDelete(TABLES[0]);
         // A held Enter repeats the request too.
         fixture.componentInstance.onDelete(TABLES[0]);
         fixture.detectChanges();
-        trashButtons()[0].click();
-        trashButtons()[1].click();
+        requestDelete(TABLES[0]);
+        requestDelete(TABLES[1]);
 
         expect(api.getUsage).toHaveBeenCalledOnce();
 

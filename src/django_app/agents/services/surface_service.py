@@ -15,11 +15,11 @@ from agents.validators.surface_validator import SurfaceValidator
 
 class SurfaceService:
     @staticmethod
-    def validate_surface_data(*, instance, organization_id, attrs):
+    def validate_surface_data(*, instance, org_id, attrs):
         if instance is not None:
             candidate = Surface(
                 pk=instance.pk,
-                organization_id=instance.organization_id,
+                org_id=instance.org_id,
                 name=instance.name,
                 instructions=instance.instructions,
             )
@@ -35,7 +35,7 @@ class SurfaceService:
             if field_name in attrs:
                 setattr(candidate, field_name, attrs[field_name])
 
-        candidate.organization_id = organization_id
+        candidate.org_id = org_id
 
         try:
             candidate.full_clean()
@@ -48,13 +48,13 @@ class SurfaceService:
 
     @staticmethod
     @transaction.atomic
-    def create_surface(*, organization_id, validated_data):
+    def create_surface(*, org_id, validated_data):
         python_tools_data = validated_data.pop("python_tools", [])
         mcp_tools_data = validated_data.pop("mcp_tools", [])
         storage_items_data = validated_data.pop("storage_items", [])
         knowledge_data = validated_data.pop("knowledge", [])
 
-        surface = Surface.objects.create(organization_id=organization_id, **validated_data)
+        surface = Surface.objects.create(org_id=org_id, **validated_data)
 
         SurfaceService._replace_python_tools(surface, python_tools_data)
         SurfaceService._replace_mcp_tools(surface, mcp_tools_data)
@@ -108,7 +108,7 @@ class SurfaceService:
 
     @staticmethod
     def _replace_storage_items(surface, items):
-        SurfaceValidator.validate_storage_items_org(items, surface.organization_id)
+        SurfaceValidator.validate_storage_items_org(items, surface.org_id)
         SurfaceContentService.replace_storage_items(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
