@@ -14,6 +14,7 @@ import {
     OnDestroy,
     OnInit,
     signal,
+    untracked,
     ViewChild,
     viewChild,
 } from '@angular/core';
@@ -46,6 +47,7 @@ import {
     map,
     Observable,
     of,
+    Subject,
     switchMap,
     take,
     tap,
@@ -135,6 +137,7 @@ export const TEST_RUN_NODE_GONE_MESSAGE = 'This node no longer exists — reload
 export const TEST_RUN_NODE_NOT_SAVED_MESSAGE = 'Click Save in the top panel to save the graph before running a test';
 export const RUN_WHILE_SAVING_MESSAGE = 'The flow is being saved. Run again when it is saved.';
 export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open the node to see why';
+export const REMOTE_SAVE_RELOAD_FAILED_MESSAGE = 'Failed to load the latest version of this flow — refresh it';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -181,16 +184,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
-    /**
-     * A `graphState` whose node lists are older than the backend's: another user saved and only the
-     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
-     */
-    private readonly outdatedGraphState = signal<GraphDto | null>(null);
-    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
-    private readonly storedGraph = computed<GraphDto | null>(() => {
+    /** The latest save another user announced; `graphState` is outdated while its save_version is lower. */
+    private readonly remoteSave = signal<{ graphId: number; saveVersion: number } | null>(null);
+    private readonly isGraphOutdated = computed(() => {
         const graph = this.graphState();
-        return graph === this.outdatedGraphState() ? null : graph;
+        const remoteSave = this.remoteSave();
+        return (
+            !!graph && !!remoteSave && graph.id === remoteSave.graphId && graph.save_version < remoteSave.saveVersion
+        );
     });
+    private readonly remoteSaveReloads = new Subject<{ graphId: number; saveVersion: number }>();
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
@@ -216,6 +221,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const status = this.runSessionSSEService.status();
         return isTerminalSessionStatus(status) ? null : status;
     });
+    /** No unsaved flow edits, no open node panel (its edits reach the flow only on commit) and no version preview. */
+    private readonly canReplaceLiveFlow = computed(
+        () => !this.hasUnsavedChangesSignal() && !this.isPreviewing() && !this.sidePanelService.selectedNodeId()
+    );
     public restoreWarnings = signal<RestoreWarning[]>([]);
     /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
     public readonly activeRestoreWarnings = computed(() => {
@@ -389,12 +398,40 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
             this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
 
-            if (!this.hasUnsavedChangesSignal()) {
-                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
-            }
-            // Either way the stored nodes changed and this graph does not have them.
-            this.outdatedGraphState.set(this.graphState());
+            this.remoteSave.set({ graphId: event.graph_id, saveVersion: event.new_save_version });
         });
+
+        // An outdated graph is reloaded only once nothing local can be lost. Until then `graphState`
+        // keeps the old save_version, so a save fails the version check instead of overwriting the
+        // other user's save.
+        effect(() => {
+            if (!this.isGraphOutdated() || !this.canReplaceLiveFlow()) return;
+            const remoteSave = this.remoteSave()!;
+            untracked(() => this.remoteSaveReloads.next(remoteSave));
+        });
+
+        this.remoteSaveReloads
+            .pipe(
+                switchMap(({ graphId, saveVersion }) =>
+                    this.flowApiService.getGraphById(graphId, true).pipe(
+                        // A read older than the announced save would leave the canvas just as outdated.
+                        map((graph): GraphDto | null => (graph.save_version >= saveVersion ? graph : null)),
+                        catchError(() => of(null))
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((graph) => {
+                if (!graph) {
+                    this.toastService.warning(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
+                    return;
+                }
+                // The canvas may have changed while the graph loaded.
+                if (graph.id !== this.graphState()?.id || !this.canReplaceLiveFlow()) return;
+                // Undo must not bring back the canvas from before the other user's save.
+                this.undoRedoService.clear();
+                this.applyLoadedGraphState(graph, this.availableFlowLights(), false);
+            });
     }
 
     public ngOnInit(): void {
