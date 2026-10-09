@@ -84,7 +84,6 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.TaskNode",
         "tables.AgentNode",
         "tables.Edge",
-        "tables.ConditionalEdge",
         "tables.GraphOrganization",
         "tables.GraphOrganizationUser",
         "tables.GraphNote",

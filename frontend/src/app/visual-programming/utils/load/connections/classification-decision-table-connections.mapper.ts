@@ -1,5 +1,3 @@
-import { NodeType } from '@shared/models';
-
 import { ConnectionModel } from '../../../core/models/connection.model';
 import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
@@ -17,7 +15,7 @@ export function mapClassificationDecisionTableToConnections(
 
         if (table.default_next_node) {
             const targetNode = nodeByUuid.get(table.default_next_node);
-            if (targetNode && targetNode.type !== NodeType.EDGE) {
+            if (targetNode) {
                 connections.push(
                     createFlowConnection(
                         cdtNode.id,
@@ -31,7 +29,7 @@ export function mapClassificationDecisionTableToConnections(
 
         if (table.next_error_node) {
             const targetNode = nodeByUuid.get(table.next_error_node);
-            if (targetNode && targetNode.type !== NodeType.EDGE) {
+            if (targetNode) {
                 connections.push(
                     createFlowConnection(
                         cdtNode.id,
@@ -50,7 +48,7 @@ export function mapClassificationDecisionTableToConnections(
             // code has no output port, so it must not produce a connection
             if (!group.route_code) continue;
             const targetNode = nodeByUuid.get(group.next_node);
-            if (!targetNode || targetNode.type === NodeType.EDGE) continue;
+            if (!targetNode) continue;
 
             // Port ID follows decision-route-${slug(route_code)}.
             // Slug transform must match generatePortsForClassificationDecisionTableNode in helpers.ts

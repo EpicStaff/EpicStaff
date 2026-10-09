@@ -108,7 +108,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    ConditionalEdge,
     Edge,
     EmbeddingConfig,
     EmbeddingModel,
@@ -185,7 +184,6 @@ from tables.serializers.model_serializers import (
     AuditFilterPresetImportFileSerializer,
     AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     ConversationRecordingSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
@@ -752,12 +750,6 @@ class GraphViewSet(
                     queryset=AudioTranscriptionNode.objects.all(),
                 ),
                 Prefetch("edge_list", queryset=Edge.objects.all()),
-                Prefetch(
-                    "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
-                    ),
-                ),
                 Prefetch(
                     "webhook_trigger_node_list",
                     queryset=WebhookTriggerNode.objects.select_related(
@@ -1493,19 +1485,6 @@ class EdgeViewSet(
     org_filter_path = "graph__org_id"
     queryset = Edge.objects.all()
     serializer_class = EdgeSerializer
-
-
-class ConditionalEdgeViewSet(
-    OrgScopedChildViewSetMixin,
-    LastEditDestroyViewSetMixin,
-    ContentHashPreconditionMixin,
-    viewsets.ModelViewSet,
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = ConditionalEdge.objects.all()
-    serializer_class = ConditionalEdgeSerializer
 
 
 class GraphSessionMessageFilter(FilterSet):

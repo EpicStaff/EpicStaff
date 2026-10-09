@@ -3,7 +3,6 @@ from tables.serializers.model_serializers import (
     AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -156,40 +155,9 @@ class EdgeBulkSerializer(BulkSaveEntityMixin, EdgeSerializer):
         return attrs
 
 
-class ConditionalEdgeBulkSerializer(BulkSaveEntityMixin, ConditionalEdgeSerializer):
-    """
-    Bulk-save serializer for ConditionalEdge.
-
-    source_node_id references the node this edge originates from.
-    If that node is new in the same request, use source_temp_id instead.
-    Exactly one of (source_node_id, source_temp_id) must be set.
-    """
-
-    source_node_id = serializers.IntegerField(required=False, allow_null=True)
-    source_temp_id = serializers.UUIDField(required=False, allow_null=True, default=None)
-
-    def get_validators(self):
-        from rest_framework.validators import UniqueTogetherValidator
-
-        return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
-
-    def validate(self, attrs):
-        source_id = attrs.get("source_node_id")
-        source_temp = attrs.get("source_temp_id")
-
-        if bool(source_id) == bool(source_temp):
-            raise serializers.ValidationError(
-                "Provide exactly one of source_node_id or source_temp_id."
-            )
-        return attrs
-
-
 class DeletedEntitiesSerializer(serializers.Serializer):
     # Edge id fields declared explicitly because edges are not in NODE_TYPE_REGISTRY.
     edge_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
-    conditional_edge_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False, default=list
-    )
 
     def get_fields(self):
         # Node id fields are injected from NODE_TYPE_REGISTRY so adding a new
@@ -213,9 +181,6 @@ class GraphBulkSaveInputSerializer(serializers.Serializer):
 
     save_version = serializers.IntegerField(required=True)
     edge_list = serializers.ListField(child=serializers.DictField(), required=False, default=list)
-    conditional_edge_list = serializers.ListField(
-        child=serializers.DictField(), required=False, default=list
-    )
     deleted = DeletedEntitiesSerializer(required=False, default=dict)
 
     def get_fields(self):

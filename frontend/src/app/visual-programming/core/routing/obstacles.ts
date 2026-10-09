@@ -17,15 +17,11 @@ export interface Rect {
  */
 export const WIRE_CLEARANCE = 10;
 
-/** A node's padded box on the canvas; tables use their visual height, EDGE its fixed box. */
+/** A node's padded box on the canvas; tables use their visual height. */
 export function obstacleRect(node: NodeModel): Rect {
     const bounds = getCollisionBounds(node);
     const left = node.position.x + bounds.offsetX;
     const right = left + bounds.width;
-    if (node.type === NodeType.EDGE) {
-        const top = node.position.y + bounds.offsetY;
-        return { left, top, right, bottom: top + bounds.height };
-    }
     // The collision bounds pad the drawn box by -offsetY above and as much below.
     const drawnHeight = bounds.height + 2 * bounds.offsetY;
     const top = node.position.y - WIRE_CLEARANCE;

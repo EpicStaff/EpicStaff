@@ -125,7 +125,6 @@ const snapshot: GraphVersionSnapshot = {
         exported('KeyValueNode', { ...liveKeyValue, key_value_table_name: 'Customers' }),
     ],
     edge_list: liveEdges.map((edge) => exportedEdge(edge)),
-    conditional_edge_list: [],
     metadata: {},
     secret_declarations: {
         nodes: {

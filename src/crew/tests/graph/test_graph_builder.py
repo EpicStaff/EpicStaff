@@ -135,7 +135,6 @@ def mock_session_data() -> SessionData:
                 EdgeData(start_key="__start__", end_key="start_node"),
                 EdgeData(start_key="start_node", end_key="decision_table_node_1"),
             ],
-            conditional_edge_list=[],
             decision_table_node_list=[
                 DecisionTableNodeData(
                     node_name="decision_table_node_1",
@@ -247,6 +246,48 @@ def test_run_decision_table_node_with_error(mock_services, mock_session_data):
             print(f"Mode: {stream_mode}. Chunk: {chunk}")
         assert last_chunk is not None
         assert last_chunk["variables"]["end_output"] == "ERROR HANDELED"
+
+    asyncio.run(run_graph())
+
+
+def test_run_decision_table_node_routes_to_default_branch(mock_services, mock_session_data):
+    session_data = mock_session_data.model_copy(deep=True)
+    session_data.graph.decision_table_node_list = [
+        DecisionTableNodeData(
+            node_name="decision_table_node_1",
+            conditional_group_list=[
+                ConditionGroupData(
+                    group_name="never_matches",
+                    group_type="simple",
+                    expression="True",
+                    manipulation=None,
+                    next_node="error_node",
+                    condition_list=[ConditionData(condition="variables.test1 == 2")],
+                ),
+            ],
+            default_next_node="end_node",
+            next_error_node="error_node",
+        )
+    ]
+    builder = SessionGraphBuilder(
+        session_id=session_data.id,
+        redis_service=mock_services["redis_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+    )
+    state = {
+        "state_history": [],
+        "variables": DotDict({"test1": 1}),
+        "system_variables": {},
+    }
+    compiled_graph = builder.compile_from_schema(session_data)
+
+    async def run_graph():
+        last_chunk = None
+        async for _, chunk in compiled_graph.astream(state, stream_mode=["values", "custom"]):
+            last_chunk = chunk
+        assert last_chunk["variables"]["end_output"] == "end"
 
     asyncio.run(run_graph())
 

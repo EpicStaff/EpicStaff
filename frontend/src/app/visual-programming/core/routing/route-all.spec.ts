@@ -214,21 +214,6 @@ describe('routeAll', () => {
         expect([...routeAll(nodes, connections).keys()]).toEqual(['w']);
     });
 
-    it('routes around an EDGE node’s fixed collision box', () => {
-        // The EDGE box (308×196 at offset 5, -12) sits across the straight line a → b.
-        const edge = makeNode('edge', NodeType.EDGE, { position: { x: 500, y: -60 } });
-        const fixture = wired([python('a', 0, 0), edge, python('b', 1100, 0)], [connect('w', 'a', 'out', 'b', 'in')]);
-
-        const routes = routeAll(fixture.nodes, fixture.connections);
-
-        const result = report(fixture, routes);
-        expectClean(result);
-        expect(result.straightAdjacent).toBe(0);
-        const box = obstacleRect(edge);
-        // Every horizontal leg between the stubs passes above or below the box.
-        expect(horizontalYs(routes.get('w')!).every((y) => y <= box.top || y >= box.bottom)).toBe(true);
-    });
-
     it('routes a self-loop out east, around the node and in from the west', () => {
         const fixture = selfLoop();
 

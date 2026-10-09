@@ -1,9 +1,9 @@
 from django.db import transaction
 from rbac.authorship import record_last_edits, resolve_author
 from tables.models import Graph, Label
-from tables.models.graph_models import ConditionalEdge, Edge, StartNode
+from tables.models.graph_models import Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import copy_python_code, next_copy_name
+from tables.services.copy_services.helpers import next_copy_name
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
 from tables.services.persistent_variables_service import PersistentVariablesService
 
@@ -55,16 +55,6 @@ class GraphCopyService(BaseCopyService):
                 start_node_id=node_id_map.get(edge.start_node_id, edge.start_node_id),
                 end_node_id=node_id_map.get(edge.end_node_id, edge.end_node_id),
                 metadata=edge.metadata,
-            )
-
-        for cond_edge in graph.conditional_edge_list.all():
-            new_code = copy_python_code(cond_edge.python_code)
-            ConditionalEdge.objects.create(
-                graph=new_graph,
-                source_node_id=node_id_map.get(cond_edge.source_node_id, cond_edge.source_node_id),
-                python_code=new_code,
-                input_map=cond_edge.input_map,
-                metadata=cond_edge.metadata,
             )
 
         self._remap_decision_table_references(new_graph, node_id_map)

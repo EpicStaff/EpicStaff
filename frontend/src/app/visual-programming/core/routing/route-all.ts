@@ -150,7 +150,7 @@ function routeOptions(ends: WireEnds, source: IPoint, target: IPoint, obstaclesB
     if (!isStacked(sourceBox, targetBox)) return { legsAbove: Math.min(sourceBox.top, targetBox.top) };
     const [upper, lower] =
         ends.sourceNode.position.y <= ends.targetNode.position.y ? [sourceBox, targetBox] : [targetBox, sourceBox];
-    // The obstacles pad every node by WIRE_CLEARANCE above and below (EDGE's fixed box aside).
+    // The obstacles pad every node by WIRE_CLEARANCE above and below.
     const top = upper.top + WIRE_CLEARANCE;
     const bottom = lower.bottom - WIRE_CLEARANCE;
     const gap = lower.top - upper.bottom + 2 * WIRE_CLEARANCE;

@@ -109,7 +109,7 @@ The question when explaining a node's presence in a flow is always: "What is the
 | Fetch data from a known API, deterministic inputs/outputs | `python` |
 | Validate a payload, shape an error response | `python` |
 | Map a raw API response into domain objects | `python` |
-| Pick one of a small fixed set of targets by a Python boolean rule | `decision_table` if 3+ branches; `conditional_edge` if 2 |
+| Pick one of a small fixed set of targets by a Python boolean rule | `decision_table` |
 | Decide next step using LLM judgment over free text | `classification_decision_table` |
 | Compose a narrative, summarize, hold a persona, or converse — as one wiring point in the graph | `task` (its own `agent_definition`, one node = one wiring point) |
 | Same, but as an ordered sequence of sub-steps under one persona (e.g. draft → critique → revise) that only needs one entry/exit in the graph | `agent` (bundles an ordered list of internal sub-tasks; nothing else in the graph can wire between them) |
@@ -123,7 +123,7 @@ Heuristics that matter:
 - **`task` and `agent` are both LLM-backed graph nodes, each with its own `agent_definition` — they are alternatives, not a pair.** A `task` node is one LLM step with its own `instructions`, `output_schema`, and wiring point; use it when a single open-ended step (drafting a reply, summarizing free text, deciding between options that don't reduce to a boolean rule) needs to sit in the graph like any other node, with its own edges in and out. An `agent` node bundles an ordered list of internal sub-tasks (each with its own `instructions` and `output_schema`, able to reference earlier sub-tasks as context) under one `agent_definition` — use it when several LLM sub-steps genuinely belong together as one unit, and nothing else in the graph needs to intervene between them. The sub-tasks inside an `agent` node are not separate graph nodes and can't be individually wired.
 - **`crew` is the older project/crew abstraction that predates `agent`/`task`.** It still runs in legacy flows and is deprecated — a flow being reviewed today should be using `agent`/`task`, not `crew`. Flag a `crew` node in an otherwise-new flow as worth migrating, not as broken.
 - **`classification_decision_table` is the LLM-backed node for branching** — it applies an LLM's judgment as a routing rule over fuzzy text. `agent` nodes are also LLM-backed, but for generation, not branching; don't reach for an `agent` to pick between a fixed set of outcomes — that's what `classification_decision_table` is for.
-- **Use `decision_table` when branching is a business rule expressible as Python boolean expressions over variables.** Use `conditional_edge` when branching is a short Python expression that returns a target node's name and there are just two paths.
+- **Use `decision_table` when branching is a business rule expressible as Python boolean expressions over variables.** This holds for two branches as well as many: one condition group plus the default branch covers a simple if/else.
 - **Use `subgraph` when the sub-workflow is genuinely reusable and has its own lifecycle.** Copy-pasting nodes is worse than a subgraph, but a subgraph called only once is pure indirection.
 
 ---
@@ -173,7 +173,7 @@ When a branch also needs to tweak `variables` before routing, the right place is
 - **Two writers, one path.** Order-dependent correctness. Always resolvable by splitting into subpaths.
 - **Undeclared variables.** Every `input_map` path should exist at session start — even though a missing one won't crash (see Rule 1), it will misbehave silently.
 - **`agent`/`task` where `python` would do.** If the work is deterministic and typed, an LLM adds latency, cost, and non-determinism for no benefit.
-- **`python` node as a hidden router.** If branching is the node's real job, it belongs in a `decision_table` or `conditional_edge` instead — visible in the graph rather than buried in code.
+- **`python` node as a hidden router.** If branching is the node's real job, it belongs in a `decision_table` (or a `classification_decision_table` for LLM judgment) instead — visible in the graph rather than buried in code.
 - **Decision-table node with overlapping groups.** First match wins, in declared order. Ambiguous rules silently route to the first listed group. Order groups deliberately or write mutually exclusive conditions.
 - **Webhook handler that returns nothing.** The returned dict merges into `variables`. A handler that does `return None` or omits `return` writes nothing — downstream reads will fail.
 - **Changing domain shape mid-flow.** Node A writing `variables.user = "alice"` then node B overwriting `variables.user = {"name": "alice"}` is a bug waiting to happen. One shape per path, picked up front.
@@ -229,7 +229,7 @@ When explaining or reviewing a flow's variable design, you should be able to ans
 2. For every domain, what paths exist at session start? (They should all be in the start node, even as `null`.)
 3. For every node, what does it read? What does it write? Is the type/shape clear?
 4. Is each path written by exactly one node?
-5. Where are the branches — `decision_table` or `conditional_edge`? What are the groups and their targets?
+5. Where are the branches — `decision_table` or `classification_decision_table`? What are the groups and their targets?
 6. Where are the end points? What does `output_map` pick from `variables`?
 7. Is there a trigger? If so, is `__start__` also connected to the first real node (dual entry)?
 8. For each `task` node: what tools does it need, and what's its `output_schema`? For each `agent` node: what tools/surfaces does it need, and what's each internal sub-task's `output_schema`?

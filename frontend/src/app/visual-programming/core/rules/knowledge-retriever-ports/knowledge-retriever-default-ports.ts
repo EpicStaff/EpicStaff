@@ -11,7 +11,6 @@ export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
             'python-out',
             'start-start',
             'table-out',
-            'llm-out-right',
             'subgraph-out',
             'webhook-trigger-out',
             'telegram-trigger-out',
@@ -36,9 +35,7 @@ export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
-            'llm-out-left',
             'end-in',
             'subgraph-in',
             'audio-to-text-in',

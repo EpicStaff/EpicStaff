@@ -14,7 +14,6 @@ import {
     GraphNoteModel,
     KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
-    LLMNodeModel,
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
@@ -171,16 +170,6 @@ function toAgentComparable(node: AgentNodeModel): unknown {
                 return aKey.localeCompare(bKey);
             }),
         })),
-        metadata: toNodeMetadata(node),
-    };
-}
-
-function toLlmComparable(node: LLMNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        llm_config: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
         metadata: toNodeMetadata(node),
     };
 }
@@ -408,11 +397,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
             toAgentComparable
         ),
-        llmNodes: diffNodesByBackendId(
-            nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),
-            nodesByType<LLMNodeModel>(current.nodes, NodeType.LLM),
-            toLlmComparable
-        ),
         fileExtractorNodes: diffNodesByBackendId(
             nodesByType<FileExtractorNodeModel>(previous.nodes, NodeType.FILE_EXTRACTOR),
             nodesByType<FileExtractorNodeModel>(current.nodes, NodeType.FILE_EXTRACTOR),
@@ -482,14 +466,7 @@ function getPlainConnections(flow: FlowModel): ConnectionModel[] {
         const source = nodeById.get(conn.sourceNodeId);
         const target = nodeById.get(conn.targetNodeId);
         if (!source || !target) return false;
-        if (
-            source.type === NodeType.TABLE ||
-            source.type === NodeType.CLASSIFICATION_TABLE ||
-            source.type === NodeType.EDGE
-        )
-            return false;
-        if (target.type === NodeType.EDGE) return false;
-        return true;
+        return source.type !== NodeType.TABLE && source.type !== NodeType.CLASSIFICATION_TABLE;
     });
 }
 

@@ -4,7 +4,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     DecisionTableNode,
     Edge,
     EndNode,
@@ -197,5 +196,4 @@ this registry; they have their own validation path in the service.
 
 EDGE_DELETE_CONFIGS: list[EdgeDeleteConfig] = [
     EdgeDeleteConfig("edge_ids", Edge),
-    EdgeDeleteConfig("conditional_edge_ids", ConditionalEdge),
 ]

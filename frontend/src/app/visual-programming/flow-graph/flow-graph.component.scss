@@ -284,17 +284,11 @@
             &.Tool-Node:not(.f-selected) {
                 fill: var(--tool-node-accent-color);
             }
-            &.LLM-Node:not(.f-selected) {
-                fill: var(--llm-node-accent-color);
-            }
             &.Project-Node:not(.f-selected) {
                 fill: var(--project-node-accent-color);
             }
             &.Python-Node:not(.f-selected) {
                 fill: var(--python-node-accent-color);
-            }
-            &.Edge-Node:not(.f-selected) {
-                fill: var(--edge-node-accent-color);
             }
             &.Start-Node:not(.f-selected) {
                 fill: var(--slate-215);

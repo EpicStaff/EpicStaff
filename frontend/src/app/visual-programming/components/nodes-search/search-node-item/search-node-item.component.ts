@@ -4,7 +4,6 @@ import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import {
     AgentNodeModel,
-    LLMNodeModel,
     NodeModel,
     PythonNodeModel,
     TaskNodeModel,
@@ -184,8 +183,6 @@ export class SearchNodeItemComponent {
                 return (this.node as PythonNodeModel).data?.name || this.node.node_name;
             case NodeType.TOOL:
                 return (this.node as ToolNodeModel).data?.name || this.node.node_name;
-            case NodeType.LLM:
-                return (this.node as LLMNodeModel).data?.custom_name || this.node.node_name;
 
             default:
                 return this.node.node_name;

@@ -87,9 +87,6 @@ export function getDefaultNodeSize(type: NodeType, data?: unknown): { width: num
             };
         }
 
-        case NodeType.EDGE:
-            return { width: 300, height: 180 };
-
         case NodeType.START:
             return { width: 125, height: 60 };
 

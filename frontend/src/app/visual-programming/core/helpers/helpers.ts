@@ -9,12 +9,10 @@ import { obstacleRect } from '../routing/obstacles';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
 import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from '../rules/knowledge-retriever-ports/knowledge-retriever-default-ports';
-import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from '../rules/schedule-trigger-ports/schedule-trigger-default-ports';
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
@@ -58,14 +56,10 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_TASK_NODE_PORTS;
         case NodeType.AGENT:
             return DEFAULT_AGENT_NODE_PORTS;
-        case NodeType.LLM:
-            return DEFAULT_LLM_NODE_PORTS;
         case NodeType.TOOL:
             return DEFAULT_TOOL_NODE_PORTS;
         case NodeType.PYTHON:
             return DEFAULT_PYTHON_NODE_PORTS;
-        case NodeType.EDGE:
-            return DEFAULT_EDGE_NODE_PORTS;
         case NodeType.START:
             return DEFAULT_START_NODE_PORTS;
         case NodeType.TABLE:
@@ -286,15 +280,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
             role: 'table-in',
             multiple: true,
             label: 'In',
-            allowedConnections: [
-                'project-out',
-                'python-out',
-                'edge-out',
-                'table-out',
-                'start-start',
-                'llm-out-right',
-                'file-extractor-out',
-            ],
+            allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
             color: '#00aaff',
         }),
@@ -315,9 +301,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',
@@ -502,15 +486,7 @@ export function generatePortsForClassificationDecisionTableNode(
             role: 'table-in',
             multiple: true,
             label: 'In',
-            allowedConnections: [
-                'project-out',
-                'python-out',
-                'edge-out',
-                'table-out',
-                'start-start',
-                'llm-out-right',
-                'file-extractor-out',
-            ],
+            allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
             color: '#00aaff',
         }),
@@ -539,9 +515,7 @@ export function generatePortsForClassificationDecisionTableNode(
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',

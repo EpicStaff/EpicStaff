@@ -20,9 +20,9 @@ Endpoint shapes are in [secrets_endpoints.md](secrets_endpoints.md).
 
 ## 1. The source registry
 
-`tables/services/secrets/usage_sources.py` — `USAGE_SOURCES`, currently **19**
+`tables/services/secrets/usage_sources.py` — `USAGE_SOURCES`, currently **18**
 `UsageSource` entries (pinned by `test_registry_covers_every_declared_source` /
-`len(USAGE_SOURCES) == 19` — if this table and that count disagree, the count is right and
+`len(USAGE_SOURCES) == 18` — if this table and that count disagree, the count is right and
 this table is stale). One dataclass describes every place the platform can reference a
 `Secret`, so adding a reference site is a registry entry rather than a new query.
 
@@ -45,10 +45,9 @@ this table is stale). One dataclass describes every place the platform can refer
 | `WebhookTriggerNode` | `flows` | node | `python_code` | `{flows}` |
 | `ClassificationDecisionTableNode` | `flows` | node | `pre_python_code` | `{flows}` |
 | `ClassificationDecisionTableNode` | `flows` | node | `post_python_code` | `{flows}` |
-| `ConditionalEdge` | `flows` | edge | `python_code` | `{flows}` |
 | `PythonCodeTool` | `tools` | named | `python_code` | `{tools}` |
 
-The six declaration sites are generated from `PYTHON_CODE_SITES` via
+The five declaration sites are generated from `PYTHON_CODE_SITES` via
 `_from_python_code_site`, **the same tuple the declaration validator walks**. That sharing is
 deliberate: the two features cannot drift on which code sites exist. The risk is asymmetric
 — a site missed by the usage sources is a wrong number on a dashboard, while a site missed by
@@ -269,7 +268,7 @@ disclose *which kind* of resource is hiding the secret to a caller who cannot se
 
 `readable_total` is the number of items actually listed across `categories`.
 `hidden_total` comes from `count_for()`'s `hidden` bucket, **not** from counting anything
-`_collect()` gathered — see §3.4 for why that costs a fourth query and why that cost is
+`_collect()` gathered — see §3.4 for why that costs a third query and why that cost is
 accepted rather than avoided.
 
 ### 3.1 `_collect` skips unreadable sources before querying, not after
@@ -282,12 +281,12 @@ for source in USAGE_SOURCES:
     by_shape[source.detail_shape].append((source, readability))
 ```
 
-A `READABLE_NEVER` source never reaches `named_rows`/`node_rows`/`edge_rows`, and a
+A `READABLE_NEVER` source never reaches `named_rows`/`node_rows`, and a
 conditional source's rows are filtered (`readable_scoped`, which applies the `Q` as
 `.filter()`) before any name is fetched. Nothing readable-but-not-shown ever leaves the
 database — the omission in §3 happens at the query, not by discarding rows in Python.
 
-### 3.2 Three query shapes, not nineteen
+### 3.2 Two query shapes, not eighteen
 
 `_collect` groups sources by `detail_shape` and unions each group:
 
@@ -295,16 +294,11 @@ database — the omission in §3 happens at the query, not by discarding rows in
 |---|---|---|
 | named | up to 13 (fewer when some are `READABLE_NEVER` for this caller) | `(secret_id, category, resource_type, name)` |
 | node | 5 | `(secret_id, node_type, graph_id, graph_name, node_name, code_field)` |
-| edge | 1 | `(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id, code_field)` |
 
 Sources within a shape already share a column list, so each group unions as-is — no NULL
-padding, which is why this beats one nineteen-branch union. Per-source constants
+padding, which is why this beats one eighteen-branch union. Per-source constants
 (`node_type`, `code_field`) are projected as columns so the assembler can tell which source a
 row came from.
-
-A matching conditional edge adds one more pass: `ConditionalEdge` has no name of its own and
-borrows the identity of the node it branches off, so `resolve_node_names` resolves those in
-one batched call.
 
 > **`Cast(..., output_field=TextField())` on every name column is required, not cosmetic.**
 > `custom_name` is `TextField` on some configs but `CharField` on others, and `name` is
@@ -318,7 +312,7 @@ explicitly — flows by `(name, id)`, nodes by `(name, node_type, code_field)`, 
 name. Without this, two identical calls could return differently-ordered payloads.
 `TestSummaryIsDeterministic` covers it.
 
-### 3.4 Why `summary()` costs a fourth query
+### 3.4 Why `summary()` costs a third query
 
 `_collect` only ever sees readable rows (§3.1), so it cannot supply `hidden_total` — nothing
 hidden was fetched to count. `summary()` gets it from a full `count_for()` call instead:
@@ -335,10 +329,10 @@ return {
 This is a deliberate, known trade-off, not an oversight: the alternative — running one
 unfiltered `_collect()` and partitioning the result in Python — would pull the *names* of
 hidden resources into memory to throw them away, one refactor away from a bug that serializes
-them. Paying a fourth query to keep those names out of process entirely is the security-
-preferred choice. `TestSummaryQueryCost` pins this at four, by name
-(`test_four_queries_when_no_conditional_edge_matches`,
-`test_four_queries_for_an_unused_secret`), so a future change that reintroduces a Python-side
+them. Paying a third query to keep those names out of process entirely is the security-
+preferred choice. `TestSummaryQueryCost` pins this at three, by name
+(`test_three_queries_for_a_secret_used_in_both_shapes`,
+`test_three_queries_for_an_unused_secret`), so a future change that reintroduces a Python-side
 partition will fail loudly rather than silently reopen this.
 
 ### 3.5 `code_field`: which block uses the secret
@@ -348,7 +342,7 @@ whether to look for it:
 
 | Value | Meaning |
 |---|---|
-| `python_code` | the node's single code block (python, webhook-trigger, edge) |
+| `python_code` | the node's single code block (python, webhook-trigger) |
 | `pre_python_code` / `post_python_code` | a classification decision table's two independent declarations |
 | `null` | an FK site — `telegram-trigger` references the secret by foreign key and declares nothing in code |
 
@@ -405,8 +399,8 @@ Four decisions worth knowing:
   so old snapshot ids mean nothing without remapping. (`BaseNode.node_name` has no unique
   constraint, so names are not a usable key here; node ids come from one shared sequence, so
   they are.)
-- **Fail-closed.** A secret deleted since the snapshot, a node dropped by dependency
-  filtering, or an ambiguous conditional edge yields a `secret_declaration_dropped` warning
+- **Fail-closed.** A secret deleted since the snapshot or a node dropped by dependency
+  filtering yields a `secret_declaration_dropped` warning
   in the response's existing `warnings` list and **no link** — never a guess. Under-declaring
   costs a precise `UndeclaredSecretError` at session start; over-declaring would authorise a
   node for a credential nobody granted it.
@@ -443,7 +437,7 @@ step 5, and the RBAC guide section above.
    the `ResourceType` that the source's own endpoint (or nesting serializer) is actually gated
    on. If the resource is reachable through more than one gate — as `NgrokWebhookConfig` and
    `WebhookTriggerAuth` are — see §2.3 before picking a single type.
-3. Check which `detail_shape` it lands in. If it introduces a fourth column shape you must
+3. Check which `detail_shape` it lands in. If it introduces a third column shape you must
    add a projection method, an assembler, and entries in `SHAPE_PROJECTIONS` /
    `HITS_ASSEMBLERS` — otherwise the union will fail on mismatched columns.
 4. `Cast(..., output_field=TextField())` any name column (§3.2).

@@ -3,7 +3,6 @@ import { NodeType } from '@shared/models';
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { NODE_DETAILS_LIST_KEY, NODE_TYPES_WITH_DETAILS } from '../../core/helpers/node-details.util';
 import { FlowModel } from '../../core/models/flow.model';
-import { GetLLMNodeRequest } from '../../core/models/llm-node.model';
 import { NodeModel } from '../../core/models/node.model';
 import { buildFlowModelFromGraphDto } from '../load/build-flow-model-from-graph-dto';
 import { LIVE_AUTHORSHIP, LIVE_WEBHOOK_TRIGGER_ID, liveGraph } from '../testing/live-graph.fixture';
@@ -23,37 +22,7 @@ function authorshipPaths(value: unknown, path = '$'): string[] {
     ]);
 }
 
-// The shared fixture has no LLM node. Its canvas data is the nested LLM config, an authored resource itself.
-const liveLlm: GetLLMNodeRequest = {
-    id: 17,
-    graph: 1,
-    node_name: 'LLM',
-    llm_config: 71,
-    llm_config_detail: {
-        ...LIVE_AUTHORSHIP,
-        id: 71,
-        custom_name: 'GPT config',
-        model: 3,
-        api_key_secret_id: null,
-        temperature: 0.2,
-        top_p: null,
-        stop: null,
-        max_tokens: null,
-        presence_penalty: null,
-        frequency_penalty: null,
-        logit_bias: null,
-        seed: null,
-        timeout: null,
-        is_visible: true,
-        tags: [],
-        created_at: null,
-    },
-    input_map: {},
-    output_variable_path: null,
-    metadata: {},
-};
-
-const graph: GraphDto = { ...liveGraph, llm_node_list: [liveLlm] };
+const graph: GraphDto = liveGraph;
 const loadedFlow = buildFlowModelFromGraphDto(graph, [{ id: 99 }]);
 const emptyFlow: FlowModel = { nodes: [], connections: [] };
 
@@ -78,14 +47,12 @@ function payloadNodeItems(payload: Record<string, unknown>): Record<string, unkn
 
 describe('bulk-save payload of nodes loaded from the API', () => {
     // Without this the payload checks below could pass only because the loader dropped all authorship.
-    it('keeps authorship in the canvas data of LLM and knowledge nodes', () => {
+    it('keeps authorship in the canvas data of knowledge nodes', () => {
         const nodeTypesKeepingAuthorship = loadedFlow.nodes
             .filter((node) => authorshipPaths(node.data).length > 0)
             .map((node) => node.type);
 
-        expect(nodeTypesKeepingAuthorship).toEqual(
-            expect.arrayContaining([NodeType.LLM, NodeType.KNOWLEDGE_RETRIEVER])
-        );
+        expect(nodeTypesKeepingAuthorship).toEqual(expect.arrayContaining([NodeType.KNOWLEDGE_RETRIEVER]));
     });
 
     it('sends no authorship when the loaded nodes are saved as new ones', () => {
