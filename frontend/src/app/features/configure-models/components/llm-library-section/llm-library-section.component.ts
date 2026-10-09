@@ -28,6 +28,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, LlmLibraryProviderGroup, ModelTypes, ResourceCode } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
+import { escapeHtml } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -144,18 +145,20 @@ export class LlmLibrarySectionComponent implements OnInit {
     filteredVoiceProviders = computed(() => {
         const query = this.searchQuery().toLowerCase();
         const errors = this.sectionErrors();
-        return this.voiceProviders.map((provider) => ({
-            ...provider,
-            hasError: errors[provider.key],
-            configs: provider.storage.configs().filter((c) => {
-                if (!query) return true;
-                return (
-                    c.custom_name.toLowerCase().includes(query) ||
-                    c.model_name.toLowerCase().includes(query) ||
-                    provider.label.toLowerCase().includes(query)
-                );
-            }),
-        }));
+        return this.voiceProviders
+            .map((provider) => ({
+                ...provider,
+                hasError: errors[provider.key],
+                configs: provider.storage.configs().filter((c) => {
+                    if (!query) return true;
+                    return (
+                        c.custom_name.toLowerCase().includes(query) ||
+                        c.model_name.toLowerCase().includes(query) ||
+                        provider.label.toLowerCase().includes(query)
+                    );
+                }),
+            }))
+            .filter((provider) => provider.hasError || provider.configs.length > 0);
     });
 
     groupedByType = computed(() => {
@@ -171,6 +174,8 @@ export class LlmLibrarySectionComponent implements OnInit {
             }))
             .filter((section) => section.hasError || section.groups.length > 0);
     });
+
+    hasNoConfigs = computed(() => this.groupedByType().length === 0 && this.filteredVoiceProviders().length === 0);
 
     public capabilities = computed<SelectItem[]>(() => [
         { name: 'All Capabilities', value: null },
@@ -294,7 +299,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     public onDelete(model: LlmLibraryModel): void {
         const opts: ConfirmationDialogData = {
             title: 'Delete the model?',
-            message: `Are you sure you want to delete the ${model.customName} model? This will delete it in all agents, tools and flows.`,
+            message: `Are you sure you want to delete the ${escapeHtml(model.customName)} model? This will delete it in all agents, tools and flows.`,
             type: 'danger',
         };
 

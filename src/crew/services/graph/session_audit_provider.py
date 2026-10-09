@@ -95,9 +95,9 @@ def _value_or_empty_dict(value):
 def emit_session_audit_event(data: dict) -> None:
     """
     Dispatches one custom-stream-shaped message dict into the audit pipeline.
-    Reusable from any call site that already publishes `data` onto
-    "graph:messages" (the main run_session astream loop, and any subgraph
-    node that has to publish directly - see classification_decision_table_node.py's
+    Reusable from any call site that already adds `data` to the graph
+    message stream (the main run_session astream loop, and any subgraph
+    node that has to write directly - see classification_decision_table_node.py's
     _publish_message and decision_table_node.py's, both of which bypass the
     parent graph's astream because subgraph StreamWriter chunks don't
     propagate to it).

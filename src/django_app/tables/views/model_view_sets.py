@@ -814,7 +814,7 @@ class GraphViewSet(
             )
             .all()
         )
-        return qs.filter(org_id=self.get_active_org_id())
+        return qs.filter(org_id=self.get_active_org_id()).order_by("-id")
 
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
@@ -1020,6 +1020,7 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             Graph.objects.only("id", "name", "description")
             .prefetch_related("tags", "labels")
             .filter(org_id=self.get_active_org_id())
+            .order_by("-id")
         )
 
 
@@ -1153,7 +1154,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         qs = manager.all()
         if self.action in ("list", "all"):
             qs = qs.defer("snapshot", "dependencies")
-        return qs.filter(graph__org_id=self.get_active_org_id())
+        return qs.filter(graph__org_id=self.get_active_org_id()).order_by("-created_at", "-id")
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -1588,7 +1589,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     """
 
     rbac_resource_type = ResourceType.VOICE
-    org_filter_path = "rt_agent__agent__org_id"
+    org_filter_path = "rt_agent_definition__agent_definition__organization_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1807,7 +1808,7 @@ class ConversationRecordingViewSet(
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_chat", "recording_type"]
     rbac_resource_type = ResourceType.VOICE
-    org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
+    org_filter_path = "rt_agent_chat__rt_agent_definition__agent_definition__organization_id"
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
 

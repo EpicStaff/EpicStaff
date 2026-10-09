@@ -637,5 +637,7 @@ class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializ
         )
 
         data = super().to_representation(instance)
-        data["subgraph_detail"] = GraphLightSerializer(instance.subgraph).data
+        data["subgraph_detail"] = (
+            GraphLightSerializer(instance.subgraph).data if instance.subgraph is not None else None
+        )
         return data

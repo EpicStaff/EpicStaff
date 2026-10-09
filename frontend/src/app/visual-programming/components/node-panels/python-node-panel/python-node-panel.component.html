@@ -42,6 +42,7 @@
                             [nodeName]="node().node_name"
                             [testRunning]="codeTestRun.isRunning()"
                             [testInputDirty]="testInputDirty()"
+                            [runTestBlocker]="runTestBlocker()"
                             (testModeChange)="isOpenTestMode.set($event)"
                             (runTest)="onRunTest($event)"
                         ></app-input-map>
