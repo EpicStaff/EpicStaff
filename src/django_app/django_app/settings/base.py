@@ -110,7 +110,7 @@ TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
 # Days a deleted item stays in the recycle bin before the purge job removes it for good.
-RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS", 7)
+RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
 if RECYCLE_BIN_RETENTION_DAYS < 1:
     # 0 would make the nightly purge empty every recycle bin on its next run.
     raise ImproperlyConfigured("DJANGO_RECYCLE_BIN_RETENTION_DAYS must be at least 1.")
