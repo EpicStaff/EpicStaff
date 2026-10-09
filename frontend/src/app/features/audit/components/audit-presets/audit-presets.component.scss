@@ -9,6 +9,47 @@
     font-size: 12px;
 }
 
+.presets__info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+}
+
+.presets__visibility,
+.presets__select-all {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    color: var(--color-ks-transparent-text-60);
+}
+
+.presets__select-all {
+    gap: 8px;
+    cursor: pointer;
+}
+
+.presets__link {
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: var(--accent-color);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--accent-color-hover);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
 .presets__toolbar {
     display: flex;
     align-items: center;
@@ -48,6 +89,11 @@
         outline: 2px solid var(--accent-color);
         outline-offset: 1px;
     }
+}
+
+.presets__btn--small {
+    height: 24px;
+    padding: 0 8px;
 }
 
 .presets__btn--accent {
@@ -91,9 +137,19 @@
     border-radius: 6px;
     background-color: var(--color-input-background);
 
+    // on the whole card, not the main button, so the menu button's strip changes with it
+    &:hover:not(.is-disabled) {
+        background-color: var(--color-input-background-hover);
+    }
+
     &.is-disabled {
         opacity: 0.6;
     }
+}
+
+.preset-card__select {
+    flex-shrink: 0;
+    padding: 10px 0 0 10px;
 }
 
 .preset-card__main {
@@ -110,10 +166,6 @@
     font-size: 12px;
     text-align: left;
     cursor: pointer;
-
-    &:hover:not(:disabled) {
-        background-color: var(--color-input-background-hover);
-    }
 
     &:disabled {
         cursor: default;
@@ -143,6 +195,15 @@
     flex-shrink: 0;
     color: var(--color-ks-transparent-text-60);
     font-size: 11px;
+}
+
+.preset-card__author {
+    overflow: hidden;
+    margin-left: auto;
+    color: var(--color-ks-transparent-text-60);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .preset-card__hint {
@@ -202,9 +263,38 @@
 }
 
 .preset-chip__value {
+    min-width: 0;
     overflow: hidden;
     color: var(--color-text-primary);
     text-overflow: ellipsis;
+}
+
+// same look as the remove button on the toolbar filter chips
+.preset-chip__remove {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--color-text-secondary);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-secondary-btn-background-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
 }
 
 .preset-chip--more {

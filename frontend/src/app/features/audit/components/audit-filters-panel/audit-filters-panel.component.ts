@@ -35,7 +35,9 @@ import {
     QUERY_OPERATORS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
+import { AuditPresetScope } from '../../models/audit-preset.models';
 import { AuditEventKind, AuditEventStatus, AuditNodeType } from '../../models/audit-session.models';
+import { AuditPresetsStorageService } from '../../services/audit-presets-storage.service';
 import {
     allowedKinds,
     AUDIT_FILTER_FIELDS,
@@ -53,7 +55,7 @@ import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope
 import { AuditPresetsComponent } from '../audit-presets/audit-presets.component';
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
-export type AuditFilterTab = 'builder' | 'query' | 'presets';
+export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
 
 @Component({
     selector: 'app-audit-filters-panel',
@@ -70,6 +72,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditMatchScopeComponent,
         AuditPresetsComponent,
     ],
+    providers: [AuditPresetsStorageService],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,11 +108,17 @@ export class AuditFiltersPanelComponent implements OnInit {
     public activeTab = signal<AuditFilterTab>('builder');
     public isCreatingPreset = signal(false);
     public readonly isQueryEmpty = computed(() => !this.filter().query.trim());
+    public readonly isPresetsTab = computed(() => this.activeTab() === 'mine' || this.activeTab() === 'shared');
+
+    public readonly myPresetsCount = computed(() => this.presetsStorage.presetsInScope('mine').length);
+    public readonly sharedPresetsCount = computed(() => this.presetsStorage.presetsInScope('shared').length);
 
     private readonly toastService = inject(ToastService);
+    private readonly presetsStorage = inject(AuditPresetsStorageService);
 
     public ngOnInit(): void {
         this.activeTab.set(this.filter().mode);
+        this.presetsStorage.load();
     }
 
     public setActiveTab(tab: AuditFilterTab): void {
@@ -119,7 +128,7 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public createPreset(): void {
         this.isCreatingPreset.set(true);
-        this.activeTab.set('presets');
+        this.activeTab.set('mine');
     }
 
     public openQuery(query: string): void {

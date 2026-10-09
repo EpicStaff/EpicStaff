@@ -41,6 +41,8 @@ $panel-width: 480px;
 .audit-browser__panel {
     position: relative;
     flex: 0 0 $panel-width;
+    // without it a long unbreakable chip or value widens the panel past $panel-width
+    min-width: 0;
     min-height: 0;
     border-left: 1px solid var(--color-divider-regular);
     background-color: var(--color-sidenav-background);

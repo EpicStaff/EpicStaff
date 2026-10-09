@@ -17,11 +17,14 @@ _PRESET_EXAMPLE = {
 AUDIT_FILTER_PRESET_COPY = {
     "summary": "Copy a saved preset",
     "description": (
-        "Clones any preset of the active org into a new row owned by the "
-        "caller. `name` is "
+        "Clones a preset the caller can see (their own, or any shared preset of "
+        "the active org) into a new row owned by the caller. `is_shared` "
+        "(default `false`) decides whether the copy lands in My Presets or "
+        "Shared Presets, whatever the original's visibility. `name` is "
         "optional - if omitted, the original's own name is reused, "
-        "auto-numbered (`My Filter` -> `My Filter (2)`, the first free "
-        "number in the org) if that name is taken."
+        "auto-numbered (`My Filter` -> `My Filter (2)`) if the caller already "
+        "has a preset (private or shared) with that name in the org; colleagues' "
+        "names do not count. A colleague's private preset 404s."
     ),
     "request": AuditFilterPresetCopySerializer,
     "responses": {
@@ -31,12 +34,22 @@ AUDIT_FILTER_PRESET_COPY = {
             examples=[
                 OpenApiExample(
                     "Copied",
-                    value={**_PRESET_EXAMPLE, "id": 2, "name": "My Filter (2)", "is_owner": True},
+                    value={
+                        **_PRESET_EXAMPLE,
+                        "id": 2,
+                        "name": "My Filter (2)",
+                        "is_shared": False,
+                        "is_owner": True,
+                        "created_by_name": "John Smith",
+                    },
                     response_only=True,
                 ),
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            description="No such preset visible to the caller (another org, or a colleague's private preset)."
+        ),
     },
 }
 
@@ -45,7 +58,9 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = {
     "description": (
         "Downloads a single preset as a `.json` attachment - the bare "
         "`{id, name, filter_body}` object, matching the single-item shape "
-        "`import` accepts. Same convention as Agent/Crew/Graph export."
+        "`import` accepts. Same convention as Agent/Crew/Graph export. "
+        "Visibility is not exported - an import always creates private presets. "
+        "A colleague's private preset 404s."
     ),
     "responses": {
         200: OpenApiResponse(
@@ -64,7 +79,8 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
         'returns the `{"presets": [...]}` batch shape (even for one id), '
         "matching what `import`'s batch mode accepts. `ids` is required "
         "and non-empty (same `BulkExportSerializer` GraphViewSet.bulk_export "
-        "uses) - an id outside the active org, or one that doesn't exist, 400s "
+        "uses) - an id outside the active org, a colleague's private preset, "
+        "or one that doesn't exist, 400s "
         "the whole request rather than being silently dropped."
     ),
     "request": BulkExportSerializer,
@@ -80,7 +96,7 @@ AUDIT_FILTER_PRESET_EXPORT_ALL = {
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="One or more requested ids don't exist in the active org.",
+            description="One or more requested ids aren't visible to the caller in the active org.",
             examples=[
                 OpenApiExample(
                     "Unknown id",
@@ -103,8 +119,10 @@ AUDIT_FILTER_PRESET_IMPORT = {
         'produced - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
         "own request, regardless of anything the imported file itself "
-        "claims. Every preset is created for the caller; a name already taken in "
-        "the org is auto-numbered like `copy` (`My Filter (2)`), never reused. Same raw "
+        "claims. Every preset is created private (My Presets) for the caller, "
+        "even if the file carries `is_shared`; a name the caller already uses for "
+        "one of their own presets (private or shared) is auto-numbered like `copy` "
+        "(`My Filter (2)`), never reused. Colleagues' names do not count. Same raw "
         "`IDMapper.get_detailed_summary()` shape `GraphViewSet.partial_import` "
         "returns, keyed by entity type (`AuditFilterPreset`, since presets "
         "are always a single-entity-type import)."
@@ -135,7 +153,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
                     response_only=True,
                 ),
                 OpenApiExample(
-                    "Name already taken in the org",
+                    "Name already taken by one of the caller's own presets",
                     value={
                         EntityType.AUDIT_FILTER_PRESET: {
                             "total": 1,

@@ -1,9 +1,7 @@
-from django.db.models import Q
 from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.schemas import ImportSettings
 from tables.import_export.serializers.audit_filter_preset import (
     AuditFilterPresetEntitySerializer,
 )
@@ -32,43 +30,21 @@ class AuditFilterPresetStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: AuditFilterPreset) -> dict:
         return AuditFilterPresetEntitySerializer(instance).data
 
-    def get_org_scope_q(self, org_id: int) -> Q:
-        if org_id is None:
-            return Q()
-        return Q(org_id=org_id)
-
-    def import_entity(
-        self,
-        data: dict,
-        id_mapper: IDMapper,
-        is_main: bool = False,
-        settings: ImportSettings = None,
-        **kwargs,
-    ):
-        old_id = data.get("id")
-        if old_id and id_mapper.has_mapping(self.entity_type, old_id):
-            existing_id = id_mapper.get(self.entity_type, old_id)
-            return self.get_instance(existing_id)
-
-        instance = self.create_entity(
-            data, id_mapper, org_id=kwargs.get("org_id"), created_by=kwargs.get("user")
-        )
-        if old_id is not None:
-            id_mapper.map(self.entity_type, old_id, instance.id, True)
-
-        return instance
-
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> AuditFilterPreset:
-        """Always create, never reuse: a name taken in the org gets the copy numbering."""
+        """Always create a private preset, never reuse one.
+
+        A name the importer already uses for one of their own presets (private or shared)
+        gets the copy numbering; colleagues' names do not collide.
+        """
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
             raise ValidationError({"name": "This field is required."})
         # Strip like the serializer's CharField does, so the collision check sees the stored name.
         name = name.strip()
         org_id = kwargs.get("org_id")
+        created_by = kwargs.get("user")
 
-        serializer = self.serializer_class(
-            data={**data, "name": next_free_preset_name(org_id, name)}
-        )
+        free_name = next_free_preset_name(org_id, created_by.id, name)
+        serializer = self.serializer_class(data={**data, "name": free_name})
         serializer.is_valid(raise_exception=True)
-        return serializer.save(org_id=org_id, created_by=kwargs.get("created_by"))
+        return serializer.save(org_id=org_id, created_by=created_by)

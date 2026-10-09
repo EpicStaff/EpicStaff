@@ -1,4 +1,81 @@
 <div class="presets">
+    <div class="presets__info">
+        @if (isSelecting()) {
+            <label class="presets__select-all">
+                <app-checkbox
+                    [checked]="selectAll() === 'all'"
+                    [indeterminate]="selectAll() === 'some'"
+                    [disabled]="cards().length === 0"
+                    ariaLabel="Select all presets"
+                    (changed)="toggleSelectAll()"
+                />
+                {{ selectionLabel() }}
+            </label>
+            <button
+                class="presets__link"
+                type="button"
+                (click)="stopSelecting()"
+            >
+                Cancel
+            </button>
+            <button
+                class="presets__btn presets__btn--small presets__btn--accent"
+                type="button"
+                [disabled]="!canExportSelected()"
+                (click)="exportSelected()"
+            >
+                Export
+            </button>
+        } @else {
+            <p class="presets__visibility">
+                @if (scope() === 'shared') {
+                    <app-svg-icon
+                        icon="user"
+                        size="12px"
+                    />
+                    Visible to all users
+                } @else {
+                    <app-svg-icon
+                        icon="lock"
+                        size="12px"
+                    />
+                    Only visible to you
+                }
+            </p>
+            <input
+                #importInput
+                type="file"
+                accept=".json,application/json"
+                hidden
+                (change)="importFile($event)"
+            />
+            <button
+                class="presets__btn presets__btn--small"
+                type="button"
+                [disabled]="isImporting()"
+                (click)="importInput.click()"
+            >
+                <app-svg-icon
+                    icon="download"
+                    size="12px"
+                />
+                Import
+            </button>
+            <button
+                class="presets__btn presets__btn--small"
+                type="button"
+                [disabled]="editor() !== null || scopedPresets().length === 0"
+                (click)="startSelecting()"
+            >
+                <app-svg-icon
+                    icon="upload"
+                    size="12px"
+                />
+                Export
+            </button>
+        }
+    </div>
+
     <div class="presets__toolbar">
         <app-search
             class="presets__search"
@@ -6,18 +83,20 @@
             placeholder="Search presets..."
             [(searchTerm)]="searchTerm"
         />
-        <button
-            class="presets__btn presets__btn--accent"
-            type="button"
-            [disabled]="isSaving()"
-            (click)="openCreate()"
-        >
-            <app-svg-icon
-                icon="plus"
-                size="12px"
-            />
-            New Preset
-        </button>
+        @if (!isSelecting()) {
+            <button
+                class="presets__btn presets__btn--accent"
+                type="button"
+                [disabled]="isSaving()"
+                (click)="openCreate()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="12px"
+                />
+                New Preset
+            </button>
+        }
     </div>
 
     @if (isCreating()) {
@@ -28,7 +107,7 @@
         <p class="presets__state">Loading...</p>
     } @else if (loadError()) {
         <p class="presets__state presets__state--error">Could not load presets.</p>
-    } @else if (presets().length === 0) {
+    } @else if (scopedPresets().length === 0) {
         @if (!isCreating()) {
             <p class="presets__state">No presets yet. Create a preset to save and reuse your configuration.</p>
         }
@@ -40,17 +119,29 @@
                 } @else {
                     <div
                         class="preset-card"
-                        [class.is-disabled]="card.state === null"
+                        [class.is-disabled]="card.state === null && !isSelecting()"
                     >
+                        @if (isSelecting()) {
+                            <app-checkbox
+                                class="preset-card__select"
+                                [checked]="isSelected(card.preset.id)"
+                                [ariaLabel]="'Select ' + card.preset.name"
+                                (changed)="toggleSelected(card.preset.id)"
+                            />
+                        }
                         <button
                             class="preset-card__main"
                             type="button"
-                            [disabled]="card.state === null"
-                            (click)="applyPreset(card)"
+                            [disabled]="card.state === null && !isSelecting()"
+                            [attr.tabindex]="isSelecting() ? -1 : null"
+                            (click)="activateCard(card)"
                         >
                             <span class="preset-card__head">
                                 <span class="preset-card__name">{{ card.preset.name }}</span>
                                 <span class="preset-card__mode">{{ card.modeLabel }}</span>
+                                @if (card.author !== null) {
+                                    <span class="preset-card__author">{{ card.author }}</span>
+                                }
                             </span>
                             @if (card.state === null) {
                                 <span class="preset-card__hint">{{ unavailableHint }}</span>
@@ -73,90 +164,118 @@
                             }
                         </button>
 
-                        <button
-                            #menuTrigger="cdkOverlayOrigin"
-                            cdkOverlayOrigin
-                            class="preset-card__menu-btn"
-                            type="button"
-                            aria-haspopup="menu"
-                            [attr.aria-expanded]="openMenuId() === card.preset.id"
-                            [attr.aria-label]="'More actions for ' + card.preset.name"
-                            (click)="toggleMenu(card.preset.id)"
-                        >
-                            <app-svg-icon
-                                icon="dots-vertical"
-                                size="14px"
-                            />
-                        </button>
-                        <ng-template
-                            cdkConnectedOverlay
-                            [cdkConnectedOverlayOrigin]="menuTrigger"
-                            [cdkConnectedOverlayOpen]="openMenuId() === card.preset.id"
-                            [cdkConnectedOverlayPositions]="menuPositions"
-                            [cdkConnectedOverlayFlexibleDimensions]="true"
-                            (overlayOutsideClick)="closeMenu(card.preset.id)"
-                            (attach)="focusFirstMenuItem()"
-                            (detach)="closeMenu(card.preset.id)"
-                        >
-                            <div
-                                class="preset-menu"
-                                role="menu"
+                        @if (!isSelecting()) {
+                            <button
+                                #menuTrigger="cdkOverlayOrigin"
+                                cdkOverlayOrigin
+                                class="preset-card__menu-btn"
+                                type="button"
+                                aria-haspopup="menu"
+                                [attr.aria-expanded]="openMenuId() === card.preset.id"
+                                [attr.aria-label]="'More actions for ' + card.preset.name"
+                                (click)="toggleMenu(card.preset.id)"
                             >
-                                @if (card.state !== null && card.preset.is_owner) {
+                                <app-svg-icon
+                                    icon="dots-vertical"
+                                    size="14px"
+                                />
+                            </button>
+                            <ng-template
+                                cdkConnectedOverlay
+                                [cdkConnectedOverlayOrigin]="menuTrigger"
+                                [cdkConnectedOverlayOpen]="openMenuId() === card.preset.id"
+                                [cdkConnectedOverlayPositions]="menuPositions"
+                                [cdkConnectedOverlayFlexibleDimensions]="true"
+                                (overlayOutsideClick)="closeMenu(card.preset.id)"
+                                (attach)="focusFirstMenuItem()"
+                                (detach)="closeMenu(card.preset.id)"
+                            >
+                                <div
+                                    class="preset-menu"
+                                    role="menu"
+                                >
+                                    @if (card.state !== null && card.preset.is_owner) {
+                                        <button
+                                            #menuItem
+                                            class="preset-menu__item"
+                                            type="button"
+                                            role="menuitem"
+                                            [disabled]="isSaving()"
+                                            (click)="openEdit(card)"
+                                        >
+                                            Edit
+                                        </button>
+                                    }
                                     <button
                                         #menuItem
                                         class="preset-menu__item"
                                         type="button"
                                         role="menuitem"
-                                        [disabled]="isSaving()"
-                                        (click)="openEdit(card)"
+                                        (click)="duplicate(card)"
                                     >
-                                        Edit
+                                        Duplicate
                                     </button>
-                                }
-                                <button
-                                    #menuItem
-                                    class="preset-menu__item"
-                                    type="button"
-                                    role="menuitem"
-                                    (click)="duplicate(card)"
-                                >
-                                    Duplicate
-                                </button>
-                                @if (card.state !== null) {
-                                    @if (card.preset.is_owner) {
+                                    @if (card.state !== null) {
+                                        @if (card.preset.is_owner) {
+                                            <button
+                                                class="preset-menu__item"
+                                                type="button"
+                                                role="menuitem"
+                                                (click)="overwrite(card)"
+                                            >
+                                                Overwrite with current filters
+                                            </button>
+                                        }
+                                        @if (card.state.mode === 'query') {
+                                            <button
+                                                class="preset-menu__item"
+                                                type="button"
+                                                role="menuitem"
+                                                (click)="copyQuery(card)"
+                                            >
+                                                Copy as query code
+                                            </button>
+                                        }
+                                    }
+                                    @if (scope() === 'mine') {
                                         <button
                                             class="preset-menu__item"
                                             type="button"
                                             role="menuitem"
-                                            (click)="overwrite(card)"
+                                            (click)="confirmMoveToShared(card.preset)"
                                         >
-                                            Overwrite with current filters
+                                            Move to Shared Presets
+                                        </button>
+                                        <button
+                                            class="preset-menu__item"
+                                            type="button"
+                                            role="menuitem"
+                                            (click)="confirmCopyToShared(card.preset)"
+                                        >
+                                            Copy to Shared Presets
                                         </button>
                                     }
                                     <button
                                         class="preset-menu__item"
                                         type="button"
                                         role="menuitem"
-                                        [disabled]="card.state.mode !== 'query'"
-                                        [attr.title]="card.state.mode === 'query' ? null : queryOnlyHint"
-                                        (click)="copyQuery(card)"
+                                        (click)="exportPreset(card.preset)"
                                     >
-                                        Copy as query code
+                                        Export as JSON
                                     </button>
-                                }
-                                @if (card.preset.is_owner) {
-                                    <button
-                                        class="preset-menu__item"
-                                        type="button"
-                                        role="menuitem"
-                                        (click)="confirmDelete(card.preset)"
-                                    >
-                                        Delete preset
-                                    </button>
-                                }
-                            </div>
-                        </ng-template>
+                                    @if (card.preset.is_owner) {
+                                        <button
+                                            class="preset-menu__item"
+                                            type="button"
+                                            role="menuitem"
+                                            (click)="confirmDelete(card.preset)"
+                                        >
+                                            Delete preset
+                                        </button>
+                                    }
+                                </div>
+                            </ng-template>
+                        }
                     </div>
                 }
             } @empty {
@@ -247,6 +366,14 @@
                         >
                             <span class="preset-chip__label">{{ chip.label }}</span>
                             <span class="preset-chip__value">{{ chip.value }}</span>
+                            <button
+                                class="preset-chip__remove"
+                                type="button"
+                                [attr.aria-label]="'Remove ' + chip.label + ' filter'"
+                                (click)="removeEditorFilter(chip.key)"
+                            >
+                                ✕
+                            </button>
                         </span>
                     }
                 </div>

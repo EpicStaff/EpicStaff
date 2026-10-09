@@ -2544,11 +2544,14 @@ class SecretViewSet(
 
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
-    Saved audit-search filters, shared within the active org: anyone with
-    AUDIT:read can list, retrieve, export and copy any preset of the org (a
-    copy belongs to whoever made it). Only the author can update or delete -
-    for those actions get_queryset adds `created_by=request.user`, so another
-    user's preset 404s there, as does a preset of another org.
+    Saved audit-search filters of the active org, each private to its author
+    or shared with the org. list, retrieve, export, bulk_export and copy see
+    the caller's own presets plus every shared one; a colleague's private
+    preset 404s there exactly like a preset of another org (bulk_export 400s).
+    Only the author can update or delete - for those actions get_queryset
+    narrows to `created_by=request.user`. A copy belongs to whoever made it.
+    The author may share a preset (`is_shared: true`); un-sharing is rejected
+    by the serializer.
 
     Gated entirely on AUDIT:read, same as browsing itself - presets are a
     convenience over audit data, not audit data itself, so every action
@@ -2577,7 +2580,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "bulk_export": Permission.READ,
         "import_presets": Permission.READ,
     }
-    queryset = AuditFilterPreset.objects.all()
+    queryset = AuditFilterPreset.objects.select_related("created_by")
     serializer_class = AuditFilterPresetSerializer
 
     def __init__(self, *args, **kwargs):
@@ -2594,7 +2597,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         queryset = super().get_queryset()
         if self.action in self._author_only_actions:
             return queryset.filter(created_by=self.request.user)
-        return queryset
+        return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
 
     @extend_schema(**AUDIT_FILTER_PRESET_COPY)
     @action(detail=True, methods=["post"])
@@ -2607,6 +2610,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             name=serializer.validated_data.get("name"),
             org_id=self.get_active_org_id(),
             created_by=request.user,
+            is_shared=serializer.validated_data["is_shared"],
         )
         return Response(self.get_serializer(clone).data, status=201)
 
