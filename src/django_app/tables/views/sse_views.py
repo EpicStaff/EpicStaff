@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import time
 from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
@@ -29,6 +30,18 @@ redis_service = RedisService()
 # Graph messages per database query: one message can be ~300 KB.
 MESSAGE_PAGE_SIZE = 20
 
+FINISHED_STATUSES = frozenset(
+    {
+        Session.SessionStatus.END,
+        Session.SessionStatus.ERROR,
+        Session.SessionStatus.STOP,
+        Session.SessionStatus.EXPIRED,
+    }
+)
+# Crew publishes the status itself, but a graph message is published only after
+# Django stores it, so the last messages can arrive after the final status.
+LATE_MESSAGE_SECONDS = 5.0
+
 
 @dataclass(frozen=True)
 class _HeldGraphMessage:
@@ -45,6 +58,8 @@ class RunSessionSSEView(SSEMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._sent_message_uuids: set[str] = set()
+        # time.monotonic() when the stream first sent a finished status.
+        self._finished_at: float | None = None
 
     def _channel_handlers(self) -> dict:
         # Keyed by this session's own channels: whatever arrives on them belongs to it.
@@ -141,8 +156,13 @@ class RunSessionSSEView(SSEMixin):
         # Only this session's channel is subscribed, so the message is the caller's.
         yield {"event": "messages", "data": data}
 
+    def _note_status(self, status: str) -> None:
+        if status in FINISHED_STATUSES and self._finished_at is None:
+            self._finished_at = time.monotonic()
+
     async def _handle_session_statuses(self, data):
         self.__log(event="status", state="update", data=data["status"])
+        self._note_status(data["status"])
         status_data = data.get("status_data", {})
         if data["status"] == Session.SessionStatus.END:
             final_variables = await self._read_final_variables(self.kwargs["session_id"])
@@ -185,6 +205,7 @@ class RunSessionSSEView(SSEMixin):
         )
         async for session in self.async_orm_generator(queryset):
             self.__log(event="status", state="initial", data=session["status"])
+            self._note_status(session["status"])
             yield {
                 "event": "status",
                 "data": {
@@ -209,20 +230,37 @@ class RunSessionSSEView(SSEMixin):
         # Sending the held messages read the database again.
         await self.release_database_connection()
 
-        async for message in redis_service.redis_get_message(
-            channels=self.get_channels(),
-            pubsub=pubsub,
-        ):
-            if not message:
-                # No message, sleep a bit and loop
-                await asyncio.sleep(0.05)
-                continue
+        messages = redis_service.redis_get_message(channels=self.get_channels(), pubsub=pubsub)
+        try:
+            while (message := await self._next_live_message(messages)) is not None:
+                if message.get("type") != "message":
+                    continue
 
-            if message.get("type") != "message":
-                continue
+                async for item in self._handle_live_message(message):
+                    yield item
+        finally:
+            await messages.aclose()
 
-            async for item in self._handle_live_message(message):
-                yield item
+        if self._finished_at is not None:
+            # Tells the client the stream ended on purpose, so it does not reconnect.
+            yield {"event": "done", "data": {"session_id": self.kwargs["session_id"]}}
+
+    async def _next_live_message(self, messages) -> dict | None:
+        """Wait for the next live message; None once the session's stream is over.
+
+        After a finished status, waits only until LATE_MESSAGE_SECONDS have passed
+        since it, so a finished session's stream does not stay open until the
+        client leaves.
+        """
+        if self._finished_at is None:
+            return await anext(messages, None)
+        remaining = self._finished_at + LATE_MESSAGE_SECONDS - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            return await asyncio.wait_for(anext(messages, None), timeout=remaining)
+        except TimeoutError:
+            return None
 
     async def _handle_live_message(self, message: dict):
         try:

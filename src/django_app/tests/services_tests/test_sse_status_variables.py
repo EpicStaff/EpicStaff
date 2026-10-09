@@ -55,7 +55,12 @@ def _status_message(session_id, status, status_data=None):
 
 
 async def _live_events(view, messages):
-    return [event async for event in view.get_live_updates(_FinitePubSub(messages))]
+    # A finished status also ends the stream with `done`; these tests are about the statuses.
+    return [
+        event
+        async for event in view.get_live_updates(_FinitePubSub(messages))
+        if event["event"] != "done"
+    ]
 
 
 @pytest.mark.asyncio
