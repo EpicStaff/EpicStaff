@@ -39,7 +39,7 @@ class InstructionSerializer(serializers.Serializer):
             unknown_keys = set(data) - set(self.fields)
             if unknown_keys:
                 raise serializers.ValidationError(
-                    {key: "Unknown field." for key in sorted(unknown_keys)}
+                    dict.fromkeys(sorted(unknown_keys), "Unknown field.")
                 )
         return super().to_internal_value(data)
 

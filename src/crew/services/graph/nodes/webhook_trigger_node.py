@@ -7,7 +7,7 @@ from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import ReturnCodeError
 from services.graph.nodes.base_node import BaseNode
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService, build_state_globals
 from src.shared.models import PythonCodeData
 
 
@@ -31,14 +31,10 @@ class WebhookTriggerNode(BaseNode):
         )
         self.python_code_executor_service = python_code_executor_service
         self.python_code_data = python_code_data
+        self.code_reads_state = "state" in python_code_data.code
 
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
-        additional_global_kwargs = {
-            "state": {
-                "variables": state["variables"].model_dump(),
-                "state_history": state["state_history"],
-            }
-        }
+        additional_global_kwargs = build_state_globals(state) if self.code_reads_state else {}
         python_code_execution_data = await self.python_code_executor_service.run_code(
             python_code_data=self.python_code_data,
             inputs=input_,
