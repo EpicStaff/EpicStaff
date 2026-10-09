@@ -177,6 +177,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     webhook_trigger_path: '',
     webhook_trigger: LIVE_WEBHOOK_TRIGGER_ID, // a bare id, in the graph response and in the export alike
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
+    test_payload: { id: '104' },
 };
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
@@ -188,6 +189,7 @@ export const liveTelegram: GetTelegramTriggerNodeRequest = {
     telegram_bot_api_key_secret_id: 102,
     webhook_trigger: null,
     fields: [{ id: 1, parent: 'message', field_name: 'text', variable_path: 'variables.text' }],
+    test_payload: { message: { text: 'hello' } },
 };
 const liveSchedule: GetScheduleTriggerNodeRequest = {
     ...persisted,

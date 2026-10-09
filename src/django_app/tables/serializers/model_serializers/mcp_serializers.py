@@ -33,12 +33,13 @@ class McpToolSerializer(
 
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
+        max_length=255,
         validators=[
             OrgScopedUniqueValidator(
                 queryset=McpTool.objects.all(),
                 message="An MCP tool with this name already exists.",
             )
-        ]
+        ],
     )
     labels = OrgScopedPrimaryKeyRelatedField(
         many=True,

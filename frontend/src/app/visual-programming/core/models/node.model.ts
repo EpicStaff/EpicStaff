@@ -42,7 +42,6 @@ export interface StartNodeModel extends BaseNodeModel {
 }
 export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
-    python_code_id: number | null;
     data: CustomPythonCode;
     test_input: Record<string, string | number | boolean>;
 }
@@ -102,6 +101,7 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
         /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
         webhook_trigger: number | null;
         python_code: CustomPythonCode;
+        test_payload: Record<string, unknown>;
     };
 }
 
@@ -112,6 +112,7 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
         /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
         webhook_trigger: number | null;
         fields: TelegramTriggerNodeField[];
+        test_payload: Record<string, unknown>;
     };
 }
 

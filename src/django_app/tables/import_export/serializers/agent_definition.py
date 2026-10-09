@@ -1,8 +1,11 @@
 from agents.models import AgentDefinition
+from agents.serializers.agent_definition_serializers import InstructionListField
 from rest_framework import serializers
 
 
 class AgentDefinitionImportSerializer(serializers.ModelSerializer):
+    instruction_list = InstructionListField(required=False)
+
     class Meta:
         model = AgentDefinition
         # created_at is instance-local: auto_now_add makes it read-only here, so an

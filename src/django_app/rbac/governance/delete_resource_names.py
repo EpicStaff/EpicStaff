@@ -21,6 +21,7 @@ RBAC_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "rbac.RolePermission",
         "rbac.ResourceLastEdit",
         "rbac.Organization",
+        "rbac.OrganizationConfig",
         settings.AUTH_USER_MODEL,
     }
 )

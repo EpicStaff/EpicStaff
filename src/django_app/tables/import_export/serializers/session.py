@@ -15,19 +15,23 @@ class GraphSessionMessageExportSerializer(serializers.ModelSerializer):
             "execution_order",
             "uuid",
             "message_data",
+            "node_type",
         ]
 
 
 class SessionPrincipalExportSerializer(serializers.ModelSerializer):
+    api_key_name = serializers.CharField(source="api_key.name", default=None)
+
     class Meta:
         model = SessionPrincipal
-        fields = ["kind", "user", "api_key", "email"]
+        fields = ["kind", "user", "api_key", "api_key_name", "email"]
 
 
 class SessionExportSerializer(serializers.ModelSerializer):
     principal = SessionPrincipalExportSerializer(read_only=True)
     trigger_type = serializers.CharField(source="trigger.trigger_type", default=None)
     trigger_node_name = serializers.CharField(source="trigger.node_name", default=None)
+    graph_name = serializers.CharField(source="graph.name", default=None)
 
     class Meta:
         model = Session
@@ -41,4 +45,6 @@ class SessionExportSerializer(serializers.ModelSerializer):
             "principal",
             "trigger_type",
             "trigger_node_name",
+            "graph",
+            "graph_name",
         ]

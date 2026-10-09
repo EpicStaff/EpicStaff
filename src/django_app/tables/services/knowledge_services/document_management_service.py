@@ -479,15 +479,21 @@ class DocumentManagementService:
     @staticmethod
     def get_documents_with_content(
         document_ids: list[int],
+        *,
+        org_id: int,
     ) -> list[DocumentMetadata]:
         """
-        Fetch documents by ID with their binary content, preserving request order.
+        Fetch an organization's documents by ID with their binary content,
+        preserving request order.
 
         Raises:
-            DocumentsNotFoundException: If any requested document is missing.
+            DocumentsNotFoundException: If any requested document is missing or
+                belongs to another organization — the two are indistinguishable.
         """
-        documents_by_id = DocumentMetadata.objects.select_related("document_content").in_bulk(
-            document_ids
+        documents_by_id = (
+            DocumentMetadata.objects.select_related("document_content")
+            .filter(source_collection__org_id=org_id)
+            .in_bulk(document_ids)
         )
         missing_ids = [doc_id for doc_id in document_ids if doc_id not in documents_by_id]
         if missing_ids:
@@ -498,20 +504,27 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def copy_documents_to_collection(
-        collection_id: int, document_ids: list[int], *, user: object | None = None
+        collection_id: int, document_ids: list[int], *, org_id: int, user: object | None = None
     ) -> tuple[list[DocumentMetadata], list[DocumentMetadata]]:
         """Copy documents into a collection, sharing their binary content.
 
         Documents already present (by content), duplicate ids and copies into the source
         collection are skipped; `user` last edits the collection when anything was copied.
+        The target collection and every source document must belong to ``org_id``.
         Returns (copied, skipped).
 
         Raises:
-            CollectionNotFoundException: target collection missing.
-            DocumentsNotFoundException: a source document missing.
+            CollectionNotFoundException: target collection missing or in another org.
+            DocumentsNotFoundException: a source document missing or in another org.
         """
-        collection = DocumentManagementService.get_collection(collection_id)
-        source_documents = DocumentManagementService.get_documents_with_content(document_ids)
+        collection = SourceCollection.objects.filter(
+            collection_id=collection_id, org_id=org_id
+        ).first()
+        if collection is None:
+            raise CollectionNotFoundException(collection_id)
+        source_documents = DocumentManagementService.get_documents_with_content(
+            document_ids, org_id=org_id
+        )
 
         existing_content_ids = set(
             DocumentMetadata.objects.filter(source_collection=collection).values_list(

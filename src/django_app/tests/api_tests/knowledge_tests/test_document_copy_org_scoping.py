@@ -3,7 +3,6 @@
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.exceptions import NotFound
 
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -114,14 +113,18 @@ def test_download_mixing_own_and_foreign_documents_is_404(
 
 
 @pytest.mark.django_db
-def test_download_names_no_missing_or_foreign_id(admin_client, foreign_collection):
-    # An id that is a substring of the 404 body itself must not make the check flaky.
-    foreign_document = _document(foreign_collection, document_id=404)
+def test_download_answers_a_foreign_document_like_a_missing_one(admin_client, foreign_collection):
+    foreign_document = _document(foreign_collection)
+    missing_id = foreign_document.document_id + 1000
 
-    response = _download(admin_client, [foreign_document])
+    foreign_response = _download(admin_client, [foreign_document])
+    missing_response = admin_client.get(reverse("document-download"), {"document_ids": str(missing_id)})
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["message"] == str(NotFound.default_detail)
+    assert foreign_response.status_code == missing_response.status_code == status.HTTP_404_NOT_FOUND
+    # Only the id the caller sent differs; nothing tells a foreign document from a missing one.
+    assert foreign_response.json()["message"].replace(
+        str(foreign_document.document_id), "<id>"
+    ) == missing_response.json()["message"].replace(str(missing_id), "<id>")
 
 
 @pytest.mark.django_db

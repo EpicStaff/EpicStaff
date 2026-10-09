@@ -19,6 +19,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
@@ -149,7 +150,7 @@ export class OrganizationsTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Deactivate the organization?',
-                message: `The ${row['name']} organization will be deactivated, but all data will be preserved.`,
+                message: `The ${escapeHtml(row['name'] as string)} organization will be deactivated, but all data will be preserved.`,
                 caution: 'Access will be revoked for all members of this organization',
                 type: 'danger',
                 confirmText: 'Deactivate',

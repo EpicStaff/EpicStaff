@@ -56,7 +56,7 @@ def agent(db, org):
     return AgentDefinition.objects.create(
         org=org,
         name="task-node-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
@@ -65,7 +65,7 @@ def agent_b(db, org):
     return AgentDefinition.objects.create(
         org=org,
         name="task-node-agent-b",
-        instructions="do other things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
 
 

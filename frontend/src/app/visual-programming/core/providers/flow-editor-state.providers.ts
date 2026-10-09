@@ -3,9 +3,11 @@ import { Provider } from '@angular/core';
 import { ClipboardService } from '../../services/clipboard.service';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { FlowTestRunService } from '../../services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../services/node-authorship.store';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { NodeNameValidatorService } from '../../services/node-name-validator.service';
+import { SavedFlowStateService } from '../../services/saved-flow-state.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { UndoRedoService } from '../../services/undo-redo.service';
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
@@ -34,10 +36,12 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     UndoRedoService,
     FlowReadOnlyService,
     SidePanelService,
+    SavedFlowStateService,
     ClipboardService,
     NodeFactoryService,
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
     VersionPreviewNodeAuthorshipStore,
     { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
+    FlowTestRunService,
 ];

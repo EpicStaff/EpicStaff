@@ -11,7 +11,8 @@ from django.db.migrations.operations import AddField
 class CreatedAtMigration:
     model_label: str
     name_field: str
-    previous: tuple[str, str]
+    # One node, or several when the migration sits on a branch of a merged graph.
+    previous: tuple
     migration: tuple[str, str]
 
 
@@ -38,7 +39,10 @@ CASES = [
     CreatedAtMigration(
         "agents.AgentDefinition",
         "name",
-        ("agents", "0010_agentdefinition_surface_org_scoped"),
+        (
+            ("agents", "0010_agentdefinition_surface_org_scoped"),
+            ("agents", "0013_agentdefinition_instruction_list"),
+        ),
         ("agents", "0011_agentdefinition_created_at"),
     ),
 ]

@@ -81,7 +81,7 @@ def agent_definition(bulk_save_org) -> AgentDefinition:
     return AgentDefinition.objects.create(
         org=bulk_save_org,
         name="bulk-save-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 

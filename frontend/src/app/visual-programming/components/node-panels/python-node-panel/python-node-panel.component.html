@@ -40,8 +40,9 @@
                             [pythonNodeId]="node().backendId"
                             [graphId]="graphId()"
                             [nodeName]="node().node_name"
-                            [testRunning]="testRunning()"
+                            [testRunning]="codeTestRun.isRunning()"
                             [testInputDirty]="testInputDirty()"
+                            [runTestBlocker]="runTestBlocker()"
                             (testModeChange)="isOpenTestMode.set($event)"
                             (runTest)="onRunTest($event)"
                         ></app-input-map>
@@ -113,11 +114,11 @@
 
                         @if (isOpenTestMode() && !isReadOnly()) {
                             <app-python-terminal
-                                [logs]="terminalLogs()"
-                                [terminalHeight]="terminalHeight()"
-                                [status]="terminalStatus()"
-                                (heightChange)="onTerminalHeightChange($event)"
-                                (clearLogs)="onClearLogs()"
+                                [logs]="codeTestRun.logs()"
+                                [terminalHeight]="codeTestRun.terminalHeight()"
+                                [status]="codeTestRun.status()"
+                                (heightChange)="codeTestRun.setTerminalHeight($event)"
+                                (clearLogs)="codeTestRun.clearLogs()"
                             />
                         }
                     </div>

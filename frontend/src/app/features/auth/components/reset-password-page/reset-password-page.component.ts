@@ -7,6 +7,7 @@ import {
     AppSvgIconComponent,
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     PasswordStrengthComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
@@ -28,6 +29,7 @@ type PageState = 'invalid-token' | 'set-password' | 'success';
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        HintMessageComponent,
         ValidationErrorsComponent,
         MatIconModule,
         PasswordStrengthComponent,

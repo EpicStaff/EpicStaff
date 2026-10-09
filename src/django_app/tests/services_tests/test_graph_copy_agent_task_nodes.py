@@ -45,7 +45,7 @@ def agent_definition(default_org):
     return AgentDefinition.objects.create(
         org=default_org,
         name="copy-test-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 

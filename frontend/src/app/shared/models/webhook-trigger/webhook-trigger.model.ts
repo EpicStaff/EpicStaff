@@ -19,6 +19,8 @@ export type WebhookTriggerAuthKind = 'webhook' | 'telegram' | 'twilio';
 export interface WebhookTriggerAuth {
     kind: WebhookTriggerAuthKind;
     secret_tail: string | null;
+    /** Id of the secret in use (`null` when none is set); its name comes from the secrets list. */
+    secret_id: number | null;
 }
 
 // Also built client-side as the form value of webhook-trigger-field, so the read-only

@@ -26,8 +26,8 @@ from rbac.governance.delete_collector import (
 )
 from rbac.governance.delete_verification import assert_delete_phrase
 from rbac.governance.guards import UserManagementGuards
-from rbac.identity.session_invalidation import (
-    SessionInvalidationService,
+from rbac.identity.credential_revocation import (
+    CredentialRevocationService,
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
@@ -63,8 +63,8 @@ class UserManagementService(CrossOrgResourceService):
     rbac_resource_type = ResourceType.MEMBERSHIPS
     not_found_exception = UserNotFoundError
 
-    def __init__(self, session_invalidator: SessionInvalidationService | None = None):
-        self._session_invalidator = session_invalidator or SessionInvalidationService()
+    def __init__(self, credential_revoker: CredentialRevocationService | None = None):
+        self._credential_revoker = credential_revoker or CredentialRevocationService()
 
     # ---- read ----
 
@@ -370,12 +370,16 @@ class UserManagementService(CrossOrgResourceService):
         if locked_target.is_superadmin and not (superadmin_pks - {instance.pk}):
             raise LastSuperadminError()
 
-        self._session_invalidator.blacklist_all_for_user(instance)
+        # The user's API keys cascade-delete below anyway; revoking them first
+        # keeps "log this user out everywhere" in one place rather than
+        # relying on the cascade staying in place.
+        self._credential_revoker.revoke_all_credentials_for_user(instance)
         # Built from the SAME collector that performs the delete below, so
         # this describes exactly what was removed. Nothing here needs
-        # merging in from outside the collector's closure:
-        # `blacklist_all_for_user` only ever creates new `BlacklistedToken`
-        # rows, and `OutstandingToken.user` is SET_NULL (not CASCADE), so
+        # merging in from outside the collector's closure: the revocation
+        # only creates new `BlacklistedToken` rows and updates `revoked_at`
+        # on API keys that the collector counts regardless of their state.
+        # `OutstandingToken.user` is SET_NULL (not CASCADE), so
         # `BlacklistedToken` -- which cascades from `OutstandingToken`, not
         # from User -- is never part of this cascade's closure.
         collector = build_collector(instance)

@@ -32,6 +32,19 @@ def _author_id(basename: str, pk: int) -> int | None:
     return model.objects.values_list("created_by_id", flat=True).get(pk=pk)
 
 
+# Developer's Surface API takes PATCH only; an agent accepts both.
+EDIT_METHODS = [(AGENT_DEFINITION, "put"), (AGENT_DEFINITION, "patch"), (SURFACE, "patch")]
+
+
+def _edit_body(basename: str, name: str, **extra) -> dict:
+    """An agent edits its instructions through `instruction_list`; a surface through `instructions`."""
+    if basename == AGENT_DEFINITION:
+        content = {"instruction_list": [{"name": "Instruction_1.md", "content": "edited"}]}
+    else:
+        content = {"instructions": "edited"}
+    return {"name": name, **content, **extra}
+
+
 def _create_row(basename: str, org, name: str, author=None):
     return MODEL_BY_BASENAME[basename].objects.create(org=org, name=name, created_by=author)
 
@@ -79,14 +92,13 @@ def test_read_response_exposes_org_and_author(basename, acme_client, member_only
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-@pytest.mark.parametrize("method", ["put", "patch"])
+@pytest.mark.parametrize(("basename", "method"), EDIT_METHODS)
 def test_update_of_unauthored_row_leaves_it_unauthored(basename, method, acme_client, acme):
     row = _create_row(basename, acme, f"ownerless-{basename}")
 
     response = getattr(acme_client, method)(
         _detail_url(basename, row.pk),
-        {"name": f"edited-{basename}", "instructions": "edited"},
+        _edit_body(basename, f"edited-{basename}"),
         format="json",
     )
 
@@ -97,8 +109,7 @@ def test_update_of_unauthored_row_leaves_it_unauthored(basename, method, acme_cl
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-@pytest.mark.parametrize("method", ["put", "patch"])
+@pytest.mark.parametrize(("basename", "method"), EDIT_METHODS)
 def test_update_of_authored_row_keeps_author_even_when_body_names_one(
     basename, method, acme_client, admin_acme, member_only, acme
 ):
@@ -106,7 +117,7 @@ def test_update_of_authored_row_keeps_author_even_when_body_names_one(
 
     response = getattr(acme_client, method)(
         _detail_url(basename, row.pk),
-        {"name": f"renamed-{basename}", "instructions": "edited", "created_by": admin_acme.id},
+        _edit_body(basename, f"renamed-{basename}", created_by=admin_acme.id),
         format="json",
     )
 

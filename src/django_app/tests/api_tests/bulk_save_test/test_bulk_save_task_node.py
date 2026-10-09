@@ -274,7 +274,7 @@ def test_create_task_node_rejects_foreign_agent_owned_surface(
     other_agent = AgentDefinition.objects.create(
         org=agent_definition.org,
         name="bulk-save-other-agent",
-        instructions="do other things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
 
     payload = {

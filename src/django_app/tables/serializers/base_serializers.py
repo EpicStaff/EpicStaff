@@ -240,9 +240,12 @@ class WebhookTriggerNestedSerializer(
             rep["live_url"] = None
 
         auth = getattr(instance, "auth", None)
+        # The id only, never the name or value: an edit form pre-selects it and
+        # resolves the label from the secrets list, as with `auth_token_secret_id`.
         rep["auth"] = (
             {
                 "kind": auth.kind,
+                "secret_id": auth.secret_id,
                 "secret_tail": auth.secret.tail if auth.secret_id else None,
             }
             if auth is not None

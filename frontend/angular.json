@@ -160,7 +160,7 @@
     }
   },
   "cli": {
-    "analytics": "3178af77-cc96-4364-8f39-fa855869adce"
+    "analytics": "false"
   },
   "schematics": {
     "@schematics/angular:component": {

@@ -46,7 +46,7 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_org_id_from_defi
         org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(

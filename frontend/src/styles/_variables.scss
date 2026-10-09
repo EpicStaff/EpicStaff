@@ -567,6 +567,7 @@
     // SEMANTIC — forms
     // ------------------------------------------------------------------
     --color-input-background: var(--graphite-800);
+    --color-input-transparent: transparent;
     --color-input-background-hover: var(--white-alpha-6);
     --color-input-border: var(--steel-alpha-14);
     --color-input-text-placeholder: var(--steel-alpha-30);
@@ -675,6 +676,7 @@
     --color-json-null: var(--gray-585);
     --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
     --shadow-panel-elevated: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-card-subtle: 0 1px 3px rgba(0, 0, 0, 0.24);
 
     //ui-kit colors
     --orange: rgba(255, 143, 63, 1);

@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormControl, Validators } from '@angular/forms';
 import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { of } from 'rxjs';
@@ -62,6 +63,11 @@ async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShel
     return fixture;
 }
 
+/** `BaseSidePanel`'s protected hook for saving part of a node while its form is invalid. */
+interface SavesWhenFormInvalid {
+    saveWhenFormInvalid(): NodeModel | null;
+}
+
 function panelOf(fixture: ComponentFixture<NodePanelShellComponent>): EndNodePanelComponent {
     return fixture.debugElement.query((element) => element.componentInstance instanceof EndNodePanelComponent)
         .componentInstance as EndNodePanelComponent;
@@ -108,6 +114,59 @@ describe('NodePanelShellComponent', () => {
         });
     });
 
+    describe('header Save', () => {
+        /** A panel with a Save of its own (as the Python and webhook trigger panels have). */
+        function withSavingPanel(
+            fixture: ComponentFixture<NodePanelShellComponent>,
+            state: { isDirty: boolean; needsSave?: boolean }
+        ): ReturnType<typeof vi.fn> {
+            const onSaveClick = vi.fn();
+            fixture.componentInstance['panelInstanceSig'].set({
+                isDirty: signal(state.isDirty),
+                ...(state.needsSave === undefined ? {} : { needsSave: signal(state.needsSave) }),
+                isSaving: signal(false),
+                form: { invalid: false },
+                onSaveClick,
+            });
+            fixture.detectChanges();
+            return onSaveClick;
+        }
+
+        function saveButton(fixture: ComponentFixture<NodePanelShellComponent>): HTMLButtonElement | null {
+            return fixture.nativeElement.querySelector('.save-btn');
+        }
+
+        it('shows for a dirty panel and calls its onSaveClick', async () => {
+            const fixture = await mount(false);
+            const onSaveClick = withSavingPanel(fixture, { isDirty: true });
+
+            saveButton(fixture)!.click();
+
+            expect(onSaveClick).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows for a clean panel that says the node needs a save', async () => {
+            const fixture = await mount(false);
+            withSavingPanel(fixture, { isDirty: false, needsSave: true });
+
+            expect(saveButton(fixture)).not.toBeNull();
+        });
+
+        it('is hidden for a clean panel with nothing to save', async () => {
+            const fixture = await mount(false);
+            withSavingPanel(fixture, { isDirty: false, needsSave: false });
+
+            expect(saveButton(fixture)).toBeNull();
+        });
+
+        it('is hidden in a version preview even when the node needs a save', async () => {
+            const fixture = await mount(true);
+            withSavingPanel(fixture, { isDirty: true, needsSave: true });
+
+            expect(saveButton(fixture)).toBeNull();
+        });
+    });
+
     describe('editable', () => {
         it('keeps the form enabled and autosaves through the panel', async () => {
             const fixture = await mount(false);
@@ -122,6 +181,75 @@ describe('NodePanelShellComponent', () => {
             fixture.detectChanges();
 
             expect(onSave).toHaveBeenCalled();
+        });
+
+        // A panel may save part of an invalid node (e.g. a trigger's test payload) and warn itself.
+        it('on close emits whatever node the panel saves and reports invalid fields only when it saves none', async () => {
+            const fixture = await mount(false);
+            const shell = fixture.componentInstance;
+            const panel = panelOf(fixture);
+            const emitted: NodeModel[] = [];
+            shell.save.subscribe((node) => emitted.push(node));
+            const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+            panel.onOutputMapChange('{"changed": "value"}');
+            fixture.detectChanges();
+
+            vi.spyOn(panel, 'onSave').mockReturnValueOnce(endNode).mockReturnValueOnce(null);
+            shell['onCloseClick']();
+            expect(emitted).toEqual([endNode]);
+            expect(error).not.toHaveBeenCalled();
+
+            shell['onCloseClick']();
+            expect(emitted).toEqual([endNode]);
+            expect(error).toHaveBeenCalledWith("Changes weren't saved — this node has invalid fields.");
+        });
+
+        it('on close warns instead of failing when the node is invalid and only a payload edit was left out', async () => {
+            const fixture = await mount(false);
+            const shell = fixture.componentInstance;
+            const panel = panelOf(fixture);
+            const toast = TestBed.inject(ToastService);
+            const error = vi.spyOn(toast, 'error').mockImplementation(() => undefined);
+            const warning = vi.spyOn(toast, 'warning').mockImplementation(() => undefined);
+            panel.onOutputMapChange('{"changed": "value"}');
+            fixture.detectChanges();
+            vi.spyOn(panel, 'onSave').mockReturnValue(null);
+            vi.spyOn(panel, 'hasEditsLeftOut').mockReturnValue(true);
+
+            shell['onCloseClick']();
+
+            expect(warning).toHaveBeenCalledWith("Changes weren't saved — this node has invalid fields.");
+            expect(error).not.toHaveBeenCalled();
+        });
+
+        // Ctrl+S on an invalid form keeps the panel open with every edit, even when close would save part of it.
+        it('on Ctrl+S with an invalid form emits nothing and keeps the panel open', async () => {
+            const fixture = await mount(false);
+            const shell = fixture.componentInstance;
+            const panel = panelOf(fixture);
+            const emitted: NodeModel[] = [];
+            shell.save.subscribe((node) => emitted.push(node));
+            shell.autosave.subscribe((node) => emitted.push(node));
+            const sidePanel = TestBed.inject(SidePanelService);
+            panel.onOutputMapChange('{"changed": "value"}');
+            panel.form.addControl('required', new FormControl('', Validators.required));
+            fixture.detectChanges();
+            expect(panel.form.invalid).toBe(true);
+            // A panel with an edit it can save alone on close (e.g. a trigger's test payload).
+            const partialNode: EndNodeModel = { ...endNode, data: { output_map: { changed: 'value' } } };
+            const saveWhenFormInvalid = vi
+                .spyOn(panel as unknown as SavesWhenFormInvalid, 'saveWhenFormInvalid')
+                .mockReturnValue(partialNode);
+
+            shell['onShortcutSave']();
+
+            expect(emitted).toEqual([]);
+            expect(saveWhenFormInvalid).not.toHaveBeenCalled();
+            expect(sidePanel.selectedNodeId()).toBe(endNode.id);
+            expect(panel.isDirty()).toBe(true);
+
+            shell['onCloseClick']();
+            expect(emitted).toEqual([partialNode]);
         });
     });
 

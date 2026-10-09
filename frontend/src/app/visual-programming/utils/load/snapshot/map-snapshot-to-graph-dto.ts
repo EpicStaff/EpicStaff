@@ -113,12 +113,14 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         ...NOT_PERSISTED,
         webhook_trigger_path: '',
         webhook_trigger: node.webhook_trigger,
+        test_payload: node.test_payload ?? {},
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TelegramTriggerNode: (node, context) => ({
         ...node,
         ...NOT_PERSISTED,
         webhook_trigger: node.webhook_trigger,
+        test_payload: node.test_payload ?? {},
         telegram_bot_api_key_secret_id: resolveSecretIdByName(
             context.secretDeclarations?.telegram?.[String(node.id)],
             context.secretsByName

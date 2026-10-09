@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.db import IntegrityError, connection
+from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -616,12 +616,14 @@ def test_failed_decision_table_write_rolls_back_last_edit(
 ):
     duplicate_groups = _group_payload("a > 1") + _group_payload("a > 2")
 
-    with pytest.raises(IntegrityError):
-        colleague_client.patch(
-            reverse("decisiontablenode-detail", args=[decision_table.pk]),
-            {"node_name": "renamed", "condition_groups": duplicate_groups},
-            format="json",
-        )
+    response = colleague_client.patch(
+        reverse("decisiontablenode-detail", args=[decision_table.pk]),
+        {"node_name": "renamed", "condition_groups": duplicate_groups},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.json()["code"] == "IntegrityError"
 
     assert DecisionTableNode.objects.get(pk=decision_table.pk).node_name == "decide"
     last_edit = _last_edit_of(decision_table)

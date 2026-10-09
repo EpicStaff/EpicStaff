@@ -89,7 +89,7 @@ describe('TreeNodeComponent row menu "View Details"', () => {
 
     it.each<[string, BranchTreeNode]>([
         ['a group', { kind: 'group', id: 'agent:3:surfaces', label: 'Surfaces', children: [] }],
-        ['an agent document', { kind: 'agent-doc', agentId: 3, docType: 'boot', label: 'Boot', placeholder: true }],
+        ['an agent document', { kind: 'agent-doc', agentId: 3, instructionIndex: 0, label: 'Boot' }],
     ])('leaves %s row without a menu', (_description, node) => {
         const { host } = render(node, FULL_ACCESS);
 

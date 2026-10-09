@@ -246,6 +246,26 @@ describe('buildPreviewFlowModel', () => {
         expect(subgraph?.isBlocked).toBe(true);
         expect(byId(ID.agent).data).toMatchObject({ agent_definition: null });
     });
+
+    it('keeps trigger test payloads and defaults them to {} for versions saved without one', () => {
+        expect((byId(ID.webhook).data as { test_payload: unknown }).test_payload).toEqual({ id: '104' });
+
+        const legacy: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    test_payload: undefined,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+                exported('TelegramTriggerNode', { ...liveTelegram, test_payload: undefined }),
+            ],
+        };
+        const { flow: legacyFlow } = buildPreviewFlowModel(legacy, secretsByName, availableFlows);
+
+        for (const node of legacyFlow.nodes.filter((item) => item.type !== NodeType.START)) {
+            expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
+        }
+    });
 });
 
 describe('mapNodeAuthorshipToCanvas', () => {

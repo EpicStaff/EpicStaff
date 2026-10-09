@@ -50,8 +50,10 @@ def _request_in(org):
 
 @pytest.fixture
 def agent_definitions(acme, beta):
-    own = AgentDefinition.objects.create(org=acme, name="acme-agent", instructions="x")
-    foreign = AgentDefinition.objects.create(org=beta, name="beta-agent", instructions="x")
+    own = AgentDefinition.objects.create(org=acme, name="acme-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+    foreign = AgentDefinition.objects.create(
+        org=beta, name="beta-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+    )
     yield own, foreign
 
 

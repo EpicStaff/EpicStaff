@@ -156,6 +156,20 @@ class SurfaceValidator:
         yet), so only shared surfaces (`owner_agent=None`) may be attached.
         """
 
+        duplicates = SurfaceValidator._find_duplicate_ids(
+            [(item["surface"].pk, item["place"]) for item in items]
+        )
+
+        if duplicates:
+            raise SurfaceValidationError(
+                detail={
+                    "default_surfaces": [
+                        f"Surface {surface_id} is listed more than once for place '{place}'."
+                        for surface_id, place in sorted(duplicates)
+                    ]
+                }
+            )
+
         errors = []
 
         for item in items:

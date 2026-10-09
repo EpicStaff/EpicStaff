@@ -108,7 +108,7 @@ export class AuthService {
 
     confirmResetPassword(data: ConfirmResetPasswordRequest): Observable<ConfirmResetPasswordResponse> {
         return this.http
-            .post<ResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
+            .post<ConfirmResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
             .pipe(catchError((err) => throwError(() => err)));
     }
 

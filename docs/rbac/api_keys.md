@@ -89,6 +89,10 @@ Request:
   - **integer** → must be `1..3650`; anything else (float, bool, 0, out of
     range) is rejected.
 
+Creation locks the owner's user row and re-checks that the caller's JWT is
+still bound to the current password; a session whose password changed in the
+meantime gets `401` `password_changed` and no key is created.
+
 Response `201`:
 
 ```json
@@ -181,6 +185,33 @@ else, or belongs to the SYSTEM key returns:
 
 — the same 404 in every case, so a caller cannot use the error to probe
 which ids exist.
+
+---
+
+## Password set revokes every key
+
+Whenever a user's password is set — reset link
+(`POST /api/auth/password-reset/confirm/`), superadmin reset
+(`POST /api/auth/admin/password-reset/`), the `reset_password` CLI, or the
+self-service change (`POST /api/profile/password-change/confirm/`) — **all
+of that user's non-revoked `USER` keys are revoked** (`revoked_at` set to
+now), in the same transaction as the password write. Already-expired keys
+are revoked too, so their `status` becomes `"revoked"`. Keys of other users
+and the `SYSTEM` key are untouched.
+
+This covers keys that exist when the password is set: a key minted with a
+stolen password — possibly non-expiring — would otherwise keep working after
+the real owner resets it. Rows are kept, so the owner sees the revoked keys
+in their list and creates new ones as needed.
+
+No session survives to mint a replacement: every JWT is bound to the
+password it was issued under, so access and refresh tokens from before the
+password set are rejected from the moment it commits (see
+[password_recovery.md](password_recovery.md) → Security invariants). Creating
+a new key needs a fresh login with the new password. The one exception is the
+self-service change: its confirm step returns a fresh token pair minted under
+the new password, so the caller who made the change stays logged in and can
+create keys with it.
 
 ---
 

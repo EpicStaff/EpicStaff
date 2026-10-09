@@ -61,7 +61,9 @@ def test_combined_node_surface_reads_no_authorship(task_node, acme, admin_acme, 
 @pytest.mark.django_db
 def test_realtime_surface_resolution_reads_no_authorship(acme, admin_acme, member_only):
     agent_definition = AgentDefinition.objects.create(
-        org=acme, name="realtime-authorship-agent", instructions="talk"
+        org=acme,
+        name="realtime-authorship-agent",
+        instruction_list=[{"name": "Instruction_1.md", "content": "talk"}],
     )
     for surface in _authored_surfaces(acme, [admin_acme, member_only], 2, "realtime-surface"):
         AgentDefaultSurface.objects.create(

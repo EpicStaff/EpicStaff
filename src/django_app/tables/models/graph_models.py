@@ -18,6 +18,7 @@ from tables.models.base_models import (
     GraphAuthorModel,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TestPayloadMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -381,6 +382,9 @@ class GraphSessionMessage(models.Model):
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
+    # The emitting node's BaseNode.TYPE (e.g. "AGENT"); empty when the emitter is not a
+    # BaseNode and on rows saved before this field existed.
+    node_type = models.CharField(default="", blank=True)
     uuid = models.UUIDField(null=False, editable=False, unique=True)
     parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)
 
@@ -601,7 +605,9 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(
+    GraphAuthorModel, BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields
+):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -632,6 +638,7 @@ class WebhookTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Soft
             "metadata",
             "created_by",
             "python_code",
+            "test_payload",
         ]
 
         data = {
@@ -647,7 +654,9 @@ class WebhookTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Soft
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(
+    GraphAuthorModel, BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields
+):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -679,6 +688,7 @@ class TelegramTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Sof
             "content_hash",
             "metadata",
             "created_by",
+            "test_payload",
         ]
         data = {
             f.name: str(getattr(self, f.attname))

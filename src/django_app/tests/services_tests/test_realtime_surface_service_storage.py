@@ -33,7 +33,7 @@ def agent_definition(db, org):
     return AgentDefinition.objects.create(
         org=org,
         name="realtime-surface-storage-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 

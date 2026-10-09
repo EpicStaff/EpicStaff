@@ -42,6 +42,7 @@ from tables.models import (
     StartNode,
     WebhookTrigger,
 )
+from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool, PythonCodeToolConfig
@@ -196,8 +197,14 @@ def _agent_definition(org, author, provider):
         org=org,
         name="imported-agent-definition",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         created_by=author,
+    )
+
+
+def _audit_filter_preset(org, author, provider):
+    return AuditFilterPreset.objects.create(
+        org=org, created_by=author, name="imported-audit-filter-preset", filter_body={}
     )
 
 
@@ -226,6 +233,7 @@ SOURCE_FACTORIES: dict[EntityType, SourceFactory] = {
     EntityType.LABEL: _label,
     EntityType.AGENT_DEFINITION: _agent_definition,
     EntityType.SURFACE: _surface,
+    EntityType.AUDIT_FILTER_PRESET: _audit_filter_preset,
 }
 
 

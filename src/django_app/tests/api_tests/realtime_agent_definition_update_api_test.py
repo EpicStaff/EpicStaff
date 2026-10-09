@@ -33,7 +33,7 @@ def agent_definition(default_org, llm_config):
         org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
 
@@ -120,3 +120,51 @@ def test_patch_with_mismatched_agent_definition_rejected(
     assert not RealtimeAgentDefinition.objects.filter(
         agent_definition=other_agent_definition
     ).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("language", ["EN", "eng", "e", "e1"])
+def test_patch_rejects_non_iso_639_1_language(auth_client, rt_agent_definition, language):
+    url = reverse("realtimeagentdefinition-detail", args=[rt_agent_definition.pk])
+
+    resp = auth_client.patch(url, {"language": language}, format="json")
+
+    assert resp.status_code == 400, resp.data
+    assert "language" in resp.data["message"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("language,stored", [("en", "en"), (None, None), ("", None)])
+def test_patch_accepts_iso_639_1_language_and_stores_blank_as_null(
+    auth_client, rt_agent_definition, language, stored
+):
+    RealtimeAgentDefinition.objects.filter(pk=rt_agent_definition.pk).update(language="de")
+    url = reverse("realtimeagentdefinition-detail", args=[rt_agent_definition.pk])
+
+    resp = auth_client.patch(url, {"language": language}, format="json")
+
+    assert resp.status_code == 200, resp.data
+    rt_agent_definition.refresh_from_db()
+    assert rt_agent_definition.language == stored
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("voice,status_code", [("", 200), ("v" * 100, 200), ("v" * 101, 400)])
+def test_patch_voice_length_bounds(auth_client, rt_agent_definition, voice, status_code):
+    url = reverse("realtimeagentdefinition-detail", args=[rt_agent_definition.pk])
+
+    resp = auth_client.patch(url, {"voice": voice}, format="json")
+
+    assert resp.status_code == status_code, resp.data
+    if status_code == 400:
+        assert "voice" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_realtime_agent_write_serializer_rejects_voice_over_100_characters():
+    from tables.serializers.model_serializers import RealtimeAgentWriteSerializer
+
+    serializer = RealtimeAgentWriteSerializer(data={"voice": "v" * 101}, partial=True)
+
+    assert not serializer.is_valid()
+    assert "voice" in serializer.errors

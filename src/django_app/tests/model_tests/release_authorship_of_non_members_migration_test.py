@@ -107,7 +107,10 @@ def test_clears_the_author_who_is_not_a_member_of_the_rows_org(acme, acme_flow, 
     flow = Graph.objects.create(name="outsider-flow", org=acme, created_by=outsider)
     node = AgentNode.objects.create(graph=acme_flow, node_name="agent", created_by=outsider)
     agent = AgentDefinition.objects.create(
-        org=acme, name="outsider-agent", instructions="x", created_by=outsider
+        org=acme,
+        name="outsider-agent",
+        instruction_list=[{"name": "Instruction_1.md", "content": "x"}],
+        created_by=outsider,
     )
     soft_deleted_flow = Graph.objects.create(
         name="deleted-outsider-flow",

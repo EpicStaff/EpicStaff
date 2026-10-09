@@ -1,10 +1,11 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { FlowModel } from '../../core/models/flow.model';
 import { SubGraphNode } from '../../core/models/subgraph-node.model';
 import { buildFlowModelFromGraphDto } from './build-flow-model-from-graph-dto';
 
-function subgraphNode(id: number, subgraph: number): SubGraphNode {
+function subgraphNode(id: number, subgraph: number | null): SubGraphNode {
     return {
         id,
         created_at: '2026-01-01T00:00:00Z',
@@ -33,17 +34,53 @@ describe('buildFlowModelFromGraphDto', () => {
         expect(startNodes[0].backendId).toBeNull();
     });
 
-    it('flags a subgraph node whose flow is not available and keeps an available one unblocked', () => {
+    function blockedByBackendId(flow: FlowModel): Map<number | null, boolean | undefined> {
+        return new Map(
+            flow.nodes.filter((node) => node.type === NodeType.SUBGRAPH).map((node) => [node.backendId, node.isBlocked])
+        );
+    }
+
+    it('keeps a subgraph node with a target id unblocked when no flows list is given', () => {
+        const flow = buildFlowModelFromGraphDto(
+            graph({ subgraph_node_list: [subgraphNode(10, 42), subgraphNode(11, 99)] })
+        );
+
+        const blocked = blockedByBackendId(flow);
+        expect(blocked.get(10)).toBe(false);
+        expect(blocked.get(11)).toBe(false);
+    });
+
+    it('flags a subgraph node whose target id is null, with or without a flows list', () => {
+        const subgraphNodes = [subgraphNode(10, null), subgraphNode(11, 42)];
+
+        const withoutList = blockedByBackendId(
+            buildFlowModelFromGraphDto(graph({ subgraph_node_list: subgraphNodes }))
+        );
+        const withList = blockedByBackendId(
+            buildFlowModelFromGraphDto(graph({ subgraph_node_list: subgraphNodes }), [{ id: 42 }])
+        );
+
+        expect(withoutList.get(10)).toBe(true);
+        expect(withoutList.get(11)).toBe(false);
+        expect(withList.get(10)).toBe(true);
+        expect(withList.get(11)).toBe(false);
+    });
+
+    it('flags a subgraph node whose target id is not in the given flows list', () => {
         const flow = buildFlowModelFromGraphDto(
             graph({ subgraph_node_list: [subgraphNode(10, 42), subgraphNode(11, 99)] }),
             [{ id: 42 }]
         );
 
-        const blockedByBackendId = new Map(
-            flow.nodes.filter((node) => node.type === NodeType.SUBGRAPH).map((node) => [node.backendId, node.isBlocked])
-        );
-        expect(blockedByBackendId.get(10)).toBe(false);
-        expect(blockedByBackendId.get(11)).toBe(true);
+        const blocked = blockedByBackendId(flow);
+        expect(blocked.get(10)).toBe(false);
+        expect(blocked.get(11)).toBe(true);
+    });
+
+    it('treats an empty flows list as "nothing available"', () => {
+        const flow = buildFlowModelFromGraphDto(graph({ subgraph_node_list: [subgraphNode(10, 42)] }), []);
+
+        expect(blockedByBackendId(flow).get(10)).toBe(true);
     });
 
     it('fills in ports for every node', () => {

@@ -701,8 +701,8 @@ class TestRealtimeChannelLookupByToken:
         member can mint one via POST /api/profile/api-keys/) must NOT be able
         to use this org-bypass path, even for their own org's channel.
         IsSystemApiKeyAuthenticated requires key_type=SYSTEM specifically —
-        the generic IsApiKeyAuthenticated (system OR user) is not enough here,
-        since this action performs no org filter of its own."""
+        admitting any API key (system OR user) is not enough here, since this
+        action performs no org filter of its own."""
         raw_key, _key = user_api_key
         rc = _make_realtime_channel(db, default_org)
         api_client.credentials(HTTP_X_API_KEY=raw_key)

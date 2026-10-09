@@ -1,4 +1,5 @@
 import { ConfirmationDialogData } from '@shared/components';
+import { escapeHtml } from '@shared/utils';
 
 export type SurfaceBundleClearKind = 'tools' | 'collections' | 'files';
 
@@ -6,7 +7,7 @@ export function buildClearSurfaceBundleDialog(
     kind: SurfaceBundleClearKind,
     surfaceName?: string | null
 ): ConfirmationDialogData {
-    const surface = surfaceName?.trim() ? `<strong>${surfaceName.trim()}</strong>` : 'this surface';
+    const surface = surfaceName?.trim() ? `<strong>${escapeHtml(surfaceName.trim())}</strong>` : 'this surface';
 
     if (kind === 'tools') {
         return {

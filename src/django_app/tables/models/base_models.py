@@ -268,6 +268,18 @@ class MetadataMixin(models.Model):
         abstract = True
 
 
+class TestPayloadMixin(models.Model):
+    """Designer-authored request body for editor test runs. Stays in Django; never sent to crew."""
+
+    # The `Test*` name would make pytest try to collect it wherever a test module imports it.
+    __test__ = False
+
+    test_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        abstract = True
+
+
 class ContentHashMixin(models.Model):
     class Meta:
         abstract = True

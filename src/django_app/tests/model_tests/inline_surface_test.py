@@ -766,3 +766,32 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
         api_storage_file.pk
     }
     assert {k["collection"] for k in combined["knowledge"]} == {naive_collection.pk}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"max_context_tokens": 2_000_001},
+        {"text_unit_prop": 0.6, "community_prop": 0.5},
+        {"prompt": "p" * 10_001},
+    ],
+)
+def test_reject_out_of_range_inline_knowledge_config(client, api_graph, graph_collection, config):
+    response = client.post(
+        "/api/tasknodes/",
+        {
+            "graph": api_graph.pk,
+            "node_name": "inline-out-of-range",
+            "inline_surface": {
+                "knowledge": [
+                    {"collection": graph_collection.pk, "graph_local_search_config": config}
+                ]
+            },
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "inline_surface" in response.data["message"]
+    assert not TaskNode.objects.filter(node_name="inline-out-of-range").exists()

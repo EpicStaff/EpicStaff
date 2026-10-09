@@ -12,6 +12,8 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     metadata: Record<string, unknown>;
     /** Id of the referenced webhook trigger — the graph API and the version snapshot both send a bare id. */
     webhook_trigger: number | null;
+    /** Payload used by "Run with test payload"; a JSON object, `{}` when unset. */
+    test_payload: Record<string, unknown>;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -24,4 +26,5 @@ export interface CreateWebhookTriggerNodeRequest {
     metadata?: Record<string, unknown>;
     /** Bulk save accepts only the id of an existing trigger; triggers are created through `/webhook-triggers/`. */
     webhook_trigger: number | null;
+    test_payload: Record<string, unknown>;
 }

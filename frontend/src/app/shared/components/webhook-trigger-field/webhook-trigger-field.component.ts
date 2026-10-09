@@ -89,6 +89,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     mode = signal<Mode>('new');
     providerType = signal<WebhookProviderType | null>(null);
     authKindValue = signal<WebhookTriggerAuthKind | null>(null);
+    protected readonly authSecretIdValue = signal<number | null>(null);
     triggers = signal<WebhookTriggerModel[]>([]);
     private triggersLoaded = signal(false);
     selectedExistingId = signal<number | null>(null);
@@ -109,11 +110,47 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     );
     readonly regionItems = WEBHOOK_REGION_ITEMS;
     // Localhost can only use the Webhook Node auth strategy — hide the rest to prevent invalid combos.
-    authKindItems = computed<SelectItem[]>(() =>
-        this.providerType() === 'localhost'
-            ? WEBHOOK_AUTH_KIND_ITEMS.filter((i) => i.value === 'webhook')
-            : WEBHOOK_AUTH_KIND_ITEMS
+    authKindItems = computed<SelectItem[]>(() => {
+        const items =
+            this.providerType() === 'localhost'
+                ? WEBHOOK_AUTH_KIND_ITEMS.filter((i) => i.value === 'webhook')
+                : WEBHOOK_AUTH_KIND_ITEMS;
+        const selected = this.authKindValue();
+        // Keep a loaded kind visible even if the provider filter excludes it, so the select never looks empty
+        // or silently drops the trigger's current configuration.
+        if (selected != null && !items.some((i) => i.value === selected)) {
+            const known = WEBHOOK_AUTH_KIND_ITEMS.find((i) => i.value === selected);
+            return [known ?? { name: selected, value: selected }, ...items];
+        }
+        return items;
+    });
+    /** The backend refuses to change the kind of an existing auth, so the strategy is fixed once one is set. */
+    protected readonly authKindLocked = computed<boolean>(() => this.existingAuth() != null);
+    protected readonly authKindProviderConflict = computed<boolean>(() =>
+        this.hasAuthKindProviderConflict(this.providerType())
     );
+    /** Masked current secret of an existing trigger (`null` when it has none). Short secrets have an empty tail. */
+    protected readonly existingSecretMask = computed<string | null>(() => {
+        const tail = this.existingAuth()?.secret_tail;
+        if (tail == null) return null;
+        return tail ? `****${tail}` : '********';
+    });
+    // Keep the trigger's current secret selectable even when it is missing from the secrets list
+    // (e.g. no Secrets read permission), so the pre-selected value still renders instead of looking empty.
+    protected readonly authSecretItems = computed<SelectItem[]>(() => {
+        const items = this.secretItems();
+        const currentSecretId = this.existingAuth()?.secret_id ?? null;
+        if (currentSecretId == null || items.some((i) => i.value === currentSecretId)) return items;
+        return [
+            { name: `Current secret (${this.existingSecretMask() ?? 'unknown'})`, value: currentSecretId },
+            ...items,
+        ];
+    });
+    // An older backend sends no secret_id, so the select starts empty; leaving it empty keeps the current secret.
+    protected readonly authSecretPlaceholder = computed<string>(() => {
+        const mask = this.existingSecretMask();
+        return mask ? `Keep current secret (${mask})` : 'Select a secret';
+    });
     readonly modeItems: SelectItem[] = [
         { name: 'Create new', value: 'new' },
         { name: 'Use existing', value: 'existing' },
@@ -167,17 +204,24 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.form.controls.provider_type.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((pt) => {
             const provider = (pt as WebhookProviderType | null) ?? null;
             this.applyProviderValidators(provider);
-            // Localhost only allows the 'webhook' auth kind — drop any stale non-allowed selection.
-            if (provider === 'localhost' && this.form.controls.auth_kind.value !== 'webhook') {
+            // Localhost only allows the 'webhook' auth kind — drop a stale non-allowed choice on a new auth.
+            // A locked (existing) kind is never cleared; validate() reports the conflict instead.
+            if (
+                provider === 'localhost' &&
+                !this.authKindLocked() &&
+                this.form.controls.auth_kind.value !== 'webhook'
+            ) {
                 this.form.controls.auth_kind.setValue(null);
             }
         });
+        // Only reachable for a new auth: an existing kind is locked in the template.
         this.form.controls.auth_kind.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.form.controls.auth_secret_id.setValue(null, { emitEvent: false });
         });
         this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.providerType.set((this.form.value.provider_type as WebhookProviderType | null) ?? null);
             this.authKindValue.set((this.form.value.auth_kind as WebhookTriggerAuthKind | null) ?? null);
+            this.authSecretIdValue.set(this.form.value.auth_secret_id ?? null);
             if (this.mode() === 'new') this.emit();
         });
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -211,10 +255,6 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrokToken.updateValueAndValidity({ emitEvent: false });
         localhostName.updateValueAndValidity({ emitEvent: false });
         this.onValidatorChange();
-    }
-
-    authKindLabel(kind: WebhookTriggerAuthKind): string {
-        return this.authKindItems().find((i) => i.value === kind)?.name ?? kind;
     }
 
     private triggerName(t: WebhookTriggerModel): string {
@@ -310,15 +350,22 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             };
         }
 
-        // Existing trigger: only send a key if the user changed it this session.
-        const payload: Pick<WebhookTriggerModel, 'auth_kind' | 'auth_secret_id'> = {};
-        if (authKind != null && authKind !== existing.kind) {
-            payload.auth_kind = authKind;
+        // Existing auth: the kind is locked (never sent); send the secret only when it was replaced.
+        // The current secret is pre-selected, so re-sending it unchanged would be a needless write.
+        if (existing.kind !== 'twilio' && authSecretId != null && authSecretId !== (existing.secret_id ?? null)) {
+            return { auth_secret_id: authSecretId };
         }
-        if (authKind !== 'twilio' && authSecretId != null) {
-            payload.auth_secret_id = authSecretId;
-        }
-        return payload;
+        return {};
+    }
+
+    /**
+     * The backend refuses Telegram/Twilio auth on a Localhost trigger. A new auth can only pick Webhook Node
+     * there, but an existing kind is locked, so switching its provider to Localhost must be blocked here
+     * instead of failing on save.
+     */
+    private hasAuthKindProviderConflict(provider: WebhookProviderType | null): boolean {
+        const existingKind = this.existingAuth()?.kind;
+        return this.showAuth() && provider === 'localhost' && existingKind != null && existingKind !== 'webhook';
     }
 
     private resolvedModel(value: WebhookTriggerWrite | null): WebhookTriggerModel | null {
@@ -338,7 +385,14 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         if (value && typeof value === 'object') {
             this.mode.set('new');
             this.editingId = value.id;
-            this.existingAuth.set(value.auth ?? null);
+            const existingAuth = value.auth ?? null;
+            this.existingAuth.set(existingAuth);
+            const existingKind = existingAuth?.kind ?? null;
+            // Only webhook/telegram carry a user-chosen secret; an older backend may omit secret_id (stays empty).
+            const existingSecretId =
+                existingKind === 'webhook' || existingKind === 'telegram' ? (existingAuth?.secret_id ?? null) : null;
+            // emitEvent: false — loading the current auth must not trigger the auth_kind → secret reset
+            // or the localhost provider clean-up.
             this.form.patchValue(
                 {
                     path: value.path ?? '',
@@ -348,13 +402,14 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                     ngrok_domain: value.ngrok_config?.domain ?? '',
                     ngrok_region: value.ngrok_config?.region ?? 'eu',
                     localhost_name: value.localhost_config?.name ?? '',
-                    auth_kind: null,
-                    auth_secret_id: null,
+                    auth_kind: existingKind,
+                    auth_secret_id: existingSecretId,
                 },
                 { emitEvent: false }
             );
             this.providerType.set(value.provider_type ?? null);
-            this.authKindValue.set(null);
+            this.authKindValue.set(existingKind);
+            this.authSecretIdValue.set(existingSecretId);
             this.applyProviderValidators(value.provider_type ?? null);
             return;
         }
@@ -364,6 +419,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.form.reset({ provider_type: null, ngrok_region: 'eu' }, { emitEvent: false });
         this.providerType.set(null);
         this.authKindValue.set(null);
+        this.authSecretIdValue.set(null);
         this.applyProviderValidators(null);
     }
 
@@ -392,6 +448,10 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             if ((this.pathRequired() || path) && !provider) {
                 return { providerRequired: true };
             }
+            // Checked before the provider's own fields so the blocking reason shows as soon as Localhost is picked.
+            if (this.hasAuthKindProviderConflict(provider)) {
+                return { authKindIncompatibleWithProvider: true };
+            }
             if (provider === 'ngrok') {
                 if (!(this.form.value.ngrok_name ?? '').trim()) return { ngrokNameRequired: true };
                 if (this.form.value.ngrok_auth_token_secret_id == null) return { ngrokAuthTokenRequired: true };
@@ -399,8 +459,9 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             if (provider === 'localhost') {
                 if (!(this.form.value.localhost_name ?? '').trim()) return { localhostNameRequired: true };
             }
-            // auth_kind is required when the auth section is visible and there's no existing auth to preserve.
-            if (this.showAuth() && !this.existingAuth() && !this.form.value.auth_kind) {
+            // An existing kind is pre-filled and locked, so an empty auth_kind means no auth yet, or a new choice
+            // was dropped by switching to Localhost — the user must choose either way.
+            if (this.showAuth() && !this.form.value.auth_kind) {
                 return { authKindRequired: true };
             }
         }

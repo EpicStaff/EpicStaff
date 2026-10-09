@@ -120,12 +120,16 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     input_map: Record<string, unknown>;
     output_variable_path: string | null;
     python_code: SnapshotPythonCode;
+    /** Absent in versions saved before test payloads existed. */
+    test_payload?: Record<string, unknown>;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {
     /** The trigger's id (the live API nests the object); null when the backend nulled it. */
     webhook_trigger: number | null;
     fields: TelegramTriggerNodeField[];
+    /** Absent in versions saved before test payloads existed. */
+    test_payload?: Record<string, unknown>;
 }
 
 export interface SnapshotScheduleTriggerNode extends SnapshotNodeBase<'ScheduleTriggerNode'> {

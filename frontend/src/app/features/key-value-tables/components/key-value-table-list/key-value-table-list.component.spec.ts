@@ -58,6 +58,15 @@ function menuItem(overlay: HTMLElement, label: string): HTMLButtonElement {
     return menuItems(overlay).find((item) => item.textContent?.trim() === label)!;
 }
 
+describe('KeyValueTableListComponent card', () => {
+    it('shows a database icon, the name and the entry count', () => {
+        const card = renderList(false, false).element.querySelector('.table-list__select')!;
+        expect(card.querySelector('app-svg-icon[icon="database"]')).not.toBeNull();
+        expect(card.querySelector('.table-list__name')?.textContent?.trim()).toBe('profiles');
+        expect(card.querySelector('.table-list__count')?.textContent?.trim()).toBe('3 entries');
+    });
+});
+
 /** CDK menus read the legacy `keyCode`, which a synthetic `KeyboardEvent` cannot be constructed with. */
 function pressKey(target: HTMLElement, key: string, keyCode: number): void {
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
