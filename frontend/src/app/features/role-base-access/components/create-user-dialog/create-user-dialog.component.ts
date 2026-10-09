@@ -13,6 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 import { FullMembership, Organization } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 import { catchError, concat, forkJoin, map, Observable, of, switchMap, toArray } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -113,9 +114,12 @@ export class CreateUserDialogComponent implements OnInit {
     }
 
     private confirmGrantSuperadmin(user: AggregatedUser): Observable<boolean> {
-        const label = user.displayName || user.email;
+        const label = escapeHtml(user.displayName || user.email);
         const rolesList = user.memberships
-            .map((m) => `<strong>${m.role.name}</strong> in <strong>${m.organization.name}</strong>`)
+            .map(
+                (m) =>
+                    `<strong>${escapeHtml(m.role.name)}</strong> in <strong>${escapeHtml(m.organization.name)}</strong>`
+            )
             .join(', ');
         return this.confirmation
             .confirm({
