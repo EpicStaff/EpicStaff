@@ -28,6 +28,7 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../../../services/recycle-bin';
 import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
@@ -70,6 +71,7 @@ export class ToolsListComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     private readonly port = inject<ToolsListPort<Tool>>(TOOLS_LIST_PORT);
@@ -293,6 +295,7 @@ export class ToolsListComponent implements OnInit {
                         bulkDelete: (ids) => this.port.bulkDelete(ids),
                         entityLabel: this.port.entityLabel,
                         entityLabelPlural: this.port.entityLabelPlural,
+                        retentionDays: this.recycleBinSettings.retentionDays(),
                         onError: () => this.loadTools(),
                     }
                 );
@@ -560,6 +563,7 @@ export class ToolsListComponent implements OnInit {
                     const agentSurfaceCount = usage?.agent_surface_count ?? 0;
                     const sharedSurfaceCount = usage?.shared_surface_count ?? 0;
                     const inlineSurfaceCount = usage?.inline_surface_count ?? 0;
+                    const retentionDays = this.recycleBinSettings.retentionDays();
                     const confirm$ =
                         agentSurfaceCount + sharedSurfaceCount + inlineSurfaceCount > 0
                             ? this.confirmationDialogService.confirm(
@@ -567,10 +571,11 @@ export class ToolsListComponent implements OnInit {
                                       tool.name,
                                       agentSurfaceCount,
                                       sharedSurfaceCount,
-                                      inlineSurfaceCount
+                                      inlineSurfaceCount,
+                                      retentionDays
                                   )
                               )
-                            : this.confirmationDialogService.confirmDelete(tool.name);
+                            : this.confirmationDialogService.confirmMoveToRecycleBin(tool.name, retentionDays);
                     confirm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
                         if (result !== true) return;
                         this.performSingleDelete(tool);
@@ -629,7 +634,7 @@ export class ToolsListComponent implements OnInit {
                         bulkDelete: (deleteIds) => this.port.bulkDelete(deleteIds),
                         entityLabel: this.port.entityLabel,
                         scopeLabel: 'selected',
-                        dialogData: buildBulkSelectedDeleteDialog(tools),
+                        dialogData: buildBulkSelectedDeleteDialog(tools, this.recycleBinSettings.retentionDays()),
                         onError: () => this.loadTools(),
                     });
                 },

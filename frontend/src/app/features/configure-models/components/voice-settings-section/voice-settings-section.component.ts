@@ -13,6 +13,7 @@ import { RealtimeChannelService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
 import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
 import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
 import {
@@ -34,6 +35,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
 
@@ -105,7 +107,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
 
     onDeleteChannel(channel: RealtimeChannel): void {
         this.confirmationDialogService
-            .confirmDelete(channel.name)
+            .confirmMoveToRecycleBin(channel.name, this.recycleBinSettings.retentionDays())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result === true) {

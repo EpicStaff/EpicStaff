@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
@@ -9,6 +10,7 @@ import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import { KeyValueTableDialogComponent } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
 import { KeyValueTable, KeyValueTableUsage } from '../../models/key-value-table.model';
@@ -37,6 +39,7 @@ describe('KeyValueTablesPageComponent key search', () => {
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => false } },
+                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
                 {
                     provide: KeyValueTablesApiService,
                     useValue: {
@@ -78,6 +81,7 @@ describe('KeyValueTablesPageComponent create table', () => {
                     provide: PermissionsService,
                     useValue: { can: (_: string, action: ActionCode) => canCreate && action === ActionCode.Create },
                 },
+                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
                 { provide: Dialog, useValue: { open: dialogOpen } },
                 {
                     provide: KeyValueTablesApiService,
@@ -134,12 +138,13 @@ describe('KeyValueTablesPageComponent delete table', () => {
         };
         const confirmation = {
             confirm: vi.fn<ConfirmationDialogService['confirm']>(() => of(confirmed)),
-            confirmDelete: vi.fn<ConfirmationDialogService['confirmDelete']>(() => of(confirmed)),
+            confirmMoveToRecycleBin: vi.fn<ConfirmationDialogService['confirmMoveToRecycleBin']>(() => of(confirmed)),
         };
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => true } },
+                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
                 { provide: KeyValueTablesApiService, useValue: api },
                 { provide: ConfirmationDialogService, useValue: confirmation },
             ],
@@ -174,6 +179,9 @@ describe('KeyValueTablesPageComponent delete table', () => {
             'This table is used by 1 Key-Value node in 1 flow. Deleting it removes the table from that node. ' +
                 'That node will need a new table before its flow can run.'
         );
+        expect(message()).toContain('It moves to the recycle bin, where you can restore it for 7 days.');
+        expect(message()).toContain("Restoring it won't add it back to those nodes.");
+        expect(message()).not.toContain('cannot be undone');
         expect(api.deleteTable).toHaveBeenCalledWith(1);
         expect(toastSuccess).toHaveBeenCalledWith('Table "profiles" deleted');
         expect(triggerRefresh).toHaveBeenCalledOnce();
@@ -197,10 +205,10 @@ describe('KeyValueTablesPageComponent delete table', () => {
         );
     });
 
-    it('shows the normal delete confirmation when no node uses the table', () => {
+    it('says an unused table moves to the recycle bin', () => {
         const { api, confirmation } = renderPage(of({ node_count: 0, flow_count: 0 }));
 
-        expect(confirmation.confirmDelete).toHaveBeenCalledWith('profiles');
+        expect(confirmation.confirmMoveToRecycleBin).toHaveBeenCalledWith('profiles', 7);
         expect(confirmation.confirm).not.toHaveBeenCalled();
         expect(api.deleteTable).toHaveBeenCalledWith(1);
     });

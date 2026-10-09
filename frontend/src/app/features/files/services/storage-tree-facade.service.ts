@@ -2,11 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
-import { downloadBlob } from '@shared/utils';
+import { downloadBlob, recycleBinNotice } from '@shared/utils';
 import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../services/recycle-bin';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,
@@ -44,6 +45,7 @@ export class StorageTreeFacade {
     private storageUploadService = inject(StorageUploadService);
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
@@ -763,6 +765,7 @@ export class StorageTreeFacade {
         } else {
             message = `Are you sure you want to delete ${this.formatCount(folderCount, 'folder', 'folders')}?`;
         }
+        message += ` ${recycleBinNotice(this.recycleBinSettings.retentionDays(), items.length)}`;
 
         return this.confirmationDialogService.confirm({
             title,
