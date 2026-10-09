@@ -115,30 +115,30 @@ class BuiltInToolModificationError(CustomAPIExeption):
 class NotInRecycleBinError(CustomAPIExeption):
     """The row isn't in the recycle bin (it's live, or was binned before batches existed)."""
 
-    def __init__(self, detail="Not found in the recycle bin.", code="not_in_recycle_bin"):
-        super().__init__(detail=detail, code=code, status_code=404)
+    status_code = 404
+    # The exception handler renders the class's default_code, not a per-instance code.
+    default_code = "not_in_recycle_bin"
+    default_detail = "Not found in the recycle bin."
 
 
-class OwnerInRecycleBinError(CustomAPIExeption):
-    """The row's owner is in the recycle bin, so the row can't come back on its own."""
+class RestoreConflictError(CustomAPIExeption):
+    """A restore picked a free name or number, and something else took it before the restore committed."""
 
-    def __init__(
-        self,
-        detail="Restore its owner first; it is in the recycle bin.",
-        code="owner_in_recycle_bin",
-    ):
-        super().__init__(detail=detail, code=code, status_code=409)
+    status_code = 409
+    default_code = "restore_conflict"
+    default_detail = "Something else just took this item's name. Try the restore again."
 
 
 class StorageRestoreConflictError(CustomAPIExeption):
     """An object nobody indexed already sits where a restored storage item would go."""
 
+    status_code = 409
+    default_code = "storage_restore_conflict"
+
     def __init__(self, path: str):
         super().__init__(
             detail=f"Can't restore to '{path}': storage already holds a file there that isn't listed. "
-            "Ask an administrator to re-index storage, then try again.",
-            code="storage_restore_conflict",
-            status_code=409,
+            "Ask an administrator to re-index storage, then try again."
         )
 
 

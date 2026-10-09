@@ -4,7 +4,6 @@ import pytest
 
 from rbac.models import Organization
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface, SurfacePythonTool, ToolMode
-from tables.exceptions import OwnerInRecycleBinError
 from tables.models import AgentNode, TaskNode
 from tables.models.realtime_models import RealtimeAgentDefinition
 from tables.services.recycle_bin.restore_service import RestoreService
@@ -102,29 +101,64 @@ class TestAgentRestore:
 
 
 @pytest.mark.django_db
-class TestOwnedSurfaceNeedsItsAgentFirst:
-    """A surface owned by a binned agent can't come back on its own: it would
-    point at a binned agent, and purging that agent would delete it for good."""
+class TestOwnedSurfaceRestoredOnItsOwn:
+    """Restoring an agent brings its own surface back as its own. Restoring the
+    surface by itself while the agent is in the bin brings it back shared."""
 
-    def test_surface_binned_with_its_agent_cannot_be_restored_alone(self, default_org, python_code_tool):
-        agent, owned = _agent_with_owned_things(default_org, python_code_tool)
+    def test_the_surface_comes_back_shared_with_its_contents_and_the_agent_stays_binned(
+        self, default_org, python_code_tool
+    ):
+        agent, (surface, tool_link, default_link, realtime) = _agent_with_owned_things(default_org, python_code_tool)
         agent.delete()
 
-        with pytest.raises(OwnerInRecycleBinError):
-            RestoreService.restore(Surface.all_objects.get(pk=owned[0].pk))
+        RestoreService.restore(Surface.all_objects.get(pk=surface.pk))
 
+        restored = Surface.objects.get(pk=surface.pk)
+        assert restored.owner_agent_id is None
+        assert SurfacePythonTool.objects.filter(pk=tool_link.pk).exists()
         assert AgentDefinition.deleted_objects.filter(pk=agent.pk).exists()
+        # The agent's own rows stay with it in the bin.
+        assert AgentDefaultSurface.deleted_objects.filter(pk=default_link.pk).exists()
+        assert RealtimeAgentDefinition.deleted_objects.filter(pk=realtime.pk).exists()
 
-    def test_surface_binned_before_its_agent_cannot_be_restored_while_the_agent_is_binned(self, default_org):
+    def test_restoring_the_agent_afterwards_links_it_to_the_shared_surface(self, default_org, python_code_tool):
+        agent, (surface, _, default_link, _) = _agent_with_owned_things(default_org, python_code_tool)
+        agent.delete()
+        RestoreService.restore(Surface.all_objects.get(pk=surface.pk))
+
+        RestoreService.restore(AgentDefinition.all_objects.get(pk=agent.pk))
+
+        assert AgentDefinition.objects.filter(pk=agent.pk).exists()
+        assert AgentDefaultSurface.objects.get(pk=default_link.pk).surface_id == surface.pk
+        assert Surface.objects.get(pk=surface.pk).owner_agent_id is None
+
+    def test_restoring_the_agent_first_keeps_the_surface_its_own(self, default_org, python_code_tool):
+        agent, (surface, *_) = _agent_with_owned_things(default_org, python_code_tool)
+        agent.delete()
+
+        RestoreService.restore(AgentDefinition.all_objects.get(pk=agent.pk))
+
+        assert Surface.objects.get(pk=surface.pk).owner_agent_id == agent.pk
+
+    def test_a_surface_deleted_before_its_agent_also_comes_back_shared(self, default_org):
         agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
         surface = Surface.objects.create(organization=default_org, name="Owned", owner_agent=agent)
         surface.delete()
         agent.delete()
 
-        with pytest.raises(OwnerInRecycleBinError):
-            RestoreService.restore(Surface.all_objects.get(pk=surface.pk))
+        RestoreService.restore(Surface.all_objects.get(pk=surface.pk))
 
-        assert Surface.deleted_objects.filter(pk=surface.pk).exists()
+        assert Surface.objects.get(pk=surface.pk).owner_agent_id is None
+        assert AgentDefinition.deleted_objects.filter(pk=agent.pk).exists()
+
+    def test_purging_the_agent_keeps_the_surface_restored_as_shared(self, default_org, python_code_tool):
+        agent, (surface, *_) = _agent_with_owned_things(default_org, python_code_tool)
+        agent.delete()
+        RestoreService.restore(Surface.all_objects.get(pk=surface.pk))
+
+        AgentDefinition.all_objects.get(pk=agent.pk).purge()
+
+        assert Surface.objects.filter(pk=surface.pk).exists()
 
 
 @pytest.mark.django_db

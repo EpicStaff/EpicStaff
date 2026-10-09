@@ -15,6 +15,37 @@ def clean_base_name(base_name: str) -> str:
     return match.group(1) if match else base_name.strip()
 
 
+def slug_base(name: str) -> str:
+    """The name family of a slug: `name` without a trailing "-N" ("orders-2" → "orders").
+
+    A restore locks this family, so "orders" (renamed to "orders-2") and a
+    trigger already named "orders-2" can't both claim "orders-2" at once.
+    """
+    return re.sub(r"-\d+$", "", name.strip())
+
+
+def ensure_unique_slug(
+    base_name: str, existing_names: list[str], max_length: int | None = None
+) -> str:
+    """`base_name`, or the first free `base_name-N` (N from 2) when it's taken.
+
+    For identifiers that can only hold letters, digits, "-" and "_" (webhook
+    paths), where ensure_unique_identifier's " #N" isn't allowed. The base is
+    kept whole: "orders-2024" becomes "orders-2024-2", never "orders-2". With
+    `max_length`, the base is shortened so the suffix still fits.
+    """
+    if base_name not in existing_names:
+        return base_name
+    taken = set(existing_names)
+    number = 2
+    while True:
+        suffix = f"-{number}"
+        base = base_name[: max_length - len(suffix)] if max_length else base_name
+        if f"{base}{suffix}" not in taken:
+            return f"{base}{suffix}"
+        number += 1
+
+
 def ensure_unique_identifier(base_name: str, existing_names: list[str]) -> str:
     """
     Creates new unique name from base_name using a trailing "#N" suffix.

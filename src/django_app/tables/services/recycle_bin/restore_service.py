@@ -1,13 +1,14 @@
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cache
 
 from django.apps import apps
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.db.models.signals import post_save
 from loguru import logger
-from tables.exceptions import NotInRecycleBinError, OwnerInRecycleBinError
-from tables.import_export.utils import clean_base_name
+from tables.exceptions import NotInRecycleBinError, RestoreConflictError
+from tables.import_export.utils import clean_base_name, slug_base
 from tables.models.base_models import SoftDeleteFields
 from tables.services.copy_services.helpers import name_lock_key, next_copy_name
 from tables.services.recycle_bin.registry import BinResource, bin_resource_for, bin_resources
@@ -41,7 +42,9 @@ class RestoreService:
 
         Rows deleted on their own earlier (another batch) stay in the bin. If the
         root's name is taken among the org's live rows, it gets the next free
-        "#N" name, the same pattern a copy uses.
+        "#N" name, the same pattern a copy uses. An owned row whose owner is
+        still in the bin (a surface deleted with its agent) comes back on its
+        own, without its owner: see _detach_from_binned_owner.
 
         Raises:
             NotInRecycleBinError: The root isn't binned, or was binned before
@@ -60,12 +63,23 @@ class RestoreService:
             # The owner was read before the root was locked; lock it again in case
             # the row was reassigned to another owner meanwhile.
             cls._lock_owner(stored, resource)
-            cls._refuse_if_owner_is_binned(stored, resource)
+            if cls._owner_is_binned(stored, resource):
+                cls._detach_from_binned_owner(stored, resource)
 
             batch = stored.soft_delete_batch
             renamed_from = cls._free_names(stored, resource, batch)
-            cls._restore_batch(batch)
+            if resource.before_restore is not None:
+                resource.before_restore(stored, batch)
+            try:
+                cls._restore_batch(batch)
+            except IntegrityError as error:
+                # A live-only unique value (a phone number, a webhook path) was
+                # taken after the restore checked it: nothing is restored.
+                raise RestoreConflictError() from error
             stored.refresh_from_db()
+            if resource.after_restore is not None:
+                restored_root = stored
+                transaction.on_commit(lambda: resource.after_restore(restored_root))
 
         logger.info(
             "Restored {model} {pk} (batch {batch})",
@@ -101,18 +115,69 @@ class RestoreService:
             )
 
     @staticmethod
-    def _refuse_if_owner_is_binned(stored: models.Model, resource: BinResource) -> None:
-        """An owned row whose owner is binned would come back pointing at it, and
-        a later purge of the owner would delete it for good with no bin."""
+    def _owner_is_binned(stored: models.Model, resource: BinResource) -> bool:
         if resource.owner_field is None:
-            return
+            return False
         owner_id = getattr(stored, f"{resource.owner_field}_id")
         owner_model = resource.model._meta.get_field(resource.owner_field).related_model
-        if (
+        return (
             owner_id is not None
             and owner_model.all_objects.filter(pk=owner_id, active=False).exists()
-        ):
-            raise OwnerInRecycleBinError()
+        )
+
+    @classmethod
+    def _detach_from_binned_owner(cls, stored: models.Model, resource: BinResource) -> None:
+        """Restoring an owned row on its own brings it back without its owner.
+
+        Its owner (an agent, for a surface) stays in the bin. Left pointing at it,
+        the row would come back attached to a binned owner, and purging the
+        owner would delete it for good. So the row and everything that belongs
+        to it move to a batch of their own, and the owner link is cleared: the
+        row comes back shared. The owner's own links to it (its default-surface
+        rows) stay in the owner's batch and come back with the owner.
+        """
+        new_batch = uuid.uuid4()
+        for model, pks in cls._owned_subtree(stored).items():
+            model.all_objects.filter(pk__in=pks).update(soft_delete_batch=new_batch)
+        resource.model.all_objects.filter(pk=stored.pk).update(
+            **{f"{resource.owner_field}_id": None}
+        )
+        stored.refresh_from_db()
+
+    @staticmethod
+    def _owned_subtree(root: models.Model) -> dict[type[models.Model], set]:
+        """`root` and the binned rows of its batch that hang under it through owning FKs.
+
+        Reference links (a model's soft_delete_reference_fields, like an agent's
+        default-surface row) point at the row without belonging to it, so the
+        walk doesn't follow them.
+        """
+        batch = root.soft_delete_batch
+        subtree: dict[type[models.Model], set] = defaultdict(set)
+        subtree[type(root)].add(root.pk)
+        pending = [(type(root), {root.pk})]
+        while pending:
+            model, pks = pending.pop()
+            for relation in model._meta.get_fields(include_hidden=True):
+                if not (relation.one_to_many or relation.one_to_one) or not relation.auto_created:
+                    continue
+                child_model = relation.related_model
+                if not issubclass(child_model, SoftDeleteFields):
+                    continue
+                if relation.field.name in child_model.soft_delete_reference_fields:
+                    continue
+                child_pks = (
+                    set(
+                        child_model.all_objects.filter(
+                            **{f"{relation.field.name}__in": pks}, soft_delete_batch=batch
+                        ).values_list("pk", flat=True)
+                    )
+                    - subtree[child_model]
+                )
+                if child_pks:
+                    subtree[child_model] |= child_pks
+                    pending.append((child_model, child_pks))
+        return subtree
 
     @classmethod
     def _free_names(cls, stored: models.Model, resource: BinResource, batch) -> str | None:
@@ -133,8 +198,8 @@ class RestoreService:
         named_rows.sort(
             key=lambda item: (
                 name_lock_key(
-                    getattr(item[1], f"{item[0].org_field}_id"),
-                    clean_base_name(getattr(item[1], item[0].name_field)),
+                    cls._lock_org(item[1], item[0]),
+                    cls._lock_name(item[0], getattr(item[1], item[0].name_field)),
                 ),
                 item[0].model._meta.label,
                 item[1].pk,
@@ -166,9 +231,22 @@ class RestoreService:
         return (resource.model, getattr(row, f"{resource.org_field}_id"))
 
     @staticmethod
+    def _lock_name(resource: BinResource, name: str) -> str:
+        """The name family next_copy_name locks for `name` (lowercased where case doesn't count)."""
+        clean = slug_base(name) if resource.slug_names else clean_base_name(name)
+        return clean.lower() if resource.case_insensitive_names else clean
+
+    @staticmethod
+    def _lock_org(row: models.Model, resource: BinResource) -> int | None:
+        """The org next_copy_name locks for `row`: none for names unique across orgs."""
+        return None if resource.global_names else getattr(row, f"{resource.org_field}_id")
+
+    @staticmethod
     def _free_name(stored: models.Model, resource: BinResource, extra_taken_names: set[str]) -> str:
         """Return the name `stored` comes back under, renaming it if that one is taken."""
         name = getattr(stored, resource.name_field)
+        if not resource.unique_names:
+            return name
         free_name = next_copy_name(
             resource.model,
             org_id=getattr(stored, f"{resource.org_field}_id"),
@@ -177,6 +255,9 @@ class RestoreService:
             name_field=resource.name_field,
             org_field=resource.org_field,
             extra_taken_names=extra_taken_names,
+            case_insensitive_names=resource.case_insensitive_names,
+            slug_names=resource.slug_names,
+            global_names=resource.global_names,
         )
         if free_name != name:
             # A queryset update, not save(): SourceCollection.save() would apply

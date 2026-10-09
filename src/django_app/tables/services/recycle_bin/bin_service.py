@@ -29,18 +29,15 @@ class RecycleBinService:
 
         List, restore and purge all start from this queryset, so a row the list
         hides is a 404 on restore and purge too. Left out: rows of another org
-        (built-in tools have no org, so they never match), rows binned before
-        soft_delete_batch existed (restore can't tell their batch apart), and
-        rows whose owner is binned (a surface binned with its agent comes back
-        with the agent, not on its own).
+        (built-in tools have no org, so they never match) and rows binned before
+        soft_delete_batch existed (restore can't tell their batch apart). A
+        surface deleted with its agent is listed too: restoring it on its own
+        brings it back as a shared surface (RestoreService).
         """
-        rows = resource.model.deleted_objects.filter(
+        return resource.model.deleted_objects.filter(
             soft_delete_batch__isnull=False,
             **{f"{resource.org_field}_id": org_id},
         )
-        if resource.owner_field is not None:
-            rows = rows.exclude(**{f"{resource.owner_field}__active": False})
-        return rows
 
     @classmethod
     def entries(cls, resource: BinResource, org_id: int) -> list[RecycleBinEntry]:

@@ -231,7 +231,6 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
 )
-from tables.serializers.recycle_bin_serializers import FlowRecycleBinEntrySerializer
 from tables.serializers.serializers import (
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
@@ -250,7 +249,6 @@ from tables.services.copy_services import (
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
-from tables.services.recycle_bin.flow_bin_service import FlowBinService, FlowRecycleBinEntry
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.tools_usage_service import (
@@ -679,9 +677,6 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-@extend_schema_view(
-    recycle_bin=extend_schema(request=None, responses=FlowRecycleBinEntrySerializer(many=True))
-)
 class GraphViewSet(
     OrgScopedViewSetMixin,
     CopyActionMixin,
@@ -706,7 +701,6 @@ class GraphViewSet(
         "subflow_usage": Permission.READ,
     }
     recycle_bin_resource_key = "flow"
-    recycle_bin_entry_serializer_class = FlowRecycleBinEntrySerializer
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -719,9 +713,6 @@ class GraphViewSet(
             entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
         )
         self._partial_export_service = GraphPartialExportService(entity_registry)
-
-    def recycle_bin_entries(self, org_id: int) -> list[FlowRecycleBinEntry]:
-        return FlowBinService.entries(self._bin_resource(), org_id)
 
     def get_queryset(self):
         qs = (
@@ -1668,11 +1659,12 @@ class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = GeminiRealtimeConfigSerializer
 
 
-class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
 
     rbac_resource_type = ResourceType.VOICE
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = "realtime_channel"
 
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
@@ -2339,10 +2331,11 @@ class WebhookTriggerNodeViewSet(
     update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
     partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
 )
-class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = "webhook_trigger"
     queryset = WebhookTrigger.objects.select_related("ngrok", "localhost", "auth", "auth__secret")
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
@@ -2511,6 +2504,7 @@ class ToolLabelViewSet(BaseLabelViewSet):
 
 class SecretViewSet(
     OrgScopedViewSetMixin,
+    RecycleBinActionsMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -2521,7 +2515,8 @@ class SecretViewSet(
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
+    recycle_bin_resource_key = "secret"
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
 
@@ -2534,14 +2529,16 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 
-class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "lookup_entries": Permission.READ,
         "usage": Permission.READ,
     }
+    recycle_bin_resource_key = "key_value_table"
     queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
     # These actions never serialize a table, so they skip counting its entries.

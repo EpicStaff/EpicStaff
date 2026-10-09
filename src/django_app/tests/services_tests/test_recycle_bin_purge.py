@@ -229,10 +229,11 @@ class TestPurgeExpired:
         assert not StorageFile.all_objects.filter(pk=row.pk).exists()
         assert not any(".recycle-bin/" in key for key in storage_manager._backend._objects)
 
-    def test_a_restored_storage_file_survives_its_batch_expiring(self, storage_org, storage_manager):
+    def test_a_restored_storage_file_survives_the_bin_expiring(self, storage_org, storage_manager):
         seed_file(storage_manager._backend, storage_org.id, "docs/a.txt", b"a")
         seed_file(storage_manager._backend, storage_org.id, "docs/b.txt", b"b")
-        storage_manager.delete(storage_org.id, "docs")
+        storage_manager.delete(storage_org.id, "docs/a.txt")
+        storage_manager.delete(storage_org.id, "docs/b.txt")
         StorageRecycleBinService(storage_manager).restore(
             storage_org.id, StorageFile.deleted_objects.get(org=storage_org, path="docs/a.txt").pk
         )
