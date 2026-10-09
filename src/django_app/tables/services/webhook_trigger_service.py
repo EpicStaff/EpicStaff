@@ -139,7 +139,9 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         request" (see `handle_webhook_trigger`/`handle_telegram_trigger`
         docstrings: `None` preserves today's unrestricted fan-out).
         """
-        filters = {"webhook_trigger__path": path}
+        # Live triggers only: flow nodes keep their link to a binned trigger, and its
+        # path is free for a new trigger (in any org) while it's in the recycle bin.
+        filters = {"webhook_trigger__path": path, "webhook_trigger__active": True}
 
         if not config_id or ":" not in config_id:
             return filters

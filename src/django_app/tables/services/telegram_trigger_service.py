@@ -10,6 +10,7 @@ from requests.exceptions import (
     RequestException,
     Timeout,
 )
+from rest_framework.exceptions import APIException
 from tables.exceptions import RegisterTelegramTriggerError, TelegramApiError
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import (
@@ -143,7 +144,8 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             return
 
         webhook_trigger: WebhookTrigger = telegram_trigger_instance.webhook_trigger
-        if webhook_trigger is None:
+        # A forward FK reads binned rows too: a trigger in the recycle bin counts as none.
+        if webhook_trigger is None or not webhook_trigger.active:
             logger.warning(
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no webhook_trigger configured."
             )
@@ -273,6 +275,30 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             )
         except Exception:
             return {"ok": False, "description": "Unregistration failed"}
+
+    def register_and_log(self, telegram_trigger_instance: TelegramTriggerNode) -> None:
+        """Register the node's Telegram webhook; a failure is logged, never raised.
+
+        For callers that react to a save or a restore, where a Telegram error
+        mustn't undo the change itself.
+        """
+        node_id = telegram_trigger_instance.pk
+        try:
+            self.register_telegram_trigger(telegram_trigger_instance=telegram_trigger_instance)
+            logger.info(
+                f"Successfully registered telegram trigger for TelegramTriggerNode : {node_id}"
+            )
+        except APIException as error:
+            # An APIException detail (RegisterTelegramTriggerError,
+            # SecretResolutionError) is a message we wrote to be safe to log; a
+            # traceback adds nothing and would widen what reaches the log
+            # (loguru's `diagnose` prints local variable values, including the
+            # resolved bot token and secret_token).
+            logger.error(
+                "Error registering telegram bot {id_}: {detail}", id_=node_id, detail=error.detail
+            )
+        except Exception:
+            logger.exception("Error registering telegram bot {id_}", id_=node_id)
 
     def handle_telegram_trigger(
         self,

@@ -1,10 +1,11 @@
 from collections.abc import Callable
 
 from django.db import transaction
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from loguru import logger
 from tables.models.graph_models import WebhookTriggerNode
+from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -130,7 +131,8 @@ def _cleanup_orphaned_twilio_auth(trigger_id: int | None) -> None:
     cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TWILIO,
-        is_claimed=lambda: TwilioChannel.objects.filter(webhook_trigger_id=trigger_id).exists(),
+        # all_objects: a binned channel still claims the auth; its restore needs it.
+        is_claimed=lambda: TwilioChannel.all_objects.filter(webhook_trigger_id=trigger_id).exists(),
     )
 
 
@@ -159,13 +161,18 @@ def twilio_channel_pre_save_handler(sender, instance: TwilioChannel, **_):
 
 @receiver(post_save, sender=TwilioChannel)
 def twilio_channel_post_save_handler(sender, instance: TwilioChannel, **_):
+    # Binning saves the row too: nothing to sync for a channel in the recycle bin.
+    # Its restore saves it again as active, which syncs the auth below.
+    if not instance.active:
+        return
     old_trigger_id = getattr(instance, "_previous_webhook_trigger_id", None)
     new_trigger_id = instance.webhook_trigger_id
     if old_trigger_id is not None and old_trigger_id != new_trigger_id:
         _cleanup_orphaned_twilio_auth(old_trigger_id)
 
     trigger = instance.webhook_trigger
-    if trigger is None:
+    # A forward FK reads binned rows too: a trigger in the recycle bin gets no auth.
+    if trigger is None or not trigger.active:
         return
 
     existing = getattr(trigger, "auth", None)
@@ -209,3 +216,38 @@ def realtime_channel_post_delete_handler(sender, instance: RealtimeChannel, **_)
     """Invalidate the realtime service's cached channel config after every RealtimeChannel delete, including cascaded ones."""
     token = instance.token
     transaction.on_commit(lambda: _invalidate_realtime_channel_cache(token))
+
+
+def _secret_feeds_tunnels(secret_id: int) -> bool:
+    """A tunnel's auth or ngrok token uses the secret: the webhook service's registry holds its value."""
+    return (
+        WebhookTriggerAuth.all_objects.filter(secret_id=secret_id).exists()
+        or NgrokWebhookConfig.all_objects.filter(auth_token_secret_id=secret_id).exists()
+    )
+
+
+@receiver(post_save, sender=Secret)
+def secret_post_save_handler(sender, instance: Secret, created: bool = False, **_):
+    """A secret's value never changes: a save after the first is a bin or a restore.
+
+    Its tunnels keep the link either way, so re-push the registry: a binned
+    secret drops out of it, a restored one comes back.
+    """
+    if created or not _secret_feeds_tunnels(instance.pk):
+        return
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
+
+
+@receiver(pre_delete, sender=Secret)
+def secret_pre_delete_handler(sender, instance: Secret, **_):
+    # Checked before the purge, while the links still point at the secret.
+    instance._fed_tunnels = _secret_feeds_tunnels(instance.pk)
+
+
+@receiver(post_delete, sender=Secret)
+def secret_post_delete_handler(sender, instance: Secret, **_):
+    if not getattr(instance, "_fed_tunnels", False):
+        return
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))

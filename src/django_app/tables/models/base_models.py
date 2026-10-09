@@ -156,11 +156,15 @@ class DeletedManager(models.Manager):
 
 class EnabledToggleManager(models.Manager):
     """
-    Manager for EnabledToggleFields models. Filters to is_enabled=True.
+    Manager for EnabledToggleFields models: the rows switched on, and not in
+    the recycle bin when the model has one.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(is_enabled=True)
+        queryset = super().get_queryset().filter(is_enabled=True)
+        if issubclass(self.model, SoftDeleteFields):
+            queryset = queryset.filter(active=True)
+        return queryset
 
 
 class EnabledToggleFields(models.Model):

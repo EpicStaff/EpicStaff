@@ -34,7 +34,9 @@ class DeleteService:
            soft_delete_owned_references() says it still belongs to the target
 
     Normal model + SET_NULL
-        -> set FK to NULL
+        -> set FK to NULL, unless the deleted row's model sets
+           soft_delete_keeps_references: then SET_NULL / SET_DEFAULT / SET(...)
+           links and incoming M2M links stay until a purge
 
     Normal model + SET_DEFAULT
         -> set FK to default
@@ -466,6 +468,11 @@ class _DeleteContext:
         field = relation.field
         on_delete = field.remote_field.on_delete
 
+        if self._keeps_references(parent) and (
+            on_delete in (models.SET_NULL, models.SET_DEFAULT) or self._is_set_callable(on_delete)
+        ):
+            return
+
         # ------------------------------------------------------
         # PROTECT / RESTRICT / SET_NULL / SET_DEFAULT
         # ------------------------------------------------------
@@ -602,6 +609,18 @@ class _DeleteContext:
     # ==========================================================
 
     @staticmethod
+    def _keeps_references(obj: models.Model) -> bool:
+        """The deleted row's model keeps the links pointing at it while it's binned.
+
+        Settings items (a secret, a webhook trigger, a voice channel) are used by
+        rows elsewhere. Clearing those links on delete would make a restore bring
+        back an item nothing uses any more. The links stay; a lookup through the
+        filtered `objects` manager treats the binned row as missing, and a purge
+        (Django's Collector) clears the links then.
+        """
+        return getattr(type(obj), "soft_delete_keeps_references", False)
+
+    @staticmethod
     def _is_set_callable(on_delete):
         if not callable(on_delete):
             return False
@@ -649,6 +668,8 @@ class _DeleteContext:
         into the recycle bin and come back on restore. Explicit through models
         are real rows, walked by _process_reverse_relations instead.
         """
+        if self._keeps_references(obj):
+            return
         for relation in obj._meta.get_fields(include_hidden=True):
             if (
                 relation.auto_created

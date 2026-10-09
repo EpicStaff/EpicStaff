@@ -146,6 +146,7 @@ class TestGetTriggerFilters:
 
         assert filters == {
             "webhook_trigger__path": "valid_path",
+            "webhook_trigger__active": True,
             "webhook_trigger__provider_type": "ngrok",
             "webhook_trigger__org_id": default_org.id,
         }
@@ -185,6 +186,7 @@ class TestGetTriggerFilters:
 
         assert filters == {
             "webhook_trigger__path": "n1",
+            "webhook_trigger__active": True,
             "webhook_trigger__provider_type": "localhost",
             "webhook_trigger__org_id": default_org.id,
         }
@@ -215,7 +217,7 @@ class TestGetTriggerFilters:
             path="valid_path", config_id="bare-config-name"
         )
 
-        assert filters == {"webhook_trigger__path": "valid_path"}
+        assert filters == {"webhook_trigger__path": "valid_path", "webhook_trigger__active": True}
 
     def test_unknown_provider_prefix_fails_closed(self):
         """C3 hardening: a `config_id` that claims to identify a specific
@@ -236,7 +238,7 @@ class TestGetTriggerFilters:
 
         filters = service.get_trigger_filters(path="valid_path", config_id=None)
 
-        assert filters == {"webhook_trigger__path": "valid_path"}
+        assert filters == {"webhook_trigger__path": "valid_path", "webhook_trigger__active": True}
 
     def test_legacy_2part_config_id_with_known_provider_fails_closed(self):
         """C3: a `config_id` with a recognized provider prefix but missing

@@ -58,6 +58,21 @@ class SecretUsageService:
             for secret_id in secret_ids
         }
 
+    def totals(self, *, org_id: int, secret_ids: set[int]) -> dict[int, int]:
+        """secret_id -> how many distinct resources use it, whatever the caller may read.
+
+        A count, never names, so no permissions are involved: every usage is
+        counted once, as `counts()` would count readable plus hidden.
+        """
+        first, *rest = [
+            source.count_pairs(org_id=org_id, secret_ids=secret_ids, readability=READABLE_NEVER)
+            for source in USAGE_SOURCES
+        ]
+        usage_keys: dict[int, set] = defaultdict(set)
+        for secret_id, usage_key, _ in first.union(*rest):
+            usage_keys[secret_id].add(usage_key)
+        return {secret_id: len(usage_keys[secret_id]) for secret_id in secret_ids}
+
     def count_for(self, *, secret: Secret, effective) -> UsageCounts:
         """One secret's counts, in a single query."""
         return self.counts(org_id=secret.org_id, effective=effective, secret_ids={secret.pk})[
