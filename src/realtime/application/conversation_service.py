@@ -7,7 +7,7 @@ from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from domain.ports.i_summarization_client import ISummarizationClient
 from domain.ports.i_transcription_client import ITranscriptionClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
-from domain.services.chat_buffer import ChatSummarizedBuffer
+from domain.services.chat_buffer import ChatSummarizedBuffer, split_into_words
 from domain.services.summarize_buffer import ChatSummarizedBufferClient
 from fastapi import WebSocket, WebSocketDisconnect
 from infrastructure.providers.factory import RealtimeAgentClientFactory
@@ -51,8 +51,11 @@ class ConversationService(IChatModeController):
         self.factory = factory
         self.summ_client = summ_client
         self.transcription_client_factory = transcription_client_factory
-        self.wake_word = realtime_agent_chat_data.wake_word
-        self.current_chat_mode = ChatMode.CONVERSATION
+        # Each word is a separate trigger: a transcript matches when it contains ANY of
+        # them (OR), not the whole wake phrase in order.
+        self._wake_words = self._parse_wake_words(realtime_agent_chat_data.wake_word)
+        # With a wake word configured the agent must stay silent until it is spoken.
+        self.current_chat_mode = ChatMode.LISTEN if self._wake_words else ChatMode.CONVERSATION
 
         # ElevenLabs handles VAD/transcription internally — StopAgent not supported
         chat_mode_controller = (
@@ -103,6 +106,16 @@ class ConversationService(IChatModeController):
 
             rt_transcription_client = self._maybe_create_transcription_client(buffer)
 
+            if rt_transcription_client is None and self.current_chat_mode == ChatMode.LISTEN:
+                # Without transcription nothing can detect the wake word, so staying in
+                # LISTEN would show the user a mode the session can never leave.
+                logger.warning(
+                    "Wake word configured but provider {} has no transcription client — "
+                    "starting in CONVERSATION mode",
+                    self.realtime_agent_chat_data.rt_provider,
+                )
+                self.current_chat_mode = ChatMode.CONVERSATION
+
             await rt_agent_client.connect()
             if rt_transcription_client is not None:
                 await rt_transcription_client.connect()
@@ -119,8 +132,7 @@ class ConversationService(IChatModeController):
 
             logger.info("WebSocket connection established")
 
-            previous_input = ""
-            wake_words: list[str] = [w.strip("!?., ") for w in self.wake_word.lower().split()]
+            previous_words: list[str] = []
 
             while True:
                 if (
@@ -128,11 +140,11 @@ class ConversationService(IChatModeController):
                     and rt_transcription_client is not None
                 ):
                     client = rt_transcription_client
-                    last_input: list[str] = buffer.get_last_input()
+                    last_words: list[str] = buffer.get_last_input()
 
-                    if last_input != previous_input:
-                        previous_input = last_input
-                        if any(trigger in last_input for trigger in wake_words):
+                    if last_words != previous_words:
+                        previous_words = last_words
+                        if any(trigger in last_words for trigger in self._wake_words):
                             final_buffer = buffer.get_final_buffer()
 
                             await rt_agent_client.send_conversation_item_to_server(final_buffer)
@@ -214,6 +226,12 @@ class ConversationService(IChatModeController):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_wake_words(wake_word: str | None) -> list[str]:
+        if not wake_word:
+            return []
+        return split_into_words(wake_word)
 
     def _initialize_buffer(
         self, max_buffer_tokens: int, max_chunks_tokens: int, model: str = "gpt-4o"

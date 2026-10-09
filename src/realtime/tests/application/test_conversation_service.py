@@ -1,4 +1,5 @@
 import asyncio
+from typing import NamedTuple
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -15,14 +16,16 @@ from infrastructure.providers.factory import RealtimeAgentClientFactory
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 
 
-def _make_chat_data(rt_provider: str = "openai") -> RealtimeAgentChatData:
+def _make_chat_data(
+    rt_provider: str = "openai", wake_word: str | None = "hey agent"
+) -> RealtimeAgentChatData:
     return RealtimeAgentChatData(
         connection_key="test_key",
         org_id=1,
         rt_api_key="api_key",
         rt_model_name="gpt-4o",
         rt_provider=rt_provider,
-        wake_word="hey agent",
+        wake_word=wake_word,
         voice="alloy",
         temperature=0.7,
         language="en",
@@ -46,26 +49,48 @@ def mock_tool_manager():
 
 
 @pytest.fixture
-def service(mock_tool_manager):
-    return ConversationService(
-        client_websocket=AsyncMock(spec=WebSocket),
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="Be helpful.",
-        tool_manager_service=mock_tool_manager,
-        connections={},
-        factory=MagicMock(spec=RealtimeAgentClientFactory),
-        summ_client=MagicMock(spec=ISummarizationClient),
-        transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
-    )
+def make_service(mock_tool_manager):
+    def _make(
+        wake_word: str | None = "hey agent", rt_provider: str = "openai"
+    ) -> ConversationService:
+        return ConversationService(
+            client_websocket=AsyncMock(spec=WebSocket),
+            realtime_agent_chat_data=_make_chat_data(
+                rt_provider=rt_provider, wake_word=wake_word
+            ),
+            instructions="Be helpful.",
+            tool_manager_service=mock_tool_manager,
+            connections={},
+            factory=MagicMock(spec=RealtimeAgentClientFactory),
+            summ_client=MagicMock(spec=ISummarizationClient),
+            transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
+        )
+
+    return _make
+
+
+@pytest.fixture
+def service(make_service):
+    return make_service()
 
 
 # ---------------------------------------------------------------------------
-# IChatModeController
+# Wake-word gate — initial chat mode
 # ---------------------------------------------------------------------------
 
 
-def test_default_chat_mode_is_conversation(service):
-    assert service.current_chat_mode == ChatMode.CONVERSATION
+@pytest.mark.parametrize(
+    "wake_word, expected_mode",
+    [
+        ("hey agent", ChatMode.LISTEN),
+        ("Agent!", ChatMode.LISTEN),
+        ("", ChatMode.CONVERSATION),
+        ("   ", ChatMode.CONVERSATION),
+        (None, ChatMode.CONVERSATION),
+    ],
+)
+def test_initial_chat_mode_follows_wake_word(make_service, wake_word, expected_mode):
+    assert make_service(wake_word=wake_word).current_chat_mode == expected_mode
 
 
 def test_set_chat_mode_listen(service):
@@ -212,6 +237,105 @@ async def test_process_message_failure_logs_detail_under_the_sent_correlation_id
     matching_logs = [log for log in captured_log_messages if correlation_id in log]
     assert len(matching_logs) == 1
     assert SECRET_SENTINEL in matching_logs[0]
+
+
+# ---------------------------------------------------------------------------
+# execute — wake-word gate
+# ---------------------------------------------------------------------------
+
+
+async def _idle_loop():
+    await asyncio.Event().wait()
+
+
+class ExecutedClients(NamedTuple):
+    """The two mocked clients execute() can route a client message to."""
+
+    rt_agent_client: AsyncMock
+    transcription_client: AsyncMock
+
+
+async def _run_execute_with_transcription(
+    service, transcribed_text: str
+) -> ExecutedClients:
+    """Drive execute() through one loop turn with `transcribed_text` already buffered.
+
+    Returns both mocked clients so the caller can assert which one received the
+    audio message and whether the handover to the agent happened.
+    """
+    rt_agent_client = AsyncMock()
+    rt_agent_client.handle_messages = _idle_loop
+    rt_agent_client.process_message = AsyncMock(return_value=None)
+    service.factory.create.return_value = rt_agent_client
+
+    transcription_client = AsyncMock()
+    transcription_client.handle_messages = _idle_loop
+    transcription_client.process_message = AsyncMock(return_value=None)
+
+    def create_transcription_client(config, on_server_event, buffer):
+        buffer.append(transcribed_text)
+        return transcription_client
+
+    service.transcription_client_factory.create.side_effect = create_transcription_client
+    service.client_websocket.scope = {"subprotocols": []}
+    service.client_websocket.receive_json = AsyncMock(
+        side_effect=[{"type": "input_audio_buffer.append"}, WebSocketDisconnect()]
+    )
+
+    await service.execute()
+    return ExecutedClients(
+        rt_agent_client=rt_agent_client, transcription_client=transcription_client
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wake_word", ["hey agent", "Agent!"])
+async def test_wake_word_in_transcript_hands_over_to_conversation(make_service, wake_word):
+    service = make_service(wake_word=wake_word)
+
+    clients = await _run_execute_with_transcription(service, "ok agent, what time is it")
+
+    assert service.current_chat_mode == ChatMode.CONVERSATION
+    clients.rt_agent_client.send_conversation_item_to_server.assert_awaited_once()
+    clients.rt_agent_client.request_response.assert_awaited_once()
+    # The handover turn itself is still transcribed — the agent takes over from the next turn.
+    clients.transcription_client.process_message.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_transcript_without_wake_word_stays_in_listen(make_service):
+    service = make_service(wake_word="hey agent")
+
+    clients = await _run_execute_with_transcription(service, "what time is it")
+
+    assert service.current_chat_mode == ChatMode.LISTEN
+    clients.rt_agent_client.send_conversation_item_to_server.assert_not_awaited()
+    clients.rt_agent_client.request_response.assert_not_awaited()
+    # The user-visible bug is audio reaching the agent before the wake word:
+    # in LISTEN the message must go to transcription only.
+    clients.transcription_client.process_message.assert_awaited()
+    clients.rt_agent_client.process_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_transcription_client_downgrades_listen_to_conversation(
+    make_service, captured_log_messages
+):
+    service = make_service(wake_word="hey agent")
+    assert service.current_chat_mode == ChatMode.LISTEN
+
+    rt_agent_client = AsyncMock()
+    rt_agent_client.handle_messages = _idle_loop
+    rt_agent_client.process_message = AsyncMock(return_value=None)
+    service.factory.create.return_value = rt_agent_client
+    service.transcription_client_factory.create.return_value = None
+    service.client_websocket.scope = {"subprotocols": []}
+    service.client_websocket.receive_json = AsyncMock(side_effect=WebSocketDisconnect())
+
+    await service.execute()
+
+    assert service.current_chat_mode == ChatMode.CONVERSATION
+    assert any("no transcription client" in message for message in captured_log_messages)
 
 
 def test_maybe_create_transcription_delegates_to_factory(service, mock_tool_manager):
