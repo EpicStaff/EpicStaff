@@ -14,7 +14,12 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
-from tables.serializers.recycle_bin_serializers import RestoreResultSerializer
+from tables.serializers.recycle_bin_serializers import (
+    RecycleBinBulkPurgeResponseSerializer,
+    RecycleBinBulkRequestSerializer,
+    RecycleBinBulkRestoreResponseSerializer,
+    RecycleBinContentsSerializer,
+)
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -28,7 +33,6 @@ from tables.serializers.storage_serializers import (
     StorageMoveSerializer,
     StoragePathQuerySerializer,
     StorageRecycleBinEntrySerializer,
-    StorageRecycleBinIdsSerializer,
     StorageRecycleBinPageSerializer,
     StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
@@ -39,7 +43,7 @@ from tables.serializers.storage_serializers import (
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
-from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from tables.services.storage_service.recycle_bin import ENTRY_ORDERINGS, StorageRecycleBinService
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
     STORAGE_COPY_SWAGGER,
@@ -435,50 +439,88 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     @extend_schema(
         request=None,
-        parameters=[OpenApiParameter("limit", int), OpenApiParameter("offset", int)],
+        parameters=[
+            OpenApiParameter("limit", int),
+            OpenApiParameter("offset", int),
+            OpenApiParameter("search", str, description="Part of the item's own name"),
+            OpenApiParameter(
+                "item_type", str, enum=["file", "folder"], description="Only files or folders"
+            ),
+            OpenApiParameter(
+                "ordering", str, enum=list(ENTRY_ORDERINGS), description="Default: -deleted_at"
+            ),
+        ],
         responses=StorageRecycleBinPageSerializer,
     )
     @action(detail=False, methods=["get"], url_path="recycle-bin")
     def recycle_bin(self, request):
-        # Paged: a deleted folder lists every file under it, which can be thousands.
+        # Paged: loose deleted files can be thousands.
         paginator = LimitOffsetPagination()
-        rows = StorageRecycleBinService.entry_rows(self.get_active_org_id())
+        rows = StorageRecycleBinService.entry_rows(
+            self.get_active_org_id(),
+            search=request.query_params.get("search", "").strip(),
+            ordering=request.query_params.get("ordering", "-deleted_at"),
+            item_type=request.query_params.get("item_type", ""),
+        )
         page = paginator.paginate_queryset(rows, request, view=self)
-        entries = StorageRecycleBinService.to_entries(page)
+        entries = StorageRecycleBinService.to_entries(self.get_active_org_id(), page)
         return paginator.get_paginated_response(
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )
 
+    @extend_schema(request=None, responses=RecycleBinContentsSerializer)
+    @action(detail=False, methods=["get"], url_path=r"recycle-bin/(?P<entry_id>\d+)/contents")
+    def recycle_bin_contents(self, request, entry_id=None):
+        """Files and folders deleted with one binned folder, up to 5,000: "Show all" past the list's 100."""
+        contents, total = StorageRecycleBinService.contents_of(
+            self.get_active_org_id(), int(entry_id)
+        )
+        return Response(
+            RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
+        )
+
     @extend_schema(
-        request=StorageRecycleBinIdsSerializer, responses=RestoreResultSerializer(many=True)
+        request=RecycleBinBulkRequestSerializer, responses=RecycleBinBulkRestoreResponseSerializer
     )
     @action(detail=False, methods=["post"], url_path="recycle-bin/restore")
     def restore(self, request):
-        serializer = StorageRecycleBinIdsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        results = StorageRecycleBinService(self.manager).restore_many(
-            self.get_active_org_id(), serializer.validated_data["ids"]
+        """Restore the selected ids, or the whole bin with `all: true`. Failures are reported per item."""
+        result = StorageRecycleBinService(self.manager).restore_many(
+            self.get_active_org_id(), self._bulk_ids(request)
         )
         return Response(
-            RestoreResultSerializer(
-                [
-                    {
-                        "id": result.object.pk,
-                        "name": result.object.path,
-                        "renamed_from": result.renamed_from,
-                    }
-                    for result in results
-                ],
-                many=True,
+            RecycleBinBulkRestoreResponseSerializer(
+                {
+                    "restored": [
+                        {
+                            "id": restored.object.pk,
+                            "name": restored.object.path,
+                            "renamed_from": restored.renamed_from,
+                        }
+                        for restored in result.restored
+                    ],
+                    "failed": result.failed,
+                }
             ).data
         )
 
-    @extend_schema(request=StorageRecycleBinIdsSerializer, responses={204: None})
+    @extend_schema(
+        request=RecycleBinBulkRequestSerializer, responses=RecycleBinBulkPurgeResponseSerializer
+    )
     @action(detail=False, methods=["post"], url_path="recycle-bin/purge")
     def purge(self, request):
-        serializer = StorageRecycleBinIdsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        StorageRecycleBinService(self.manager).purge_many(
-            self.get_active_org_id(), serializer.validated_data["ids"], actor=request_actor(request)
+        """Delete the selected ids for good, or empty the bin with `all: true`."""
+        result = StorageRecycleBinService(self.manager).purge_many(
+            self.get_active_org_id(), self._bulk_ids(request), actor=request_actor(request)
         )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            RecycleBinBulkPurgeResponseSerializer(
+                {"purged": result.purged, "failed": result.failed}
+            ).data
+        )
+
+    @staticmethod
+    def _bulk_ids(request) -> list[int] | None:
+        serializer = RecycleBinBulkRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return None if serializer.validated_data["all"] else serializer.validated_data["ids"]

@@ -49,30 +49,16 @@ def _trash_keys(manager, org, batch) -> list[str]:
 
 
 class TestRestore:
-    def test_one_file_from_a_deleted_folder_brings_the_folder_back(self, manager, service, org):
+    def test_a_file_deleted_with_its_folder_comes_back_only_with_it(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        seed_file(manager._backend, org.id, "docs/b.txt", b"b")
-        manager.delete(org.id, "docs")
-
-        result = service.restore(org.id, _row(org, "docs/a.txt").pk)
-
-        assert result.renamed_from is None
-        assert _row(org, "docs/").active is True
-        assert _row(org, "docs/a.txt").active is True
-        assert _row(org, "docs/b.txt").active is False
-        assert _objects(manager)[f"org_{org.id}/docs/a.txt"][0] == b"a"
-
-    def test_restoring_the_sibling_too_reuses_the_folder_and_empties_the_batch(self, manager, service, org):
-        seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        seed_file(manager._backend, org.id, "docs/b.txt", b"b")
         batch = manager.delete(org.id, "docs")
-        service.restore(org.id, _row(org, "docs/a.txt").pk)
 
-        service.restore(org.id, _row(org, "docs/b.txt").pk)
+        with pytest.raises(NotInRecycleBinError):
+            service.restore(org.id, _row(org, "docs/a.txt").pk)
 
-        assert StorageFile.objects.filter(org=org, path="docs/").count() == 1
-        assert _row(org, "docs/b.txt").active is True
-        assert _trash_keys(manager, org, batch) == []
+        assert _row(org, "docs/a.txt").active is False
+        assert _row(org, "docs/").active is False
+        assert _trash_keys(manager, org, batch) != []
 
     def test_a_folder_comes_back_whole(self, manager, service, org):
         manager.mkdir(org.id, "docs")
@@ -176,15 +162,14 @@ class TestPurge:
         assert not StorageFile.all_objects.filter(org=org, path__startswith="docs/").exists()
         assert _trash_keys(manager, org, batch) == []
 
-    def test_purging_one_file_of_a_folder_batch_keeps_the_other(self, manager, service, org):
+    def test_a_file_deleted_with_its_folder_goes_only_with_it(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        seed_file(manager._backend, org.id, "docs/b.txt", b"b")
         batch = manager.delete(org.id, "docs")
 
-        service.purge(org.id, _row(org, "docs/a.txt").pk, actor="test")
+        with pytest.raises(NotInRecycleBinError):
+            service.purge(org.id, _row(org, "docs/a.txt").pk, actor="test")
 
-        assert f"org_{org.id}/.recycle-bin/{batch}/docs/b.txt" in _objects(manager)
-        assert f"org_{org.id}/.recycle-bin/{batch}/docs/a.txt" not in _objects(manager)
+        assert f"org_{org.id}/.recycle-bin/{batch}/docs/a.txt" in _objects(manager)
 
     def test_purge_frees_quota(self, manager, service, org):
         from tables.services.storage_service.quota import org_used_bytes
@@ -252,11 +237,44 @@ class TestStorageBinApi:
         page = admin_client.get(BIN).json()
         entries = page["results"]
 
-        assert page["count"] == 3
-        assert set(entries[0]) == {"id", "name", "item_type", "deleted_at", "days_left"}
-        assert [entry["name"] for entry in entries] == ["docs/", "docs/a.txt", "old.txt"]
+        assert page["count"] == 2  # docs/a.txt goes with its folder, so it isn't listed
+        assert set(entries[0]) == {
+            "id",
+            "name",
+            "item_type",
+            "deleted_at",
+            "days_left",
+            "details",
+            "contents",
+            "contents_total",
+        }
+        folder_details = {detail["label"]: detail["value"] for detail in entries[0]["details"]}
+        file_details = {detail["label"]: detail["value"] for detail in entries[1]["details"]}
+        assert list(folder_details) == ["Location", "Created", "Last changed"]
+        assert folder_details["Location"] == "/"
+        assert list(file_details) == ["Location", "Size", "Type", "Created", "Last changed"]
+        assert (file_details["Location"], file_details["Size"], file_details["Type"]) == ("/", 1, "TXT")
+        assert entries[0]["contents"] == [{"name": "a.txt", "kind": "file"}]
+        assert entries[0]["contents_total"] == 1
+        assert (entries[1]["contents"], entries[1]["contents_total"]) == ([], 0)
+        assert [entry["name"] for entry in entries] == ["docs/", "old.txt"]
         assert entries[0]["item_type"] == "folder"
         assert entries[0]["days_left"] == 7
+
+    def test_a_file_whose_folder_is_gone_warns_it_comes_back_in_a_new_one(
+        self, admin_client, real_manager, acme
+    ):
+        _binned(real_manager, acme, "docs/a.txt")
+        _binned(real_manager, acme, "keep/b.txt")
+        real_manager.delete(acme.id, "docs")
+
+        entries = {entry["name"]: entry for entry in admin_client.get(BIN).json()["results"]}
+
+        orphan = {detail["label"]: detail for detail in entries["docs/a.txt"]["details"]}
+        assert orphan["Comes back to"]["format"] == "notice"
+        assert "docs/" in orphan["Comes back to"]["value"]
+        kept = {detail["label"] for detail in entries["keep/b.txt"]["details"]}
+        assert "Comes back to" not in kept  # keep/ is live
 
     def test_list_is_paged(self, admin_client, real_manager, acme):
         for index in range(3):
@@ -275,23 +293,134 @@ class TestStorageBinApi:
     def test_restore_returns_each_id_with_its_path(self, admin_client, real_manager, acme):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
         real_manager.delete(acme.id, "docs")
-        folder, child = _row(acme, "docs/"), _row(acme, "docs/a.txt")
+        folder = _row(acme, "docs/")
+        loose = _binned(real_manager, acme, "notes.txt")
 
-        response = admin_client.post(f"{BIN}restore/", {"ids": [folder.pk, child.pk]}, format="json")
+        response = admin_client.post(f"{BIN}restore/", {"ids": [folder.pk, loose.pk]}, format="json")
 
         assert response.status_code == 200, response.content
-        assert response.json() == [
-            {"id": folder.pk, "name": "docs/", "renamed_from": None},
-            {"id": child.pk, "name": "docs/a.txt", "renamed_from": None},
-        ]
+        assert response.json() == {
+            "restored": [
+                {"id": folder.pk, "name": "docs/", "renamed_from": None},
+                {"id": loose.pk, "name": "notes.txt", "renamed_from": None},
+            ],
+            "failed": [],
+        }
+        assert _row(acme, "docs/a.txt").active is True
+
+    @pytest.mark.parametrize("action", ["restore", "purge"])
+    def test_an_id_deleted_with_its_folder_is_404(self, admin_client, real_manager, acme, action):
+        seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
+        real_manager.delete(acme.id, "docs")
+
+        response = admin_client.post(
+            f"{BIN}{action}/", {"ids": [_row(acme, "docs/a.txt").pk]}, format="json"
+        )
+
+        assert response.status_code == 404
+        assert response.json()["code"] == "not_in_recycle_bin"
+        assert StorageFile.deleted_objects.filter(org=acme, path__startswith="docs/").count() == 2
+
+    def test_a_restore_conflict_is_reported_and_the_rest_go_on(self, admin_client, real_manager, acme):
+        blocked = _binned(real_manager, acme, "report.pdf")
+        fine = _binned(real_manager, acme, "notes.txt")
+        real_manager._backend.put_bytes(f"org_{acme.id}/report.pdf", b"stray")
+
+        response = admin_client.post(f"{BIN}restore/", {"ids": [blocked.pk, fine.pk]}, format="json")
+
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert [item["id"] for item in body["restored"]] == [fine.pk]
+        assert [(item["id"], item["name"]) for item in body["failed"]] == [(blocked.pk, "report.pdf")]
+        assert "storage already holds a file" in body["failed"][0]["message"]
+
+    def test_an_id_outside_the_bin_says_so_in_its_code(self, admin_client, real_manager, acme, beta):
+        theirs = _binned(real_manager, beta, "theirs.txt")
+
+        response = admin_client.post(f"{BIN}restore/", {"ids": [theirs.pk]}, format="json")
+
+        assert response.status_code == 404
+        assert response.json()["code"] == "not_in_recycle_bin"
 
     def test_purge(self, admin_client, real_manager, acme):
         row = _binned(real_manager, acme, "a.txt")
 
         response = admin_client.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json")
 
-        assert response.status_code == 204, response.content
+        assert response.status_code == 200, response.content
+        assert response.json() == {"purged": [row.pk], "failed": []}
         assert not StorageFile.all_objects.filter(pk=row.pk).exists()
+
+    def test_all_empties_the_bin(self, admin_client, real_manager, acme, beta):
+        ours = [_binned(real_manager, acme, name) for name in ("a.txt", "b.txt")]
+        theirs = _binned(real_manager, beta, "theirs.txt")
+
+        response = admin_client.post(f"{BIN}purge/", {"all": True}, format="json")
+
+        assert response.status_code == 200, response.content
+        assert sorted(response.json()["purged"]) == sorted(row.pk for row in ours)
+        assert StorageFile.deleted_objects.filter(pk=theirs.pk).exists()
+
+    def test_all_restores_the_bin(self, admin_client, real_manager, acme):
+        rows = [_binned(real_manager, acme, name) for name in ("a.txt", "b.txt")]
+
+        response = admin_client.post(f"{BIN}restore/", {"all": True}, format="json")
+
+        assert response.status_code == 200, response.content
+        assert StorageFile.objects.filter(pk__in=[row.pk for row in rows]).count() == 2
+
+    @pytest.mark.parametrize("body", [{}, {"all": True, "ids": [1]}, {"all": False}])
+    def test_either_ids_or_all(self, admin_client, real_manager, body):
+        assert admin_client.post(f"{BIN}restore/", body, format="json").status_code == 400
+
+    def test_search_and_ordering(self, admin_client, real_manager, acme):
+        for name in ("beta.txt", "alpha.txt", "gamma.md"):
+            _binned(real_manager, acme, name)
+
+        oldest_first = admin_client.get(BIN, {"ordering": "deleted_at"}).json()["results"]
+        found = admin_client.get(BIN, {"search": "ALPHA"}).json()["results"]
+
+        assert [entry["name"] for entry in oldest_first] == ["beta.txt", "alpha.txt", "gamma.md"]
+        assert [entry["name"] for entry in found] == ["alpha.txt"]
+
+    def test_search_finds_a_folder_by_a_file_deleted_inside_it(self, admin_client, real_manager, acme):
+        seed_file(real_manager._backend, acme.id, "reports/2025/invoice-77.pdf", b"x")
+        real_manager.delete(acme.id, "reports")
+        _binned(real_manager, acme, "notes.txt")
+
+        found = admin_client.get(BIN, {"search": "INVOICE"}).json()["results"]
+
+        assert [entry["name"] for entry in found] == ["reports/"]
+
+    def test_show_all_lists_every_file_of_a_folder_and_only_top_level_ids(
+        self, admin_client, real_manager, acme, beta
+    ):
+        for index in range(3):
+            seed_file(real_manager._backend, acme.id, f"docs/f{index}.txt", b"x")
+        real_manager.delete(acme.id, "docs")
+        folder, child = _row(acme, "docs/"), _row(acme, "docs/f0.txt")
+        theirs = _binned(real_manager, beta, "theirs.txt")
+
+        response = admin_client.get(f"{BIN}{folder.pk}/contents/")
+
+        assert response.status_code == 200, response.content
+        assert response.json() == {
+            "contents": [{"name": f"f{index}.txt", "kind": "file"} for index in range(3)],
+            "contents_total": 3,
+        }
+        assert admin_client.get(f"{BIN}{child.pk}/contents/").status_code == 404
+        assert admin_client.get(f"{BIN}{theirs.pk}/contents/").status_code == 404
+
+    def test_filter_by_kind(self, admin_client, real_manager, acme):
+        _binned(real_manager, acme, "loose.txt")
+        seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
+        real_manager.delete(acme.id, "docs")
+
+        folders = admin_client.get(BIN, {"item_type": "folder"}).json()["results"]
+        files = admin_client.get(BIN, {"item_type": "file"}).json()["results"]
+
+        assert [entry["name"] for entry in folders] == ["docs/"]
+        assert [entry["name"] for entry in files] == ["loose.txt"]  # docs/a.txt goes with its folder
 
     @pytest.mark.parametrize("action", ["restore", "purge"])
     def test_another_orgs_id_is_404_and_nothing_changes(self, admin_client, real_manager, acme, beta, action):
@@ -331,7 +460,7 @@ class TestStorageBinApi:
         assert restorer.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 200
         real_manager.delete(acme.id, "a.txt")
         again = StorageFile.deleted_objects.get(org=acme, path="a.txt")
-        assert purger.post(f"{BIN}purge/", {"ids": [again.pk]}, format="json").status_code == 204
+        assert purger.post(f"{BIN}purge/", {"ids": [again.pk]}, format="json").status_code == 200
 
 
 @pytest.mark.parametrize("method, url", [("get", BIN), ("post", f"{BIN}restore/"), ("post", f"{BIN}purge/")])
@@ -379,13 +508,14 @@ class TestFailures:
         assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
         assert _trash_keys(manager, org, batch) != []
 
-    def test_restore_many_keeps_earlier_ids_when_a_later_one_conflicts(self, manager, service, org):
+    def test_restore_many_reports_a_conflict_and_keeps_the_others(self, manager, service, org):
         first = _binned(manager, org, "first.txt")
         second = _binned(manager, org, "second.txt")
         manager._backend.put_bytes(f"org_{org.id}/second.txt", b"stray")
 
-        with pytest.raises(StorageRestoreConflictError):
-            service.restore_many(org.id, [first.pk, second.pk])
+        result = service.restore_many(org.id, [first.pk, second.pk])
 
+        assert [restored.object.pk for restored in result.restored] == [first.pk]
+        assert [failure.id for failure in result.failed] == [second.pk]
         assert StorageFile.objects.filter(pk=first.pk).exists()
         assert StorageFile.deleted_objects.filter(pk=second.pk).exists()

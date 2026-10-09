@@ -360,15 +360,6 @@ class StorageFileSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(read_only=True, help_text="Row last update timestamp")
 
 
-class StorageRecycleBinIdsSerializer(serializers.Serializer):
-    ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        min_length=1,
-        max_length=100,
-        help_text="Recycle-bin entry ids (1 to 100)",
-    )
-
-
 class StorageRecycleBinEntrySerializer(RecycleBinEntrySerializer):
     name = serializers.CharField(help_text="Full org-relative path; folders end in '/'")
     item_type = serializers.ChoiceField(choices=["file", "folder"])
