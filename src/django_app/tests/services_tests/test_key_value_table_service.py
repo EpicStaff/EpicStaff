@@ -97,7 +97,7 @@ def test_write_locks_the_table_before_any_entry(service, table):
         index for index, sql in enumerate(statements) if "tables_keyvaluetableentry" in sql
     )
     assert statements[lock_index] == (
-        f'SELECT 1 FROM "tables_keyvaluetable" WHERE id = {table.pk} FOR KEY SHARE'
+        f'SELECT 1 FROM "tables_keyvaluetable" WHERE id = {table.pk} AND active FOR KEY SHARE'
     )
     assert lock_index < first_entry_index <= insert_index
     assert statements[0].startswith("SAVEPOINT")
