@@ -92,6 +92,8 @@ git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && 
 git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && cp src/.env.example src/.env && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '=+/')|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 
+These blocks build every image locally from the cloned source (`docker compose up --build`), so the signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) do not describe what they run. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
+
 `DJANGO_SECRET_KEY` is required — the stack refuses to start without it.
 Generate it once and keep it: changing it signs out every user, and see
 [docs/signing-keys.md](docs/signing-keys.md) for the full details.
@@ -158,6 +160,19 @@ cosign verify-blob \
 ```
 
 Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, including one whose digests were swapped for another release's, fails this check.
+
+### Running a verified release
+
+The release's `docker-compose.yaml` is not a standalone install: it still mounts `nginx/templates` and `nginx/certs` from the checkout next to it. Use it as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
+
+```bash
+git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
+# Download docker-compose.yaml and docker-compose.yaml.sigstore.json from the
+# vX.Y.Z release page into a separate folder, verify them as shown above, then:
+cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
+```
+
+Prepare `src/.env` and create the volumes and network exactly as in the Quick Start block for your OS, but finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
 ---
 
