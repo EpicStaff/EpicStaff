@@ -34,9 +34,11 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
+import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
 import {
     FlowVisualProgrammingComponent,
+    REMOTE_SAVE_RELOAD_FAILED_MESSAGE,
     RUN_WHILE_SAVING_MESSAGE,
     TEST_RUN_NODE_GONE_MESSAGE,
     TEST_RUN_PAYLOAD_REJECTED_MESSAGE,
@@ -258,17 +260,17 @@ describe('FlowVisualProgrammingComponent', () => {
         return element ? FlowGraphStubComponent.instances.at(-1) : undefined;
     }
 
+    function makeLiveFlowDirty(): void {
+        const flow = flowService.getFlowState();
+        flowService.setFlow({
+            ...flow,
+            nodes: flow.nodes.map((node) => ({ ...node, position: { x: 4242, y: 0 } })),
+        });
+    }
+
     describe('version preview', () => {
         function preview(): HTMLElement | null {
             return fixture.nativeElement.querySelector('app-flow-version-preview');
-        }
-
-        function makeLiveFlowDirty(): void {
-            const flow = flowService.getFlowState();
-            flowService.setFlow({
-                ...flow,
-                nodes: flow.nodes.map((node) => ({ ...node, position: { x: 4242, y: 0 } })),
-            });
         }
 
         function enterPreview(version: GraphVersionDto = VERSION_A): void {
@@ -757,10 +759,13 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(flowService.savedWebhookPythonCode(21)).toBeNull();
         });
 
-        it('drops it when another user saves the graph, until the graph is loaded again', () => {
+        it('drops it when another user saves a flow with unsaved edits, until the graph is loaded again', () => {
             loadFlowWithWebhookNode(2);
+            // A clean flow would take the save over right away; unsaved edits keep the outdated graph.
+            makeLiveFlowDirty();
 
             remoteSave();
+            fixture.detectChanges();
 
             expect(flowService.hasSavedGraph()).toBe(false);
             expect(flowService.savedWebhookPythonCode(21)).toBeNull();
@@ -768,6 +773,109 @@ describe('FlowVisualProgrammingComponent', () => {
             loadFlowWithWebhookNode(3);
 
             expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+        });
+    });
+
+    describe('when another user saves the flow', () => {
+        const REMOTE_GRAPH = graphDto({
+            save_version: 2,
+            graph_note_list: [{ id: 77, node_name: 'Remote note', graph: 1, content: 'remote', metadata: {} }],
+        });
+        let undoRedo: UndoRedoService;
+
+        beforeEach(() => {
+            undoRedo = TestBed.inject(UndoRedoService);
+            flowsApi['getGraphById'].mockClear();
+            flowsApi['getGraphById'].mockReturnValue(of(REMOTE_GRAPH));
+        });
+
+        function remoteSave(): void {
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 1,
+                new_save_version: 2,
+                saved_by: { user_id: 7, display_name: 'Another user' },
+                saved_at: '',
+            });
+            fixture.detectChanges();
+        }
+
+        function showsRemoteSave(): boolean {
+            return flowService.getFlowState().nodes.some((node) => node.backendId === 77);
+        }
+
+        it('loads the save into a clean editor and drops the undo history from before it', () => {
+            undoRedo.setUndoStack([flowService.getFlowState()]);
+
+            remoteSave();
+
+            expect(flowsApi['getGraphById']).toHaveBeenCalledWith(1, true);
+            expect(showsRemoteSave()).toBe(true);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(2);
+            expect(component.hasUnsavedChangesSignal()).toBe(false);
+            expect(undoRedo.canUndo()).toBe(false);
+        });
+
+        it('keeps the old save_version while the flow has unsaved edits, so the next save is rejected', () => {
+            makeLiveFlowDirty();
+
+            remoteSave();
+
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+            expect(flowService.hasSavedGraph()).toBe(false);
+            component.onGraphSave(flowService.getFlowState());
+            expect(flowsApi['bulkSaveGraph'].mock.calls[0][1].save_version).toBe(1);
+        });
+
+        it('waits until the open node panel closes, since its edits are not in the flow yet', () => {
+            const sidePanel = TestBed.inject(SidePanelService);
+            sidePanel.setSelectedNodeId('open-node');
+
+            remoteSave();
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+
+            sidePanel.clearSelection();
+            fixture.detectChanges();
+            expect(showsRemoteSave()).toBe(true);
+        });
+
+        it('waits until the version preview closes', () => {
+            component.onVersionPreviewRequested(VERSION_A);
+            fixture.detectChanges();
+
+            remoteSave();
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+
+            component.onPreviewExit();
+            fixture.detectChanges();
+            expect(showsRemoteSave()).toBe(true);
+        });
+
+        it('discards the loaded save when the flow was edited while it loaded', () => {
+            const remoteGraph$ = new Subject<GraphDto>();
+            flowsApi['getGraphById'].mockReturnValue(remoteGraph$);
+            remoteSave();
+
+            makeLiveFlowDirty();
+            remoteGraph$.next(REMOTE_GRAPH);
+            remoteGraph$.complete();
+            fixture.detectChanges();
+
+            expect(showsRemoteSave()).toBe(false);
+            expect(component.hasUnsavedChangesSignal()).toBe(true);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+
+        it.each([
+            ['the request fails', () => throwError(() => new HttpErrorResponse({ status: 500 }))],
+            ['the backend returns a graph older than the save', () => of(graphDto())],
+        ])('warns and keeps the old save_version when %s', (_case, response) => {
+            flowsApi['getGraphById'].mockReturnValue(response());
+
+            remoteSave();
+
+            expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
         });
     });
 });
