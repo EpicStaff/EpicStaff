@@ -1,0 +1,5 @@
+# Review requests for CI/CD changes, including the weekly Dependabot PRs that
+# bump the pinned action SHAs. Owners must have write access, or GitHub skips
+# the line silently.
+/.github/workflows/      @ArturDrohomeretskyiHYS @VitaliiPovoroznykHYS
+/.github/dependabot.yml  @ArturDrohomeretskyiHYS @VitaliiPovoroznykHYS
