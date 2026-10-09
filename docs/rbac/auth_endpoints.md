@@ -369,8 +369,8 @@ See the dedicated [`sse_auth.md`](./sse_auth.md) for the complete FE flow.
   ```
 - Tickets are **single-use** and stored in Redis under
   `rbac:sse_ticket:<sha256-of-token>` keys — only the digest is persisted,
-  never the ticket itself. TTL is `SSE_TICKET_TTL_SECONDS`
-  (hardcoded to 30 seconds in `settings.py`). Consume uses Redis `GETDEL` (6.2+) for
+  never the ticket itself. TTL is `SSE_TICKET_TTL`
+  (hardcoded to 30 seconds in `django_app/settings/base.py`). Consume uses Redis `GETDEL` (6.2+) for
   atomic get-and-delete, so even two simultaneous connects with the same
   ticket cannot both succeed. Reconnects must fetch a fresh ticket.
 - SSE endpoints reject missing/invalid/expired tickets with
