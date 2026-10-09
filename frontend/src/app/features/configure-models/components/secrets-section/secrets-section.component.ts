@@ -30,7 +30,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
@@ -187,7 +187,7 @@ export class SecretsSectionComponent implements OnInit {
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secret',
-                message: `You're about to delete <strong>${name}</strong>. This action can't be undone.`,
+                message: `You're about to delete <strong>${escapeHtml(name)}</strong>. This action can't be undone.`,
                 caution,
                 cautionTitle: caution ? 'Caution' : undefined,
                 confirmText: 'Delete',
