@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from rbac.governance.authorship import VersionSnapshotAuthorshipScrubber
+from rbac.governance.authorship import SnapshotAuthorshipScrubService
 from rbac.identity.bootstrap_lock import acquire_bootstrap_lock
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
 
@@ -30,7 +30,7 @@ class ResetUserService:
     def reset(self, *, email: str, password: str, display_name: str | None = None):
         acquire_bootstrap_lock()
 
-        VersionSnapshotAuthorshipScrubber().scrub_every_user()
+        SnapshotAuthorshipScrubService().scrub_every_user()
         UserModel = get_user_model()  # noqa: N806
         UserModel.objects.all().delete()  # user keys cascade; system key survives
 

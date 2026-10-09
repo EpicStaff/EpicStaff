@@ -10,7 +10,7 @@ import {
 } from './authorship-details.util';
 
 const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: null };
-const UNNAMED: UserSummary = { id: 2, display_name: null, avatar_url: 'https://cdn.example/avatar.png' };
+const UNNAMED: UserSummary = { id: 2, display_name: null, avatar_url: 'https://example.com/avatars/avatar.png' };
 
 // Built from local-time parts so the expectation holds in any time zone the tests run in.
 const LOCAL_MOMENT = new Date(2026, 2, 12, 13, 28, 23).toISOString();
@@ -75,7 +75,7 @@ describe('buildAuthorshipColumns', () => {
                 userName: AUTHORSHIP_UNNAMED_USER,
                 showAvatar: true,
                 avatarName: null,
-                avatarUrl: 'https://cdn.example/avatar.png',
+                avatarUrl: 'https://example.com/avatars/avatar.png',
             });
         });
 

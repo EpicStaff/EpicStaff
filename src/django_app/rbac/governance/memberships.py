@@ -18,7 +18,7 @@ from rbac.exceptions import (
 )
 from rbac.governance.authorship import (
     AuthorshipReleaseService,
-    VersionSnapshotAuthorshipScrubber,
+    SnapshotAuthorshipScrubService,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
@@ -217,16 +217,16 @@ class MembershipManagementService(CrossOrgResourceService):
         released = AuthorshipReleaseService().release(
             user_id=membership.user_id, org_id=membership.org_id
         )
-        scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_in_organization(
+        scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_in_organization(
             user_id=membership.user_id, org_id=membership.org_id
         )
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m} "
-            "released_authorship={r} scrubbed_versions={v}",
+            "released_authorship={r} scrubbed_snapshots={v}",
             a=getattr(actor, "email", "system"),
             m=membership_id,
             r=released,
-            v=scrubbed_versions,
+            v=scrubbed_snapshots,
         )
 
     # ---- internals ----

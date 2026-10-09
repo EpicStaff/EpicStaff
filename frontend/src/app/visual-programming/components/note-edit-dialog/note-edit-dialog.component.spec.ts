@@ -24,7 +24,7 @@ const NOTE: GraphNoteModel = {
 
 // Built from local-time parts so the expectation holds in any time zone the tests run in.
 const AUTHORSHIP: AuthorshipDetailsSource = {
-    created_by: { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://cdn.example/ivan.png' },
+    created_by: { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://example.com/avatars/ivan.png' },
     created_at: new Date(2026, 2, 12, 13, 28, 23).toISOString(),
     last_edited_by: null,
     last_edited_at: new Date(2026, 2, 13, 9, 5, 0).toISOString(),

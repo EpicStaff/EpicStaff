@@ -161,7 +161,7 @@ export class CollectionBasicsComponent {
     /**
      * Shows the stored name: always for a newly selected collection (after sending the previous one's pending
      * edit), otherwise only while the user is not typing in it. The cache also changes outside this panel —
-     * e.g. the create-collection wizard edits the same collection (EST-3988). Compared trimmed, as saved, so a
+     * e.g. the create-collection wizard edits the same collection. Compared trimmed, as saved, so a
      * save never strips the trailing space the user just typed. A guidance edit is closed on switching
      * collections, as the guidance panel did before.
      */

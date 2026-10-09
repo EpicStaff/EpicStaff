@@ -28,7 +28,7 @@ const LOADED_TOOL: GetPythonCodeToolRequest = {
     created_at: '2026-09-15T08:00:00Z',
     updated_at: '2026-10-01T09:30:00Z',
     created_by: { id: 2, display_name: 'Grace Hopper', avatar_url: null },
-    last_edited_by: { id: 3, display_name: 'Ada Lovelace', avatar_url: 'https://cdn.example.com/avatars/3.png' },
+    last_edited_by: { id: 3, display_name: 'Ada Lovelace', avatar_url: 'https://example.com/avatars/3.png' },
     last_edited_at: '2026-10-01T09:30:00Z',
 };
 

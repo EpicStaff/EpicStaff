@@ -8,10 +8,10 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from rbac.authorship import record_last_edit
-from rbac.governance import authorship as governance_authorship
-from rbac.governance.authorship import VersionSnapshotAuthorshipScrubber
 from rbac.models import OrganizationUser
+from tables.graph_versioning import snapshot_authorship
 from tables.graph_versioning.services import GraphVersioningService
+from tables.graph_versioning.snapshot_authorship import VersionSnapshotAuthorshipScrubber
 from tables.models import Graph, GraphVersion
 from tables.models.graph_models import AgentNode
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -233,8 +233,8 @@ def test_database_filter_selects_only_versions_recording_the_user(acme, author, 
     )
 
     selected = GraphVersion.all_objects.filter(
-        governance_authorship._SnapshotMatchesJsonpath(
-            governance_authorship._RECORDS_USER_JSONPATH, {"user_id": author.id}
+        snapshot_authorship._SnapshotMatchesJsonpath(
+            snapshot_authorship._RECORDS_USER_JSONPATH, {"user_id": author.id}
         )
     )
 
@@ -245,7 +245,7 @@ def test_database_filter_selects_only_versions_recording_the_user(acme, author, 
 
 @pytest.mark.django_db
 def test_scrub_rewrites_every_recording_version_across_batches(acme, author, monkeypatch):
-    monkeypatch.setattr(governance_authorship, "_SCRUB_BATCH_SIZE", 2)
+    monkeypatch.setattr(snapshot_authorship, "_SCRUB_BATCH_SIZE", 2)
     versions = [
         _version(acme, name=f"batched-{index}", snapshot=_recording_everywhere(author.id))
         for index in range(5)

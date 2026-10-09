@@ -16,7 +16,7 @@ from rbac.exceptions import (
 )
 from rbac.governance.authorship import (
     AuthorshipReleaseService,
-    VersionSnapshotAuthorshipScrubber,
+    SnapshotAuthorshipScrubService,
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.delete_collector import (
@@ -223,23 +223,23 @@ class UserManagementService(CrossOrgResourceService):
                 raise UserNotFoundError()
 
         released = 0
-        scrubbed_versions = 0
+        scrubbed_snapshots = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
             released = AuthorshipReleaseService().release_outside_memberships(user_id=target.pk)
-            scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_outside_memberships(
+            scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_outside_memberships(
                 user_id=target.pk
             )
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
-            "scrubbed_versions={v}",
+            "scrubbed_snapshots={v}",
             a=getattr(actor, "email", "system"),
             t=target.email,
             r=released,
-            v=scrubbed_versions,
+            v=scrubbed_snapshots,
         )
 
         return target
@@ -348,7 +348,7 @@ class UserManagementService(CrossOrgResourceService):
         snapshot = self._user_delete_snapshot(instance)
         # Before the locks below, so scanning every version snapshot never extends how
         # long they are held; a guard failing after it rolls the scrub back.
-        scrubbed_versions = VersionSnapshotAuthorshipScrubber().scrub_in_every_organization(
+        scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_in_every_organization(
             user_id=instance.pk
         )
 
@@ -391,11 +391,11 @@ class UserManagementService(CrossOrgResourceService):
 
         logger.info(
             "UserManagementService.delete_user actor={a} target={t} resources={r} "
-            "scrubbed_versions={v}",
+            "scrubbed_snapshots={v}",
             a=getattr(actor, "email", "system"),
             t=instance.email,
             r=affected,
-            v=scrubbed_versions,
+            v=scrubbed_snapshots,
         )
         return payload
 

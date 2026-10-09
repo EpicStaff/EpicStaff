@@ -2,8 +2,8 @@
 
 import pytest
 
-from rbac.governance.authorship import VersionSnapshotAuthorshipScrubber
 from tables.graph_versioning.serializers import GraphVersionUpdateSerializer
+from tables.graph_versioning.snapshot_authorship import VersionSnapshotAuthorshipScrubber
 from tables.models import Graph, GraphVersion
 from tables.models.graph_models import AgentNode
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403

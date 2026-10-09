@@ -3,7 +3,7 @@ import { UserSummary } from '@shared/models';
 
 import { AuthorshipFooterComponent } from './authorship-footer.component';
 
-const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://cdn.example/ivan.png' };
+const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://example.com/avatars/ivan.png' };
 const OLGA: UserSummary = { id: 2, display_name: 'Olga Mageria', avatar_url: null };
 // Built from local-time parts so the expectation holds in any time zone the tests run in.
 const CREATED_AT = new Date(2026, 2, 12, 13, 28, 23).toISOString();

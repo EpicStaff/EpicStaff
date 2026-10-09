@@ -51,7 +51,7 @@ export const LIVE_WEBHOOK_TRIGGER_ID = 77;
 const author: UserSummary = {
     id: 7,
     display_name: 'Ada Lovelace',
-    avatar_url: 'https://cdn.example.com/avatars/7.png',
+    avatar_url: 'https://example.com/avatars/7.png',
 };
 // A user who never set a display name or an avatar.
 const lastEditor: UserSummary = { id: 8, display_name: null, avatar_url: null };
