@@ -1,15 +1,16 @@
-from copy import deepcopy
-
 from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
 from django.db.models import Q
 
+from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
-    create_filters,
+    compared_values,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
+    import_values,
     resolve_import_organization,
 )
 
@@ -55,7 +56,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        surface = serializer.save(organization=organization)
+        surface = serializer.save(organization=organization, owner_agent=kwargs.get("owner_agent"))
 
         self._create_python_tools(surface, tools, id_mapper)
         self._create_mcp_tools(surface, tools, id_mapper)
@@ -63,47 +64,64 @@ class SurfaceStrategy(EntityImportExportStrategy):
         return surface
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> Surface:
-        data_copy = deepcopy(data)
-        projected = {field: data_copy.get(field) for field in ("name", "instructions")}
-        filters, null_filters = create_filters(projected)
+        # Entries that reach this method are shared: nest_owned_surface_entries
+        # hands owned ones to AgentDefinitionStrategy. A shared entry reuses only
+        # a shared row -- an agent's owned surface may not be listed by another
+        # agent or node, and would be deleted together with its owner. SQL
+        # narrows on stored columns; the tool sets are compared in Python.
+        content_key = self.entry_content_key(data, id_mapper)
+        candidates = filter_by_name_or_renamed_copy(
+            Surface.objects.filter(
+                self.get_org_scope_q(org_id),
+                owner_agent__isnull=True,
+                instructions=content_key[0],
+            ).prefetch_related("python_tools", "mcp_tools"),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
+        )[:MAX_REUSE_CANDIDATES]
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if self.surface_content_key(candidate) == content_key
+            ),
+            None,
+        )
 
-        tools = data_copy.get("tools", {})
-        incoming_python_tools = self._remap_tool_set(
+    def entry_content_key(self, data: dict, id_mapper: IDMapper) -> tuple:
+        """Return the content an exported surface entry is matched on.
+
+        Instructions as the import serializer stores them (the model default
+        when missing) plus the remapped python and MCP tool sets with modes;
+        equal to `surface_content_key` of an equivalent stored surface.
+        """
+        tools = data.get("tools", {})
+        python_tool_pairs = self._remap_tool_set(
             tools.get(EntityType.PYTHON_CODE_TOOL, []),
             "python_tool_id",
             EntityType.PYTHON_CODE_TOOL,
             id_mapper,
         )
-        incoming_mcp_tools = self._remap_tool_set(
+        mcp_tool_pairs = self._remap_tool_set(
             tools.get(EntityType.MCP_TOOL, []),
             "mcp_tool_id",
             EntityType.MCP_TOOL,
             id_mapper,
         )
-
-        candidates = Surface.objects.filter(**filters, **null_filters).filter(
-            self.get_org_scope_q(org_id)
+        instructions = compared_values(Surface, self.serializer_class, data, ("instructions",))
+        return (
+            instructions["instructions"],
+            frozenset(python_tool_pairs),
+            frozenset(mcp_tool_pairs),
         )
 
-        # Ownership is not part of the export, so a candidate owned by a
-        # different agent definition is still reused. Combined with the
-        # owner_agent__isnull=True guard in AgentDefinitionStrategy, the
-        # worst case is a newly created agent definition without an owned
-        # surface — never cross-agent ownership theft.
-        for candidate in candidates:
-            candidate_python_tools = set(
-                candidate.python_tools.values_list("python_tool_id", "mode")
-            )
-            if candidate_python_tools != incoming_python_tools:
-                continue
-
-            candidate_mcp_tools = set(candidate.mcp_tools.values_list("mcp_tool_id", "mode"))
-            if candidate_mcp_tools != incoming_mcp_tools:
-                continue
-
-            return candidate
-
-        return None
+    @staticmethod
+    def surface_content_key(surface: Surface) -> tuple:
+        """Return `entry_content_key` for a stored surface (tools prefetched)."""
+        return (
+            surface.instructions,
+            frozenset((row.python_tool_id, row.mode) for row in surface.python_tools.all()),
+            frozenset((row.mcp_tool_id, row.mode) for row in surface.mcp_tools.all()),
+        )
 
     def get_org_scope_q(self, org_id: int) -> Q:
         organization = resolve_import_organization(org_id)
