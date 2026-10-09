@@ -1,6 +1,5 @@
 from typing import Any, Literal
 
-from django.conf import settings
 from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch
 from loguru import logger
@@ -9,6 +8,7 @@ from src.shared.models.search_config_suggestion import SuggestedCollectionMetric
 from tables.clients import KnowledgeClient
 from tables.clients.errors import (
     ClientBadGatewayError,
+    ClientError,
     ClientNotAvailableError,
     ClientTimeoutError,
 )
@@ -21,13 +21,15 @@ from tables.exceptions import (
     NoNaiveRagForCollectionException,
 )
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
-from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.models.knowledge_models import GraphRag, GraphRagIndexConfig, NaiveRag
 from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+
+_GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 
 class CollectionManagementService:
@@ -191,8 +193,10 @@ class CollectionManagementService:
     @transaction.atomic
     def delete_collection(collection_id: int) -> dict[str, Any]:
         """
-        Delete collection and all its documents.
-        Cleans up unreferenced DocumentContent.
+        Move a collection and its documents to the recycle bin.
+
+        Documents and their content stay intact so a restore brings them back;
+        purge_collection() removes them for good.
 
         Args:
             collection_id: ID of collection to delete
@@ -204,34 +208,67 @@ class CollectionManagementService:
             CollectionNotFoundException: If collection not found
         """
         collection = CollectionManagementService.get_collection(collection_id)
-
         collection_name = collection.collection_name
+        # Counted before the delete: the documents go to the bin with the collection.
+        document_count = collection.documents.count()
 
-        if settings.SOFT_DELETE:
-            # Soft delete keeps documents/content intact for restoration.
-            collection.delete()
-            logger.info(f"Soft-deleted collection '{collection_name}' (ID: {collection_id})")
-            return {
-                "collection_id": collection_id,
-                "collection_name": collection_name,
-                "deleted_documents": 0,
-                "deleted_content": 0,
-            }
+        collection.delete()
+        logger.info(
+            f"Soft-deleted collection '{collection_name}' (ID: {collection_id}) with {document_count} documents"
+        )
+        return {
+            "collection_id": collection_id,
+            "collection_name": collection_name,
+            "deleted_documents": document_count,
+            "deleted_content": 0,
+        }
 
-        # Get all document IDs in this collection
-        document_ids = list(collection.documents.values_list("document_id", flat=True))
+    @staticmethod
+    @transaction.atomic
+    def purge_collection(collection: SourceCollection) -> dict[str, Any]:
+        """
+        Delete a collection for good: its documents (binned ones included), the
+        DocumentContent no other document references any more, and its GraphRAG
+        data: the GraphRagIndexConfig rows (a forward link the Collector doesn't
+        follow) and, once the transaction commits, the indexes the knowledge
+        service holds.
 
-        # Collect content IDs before deletion
+        Args:
+            collection: A collection in the recycle bin.
+
+        Returns:
+            dict: Deletion summary
+
+        Raises:
+            NotInRecycleBinError: The collection is live.
+        """
+        collection_id = collection.collection_id
+        collection_name = collection.collection_name
+        # all_objects: a binned collection's documents are binned too, and the
+        # default manager would skip them.
+        documents = DocumentMetadata.all_objects.filter(source_collection=collection)
+        document_count = documents.count()
         content_ids = list(
-            collection.documents.exclude(document_content__isnull=True).values_list(
+            documents.exclude(document_content__isnull=True).values_list(
                 "document_content_id", flat=True
             )
         )
 
-        # Delete collection (cascades to DocumentMetadata)
-        collection.delete()
+        # all_objects: the collection's GraphRAGs are binned with it.
+        graph_rags = GraphRag.all_objects.filter(base_rag_type__source_collection=collection)
+        graph_rag_ids = list(graph_rags.values_list("graph_rag_id", flat=True))
+        index_config_ids = list(
+            graph_rags.exclude(index_config__isnull=True).values_list("index_config_id", flat=True)
+        )
 
-        # Clean up unreferenced content
+        collection.purge()
+
+        GraphRagIndexConfig.objects.filter(pk__in=index_config_ids).delete()
+        if graph_rag_ids:
+            transaction.on_commit(
+                lambda: CollectionManagementService._delete_graph_rag_indexes(graph_rag_ids)
+            )
+
         unreferenced_count = 0
         if content_ids:
             unreferenced_content = (
@@ -239,30 +276,45 @@ class CollectionManagementService:
                 .annotate(ref_count=models.Count("metadata_records"))
                 .filter(ref_count=0)
             )
-
             unreferenced_count = unreferenced_content.count()
             if unreferenced_count > 0:
                 unreferenced_content.delete()
-                logger.info(f"Deleted {unreferenced_count} unreferenced content records")
 
         logger.info(
-            f"Deleted collection '{collection_name}' (ID: {collection_id}) "
-            f"with {len(document_ids)} documents"
+            f"Purged collection '{collection_name}' (ID: {collection_id}) with {document_count} documents "
+            f"and {unreferenced_count} unreferenced content records"
         )
-
         return {
             "collection_id": collection_id,
             "collection_name": collection_name,
-            "deleted_documents": len(document_ids),
+            "deleted_documents": document_count,
             "deleted_content": unreferenced_count,
         }
+
+    @staticmethod
+    def _delete_graph_rag_indexes(graph_rag_ids: list[int]) -> None:
+        """Drop the knowledge service's GraphRAG indexes of a purged collection.
+
+        Runs after the purge commits, so a failure can't bring the rows back;
+        it's logged, and the index stays behind on the knowledge service. The
+        purge response waits for these calls, hence the short timeout.
+        """
+        with KnowledgeClient(timeout=_GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS) as client:
+            for graph_rag_id in graph_rag_ids:
+                try:
+                    client.delete(strategy=RAGStrategy.GRAPH, rag_id=graph_rag_id)
+                except ClientError as error:
+                    logger.warning(
+                        "Could not delete GraphRAG index {graph_rag_id} of a purged collection: {error}",
+                        graph_rag_id=graph_rag_id,
+                        error=error,
+                    )
 
     @staticmethod
     @transaction.atomic
     def bulk_delete_collections(collection_ids: list[int]) -> dict[str, Any]:
         """
-        Delete multiple collections in a single transaction.
-        Cleans up unreferenced DocumentContent.
+        Move multiple collections to the recycle bin in a single transaction.
 
         Args:
             collection_ids: List of collection IDs to delete
@@ -296,62 +348,26 @@ class CollectionManagementService:
             for col in collections
         ]
 
-        if settings.SOFT_DELETE:
-            # Soft delete keeps documents/content intact for restoration. Deleting
-            # per-instance (rather than a queryset .update()) routes each collection
-            # through SoftDeleteMixin.delete() -> DeleteService, so the cascade
-            # mechanism actually fires for every collection's dependents.
-            deleted_count = 0
-            for collection in collections:
-                collection.delete()
-                deleted_count += 1
+        # Counted before the delete: the documents go to the bin with their collections.
+        document_count = DocumentMetadata.objects.filter(source_collection__in=collections).count()
 
-            logger.info(f"Bulk soft-deleted {deleted_count} collections")
-
-            return {
-                "deleted_count": deleted_count,
-                "collections": deleted_info,
-                "deleted_documents": 0,
-                "deleted_content": 0,
-            }
-
-        # Count documents across all collections
-        total_documents = DocumentMetadata.objects.filter(source_collection__in=collections).count()
-
-        # Collect content IDs before deletion
-        content_ids = list(
-            DocumentMetadata.objects.filter(source_collection__in=collections)
-            .exclude(document_content__isnull=True)
-            .values_list("document_content_id", flat=True)
-        )
-
-        # Delete collections (cascades to DocumentMetadata)
-        deleted_count, _ = collections.delete()
-
-        # Clean up unreferenced content
-        dangling_count = 0
-        if content_ids:
-            dangling_content = (
-                DocumentContent.objects.filter(id__in=content_ids)
-                .annotate(ref_count=models.Count("metadata_records"))
-                .filter(ref_count=0)
-            )
-
-            dangling_count = dangling_content.count()
-            if dangling_count > 0:
-                dangling_content.delete()
-                logger.info(f"Deleted {dangling_count} unreferenced content records")
+        # Per-instance delete routes each collection through SoftDeleteMixin ->
+        # DeleteService, so every collection's dependents are binned with it.
+        # Documents and content stay intact for a restore.
+        deleted_count = 0
+        for collection in collections:
+            collection.delete()
+            deleted_count += 1
 
         logger.info(
-            f"Bulk deleted {deleted_count} collections with "
-            f"{total_documents} documents and {dangling_count} unreferenced content"
+            f"Bulk soft-deleted {deleted_count} collections with {document_count} documents"
         )
 
         return {
             "deleted_count": deleted_count,
             "collections": deleted_info,
-            "deleted_documents": total_documents,
-            "deleted_content": dangling_count,
+            "deleted_documents": document_count,
+            "deleted_content": 0,
         }
 
     @staticmethod

@@ -78,3 +78,16 @@ $compact-theme: mat.define-theme(
     max-width: 60vw;
     white-space: nowrap;
 }
+
+// Recycle bin row names: long ones, often without spaces, break onto more lines.
+.bin-name-tooltip {
+    --mat-tooltip-container-max-width: 480px;
+}
+
+.bin-name-tooltip .mdc-tooltip__surface {
+    max-width: 480px;
+    text-align: left;
+    overflow-wrap: anywhere;
+    // Keeps the line breaks of a long text (instructions).
+    white-space: pre-line;
+}

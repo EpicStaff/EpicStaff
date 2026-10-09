@@ -13,6 +13,8 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 export class ActivateButtonComponent {
     tooltip = input('Activate');
     disabled = input(false);
+    /** A sprite symbol. The default play triangle keeps its own size and optical offset. */
+    icon = input('activate');
 
     triggered = output<void>();
 }

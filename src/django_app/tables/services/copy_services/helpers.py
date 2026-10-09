@@ -1,8 +1,14 @@
 import zlib
+from collections.abc import Collection
 
 from django.db import connection, models
 from django.db.models import Q
-from tables.import_export.utils import clean_base_name, ensure_unique_identifier
+from tables.import_export.utils import (
+    clean_base_name,
+    ensure_unique_identifier,
+    ensure_unique_slug,
+    slug_base,
+)
 from tables.models.python_models import PythonCode
 
 #: Distinguishes "the payload omitted secrets" from "the payload sent an empty list".
@@ -12,6 +18,18 @@ _UNSET = object()
 
 # Postgres int4 range for the two-key form of pg_advisory_xact_lock.
 _INT4_MAX = 2**31
+
+
+def name_lock_key(org_id: int | None, clean_base: str) -> tuple[int, int]:
+    """The two int4 keys of the advisory lock for an (org, name family).
+
+    Callers that take several of these locks sort by this key, so they all take
+    them in one order and can't deadlock on each other.
+    """
+    key2 = zlib.crc32(clean_base.encode("utf-8"))
+    if key2 >= _INT4_MAX:
+        key2 -= 2**32
+    return (org_id if org_id is not None else 0, key2)
 
 
 def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
@@ -30,12 +48,10 @@ def acquire_copy_name_lock(org_id: int | None, clean_base: str) -> None:
     whole generate-name -> insert step: `pg_advisory_xact_lock` auto-releases
     on commit/rollback of that transaction, no manual unlock needed.
     """
-    key1 = org_id if org_id is not None else 0
-    key2 = zlib.crc32(clean_base.encode("utf-8"))
-    if key2 >= _INT4_MAX:
-        key2 -= 2**32
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [key1, key2])
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)", list(name_lock_key(org_id, clean_base))
+        )
 
 
 def next_copy_name(
@@ -44,8 +60,14 @@ def next_copy_name(
     org_id: int | None,
     base_name: str,
     also_taken: Q | None = None,
+    name_field: str = "name",
+    org_field: str = "org",
+    extra_taken_names: Collection[str] = (),
+    case_insensitive_names: bool = False,
+    slug_names: bool = False,
+    global_names: bool = False,
 ) -> str:
-    """Pick the next free copy name for `base_name` among the org's `model` rows.
+    """Pick the next free copy name for `base_name` among the org's `model` rows (every org's with `global_names`).
 
     Takes the per-(org, name family) advisory lock via `acquire_copy_name_lock`, so it
     must be called inside the `transaction.atomic()` block that also inserts the row
@@ -58,15 +80,47 @@ def next_copy_name(
         also_taken: Rows outside the org whose names also count as taken. Hybrid
             models need it: their built-in rows (`org IS NULL`) are visible to every
             org, so a copy must not reuse a built-in name.
+        name_field: The model's name column (`collection_name` on SourceCollection).
+        org_field: The model's organization FK (`organization` on AgentDefinition and Surface).
+        extra_taken_names: Names that aren't live yet but will be once the caller's
+            transaction ends (other rows a restore brings back), so they count as taken.
+        case_insensitive_names: The model's names are unique regardless of case, so
+            "report" counts as taking "Report".
+        slug_names: The names are identifiers without spaces or "#" (webhook paths):
+            a clash gets "-N" (ensure_unique_slug) instead of " #N".
+        global_names: The names are unique across all organizations (webhook paths),
+            so every org's rows count as taken and the lock isn't per org.
     """
-    clean_base = clean_base_name(base_name)
-    acquire_copy_name_lock(org_id, clean_base)
-    taken_rows = Q(org_id=org_id)
+    clean_base = slug_base(base_name) if slug_names else clean_base_name(base_name)
+    acquire_copy_name_lock(
+        None if global_names else org_id,
+        clean_base.lower() if case_insensitive_names else clean_base,
+    )
+    # Q(pk__isnull=False) is "every row": an empty Q() would vanish from the OR below.
+    taken_rows = Q(pk__isnull=False) if global_names else Q(**{f"{org_field}_id": org_id})
     if also_taken is not None:
         taken_rows |= also_taken
-    existing_names = model.objects.filter(taken_rows, name__istartswith=clean_base).values_list(
-        "name", flat=True
+    existing_names = list(
+        model.objects.filter(taken_rows, **{f"{name_field}__istartswith": clean_base}).values_list(
+            name_field, flat=True
+        )
     )
+    existing_names += list(extra_taken_names)
+    if case_insensitive_names:
+        # Give every taken name the base's casing (they all start with it, matched
+        # case-insensitively), so the exact comparison below treats case variants
+        # as the same name and the result keeps the caller's spelling.
+        existing_names = [
+            clean_base + name[len(clean_base) :]
+            if name.lower().startswith(clean_base.lower())
+            else name
+            for name in existing_names
+        ]
+    if slug_names:
+        max_length = model._meta.get_field(name_field).max_length
+        return ensure_unique_slug(
+            base_name=base_name, existing_names=existing_names, max_length=max_length
+        )
     return ensure_unique_identifier(base_name=base_name, existing_names=existing_names)
 
 

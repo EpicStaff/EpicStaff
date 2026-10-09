@@ -324,6 +324,7 @@ from tables.views.mixins import (
     InspectActionMixin,
     ToolUsageActionsMixin,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -507,6 +508,7 @@ class PythonCodeToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     """
@@ -519,6 +521,7 @@ class PythonCodeToolViewSet(
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
@@ -529,6 +532,7 @@ class PythonCodeToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    recycle_bin_resource_key = "python_tool"
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -687,12 +691,17 @@ class PythonCodeResultReadViewSet(
 
 
 class GraphViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
@@ -704,6 +713,7 @@ class GraphViewSet(
         "delete_by_uuid": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
+    recycle_bin_resource_key = "flow"
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -1663,11 +1673,12 @@ class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = GeminiRealtimeConfigSerializer
 
 
-class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
 
     rbac_resource_type = ResourceType.VOICE
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = "realtime_channel"
 
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
@@ -2129,12 +2140,15 @@ class McpToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
+    recycle_bin_resource_key = "mcp_tool"
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
@@ -2331,10 +2345,11 @@ class WebhookTriggerNodeViewSet(
     update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
     partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
 )
-class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = "webhook_trigger"
     queryset = WebhookTrigger.objects.select_related("ngrok", "localhost", "auth", "auth__secret")
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
@@ -2520,6 +2535,7 @@ class ToolLabelViewSet(BaseLabelViewSet):
 
 class SecretViewSet(
     OrgScopedViewSetMixin,
+    RecycleBinActionsMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -2530,7 +2546,8 @@ class SecretViewSet(
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
+    recycle_bin_resource_key = "secret"
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
 
@@ -2643,14 +2660,16 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         return Response(summary, status=status.HTTP_200_OK)
 
 
-class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "lookup_entries": Permission.READ,
         "usage": Permission.READ,
     }
+    recycle_bin_resource_key = "key_value_table"
     queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
     # These actions never serialize a table, so they skip counting its entries.

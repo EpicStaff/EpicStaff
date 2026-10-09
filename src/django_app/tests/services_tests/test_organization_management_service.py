@@ -521,17 +521,14 @@ def test_org_delete_sweeps_conversation_recordings_and_purges_their_files(
 
 
 @pytest.mark.django_db
-def test_org_delete_purges_content_even_when_soft_delete_enabled(
-    actor, populated_org, _surviving_org, settings
-):
-    """The org sweep hard-deletes SourceCollection content regardless of settings.SOFT_DELETE: a permanently-deleted org's content must not survive it under the platform's soft-delete default."""
+def test_org_delete_purges_collection_content(actor, populated_org, _surviving_org):
+    """The org sweep hard-deletes SourceCollection content: a permanently-deleted org's content must not survive it in the recycle bin."""
     from tables.models.knowledge_models.collection_models import (
         DocumentContent,
         DocumentMetadata,
         SourceCollection,
     )
 
-    settings.SOFT_DELETE = True
     collection = SourceCollection.objects.create(org=populated_org, collection_name="soft-delete-docs")
     content = DocumentContent.objects.create(content=b"hello world")
     DocumentMetadata.objects.create(
@@ -547,7 +544,7 @@ def test_org_delete_purges_content_even_when_soft_delete_enabled(
 
 
 @pytest.mark.django_db
-def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org, _surviving_org, settings):
+def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org, _surviving_org):
     """A collection soft-deleted before the org delete started is still swept: the enumeration must use SourceCollection.all_objects, not the soft-delete-filtered .objects, or its DocumentContent survives as an orphan."""
     from tables.models.knowledge_models.collection_models import (
         DocumentContent,
@@ -555,19 +552,17 @@ def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org
         SourceCollection,
     )
 
-    settings.SOFT_DELETE = True
     collection = SourceCollection.objects.create(org=populated_org, collection_name="already-gone-docs")
     content = DocumentContent.objects.create(content=b"hello world")
     DocumentMetadata.objects.create(
         source_collection=collection, document_content=content, file_name="hello.txt"
     )
-    collection.delete()  # SoftDeleteMixin.delete() under SOFT_DELETE=True -- soft delete
+    collection.delete()
     assert not SourceCollection.objects.filter(pk=collection.pk).exists()
     assert SourceCollection.all_objects.filter(
         pk=collection.pk
     ).exists(), "fixture failed to produce a soft-deleted (not hard-deleted) row"
 
-    settings.SOFT_DELETE = False  # the platform default; the org sweep must not depend on this
     OrganizationManagementService().delete_organization(
         actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
     )

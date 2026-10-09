@@ -1,6 +1,11 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from tables.models.base_models import AbstractDefaultFillableModel
+from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+    soft_delete_consistency_constraint,
+)
 from tables.validators.finite_number_validator import validate_finite_number
 
 
@@ -22,7 +27,7 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel):
+class AgentDefinition(AbstractDefaultFillableModel, SoftDeleteMixin):
     # Identity
     organization = models.ForeignKey(
         "rbac.Organization",
@@ -145,11 +150,15 @@ class AgentDefinition(AbstractDefaultFillableModel):
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["organization", "name"],
+                condition=models.Q(active=True),
                 name="unique_agent_definition_name_per_organization",
-            )
+            ),
         ]
 
 
@@ -160,7 +169,8 @@ class SurfacePlace(models.TextChoices):
     REALTIME = "realtime", "Realtime"
 
 
-class AgentDefaultSurface(models.Model):
+class AgentDefaultSurface(SoftDeleteFields, models.Model):
+    soft_delete_reference_fields = ("surface",)
     agent_definition = models.ForeignKey(
         AgentDefinition,
         on_delete=models.CASCADE,
@@ -180,9 +190,26 @@ class AgentDefaultSurface(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["agent_definition", "surface", "place"],
                 name="uniq_agent_default_surface",
             ),
         ]
+
+    @classmethod
+    def soft_delete_owned_references(cls, field_name: str, target) -> models.Q | None:
+        """Rows reached through a reference field that still belong to the target.
+
+        A surface owns its owner agent's default-surface rows for it: they go to
+        the recycle bin with the surface, so a restore keeps the places the owner
+        chose instead of falling back to "applies everywhere". Other agents' rows
+        stay references and are removed. Restore is an undo: rows the owner adds
+        while the surface is binned stay next to the restored ones.
+        """
+        if field_name == "surface" and target.owner_agent_id is not None:
+            return models.Q(agent_definition_id=target.owner_agent_id)
+        return None

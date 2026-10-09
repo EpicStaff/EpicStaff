@@ -5,7 +5,6 @@
     gap: 8px;
     width: 28px;
     height: 28px;
-    padding-left: 2px;
     border: 1px solid var(--graphite-750);
     border-radius: 4px;
     background: transparent;
@@ -16,6 +15,11 @@
 
     &:hover:not(:disabled) {
         background: var(--transparent-white-8);
+    }
+
+    // The play triangle's visual centre sits left of its box, so it's nudged right.
+    &--play {
+        padding-left: 2px;
     }
 
     &:disabled {

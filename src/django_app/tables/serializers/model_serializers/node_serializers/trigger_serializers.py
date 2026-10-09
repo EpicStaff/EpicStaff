@@ -47,19 +47,23 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
             {
                 "webhook_trigger": (
                     f"This trigger is already configured for "
-                    f"kind='{auth.kind}' auth and cannot be attached to a "
+                    f"kind='{auth.kind}' auth (by a node, possibly in the recycle "
+                    f"bin, or a reservation) and cannot be attached to a "
                     f"node expecting kind='{expected_kind}' auth."
                 )
             }
         )
 
     other_related_name = _OTHER_NODE_TYPE_RELATED_NAME[expected_kind]
-    if getattr(wt, other_related_name).exists():
+    # all_objects: a node in the recycle bin keeps its trigger until it's
+    # purged, so restoring its flow can't give the trigger two node types.
+    if getattr(wt, other_related_name)(manager="all_objects").exists():
         raise serializers.ValidationError(
             {
                 "webhook_trigger": (
                     "This trigger is already attached to a different "
-                    "trigger node type and cannot also serve a "
+                    "trigger node type (possibly in the recycle bin) and "
+                    "cannot also serve a "
                     f"kind='{expected_kind}' node -- a trigger serves "
                     "exactly one node type."
                 )

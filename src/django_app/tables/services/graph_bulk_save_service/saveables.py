@@ -1,4 +1,5 @@
 from tables.exceptions import SectionIdConflictError, SectionNotFoundError
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -237,9 +238,12 @@ class DecisionTableNodeSaveable:
             "id",
             # Wire-only routing hint; never a DB model field.
             "next_node_temp_id",
+            # These rows are built from the raw request, past any serializer:
+            # only DeleteService writes the soft-delete state.
+            *SOFT_DELETE_FIELD_NAMES,
         }
     )
-    _CONDITION_EXCLUDED_FIELDS = frozenset({"condition_group", "id"})
+    _CONDITION_EXCLUDED_FIELDS = frozenset({"condition_group", "id", *SOFT_DELETE_FIELD_NAMES})
 
     @staticmethod
     def _create_condition_groups(node, groups_data: list[dict]) -> list:
@@ -296,6 +300,7 @@ class ClassificationDecisionTableNodeSaveable:
             "id",
             "classification_decision_table_node",
             "next_node_temp_id",
+            *SOFT_DELETE_FIELD_NAMES,
             # Prompt reference forms — resolved to the `prompt` FK below (by
             # prompt_key, or numeric pk fallback); never written as columns.
             "prompt",

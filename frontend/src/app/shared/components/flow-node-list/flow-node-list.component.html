@@ -1,46 +1,105 @@
 <div
     class="flow-node-list grid-collapsible"
     [class.expanded]="expanded()"
+    [class.flow-node-list--flush]="flush()"
 >
-    <div class="flow-node-list__inner">
-        <div class="flow-node-list__toolbar">
-            <app-search
-                [placeholder]="searchPlaceholder()"
-                width="100%"
-                [(searchTerm)]="searchTerm"
-            />
-            <app-select
-                style="flex: 0 0 200px"
-                placeholder="Select Node Type"
-                [items]="nodeTypeFilterItems()"
-                [selectedValue]="nodeTypeFilter()"
-                [transparent]="nodeTypeFilterTransparent()"
-                (changed)="onNodeTypeFilterChange($event)"
-            />
-        </div>
-
-        <div class="flow-node-list__rows">
-            @for (node of filteredNodes(); track node.name + node.nodeType) {
-                <div
-                    class="flow-node-list__row"
-                    (click)="rowClick.emit(node)"
-                >
-                    <i
-                        [ngClass]="nodeIcon(node.nodeType)"
-                        [style.color]="nodeColor(node.nodeType)"
-                        aria-hidden="true"
-                    ></i>
-                    <span class="flow-node-list__node-name">{{ node.name }}</span>
-                    <span class="flow-node-list__node-type">{{ nodeTypeLabel(node.nodeType) }}</span>
-                    @if (trailingTemplate(); as tpl) {
-                        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: node }"></ng-container>
+    <!-- The collapsing grid item: no padding or margin, so it can shrink to 0 when collapsed. -->
+    <div class="flow-node-list__clip">
+        <div class="flow-node-list__inner">
+            @if (showSearch() || showFilter()) {
+                <div class="flow-node-list__toolbar">
+                    @if (showSearch()) {
+                        <app-search
+                            class="flow-node-list__search"
+                            [placeholder]="searchPlaceholder()"
+                            width="100%"
+                            [(searchTerm)]="searchTerm"
+                        />
+                    }
+                    @if (showFilter()) {
+                        <app-select
+                            class="flow-node-list__filter"
+                            [placeholder]="filterPlaceholder()"
+                            [items]="nodeTypeFilterItems()"
+                            [selectedValue]="nodeTypeFilter()"
+                            [transparent]="nodeTypeFilterTransparent()"
+                            (changed)="onNodeTypeFilterChange($event)"
+                        />
                     }
                 </div>
             }
 
-            @if (!filteredNodes().length) {
-                <p class="flow-node-list__empty">No nodes match.</p>
-            }
+            <div class="flow-node-list__rows">
+                @for (node of visibleNodes(); track nodeKey(node)) {
+                    <div
+                        class="flow-node-list__row"
+                        [style.padding-left.px]="rowIndent(node)"
+                        [class.flow-node-list__row--branch]="isBranch(node)"
+                        (click)="onRowClick(node)"
+                    >
+                        @if (tree()) {
+                            @if (isBranch(node)) {
+                                <button
+                                    type="button"
+                                    class="flow-node-list__branch-toggle"
+                                    [attr.aria-expanded]="isOpen(node)"
+                                    [attr.aria-label]="branchLabel(node)"
+                                    (click)="toggleBranch(node, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="chevron-down"
+                                        size="1rem"
+                                        class="flow-node-list__chevron"
+                                        [class.flow-node-list__chevron--closed]="!isOpen(node)"
+                                    />
+                                </button>
+                            } @else {
+                                <span
+                                    class="flow-node-list__branch-spacer"
+                                    aria-hidden="true"
+                                ></span>
+                            }
+                        }
+                        @if (nodeSvgIcon(node.nodeType); as svgIcon) {
+                            <app-svg-icon
+                                class="flow-node-list__svg-icon"
+                                [icon]="svgIcon"
+                                size="1rem"
+                                [style.color]="nodeColor(node.nodeType)"
+                            />
+                        } @else {
+                            <i
+                                [ngClass]="nodeIcon(node.nodeType)"
+                                [style.color]="nodeColor(node.nodeType)"
+                                aria-hidden="true"
+                            ></i>
+                        }
+                        <span class="flow-node-list__node-name">{{ node.name }}</span>
+                        <span class="flow-node-list__node-type">{{ itemLabel(node) }}</span>
+                        @if (trailingTemplate(); as tpl) {
+                            <ng-container *ngTemplateOutlet="tpl; context: { $implicit: node }"></ng-container>
+                        }
+                    </div>
+                }
+
+                @if (!filteredNodes().length) {
+                    <p class="flow-node-list__empty">{{ emptyText() }}</p>
+                }
+                @if (moreCount() > 0) {
+                    @if (showAll()) {
+                        <button
+                            type="button"
+                            class="flow-node-list__more flow-node-list__more--action"
+                            [disabled]="showAllPending()"
+                            (click)="showAllRequested.emit()"
+                        >
+                            Show all {{ showAllCount() | number }}
+                        </button>
+                    } @else {
+                        <p class="flow-node-list__more">and {{ moreCount() | number }} more</p>
+                    }
+                }
+            </div>
         </div>
     </div>
 </div>

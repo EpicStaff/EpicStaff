@@ -45,7 +45,8 @@ const RESTRICTED_ARCHIVE_PATTERN = /contains (?:executable|(?:password-)?protect
 
 const QUOTA_EXCEEDED: UploadErrorDescription = {
     label: 'Quota exceeded',
-    message: 'Storage quota exceeded for this organization. Free up space and try again.',
+    message:
+        'Storage quota exceeded for this organization. Free up space and try again. Files in the recycle bin still count, so delete them there permanently to free their space.',
     canRetry: false,
 };
 const TOO_LARGE: UploadErrorDescription = {

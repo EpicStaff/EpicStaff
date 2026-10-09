@@ -34,12 +34,15 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
 
 redis_service = RedisService()
 
 
-class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+class SourceCollectionViewSet(
+    OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for SourceCollection CRUD operations.
 
@@ -53,6 +56,9 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     - DELETE /source-collections/{id}/ - Delete collection (cleans unreferenced content)
     - POST /source-collections/bulk-delete/ - Bulk delete source collections
     - GET /source-collections/{id}/available-rags/ - Get available RAG configurations for a collection
+    - GET /source-collections/recycle-bin/ - List the org's binned collections
+    - POST /source-collections/{id}/restore/ - Restore a binned collection
+    - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good
 
     """
 
@@ -62,10 +68,12 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "bulk_delete": Permission.DELETE,
         "copy": Permission.CREATE,
         "available_rags": Permission.READ,
     }
+    recycle_bin_resource_key = "collection"
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""

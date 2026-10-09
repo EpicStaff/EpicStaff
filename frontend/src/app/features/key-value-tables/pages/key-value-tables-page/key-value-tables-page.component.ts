@@ -7,11 +7,12 @@ import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, recycleBinNotice } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import {
     KeyValueTableDialogComponent,
@@ -74,6 +75,7 @@ export class KeyValueTablesPageComponent {
     private readonly permissions = inject(PermissionsService);
     private readonly dialog = inject(Dialog);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -126,17 +128,23 @@ export class KeyValueTablesPageComponent {
             });
     }
 
-    // The backend unbinds the table from its nodes on delete, so the dialog says how many that is.
+    // The table moves to the recycle bin. The backend unbinds it from its nodes on delete, and a
+    // restore doesn't bind it back, so the dialog says how many nodes that is.
     private confirmTableDelete(table: KeyValueTable, usage: KeyValueTableUsage | null): Observable<ConfirmationResult> {
+        const retentionDays = this.recycleBinSettings.retentionDays();
+        if (usage?.node_count === 0) {
+            return this.confirmationDialogService.confirmMoveToRecycleBin(table.name, retentionDays);
+        }
         const name = escapeHtml(table.name);
-        if (usage?.node_count === 0) return this.confirmationDialogService.confirmDelete(name);
         const usageNote = usage
             ? describeUsage(usage)
             : 'If Key-Value nodes use this table, deleting it removes the table from them, and they will need a new ' +
               'table before their flows can run.';
         return this.confirmationDialogService.confirm({
             title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${name}</strong>? <br> ${usageNote} <br> This action cannot be undone.`,
+            message:
+                `Are you sure you want to delete <strong>${name}</strong>? <br> ${usageNote} <br> ` +
+                `${recycleBinNotice(retentionDays)} Restoring it won't add it back to those nodes.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: 'danger',

@@ -35,18 +35,6 @@ from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-@pytest.fixture(autouse=True)
-def soft_delete(request, settings):
-    """SOFT_DELETE is on unless a test parametrizes this fixture indirectly."""
-    settings.SOFT_DELETE = getattr(request, "param", True)
-    return settings.SOFT_DELETE
-
-
-both_delete_modes = pytest.mark.parametrize(
-    "soft_delete", [True, False], ids=["soft", "hard"], indirect=True
-)
-
-
 def _flow(org, name):
     graph = Graph.objects.create(name=name, org=org, metadata={"nodes": [], "edges": []})
     StartNode.objects.create(graph=graph, variables={})
@@ -154,7 +142,6 @@ def _schedule_events(redis_client_mock):
 
 @pytest.mark.django_db
 class TestReplaceInPlace:
-    @both_delete_modes
     def test_replace_keeps_the_row_and_takes_the_file_content(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         original_uuid = holder.uuid
@@ -232,7 +219,6 @@ class TestReplaceInPlace:
         holder.refresh_from_db()
         assert holder.name == "Taken #2"
 
-    @both_delete_modes
     def test_parent_subgraph_node_keeps_pointing_at_the_replaced_flow(
         self, client_as, admin_acme, acme
     ):
@@ -247,7 +233,6 @@ class TestReplaceInPlace:
         parent_node.refresh_from_db()
         assert parent_node.subgraph_id == subflow.id
 
-    @both_delete_modes
     def test_replacing_parent_and_subflow_keeps_both_rows(self, client_as, admin_acme, acme):
         subflow = _flow(acme, "Sub")
         parent = _flow(acme, "Parent")
@@ -325,15 +310,20 @@ class TestReplaceInPlace:
     def test_file_cannot_soft_delete_the_replaced_flow(self, client_as, admin_acme, acme):
         holder, export_data = _flow_edited_after_export(acme)
         export_data[EntityType.GRAPH][0].update(
-            {"is_soft_deleted": True, "soft_deleted_at": "2026-01-01T00:00:00Z"}
+            {
+                "active": False,
+                "soft_deleted_at": "2026-01-01T00:00:00Z",
+                "soft_delete_batch": "11111111-1111-1111-1111-111111111111",
+            }
         )
 
         response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
 
         assert response.status_code == 200
         holder.refresh_from_db()
-        assert not holder.is_soft_deleted
+        assert holder.active
         assert holder.soft_deleted_at is None
+        assert holder.soft_delete_batch is None
         assert holder.description == "from file"
 
     def test_replace_keeps_the_original_author(self, client_as, admin_acme, member_only, acme):
@@ -545,7 +535,7 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         old.refresh_from_db()
-        assert not old.is_soft_deleted
+        assert old.active
         assert old.uuid == original_uuid
         copy = Graph.objects.get(org=acme, name="My Flow #2")
         assert copy.uuid != original_uuid
@@ -563,9 +553,9 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         live.refresh_from_db()
-        assert not live.is_soft_deleted
+        assert live.active
         rotated_holder = Graph.all_objects.get(id=holder.id)
-        assert rotated_holder.is_soft_deleted
+        assert not rotated_holder.active
         assert rotated_holder.uuid != holder.uuid
         imported = Graph.objects.get(uuid=holder.uuid)
         assert imported.id not in (live.id, holder.id)
@@ -574,7 +564,7 @@ class TestWithoutReplace:
     def test_file_cannot_create_an_already_deleted_flow(self, client_as, admin_acme, acme):
         export_data = _export(_flow(acme, "My Flow"))
         export_data[EntityType.GRAPH][0].update(
-            {"is_soft_deleted": True, "soft_deleted_at": "2026-01-01T00:00:00Z"}
+            {"active": False, "soft_deleted_at": "2026-01-01T00:00:00Z"}
         )
 
         response = _import(
@@ -583,7 +573,7 @@ class TestWithoutReplace:
 
         assert response.status_code == 200
         copy = Graph.all_objects.get(org=acme, name="My Flow #2")
-        assert not copy.is_soft_deleted
+        assert copy.active
         assert copy.soft_deleted_at is None
 
 
@@ -604,7 +594,7 @@ class TestReplaceExistingCrossOrg:
 
         assert response.status_code == 200
         beta_graph = Graph.all_objects.get(id=beta_graph.id)
-        assert not beta_graph.is_soft_deleted
+        assert beta_graph.active
         assert beta_graph.uuid == beta_uuid
         assert beta_graph.name == "Beta Flow"
         assert not GraphVersion.objects.filter(graph=beta_graph).exists()

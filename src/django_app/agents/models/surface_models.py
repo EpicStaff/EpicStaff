@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.db import models
 from tables.models.base_models import (
     SoftDeleteFields,
+    SoftDeleteMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -19,7 +20,7 @@ class StorageAccess(models.TextChoices):
     DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
 
 
-class Surface(TimestampMixin, models.Model):
+class Surface(TimestampMixin, SoftDeleteMixin):
     organization = models.ForeignKey(
         "rbac.Organization",
         on_delete=models.CASCADE,
@@ -46,9 +47,13 @@ class Surface(TimestampMixin, models.Model):
     )
 
     class Meta(TimestampMixin.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["organization", "name"],
+                condition=models.Q(active=True),
                 name="uniq_surface_org_name",
             ),
         ]
@@ -58,6 +63,7 @@ class Surface(TimestampMixin, models.Model):
 
 
 class BaseSurfacePythonTool(models.Model):
+    soft_delete_reference_fields = ("python_tool",)
     python_tool = models.ForeignKey(
         "tables.PythonCodeTool",
         on_delete=models.CASCADE,
@@ -95,6 +101,7 @@ class SurfacePythonTool(BaseSurfacePythonTool, SoftDeleteFields):
 
 
 class BaseSurfaceMcpTool(models.Model):
+    soft_delete_reference_fields = ("mcp_tool",)
     mcp_tool = models.ForeignKey(
         "tables.McpTool",
         on_delete=models.CASCADE,
@@ -111,7 +118,7 @@ class BaseSurfaceMcpTool(models.Model):
         abstract = True
 
 
-class SurfaceMcpTool(BaseSurfaceMcpTool):
+class SurfaceMcpTool(BaseSurfaceMcpTool, SoftDeleteFields):
     surface = models.ForeignKey(
         Surface,
         on_delete=models.CASCADE,
@@ -120,7 +127,10 @@ class SurfaceMcpTool(BaseSurfaceMcpTool):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["surface", "mcp_tool"],
                 name="uniq_surface_mcp_tool",
@@ -129,6 +139,7 @@ class SurfaceMcpTool(BaseSurfaceMcpTool):
 
 
 class BaseSurfaceStorageItem(models.Model):
+    soft_delete_reference_fields = ("storage_file",)
     can_list = models.CharField(
         max_length=5,
         choices=StorageAccess.choices,
@@ -158,7 +169,7 @@ class BaseSurfaceStorageItem(models.Model):
         abstract = True
 
 
-class SurfaceStorageItem(BaseSurfaceStorageItem):
+class SurfaceStorageItem(BaseSurfaceStorageItem, SoftDeleteFields):
     surface = models.ForeignKey(
         Surface,
         on_delete=models.CASCADE,
@@ -173,7 +184,10 @@ class SurfaceStorageItem(BaseSurfaceStorageItem):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["surface", "storage_file"],
                 name="uniq_surface_storage_item",
@@ -182,6 +196,7 @@ class SurfaceStorageItem(BaseSurfaceStorageItem):
 
 
 class BaseSurfaceKnowledge(models.Model):
+    soft_delete_reference_fields = ("collection",)
     collection = models.ForeignKey(
         "tables.SourceCollection",
         on_delete=models.CASCADE,
@@ -409,13 +424,18 @@ class BaseSurfaceGraphGlobalSearchConfig(models.Model):
         abstract = True
 
 
-class SurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig):
+class SurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
         related_name="graph_global_search_config",
         help_text="SurfaceKnowledge entry this GraphRAG global search configuration applies to.",
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class BaseSurfaceGraphDriftSearchConfig(models.Model):
@@ -528,13 +548,18 @@ class BaseSurfaceGraphDriftSearchConfig(models.Model):
         abstract = True
 
 
-class SurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig):
+class SurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
         related_name="graph_drift_search_config",
         help_text="SurfaceKnowledge entry this GraphRAG drift search configuration applies to.",
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class InlineSurface(TimestampMixin, SoftDeleteFields, models.Model):
@@ -684,7 +709,7 @@ class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig, Sof
         constraints = [soft_delete_consistency_constraint()]
 
 
-class InlineSurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig):
+class InlineSurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         InlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -692,14 +717,24 @@ class InlineSurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig):
         help_text="InlineSurfaceKnowledge entry this GraphRAG global search configuration applies to.",
     )
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
-class InlineSurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig):
+
+class InlineSurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         InlineSurfaceKnowledge,
         on_delete=models.CASCADE,
         related_name="graph_drift_search_config",
         help_text="InlineSurfaceKnowledge entry this GraphRAG drift search configuration applies to.",
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class AgentInlineSurface(TimestampMixin, SoftDeleteFields, models.Model):
@@ -848,7 +883,9 @@ class AgentInlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig
         constraints = [soft_delete_consistency_constraint()]
 
 
-class AgentInlineSurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConfig):
+class AgentInlineSurfaceGraphGlobalSearchConfig(
+    BaseSurfaceGraphGlobalSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         AgentInlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -856,11 +893,21 @@ class AgentInlineSurfaceGraphGlobalSearchConfig(BaseSurfaceGraphGlobalSearchConf
         help_text="AgentInlineSurfaceKnowledge entry this GraphRAG global search configuration applies to.",
     )
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
-class AgentInlineSurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig):
+
+class AgentInlineSurfaceGraphDriftSearchConfig(BaseSurfaceGraphDriftSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         AgentInlineSurfaceKnowledge,
         on_delete=models.CASCADE,
         related_name="graph_drift_search_config",
         help_text="AgentInlineSurfaceKnowledge entry this GraphRAG drift search configuration applies to.",
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]

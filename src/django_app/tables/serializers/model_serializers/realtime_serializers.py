@@ -5,6 +5,7 @@ from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from rest_framework import serializers
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -64,7 +65,7 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RealtimeAgentDefinition
-        fields = "__all__"
+        exclude = SOFT_DELETE_FIELD_NAMES
 
     def validate_language(self, value):
         return value or None

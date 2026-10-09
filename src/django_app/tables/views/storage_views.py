@@ -1,5 +1,5 @@
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
@@ -8,11 +8,18 @@ from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
+from tables.serializers.recycle_bin_serializers import (
+    RecycleBinBulkPurgeResponseSerializer,
+    RecycleBinBulkRequestSerializer,
+    RecycleBinBulkRestoreResponseSerializer,
+    RecycleBinContentsSerializer,
+)
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -25,6 +32,8 @@ from tables.serializers.storage_serializers import (
     StorageMkdirSerializer,
     StorageMoveSerializer,
     StoragePathQuerySerializer,
+    StorageRecycleBinEntrySerializer,
+    StorageRecycleBinPageSerializer,
     StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
     StorageSearchQuerySerializer,
@@ -34,6 +43,7 @@ from tables.serializers.storage_serializers import (
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
+from tables.services.storage_service.recycle_bin import ENTRY_ORDERINGS, StorageRecycleBinService
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
     STORAGE_COPY_SWAGGER,
@@ -52,6 +62,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_LIMITS_SWAGGER,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, request_actor
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
@@ -77,6 +88,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "copy": Permission.UPDATE,
         "delete_file": Permission.DELETE,
         "remove_from_graph": Permission.READ,
+        **RECYCLE_BIN_ACTION_MAP,
     }
 
     def __init__(self, **kwargs):
@@ -214,7 +226,10 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         serializer.is_valid(raise_exception=True)
 
         for path in serializer.validated_data["paths"]:
-            self.manager.delete(org_id, path)
+            try:
+                self.manager.delete(org_id, path)
+            except ValueError as e:
+                raise ValidationError({"detail": str(e)}) from e
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -421,3 +436,91 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     def upload_limits(self, request):
         limits = upload_service.upload_limits(self.get_active_org_id())
         return Response(StorageUploadLimitsResponseSerializer(limits).data)
+
+    @extend_schema(
+        request=None,
+        parameters=[
+            OpenApiParameter("limit", int),
+            OpenApiParameter("offset", int),
+            OpenApiParameter("search", str, description="Part of the item's own name"),
+            OpenApiParameter(
+                "item_type", str, enum=["file", "folder"], description="Only files or folders"
+            ),
+            OpenApiParameter(
+                "ordering", str, enum=list(ENTRY_ORDERINGS), description="Default: -deleted_at"
+            ),
+        ],
+        responses=StorageRecycleBinPageSerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="recycle-bin")
+    def recycle_bin(self, request):
+        # Paged: loose deleted files can be thousands.
+        paginator = LimitOffsetPagination()
+        rows = StorageRecycleBinService.entry_rows(
+            self.get_active_org_id(),
+            search=request.query_params.get("search", "").strip(),
+            ordering=request.query_params.get("ordering", "-deleted_at"),
+            item_type=request.query_params.get("item_type", ""),
+        )
+        page = paginator.paginate_queryset(rows, request, view=self)
+        entries = StorageRecycleBinService.to_entries(self.get_active_org_id(), page)
+        return paginator.get_paginated_response(
+            StorageRecycleBinEntrySerializer(entries, many=True).data
+        )
+
+    @extend_schema(request=None, responses=RecycleBinContentsSerializer)
+    @action(detail=False, methods=["get"], url_path=r"recycle-bin/(?P<entry_id>\d+)/contents")
+    def recycle_bin_contents(self, request, entry_id=None):
+        """Files and folders deleted with one binned folder, up to 5,000: "Show all" past the list's 100."""
+        contents, total = StorageRecycleBinService.contents_of(
+            self.get_active_org_id(), int(entry_id)
+        )
+        return Response(
+            RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
+        )
+
+    @extend_schema(
+        request=RecycleBinBulkRequestSerializer, responses=RecycleBinBulkRestoreResponseSerializer
+    )
+    @action(detail=False, methods=["post"], url_path="recycle-bin/restore")
+    def restore(self, request):
+        """Restore the selected ids, or the whole bin with `all: true`. Failures are reported per item."""
+        result = StorageRecycleBinService(self.manager).restore_many(
+            self.get_active_org_id(), self._bulk_ids(request)
+        )
+        return Response(
+            RecycleBinBulkRestoreResponseSerializer(
+                {
+                    "restored": [
+                        {
+                            "id": restored.object.pk,
+                            "name": restored.object.path,
+                            "renamed_from": restored.renamed_from,
+                        }
+                        for restored in result.restored
+                    ],
+                    "failed": result.failed,
+                }
+            ).data
+        )
+
+    @extend_schema(
+        request=RecycleBinBulkRequestSerializer, responses=RecycleBinBulkPurgeResponseSerializer
+    )
+    @action(detail=False, methods=["post"], url_path="recycle-bin/purge")
+    def purge(self, request):
+        """Delete the selected ids for good, or empty the bin with `all: true`."""
+        result = StorageRecycleBinService(self.manager).purge_many(
+            self.get_active_org_id(), self._bulk_ids(request), actor=request_actor(request)
+        )
+        return Response(
+            RecycleBinBulkPurgeResponseSerializer(
+                {"purged": result.purged, "failed": result.failed}
+            ).data
+        )
+
+    @staticmethod
+    def _bulk_ids(request) -> list[int] | None:
+        serializer = RecycleBinBulkRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return None if serializer.validated_data["all"] else serializer.validated_data["ids"]

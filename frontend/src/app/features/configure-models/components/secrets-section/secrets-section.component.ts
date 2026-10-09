@@ -30,12 +30,13 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, getRelativeTime, recycleBinNotice } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
 import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
 
@@ -49,6 +50,11 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
     { name: 'Deactivate', value: 'deactivated' },
     { name: 'Unused', value: 'unused' },
 ];
+
+/** What happens to the resources that use a deleted secret: their link is kept while it's in the bin. */
+const KEPT_LINKS_NOTE =
+    "They stop working while it's in the recycle bin, and work again if you restore it. " +
+    'Deleting it for good clears it from them.';
 
 @Component({
     selector: 'app-secrets-section',
@@ -76,6 +82,7 @@ export class SecretsSectionComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
     private readonly usedByFilterSelect = viewChild.required<SelectComponent>('usedByFilterSelect');
 
     protected readonly ResourceCode = ResourceCode;
@@ -187,7 +194,7 @@ export class SecretsSectionComponent implements OnInit {
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secret',
-                message: `You're about to delete <strong>${escapeHtml(name)}</strong>. This action can't be undone.`,
+                message: `You're about to delete <strong>${escapeHtml(name)}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays())}`,
                 caution,
                 cautionTitle: caution ? 'Caution' : undefined,
                 confirmText: 'Delete',
@@ -219,9 +226,9 @@ export class SecretsSectionComponent implements OnInit {
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secrets',
-                message: `You're about to delete <strong>${rows.length} secret${rows.length === 1 ? '' : 's'}</strong>. This action can't be undone.`,
+                message: `You're about to delete <strong>${rows.length} secret${rows.length === 1 ? '' : 's'}</strong>. ${recycleBinNotice(this.recycleBinSettings.retentionDays(), rows.length)}`,
                 caution: referencedCount
-                    ? `<strong>${referencedCount}</strong> of the selected secrets are still referenced by other resources. They'll fall back to their <strong>NULL</strong> value once removed.`
+                    ? `<strong>${referencedCount}</strong> of the selected secrets are still referenced by other resources. ${KEPT_LINKS_NOTE}`
                     : undefined,
                 cautionTitle: referencedCount ? 'Caution' : undefined,
                 confirmText: 'Delete',
@@ -284,6 +291,6 @@ export class SecretsSectionComponent implements OnInit {
         if (readable > 0) parts.push(`<strong>${readable} resources</strong> you can see`);
         if (hidden > 0) parts.push(`<strong>some resources</strong> you don't have permission to view`);
 
-        return `This secret is still referenced by ${parts.join(' and ')}. They'll fall back to their <strong>NULL</strong> value once it's removed.`;
+        return `This secret is still referenced by ${parts.join(' and ')}. ${KEPT_LINKS_NOTE}`;
     }
 }

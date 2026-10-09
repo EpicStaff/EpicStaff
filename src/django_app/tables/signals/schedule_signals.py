@@ -26,9 +26,7 @@ def schedule_trigger_post_save_handler(sender, instance: ScheduleTriggerNode, cr
 
     try:
         node_payload = ScheduleTriggerNodePayload.model_validate(instance).model_copy(
-            update={
-                "is_active": instance.is_active and not getattr(instance, "is_soft_deleted", False)
-            }
+            update={"is_active": instance.is_active and instance.active}
         )
         message = ScheduleTriggerNodeUpdateMessage(
             data=ScheduleTriggerNodeUpdateData(

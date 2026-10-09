@@ -3,30 +3,44 @@
 `SoftDeleteMixin` base classes it operates on.
 
 Covers, per root and per mechanism rule:
-- Full cascade through a multi-level subtree when SOFT_DELETE=True (default).
-- Real DB CASCADE hard-delete when SOFT_DELETE=False.
+- Full cascade through a multi-level subtree on `delete()` (always soft).
+- `purge()` removes a root and its whole subtree, binned rows included.
 - A model with only `SoftDeleteFields` (no `SoftDeleteMixin`) always hard-deletes
-  on a direct `.delete()`, regardless of the flag.
+  on a direct `.delete()`.
 - `Session.graph` is nulled rather than cascaded (nullable-fallback branch).
 - Forward-FK targets (`PythonCode`, `DocumentContent`, `GraphRagIndexConfig`)
   are never visited by the reverse-relation walker.
 - `ScheduleTriggerNode.is_active` (business field) is untouched by the cascade,
-  distinct from `is_soft_deleted` (cascade field) on the same model.
+  distinct from `active` (soft-delete field) on the same model.
 - The PROTECT/RESTRICT/DO_NOTHING guards in `_DeleteContext._process_related_object`.
 """
 
 import json
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
+from django.apps import apps
 from django.db import connection, models
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.core.exceptions import ImproperlyConfigured
-from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from agents.models import InlineSurface, InlineSurfaceKnowledge
+from agents.models import (
+    AgentInlineSurface,
+    AgentInlineSurfaceGraphDriftSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
+    AgentInlineSurfaceKnowledge,
+    InlineSurface,
+    InlineSurfaceGraphDriftSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
+    InlineSurfaceKnowledge,
+    InlineSurfacePythonTool,
+    Surface,
+    SurfacePythonTool,
+    ToolMode,
+)
 from django_app.settings import SCHEDULE_CHANNEL
 from tables.models import (
     BaseRagType,
@@ -44,7 +58,34 @@ from tables.models import (
     TaskNode,
     WebhookTriggerNode,
 )
-from tables.models.base_models import SoftDeleteFields
+from tables.models import Agent, AgentNode, AgentNodeTask, Edge, SubGraphNode
+from tables.models.favorite_models import PythonCodeToolFavorite
+from tables.models.knowledge_models.graphrag_models import (
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
+    KnowledgeNodeGraphRagGlobalSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
+)
+from tables.models.knowledge_models.naive_rag_models import (
+    AgentNaiveRag,
+    KnowledgeNodeNaiveRagSearchConfig,
+    NaiveRag,
+)
+from tables.models.label_models import Label
+from tables.import_export.serializers.knowledge_node import (
+    _GraphBasicSearchConfigImportSerializer,
+    _GraphDriftSearchConfigImportSerializer,
+    _GraphGlobalSearchConfigImportSerializer,
+    _GraphLocalSearchConfigImportSerializer,
+    _NaiveSearchConfigImportSerializer,
+)
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, SoftDeleteFields
+from tables.serializers.model_serializers.realtime_serializers import RealtimeAgentDefinitionSerializer
+from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.nodes.knowledge_node import KnowledgeNodeStrategy
+from tables.services.copy_services.inline_surface_copy_helpers import _copy_field_values
+from tables.services.copy_services.node_copy_handlers import copy_knowledge_node
 from tables.models.session_models import SessionTrigger
 from tables.models.webhook_models import (
     WebhookTrigger,
@@ -57,17 +98,6 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagIndexConfig,
 )
 from tables.services.soft_delete import DeleteService, _DeleteContext
-
-
-@pytest.fixture(autouse=True)
-def _soft_delete_enabled(settings):
-    """This module exercises the soft-delete cascade path, which only
-    `SoftDeleteMixin.delete()` takes when `settings.SOFT_DELETE` is True.
-    Per docs/soft_delete/SOFT_DELETE_FEATURE.md, that's the default the team
-    develops/tests against day to day (production defaults it to False and
-    opts in per-deployment). `TestHardDeletePath` explicitly overrides back
-    to False to exercise the opposite branch."""
-    settings.SOFT_DELETE = True
 
 
 @pytest.mark.django_db
@@ -97,10 +127,10 @@ class TestFullCascadePerRoot:
         attached_collection.refresh_from_db()
 
         for obj in (graph, task_node, inline_surface, inline_surface_knowledge):
-            assert obj.is_soft_deleted is True
+            assert obj.active is False
             assert obj.soft_deleted_at is not None
 
-        assert attached_collection.is_soft_deleted is False
+        assert attached_collection.active is True
         assert attached_collection.soft_deleted_at is None
 
     def test_source_collection_cascades_through_document_and_graph_rag(
@@ -134,7 +164,7 @@ class TestFullCascadePerRoot:
         graph_rag_document.refresh_from_db()
 
         for obj in (collection, document, base_rag_type, graph_rag, graph_rag_document):
-            assert obj.is_soft_deleted is True
+            assert obj.active is False
             assert obj.soft_deleted_at is not None
 
         # DocumentContent is a forward-FK target of DocumentMetadata — never visited.
@@ -149,9 +179,9 @@ class TestFullCascadePerRoot:
         python_code_tool.refresh_from_db()
         python_code_tool_config.refresh_from_db()
 
-        assert python_code_tool.is_soft_deleted is True
+        assert python_code_tool.active is False
         assert python_code_tool.soft_deleted_at is not None
-        assert python_code_tool_config.is_soft_deleted is True
+        assert python_code_tool_config.active is False
         assert python_code_tool_config.soft_deleted_at is not None
 
     def test_graph_cascades_through_knowledge_node(self, graph):
@@ -167,7 +197,7 @@ class TestFullCascadePerRoot:
         graph.delete()
 
         knowledge_node.refresh_from_db()
-        assert knowledge_node.is_soft_deleted is True
+        assert knowledge_node.active is False
         assert knowledge_node.soft_deleted_at is not None
         assert KnowledgeNode.all_objects.filter(pk=knowledge_node.pk).exists()
 
@@ -181,20 +211,24 @@ class TestFullCascadePerRoot:
         version.delete()
 
         version.refresh_from_db()
-        assert version.is_soft_deleted is True
+        assert version.active is False
         assert version.soft_deleted_at is not None
 
 
 @pytest.mark.django_db
-class TestHardDeletePath:
-    """Item 2: SOFT_DELETE=False performs a genuine hard delete; real DB
-    CASCADE still fires through the subtree exactly as it did before this
-    feature existed."""
+class TestPurgePath:
+    """`delete()` on a root always moves it to the recycle bin; `purge()` removes
+    it for good through Django's Collector, binned subtree rows included."""
 
-    @override_settings(SOFT_DELETE=False)
-    def test_graph_hard_delete_removes_subtree_but_not_forward_fk_targets(
-        self, graph, default_org
-    ):
+    def test_delete_is_soft_without_any_setting(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task_1")
+
+        graph.delete()
+
+        assert Graph.deleted_objects.filter(id=graph.id).exists()
+        assert TaskNode.deleted_objects.filter(id=task_node.id).exists()
+
+    def test_purge_removes_binned_subtree_but_not_forward_fk_targets(self, graph, default_org):
         task_node = TaskNode.objects.create(graph=graph, node_name="task_1")
         inline_surface = InlineSurface.objects.create(task_node=task_node)
         attached_collection = SourceCollection.objects.create(
@@ -203,20 +237,15 @@ class TestHardDeletePath:
         inline_surface_knowledge = InlineSurfaceKnowledge.objects.create(
             inline_surface=inline_surface, collection=attached_collection
         )
-        graph_id = graph.id
-        task_node_id = task_node.id
-        inline_surface_id = inline_surface.id
-        inline_surface_knowledge_id = inline_surface_knowledge.id
-
         graph.delete()
 
-        assert not Graph.all_objects.filter(id=graph_id).exists()
-        assert not TaskNode.all_objects.filter(id=task_node_id).exists()
-        assert not InlineSurface.all_objects.filter(id=inline_surface_id).exists()
-        assert not InlineSurfaceKnowledge.all_objects.filter(
-            id=inline_surface_knowledge_id
-        ).exists()
-        # Forward-FK target: real DB CASCADE never reaches it either.
+        Graph.all_objects.get(id=graph.id).purge()
+
+        assert not Graph.all_objects.filter(id=graph.id).exists()
+        assert not TaskNode.all_objects.filter(id=task_node.id).exists()
+        assert not InlineSurface.all_objects.filter(id=inline_surface.id).exists()
+        assert not InlineSurfaceKnowledge.all_objects.filter(id=inline_surface_knowledge.id).exists()
+        # Forward-FK target: the Collector never reaches it.
         assert SourceCollection.all_objects.filter(
             collection_id=attached_collection.collection_id
         ).exists()
@@ -226,7 +255,7 @@ class TestHardDeletePath:
 class TestDirectDeleteOnGroup2OnlyModel:
     """Item 3: a model with only `SoftDeleteFields` (no `SoftDeleteMixin`)
     always performs a normal hard delete on a direct `.delete()` call, because
-    it never overrides `delete()` — regardless of `SOFT_DELETE`."""
+    it never overrides `delete()`."""
 
     def test_direct_delete_on_task_node_is_always_hard_delete(self, graph):
         task_node = TaskNode.objects.create(graph=graph, node_name="standalone_task")
@@ -271,7 +300,7 @@ class TestForwardFkExclusions:
         graph.delete()
 
         python_node.refresh_from_db()
-        assert python_node.is_soft_deleted is True
+        assert python_node.active is False
 
         code.refresh_from_db()
         assert not isinstance(code, SoftDeleteFields)
@@ -295,7 +324,7 @@ class TestForwardFkExclusions:
         collection.delete()
 
         document.refresh_from_db()
-        assert document.is_soft_deleted is True
+        assert document.active is False
 
         content.refresh_from_db()
         assert not isinstance(content, SoftDeleteFields)
@@ -318,7 +347,7 @@ class TestForwardFkExclusions:
         collection.delete()
 
         graph_rag.refresh_from_db()
-        assert graph_rag.is_soft_deleted is True
+        assert graph_rag.active is False
 
         index_config.refresh_from_db()
         assert not isinstance(index_config, SoftDeleteFields)
@@ -329,7 +358,7 @@ class TestForwardFkExclusions:
 class TestScheduleTriggerNodeIsActiveUntouched:
     """Item 6: `ScheduleTriggerNode.is_active` is its own business field
     (enabled/disabled). It must not collide with the cascade's
-    `is_soft_deleted` field on the same model."""
+    `active` field on the same model."""
 
     def test_is_active_business_field_survives_cascade(self, graph):
         node = ScheduleTriggerNode.objects.create(
@@ -340,7 +369,7 @@ class TestScheduleTriggerNodeIsActiveUntouched:
 
         node.refresh_from_db()
         assert node.is_active is True
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
 
@@ -377,7 +406,7 @@ class TestHiddenReverseRelationSetNull:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         trigger.refresh_from_db()
@@ -420,7 +449,7 @@ class TestHiddenReverseRelationSetNull:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         trigger.refresh_from_db()
@@ -438,7 +467,7 @@ class TestHiddenReverseRelationSetNull:
         # keyed off `trigger`, not off the node, so it is unaffected by the
         # node's soft-delete and remains fully active.
         node_auth.refresh_from_db()
-        assert node_auth.is_soft_deleted is False
+        assert node_auth.active is True
         assert node_auth.soft_deleted_at is None
         assert WebhookTriggerAuth.objects.filter(pk=node_auth.pk).exists()
         assert node_auth.trigger_id == webhook_trigger.pk
@@ -515,7 +544,7 @@ class TestProtectRestrictDoNothingGuards:
             DeleteService.delete(graph)
 
         graph.refresh_from_db()
-        assert graph.is_soft_deleted is False
+        assert graph.active is True
         assert graph.soft_deleted_at is None
 
 
@@ -547,7 +576,7 @@ class TestPostSaveListenerModelsBypassBatching:
             graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
         assert redis_client_mock.publish.called
@@ -577,7 +606,7 @@ class TestPostSaveListenerModelsBypassBatching:
         graph.delete()
 
         node.refresh_from_db()
-        assert node.is_soft_deleted is True
+        assert node.active is False
         assert node.soft_deleted_at is not None
 
 
@@ -589,10 +618,10 @@ class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
     a large batch of plain (no post_save receiver, no M2M or reverse-relation
     descendants of its own) `GraphNote` children of the same `Graph` root —
     no growth confirms the batch path, not one `.save()` per object, is
-    still in effect. `TaskNode` is deliberately avoided here: it carries its
-    own M2M field (`surface_list`), whose clearing is legitimately done
-    per-object regardless of batching, which would make query count grow
-    with child count for reasons unrelated to what this test checks."""
+    still in effect. `TaskNode` is deliberately avoided here: each one has its
+    own reverse relations (its inline surface), walked per object, which
+    would make query count grow for reasons unrelated to what this test
+    checks."""
 
     def test_graph_note_cascade_query_count_is_flat(self, default_org):
         small_graph = Graph.objects.create(name="small-batch-graph", org=default_org)
@@ -612,3 +641,466 @@ class TestBatchedCascadeQueryCountDoesNotGrowWithChildCount:
         assert len(many) == len(few), "\n".join(
             query["sql"] for query in many.captured_queries
         )
+
+
+@pytest.mark.django_db
+class TestSoftDeleteBatch:
+    """One DeleteService.delete() call stamps one batch id and one timestamp on
+    every row it bins, so restore can bring back exactly that delete."""
+
+    def test_root_and_every_child_share_one_batch_and_timestamp(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+        edge = Edge.objects.create(graph=graph)
+        # A post_save listener sends this model through the per-row path,
+        # while the task node and edge go through the batched UPDATE.
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+
+        batch = DeleteService.delete(graph)
+
+        rows = [
+            Graph.all_objects.get(pk=graph.pk),
+            TaskNode.all_objects.get(pk=task_node.pk),
+            Edge.all_objects.get(pk=edge.pk),
+            ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk),
+        ]
+        assert batch is not None
+        assert {row.soft_delete_batch for row in rows} == {batch}
+        assert len({row.soft_deleted_at for row in rows}) == 1
+
+    def test_separate_deletes_get_separate_batches(self, graph):
+        task_node = TaskNode.objects.create(graph=graph, node_name="task")
+
+        node_batch = DeleteService.delete(task_node)
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert TaskNode.all_objects.get(pk=task_node.pk).soft_delete_batch == node_batch
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == graph_batch
+
+    def test_soft_delete_returns_the_batch(self, graph):
+        batch = graph.soft_delete()
+
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
+
+    def test_a_row_binned_on_its_own_keeps_its_batch_when_its_parent_is_deleted(self, graph):
+        # ScheduleTriggerNode goes through the per-row path (post_save listener).
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+        node_batch = DeleteService.delete(schedule_node)
+
+        graph_batch = DeleteService.delete(graph)
+
+        assert node_batch != graph_batch
+        assert ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk).soft_delete_batch == node_batch
+
+    def test_deleting_an_already_binned_root_changes_nothing(self, graph):
+        # A second request (a double-click) loaded the flow before the first one binned it.
+        stale_graph = Graph.objects.get(pk=graph.pk)
+        first_batch = DeleteService.delete(graph)
+        first_deleted_at = Graph.all_objects.get(pk=graph.pk).soft_deleted_at
+
+        second_batch = DeleteService.delete(stale_graph)
+
+        binned_graph = Graph.all_objects.get(pk=graph.pk)
+        assert second_batch is None
+        assert binned_graph.soft_delete_batch == first_batch
+        assert binned_graph.soft_deleted_at == first_deleted_at
+
+
+def _context_link_exists(task: AgentNodeTask, context_task: AgentNodeTask) -> bool:
+    # Through the link table: the related manager would hide binned tasks.
+    return AgentNodeTask.context_tasks.through.objects.filter(
+        from_agentnodetask_id=task.pk, to_agentnodetask_id=context_task.pk
+    ).exists()
+
+
+@pytest.mark.django_db
+class TestManyToManyOnDelete:
+    """A deleted row keeps its own M2M links (restore needs them). Links from
+    rows outside its batch are removed, so those rows don't point into the bin."""
+
+    def test_flow_keeps_its_own_labels(self, graph):
+        label = Label.objects.create(name="prod", org=graph.org)
+        graph.labels.add(label)
+
+        graph.delete()
+
+        assert list(Graph.all_objects.get(pk=graph.pk).labels.all()) == [label]
+
+    def test_links_between_rows_of_one_batch_survive(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        first_task = AgentNodeTask.objects.create(agent_node=agent_node, name="first", order=0)
+        second_task = AgentNodeTask.objects.create(agent_node=agent_node, name="second", order=1)
+        second_task.context_tasks.add(first_task)
+
+        graph.delete()
+
+        assert _context_link_exists(second_task, first_task)
+
+    def test_incoming_link_from_outside_the_batch_is_removed_own_link_kept(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        binned_task = AgentNodeTask.objects.create(agent_node=agent_node, name="binned", order=0)
+        live_task = AgentNodeTask.objects.create(agent_node=agent_node, name="live", order=1)
+        earlier_task = AgentNodeTask.objects.create(agent_node=agent_node, name="earlier", order=2)
+        live_task.context_tasks.add(binned_task)
+        binned_task.context_tasks.add(earlier_task)
+
+        DeleteService.delete(binned_task)
+
+        assert AgentNodeTask.deleted_objects.filter(pk=binned_task.pk).exists()
+        assert AgentNodeTask.objects.filter(pk=live_task.pk).exists()
+        assert not _context_link_exists(live_task, binned_task)
+        assert _context_link_exists(binned_task, earlier_task)
+
+    def test_link_between_two_separately_binned_rows_survives(self, graph):
+        agent_node = AgentNode.objects.create(graph=graph, node_name="agent")
+        first_binned = AgentNodeTask.objects.create(agent_node=agent_node, name="first", order=0)
+        later_binned = AgentNodeTask.objects.create(agent_node=agent_node, name="later", order=1)
+        first_binned.context_tasks.add(later_binned)
+        DeleteService.delete(first_binned)
+
+        DeleteService.delete(later_binned)
+
+        # Restoring `first_binned` must bring its own link back.
+        assert _context_link_exists(first_binned, later_binned)
+
+    def test_flow_delete_query_count_does_not_grow_with_linked_tasks(self, default_org):
+        def flow_with_linked_tasks(name, task_count):
+            flow = Graph.objects.create(name=name, org=default_org)
+            agent_node = AgentNode.objects.create(graph=flow, node_name="agent")
+            tasks = [
+                AgentNodeTask.objects.create(agent_node=agent_node, name=f"task_{index}", order=index)
+                for index in range(task_count)
+            ]
+            for task, context_task in zip(tasks[1:], tasks):
+                task.context_tasks.add(context_task)
+            return flow
+
+        small_flow = flow_with_linked_tasks("small-linked-flow", 2)
+        large_flow = flow_with_linked_tasks("large-linked-flow", 20)
+
+        with CaptureQueriesContext(connection) as few:
+            small_flow.delete()
+        with CaptureQueriesContext(connection) as many:
+            large_flow.delete()
+
+        assert len(many) == len(few), "\n".join(query["sql"] for query in many.captured_queries)
+
+
+@pytest.mark.django_db
+class TestReferencesFromBinnedRowsAreDropped:
+    """SET_NULL also reaches rows already in the recycle bin: otherwise a
+    restored row comes back pointing at something deleted while it was binned."""
+
+    def test_binned_flow_subflow_node_loses_subflow_deleted_later(self, graph):
+        subflow = Graph.objects.create(org=graph.org, name="Sub")
+        subflow_node = SubGraphNode.objects.create(graph=graph, node_name="sub", subgraph=subflow)
+        graph.delete()
+
+        subflow.delete()
+
+        assert SubGraphNode.all_objects.get(pk=subflow_node.pk).subgraph_id is None
+
+    def test_binned_flow_knowledge_node_loses_collection_deleted_later(self, graph, default_org):
+        collection = SourceCollection.objects.create(org=default_org, collection_name="Docs")
+        knowledge_node = KnowledgeNode.objects.create(graph=graph, source_collection=collection)
+        graph.delete()
+
+        collection.delete()
+
+        assert KnowledgeNode.all_objects.get(pk=knowledge_node.pk).source_collection_id is None
+
+
+@pytest.mark.django_db
+class TestChildrenBinnedEarlierAreLeftAlone:
+    """A child binned on its own had its subtree handled then. The parent's
+    delete marks it visited without walking into it again or re-stamping it."""
+
+    def test_flow_delete_does_not_walk_into_children_binned_earlier(self, default_org):
+        def flow_with_binned_task_nodes(name, node_count):
+            flow = Graph.objects.create(name=name, org=default_org)
+            node_batches = {}
+            for index in range(node_count):
+                task_node = TaskNode.objects.create(graph=flow, node_name=f"task_{index}")
+                node_batches[task_node.pk] = DeleteService.delete(task_node)
+            return flow, node_batches
+
+        small_flow, _ = flow_with_binned_task_nodes("small-binned-flow", 2)
+        large_flow, large_node_batches = flow_with_binned_task_nodes("large-binned-flow", 20)
+
+        with CaptureQueriesContext(connection) as few:
+            small_flow.delete()
+        with CaptureQueriesContext(connection) as many:
+            large_flow.delete()
+
+        assert len(many) == len(few), "\n".join(query["sql"] for query in many.captured_queries)
+        assert dict(
+            TaskNode.all_objects.filter(pk__in=large_node_batches).values_list("pk", "soft_delete_batch")
+        ) == large_node_batches
+
+    def test_per_row_child_binned_earlier_is_not_saved_again(self, graph, mocker):
+        # ScheduleTriggerNode has a post_save listener, so it goes through the
+        # per-row path; a second save() would republish it to the Manager.
+        schedule_node = ScheduleTriggerNode.objects.create(graph=graph, node_name="cron")
+        node_batch = DeleteService.delete(schedule_node)
+        binned_at = ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk).soft_deleted_at
+        redis_service = mocker.patch("tables.signals.schedule_signals.RedisService")
+
+        graph.delete()
+
+        binned_node = ScheduleTriggerNode.all_objects.get(pk=schedule_node.pk)
+        assert binned_node.soft_delete_batch == node_batch
+        assert binned_node.soft_deleted_at == binned_at
+        redis_service.return_value.redis_client.publish.assert_not_called()
+
+    def test_stale_copy_of_a_restored_root_is_binned(self, graph):
+        # The caller's instance was loaded while the flow was binned; the flow
+        # has been restored since. Its delete() must bin it, not return early.
+        graph.delete()
+        Graph.all_objects.filter(pk=graph.pk).update(active=True, soft_deleted_at=None, soft_delete_batch=None)
+
+        batch = DeleteService.delete(graph)
+
+        assert batch is not None
+        assert Graph.all_objects.get(pk=graph.pk).soft_delete_batch == batch
+
+
+@pytest.mark.django_db
+class TestOwnerVersusReferenceLinks:
+    """A link row that only points at the deleted row (a surface using a tool)
+    is removed for good, so restoring the target never re-links it. A link
+    row that belongs to the deleted row goes to the bin in the same batch."""
+
+    def test_tool_delete_removes_surface_links(self, python_code_tool, default_org, graph):
+        surface = Surface.objects.create(organization=default_org, name="S")
+        surface_link = SurfacePythonTool.objects.create(
+            surface=surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        inline_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+
+        python_code_tool.delete()
+
+        assert not SurfacePythonTool.all_objects.filter(pk=surface_link.pk).exists()
+        assert not InlineSurfacePythonTool.all_objects.filter(pk=inline_link.pk).exists()
+
+    def test_tool_delete_removes_link_from_a_binned_flow(self, python_code_tool, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        inline_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        graph.delete()
+
+        python_code_tool.delete()
+
+        assert not InlineSurfacePythonTool.all_objects.filter(pk=inline_link.pk).exists()
+
+    def test_collection_delete_removes_knowledge_link(self, default_org, graph):
+        collection = SourceCollection.objects.create(org=default_org, collection_name="KB")
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface, collection=collection
+        )
+
+        collection.delete()
+
+        assert not InlineSurfaceKnowledge.all_objects.filter(pk=knowledge_link.pk).exists()
+
+    def test_owner_delete_keeps_its_links_in_the_batch(self, python_code_tool, default_org, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+
+        batch = graph.delete()
+
+        assert InlineSurfacePythonTool.all_objects.get(pk=tool_link.pk).soft_delete_batch == batch
+        assert InlineSurfaceKnowledge.all_objects.get(pk=knowledge_link.pk).soft_delete_batch == batch
+
+    def test_collection_delete_drops_the_agent_rag_link(self, default_org):
+        agent = Agent.objects.create(role="tester", goal="goal", org=default_org)
+        collection = SourceCollection.objects.create(org=default_org, collection_name="KB")
+        base_rag_type = BaseRagType.objects.create(
+            rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
+        )
+        naive_rag = NaiveRag.objects.create(base_rag_type=base_rag_type)
+        link = AgentNaiveRag.objects.create(agent=agent, naive_rag=naive_rag)
+
+        collection.delete()
+
+        assert not AgentNaiveRag.all_objects.filter(pk=link.pk).exists()
+        assert NaiveRag.all_objects.get(pk=naive_rag.pk).active is False
+
+    def test_link_reached_through_owner_and_target_in_one_call_stays_binned(
+        self, python_code_tool, graph
+    ):
+        # No current delete path reaches one link both ways, so one context
+        # deletes the owner's flow and the referenced tool together.
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+        context = _DeleteContext()
+
+        context.delete(graph)
+        context.delete(python_code_tool)
+        context.finish()
+
+        assert InlineSurfacePythonTool.all_objects.get(pk=tool_link.pk).soft_delete_batch == context.batch
+
+    def test_every_reference_field_is_a_cascade_foreign_key(self):
+        # The reference check runs before the PROTECT/RESTRICT/SET_* rules, so a
+        # marked non-CASCADE field would silently bypass them.
+        marked = [
+            (model, field_name)
+            for model in apps.get_models()
+            for field_name in getattr(model, "soft_delete_reference_fields", ())
+        ]
+
+        assert marked
+        for model, field_name in marked:
+            field = model._meta.get_field(field_name)
+            assert field.many_to_one or field.one_to_one, f"{model._meta.label}.{field_name} is not a FK"
+            assert field.remote_field.on_delete is models.CASCADE, f"{model._meta.label}.{field_name}"
+
+
+@pytest.mark.django_db
+class TestOwnedChildrenGoToTheBinWithTheirOwner:
+    """Children that only belong to their owner are binned with it, in its batch,
+    so a restore brings them back instead of losing them for good."""
+
+    def test_knowledge_node_search_configs_go_to_the_bin_with_their_flow(self, graph):
+        knowledge_node = KnowledgeNode.objects.create(graph=graph)
+        configs = [
+            model.objects.create(knowledge_node=knowledge_node)
+            for model in (
+                KnowledgeNodeNaiveRagSearchConfig,
+                KnowledgeNodeGraphRagBasicSearchConfig,
+                KnowledgeNodeGraphRagLocalSearchConfig,
+                KnowledgeNodeGraphRagGlobalSearchConfig,
+                KnowledgeNodeGraphRagDriftSearchConfig,
+            )
+        ]
+
+        batch = graph.delete()
+
+        for config in configs:
+            assert type(config).all_objects.get(pk=config.pk).soft_delete_batch == batch, type(config)
+
+    def test_inline_surface_search_configs_go_to_the_bin_with_their_flow(self, graph, default_org):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        knowledge_link = InlineSurfaceKnowledge.objects.create(
+            inline_surface=inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+        global_config = InlineSurfaceGraphGlobalSearchConfig.objects.create(surface_knowledge=knowledge_link)
+        drift_config = InlineSurfaceGraphDriftSearchConfig.objects.create(surface_knowledge=knowledge_link)
+
+        batch = graph.delete()
+
+        assert InlineSurfaceGraphGlobalSearchConfig.all_objects.get(pk=global_config.pk).soft_delete_batch == batch
+        assert InlineSurfaceGraphDriftSearchConfig.all_objects.get(pk=drift_config.pk).soft_delete_batch == batch
+
+    def test_favorite_goes_to_the_bin_with_its_tool(self, python_code_tool, regular_user):
+        favorite = PythonCodeToolFavorite.objects.create(user=regular_user, tool=python_code_tool)
+
+        batch = python_code_tool.delete()
+
+        assert PythonCodeToolFavorite.all_objects.get(pk=favorite.pk).soft_delete_batch == batch
+
+    def test_agent_inline_surface_search_configs_go_to_the_bin_with_their_flow(self, graph, default_org):
+        agent_inline_surface = AgentInlineSurface.objects.create(
+            agent_node=AgentNode.objects.create(graph=graph, node_name="agent")
+        )
+        knowledge_link = AgentInlineSurfaceKnowledge.objects.create(
+            agent_inline_surface=agent_inline_surface,
+            collection=SourceCollection.objects.create(org=default_org, collection_name="KB"),
+        )
+        global_config = AgentInlineSurfaceGraphGlobalSearchConfig.objects.create(surface_knowledge=knowledge_link)
+        drift_config = AgentInlineSurfaceGraphDriftSearchConfig.objects.create(surface_knowledge=knowledge_link)
+
+        batch = graph.delete()
+
+        assert AgentInlineSurfaceGraphGlobalSearchConfig.all_objects.get(pk=global_config.pk).soft_delete_batch == batch
+        assert AgentInlineSurfaceGraphDriftSearchConfig.all_objects.get(pk=drift_config.pk).soft_delete_batch == batch
+
+
+@pytest.mark.django_db
+class TestSoftDeleteStateStaysOutOfApiImportAndCopy:
+    """Only DeleteService (and restore) write the soft-delete fields: clients,
+    import files and copies never do."""
+
+    @pytest.mark.parametrize(
+        "serializer_class",
+        [
+            RealtimeAgentDefinitionSerializer,
+            _NaiveSearchConfigImportSerializer,
+            _GraphBasicSearchConfigImportSerializer,
+            _GraphLocalSearchConfigImportSerializer,
+            _GraphGlobalSearchConfigImportSerializer,
+            _GraphDriftSearchConfigImportSerializer,
+        ],
+        ids=lambda serializer_class: serializer_class.__name__,
+    )
+    def test_serializer_does_not_expose_soft_delete_fields(self, serializer_class):
+        assert not set(serializer_class().fields) & set(SOFT_DELETE_FIELD_NAMES)
+
+    def test_copying_a_knowledge_node_does_not_copy_its_soft_delete_state(self, graph):
+        knowledge_node = KnowledgeNode.objects.create(graph=graph)
+        config = KnowledgeNodeNaiveRagSearchConfig.objects.create(knowledge_node=knowledge_node)
+        KnowledgeNodeNaiveRagSearchConfig.objects.filter(pk=config.pk).update(soft_delete_batch=uuid.uuid4())
+
+        new_node = copy_knowledge_node(graph, KnowledgeNode.objects.get(pk=knowledge_node.pk))
+
+        new_config = KnowledgeNodeNaiveRagSearchConfig.objects.get(knowledge_node=new_node)
+        assert new_config.active is True
+        assert new_config.soft_delete_batch is None
+
+    def test_imported_knowledge_node_config_ignores_soft_delete_state_in_the_file(self, graph, default_org):
+        id_mapper = IDMapper()
+        id_mapper.map(EntityType.GRAPH, 1, graph.id)
+        data = {
+            "graph": 1,
+            "node_name": "kb",
+            "naive_search_config": {
+                "active": False,
+                "soft_deleted_at": "2026-01-01T00:00:00Z",
+                "soft_delete_batch": "11111111-1111-1111-1111-111111111111",
+            },
+        }
+
+        node = KnowledgeNodeStrategy().create_entity(data, id_mapper, org_id=default_org.id)
+
+        config = KnowledgeNodeNaiveRagSearchConfig.all_objects.get(knowledge_node=node)
+        assert config.active is True
+        assert config.soft_deleted_at is None
+        assert config.soft_delete_batch is None
+
+    def test_inline_surface_copy_does_not_copy_soft_delete_state(self, python_code_tool, graph):
+        inline_surface = InlineSurface.objects.create(
+            task_node=TaskNode.objects.create(graph=graph, node_name="t")
+        )
+        tool_link = InlineSurfacePythonTool.objects.create(
+            inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+
+        copied_values = _copy_field_values(tool_link, exclude={"inline_surface"})
+
+        assert not set(copied_values) & set(SOFT_DELETE_FIELD_NAMES)

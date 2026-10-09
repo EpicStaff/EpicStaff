@@ -11,11 +11,15 @@
         opacity var(--collapse-duration) var(--collapse-easing),
         visibility var(--collapse-duration) var(--collapse-easing);
 
+    // `overflow` switches to visible only once the row has opened: `allow-discrete` makes the
+    // delay apply to it. Without it the switch is immediate, and a row that hasn't opened yet spills
+    // its content for a frame (a list around it flashes a scrollbar).
     > * {
         min-height: 0;
         min-width: 0;
         overflow: hidden;
         transition: overflow 0s;
+        transition-behavior: allow-discrete;
     }
 
     &.expanded {
@@ -26,6 +30,7 @@
         > * {
             overflow: visible;
             transition: overflow 0s var(--collapse-duration);
+            transition-behavior: allow-discrete;
         }
     }
 }

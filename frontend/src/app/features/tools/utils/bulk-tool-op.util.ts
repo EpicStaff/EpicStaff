@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
+import { recycleBinNotice } from '@shared/utils';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
@@ -115,6 +116,8 @@ export function runDeleteUnused<T extends { id: number }>(
         entityLabel: string;
         /** Plural noun used in the confirm dialog message (e.g. 'custom tools', 'MCP tools'). */
         entityLabelPlural: string;
+        /** Days a deleted tool stays in the recycle bin; `null` when unknown. */
+        retentionDays: number | null;
         /** Called when the usage lookup or delete request fails, so callers can refetch the list. */
         onError?: () => void;
     }
@@ -146,7 +149,7 @@ export function runDeleteUnused<T extends { id: number }>(
                     bulkDelete: opts.bulkDelete,
                     entityLabel: opts.entityLabel,
                     scopeLabel: 'unused',
-                    dialogData: buildUnusedDeleteDialog(unusedIds.length, opts.entityLabelPlural),
+                    dialogData: buildUnusedDeleteDialog(unusedIds.length, opts.entityLabelPlural, opts.retentionDays),
                     onError: opts.onError,
                 });
             },
@@ -174,13 +177,17 @@ function escapeHtml(value: string): string {
 /**
  * Bulk delete of tools that have no agent/project usages.
  */
-export function buildUnusedDeleteDialog(count: number, entityLabelPlural: string): ConfirmationDialogData {
+export function buildUnusedDeleteDialog(
+    count: number,
+    entityLabelPlural: string,
+    retentionDays: number | null
+): ConfirmationDialogData {
     const title = count === 1 ? 'Deleting Tool?' : 'Deleting Tools?';
     return {
         title,
         message:
-            `You are about to permanently delete <strong>${count} ${entityLabelPlural}</strong> ` +
-            `that are not currently connected to any agents or projects. This action cannot be undone.`,
+            `You are about to delete <strong>${count} ${entityLabelPlural}</strong> ` +
+            `that aren't connected to any agents or projects. ${recycleBinNotice(retentionDays, count)}`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         type: 'danger',
@@ -195,21 +202,20 @@ export function buildSingleDeleteWithUsageDialog(
     toolName: string,
     agentSurfaceCount: number,
     sharedSurfaceCount: number,
-    inlineCount: number
+    inlineCount: number,
+    retentionDays: number | null
 ): ConfirmationDialogData {
     const safeName = escapeHtml(toolName);
     return {
         title: 'Delete Tool?',
-        message:
-            `You are about to permanently delete <strong>${safeName}</strong>. ` +
-            `This action cannot be undone and will break existing dependencies.`,
+        message: `You are about to delete <strong>${safeName}</strong>. ${recycleBinNotice(retentionDays)}`,
         cautionTitle: 'Caution',
         caution:
             `This tool is currently connected to ` +
             `<strong>${agentSurfaceCount} ${pluralise(agentSurfaceCount, 'agent tool surface', 'agent tool surfaces')}</strong>, ` +
             `<strong>${sharedSurfaceCount} ${pluralise(sharedSurfaceCount, 'shared tool surface', 'shared tool surfaces')}</strong>, ` +
             `and <strong>${inlineCount} ${pluralise(inlineCount, 'inline usage', 'inline usages')}</strong>. ` +
-            `If deleted, it will be removed from all of these surfaces.`,
+            `If deleted, it's removed from all of these surfaces, and restoring it won't reconnect them.`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         type: 'danger',
@@ -228,7 +234,8 @@ export function buildBulkSelectedDeleteDialog(
         agentSurfaceCount: number;
         sharedSurfaceCount: number;
         inlineSurfaceCount: number;
-    }[]
+    }[],
+    retentionDays: number | null
 ): ConfirmationDialogData {
     const count = tools.length;
     const total = (t: { agentSurfaceCount: number; sharedSurfaceCount: number; inlineSurfaceCount: number }) =>
@@ -249,10 +256,11 @@ export function buildBulkSelectedDeleteDialog(
     return {
         title: 'Delete Tools?',
         message:
-            'This action cannot be undone and will break existing dependencies ' +
-            'across multiple agent, shared, and inline tool surfaces.',
+            'This breaks existing dependencies across multiple agent, shared, and inline tool surfaces. ' +
+            "Restoring the tools won't reconnect them.",
         caution:
-            `<details open><summary>You are about to permanently delete <strong>${count} tools</strong>.</summary>` +
+            `<details open><summary>You are about to delete <strong>${count} tools</strong>. ` +
+            `${recycleBinNotice(retentionDays, count)}</summary>` +
             `<ul>${listItems}</ul></details>`,
         confirmText: 'Delete',
         cancelText: 'Cancel',

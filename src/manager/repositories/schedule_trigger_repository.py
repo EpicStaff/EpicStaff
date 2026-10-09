@@ -48,7 +48,7 @@ class ScheduleTriggerNodeRepository:
                     start_date_time, every, unit, weekdays,
                     end_type, end_date_time, max_runs, current_runs
                 FROM tables_scheduletriggernode
-                WHERE is_active = true AND is_soft_deleted = false
+                WHERE is_active = true AND active = true
                 """
             )
             result = await session.execute(query)

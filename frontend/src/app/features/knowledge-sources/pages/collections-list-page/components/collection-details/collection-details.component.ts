@@ -28,6 +28,7 @@ import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } f
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../../../services/recycle-bin';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
 import { FILE_TYPES } from '../../../../constants/constants';
@@ -62,6 +63,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
 })
 export class CollectionDetailsComponent implements OnInit {
     private confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
     private documentsApiService = inject(DocumentsApiService);
@@ -238,7 +240,7 @@ export class CollectionDetailsComponent implements OnInit {
         const deletedId = collection.collection_id;
 
         this.confirmationDialogService
-            .confirmDelete(collection.collection_name)
+            .confirmMoveToRecycleBin(collection.collection_name, this.recycleBinSettings.retentionDays())
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => this.collectionsStorageService.deleteCollectionById(deletedId)),

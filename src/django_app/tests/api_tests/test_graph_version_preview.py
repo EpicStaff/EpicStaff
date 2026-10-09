@@ -329,10 +329,7 @@ def test_preview_does_not_report_a_dropped_secret_that_restore_reports(
 
 
 @pytest.mark.django_db
-def test_preview_of_a_soft_deleted_version_returns_404(
-    client, graph_with_declared_secret, settings
-):
-    settings.SOFT_DELETE = True
+def test_preview_of_a_soft_deleted_version_returns_404(client, graph_with_declared_secret):
     graph, _ = graph_with_declared_secret
     version_id = save_version(client=client, graph=graph)
     delete_response = client.delete(reverse("graph-versions-detail", args=[version_id]))

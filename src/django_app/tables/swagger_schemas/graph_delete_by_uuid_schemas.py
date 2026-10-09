@@ -8,8 +8,8 @@ GRAPH_DELETE_BY_UUID_DELETE = {
     "description": (
         "Deletes a single `Graph` looked up by its `uuid` field (as opposed to "
         "the numeric `pk` used by the standard destroy route), scoped to the "
-        "active org. Routes through the model's normal `delete()` (soft-delete "
-        "aware when `SOFT_DELETE` is enabled)."
+        "active org. Routes through the model's normal `delete()`, which moves "
+        "the flow to the recycle bin."
     ),
     "responses": {
         204: OpenApiResponse(description="Graph deleted."),

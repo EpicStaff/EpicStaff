@@ -115,7 +115,7 @@ treating `flows` as an unconditional grant for these two sources would let the d
 `ConditionalPath.exists(org_id=)` is an `EXISTS` subquery checked per row —
 `WebhookTriggerNode`/`TelegramTriggerNode` (`flows`) and `TwilioChannel` (`voice`), each
 scoped to the same org and, for the two node models, excluding soft-deleted rows explicitly
-(`is_soft_deleted=False` — a related-model `.filter()` does not apply the model's default
+(`active=True` — a related-model `.filter()` does not apply the model's default
 manager, so this has to be stated, not inherited).
 
 `UsageSource.readability(readable_types=, org_id=)` returns `READABLE_ALWAYS`,

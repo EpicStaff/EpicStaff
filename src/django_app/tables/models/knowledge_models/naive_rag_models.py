@@ -327,6 +327,8 @@ class AgentNaiveRag(SoftDeleteFields, models.Model):
     - Keeps Agent model clean and unchanged when adding new RAG types
     """
 
+    soft_delete_reference_fields = ("naive_rag",)
+
     agent = models.ForeignKey(
         Agent,
         on_delete=models.CASCADE,
@@ -374,13 +376,16 @@ class NaiveRagSearchConfig(NaiveRagSearchConfigBase):
     )
 
 
-class KnowledgeNodeNaiveRagSearchConfig(NaiveRagSearchConfigBase):
+class KnowledgeNodeNaiveRagSearchConfig(NaiveRagSearchConfigBase, SoftDeleteFields):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode", on_delete=models.CASCADE, related_name="naive_search_config"
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "knowledge_node_naive_search_config"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class NaiveRagPreviewChunk(SoftDeleteFields, models.Model):

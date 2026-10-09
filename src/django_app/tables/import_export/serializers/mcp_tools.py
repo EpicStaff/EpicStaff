@@ -1,9 +1,10 @@
 from rest_framework import serializers
 
 from tables.models import McpTool
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class McpToolImportSerializer(serializers.ModelSerializer):
+class McpToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     # `auth` holds a bearer/OAuth secret. write_only keeps it out of
     # `serializer(instance).data`, so it is never included in an export
     # payload. It still accepts a value on import/create so

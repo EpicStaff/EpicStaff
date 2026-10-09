@@ -2,12 +2,16 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from rbac.models.org_scoped import OrgScopedModel
 
-from tables.models.base_models import TimestampMixin
+from tables.models.base_models import (
+    SoftDeleteMixin,
+    TimestampMixin,
+    soft_delete_consistency_constraint,
+)
 from tables.validators.finite_number_validator import validate_finite_number
 from tables.validators.mcp_transport_validator import validate_mcp_transport_url
 
 
-class McpTool(OrgScopedModel, TimestampMixin, models.Model):
+class McpTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
@@ -49,9 +53,13 @@ class McpTool(OrgScopedModel, TimestampMixin, models.Model):
     class Meta(OrgScopedModel.Meta):
         verbose_name = "MCP Tool Data"
         verbose_name_plural = "MCP Tool Data"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
+                condition=models.Q(active=True),
                 name="unique_mcptool_name_per_org",
             ),
         ]

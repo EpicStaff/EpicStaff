@@ -23,12 +23,8 @@ landing on the real root cause:
    each one started from.
 """
 
-import queue
-import threading
-from typing import Callable
-
 import pytest
-from django.db import IntegrityError, connection
+from django.db import IntegrityError
 
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import Graph
@@ -40,6 +36,7 @@ from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyServi
 from tables.services.copy_services.python_code_tool_copy_service import (
     PythonCodeToolCopyService,
 )
+from tests.helpers import run_concurrently
 
 
 @pytest.fixture
@@ -63,34 +60,6 @@ def _make_mcp_tool(org, name="RaceMcp") -> McpTool:
     )
 
 
-def _run_concurrently(targets: list[Callable]) -> list:
-    """Runs each callable in `targets` in its own real thread (own DB
-    connection each), synchronized to start together via a Barrier to
-    maximize actual lock contention, and returns the collected per-thread
-    results (return value, or the raised exception) in completion order.
-    """
-    n = len(targets)
-    results: "queue.Queue" = queue.Queue()
-    barrier = threading.Barrier(n)
-
-    def _worker(target: Callable):
-        try:
-            barrier.wait(timeout=10)
-            results.put(target())
-        except Exception as exc:  # noqa: BLE001 - surfaced to the test via queue
-            results.put(exc)
-        finally:
-            connection.close()
-
-    threads = [threading.Thread(target=_worker, args=(t,)) for t in targets]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=15)
-
-    return [results.get(timeout=1) for _ in range(n)]
-
-
 # ---- (a) concurrent copies of DIFFERENT source rows sharing a clean_base
 # each get a unique name -- this is the actual production repro: bulk-copying
 # several already-numbered siblings of the same base tool at once ----
@@ -106,7 +75,7 @@ def test_python_code_tool_concurrent_copies_of_different_sources_sharing_clean_b
     source_b = _make_python_code_tool(org, name="Shared #3")
     source_c = _make_python_code_tool(org, name="Shared #333")
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [
             lambda: PythonCodeToolCopyService().copy(source_a).name,
             lambda: PythonCodeToolCopyService().copy(source_b).name,
@@ -129,7 +98,7 @@ def test_mcp_tool_concurrent_copies_of_different_sources_sharing_clean_base():
     source_b = _make_mcp_tool(org, name="SharedMcp #3")
     source_c = _make_mcp_tool(org, name="SharedMcp #333")
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [
             lambda: McpToolCopyService().copy(source_a).name,
             lambda: McpToolCopyService().copy(source_b).name,
@@ -152,7 +121,7 @@ def test_python_code_tool_concurrent_copies_of_same_source_get_unique_names():
     org = Organization.objects.create(name="Org PyToolSameSourceLock")
     source = _make_python_code_tool(org, name="ConcurrentTool")
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [lambda: PythonCodeToolCopyService().copy(source).name for _ in range(5)]
     )
 
@@ -173,7 +142,7 @@ def test_mcp_tool_concurrent_copies_of_same_source_get_unique_names():
     org = Organization.objects.create(name="Org McpSameSourceLock")
     source = _make_mcp_tool(org, name="ConcurrentMcp")
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [lambda: McpToolCopyService().copy(source).name for _ in range(5)]
     )
 
@@ -201,7 +170,7 @@ def test_graph_concurrent_copies_of_different_sources_sharing_clean_base():
     source_b = Graph.objects.create(name="SharedFlow #3", org=org)
     source_c = Graph.objects.create(name="SharedFlow #333", org=org)
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [
             lambda: GraphCopyService().copy(source_a, org_id=org.id).name,
             lambda: GraphCopyService().copy(source_b, org_id=org.id).name,
@@ -219,7 +188,7 @@ def test_graph_concurrent_copies_of_same_source_get_unique_names():
     org = Organization.objects.create(name="Org GraphSameSourceLock")
     source = Graph.objects.create(name="ConcurrentFlow", org=org)
 
-    outcomes = _run_concurrently(
+    outcomes = run_concurrently(
         [lambda: GraphCopyService().copy(source, org_id=org.id).name for _ in range(5)]
     )
 
@@ -244,7 +213,7 @@ def test_concurrent_create_graph_from_same_version_get_unique_names():
         result = GraphVersioningService().create_graph_from_version(version)
         return Graph.objects.get(pk=result["graph_id"]).name
 
-    outcomes = _run_concurrently([_create_from_version for _ in range(4)])
+    outcomes = run_concurrently([_create_from_version for _ in range(4)])
 
     for outcome in outcomes:
         assert not isinstance(outcome, Exception), outcome

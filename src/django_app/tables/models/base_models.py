@@ -6,8 +6,7 @@ from enum import Enum
 from typing import Self
 
 from django.apps import apps
-from django.conf import settings
-from django.db import connection, models
+from django.db import connection, models, transaction
 from django.db.models import Func, Value
 from django.utils import timezone
 
@@ -140,21 +139,32 @@ class CrewSessionMessage(BaseSessionMessage):
 
 class ActiveManager(models.Manager):
     """
-    Manager for models that using SoftDeleteFields.
-    Filters the active records
+    `objects` on every SoftDeleteFields model: the rows not in the
+    recycle bin.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
+        return super().get_queryset().filter(active=True)
+
+
+class DeletedManager(models.Manager):
+    """`deleted_objects` on every SoftDeleteFields model: the rows in the recycle bin."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(active=False)
 
 
 class EnabledToggleManager(models.Manager):
     """
-    Manager for EnabledToggleFields models. Filters to is_enabled=True.
+    Manager for EnabledToggleFields models: the rows switched on, and not in
+    the recycle bin when the model has one.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(is_enabled=True)
+        queryset = super().get_queryset().filter(is_enabled=True)
+        if issubclass(self.model, SoftDeleteFields):
+            queryset = queryset.filter(active=True)
+        return queryset
 
 
 class EnabledToggleFields(models.Model):
@@ -164,13 +174,13 @@ class EnabledToggleFields(models.Model):
     and back on at will.
 
     Deliberately separate from SoftDeleteFields: a soft-deleted row is
-    meant to disappear from normal CRUD by default (SoftDeleteFields'
-    `objects` is the filtered manager, `all_objects` the escape hatch).
-    An `is_enabled=False` row here is the opposite -- it MUST stay
-    visible/manageable through ordinary CRUD (list/retrieve/update) so
-    an operator can find and re-enable it. Only inbound lookup/routing
-    paths that must treat "disabled" exactly like "doesn't exist"
-    should use `enabled_objects`.
+    in the recycle bin and disappears from normal CRUD by default
+    (SoftDeleteFields' `objects` is the filtered manager, `all_objects`
+    the escape hatch). An `is_enabled=False` row here is the opposite --
+    it MUST stay visible/manageable through ordinary CRUD
+    (list/retrieve/update) so an operator can find and re-enable it.
+    Only inbound lookup/routing paths that must treat "disabled" exactly
+    like "doesn't exist" should use `enabled_objects`.
 
     `objects` therefore stays the plain, unfiltered default manager
     here (opposite of SoftDeleteFields' convention) -- do not swap the
@@ -189,7 +199,7 @@ class EnabledToggleFields(models.Model):
 
 def soft_delete_consistency_constraint() -> models.CheckConstraint:
     """
-    Reject any row where is_soft_deleted/soft_deleted_at disagree.
+    Reject any row where active/soft_deleted_at disagree.
 
     Django does not merge Meta options (constraints included) from more
     than one abstract base class onto a concrete model that has its own
@@ -199,11 +209,16 @@ def soft_delete_consistency_constraint() -> models.CheckConstraint:
     """
     return models.CheckConstraint(
         check=(
-            models.Q(is_soft_deleted=False, soft_deleted_at__isnull=True)
-            | models.Q(is_soft_deleted=True, soft_deleted_at__isnull=False)
+            models.Q(active=True, soft_deleted_at__isnull=True)
+            | models.Q(active=False, soft_deleted_at__isnull=False)
         ),
         name="%(app_label)s_%(class)s_soft_delete_consistency",
     )
+
+
+# The soft-delete state. Only DeleteService (and restore) write it: API
+# serializers, import files and copies must leave it out.
+SOFT_DELETE_FIELD_NAMES = ("active", "soft_deleted_at", "soft_delete_batch")
 
 
 class SoftDeleteFields(models.Model):
@@ -211,12 +226,28 @@ class SoftDeleteFields(models.Model):
     Only the fields required for soft deletion. No delete() override —
     a direct .delete() on a model that only has this mixin (no SoftDeleteMixin)
     performs a normal, unconditional Django hard delete.
+
+    Managers: `objects` (the default) returns the rows not in the recycle
+    bin, `deleted_objects` the binned ones, and `all_objects` every row.
+    `all_objects` is also the base manager, so Django's Collector and
+    forward FK access still reach binned rows.
     """
 
-    is_soft_deleted = models.BooleanField(default=False, db_default=False)
+    active = models.BooleanField(default=True, db_default=True)
     soft_deleted_at = models.DateTimeField(null=True, blank=True)
+    # One id per DeleteService.delete() call, shared by every row that call binned,
+    # so a restore brings back exactly that delete. Null on live rows and on rows
+    # binned before the column existed.
+    soft_delete_batch = models.UUIDField(null=True, blank=True, db_index=True)
+    # FK names on this model that only point at another row (a surface's link
+    # to a tool) instead of at the row that owns this one. A delete arriving
+    # through one of them removes this row for good, so restoring the target
+    # never re-links it. Plain link models may set it too. See
+    # _DeleteContext._is_reference_relation.
+    soft_delete_reference_fields: tuple[str, ...] = ()
 
     objects = ActiveManager()
+    deleted_objects = DeletedManager()
     all_objects = models.Manager()
 
     class Meta:
@@ -228,26 +259,49 @@ class SoftDeleteFields(models.Model):
 
 class SoftDeleteMixin(SoftDeleteFields):
     """
-    Full soft-delete support: delete() delegates to DeleteService, which
-    cascades through reverse relations. For the 4 soft-delete roots
-    (Graph, GraphVersion, SourceCollection, PythonCodeTool).
+    A recycle-bin root (Graph, GraphVersion, SourceCollection, PythonCodeTool,
+    McpTool, Surface).
+
+    `delete()` always moves the row and its soft-delete subtree to the recycle
+    bin through DeleteService and returns the batch id (None if the row was
+    already binned). `purge()` removes it for good.
     """
 
     class Meta:
         abstract = True
 
     def delete(self, using=None, keep_parents=False):
-        if settings.SOFT_DELETE:
-            return self.soft_delete(using)
-        return self.hard_delete(using, keep_parents)
+        return self.soft_delete(using)
 
     def soft_delete(self, using=None):
         from tables.services.soft_delete import DeleteService
 
         return DeleteService.delete(self, using=using)
 
-    def hard_delete(self, using=None, keep_parents=False):
-        return super().delete(using=using, keep_parents=keep_parents)
+    def purge(self, using=None, keep_parents=False):
+        """Delete the row and its whole subtree for good, binned rows included.
+
+        Django's Collector walks reverse relations through each model's base
+        manager (`all_objects`), so it reaches rows already in the bin.
+
+        Raises:
+            NotInRecycleBinError: The row is live, e.g. a restore committed
+                after the caller loaded it. The row is locked first, so a purge
+                racing a restore never deletes the restored row.
+        """
+        from tables.exceptions import NotInRecycleBinError
+
+        with transaction.atomic(using=using):
+            is_binned = (
+                type(self)
+                .all_objects.using(using)
+                .select_for_update()
+                .filter(pk=self.pk, active=False)
+                .exists()
+            )
+            if not is_binned:
+                raise NotInRecycleBinError()
+            return super().delete(using=using, keep_parents=keep_parents)
 
 
 class TimestampMixin(models.Model):

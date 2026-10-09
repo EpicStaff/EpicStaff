@@ -297,3 +297,38 @@ class TestTriggerNodeAuthCleanupRunsAtCommit:
         assert WebhookTriggerAuth.objects.filter(
             trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM
         ).exists()
+
+
+@pytest.mark.django_db
+class TestBinnedTriggerNodesKeepTheirAuth:
+    """A trigger node in the recycle bin still claims its trigger's auth, so a
+    restore can register it again. Only a purge (a real delete) frees it."""
+
+    @pytest.mark.parametrize(
+        "node_model, kind",
+        [
+            (TelegramTriggerNode, WebhookTriggerAuthKind.TELEGRAM),
+            (WebhookTriggerNode, WebhookTriggerAuthKind.WEBHOOK),
+        ],
+        ids=["telegram", "webhook"],
+    )
+    def test_binning_the_flow_keeps_the_auth_and_purging_it_frees_it(
+        self, org, node_model, kind, mock_telegram_service, django_capture_on_commit_callbacks
+    ):
+        trigger = _make_trigger(org, f"binned-{kind}")
+        WebhookTriggerAuth.objects.create(trigger=trigger, kind=kind)
+        graph = _make_graph(org, f"g-binned-{kind}")
+        node_fields = {"node_name": "Trigger", "graph": graph, "webhook_trigger": trigger}
+        if node_model is WebhookTriggerNode:
+            node_fields["python_code"] = _make_python_code()
+        node_model.objects.create(**node_fields)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            graph.delete()
+
+        assert WebhookTriggerAuth.objects.filter(trigger=trigger, kind=kind).exists()
+
+        with django_capture_on_commit_callbacks(execute=True):
+            Graph.all_objects.get(pk=graph.pk).purge()
+
+        assert not WebhookTriggerAuth.objects.filter(trigger=trigger, kind=kind).exists()

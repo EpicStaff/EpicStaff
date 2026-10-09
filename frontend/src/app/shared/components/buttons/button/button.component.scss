@@ -80,6 +80,22 @@
     }
 }
 
+// Same shape as .btn-outline-primary, in the red of the app's delete buttons (delete-button component).
+.btn-outline-danger {
+    font-weight: 400;
+    background: transparent;
+    color: var(--color-error);
+    border: 1px solid var(--color-error);
+
+    &:hover:not(:disabled) {
+        background: var(--transparent-white-8);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+    }
+}
+
 .btn-outline-secondary {
     background: transparent;
     color: var(--color-ks-text);

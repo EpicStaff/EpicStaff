@@ -1,0 +1,43 @@
+// Fills the page body, so the table below can keep its header in place and scroll only its rows.
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 1rem;
+    padding: 1.5rem 3.75rem 1.5rem 2.5rem;
+}
+
+// Search on the left, actions on the right, like the Secrets list header.
+.bin-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 40px;
+
+    &__lead,
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    // app-search's host is 100% wide: here it keeps its own width, so the button sits right next to it.
+    &__lead app-search {
+        flex: 0 0 auto;
+        width: auto;
+    }
+
+    &__expand-all {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+}
+
+// The same 1rem between text and edge as "Empty recycle bin" (an icon button, whose text side has
+// 1rem); a text-only app-button has 1.5rem. app-button has no size input for it.
+:host ::ng-deep .bin-toolbar__expand-all .btn {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}

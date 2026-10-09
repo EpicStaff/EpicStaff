@@ -36,12 +36,12 @@ class GraphManager(ActiveManager):
                 WITH RECURSIVE subgraph_tree AS (
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
-                    WHERE sn.graph_id = %s AND sn.is_soft_deleted = false
+                    WHERE sn.graph_id = %s AND sn.active = true
                     UNION
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
                     INNER JOIN subgraph_tree st ON sn.graph_id = st.subgraph_id
-                    WHERE sn.is_soft_deleted = false
+                    WHERE sn.active = true
                 )
                 SELECT subgraph_id FROM subgraph_tree
                 """,
@@ -98,7 +98,7 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_graph_name_per_org",
             ),
         ]
@@ -875,6 +875,11 @@ class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
     )
     name = models.CharField(max_length=255, blank=True, default="")
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
 
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     classification_decision_table_node = models.ForeignKey(
@@ -969,7 +974,7 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(models.Model):
+class StorageFile(SoftDeleteFields):
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
 
     org = models.ForeignKey(
@@ -1018,8 +1023,17 @@ class StorageFile(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
-            models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
+            soft_delete_consistency_constraint(),
+            # A binned row keeps its path, so a new upload to the same path must
+            # not clash with it. Two binned rows may share a path too.
+            models.UniqueConstraint(
+                fields=["org", "path"],
+                condition=models.Q(active=True),
+                name="unique_active_storage_file_per_org",
+            ),
         ]
         indexes = [
             models.Index(fields=["org", "path"]),
@@ -1028,6 +1042,7 @@ class StorageFile(models.Model):
 
 
 class GraphStorageFile(SoftDeleteFields):
+    soft_delete_reference_fields = ("storage_file",)
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"

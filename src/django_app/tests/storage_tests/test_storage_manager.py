@@ -36,13 +36,6 @@ class TestPathHelpers:
 
 @pytest.mark.django_db
 class TestDelegation:
-    def test_delete_delegates_to_backend_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        storage_manager.delete(org.id, "old.txt")
-        mock_backend.delete.assert_called_once_with(f"org_{org.id}/old.txt")
-        patch_sync.on_delete.assert_called_once_with(org.id, "old.txt")
-
     def test_move_builds_both_org_keys_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):

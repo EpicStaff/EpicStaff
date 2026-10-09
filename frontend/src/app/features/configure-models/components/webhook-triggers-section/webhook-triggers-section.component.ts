@@ -15,6 +15,7 @@ import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
 
 @Component({
     selector: 'app-webhook-triggers-section',
@@ -29,6 +30,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
@@ -100,7 +102,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
         if (trigger.id == null) return;
         const id = trigger.id;
         this.confirmationDialogService
-            .confirmDelete(trigger.path)
+            .confirmMoveToRecycleBin(trigger.path, this.recycleBinSettings.retentionDays())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result !== true) return;

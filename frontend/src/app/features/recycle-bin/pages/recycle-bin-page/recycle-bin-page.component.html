@@ -1,0 +1,49 @@
+<div class="recycle-bin-page">
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Recycle Bin
+                    <span class="subtitle-inline">{{ subtitle() }}</span>
+                </h1>
+            </div>
+            @if (purgeableTabs().length > 0) {
+                <div class="header-actions">
+                    <app-button
+                        class="empty-bin-btn"
+                        type="outline-primary"
+                        leftIcon="trash"
+                        [disabled]="emptying()"
+                        (click)="onEmptyRecycleBin()"
+                    >
+                        Empty recycle bin
+                    </app-button>
+                </div>
+            }
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                @for (tab of visibleTabs(); track tab.key; let last = $last) {
+                    <app-tab-button
+                        mod="sm"
+                        [routerLink]="tab.key"
+                        routerLinkActive="active"
+                        #rla="routerLinkActive"
+                        [active]="rla.isActive"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
+                    @if (!last) {
+                        <span class="tab-sep">/</span>
+                    }
+                }
+            </div>
+        </nav>
+    </div>
+    <section class="body">
+        <router-outlet></router-outlet>
+    </section>
+</div>

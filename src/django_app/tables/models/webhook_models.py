@@ -1,5 +1,5 @@
 import uuid
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
@@ -7,8 +7,12 @@ from django.db import models
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
+    ActiveManager,
+    DeletedManager,
     EnabledToggleFields,
+    EnabledToggleManager,
     SoftDeleteFields,
+    SoftDeleteMixin,
     soft_delete_consistency_constraint,
 )
 
@@ -28,7 +32,10 @@ class TunnelConfig(Protocol):
     def get_redis_key(self) -> str: ...
 
 
-class NgrokWebhookConfig(models.Model):
+class NgrokWebhookConfig(SoftDeleteFields):
+    """A trigger's ngrok tunnel. Binned with its trigger: register_webhooks() reads
+    `objects`, so the tunnel closes while the trigger is in the recycle bin."""
+
     class Region(models.TextChoices):
         US = ("us",)
         EU = ("eu",)
@@ -56,6 +63,11 @@ class NgrokWebhookConfig(models.Model):
         on_delete=models.CASCADE,
     )
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
     def get_webhook_url(self):
         if self.domain:
             return f"https://{self.domain}"
@@ -65,7 +77,9 @@ class NgrokWebhookConfig(models.Model):
         return f"ngrok:{self.trigger.org_id}:{self.trigger.path}"
 
 
-class LocalhostWebhookConfig(models.Model):
+class LocalhostWebhookConfig(SoftDeleteFields):
+    """A trigger's localhost tunnel; binned with its trigger, like NgrokWebhookConfig."""
+
     name = models.CharField(max_length=50)
     domain = models.CharField(
         max_length=255, blank=True, null=True, help_text="Optional local domain or URL"
@@ -76,6 +90,11 @@ class LocalhostWebhookConfig(models.Model):
         related_name="localhost",
         on_delete=models.CASCADE,
     )
+
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     def get_webhook_url(self):
         if self.domain:
@@ -145,10 +164,17 @@ class WebhookTriggerAuth(SoftDeleteFields):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
 
 
-class WebhookTrigger(OrgScopedModel, models.Model):
+class WebhookTrigger(OrgScopedModel, SoftDeleteMixin, models.Model):
+    """A public webhook endpoint. `path` is the routing key, unique among live
+    triggers across all organizations. In the recycle bin its tunnel and auth are
+    binned with it, and flow nodes and Twilio channels keep their link to it
+    (soft_delete_keeps_references) so a restore reconnects them.
+    """
+
+    soft_delete_keeps_references: ClassVar[bool] = True
+
     path = models.CharField(
         max_length=255,
-        unique=True,
         validators=[
             RegexValidator(
                 regex=r"^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$",
@@ -165,8 +191,19 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 
     class Meta(OrgScopedModel.Meta):
         abstract = False
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [
+            soft_delete_consistency_constraint(),
+            models.UniqueConstraint(
+                fields=["path"], condition=models.Q(active=True), name="unique_live_webhook_path"
+            ),
+        ]
 
     def get_active_config(self) -> "TunnelConfig | None":
+        # The reverse one-to-one accessors read binned configs too.
+        if not self.active:
+            return None
         if self.provider_type == ProviderType.NGROK:
             try:
                 return self.ngrok
@@ -188,7 +225,7 @@ class WebhookTrigger(OrgScopedModel, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
+class RealtimeChannel(OrgScopedModel, EnabledToggleFields, SoftDeleteMixin, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -203,7 +240,20 @@ class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
     `is_enabled` (and the `objects`/`enabled_objects` manager split) comes
     from EnabledToggleFields -- see its docstring for why this is not
     SoftDeleteFields.
+
+    It's also a recycle-bin root, with its Twilio settings binned alongside.
+    `objects` hides channels in the bin but keeps disabled ones, so an
+    operator still sees and re-enables them; `enabled_objects` hides both.
+    Rows that use the channel keep their link while it's binned
+    (soft_delete_keeps_references).
     """
+
+    soft_delete_keeps_references: ClassVar[bool] = True
+
+    objects = ActiveManager()
+    deleted_objects = DeletedManager()
+    all_objects = models.Manager()
+    enabled_objects = EnabledToggleManager()
 
     class ChannelType(models.TextChoices):
         TWILIO = "twilio", "Twilio"
@@ -214,6 +264,8 @@ class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
         abstract = False
         db_table = "realtime_channel"
         default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
 
     name = models.CharField(max_length=250)
     channel_type = models.CharField(
@@ -252,7 +304,7 @@ class RealtimeChannel(OrgScopedModel, EnabledToggleFields, models.Model):
         return str(self.token)
 
 
-class TwilioChannel(models.Model):
+class TwilioChannel(SoftDeleteFields):
     """
     Twilio-specific settings for a RealtimeChannel.
 
@@ -266,10 +318,23 @@ class TwilioChannel(models.Model):
     model's PK), so org visibility is always reachable transitively via
     `channel__org_id` with no risk of hiding rows behind a missing detail
     row (unlike the reverse direction, RealtimeChannel -> TwilioChannel).
+
+    Binned and restored with its channel. The phone number is unique among
+    live rows only, so a restore can find it taken (see restore_hooks).
     """
 
     class Meta:
         db_table = "twilio_channel"
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [
+            soft_delete_consistency_constraint(),
+            models.UniqueConstraint(
+                fields=["phone_number"],
+                condition=models.Q(active=True),
+                name="unique_live_twilio_phone_number",
+            ),
+        ]
 
     channel = models.OneToOneField(
         RealtimeChannel,
@@ -289,7 +354,6 @@ class TwilioChannel(models.Model):
         max_length=50,
         null=True,
         blank=True,
-        unique=True,
         help_text="E.164 format, e.g. +15551234567",
     )
     webhook_trigger = models.ForeignKey(
@@ -310,7 +374,8 @@ class TwilioChannel(models.Model):
         if the configuration is valid.
         """
         webhook_trigger = self.webhook_trigger
-        if not webhook_trigger or not webhook_trigger.provider_type:
+        # A forward FK reads binned rows too: a trigger in the recycle bin counts as none.
+        if not webhook_trigger or not webhook_trigger.active or not webhook_trigger.provider_type:
             return "No webhook trigger configured for this channel"
         if webhook_trigger.provider_type in LOCAL_ONLY_PROVIDERS:
             return (

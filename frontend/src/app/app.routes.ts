@@ -271,6 +271,11 @@ export const routes: Routes = [
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
+                        path: 'recycle-bin',
+                        loadChildren: () =>
+                            import('./features/recycle-bin/recycle-bin.routes').then((m) => m.RECYCLE_BIN_ROUTES),
+                    },
+                    {
                         path: 'audit',
                         loadComponent: () =>
                             import('./features/audit/audit-sessions-browser.component').then(

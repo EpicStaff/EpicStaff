@@ -5,10 +5,7 @@ from application.orchestrators.removing.strategies.graph_remover import (
     GraphRagRemoveOrchestrator,
 )
 from domain.enums import IndexStatusEnum
-from domain.errors import (
-    RagInProcessingError,
-    RagNotFoundError,
-)
+from domain.errors import RagInProcessingError
 from domain.models import Rag
 
 
@@ -100,29 +97,26 @@ async def test_happy_path_clears_storage(monkeypatch):
     assert uow.commit_count == 0
 
 
-async def test_rag_not_found_raises_and_never_touches_storage(monkeypatch):
+async def test_missing_rag_row_still_clears_storage(monkeypatch):
+    # Django deletes a collection for good first and asks for the index removal
+    # after its commit, so the row is already gone when this runs.
     repo = FakeGraphRagRepo(rag=None)
     uow = FakeUoW(repo)
 
-    create_storage_config_calls: list = []
-    create_storage_calls: list = []
+    storage = FakeStorage()
+    create_storage_config_calls: list[int] = []
 
     def fake_create_storage_config(rag_id: int) -> object:
         create_storage_config_calls.append(rag_id)
         return object()
 
-    def fake_create_storage(storage_cfg: object) -> FakeStorage:
-        create_storage_calls.append(storage_cfg)
-        return FakeStorage()
-
     monkeypatch.setattr(graph_remover, "create_storage_config", fake_create_storage_config)
-    monkeypatch.setattr(graph_remover, "create_storage", fake_create_storage)
+    monkeypatch.setattr(graph_remover, "create_storage", lambda cfg: storage)
 
-    with pytest.raises(RagNotFoundError):
-        await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=7))
+    await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=7))
 
-    assert create_storage_config_calls == []
-    assert create_storage_calls == []
+    assert create_storage_config_calls == [7]
+    assert storage.clear_called is True
 
 
 async def test_rag_in_processing_raises_and_never_touches_storage(monkeypatch):

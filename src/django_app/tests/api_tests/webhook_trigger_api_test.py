@@ -12,9 +12,11 @@ from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,
     WebhookTrigger,
+    WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.models import PythonCode
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.views.model_view_sets import WebhookTriggerViewSet
@@ -2150,3 +2152,45 @@ class TestWebhookTriggerRbacResourceType:
         )
         assert response.status_code == 403
 
+
+
+@pytest.mark.django_db
+class TestBinnedTriggerNodeStillClaimsItsTrigger:
+    """A trigger node in the recycle bin keeps its trigger until it's purged,
+    so restoring its flow can't give one trigger two node types."""
+
+    def _bin_webhook_node_without_auth(self, default_org, trigger):
+        binned_flow = Graph.objects.create(org=default_org, name="Binned flow")
+        WebhookTriggerNode.objects.create(
+            node_name="Binned webhook node",
+            graph=binned_flow,
+            webhook_trigger=trigger,
+            python_code=PythonCode.objects.create(
+                code="def handler(event, context):\n    return event", entrypoint="handler"
+            ),
+        )
+        # No auth row: the node-type check alone must see the binned node.
+        WebhookTriggerAuth.objects.filter(trigger=trigger).delete()
+        binned_flow.delete()
+
+    def test_telegram_node_cannot_take_a_trigger_held_by_a_binned_webhook_node(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        trigger = WebhookTrigger.objects.create(path="held-by-binned-node", provider_type=None, org=default_org)
+        self._bin_webhook_node_without_auth(default_org, trigger)
+
+        response = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            TestCrossTypeTriggerNodeConflictValidation()._telegram_node_payload("Telegram", graph, trigger.id),
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_twilio_cannot_reserve_a_trigger_held_by_a_binned_webhook_node(self, default_org):
+        trigger = WebhookTrigger.objects.create(path="twilio-held-by-binned", provider_type=None, org=default_org)
+        self._bin_webhook_node_without_auth(default_org, trigger)
+
+        with pytest.raises(ValueError, match="already has a webhook or Telegram trigger node"):
+            # A Twilio reservation takes no secret; a TwilioChannel fills it in.
+            WebhookTriggerService().set_trigger_auth_secret(trigger, None, kind=WebhookTriggerAuthKind.TWILIO)
