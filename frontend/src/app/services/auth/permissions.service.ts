@@ -46,13 +46,13 @@ export class PermissionsService implements StorageService {
     }
 
     /** Whether the active-org permission set is known (loaded, possibly as `null`), as opposed to
-     *  never loaded or cleared. While false, `can()` returns false without meaning "denied". */
+     *  never loaded or cleared. While false, a `false` from `can()` means "unknown", not "denied". */
     isActivePermissionsLoaded(): boolean {
         return this._isActivePermissionsLoaded();
     }
 
-    /** Whether the cross-org capabilities from `/me/orgs/` are known. While false,
-     *  `canInAnyOrg()` returns false without meaning "denied". */
+    /** Whether the cross-org capabilities from `/me/orgs/` are known. While false, a `false` from
+     *  `canInAnyOrg()` means "unknown", not "denied". */
     isOrgPermissionsLoaded(): boolean {
         return this._orgCaps() !== null;
     }

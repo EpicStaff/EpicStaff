@@ -78,9 +78,9 @@ describe('preflightPermissionInterceptor', () => {
     }
 
     async function expectFallbackWithoutRequest(context: HttpContext): Promise<void> {
-        const body = await firstValueFrom(httpClient.get(GATED_URL, { context }));
+        const response = firstValueFrom(httpClient.get(GATED_URL, { context }));
         httpMock.expectNone(GATED_URL);
-        expect(body).toEqual(FALLBACK_BODY);
+        expect(await response).toEqual(FALLBACK_BODY);
     }
 
     describe.each(scopeCases)('$name', (scope) => {
