@@ -14,7 +14,7 @@ from tables.import_export.export_tabular_projections.session import (
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models.graph_models import Graph, GraphSessionMessage, ScheduleTriggerNode
-from tables.models.session_models import Session
+from tables.models.session_models import Session, SessionPrincipal
 from tables.services.graph_message_store import GraphMessageStore
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
@@ -112,6 +112,7 @@ def test_export_entity_json_envelope_includes_principal(
     assert principal["user"] == regular_user.id
     assert principal["email"] == regular_user.email
     assert principal["api_key"] is None
+    assert principal["api_key_name"] is None
     assert len(exported["messages"]) == 1
 
 
@@ -132,10 +133,8 @@ def test_export_csv_includes_principal_columns_for_user_run(
     rows = _export_csv_rows(session_id)
 
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "user"
-    assert rows[0]["principal_user_id"] == str(regular_user.id)
-    assert rows[0]["principal_email"] == regular_user.email
-    assert rows[0]["principal_api_key_id"] == ""
+    assert rows[0]["started_by_type"] == "user"
+    assert rows[0]["started_by"] == regular_user.email
 
 
 @pytest.mark.django_db
@@ -154,10 +153,8 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
     rows = _export_csv_rows(session.id)
 
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "trigger"
-    assert rows[0]["principal_user_id"] == ""
-    assert rows[0]["principal_email"] == ""
-    assert rows[0]["principal_api_key_id"] == ""
+    assert rows[0]["started_by_type"] == "trigger"
+    assert rows[0]["started_by"] == "sched"
 
 
 @pytest.mark.django_db
@@ -206,9 +203,92 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
 
     rows = _export_csv_rows(child_session.id)
     assert len(rows) == 1
-    assert rows[0]["principal_kind"] == "user"
-    assert rows[0]["principal_user_id"] == str(regular_user.id)
-    assert rows[0]["principal_email"] == regular_user.email
+    assert rows[0]["started_by_type"] == "user"
+    assert rows[0]["started_by"] == regular_user.email
+
+
+def _api_key_session_rows(default_org, kind, api_key, email) -> list[dict]:
+    graph = Graph.objects.create(name="export-csv-api-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(session=session, kind=kind, api_key=api_key, email=email)
+    _add_message(session.id)
+    return _export_csv_rows(session.id)
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_user_api_key_shows_key_name_and_email(
+    default_org, regular_user, user_api_key
+):
+    _, api_key = user_api_key
+
+    [row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.API_KEY_USER, api_key, regular_user.email
+    )
+
+    assert row["started_by_type"] == "api_key"
+    assert row["started_by"] == f"user-key ({regular_user.email})"
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_system_api_key_shows_key_name(default_org, env_api_key):
+    _, api_key = env_api_key
+
+    [row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.API_KEY_SYSTEM, api_key, None
+    )
+
+    assert (row["started_by_type"], row["started_by"]) == ("system_api_key", "env-system")
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_deleted_user_api_key_falls_back_to_email(
+    default_org, regular_user, user_api_key
+):
+    _, api_key = user_api_key
+    graph = Graph.objects.create(name="export-csv-deleted-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(
+        session=session,
+        kind=SessionPrincipal.ActionKind.API_KEY_USER,
+        api_key=api_key,
+        email=regular_user.email,
+    )
+    _add_message(session.id)
+    api_key.delete()
+
+    [row] = _export_csv_rows(session.id)
+
+    assert (row["started_by_type"], row["started_by"]) == ("api_key", regular_user.email)
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_deleted_system_api_key_is_empty(default_org, env_api_key):
+    _, api_key = env_api_key
+    graph = Graph.objects.create(name="export-csv-deleted-system-key", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    SessionPrincipal.objects.create(
+        session=session, kind=SessionPrincipal.ActionKind.API_KEY_SYSTEM, api_key=api_key
+    )
+    _add_message(session.id)
+    api_key.delete()
+
+    [row] = _export_csv_rows(session.id)
+
+    assert (row["started_by_type"], row["started_by"]) == ("system_api_key", "")
+
+
+@pytest.mark.django_db
+def test_export_csv_started_by_unknown_or_missing_principal(default_org):
+    [unknown_row] = _api_key_session_rows(
+        default_org, SessionPrincipal.ActionKind.UNKNOWN, None, None
+    )
+    graph = Graph.objects.create(name="export-csv-no-principal", org=default_org)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
+    _add_message(session.id)
+    [missing_row] = _export_csv_rows(session.id)
+
+    assert (unknown_row["started_by_type"], unknown_row["started_by"]) == ("unknown", "")
+    assert (missing_row["started_by_type"], missing_row["started_by"]) == ("unknown", "")
 
 
 @pytest.mark.django_db
@@ -248,10 +328,10 @@ def test_export_csv_includes_agent_tool_events(
     assert exported_types == ["tool_call", "tool_result"]
 
     call, result = sorted(_export_csv_rows(session_id), key=lambda row: row["execution_order"])
-    assert call["msg__type"] == stream_type
-    assert call["msg__event"] == "tool_call"
-    assert result["msg__event"] == "tool_result"
-    assert call["msg__tool"] == "search"
-    assert call["msg__tool_input"] == '{"q": "x"}'
-    assert result["msg__tool"] == "search"
-    assert result["msg__result"] == "found"
+    assert call["message_type"] == stream_type
+    assert call["event"] == "tool_call"
+    assert result["event"] == "tool_result"
+    assert call["tool_name"] == "search"
+    assert call["tool_arguments"] == '{"q": "x"}'
+    assert result["tool_name"] == "search"
+    assert result["tool_result"] == "found"

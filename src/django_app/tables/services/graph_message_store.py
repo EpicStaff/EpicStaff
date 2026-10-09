@@ -431,7 +431,7 @@ def _copy_messages_into_subgraph_sessions(
             session_id=root_session_id, parent_subgraph_execution_id__isnull=False
         )
         .order_by("id")
-        .only("created_at", "name", "execution_order", "message_data")
+        .only("created_at", "name", "execution_order", "message_data", "node_type")
         .iterator(chunk_size=COPY_READ_CHUNK_SIZE)
     )
     for message in rows:
@@ -473,6 +473,7 @@ def _to_row(message: _ReceivedMessage) -> GraphSessionMessage:
         name=data.name,
         execution_order=data.execution_order,
         message_data=data.message_data,
+        node_type=data.node_type,
         uuid=message.uuid,
         parent_subgraph_execution_id=_parent_subgraph_execution_id(data.message_data),
     )
@@ -491,6 +492,7 @@ def _copy_into_subgraph_session(
             **(message.message_data or {}),
             "subgraph_execution_ids": inner_execution_ids,
         },
+        node_type=message.node_type,
         uuid=uuid4(),
         parent_subgraph_execution_id=inner_execution_ids[0] if inner_execution_ids else None,
     )
