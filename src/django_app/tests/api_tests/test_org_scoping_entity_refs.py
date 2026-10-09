@@ -8,11 +8,14 @@ from rest_framework.test import APIClient
 from tables.models import Graph
 from tables.models.graph_models import (
     AgentNode,
+    Condition,
+    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     StartNode,
 )
 from tables.models.label_models import Label
+from tables.models.python_models import PythonCode
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -133,6 +136,64 @@ def test_edge_node_from_other_graph_rejected(client_a, org_a, org_b):
     assert "end_node_id" in str(resp.data)
 
 
+_CONDITIONAL_EDGE_CODE = {"code": "def main(): return True", "entrypoint": "main", "libraries": []}
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_from_other_graph_rejected(client_a, org_a, org_b):
+    graph_a = _graph(org_a, "a")
+    foreign = StartNode.objects.create(graph=_graph(org_b, "b"), variables={})
+    resp = client_a.post(
+        "/api/conditionaledges/",
+        {
+            "graph": graph_a.id,
+            "source_node_id": foreign.id,
+            "python_code": _CONDITIONAL_EDGE_CODE,
+        },
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert "source_node_id" in str(resp.data)
+    assert not ConditionalEdge.objects.filter(graph=graph_a).exists()
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_same_graph_ok(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    start_a = StartNode.objects.create(graph=graph_a, variables={})
+    resp = client_a.post(
+        "/api/conditionaledges/",
+        {
+            "graph": graph_a.id,
+            "source_node_id": start_a.id,
+            "python_code": _CONDITIONAL_EDGE_CODE,
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_patch_cross_graph_rejected(client_a, org_a, org_b):
+    graph_a = _graph(org_a, "a")
+    start_a = StartNode.objects.create(graph=graph_a, variables={})
+    foreign = StartNode.objects.create(graph=_graph(org_b, "b"), variables={})
+    edge = ConditionalEdge.objects.create(
+        graph=graph_a,
+        source_node_id=start_a.id,
+        python_code=PythonCode.objects.create(code="def main(): return True"),
+    )
+    resp = client_a.patch(
+        f"/api/conditionaledges/{edge.id}/",
+        {"source_node_id": foreign.id},
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert "source_node_id" in str(resp.data)
+    edge.refresh_from_db()
+    assert edge.source_node_id == start_a.id
+
+
 # ---- C: decision-table next-node refs (same-graph) ----
 
 
@@ -207,6 +268,89 @@ def test_decision_table_condition_group_next_node_patch_cross_graph_rejected(
     assert "next_node_id" in str(resp.data)
     # No leak: the rejected patch must not have created the cross-org group.
     assert not ConditionGroup.objects.filter(decision_table_node=dt).exists()
+
+
+def _foreign_decision_table_group(org):
+    foreign_node = DecisionTableNode.objects.create(graph=_graph(org, "b"), node_name="dt_b")
+    foreign_group = ConditionGroup.objects.create(
+        decision_table_node=foreign_node, group_name="grp_b", group_type="simple"
+    )
+    Condition.objects.create(
+        condition_group=foreign_group, condition_name="cond_b", condition="False"
+    )
+    return foreign_group
+
+
+def _write_decision_table(client, method, graph, condition_groups):
+    if method == "post":
+        return client.post(
+            "/api/decision-table-node/",
+            {"graph": graph.id, "node_name": "dt1", "condition_groups": condition_groups},
+            format="json",
+        )
+    node = DecisionTableNode.objects.create(graph=graph, node_name="dt1")
+    return client.patch(
+        f"/api/decision-table-node/{node.id}/",
+        {"condition_groups": condition_groups},
+        format="json",
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("method", "expected_status"), [("post", 201), ("patch", 200)])
+def test_decision_table_group_parent_id_cross_org_ignored(
+    client_a, org_a, org_b, method, expected_status
+):
+    graph_a = _graph(org_a, "a")
+    foreign_node = _foreign_decision_table_group(org_b).decision_table_node
+    resp = _write_decision_table(
+        client_a,
+        method,
+        graph_a,
+        [
+            {
+                "group_name": "injected",
+                "group_type": "simple",
+                "expression": "True",
+                "decision_table_node_id": foreign_node.id,  # node in another org
+            }
+        ],
+    )
+    assert resp.status_code == expected_status, resp.data
+    assert list(foreign_node.condition_groups.values_list("group_name", flat=True)) == ["grp_b"]
+    injected = ConditionGroup.objects.get(group_name="injected")
+    assert injected.decision_table_node.graph_id == graph_a.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("method", "expected_status"), [("post", 201), ("patch", 200)])
+def test_decision_table_condition_parent_id_cross_org_ignored(
+    client_a, org_a, org_b, method, expected_status
+):
+    graph_a = _graph(org_a, "a")
+    foreign_group = _foreign_decision_table_group(org_b)
+    resp = _write_decision_table(
+        client_a,
+        method,
+        graph_a,
+        [
+            {
+                "group_name": "grp1",
+                "group_type": "complex",
+                "conditions": [
+                    {
+                        "condition_name": "injected",
+                        "condition": "True",
+                        "condition_group_id": foreign_group.id,  # group in another org
+                    }
+                ],
+            }
+        ],
+    )
+    assert resp.status_code == expected_status, resp.data
+    assert list(foreign_group.conditions.values_list("condition_name", flat=True)) == ["cond_b"]
+    injected = Condition.objects.get(condition_name="injected")
+    assert injected.condition_group.decision_table_node.graph_id == graph_a.id
 
 
 @pytest.mark.django_db

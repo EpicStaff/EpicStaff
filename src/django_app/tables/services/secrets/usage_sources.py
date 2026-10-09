@@ -356,9 +356,12 @@ def hits_from_edge_rows(*, rows) -> list[UsageHit]:
 
     # One batched cross-table resolution for every source node at once —
     # resolve_node_names issues a single UNION query plus one SELECT per matching
-    # table, so this stays bounded however many edges match.
+    # table, so this stays bounded however many edges match. Restricting it to
+    # the edges' own graphs (all in the caller's org) keeps a source id that
+    # points into another org from exposing that node's name.
     formatted_names = resolve_node_names(
-        ids=[source_node_id for _, _, _, _, source_node_id, _, _ in rows]
+        ids=[source_node_id for _, _, _, _, source_node_id, _, _ in rows],
+        graph_ids=[graph_id for _, _, graph_id, _, _, _, _ in rows],
     )
 
     return [

@@ -1,10 +1,11 @@
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from rest_framework import status
 
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
-from rbac.models import OrganizationUser
+from rbac.models import OrganizationUser, ResourceLastEdit
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
@@ -123,3 +124,19 @@ def test_import_file_cannot_choose_agent_definition_or_surface_author(
     assert set(Surface.objects.filter(org=beta).values_list("created_by_id", flat=True)) == {
         admin_beta.id
     }
+
+
+@pytest.mark.django_db
+def test_import_records_importer_as_last_editor_of_agent_definition_and_surfaces(
+    client_as, admin_beta, beta, source_flow
+):
+    response = _import_flow(client_as(admin_beta), beta, _export(source_flow))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    owned_surface = Surface.objects.get(org=beta, owner_agent__isnull=False)
+    shared_surface = Surface.objects.get(org=beta, owner_agent__isnull=True)
+    for resource in (AgentDefinition.objects.get(org=beta), owned_surface, shared_surface):
+        last_edit = ResourceLastEdit.objects.get(
+            content_type=ContentType.objects.get_for_model(resource), object_id=resource.pk
+        )
+        assert last_edit.edited_by_id == admin_beta.id, resource

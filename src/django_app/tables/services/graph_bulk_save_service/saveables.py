@@ -1,3 +1,7 @@
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
 from tables.exceptions import SectionIdConflictError, SectionNotFoundError
 from tables.models.graph_models import (
     ClassificationConditionGroup,
@@ -6,6 +10,10 @@ from tables.models.graph_models import (
     Condition,
     ConditionGroup,
     DecisionTableNode,
+)
+from tables.services.classification_decision_table_node_children import (
+    CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
+    CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 from tables.services.rag_assignment_service import SearchConfigService
@@ -230,29 +238,17 @@ class DecisionTableNodeSaveable:
 
         return node
 
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "conditions",
-            "decision_table_node",
-            "id",
-            # Wire-only routing hint; never a DB model field.
-            "next_node_temp_id",
-        }
-    )
-    _CONDITION_EXCLUDED_FIELDS = frozenset({"condition_group", "id"})
-
     @staticmethod
     def _create_condition_groups(node, groups_data: list[dict]) -> list:
         """Create ConditionGroup and Condition records. Returns the created groups list."""
         groups_to_create = []
         conditions_map = []
 
-        excluded_group = DecisionTableNodeSaveable._GROUP_EXCLUDED_FIELDS
-        excluded_cond = DecisionTableNodeSaveable._CONDITION_EXCLUDED_FIELDS
-
         for group_data in groups_data:
-            group_copy = {k: v for k, v in group_data.items() if k not in excluded_group}
-            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_copy))
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_fields))
             conditions_map.append(group_data.get("conditions", []))
 
         created_groups = ConditionGroup.objects.bulk_create(groups_to_create)
@@ -260,8 +256,10 @@ class DecisionTableNodeSaveable:
         conditions_to_create = []
         for group, conditions_data in zip(created_groups, conditions_map, strict=False):
             for cond_data in conditions_data:
-                cond_copy = {k: v for k, v in cond_data.items() if k not in excluded_cond}
-                conditions_to_create.append(Condition(condition_group=group, **cond_copy))
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
+                }
+                conditions_to_create.append(Condition(condition_group=group, **condition_fields))
 
         if conditions_to_create:
             Condition.objects.bulk_create(conditions_to_create)
@@ -290,20 +288,6 @@ class ClassificationDecisionTableNodeSaveable:
             deferred_refs_saveable  # _ClassificationDecisionTableNodeRefsSaveable | None
         )
         self._instance = instance
-
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "id",
-            "classification_decision_table_node",
-            "next_node_temp_id",
-            # Prompt reference forms — resolved to the `prompt` FK below (by
-            # prompt_key, or numeric pk fallback); never written as columns.
-            "prompt",
-            "prompt_key",
-            # section id is resolved to the `section` FK below; never written as-is.
-            "section",
-        }
-    )
 
     def save(self):
         s = self._serializer
@@ -373,7 +357,6 @@ class ClassificationDecisionTableNodeSaveable:
                     group_name__in=incoming_names
                 ).delete()
 
-            excluded = self._GROUP_EXCLUDED_FIELDS
             # ordered_groups preserves input order for deferred ref resolution.
             ordered_groups: list = [None] * len(self._condition_groups_data)
             to_bulk_create: list[tuple[int, ClassificationConditionGroup]] = []
@@ -389,10 +372,15 @@ class ClassificationDecisionTableNodeSaveable:
                         existing_by_name[g.group_name] = g
 
             for idx, group_data in enumerate(self._condition_groups_data):
-                gd = {k: v for k, v in group_data.items() if k not in excluded}
+                gd = {
+                    k: v
+                    for k, v in group_data.items()
+                    if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+                }
 
-                # Resolve the prompt FK node-locally: prefer prompt_key (works for
-                # a prompt created in this same payload), fall back to numeric pk.
+                # `prompt` and `section` are never input columns. Resolve the prompt
+                # FK node-locally: prefer prompt_key (works for a prompt created in
+                # this same payload), fall back to numeric pk.
                 key = group_data.get("prompt_key")
                 old_prompt_id = group_data.get("prompt")
                 if key:
@@ -431,20 +419,7 @@ class ClassificationDecisionTableNodeSaveable:
 
             if to_bulk_update:
                 ClassificationConditionGroup.objects.bulk_update(
-                    to_bulk_update,
-                    [
-                        "group_name",
-                        "order",
-                        "expression",
-                        "prompt",
-                        "manipulation",
-                        "continue_flag",
-                        "next_node_id",
-                        "dock_visible",
-                        "field_expressions",
-                        "field_manipulations",
-                        "section",
-                    ],
+                    to_bulk_update, CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS
                 )
 
             if to_bulk_create:

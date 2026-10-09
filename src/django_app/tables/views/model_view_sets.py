@@ -72,6 +72,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
@@ -2079,23 +2083,18 @@ class DecisionTableNodeModelViewSet(
     def _create_condition_groups(self, node: DecisionTableNode, groups_data: list[dict]):
         """
         Create ConditionGroups and nested Conditions for a DecisionTableNode.
-        Uses bulk_create for efficiency.
         """
         for group_data in groups_data:
-            copy_group_data = group_data.copy()
-            conditions_data = copy_group_data.pop("conditions", [])
-            copy_group_data.pop("decision_table_node", None)
-            copy_group_data.pop("content_hash", None)
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            group = ConditionGroup.objects.create(decision_table_node=node, **group_fields)
 
-            group = ConditionGroup.objects.create(decision_table_node=node, **copy_group_data)
-
-            for cond_data in conditions_data:
-                cond_data = {
-                    k: v
-                    for k, v in cond_data.items()
-                    if k not in ("condition_group", "content_hash")
+            for cond_data in group_data.get("conditions", []):
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
                 }
-                Condition.objects.create(condition_group=group, **cond_data)
+                Condition.objects.create(condition_group=group, **condition_fields)
 
             # Re-save group so its hash includes the newly created conditions
             group.save()
