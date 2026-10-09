@@ -1,0 +1,155 @@
+@if (rows().length) {
+    <div
+        class="instructions"
+        cdkDropList
+        [cdkDropListDisabled]="!editable() || renamingIndex() !== null"
+        (cdkDropListDropped)="onDrop($event)"
+    >
+        @for (instruction of rows(); track instruction.name; let index = $index, first = $first, last = $last) {
+            <div
+                class="instruction"
+                cdkDrag
+            >
+                @if (editable()) {
+                    <span
+                        class="instruction__drag"
+                        cdkDragHandle
+                    >
+                        <app-svg-icon
+                            icon="drag-handle"
+                            size="5px"
+                        />
+                    </span>
+                }
+                <span class="instruction__index">{{ index + 1 }}</span>
+                <app-svg-icon
+                    class="instruction__icon"
+                    icon="file"
+                    size="0.9rem"
+                />
+
+                @if (renamingIndex() === index) {
+                    <input
+                        #renameInput
+                        type="text"
+                        class="instruction__rename"
+                        aria-label="Instruction name"
+                        maxlength="255"
+                        [formControl]="renameControl"
+                        (input)="renameError.set(null)"
+                        (keydown.enter)="$event.preventDefault(); commitRename(index)"
+                        (keydown.escape)="cancelRename()"
+                        (blur)="commitRename(index)"
+                    />
+                } @else {
+                    <button
+                        type="button"
+                        class="instruction__name"
+                        (click)="openInstruction.emit({ index, edit: false })"
+                    >
+                        {{ instruction.name }}
+                    </button>
+                }
+
+                @if (rows().length > 1 && (first || last)) {
+                    <span class="instruction__order-hint">{{ first ? 'read first' : 'read last' }}</span>
+                }
+
+                @if (editable()) {
+                    <button
+                        type="button"
+                        class="instruction__action"
+                        aria-label="Rename instruction"
+                        (click)="startRename(index)"
+                    >
+                        <app-svg-icon
+                            icon="edit-pencil"
+                            size="12px"
+                        />
+                    </button>
+                    <button
+                        type="button"
+                        class="instruction__action"
+                        aria-label="Delete instruction"
+                        (click)="onDelete(index)"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="16px"
+                        />
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (displayedError(); as message) {
+    <p
+        class="instructions__error"
+        role="alert"
+    >
+        {{ message }}
+    </p>
+}
+
+@if (!readOnly()) {
+    <input
+        #pcInput
+        type="file"
+        hidden
+        [accept]="acceptAttr"
+        (change)="onPcFileSelected($event)"
+    />
+    <div class="doc-actions">
+        <button
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+            type="button"
+            class="doc-actions__btn"
+            matTooltip="Add a new .md instruction"
+            matTooltipPosition="above"
+            matTooltipClass="custom-tooltip"
+            (click)="onCreateMarkdown()"
+        >
+            <app-svg-icon
+                icon="create-doc"
+                size="12px"
+            />
+            Create Markdown
+        </button>
+        <ng-container *appHasPermission="[ResourceCode.Files, ActionCode.Read]">
+            <button
+                *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+                type="button"
+                class="doc-actions__btn"
+                matTooltip="Add a text file from storage as an instruction"
+                matTooltipPosition="above"
+                matTooltipClass="custom-tooltip"
+                [disabled]="isCreating()"
+                (click)="onExtractFromStorage()"
+            >
+                <app-svg-icon
+                    icon="extract-from-storage"
+                    size="12px"
+                />
+                Extract Text from Storage
+            </button>
+        </ng-container>
+        <button
+            *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
+            type="button"
+            class="doc-actions__btn"
+            matTooltip="Add a text file from your computer as an instruction"
+            matTooltipPosition="above"
+            matTooltipClass="custom-tooltip"
+            [disabled]="isCreating()"
+            (click)="onExtractFromPc(pcInput)"
+        >
+            <app-svg-icon
+                icon="upload"
+                size="12px"
+            />
+            Extract Text from PC
+        </button>
+    </div>
+}

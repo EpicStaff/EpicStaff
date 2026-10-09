@@ -15,6 +15,7 @@ class GraphMessage:
     execution_order: int
     message_data: dict
     timestamp: str = field(default_factory=iso_utc_timestamp)
+    node_type: str = ""
 
 
 @dataclass
@@ -129,18 +130,6 @@ class ConditonGroupManipulationMessageData:
     state: dict
     changed_variables: dict = field(default_factory=dict)
     message_type: str = "condition_group_manipulation"
-
-
-@dataclass
-class NodeExtractedChunksMessageData:
-    knowledge_query: str
-    collection_id: int
-    retrieved_chunks: int
-    rag_search_config: dict
-    chunks: list[dict]
-    token_usage: dict
-    input: object
-    message_type: str = "extracted_chunks"
 
 
 @dataclass

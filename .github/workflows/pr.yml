@@ -18,6 +18,7 @@ jobs:
     outputs:
       fe: ${{ steps.filter.outputs.fe }}
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
+      be_deps: ${{ steps.filter.outputs.be_deps }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
@@ -53,6 +54,9 @@ jobs:
           filter fe '^(frontend/|\.github/workflows/pr\.yml$|scripts/check-undeclared-imports\.mjs$|scripts/check-third-party-notices\.mjs$)'
 
           filter fe_deps '^(frontend/package\.json$|frontend/package-lock\.json$|scripts/check-third-party-notices\.mjs$)'
+
+          # pyproject.toml too: adding or removing one adds or removes a service.
+          filter be_deps '^(src/[^/]+/uv\.lock$|src/[^/]+/pyproject\.toml$|scripts/generate-python-notices\.py$)'
 
           # Wider than src/ and frontend/ on purpose: the compose matrix generator
           # in compose-build.yml also runs scripts/envtool.py and
@@ -162,6 +166,38 @@ jobs:
       - name: Check for runtime CDN / external URL references
         run: node scripts/check-external-urls.mjs
 
+  # Ticket IDs belong in branch names, commit messages and PRs, never in the
+  # tree. The leading class skips applied migration names like
+  # `0150_merge_est_1999`, which cannot be renamed.
+  check-ticket-references:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: No Jira ticket IDs in tracked files
+        run: |
+          violations=$(git grep -nIiE '(^|[^[:alnum:]_])EST[-_]?[0-9]{3,5}([^0-9]|$)' \
+            -- . ':!*package-lock.json' ':!*.lock' ':!**/libraries/**' || true)
+          if [ -n "$violations" ]; then
+            echo "$violations"
+            echo "ERROR: Jira ticket IDs found. Explain the why in words; keep the ticket in the branch, commit and PR."
+            exit 1
+          fi
+
+  # Backend half of the licence attribution guard: compares the uv.lock hashes
+  # stamped in the notices header, so it needs neither venvs nor network.
+  check-backend-notices:
+    needs: changes
+    if: needs.changes.outputs.be_deps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check backend third-party notices are in sync
+        run: python3 scripts/generate-python-notices.py --check
+
   # The rbac app was extracted out of tables specifically to stop
   # rbac reaching back into tables. Two imports are structural and stay
   # allowed: tables.models.user (AUTH_USER_MODEL cannot move -- it is
@@ -246,7 +282,7 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Dependency drift is what produced the EST-3802 backlog: half of it was stale
+      # Dependency drift is what produced the npm-audit backlog: half of it was stale
       # lockfile entries rather than genuinely outdated direct dependencies.
       # Gated on the manifests for the same reason: the audit reads the lockfile and
       # nothing else in the tree can move its result.
@@ -405,7 +441,7 @@ jobs:
   # This is meant to be temporary.
 
   build:
-    needs: [changes, check-cla, check-external-urls, check-rbac-boundary, frontend-checks]
+    needs: [changes, check-cla, check-external-urls, check-rbac-boundary, check-backend-notices, frontend-checks]
     # `!cancelled() && !failure()` is mandatory, not defensive. frontend-checks can
     # now be skipped, and a skipped dependency skips its dependants by default;
     # overriding the default job condition with an explicit `if:` is the only way to

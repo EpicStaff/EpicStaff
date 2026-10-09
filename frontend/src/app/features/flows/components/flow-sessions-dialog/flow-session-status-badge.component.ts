@@ -10,7 +10,14 @@ import { GraphSessionStatus } from '@shared/models';
             class="status-badge"
             [ngClass]="statusClass"
         >
-            <i [class]="statusIcon"></i>
+            @if (status === GraphSessionStatus.STOP) {
+                <span
+                    class="status-stop-square"
+                    aria-hidden="true"
+                ></span>
+            } @else {
+                <i [class]="statusIcon"></i>
+            }
             {{ statusLabel }}
         </span>
     `,
@@ -19,6 +26,8 @@ import { GraphSessionStatus } from '@shared/models';
 })
 export class FlowSessionStatusBadgeComponent {
     @Input() status!: GraphSessionStatus;
+
+    protected readonly GraphSessionStatus = GraphSessionStatus;
 
     get statusLabel(): string {
         switch (this.status) {

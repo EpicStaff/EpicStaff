@@ -184,7 +184,7 @@ class TestTelegramRegistrationReadsSecret:
 
         seen = {}
 
-        def fake_call(method, api_key, endpoint, params=None):
+        def fake_call(method, api_key, endpoint, params=None, single_attempt=False):
             seen.update(
                 method=method, api_key=api_key, endpoint=endpoint, params=params
             )

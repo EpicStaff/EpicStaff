@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import json
 
-from shared.models.agent_service import AgentSpec, LoopResult, StopReason
-
 from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError
@@ -23,6 +21,7 @@ from app.output.enforcer import StructuredOutputEnforcer
 from app.output.schema import add_usage, as_object_schema
 from app.runners.deps import RunnerDependencies
 from app.tools.registry import ToolRegistry
+from shared.models.agent_service import AgentSpec, LoopResult, StopReason
 
 
 def _default_max_iter() -> int:

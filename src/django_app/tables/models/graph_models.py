@@ -16,6 +16,7 @@ from tables.models.base_models import (
     ContentHashMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
+    TestPayloadMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
@@ -378,6 +379,9 @@ class GraphSessionMessage(models.Model):
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
+    # The emitting node's BaseNode.TYPE (e.g. "AGENT"); empty when the emitter is not a
+    # BaseNode and on rows saved before this field existed.
+    node_type = models.CharField(default="", blank=True)
     uuid = models.UUIDField(null=False, editable=False, unique=True)
     parent_subgraph_execution_id = models.UUIDField(null=True, blank=True, db_index=True)
 
@@ -591,7 +595,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class WebhookTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -621,6 +625,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
             "content_hash",
             "metadata",
             "python_code",
+            "test_payload",
         ]
 
         data = {
@@ -636,7 +641,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class TelegramTriggerNode(BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -661,7 +666,14 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
     def generate_hash(self):
-        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "content_hash",
+            "metadata",
+            "test_payload",
+        ]
         data = {
             f.name: str(getattr(self, f.attname))
             for f in self._meta.fields
