@@ -1,5 +1,7 @@
 import uuid
 
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.classification_decision_table_node import (
@@ -68,7 +70,19 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
+
+        section_id_mapping = {}
+        for s in sections_data:
+            old_section_id = s.get("id")
+            new_section = ClassificationConditionGroupSection.objects.create(
+                id=uuid.uuid4(),
+                classification_decision_table_node=node,
+                name=s.get("name", ""),
+                metadata=s.get("metadata", {}),
+            )
+            if old_section_id is not None:
+                section_id_mapping[str(old_section_id)] = new_section.id
 
         section_id_mapping = {}
         for s in sections_data:

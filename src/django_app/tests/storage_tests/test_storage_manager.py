@@ -36,6 +36,13 @@ class TestPathHelpers:
 
 @pytest.mark.django_db
 class TestDelegation:
+    def test_mkdir_delegates_to_backend_and_syncs_with_user(
+        self, storage_manager, mock_backend, org, org_user, patch_sync
+    ):
+        storage_manager.mkdir(org.id, "docs", user=org_user.user)
+        mock_backend.mkdir.assert_called_once_with(f"org_{org.id}/docs")
+        patch_sync.on_mkdir.assert_called_once_with(org.id, "docs", user=org_user.user)
+
     def test_delete_delegates_to_backend_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
@@ -47,20 +54,24 @@ class TestDelegation:
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
         mock_backend.move.return_value = f"org_{org.id}/dest/a.txt"
-        storage_manager.move(org.id, "a.txt", "dest")
+        storage_manager.move(org.id, "a.txt", "dest", user=org_user.user)
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/a.txt", f"org_{org.id}/dest"
         )
-        patch_sync.on_move.assert_called_once_with(org.id, "a.txt", "dest/a.txt")
+        patch_sync.on_move.assert_called_once_with(
+            org.id, "a.txt", "dest/a.txt", user=org_user.user
+        )
 
     def test_rename_delegates_and_syncs_via_on_move(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
-        storage_manager.rename(org.id, "old.txt", "new.txt")
+        storage_manager.rename(org.id, "old.txt", "new.txt", user=org_user.user)
         mock_backend.rename.assert_called_once_with(
             f"org_{org.id}/old.txt", f"org_{org.id}/new.txt"
         )
-        patch_sync.on_move.assert_called_once_with(org.id, "old.txt", "new.txt")
+        patch_sync.on_move.assert_called_once_with(
+            org.id, "old.txt", "new.txt", user=org_user.user
+        )
 
     def test_rename_raises_file_exists_when_destination_row_exists(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -69,6 +80,29 @@ class TestDelegation:
         with pytest.raises(FileExistsError):
             storage_manager.rename(org.id, "old.txt", "new.txt")
         mock_backend.rename.assert_not_called()
+
+    def test_copy_strips_org_prefix_from_returned_keys_and_records_them(
+        self, storage_manager, mock_backend, org, org_user, mocker
+    ):
+        record_files = mocker.patch(
+            "tables.services.storage_service.manager.record_files_within_quota"
+        )
+        mock_backend.copy.return_value = [
+            (f"org_{org.id}/dest/src/", 0),
+            (f"org_{org.id}/dest/src/a.txt", 1),
+            (f"org_{org.id}/dest/src/b.txt", 2),
+        ]
+
+        storage_manager.copy(org.id, "src", "dest", user=org_user.user)
+
+        mock_backend.copy.assert_called_once_with(f"org_{org.id}/src", f"org_{org.id}/dest")
+        record_files.assert_called_once_with(
+            org.id,
+            [("dest/src/a.txt", 1), ("dest/src/b.txt", 2)],
+            ["dest/src/"],
+            user=org_user.user,
+            authors_by_path=None,
+        )
 
     def test_info_strips_org_prefix_from_result_path(
         self, storage_manager, org, org_user
@@ -84,6 +118,62 @@ class TestDelegation:
         result = storage_manager.info(org.id, "docs/f.txt")
         assert isinstance(result, FileInfo)
         assert result.path == "docs/f.txt"
+
+
+# --- Cross-org ---
+
+
+@pytest.mark.django_db
+class TestCrossOrg:
+    @pytest.fixture
+    def record_files(self, mocker):
+        return mocker.patch(
+            "tables.services.storage_service.manager.record_files_within_quota"
+        )
+
+    def test_copy_cross_org_records_the_copies_authored_by_the_copier(
+        self, storage_manager, mock_backend, org, org_user, second_org, record_files
+    ):
+        mock_backend.copy.return_value = [(f"org_{second_org.id}/inbox/src.txt", 3)]
+
+        storage_manager.copy_cross_org(
+            org.id, "src.txt", second_org.id, "inbox", user=org_user.user
+        )
+
+        mock_backend.copy.assert_called_once_with(
+            f"org_{org.id}/src.txt", f"org_{second_org.id}/inbox"
+        )
+        record_files.assert_called_once_with(
+            second_org.id,
+            [("inbox/src.txt", 3)],
+            [],
+            user=org_user.user,
+            authors_by_path=None,
+        )
+        mock_backend.delete.assert_not_called()
+
+    def test_move_cross_org_copies_records_with_kept_authors_then_deletes_the_source(
+        self, storage_manager, mock_backend, org, org_user, second_org, record_files, patch_sync
+    ):
+        StorageFile.objects.create(
+            org=org, path="src.txt", name="src.txt", created_by=org_user.user
+        )
+        mock_backend.copy.return_value = [(f"org_{second_org.id}/inbox/src.txt", 3)]
+
+        storage_manager.move_cross_org(
+            org.id, "src.txt", second_org.id, "inbox", user=org_user.user
+        )
+
+        # org_user is no member of second_org, so the moved file keeps no author.
+        record_files.assert_called_once_with(
+            second_org.id,
+            [("inbox/src.txt", 3)],
+            [],
+            user=org_user.user,
+            authors_by_path={"inbox/src.txt": None},
+        )
+        mock_backend.delete.assert_called_once_with(f"org_{org.id}/src.txt")
+        patch_sync.on_delete.assert_called_once_with(org.id, "src.txt")
 
 
 @pytest.mark.django_db

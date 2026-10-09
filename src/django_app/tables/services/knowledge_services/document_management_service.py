@@ -18,6 +18,7 @@ from tables.exceptions import (
 )
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tables.models.knowledge_models import GraphRagDocument, NaiveRag
+from tables.services.knowledge_services.collection_last_edit import record_collection_edits
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.validators.file_upload_validator import FileValidator
@@ -227,7 +228,7 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def upload_files_batch(
-        collection_id: int, uploaded_files: list[UploadedFile]
+        collection_id: int, uploaded_files: list[UploadedFile], *, user: object | None = None
     ) -> list[DocumentMetadata]:
         """
         Upload multiple files to a collection in a single transaction.
@@ -235,6 +236,7 @@ class DocumentManagementService:
         Args:
             collection_id: ID of the source collection
             uploaded_files: List of Django UploadedFile objects
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             list: List of created DocumentMetadata instances
@@ -284,18 +286,20 @@ class DocumentManagementService:
             raise
 
         # Collection status will be updated automatically by DocumentMetadata.save()
+        record_collection_edits([collection_id], user)
 
         return created_documents
 
     @staticmethod
     @transaction.atomic
-    def delete_document(document_id: int) -> dict[str, Any]:
+    def delete_document(document_id: int, *, user: object | None = None) -> dict[str, Any]:
         """
         Delete a single document metadata.
         If DocumentContent has no other references, it will be deleted too.
 
         Args:
             document_id: ID of the document to delete
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             dict: Information about deleted document
@@ -341,6 +345,7 @@ class DocumentManagementService:
             logger.info(f"Deleted dangling content for document '{file_name}'")
 
         logger.info(f"Successfully deleted document '{file_name}' (ID: {document_id})")
+        record_collection_edits([collection_id], user)
 
         return {
             "document_id": document_id,
@@ -350,13 +355,16 @@ class DocumentManagementService:
 
     @staticmethod
     @transaction.atomic
-    def delete_documents_batch(document_ids: list[int]) -> dict[str, Any]:
+    def delete_documents_batch(
+        document_ids: list[int], *, user: object | None = None
+    ) -> dict[str, Any]:
         """
         Delete multiple documents in a single transaction.
         DocumentContent instances with no remaining references are deleted too.
 
         Args:
             document_ids: List of document IDs to delete
+            user: Acting user, recorded as the last editor of every affected collection
 
         Returns:
             dict: Summary of deletion operation
@@ -365,7 +373,7 @@ class DocumentManagementService:
             DocumentNotFoundException: If any document not found
         """
         if not document_ids:
-            return {"deleted_count": 0, "document_ids": [], "errors": []}
+            return {"deleted_count": 0, "documents": []}
 
         # Fetch all documents
         documents = DocumentMetadata.objects.filter(document_id__in=document_ids).select_related(
@@ -417,6 +425,7 @@ class DocumentManagementService:
         collection_ids = {d["collection_id"] for d in deleted_info if d["collection_id"]}
         for collection in SourceCollection.objects.filter(collection_id__in=collection_ids):
             collection.update_collection_status()
+        record_collection_edits(collection_ids, user)
         for rag in affected_rags:
             NaiveRagService.sync_rag_status_after_config_removal(rag)
         for rag, indexed_deleted in affected_graph_rags.values():
@@ -495,13 +504,14 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def copy_documents_to_collection(
-        collection_id: int, document_ids: list[int], *, org_id: int
+        collection_id: int, document_ids: list[int], *, org_id: int, user: object | None = None
     ) -> tuple[list[DocumentMetadata], list[DocumentMetadata]]:
-        """Copy documents into a collection without duplicating binary content
-        (new DocumentMetadata rows share the same DocumentContent). Documents
-        already present are skipped, as are duplicate ids and copies into the
-        source collection itself. Returns (copied, skipped). The target
-        collection and every source document must belong to ``org_id``.
+        """Copy documents into a collection, sharing their binary content.
+
+        Documents already present (by content), duplicate ids and copies into the source
+        collection are skipped; `user` last edits the collection when anything was copied.
+        The target collection and every source document must belong to ``org_id``.
+        Returns (copied, skipped).
 
         Raises:
             CollectionNotFoundException: target collection missing or in another org.
@@ -544,5 +554,7 @@ class DocumentManagementService:
             f"Copied {len(copied_documents)} document(s) into collection "
             f"{collection_id}, skipped {len(skipped_documents)} already present"
         )
+        if copied_documents:
+            record_collection_edits([collection_id], user)
 
         return copied_documents, skipped_documents

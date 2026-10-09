@@ -33,6 +33,7 @@ from tables.models.knowledge_models import (
     SourceCollection,
 )
 from tables.models.llm_models import LLMConfig
+from tables.services.knowledge_services.collection_last_edit import record_collection_edits
 
 
 class GraphRagService:
@@ -210,6 +211,8 @@ class GraphRagService:
         collection_id: int,
         embedder_id: int,
         llm_id: int,
+        *,
+        user: object | None = None,
     ) -> GraphRag:
         """
         Create new GraphRag or update existing one.
@@ -220,6 +223,8 @@ class GraphRagService:
             collection_id: ID of source collection
             embedder_id: ID of embedder to use
             llm_id: ID of LLM config to use (for entity extraction)
+            user: Acting user, recorded as the collection's last editor when the RAG is
+                created or its embedder or LLM changes
 
         Returns:
             GraphRag instance (new or updated)
@@ -235,9 +240,14 @@ class GraphRagService:
 
         rag = cls.get_or_none_graph_rag_by_collection(collection_id)
         if rag:
+            models_before = (rag.embedder_id, rag.llm_id)
             rag = cls._update_rag(rag, collection, embedding_config, llm_config)
+            changed = (rag.embedder_id, rag.llm_id) != models_before
         else:
             rag = cls._create_rag(collection, embedding_config, llm_config)
+            changed = True
+        if changed:
+            record_collection_edits([collection_id], user)
 
         return rag
 
@@ -247,12 +257,15 @@ class GraphRagService:
         cls,
         graph_rag_id: int,
         data: dict[str, Any],
+        *,
+        user: object | None = None,
     ) -> GraphRag:
         """
         Update index configuration for GraphRag.
 
         Args:
             graph_rag_id: ID of GraphRag
+            user: Acting user, recorded as the collection's last editor if a field changed
 
         Returns:
             Updated GraphRag instance
@@ -287,6 +300,7 @@ class GraphRagService:
 
         if updated_fields:
             index_config.save(update_fields=updated_fields)
+            record_collection_edits([rag.base_rag_type.source_collection_id], user)
 
             completed_documents = rag.graph_rag_documents.filter(
                 ~Q(graph_rag_document_id__in=rag.indexing_document_config_ids),
@@ -308,7 +322,7 @@ class GraphRagService:
     @staticmethod
     @transaction.atomic
     def remove_documents_from_graph_rag(
-        graph_rag_id: int, document_ids: list[int]
+        graph_rag_id: int, document_ids: list[int], *, user: object | None = None
     ) -> dict[str, Any]:
         """
         Remove documents from GraphRag.
@@ -316,6 +330,7 @@ class GraphRagService:
         Args:
             graph_rag_id: ID of GraphRag
             document_ids: List of document IDs to remove
+            user: Acting user, recorded as the collection's last editor if a document was removed
 
         Returns:
             dict with removal info
@@ -338,6 +353,8 @@ class GraphRagService:
         documents.delete()
 
         GraphRagService.sync_status_after_document_removal(rag, completed_document_deleted)
+        if deleted_document_ids:
+            record_collection_edits([rag.base_rag_type.source_collection_id], user)
 
         logger.info(
             "Removed {} documents from GraphRag(id={})",
@@ -352,13 +369,16 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_document(graph_rag_id: int, document_id: int) -> dict[str, Any]:
+    def delete_document(
+        graph_rag_id: int, document_id: int, *, user: object | None = None
+    ) -> dict[str, Any]:
         """
         Remove a single document from GraphRag.
 
         Args:
             graph_rag_id: ID of GraphRag
             document_id: ID of document to remove
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             dict with removal info
@@ -374,6 +394,7 @@ class GraphRagService:
         document.delete()
 
         GraphRagService.sync_status_after_document_removal(rag, was_completed)
+        record_collection_edits([rag.base_rag_type.source_collection_id], user)
 
         logger.info(
             "Removed document(id={}) from GraphRag(id={})",
@@ -422,13 +443,16 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def init_documents_from_collection(graph_rag_id: int) -> dict[str, Any]:
+    def init_documents_from_collection(
+        graph_rag_id: int, *, user: object | None = None
+    ) -> dict[str, Any]:
         """
         Re-initialize GraphRag with all documents from collection.
         Adds documents that are not already linked (useful after accidental deletion).
 
         Args:
             graph_rag_id: ID of GraphRag
+            user: Acting user, recorded as the collection's last editor if a document was added
 
         Returns:
             dict with initialization info
@@ -475,6 +499,8 @@ class GraphRagService:
             f"Initialized {len(added_documents)} documents for GraphRag {graph_rag_id}. "
             f"Already linked: {len(existing_doc_ids)}"
         )
+        if added_documents:
+            record_collection_edits([collection_id], user)
 
         return {
             "added_count": len(added_documents),
@@ -484,12 +510,13 @@ class GraphRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_graph_rag(graph_rag_id: int) -> dict[str, Any]:
+    def delete_graph_rag(graph_rag_id: int, *, user: object | None = None) -> dict[str, Any]:
         """
         Delete GraphRag and its configurations.
 
         Args:
             graph_rag_id: ID of GraphRag to delete
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             dict with deletion info
@@ -516,6 +543,7 @@ class GraphRagService:
             f"Deleted GraphRag {graph_rag_id} for collection {collection_id} "
             f"with {doc_count} documents"
         )
+        record_collection_edits([collection_id], user)
 
         return {
             "graph_rag_id": graph_rag_id,

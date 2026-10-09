@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -99,7 +100,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
@@ -199,7 +200,7 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
         )
         serializer = self.serializer_class(data={**data, "org": org_id})
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None):
         custom_name = data.get("custom_name")

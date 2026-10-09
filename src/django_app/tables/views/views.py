@@ -698,7 +698,7 @@ class InitRealtimeAPIView(APIView):
             # X-Organization-Id to send. It already resolved the agent definition
             # server-side (via RealtimeChannelViewSet.lookup_by_token, itself
             # scoped by the channel's own org), so org is derived here from the
-            # definition's own `organization` FK instead of requiring a header —
+            # definition's own `org` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
             # API-key-authenticated requests (see ApiKeyAuthentication).
@@ -718,7 +718,7 @@ class InitRealtimeAPIView(APIView):
                         "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                     }
                 )
-            org_id = agent_definition.organization_id
+            org_id = agent_definition.org_id
             # Twilio's MediaStream bridge has no end-user session (see comment
             # above) — created_by/user_id stays None for these sessions.
             user_id = None
@@ -741,9 +741,7 @@ class InitRealtimeAPIView(APIView):
             # resulting RealtimeSessionItem rows to them via created_by.
             user_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
 
-        if not AgentDefinition.objects.filter(
-            pk=agent_definition_id, organization_id=org_id
-        ).exists():
+        if not AgentDefinition.objects.filter(pk=agent_definition_id, org_id=org_id).exists():
             raise ValidationError(
                 {
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
@@ -768,17 +766,28 @@ class InitRealtimeAPIView(APIView):
 
 class QuickstartView(APIView):
     """
-    API endpoint for managing quickstart configurations
+    API endpoint for managing quickstart configurations.
+
+    Reading the status requires LLM config read permission in the active organization
+    (it renders the last quickstart LLM and embedding configs); running a quickstart
+    requires LLM config create permission. Each handler asserts its own action: a plain
+    APIView has no DRF action for HasOrgPermission to map.
     """
 
     permission_classes = [IsAuthenticated]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_required_action = Permission.CREATE
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Outside the try below: its broad except would turn the 403 into a 500.
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=Permission.READ,
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
@@ -791,7 +800,8 @@ class QuickstartView(APIView):
                     "supported_providers": supported_providers,
                     "last_config": last_config,
                     "is_synced": is_synced,
-                }
+                },
+                context={"request": request},
             ).data
             return Response(data, status=status.HTTP_200_OK)
 
@@ -817,7 +827,7 @@ class QuickstartView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=self.rbac_resource_type,
-            action=self.rbac_required_action,
+            action=Permission.CREATE,
         )
 
         result = quickstart_service.quickstart(
@@ -825,6 +835,7 @@ class QuickstartView(APIView):
             api_key=api_key,
             secret=secret,
             org_id=org_id,
+            user=request.user,
         )
 
         if not result.get("success", False):
@@ -839,7 +850,8 @@ class QuickstartView(APIView):
                 "config_name": config_name,
                 "llm_config": result["llm_config"],
                 "embedding_config": result["embedding_config"],
-            }
+            },
+            context={"request": request},
         ).data
         return Response(
             data={

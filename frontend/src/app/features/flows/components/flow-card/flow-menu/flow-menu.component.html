@@ -3,6 +3,7 @@
     [ngClass]="{ 'menu-active': isMenuOpen() }"
 >
     <button
+        #menuTrigger
         class="menu-button"
         [class.active]="isMenuOpen()"
         matTooltip="Options"
@@ -44,6 +45,11 @@
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                 label="Export"
                 (itemClick)="onActionClick($event, 'export')"
+            ></app-flow-menu-item>
+            <!-- Read-only: anyone who sees the flow may see who authored it. -->
+            <app-flow-menu-item
+                label="View Details"
+                (itemClick)="onActionClick($event, 'viewDetails')"
             ></app-flow-menu-item>
             <app-flow-menu-item
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"

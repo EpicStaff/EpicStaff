@@ -13,6 +13,9 @@ from rbac.exceptions import (
     UserNotFoundError,
 )
 
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models import Graph, GraphNote, GraphVersion, Label
+
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 svc = MembershipManagementService()
@@ -213,6 +216,61 @@ def test_remove_member(admin_acme, acme, role_member, django_user_model):
     m = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
     svc.remove_member(actor=admin_acme, membership_id=m.id)
     assert not OrganizationUser.objects.filter(pk=m.id).exists()
+
+
+@pytest.mark.django_db
+def test_remove_member_releases_authorship_in_that_org(
+    admin_acme, acme, beta, role_member, django_user_model
+):
+    bob = django_user_model.objects.create_user(
+        email="rm-author@x.com", password="StrongPass123!"
+    )
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=bob, org=beta, role=role_member)
+    acme_flow = Graph.objects.create(name="bob-acme-flow", org=acme, created_by=bob)
+    acme_label = Label.objects.create(name="bob-acme-label", org=acme, created_by=bob)
+    beta_flow = Graph.objects.create(name="bob-beta-flow", org=beta, created_by=bob)
+    acme_note = GraphNote.objects.create(graph=acme_flow, content="acme", created_by=bob)
+    beta_note = GraphNote.objects.create(graph=beta_flow, content="beta", created_by=bob)
+
+    svc.remove_member(actor=admin_acme, membership_id=membership.id)
+
+    acme_flow.refresh_from_db()
+    acme_label.refresh_from_db()
+    beta_flow.refresh_from_db()
+    acme_note.refresh_from_db()
+    beta_note.refresh_from_db()
+    assert acme_flow.created_by_id is None
+    assert acme_label.created_by_id is None
+    assert acme_note.created_by_id is None
+    assert beta_flow.created_by_id == bob.id
+    assert beta_note.created_by_id == bob.id
+
+
+@pytest.mark.django_db
+def test_remove_member_scrubs_them_from_that_orgs_version_snapshots_only(
+    admin_acme, acme, beta, role_member, django_user_model
+):
+    bob = django_user_model.objects.create_user(
+        email="rm-versions@x.com", password="StrongPass123!"
+    )
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=bob, org=beta, role=role_member)
+    acme_flow = Graph.objects.create(name="bob-acme-versioned", org=acme)
+    beta_flow = Graph.objects.create(name="bob-beta-versioned", org=beta)
+    acme_note = GraphNote.objects.create(graph=acme_flow, content="acme", created_by=bob)
+    GraphNote.objects.create(graph=beta_flow, content="beta", created_by=bob)
+    acme_version = GraphVersioningService().save_version(acme_flow, name="acme-v1")
+    beta_version = GraphVersioningService().save_version(beta_flow, name="beta-v1")
+
+    svc.remove_member(actor=admin_acme, membership_id=membership.id)
+
+    acme_snapshot = GraphVersion.objects.get(pk=acme_version.pk).snapshot
+    acme_note_entry = acme_snapshot["node_authorship"][str(acme_note.id)]
+    assert acme_note_entry["created_by"] is None
+    assert acme_note_entry["created_at"] == acme_note.created_at.isoformat()
+    beta_snapshot = GraphVersion.objects.get(pk=beta_version.pk).snapshot
+    assert {entry["created_by"] for entry in beta_snapshot["node_authorship"].values()} == {bob.id}
 
 
 @pytest.mark.django_db

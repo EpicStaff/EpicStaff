@@ -1,4 +1,9 @@
 from django.db import transaction
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -163,7 +168,9 @@ class PythonCodeSerializer(
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
-class PythonCodeToolSerializer(serializers.ModelSerializer):
+class PythonCodeToolSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
     is_favorite = serializers.BooleanField(read_only=True, default=False)
@@ -196,10 +203,11 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+        read_only_fields = ["id", "built_in", "created_by", "created_at", "updated_at"]
 
     def validate_description(self, value: str) -> str:
         """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
@@ -255,7 +263,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
     tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
 
