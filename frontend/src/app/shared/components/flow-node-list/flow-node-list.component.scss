@@ -1,18 +1,74 @@
 .flow-node-list {
+    // .grid-collapsible collapses its child to a 0fr row, but a box can't shrink below its own
+    // padding and margin. __clip is that child and has none; the spacing lives on __inner.
+    &--flush &__inner {
+        margin: 0;
+    }
+
+    &__clip {
+        padding: 0;
+        margin: 0;
+    }
+
     &__inner {
         display: flex;
         flex-direction: column;
         gap: 4px;
         margin: 4px 0;
         padding: 12px;
-        border-radius: 8px;
+        // A host that stacks the list under another block sets this to square the shared edge.
+        border-radius: var(--flow-node-list-radius, 8px);
         background: var(--color-ks-transparent-black-28);
     }
 
+    // Search on the left, the filter at its own width on the right. A host can narrow the search
+    // with --flow-node-list-search-width (it fills the row by default).
     &__toolbar {
         display: flex;
+        justify-content: space-between;
         gap: 8px;
         margin-bottom: 8px;
+    }
+
+    &__search {
+        flex: 0 1 var(--flow-node-list-search-width, 100%);
+        min-width: 0;
+    }
+
+    &__filter {
+        flex: 0 0 200px;
+    }
+
+    &__branch-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 1rem;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--text-secondary-60);
+        cursor: pointer;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            border-radius: 4px;
+        }
+    }
+
+    // Keeps a leaf's icon in line with its siblings' icons, which sit after a chevron.
+    &__branch-spacer {
+        flex-shrink: 0;
+        width: 1rem;
+    }
+
+    &__chevron {
+        transition: transform 0.2s ease;
+
+        &--closed {
+            transform: rotate(-90deg);
+        }
     }
 
     &__rows {
@@ -38,6 +94,10 @@
             font-size: 1rem;
         }
 
+        .flow-node-list__svg-icon {
+            flex-shrink: 0;
+        }
+
         &:hover {
             background: var(--color-ks-hover-row);
         }
@@ -58,6 +118,44 @@
         color: var(--text-secondary-60);
         font-size: var(--text-body-size);
         font-weight: var(--text-body-weight);
+    }
+
+    &__more--action {
+        display: block;
+        width: 100%;
+        border: none;
+        border-top: 1px solid var(--color-flow-card-bg);
+        background: none;
+        text-align: start;
+        color: var(--accent-color);
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background: var(--color-ks-hover-row);
+        }
+
+        &:disabled {
+            cursor: progress;
+            opacity: 0.6;
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+    }
+
+    &__row--branch {
+        cursor: pointer;
+    }
+
+    &__more {
+        margin: 0;
+        padding: 8px 16px;
+        border-top: 1px solid var(--color-flow-card-bg);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        color: var(--text-secondary-60);
     }
 
     &__empty {

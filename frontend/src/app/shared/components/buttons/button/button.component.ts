@@ -19,7 +19,8 @@ export class ButtonComponent {
         | 'ghost'
         | 'icon'
         | 'outline-primary'
-        | 'outline-secondary' = 'primary';
+        | 'outline-secondary'
+        | 'outline-danger' = 'primary';
     @Input() mod: 'default' | 'small' = 'default';
     @Input() leftIcon?: string; // e.g., 'ui/x'
     @Input() iconSize: string = '1.1rem';

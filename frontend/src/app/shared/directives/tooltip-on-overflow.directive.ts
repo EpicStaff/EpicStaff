@@ -52,7 +52,8 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
             const el = this.target();
-            const overflowing = el.scrollWidth > el.clientWidth + 1;
+            // Cut at the side (ellipsis) or at the bottom (a line clamp).
+            const overflowing = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
             if (this.tooltip.disabled === overflowing) {
                 this.ngZone.run(() => (this.tooltip.disabled = !overflowing));
             }
