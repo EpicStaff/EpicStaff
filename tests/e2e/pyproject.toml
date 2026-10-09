@@ -1,0 +1,29 @@
+[project]
+name = "epicstaff-e2e"
+version = "1.0.0"
+description = "Black-box end-to-end tests that run against a live EpicStaff stack through nginx."
+authors = [
+    { name = "Epicstaff" },
+]
+requires-python = "==3.12.10"
+dependencies = [
+    "httpx==0.28.1",
+    "pytest==8.4.2",
+    "pytest-timeout==2.4.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+addopts = "--strict-markers"
+# Per test function only; session fixtures (bootstrap, warm-up) are bounded by their own
+# poll budgets. Every test's polls + request timeouts must stay well below this.
+timeout = 600
+timeout_func_only = true
+# API calls are logged at INFO; pytest shows them with a failing test.
+log_level = "INFO"
+markers = [
+    "load: concurrency / load tests; run by default, deselect with -m 'not load'",
+]

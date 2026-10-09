@@ -135,6 +135,7 @@ celerybeat.pid
 
 # Environments
 *.env
+!tests/e2e/e2e.env
 .env
 .venv
 src/ENV/
