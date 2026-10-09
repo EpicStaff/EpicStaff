@@ -1,6 +1,6 @@
 import asyncio
-import copy
 import json
+import time
 from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
@@ -17,17 +17,29 @@ from src.shared.redis_keys import (
 )
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
-from tables.models.vector_models import MemoryDatabase
 from tables.services.redis_service import RedisService
 from tables.services.session_access import get_accessible_session
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
-from tables.utils.mixins import SSEMixin
+from tables.utils.base64_preview import trim_base64_file_data
+from tables.utils.mixins import SerializedEvent, SSEMixin
 from utils.logger import logger
 
 redis_service = RedisService()
 
 # Graph messages per database query: one message can be ~300 KB.
 MESSAGE_PAGE_SIZE = 20
+
+FINISHED_STATUSES = frozenset(
+    {
+        Session.SessionStatus.END,
+        Session.SessionStatus.ERROR,
+        Session.SessionStatus.STOP,
+        Session.SessionStatus.EXPIRED,
+    }
+)
+# Crew publishes the status itself, but a graph message is published only after
+# Django stores it, so the last messages can arrive after the final status.
+LATE_MESSAGE_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,8 @@ class RunSessionSSEView(SSEMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._sent_message_uuids: set[str] = set()
+        # time.monotonic() when the stream first sent a finished status.
+        self._finished_at: float | None = None
 
     def _channel_handlers(self) -> dict:
         # Keyed by this session's own channels: whatever arrives on them belongs to it.
@@ -95,7 +109,7 @@ class RunSessionSSEView(SSEMixin):
 
     def _messages_event(self, message: dict) -> dict:
         self._sent_message_uuids.add(str(message["uuid"]))
-        message["message_data"] = self._trim_base64_file_data(message["message_data"])
+        message["message_data"] = trim_base64_file_data(message["message_data"])
         return {"event": "messages", "data": message}
 
     async def _send_held_live_messages(self):
@@ -137,12 +151,19 @@ class RunSessionSSEView(SSEMixin):
                 self.__log(event="messages", state="held", data=message_uuid)
                 yield self._messages_event(rows_by_uuid[message_uuid])
 
-    async def _handle_graph_session_messages(self, data):
+    async def _handle_graph_session_messages(self, raw_data: str):
         # Only this session's channel is subscribed, so the message is the caller's.
-        yield {"event": "messages", "data": data}
+        # Its publisher already cut the file data, so it is sent without being parsed.
+        yield SerializedEvent(event="messages", data=raw_data)
 
-    async def _handle_session_statuses(self, data):
+    def _note_status(self, status: str) -> None:
+        if status in FINISHED_STATUSES and self._finished_at is None:
+            self._finished_at = time.monotonic()
+
+    async def _handle_session_statuses(self, raw_data: str):
+        data = json.loads(raw_data)
         self.__log(event="status", state="update", data=data["status"])
+        self._note_status(data["status"])
         status_data = data.get("status_data", {})
         if data["status"] == Session.SessionStatus.END:
             final_variables = await self._read_final_variables(self.kwargs["session_id"])
@@ -185,6 +206,7 @@ class RunSessionSSEView(SSEMixin):
         )
         async for session in self.async_orm_generator(queryset):
             self.__log(event="status", state="initial", data=session["status"])
+            self._note_status(session["status"])
             yield {
                 "event": "status",
                 "data": {
@@ -194,33 +216,43 @@ class RunSessionSSEView(SSEMixin):
                 },
             }
 
-        # Memories
-        queryset = MemoryDatabase.objects.filter(payload__run_id=session_id).values("id", "payload")
-        async for memo in self.async_orm_generator(queryset):
-            self.__log(event="memory", state="initial", data=memo["id"])
-            yield {
-                "event": "memory",
-                "data": memo,
-            }
-
     async def get_live_updates(self, pubsub):
         async for item in self._send_held_live_messages():
             yield item
+        # Sending the held messages read the database again.
+        await self.release_database_connection()
 
-        async for message in redis_service.redis_get_message(
-            channels=self.get_channels(),
-            pubsub=pubsub,
-        ):
-            if not message:
-                # No message, sleep a bit and loop
-                await asyncio.sleep(0.05)
-                continue
+        messages = redis_service.redis_get_message(channels=self.get_channels(), pubsub=pubsub)
+        try:
+            while (message := await self._next_live_message(messages)) is not None:
+                if message.get("type") != "message":
+                    continue
 
-            if message.get("type") != "message":
-                continue
+                async for item in self._handle_live_message(message):
+                    yield item
+        finally:
+            await messages.aclose()
 
-            async for item in self._handle_live_message(message):
-                yield item
+        if self._finished_at is not None:
+            # Tells the client the stream ended on purpose, so it does not reconnect.
+            yield {"event": "done", "data": {"session_id": self.kwargs["session_id"]}}
+
+    async def _next_live_message(self, messages) -> dict | None:
+        """Wait for the next live message; None once the session's stream is over.
+
+        After a finished status, waits only until LATE_MESSAGE_SECONDS have passed
+        since it, so a finished session's stream does not stay open until the
+        client leaves.
+        """
+        if self._finished_at is None:
+            return await anext(messages, None)
+        remaining = self._finished_at + LATE_MESSAGE_SECONDS - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            return await asyncio.wait_for(anext(messages, None), timeout=remaining)
+        except TimeoutError:
+            return None
 
     async def _handle_live_message(self, message: dict):
         try:
@@ -228,7 +260,7 @@ class RunSessionSSEView(SSEMixin):
             if handler is None:
                 return
 
-            async for item in handler(json.loads(message["data"])):
+            async for item in handler(message["data"]):
                 logger.debug("get_live_updates data: {}", item)
                 yield item
 
@@ -258,28 +290,9 @@ class RunSessionSSEView(SSEMixin):
         Returns events:
             - messages: for graph session messages
             - status: for session statuses
-            - memory: for memories
+            - done: once the session has finished, just before the stream closes
 
         Append ?test=true to the URL for a finite sample response
         """
         logger.info("Started run session SSE")
         return await super().get(request, *args, **kwargs)
-
-    def _trim_base64_file_data(self, message_data: dict) -> dict:
-        """Trim base64 file data in message content to reduce payload size."""
-        trimmed_data = copy.deepcopy(message_data)
-
-        def trim_data_fields(obj):
-            """Recursively traverse and trim 'base64_data' fields."""
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    if key == "base64_data" and isinstance(value, str) and len(value) > 50:
-                        obj[key] = value[:50]
-                    else:
-                        trim_data_fields(value)
-            elif isinstance(obj, list):
-                for item in obj:
-                    trim_data_fields(item)
-
-        trim_data_fields(trimmed_data)
-        return trimmed_data

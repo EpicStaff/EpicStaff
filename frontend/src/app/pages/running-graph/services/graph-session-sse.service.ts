@@ -229,6 +229,13 @@ export class RunSessionSSEService {
             this.handleConnectionLoss();
         });
 
+        // The server ends a finished session's stream with `done`. Closing on it keeps the
+        // closed connection from reaching onerror, which would reconnect.
+        this.eventSource.addEventListener('done', () => {
+            if (streamSessionId !== this.currentSessionId) return;
+            this.stopStream();
+        });
+
         this.eventSource.onerror = (err) => {
             if (streamSessionId !== this.currentSessionId) return;
             console.error('SSE error:', err);

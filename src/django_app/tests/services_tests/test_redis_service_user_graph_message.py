@@ -40,3 +40,21 @@ def test_user_graph_message_is_published_whole_only_to_its_session(
     assert [message["channel"] for message in messages] == ["session:update:11:messages"]
     assert json.loads(messages[0]["data"]) == data
     assert redis_client.keys("*") == []
+
+
+def test_user_graph_message_file_data_is_published_as_a_preview(redis_service_with_fake_redis):
+    redis_service, redis_client = redis_service_with_fake_redis
+    subscriber = redis_client.pubsub()
+    subscriber.subscribe("session:update:11:messages")
+    data = {
+        "session_id": 11,
+        "uuid": "user-message-uuid",
+        "message_data": {"message_type": "user", "files": [{"base64_data": "B" * 500}]},
+    }
+
+    redis_service.publish_user_graph_message(11, data)
+
+    messages = _published(subscriber)
+    subscriber.close()
+    assert json.loads(messages[0]["data"])["message_data"]["files"] == [{"base64_data": "B" * 50}]
+    assert data["message_data"]["files"][0]["base64_data"] == "B" * 500

@@ -24,6 +24,8 @@ def listener(monkeypatch, fake_server):
     # close_old_connections() would drop the test's transactional DB connection.
     monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
     monkeypatch.setattr(redis_pubsub, "start_periodic_malloc_trim", lambda: None)
+    # The tests read until nothing is left; every empty read waits the full timeout.
+    monkeypatch.setattr(redis_pubsub, "READ_TIMEOUT_SECONDS", 0.01)
     # The worker registers its handlers, then loops forever; stop it after registration.
     monkeypatch.setattr(
         redis_pubsub.RedisPubSub, "_run_with_reconnect", lambda self, label, inner_loop: None
