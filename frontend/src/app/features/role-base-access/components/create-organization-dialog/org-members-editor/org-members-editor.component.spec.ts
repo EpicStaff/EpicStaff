@@ -131,6 +131,10 @@ function render(users: AdminCreateUserResponse[], mode: { isEditMode: boolean; o
         component.onRoleSelected(row(id), roleId);
         fixture.detectChanges();
     };
+    const search = (term: string): void => {
+        component.searchTerm.set(term);
+        fixture.detectChanges();
+    };
     const commit = (): void => {
         component.commit(ORG_ID).subscribe();
     };
@@ -156,6 +160,7 @@ function render(users: AdminCreateUserResponse[], mode: { isEditMode: boolean; o
         pickBulkRole,
         pickRowRole,
         commit,
+        search,
         selectedRole,
         selectedIds,
         tableSelectedIds,
@@ -402,5 +407,57 @@ describe('OrgMembersEditorComponent selection sync with the table', () => {
         pickRowRole(4, UserRole.MEMBER);
         expect(selectedIds()).toEqual([3, 4]);
         expect(tableSelectedIds()).toEqual([3, 4]);
+    });
+});
+
+describe('OrgMembersEditorComponent search', () => {
+    it('keeps members hidden by the search selected, so Save removes nobody', () => {
+        const { component, memberships, table, pickRowRole, search, commit, selectedIds, tableSelectedIds } = render(
+            [member(SELF_ID, UserRole.ORG_ADMIN), member(2, UserRole.VIEWER), member(3, UserRole.MEMBER), user(4)],
+            EDIT_MODE
+        );
+        pickRowRole(4, UserRole.MEMBER);
+        expect(selectedIds()).toEqual([SELF_ID, 2, 3, 4]);
+
+        search('user 3');
+        expect(
+            table()
+                .filteredData()
+                .map((row) => row['id'])
+        ).toEqual([3]);
+        expect(selectedIds()).toEqual([SELF_ID, 2, 3, 4]);
+        expect(tableSelectedIds()).toEqual([SELF_ID, 2, 3, 4]);
+        expect(component.selectedUsers().length).toBe(4);
+
+        search('');
+        expect(selectedIds()).toEqual([SELF_ID, 2, 3, 4]);
+        expect(tableSelectedIds()).toEqual([SELF_ID, 2, 3, 4]);
+
+        commit();
+        expect(memberships.remove).not.toHaveBeenCalled();
+        expect(memberships.updateRole).not.toHaveBeenCalled();
+        expect(memberships.create.mock.calls).toEqual([[{ org_id: ORG_ID, user_id: 4, role_id: UserRole.MEMBER }]]);
+    });
+
+    it('selects all visible rows during a search and keeps the hidden selection afterwards', () => {
+        const { row, toggleAll, pickBulkRole, search, selectedIds, tableSelectedIds } = render(
+            [member(SELF_ID, UserRole.ORG_ADMIN), member(2, UserRole.MEMBER), user(3), user(4)],
+            EDIT_MODE
+        );
+
+        search('user 3');
+        toggleAll();
+        expect(selectedIds()).toEqual([SELF_ID, 2, 3]);
+
+        pickBulkRole(UserRole.VIEWER);
+        expect(row(2)['role']).toBe(UserRole.VIEWER);
+        expect(row(SELF_ID)['role']).toBe(UserRole.ORG_ADMIN);
+
+        toggleAll();
+        expect(selectedIds()).toEqual([SELF_ID, 2]);
+
+        search('');
+        expect(selectedIds()).toEqual([SELF_ID, 2]);
+        expect(tableSelectedIds()).toEqual([SELF_ID, 2]);
     });
 });

@@ -1,7 +1,8 @@
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { AppTableComponent } from './table.component';
-import { AppTableColumnDef } from './table.model';
+import { AppTableColumnDef, TableRow } from './table.model';
 
 function renderTable(columns: AppTableColumnDef[]) {
     const fixture = TestBed.createComponent(AppTableComponent);
@@ -105,3 +106,123 @@ describe('AppTableComponent select all', () => {
         expect(fixture.componentInstance.selectedItems().map((row) => row['id'])).toEqual([1, 2]);
     });
 });
+
+describe('AppTableComponent rowVisible', () => {
+    const ROWS = [
+        { id: 1, name: 'alpha' },
+        { id: 2, name: 'beta' },
+        { id: 3, name: 'alpine' },
+    ];
+    const startsWithAl = (row: TableRow): boolean => (row['name'] as string).startsWith('al');
+
+    function renderFiltered(initialSelectedIds: number[]) {
+        const fixture = TestBed.createComponent(AppTableComponent);
+        fixture.componentRef.setInput('columns', [{ key: 'name', label: 'Name' }]);
+        fixture.componentRef.setInput('data', ROWS);
+        fixture.componentRef.setInput('selectable', true);
+        fixture.componentRef.setInput('initialSelectedIds', initialSelectedIds);
+        fixture.detectChanges();
+        const table = fixture.componentInstance;
+        const emitted: unknown[][] = [];
+        table.selectionChange.subscribe((rows) => emitted.push(rows.map((row) => row['id'])));
+        const setRowVisible = (predicate: ((row: TableRow) => boolean) | null): void => {
+            fixture.componentRef.setInput('rowVisible', predicate);
+            fixture.detectChanges();
+        };
+        const visibleIds = (): unknown[] => table.filteredData().map((row) => row['id']);
+        const renderedRowCount = (): number =>
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.table-body .table-row').length;
+        const selectedIds = () => table.selectedItems().map((row) => row['id']);
+        return { fixture, table, emitted, setRowVisible, visibleIds, renderedRowCount, selectedIds };
+    }
+
+    it('hides rejected rows without unticking them', () => {
+        const { emitted, setRowVisible, visibleIds, renderedRowCount, selectedIds } = renderFiltered([1, 2]);
+        emitted.length = 0;
+
+        setRowVisible(startsWithAl);
+        expect(visibleIds()).toEqual([1, 3]);
+        expect(renderedRowCount()).toBe(2);
+        expect(selectedIds()).toEqual([1, 2]);
+        expect(emitted).toEqual([]);
+
+        setRowVisible(null);
+        expect(visibleIds()).toEqual([1, 2, 3]);
+        expect(renderedRowCount()).toBe(3);
+        expect(selectedIds()).toEqual([1, 2]);
+    });
+
+    it('selects all visible rows and keeps the hidden selection', () => {
+        const { table, emitted, setRowVisible, selectedIds } = renderFiltered([2]);
+        setRowVisible(startsWithAl);
+        expect(table.allSelected()).toBe(false);
+
+        table.toggleAll();
+
+        expect(selectedIds()).toEqual([1, 2, 3]);
+        expect(emitted.at(-1)).toEqual([1, 2, 3]);
+        expect(table.allSelected()).toBe(true);
+    });
+
+    it('deselects only the visible rows', () => {
+        const { table, setRowVisible, selectedIds } = renderFiltered([1, 2, 3]);
+        setRowVisible(startsWithAl);
+
+        table.toggleAll();
+
+        expect(selectedIds()).toEqual([2]);
+        expect(table.allSelected()).toBe(false);
+        expect(table.indeterminate()).toBe(false);
+    });
+
+    it('still prunes a selected row that is removed from data', () => {
+        const { fixture, emitted, setRowVisible, selectedIds } = renderFiltered([1, 2]);
+        setRowVisible(startsWithAl);
+
+        fixture.componentRef.setInput('data', [ROWS[0], ROWS[2]]);
+        fixture.detectChanges();
+
+        expect(selectedIds()).toEqual([1]);
+        expect(emitted.at(-1)).toEqual([1]);
+    });
+
+    it('shows the no-results state, not the empty state, when every row is hidden', () => {
+        const { fixture, setRowVisible } = renderFiltered([]);
+
+        setRowVisible(() => false);
+
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.table-no-results')).not.toBeNull();
+    });
+
+    it('shows the empty state, not the no-results state, when data is empty', () => {
+        const fixture = TestBed.createComponent(EmptyTableHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.table-no-results')).toBeNull();
+        expect(element.querySelector('.empty-slot')?.textContent).toContain('No rows yet');
+    });
+});
+
+@Component({
+    imports: [AppTableComponent],
+    template: `
+        <app-table
+            [columns]="columns"
+            [data]="[]"
+            [rowVisible]="hideEveryRow"
+        >
+            <div
+                tableEmpty
+                class="empty-slot"
+            >
+                No rows yet
+            </div>
+        </app-table>
+    `,
+})
+class EmptyTableHostComponent {
+    readonly columns: AppTableColumnDef[] = [{ key: 'name', label: 'Name' }];
+    readonly hideEveryRow = (): boolean => false;
+}

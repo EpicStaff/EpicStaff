@@ -64,10 +64,14 @@ export class StepAssignToOrgComponent implements OnInit {
     selectionIds = computed(() => [...this.selectedOrgIds()], { equal: haveSameIds });
     readonly hasInvalidRow = computed(() => this.selectedOrganizations().some((r) => r['role'] == null));
 
-    filteredOrganizations = computed(() => {
+    /**
+     * Search as the table's display-only `rowVisible` filter: hidden rows keep their selection.
+     * A new function per search term is what tells the table to re-filter; `null` shows all rows.
+     */
+    matchesSearch = computed<((row: TableRow) => boolean) | null>(() => {
         const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.organizationsTableData();
-        return this.organizationsTableData().filter((row) => (row['name'] as string)?.toLowerCase().includes(term));
+        if (!term) return null;
+        return (row) => (row['name'] as string)?.toLowerCase().includes(term);
     });
 
     readonly columns: AppTableColumnDef[] = [

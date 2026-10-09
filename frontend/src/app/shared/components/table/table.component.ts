@@ -46,6 +46,13 @@ export class AppTableComponent {
     /** Show checkbox column for multi-selection */
     selectable = input<boolean>(false);
     rowSelectable = input<(row: TableRow) => boolean>(() => true);
+    /**
+     * Display-only filter (e.g. a consumer's search box): rows it rejects are hidden, but stay in
+     * `data`, so their selection is kept and still emitted. "Select all" / "deselect all" act on
+     * visible rows only. Pass a new function whenever the criteria change; `null` shows every row.
+     * Unlike filtering `data` itself, hiding a row never prunes it from the selection.
+     */
+    rowVisible = input<((row: TableRow) => boolean) | null>(null);
     /** Row IDs to pre-select on init */
     initialSelectedIds = input<unknown[]>([]);
     /**
@@ -53,7 +60,8 @@ export class AppTableComponent {
      * the header) is currently active. Combined with the table's own header filters,
      * this decides whether an empty `data` should render as the "no results" state
      * (header preserved so the user can clear the filter) or the full-empty
-     * `[tableEmpty]` slot (no data has ever existed).
+     * `[tableEmpty]` slot (no data has ever existed). Not needed for a `rowVisible` filter
+     * while `data` is non-empty.
      */
     hasExternalFilter = input<boolean>(false);
 
@@ -120,7 +128,7 @@ export class AppTableComponent {
         return true;
     }
 
-    /** True when any filter (header dropdown or external search) is currently applied. */
+    /** True when any filter (header dropdown or external search) is currently applied; a `rowVisible` filter is deliberately not counted. */
     readonly hasAnyFilter = computed<boolean>(() => {
         if (this.hasExternalFilter()) return true;
         return Object.values(this.activeFilters()).some((v) => v.length > 0);
@@ -135,15 +143,18 @@ export class AppTableComponent {
                 .map((c) => c.key)
         );
         const activeEntries = Object.entries(filters).filter(([key, v]) => v.length > 0 && !serverSideKeys.has(key));
-        if (!activeEntries.length) return data;
-        return data.filter((row) =>
-            activeEntries.every(([key, values]) => {
-                const rowVal = row[key];
-                if (Array.isArray(rowVal)) {
-                    return values.some((v) => (rowVal as unknown[]).includes(v));
-                }
-                return values.includes(rowVal);
-            })
+        const rowVisibility = this.rowVisible();
+        if (!activeEntries.length && !rowVisibility) return data;
+        return data.filter(
+            (row) =>
+                (!rowVisibility || rowVisibility(row)) &&
+                activeEntries.every(([key, values]) => {
+                    const rowVal = row[key];
+                    if (Array.isArray(rowVal)) {
+                        return values.some((v) => (rowVal as unknown[]).includes(v));
+                    }
+                    return values.includes(rowVal);
+                })
         );
     });
 
@@ -192,6 +203,7 @@ export class AppTableComponent {
     /**
      * Selects or deselects the selectable pool only. Selected rows outside the pool — non-selectable
      * rows preselected via `initialSelectedIds`, or rows hidden by a header filter — are kept as they are.
+     * Rows hidden by `rowVisible` are also left as they are.
      */
     toggleAll(): void {
         const poolIds = this.selectablePool().map((item) => this.getRowId(item));

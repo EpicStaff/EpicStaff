@@ -26,7 +26,8 @@
         } @else {
             <app-table
                 [columns]="columns"
-                [data]="filteredUsers()"
+                [data]="usersTableData()"
+                [rowVisible]="matchesSearch()"
                 [selectable]="true"
                 [rowSelectable]="isRowEditable"
                 [initialSelectedIds]="selectionIds()"

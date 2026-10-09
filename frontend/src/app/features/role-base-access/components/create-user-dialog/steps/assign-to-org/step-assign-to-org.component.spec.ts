@@ -116,6 +116,10 @@ function render(
         component.onRoleSelected(row(id), roleId);
         fixture.detectChanges();
     };
+    const search = (term: string): void => {
+        component.searchTerm.set(term);
+        fixture.detectChanges();
+    };
     const selectedRole = (id: number): unknown =>
         component.selectedOrganizations().find((r) => r['id'] === id)?.['role'];
     const selectedIds = (): number[] =>
@@ -138,6 +142,7 @@ function render(
         toggle,
         pickBulkRole,
         pickRowRole,
+        search,
         selectedRole,
         selectedIds,
         tableSelectedIds,
@@ -308,5 +313,31 @@ describe('StepAssignToOrgComponent role pick on an unselected row', () => {
 
         expect(selectedIds()).toEqual([ALPHA_ID, BETA_ID]);
         expect(tableSelectedIds()).toEqual([ALPHA_ID, BETA_ID]);
+    });
+});
+
+describe('StepAssignToOrgComponent search', () => {
+    it('keeps orgs hidden by the search selected, with their roles in the assignments', () => {
+        const { table, fixture, toggle, search, selectedIds, tableSelectedIds, assignments } = render({
+            isEditMode: true,
+            memberships: [membership(ALPHA_ID, UserRole.VIEWER), membership(BETA_ID, UserRole.ORG_ADMIN)],
+        });
+
+        search('beta');
+        expect(selectedIds()).toEqual([ALPHA_ID, BETA_ID]);
+        expect(tableSelectedIds()).toEqual([ALPHA_ID, BETA_ID]);
+
+        table().toggleAll();
+        fixture.detectChanges();
+        expect(selectedIds()).toEqual([ALPHA_ID]);
+        toggle(BETA_ID);
+
+        search('');
+        expect(selectedIds()).toEqual([ALPHA_ID, BETA_ID]);
+        expect(tableSelectedIds()).toEqual([ALPHA_ID, BETA_ID]);
+        expect(assignments()).toEqual([
+            { orgId: ALPHA_ID, roleId: UserRole.VIEWER },
+            { orgId: BETA_ID, roleId: UserRole.ORG_ADMIN },
+        ]);
     });
 });
