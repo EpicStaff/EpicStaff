@@ -180,7 +180,6 @@ class RedisService(metaclass=SingletonMeta):
                 if message["type"] == "message":
                     logger.debug("message from redis_get_message {}", message["data"])
                     yield message
-                    await asyncio.sleep(0.01)
 
         except Exception as e:
             # TODO: fix reconection logic
