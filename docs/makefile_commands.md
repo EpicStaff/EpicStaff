@@ -225,6 +225,10 @@ python scripts/envtool.py --dev   # development defaults (the dev column of src/
 python scripts/envtool.py         # production defaults
 ```
 
+Both overwrite `src/.env`. After pulling new variables, `make env-update` (or
+`python scripts/envtool.py --update`, `DEV=1` / `--dev` for development defaults) appends
+only the variables your `src/.env` lacks and never changes existing lines.
+
 Without Python, copy the tracked template instead: `cp src/.env.example src/.env`.
 `src/.env.example` is the **production** template: fill in the `CHANGE ME` lines
 (secrets and passwords), and either set `NGINX_SSL_MODE=off` or provide certificates
