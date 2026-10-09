@@ -8,11 +8,13 @@ from rest_framework.test import APIClient
 from tables.models import Graph
 from tables.models.graph_models import (
     AgentNode,
+    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     StartNode,
 )
 from tables.models.label_models import Label
+from tables.models.python_models import PythonCode
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -131,6 +133,64 @@ def test_edge_node_from_other_graph_rejected(client_a, org_a, org_b):
     )
     assert resp.status_code == 400
     assert "end_node_id" in str(resp.data)
+
+
+_CONDITIONAL_EDGE_CODE = {"code": "def main(): return True", "entrypoint": "main", "libraries": []}
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_from_other_graph_rejected(client_a, org_a, org_b):
+    graph_a = _graph(org_a, "a")
+    foreign = StartNode.objects.create(graph=_graph(org_b, "b"), variables={})
+    resp = client_a.post(
+        "/api/conditionaledges/",
+        {
+            "graph": graph_a.id,
+            "source_node_id": foreign.id,
+            "python_code": _CONDITIONAL_EDGE_CODE,
+        },
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert "source_node_id" in str(resp.data)
+    assert not ConditionalEdge.objects.filter(graph=graph_a).exists()
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_same_graph_ok(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    start_a = StartNode.objects.create(graph=graph_a, variables={})
+    resp = client_a.post(
+        "/api/conditionaledges/",
+        {
+            "graph": graph_a.id,
+            "source_node_id": start_a.id,
+            "python_code": _CONDITIONAL_EDGE_CODE,
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_conditional_edge_source_node_patch_cross_graph_rejected(client_a, org_a, org_b):
+    graph_a = _graph(org_a, "a")
+    start_a = StartNode.objects.create(graph=graph_a, variables={})
+    foreign = StartNode.objects.create(graph=_graph(org_b, "b"), variables={})
+    edge = ConditionalEdge.objects.create(
+        graph=graph_a,
+        source_node_id=start_a.id,
+        python_code=PythonCode.objects.create(code="def main(): return True"),
+    )
+    resp = client_a.patch(
+        f"/api/conditionaledges/{edge.id}/",
+        {"source_node_id": foreign.id},
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert "source_node_id" in str(resp.data)
+    edge.refresh_from_db()
+    assert edge.source_node_id == start_a.id
 
 
 # ---- C: decision-table next-node refs (same-graph) ----

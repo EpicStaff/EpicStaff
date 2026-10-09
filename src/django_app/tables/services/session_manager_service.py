@@ -481,9 +481,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
         missing_ids = [i for i in edge_referenced_ids if i is not None and i not in name_cache]
         if missing_ids:
-            name_cache.update(resolve_node_names(missing_ids))
+            name_cache.update(resolve_node_names(missing_ids, graph_ids=[graph.pk]))
 
-        resolver = NodeNameResolver(cache=name_cache)
+        resolver = NodeNameResolver(cache=name_cache, graph_id=graph.pk)
         """
         TODO: future improvements: use cleaner approach
         """
