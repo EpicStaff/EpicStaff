@@ -155,7 +155,7 @@ class TestFullCascadePerRoot:
         assert python_code_tool_config.soft_deleted_at is not None
 
     def test_graph_cascades_through_knowledge_node(self, graph):
-        """EST-3788 review item 6: KnowledgeNode previously lacked
+        """KnowledgeNode previously lacked
         SoftDeleteFields entirely, so its sole reverse-CASCADE handling
         fell through to `_hard_delete` — a graph soft-delete would
         permanently destroy its KnowledgeNode children while every other
@@ -346,7 +346,7 @@ class TestScheduleTriggerNodeIsActiveUntouched:
 
 @pytest.mark.django_db
 class TestHiddenReverseRelationSetNull:
-    """Item 9 (EST-3788 review): related_name="+" reverse relations are
+    """related_name="+" reverse relations are
     hidden from Model._meta.get_fields() by default, so
     SessionTrigger.schedule_trigger_node (SET_NULL) was previously invisible
     to the cascade walker — the FK never got nulled out when its

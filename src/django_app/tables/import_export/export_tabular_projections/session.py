@@ -2,6 +2,8 @@ import json
 
 from tables.import_export.export_tabular_projections.base import TabularProjection
 
+STREAM_MESSAGE_TYPES = ("agent_node_stream", "task_node_stream")
+
 
 class SessionTabularProjection(TabularProjection):
     # TODO: if new node types are added we should update this list(at least for now).
@@ -14,6 +16,7 @@ class SessionTabularProjection(TabularProjection):
         "name",
         "execution_order",
         "msg__type",
+        "msg__event",
         "msg__agent_id",
         "msg__task_id",
         "msg__text",
@@ -44,6 +47,8 @@ class SessionTabularProjection(TabularProjection):
     def project(self, row: dict) -> dict:
         d = row.get("message_data") or {}
         mtype = d.get("message_type", "")
+        # agent/task node stream events nest their payload under "data"
+        stream = (d.get("data") or {}) if mtype in STREAM_MESSAGE_TYPES else {}
 
         def _json(val):
             return json.dumps(val) if val is not None else None
@@ -55,13 +60,16 @@ class SessionTabularProjection(TabularProjection):
             "name": row["name"],
             "execution_order": row["execution_order"],
             "msg__type": mtype,
+            "msg__event": d.get("event"),
             "msg__agent_id": d.get("agent_id"),
             "msg__task_id": d.get("task_id"),
             "msg__text": d.get("text"),
             "msg__thought": d.get("thought"),
-            "msg__tool": d.get("tool"),
-            "msg__tool_input": d.get("tool_input"),
-            "msg__result": d.get("result") if mtype in ("agent", "agent_finish") else None,
+            "msg__tool": d.get("tool") or stream.get("name"),
+            "msg__tool_input": d.get("tool_input") or stream.get("arguments"),
+            "msg__result": d.get("result")
+            if mtype in ("agent", "agent_finish")
+            else stream.get("content") or stream.get("message"),
             "msg__task_raw": d.get("raw") if mtype == "task" else None,
             "msg__error": d.get("details") or d.get("error"),
             "msg__task_description": d.get("description"),
