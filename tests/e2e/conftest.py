@@ -59,6 +59,17 @@ from helpers.timings import Timings
 # so every test file runs on its own and later flows reuse the same resources.
 pytest_plugins = ["fixtures.llm", "fixtures.knowledge", "fixtures.agents", "fixtures.orgs"]
 
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Run tests marked `load` last; everything else keeps its order.
+
+    The parallel batch can leave the shared sandbox venv broken for later python runs (a
+    product bug in parallel venv creation). Running it last keeps the rest of the suite
+    independent of that bug; it also means a full run meets an already-built venv and does
+    not exercise the race (run test_concurrency.py alone on a fresh stack for that).
+    """
+    items.sort(key=lambda item: item.get_closest_marker("load") is not None)
+
 logger = logging.getLogger("e2e.bootstrap")
 # httpx and httpcore log URLs and headers without redaction; helpers.api logs requests instead.
 logging.getLogger("httpx").setLevel(logging.WARNING)

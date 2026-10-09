@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from helpers.api import ApiClient
 from helpers.payloads import python_flow_save_payload
 from helpers.polling import (
+    SESSION_POLL_INTERVAL_SECONDS,
     fetch_session_messages,
     poll,
     session_diagnostics,
@@ -101,7 +102,7 @@ def wait_for_graph_end(client: ApiClient, session_id: int, timeout: float) -> li
             message["message_data"].get("message_type") == "graph_end" for message in messages
         ),
         timeout=timeout,
-        interval=1.0,
+        interval=SESSION_POLL_INTERVAL_SECONDS,
         describe=f"the graph_end message of session {session_id}",
         diagnostics=lambda: session_diagnostics(client, session_id),
     )

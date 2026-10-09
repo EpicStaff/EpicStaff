@@ -28,6 +28,7 @@ STORAGE_FILE_NAME = "kb.txt"
 CHUNKING = {"chunk_strategy": "character", "chunk_size": 500, "chunk_overlap": 50}
 INDEXING_PICKUP_TIMEOUT_SECONDS = 30
 INDEXING_TIMEOUT_SECONDS = 240
+RAG_POLL_INTERVAL_SECONDS = 0.25
 # Any other status (completed, failed, partial, cancelled, outdated) ends the wait.
 IN_PROGRESS_RAG_STATUSES = frozenset({"new", "processing"})
 
@@ -154,7 +155,7 @@ def indexed_rag(
         fetch_detail,
         lambda detail: detail["rag_status"] != initial_status,
         timeout=INDEXING_PICKUP_TIMEOUT_SECONDS,
-        interval=1.0,
+        interval=RAG_POLL_INTERVAL_SECONDS,
         describe=(
             f"RAG {rag_id} to leave status {initial_status!r}: the indexing request was not "
             "picked up (is knowledge_new running and reachable?)"
@@ -165,7 +166,7 @@ def indexed_rag(
         fetch_detail,
         lambda detail: detail["rag_status"] not in IN_PROGRESS_RAG_STATUSES,
         timeout=INDEXING_TIMEOUT_SECONDS,
-        interval=2.0,
+        interval=RAG_POLL_INTERVAL_SECONDS,
         describe=f"RAG {rag_id} to finish indexing",
         diagnostics=embedding_call_count,
     )

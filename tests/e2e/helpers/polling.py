@@ -12,6 +12,8 @@ Value = TypeVar("Value")
 
 TERMINAL_SESSION_STATUSES = frozenset({"end", "error", "stop", "expired"})
 MESSAGES_PAGE_LIMIT = 200
+# Cheap reads (get-updates, message list); short so a finished run is noticed at once.
+SESSION_POLL_INTERVAL_SECONDS = 0.25
 MESSAGES_MAX_PAGES = 10
 LAST_VALUE_EXCERPT_LENGTH = 2000
 
@@ -115,7 +117,7 @@ def wait_for_session_status(client: ApiClient, session_id: int, timeout: float) 
         lambda: client.get(f"/api/sessions/{session_id}/get-updates/").json()["status"],
         lambda status: status in TERMINAL_SESSION_STATUSES,
         timeout=timeout,
-        interval=1.0,
+        interval=SESSION_POLL_INTERVAL_SECONDS,
         describe=f"session {session_id} to reach a terminal status",
         diagnostics=lambda: session_diagnostics(client, session_id),
     )

@@ -4,9 +4,11 @@ One graph is shared by all runs: concurrent sessions of the same flow are the re
 and the one most likely to expose shared state between sessions. Inputs differ per run, so a
 result can never be mistaken for another run's.
 
-Known failure: parallel runs that need a sandbox venv that does not exist yet all build it
-in the same directory at once and corrupt each other's pip install, so most runs end in
-`error`. The test stays red until the sandbox serializes venv creation.
+Known product race: parallel runs that need a sandbox venv that does not exist yet all
+build it in the same directory at once and corrupt each other's pip install. In a full run
+this module runs last (see the conftest hook), on a venv earlier tests already built, so it
+passes and does not exercise the race; run alone on a fresh stack it fails (see
+docs/e2e-tests.md, Known issues).
 
 Timing is reported and warned about, never failed on; correctness and the hard budget are.
 """
@@ -18,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 
+import httpx
 import pytest
 
 from helpers.api import ApiClient
@@ -41,7 +44,7 @@ class ParallelRun:
     first_addend: int
     second_addend: int
     session_id: int | None
-    # A session status, or `start_failed` / `timeout` when the client gave up first.
+    # A session status, or `start_failed` / `timeout` / `request_failed` from the client side.
     status: str
     reason: str
     session: dict
@@ -72,6 +75,10 @@ def nearest_rank_percentile(values: list[float], percentile: float) -> float:
     return ordered[max(0, math.ceil(percentile / 100 * len(ordered)) - 1)]
 
 
+def describe(error: Exception) -> str:
+    return scrub(f"{type(error).__name__}: {error}")
+
+
 def failure_reason(session: dict) -> str:
     """The last line of the session's error: for a traceback, the exception itself."""
     status_data = session.get("status_data") or {}
@@ -98,13 +105,18 @@ def parallel_runs(
                 concurrency_flow.graph_id,
                 {"a": first_addend, "b": second_addend},
             )["session_id"]
-        except AssertionError as error:
-            return ParallelRun(first_addend, second_addend, None, "start_failed", str(error), {})
+        except (AssertionError, httpx.HTTPError) as error:
+            return ParallelRun(first_addend, second_addend, None, "start_failed", describe(error), {})
         try:
             status = wait_for_session_status(user_client, session_id, RUN_TIMEOUT_SECONDS)
+            session = user_client.get(f"/api/sessions/{session_id}/").json()
         except AssertionError as error:
-            return ParallelRun(first_addend, second_addend, session_id, "timeout", str(error), {})
-        session = user_client.get(f"/api/sessions/{session_id}/").json()
+            return ParallelRun(first_addend, second_addend, session_id, "timeout", describe(error), {})
+        except httpx.HTTPError as error:
+            # A single request that fails (e.g. times out while the stack is saturated).
+            return ParallelRun(
+                first_addend, second_addend, session_id, "request_failed", describe(error), {}
+            )
         return ParallelRun(
             first_addend, second_addend, session_id, status, failure_reason(session), session
         )

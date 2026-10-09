@@ -94,7 +94,7 @@ $DC down -v --remove-orphans           # fresh database for the next run
 | `test_agent.py` | Knowledge surface, agent definition on the mock LLM, the legacy `instructions` field is refused. |
 | `test_flow_python.py` | Flow A (Start → Python `a + b` → End): save, run, final state, session messages. |
 | `test_flow_agent_rag.py` | Flow B (Start → Knowledge → Task with the RAG tool → End): retrieval, agent answer from the tool, mock-llm received the tool result. |
-| `test_sse.py` | Live session stream (no buffering, prompt first event, reaches `end`), replay after the end, ticket refusals, another org's session. |
+| `test_sse.py` | Runtime delivery of a flow B run: subscribed while the run is going, the knowledge and task nodes' `finish`, `graph_end` and the `end` status arrive live (after the replay's initial status), node finishes in run order and before the completion events; prompt first event; replay of an ended flow A run; ticket refusals; another org's session. |
 | `test_rbac_negative.py` | API keys refused on JWT-only endpoints, missing org header, other-org access, Viewer cannot create. |
 | `test_concurrency.py` | Ten parallel flow A runs (marker `load`). |
 
@@ -114,6 +114,9 @@ Every file therefore runs on its own. Helpers live in `helpers/`:
   - `bootstrap_seconds`, `warm_up_seconds`;
   - `flow_python_run_seconds`, `flow_agent_rag_run_seconds`;
   - `rag_indexing_seconds`, `sse_first_event_seconds`;
+  - `sse_live_attempts` (runs the live SSE check needed, normally 1);
+  - `sse_post_to_initial_status_seconds`, `sse_post_to_end_seconds` (the margin the live SSE
+    check has: run-session POST to the replay's initial status, and to the live `end`);
   - `concurrency_wall_seconds`, `concurrency_run_p50_seconds`, `concurrency_run_p95_seconds`.
 - **JUnit** with `--junitxml=<path>`. Under `tests/e2e/.timings/` it is gitignored.
 - **Diagnostics on failure.**
@@ -163,11 +166,27 @@ Each pytest invocation runs the bootstrap again, so reset the stack between invo
 
 ## Known issues
 
-- **`test_concurrency.py::test_every_parallel_run_ends` fails.** The sandbox creates a venv
-  per library set without a lock. When parallel runs need a venv that does not exist yet,
-  they all build it in the same directory at once and corrupt each other's pip install, so
-  most of the ten runs end in `error`. The test stays red until the sandbox serializes venv
-  creation.
+- **The sandbox has a parallel venv creation race.** It builds one venv per library set with
+  no lock per venv path (`src/sandbox/dynamic_venv_executor_chain.py`). When parallel runs need
+  a venv that does not exist yet, they all build it in the same directory at once and corrupt
+  each other's pip install; while that happens the API can also stop answering for more than
+  30 s. In a full run the concurrency batch runs last on an already-built venv, so it passes
+  and does **not** exercise the race. To reproduce it, run the batch alone on a fresh stack
+  (`$DC down -v --remove-orphans`, `$DC up -d`, `wait_for_stack.py`), then
+  `uv run --project tests/e2e pytest tests/e2e/test_concurrency.py -v`:
+  `test_every_parallel_run_ends` fails and the sandbox log shows ten
+  `Creating virtual environment at <same path>` lines within a second.
+- **The live SSE check may start up to three runs.** Subscribing needs the session id that
+  the run-session POST returns, so a very fast run can finish before the subscription is
+  open. Only in that case does `test_sse.py` start a fresh run and subscribe again (at most
+  three attempts, counted in `sse_live_attempts`); any other problem fails at once. This is
+  a race in the test harness, not a product issue.
+- **The SSE stream can deliver the `end` status before `graph_end`.** The status reaches the stream
+  in one Redis hop (crew to the status channel), messages in two (crew to Django to the update
+  channel), so a client may see `end` before the run's last messages. `test_sse.py` therefore
+  does not assert the order between `graph_end` and `end`.
+- **`load` tests run last.** A hook in `conftest.py` moves them to the end, because the parallel
+  batch can leave the shared sandbox venv broken for every later python run (the race above).
 - **The first two python runs after a reset each build a venv** (about 35 s each). Installing
   the shared local libraries changes their content fingerprint, so the second run computes a
   new venv hash. Later runs reuse that venv and take about 1–2 s.

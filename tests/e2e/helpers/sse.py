@@ -1,16 +1,22 @@
 """Session SSE stream: ticket, frame parser and a collector that knows when to stop.
 
-`GET /api/run-session/subscribe/<session_id>/?ticket=...` subscribes to Redis first, then
-replays the session (cached and stored messages, current status), then streams live
-`messages` / `status` events. The server never closes the stream and sends no heartbeat
-while it waits, so the collector closes it itself: once the session is terminal (and, for
-`end`, once `graph_end` arrived), or when a hard deadline passes.
+`GET /api/run-session/subscribe/<session_id>/?ticket=...` (`RunSessionSSEView`) subscribes
+to Redis first, then replays the session: every cached and stored message, then exactly one
+`status` event read from the database. After that it streams live `messages` / `status`
+events from Redis pubsub. The first `status` event is therefore the boundary: events up to
+and including it are the `replay` phase, events after it the `live` phase. (`memory` events
+also follow the initial status during replay; the suite does not assert on them.)
+
+The server never closes the stream and sends no heartbeat while it waits, so the collector
+closes it itself: once the session is terminal (and, for `end`, once `graph_end` arrived),
+on an `event: fatal-error`, or when a hard deadline passes.
 
 `messages` data comes in two shapes: the live Redis payload and a stored database row. Both
-carry `uuid`, `name` and `message_data`; the collector keys messages by `uuid`. An
-`event: fatal-error` from the server also ends collection.
+carry `uuid`, `name` and `message_data`; the collector keys messages by `uuid` and keeps the
+first arrival.
 """
 
+import dataclasses
 import json
 import time
 from collections.abc import Iterator
@@ -24,6 +30,8 @@ from helpers.redaction import register_secret
 
 SSE_CONNECT_TIMEOUT_SECONDS = 10
 FATAL_ERROR_EVENT = "fatal-error"
+REPLAY_PHASE = "replay"
+LIVE_PHASE = "live"
 
 
 @dataclass(frozen=True)
@@ -31,18 +39,23 @@ class SseEvent:
     event: str
     data: object
     received_after_seconds: float
+    phase: str = ""
 
 
 @dataclass
 class SessionStream:
     """Everything one subscription received, in arrival order."""
 
+    # time.monotonic() when the subscription request was sent.
+    connected_at: float = 0.0
     content_type: str = ""
     events: list[SseEvent] = field(default_factory=list)
     messages: dict[str, dict] = field(default_factory=dict)
-    message_arrival_seconds: dict[str, float] = field(default_factory=dict)
+    # Index into `events` of each message's first arrival.
+    message_event_index: dict[str, int] = field(default_factory=dict)
     statuses: list[str] = field(default_factory=list)
-    terminal_status_after_seconds: float | None = None
+    # Index into `events` of the first `status` event (the replay/live boundary).
+    boundary_index: int | None = None
     fatal_error: object = None
     # Why collection stopped: done, fatal_error, read_timeout or deadline.
     stop_reason: str = ""
@@ -50,6 +63,11 @@ class SessionStream:
     @property
     def first_event_after_seconds(self) -> float | None:
         return self.events[0].received_after_seconds if self.events else None
+
+    @property
+    def initial_status(self) -> str | None:
+        """The status the replay reported, read from the database at connect time."""
+        return None if self.boundary_index is None else self.events[self.boundary_index].data["status"]
 
     @property
     def final_status(self) -> str | None:
@@ -65,17 +83,45 @@ class SessionStream:
     def has_graph_end(self) -> bool:
         return "graph_end" in self.message_types()
 
-    def arrival_of(self, name: str, message_type: str) -> float | None:
-        """When the first message of `message_type` from node `name` arrived."""
+    def message_index(self, message_type: str, name: str | None = None) -> int | None:
+        """Event index of the first message of `message_type` (from node `name`, if given)."""
         for uuid, message in self.messages.items():
-            if message.get("name") == name and message["message_data"].get("message_type") == message_type:
-                return self.message_arrival_seconds[uuid]
+            if message["message_data"].get("message_type") == message_type and (
+                name is None or message.get("name") == name
+            ):
+                return self.message_event_index[uuid]
         return None
+
+    def status_index(self, status: str) -> int | None:
+        """Event index of the first `status` event carrying `status`."""
+        for index, event in enumerate(self.events):
+            if event.event == "status" and isinstance(event.data, dict) and event.data.get("status") == status:
+                return index
+        return None
+
+    def phase_at(self, index: int | None) -> str | None:
+        return None if index is None else self.events[index].phase
+
+    def messages_in_phase(self, phase: str) -> list[dict]:
+        return [
+            message
+            for uuid, message in self.messages.items()
+            if self.events[self.message_event_index[uuid]].phase == phase
+        ]
+
+    def statuses_in_phase(self, phase: str) -> list[str]:
+        return [
+            event.data["status"]
+            for event in self.events
+            if event.event == "status" and event.phase == phase and isinstance(event.data, dict)
+        ]
 
     def summary(self) -> str:
         return (
-            f"stop_reason={self.stop_reason!r} statuses={self.statuses} "
-            f"messages={len(self.messages)} events={len(self.events)} fatal_error={self.fatal_error!r}"
+            f"stop_reason={self.stop_reason!r} initial_status={self.initial_status!r} "
+            f"statuses={self.statuses} messages={len(self.messages)} "
+            f"(live {len(self.messages_in_phase(LIVE_PHASE))}) events={len(self.events)} "
+            f"fatal_error={self.fatal_error!r}"
         )
 
 
@@ -136,8 +182,8 @@ def collect_session_stream(
     must exceed the longest quiet stretch of the run. Returns what arrived either way, with
     `stop_reason` set; the caller asserts on completeness.
     """
-    stream = SessionStream()
     started = time.monotonic()
+    stream = SessionStream(connected_at=started)
     timeout = httpx.Timeout(SSE_CONNECT_TIMEOUT_SECONDS, read=read_timeout)
     with client.stream(
         "GET",
@@ -166,16 +212,16 @@ def collect_session_stream(
 
 
 def record_event(stream: SessionStream, event: SseEvent) -> None:
+    index = len(stream.events)
+    phase = REPLAY_PHASE if stream.boundary_index is None else LIVE_PHASE
+    event = dataclasses.replace(event, phase=phase)
     stream.events.append(event)
     if event.event == "messages" and isinstance(event.data, dict):
         uuid = str(event.data["uuid"])
         if uuid not in stream.messages:
             stream.messages[uuid] = event.data
-            stream.message_arrival_seconds[uuid] = event.received_after_seconds
+            stream.message_event_index[uuid] = index
     elif event.event == "status" and isinstance(event.data, dict):
         stream.statuses.append(event.data["status"])
-        if (
-            event.data["status"] in TERMINAL_SESSION_STATUSES
-            and stream.terminal_status_after_seconds is None
-        ):
-            stream.terminal_status_after_seconds = event.received_after_seconds
+        if stream.boundary_index is None:
+            stream.boundary_index = index

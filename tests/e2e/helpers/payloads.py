@@ -6,15 +6,12 @@ PYTHON_NODE_NAME = "e2e_python"
 PYTHON_SUM_CODE = 'def main(a, b):\n    return {"sum": a + b}'
 
 
-def python_flow_save_payload(
-    graph_id: int, save_version: int, code: str = PYTHON_SUM_CODE
-) -> dict:
+def python_flow_save_payload(graph_id: int, save_version: int) -> dict:
     """Bulk-save body for flow A: Start -> Python (`a + b`) -> End.
 
     Run with `{"a": 2, "b": 3}` it ends with `variables.result == {"sum": 5}`. The
     Start -> Python edge is what makes Python the entrypoint. `temp_id`s are not echoed
-    back; find the created python node by `PYTHON_NODE_NAME`. `code` replaces the node's
-    code, keeping the `main(a, b)` entrypoint.
+    back; find the created python node by `PYTHON_NODE_NAME`.
     """
     start_temp_id = str(uuid.uuid4())
     python_temp_id = str(uuid.uuid4())
@@ -30,7 +27,7 @@ def python_flow_save_payload(
                 "input_map": {"a": "variables.a", "b": "variables.b"},
                 "output_variable_path": "variables.result",
                 "python_code": {
-                    "code": code,
+                    "code": PYTHON_SUM_CODE,
                     "entrypoint": "main",
                     "libraries": [],
                 },
