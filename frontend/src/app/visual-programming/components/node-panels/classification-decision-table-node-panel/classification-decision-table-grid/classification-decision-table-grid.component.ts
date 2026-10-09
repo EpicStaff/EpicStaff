@@ -20,6 +20,7 @@ import {
     TemplateRef,
     untracked,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -31,7 +32,7 @@ import {
     MultiSelectComponent,
     SelectItem,
 } from '@shared/components';
-import { AgGridModule } from 'ag-grid-angular';
+import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
     BodyScrollEvent,
@@ -77,6 +78,7 @@ import {
 import {
     CDT_COLUMN_KIND,
     CDT_FIELD_PREFIX,
+    CDT_GRID_HEADER_HEIGHT,
     CDT_GRID_ROW_HEIGHT,
     CDT_GROUP_TOGGLE_ANIMATION_MS,
     CDT_MANIP_PREFIX,
@@ -187,6 +189,14 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private exprParamsAfter = signal<string>(CDT_COLUMN_KIND.EXPRESSION);
     private manipParamsAfter = signal<string>(CDT_COLUMN_KIND.MANIPULATION);
     private manipParamsFirst = signal(false);
+    // User-reorderable fixed columns. Columns not in this list keep their default position.
+    private static readonly DEFAULT_FIXED_COL_ORDER: readonly string[] = [
+        CDT_COLUMN_KIND.EXPRESSION,
+        'prompt_id',
+        CDT_COLUMN_KIND.MANIPULATION,
+        'route_code',
+    ];
+    private fixedColumnOrder = signal<string[]>([...ClassificationDecisionTableGridComponent.DEFAULT_FIXED_COL_ORDER]);
     private columnMovedDuringDrag = false;
     private preDragExprAnchor: string | null = null;
     private preDragManipAnchor: string | null = null;
@@ -200,23 +210,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     public hiddenColumnGroups = signal<Map<string, { label: string; colIds: string[] }>>(new Map());
 
-    // Hidden-column restore badges: position computed from DOM
-    public hiddenColumnBadges = signal<Array<{ colId: string; x: number; y: number; label: string }>>([]);
-
-    // Same badges, sorted left-to-right — drives the "Expand <Label>" menu item order
-    public sortedHiddenBadges = computed(() => [...this.hiddenColumnBadges()].sort((a, b) => a.x - b.x));
-
-    // Total number of hidden entries used to decide whether clicking a badge should expand instantly or open the picker menu.
-    public totalHiddenEntries = computed<number>(() => {
-        const groups = this.hiddenColumnGroups();
-        const groupedIds = new Set<string>();
-        groups.forEach((info) => info.colIds.forEach((id) => groupedIds.add(id)));
-        let ungroupedCount = 0;
-        this.hiddenColIds().forEach((id) => {
-            if (!groupedIds.has(id)) ungroupedCount++;
-        });
-        return ungroupedCount + groups.size;
-    });
+    // Hidden-column restore badges: position computed from DOM.
+    // Each badge can hold multiple entries when adjacent hidden columns are merged.
+    public hiddenColumnBadges = signal<
+        Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }>
+    >([]);
 
     // Selection state for toolbar buttons
     public selectedRowCount = signal<number>(0);
@@ -664,6 +662,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     @ViewChild('groupMenuTemplate') groupMenuTemplate!: TemplateRef<unknown>;
     @ViewChild('hiddenBadgeMenuTemplate') hiddenBadgeMenuTemplate!: TemplateRef<unknown>;
 
+    private readonly gridElementRef = viewChild(AgGridAngular, { read: ElementRef<HTMLElement> });
+
     public exprAddPos = signal<{ x: number; y: number } | null>(null);
     public manipAddPos = signal<{ x: number; y: number } | null>(null);
     private positionResizeObserver: ResizeObserver | null = null;
@@ -699,6 +699,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         effect(() => {
             this.movableColumnOrder();
             this.manipColumnOrder();
+            this.fixedColumnOrder();
             untracked(() => {
                 this.rebuildColumnDefs();
                 this.syncRowsFromExpression();
@@ -764,6 +765,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         headerColumnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
         headerColumnResizeHandleColor: 'transparent',
         pinnedColumnBorder: { style: 'solid', width: 4, color: '#3f4144' },
+        cellHorizontalPadding: 8,
         fontSize: 14,
     });
 
@@ -806,6 +808,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 exprParamsAfter: this.exprParamsAfter(),
                 manipParamsAfter: this.manipParamsAfter(),
                 manipParamsFirst: this.manipParamsFirst(),
+                fixedColumnOrder: this.fixedColumnOrder(),
             };
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(state));
@@ -856,6 +859,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             if (typeof state.manipParamsFirst === 'boolean') {
                 this.manipParamsFirst.set(state.manipParamsFirst);
             }
+            if (Array.isArray(state.fixedColumnOrder) && state.fixedColumnOrder.length > 0) {
+                this.fixedColumnOrder.set(state.fixedColumnOrder);
+            }
             if (typeof state.freezeAnchor === 'string') {
                 this.freezeAnchorColId.set(state.freezeAnchor);
             } else if (Array.isArray(state.pinned) && state.pinned.length > 0) {
@@ -877,7 +883,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     public gridOptions: GridOptions = {
         theme: this.myTheme,
         rowHeight: CDT_GRID_ROW_HEIGHT,
-        headerHeight: 45,
+        headerHeight: CDT_GRID_HEADER_HEIGHT,
+        groupHeaderHeight: CDT_GRID_HEADER_HEIGHT / 2,
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
@@ -921,6 +928,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         onColumnResized: (event: ColumnResizedEvent) => {
             if (event.finished) {
                 this.saveGridState();
+                if (event.source !== 'sizeColumnsToFit') {
+                    this.ensureColumnsFillViewport();
+                }
                 setTimeout(() => this.updateAddButtonPositions(), 0);
             }
         },
@@ -1008,6 +1018,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: [{ colId, hide: true }],
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1026,6 +1037,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
             this.applyUnhideState(info.colIds);
             this.saveGridState();
+            this.ensureColumnsFitViewport();
             setTimeout(() => this.updateAddButtonPositions(), 50);
             this.cdr.markForCheck();
             return;
@@ -1035,6 +1047,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.hiddenColIds.set(current);
         this.applyUnhideState([colId]);
         this.saveGridState();
+        this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1052,6 +1065,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
         this.applyUnhideState(allIds);
         this.saveGridState();
+        this.ensureColumnsFitViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1063,23 +1077,54 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: ids.map((colId) => ({ colId, hide: false })),
         });
     }
-    public onHiddenBadgeClick(event: MouseEvent, colId: string): void {
+    public onHiddenBadgeClick(event: MouseEvent, badge: { entries: Array<{ colId: string; label: string }> }): void {
         event.stopPropagation();
-        if (this.totalHiddenEntries() <= 1) {
-            this.unhideColumn(colId);
+        if (badge.entries.length === 1) {
+            this.unhideColumn(badge.entries[0].colId);
             return;
         }
+        this.activeBadgeEntries = badge.entries;
         this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
     }
+
+    public activeBadgeEntries: Array<{ colId: string; label: string }> = [];
 
     public handleExpandHiddenEntry(colId: string): void {
         this.hiddenBadgeMenuCtrl.close();
         this.unhideColumn(colId);
     }
 
-    public handleExpandAllHidden(): void {
+    public handleExpandAllBadgeEntries(): void {
         this.hiddenBadgeMenuCtrl.close();
-        this.unhideAllColumns();
+        const entries = this.activeBadgeEntries;
+        if (entries.length === 0) return;
+
+        const groups = this.hiddenColumnGroups();
+        const currentHidden = new Set(this.hiddenColIds());
+        const nextGroups = new Map(groups);
+        const allColIdsToUnhide: string[] = [];
+
+        for (const entry of entries) {
+            if (groups.has(entry.colId)) {
+                const info = groups.get(entry.colId)!;
+                info.colIds.forEach((id) => {
+                    currentHidden.delete(id);
+                    allColIdsToUnhide.push(id);
+                });
+                nextGroups.delete(entry.colId);
+            } else {
+                currentHidden.delete(entry.colId);
+                allColIdsToUnhide.push(entry.colId);
+            }
+        }
+
+        this.hiddenColIds.set(currentHidden);
+        this.hiddenColumnGroups.set(nextGroups);
+        this.applyUnhideState(allColIdsToUnhide);
+        this.saveGridState();
+        this.ensureColumnsFitViewport();
+        setTimeout(() => this.updateAddButtonPositions(), 50);
+        this.cdr.markForCheck();
     }
 
     /** Freeze all columns from index 0 through the last colId in childColIds. */
@@ -1125,6 +1170,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: colIds.map((colId) => ({ colId, hide: true })),
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1143,6 +1189,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             state: colIds.map((colId) => ({ colId, hide: true })),
         });
         this.saveGridState();
+        this.ensureColumnsFillViewport();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
     }
@@ -1234,6 +1281,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             this.manipParamsFirst.set(firstManipParam < firstExprParam);
         }
 
+        // Track the user-reorderable fixed columns in the order they appear in the grid
+        const reorderableSet = new Set(ClassificationDecisionTableGridComponent.DEFAULT_FIXED_COL_ORDER);
+        const newFixedOrder = allVisible.filter((id) => reorderableSet.has(id));
+        this.fixedColumnOrder.set(newFixedOrder);
+
         this.saveGridState();
         setTimeout(() => this.updateAddButtonPositions(), 0);
     }
@@ -1280,7 +1332,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
 
         const fullOrder = this.getFullColOrder();
-        const badges: Array<{ colId: string; x: number; y: number; label: string }> = [];
         const wrapperEl = this.elRef.nativeElement.querySelector('.grid-wrapper') as HTMLElement | null;
         const containerRect = (wrapperEl ?? this.elRef.nativeElement).getBoundingClientRect();
 
@@ -1341,30 +1392,15 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         };
 
-        const stackCounts = new Map<number, number>();
-        for (const addPos of [this.exprAddPos(), this.manipAddPos()]) {
-            if (addPos) stackCounts.set(addPos.x - 10, 1);
-        }
-        const placeBadge = (colId: string, boundaryX: number, label: string): void => {
-            let stackKey = boundaryX;
-            for (const key of stackCounts.keys()) {
-                if (Math.abs(key - boundaryX) < 5) {
-                    stackKey = key;
-                    break;
-                }
-            }
-            const indexInStack = stackCounts.get(stackKey) ?? 0;
-            stackCounts.set(stackKey, indexInStack + 1);
-            badges.push({ colId, x: stackKey + indexInStack * 22, y, label });
-        };
+        // Collect raw entries with their boundary positions
+        type RawEntry = { colId: string; label: string; boundaryX: number };
+        const rawEntries: RawEntry[] = [];
 
         for (const hiddenId of hidden) {
             if (groupedColIdToGroupId.has(hiddenId)) continue;
-
             const boundaryX = computeBoundaryX(hiddenId);
             if (boundaryX === null) continue;
-
-            placeBadge(hiddenId, boundaryX, this.getColLabel(hiddenId));
+            rawEntries.push({ colId: hiddenId, label: this.getColLabel(hiddenId), boundaryX });
         }
 
         const emittedGroups = new Set<string>();
@@ -1379,11 +1415,24 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 .sort((a, b) => fullOrder.indexOf(a) - fullOrder.indexOf(b));
             if (sortedColIds.length === 0) continue;
 
-            const anchorColId = sortedColIds[0];
-            const boundaryX = computeBoundaryX(anchorColId);
+            const boundaryX = computeBoundaryX(sortedColIds[0]);
             if (boundaryX === null) continue;
+            rawEntries.push({ colId: groupId, label: info.label, boundaryX });
+        }
 
-            placeBadge(groupId, boundaryX, info.label);
+        // Sort by position, then merge entries whose positions are within 5px (adjacent)
+        rawEntries.sort((a, b) => a.boundaryX - b.boundaryX);
+
+        const mergeThreshold = 5;
+        const badges: Array<{ entries: Array<{ colId: string; label: string }>; x: number; y: number }> = [];
+
+        for (const entry of rawEntries) {
+            const last = badges.length > 0 ? badges[badges.length - 1] : null;
+            if (last && Math.abs(last.x - entry.boundaryX) < mergeThreshold) {
+                last.entries.push({ colId: entry.colId, label: entry.label });
+            } else {
+                badges.push({ entries: [{ colId: entry.colId, label: entry.label }], x: entry.boundaryX, y });
+            }
         }
 
         this.hiddenColumnBadges.set(badges);
@@ -1420,7 +1469,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             editable: (params: EditableCallbackParams<ConditionGroup>) =>
                 !this.isRowLocked(params.data as ConditionGroup),
-            minWidth: Math.max(70, fieldName.length * 9 + 52),
+            minWidth: Math.max(120, fieldName.length * 9 + 52),
             flex: 1,
             cellRenderer: MonacoCellRendererComponent,
             cellRendererParams: { singleLine: true },
@@ -1491,9 +1540,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             colId: CDT_COLUMN_KIND.MANIPULATION,
             field: CDT_COLUMN_KIND.MANIPULATION,
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams(CDT_COLUMN_KIND.MANIPULATION, 'Manipulation'),
+            headerComponentParams: {
+                ...this.makeMenuHeaderParams(CDT_COLUMN_KIND.MANIPULATION, 'Manipulation'),
+                showDragGrip: true,
+            },
             editable: true,
             flex: 1,
+            minWidth: 120,
             cellRenderer: MonacoCellRendererComponent,
             cellEditor: ExpressionBuilderCellEditorComponent,
             cellEditorPopup: true,
@@ -1520,9 +1573,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             colId: CDT_COLUMN_KIND.EXPRESSION,
             field: CDT_COLUMN_KIND.EXPRESSION,
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams(CDT_COLUMN_KIND.EXPRESSION, 'Expression'),
+            headerComponentParams: {
+                ...this.makeMenuHeaderParams(CDT_COLUMN_KIND.EXPRESSION, 'Expression'),
+                showDragGrip: true,
+            },
             editable: true,
             flex: 1,
+            minWidth: 105,
             cellRenderer: MonacoCellRendererComponent,
             cellEditor: ExpressionBuilderCellEditorComponent,
             cellEditorPopup: true,
@@ -1606,6 +1663,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             field: 'group_name',
             editable: true,
             flex: 1,
+            minWidth: 140,
             suppressMovable: true,
             cellStyle: {
                 fontSize: '14px',
@@ -1680,12 +1738,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const promptIdCol: ColDef = {
             colId: 'prompt_id',
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams('prompt_id', 'Prompt ID'),
+            headerComponentParams: { ...this.makeMenuHeaderParams('prompt_id', 'Prompt ID'), showDragGrip: true },
             field: 'prompt_id',
-            suppressMovable: true,
             editable: true,
             singleClickEdit: true,
-            width: 150,
+            minWidth: 100,
             cellRenderer: PromptTooltipRendererComponent,
             cellRendererParams: () => ({
                 prompts: this.prompts(),
@@ -1773,11 +1830,11 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const routeCodeCol: ColDef = {
             colId: 'route_code',
             headerComponent: ColumnHeaderMenuComponent,
-            headerComponentParams: this.makeMenuHeaderParams('route_code', 'Route Code'),
+            headerComponentParams: { ...this.makeMenuHeaderParams('route_code', 'Route Code'), showDragGrip: true },
             field: 'route_code',
+            minWidth: 110,
             editable: true,
-            width: 150,
-            suppressMovable: true,
+            flex: 1,
             cellStyle: {
                 fontSize: '14px',
             },
@@ -1788,8 +1845,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             headerName: 'Continue',
             field: 'continue_flag',
             editable: true,
-            width: 65,
-            minWidth: 50,
+            minWidth: 80,
             cellDataType: 'boolean',
             suppressMovable: true,
             cellStyle: {
@@ -1827,19 +1883,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         const readOnly = this.readonly();
+
+        // Map draggable columns by colId so we can reorder them
+        const draggableMap = new Map<string, ColDef>([
+            [CDT_COLUMN_KIND.EXPRESSION, expressionCol],
+            ['prompt_id', promptIdCol],
+            [CDT_COLUMN_KIND.MANIPULATION, manipCol],
+            ['route_code', routeCodeCol],
+        ]);
+        const orderedDraggable = this.fixedColumnOrder()
+            .filter((id) => draggableMap.has(id))
+            .map((id) => draggableMap.get(id)!);
+
         const fixedCols: ColDef[] = readOnly
-            ? [enabledCol, groupNameCol, expressionCol, promptIdCol, manipCol, routeCodeCol, skipCol]
-            : [
-                  selectionCol,
-                  enabledCol,
-                  groupNameCol,
-                  expressionCol,
-                  promptIdCol,
-                  manipCol,
-                  routeCodeCol,
-                  skipCol,
-                  deleteCol,
-              ];
+            ? [enabledCol, groupNameCol, ...orderedDraggable, skipCol]
+            : [selectionCol, enabledCol, groupNameCol, ...orderedDraggable, skipCol, deleteCol];
 
         const exprAnchor = this.clampParamsAnchor(this.exprParamsAfter());
         const manipAnchor = this.clampParamsAnchor(this.manipParamsAfter());
@@ -1909,6 +1967,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
 
         if (this.gridApi) {
+            const hasGroups = this.columnDefs.some((def) => 'children' in def);
+            const leafHeight = hasGroups ? CDT_GRID_HEADER_HEIGHT / 2 : CDT_GRID_HEADER_HEIGHT;
+            this.gridApi.setGridOption('headerHeight', leafHeight);
+
             this.isRebuilding = true;
             this.gridApi.setGridOption('columnDefs', this.columnDefs);
             this.isRebuilding = false;
@@ -2115,6 +2177,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.movableColumnOrder.set(this.movableColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_expressions', fieldName);
         this.saveGridState();
+        this.ensureColumnsFillViewport();
     }
 
     onExprSelectionChange(values: unknown[]): void {
@@ -2157,6 +2220,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.manipColumnOrder.set(this.manipColumnOrder().filter((id) => id !== colId));
         this.dropRowField('field_manipulations', fieldName);
         this.saveGridState();
+        this.ensureColumnsFillViewport();
     }
 
     private dropRowField(key: 'field_expressions' | 'field_manipulations', fieldName: string): void {
@@ -2261,13 +2325,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.outsideClickUnlisten = this.renderer.listen('document', 'pointerdown', (event: PointerEvent) => {
             const target = event.target as Node | null;
             if (!target) return;
-            const gridRoot = this.elRef.nativeElement as HTMLElement;
-            // Click was inside the grid — keep focus
-            if (gridRoot.contains(target)) return;
             // Click was inside an ag-grid popup rendered to document body (dropdowns, menus)
             const path = (event.composedPath?.() ?? []) as HTMLElement[];
             const inAgPopup = path.some(
-                (el) => el?.classList?.contains?.('ag-popup') || el?.classList?.contains?.('ag-popup-child')
+                (el) =>
+                    el?.classList?.contains?.('ag-popup') ||
+                    el?.classList?.contains?.('ag-popup-child') ||
+                    el?.classList?.contains?.('ag-grid-scrolling-container')
             );
             if (inAgPopup) return;
             // Clear focused cell so the purple border disappears
@@ -2897,5 +2961,35 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    private ensureColumnsFillViewport(): void {
+        if (!this.gridApi) return;
+        setTimeout(() => {
+            const columnState = this.gridApi?.getColumnState();
+            if (!columnState) return;
+            const totalColWidth = columnState.filter((s) => !s.hide).reduce((sum, s) => sum + (s.width ?? 0), 0);
+            const gridEl = this.gridElementRef();
+            if (!gridEl) return;
+            const viewportWidth = gridEl.nativeElement.clientWidth;
+            if (totalColWidth < viewportWidth - 4) {
+                this.gridApi.sizeColumnsToFit();
+            }
+        }, 0);
+    }
+
+    private ensureColumnsFitViewport(): void {
+        if (!this.gridApi) return;
+        setTimeout(() => {
+            const columnState = this.gridApi?.getColumnState();
+            if (!columnState) return;
+            const totalColWidth = columnState.filter((s) => !s.hide).reduce((sum, s) => sum + (s.width ?? 0), 0);
+            const gridEl = this.gridElementRef();
+            if (!gridEl) return;
+            const viewportWidth = gridEl.nativeElement.clientWidth;
+            if (totalColWidth > viewportWidth) {
+                this.gridApi.sizeColumnsToFit();
+            }
+        }, 0);
     }
 }

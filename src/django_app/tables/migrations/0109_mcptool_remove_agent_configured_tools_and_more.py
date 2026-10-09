@@ -205,7 +205,7 @@ class Migration(migrations.Migration):
                 "unique_together": {("task", "tool")},
             },
         ),
-        migrations.RunPython(migrate_agent_tools, migrations.RunPython.noop),
+        migrations.RunPython(migrate_agent_tools, migrations.RunPython.noop, elidable=True),
         migrations.RemoveField(
             model_name="agent",
             name="configured_tools",
