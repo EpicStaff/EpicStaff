@@ -1,13 +1,13 @@
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
-from rest_framework.decorators import action, parser_classes
+from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
@@ -29,10 +29,10 @@ from tables.serializers.storage_serializers import (
     StorageRenameSerializer,
     StorageSearchQuerySerializer,
     StorageTreeQuerySerializer,
-    StorageUploadSerializer,
+    StorageUploadLimitsResponseSerializer,
 )
-from rbac.access.asserts import assert_org_permission
 from tables.services.storage_service import get_storage_manager
+from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
@@ -50,7 +50,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_RENAME_SWAGGER,
     STORAGE_SEARCH_SWAGGER,
     STORAGE_TREE_SWAGGER,
-    STORAGE_UPLOAD_SWAGGER,
+    STORAGE_UPLOAD_LIMITS_SWAGGER,
 )
 
 
@@ -66,8 +66,10 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "graph_files": Permission.READ,
         "files_by_ids": Permission.READ,
         "search": Permission.READ,
+        "upload_limits": Permission.READ,
         "download_zip": Permission.EXPORT,
-        "upload": Permission.CREATE,
+        # Served by storage_upload_stream_view (raw ASGI); overwrites also need UPDATE there.
+        "upload_stream": Permission.CREATE,
         "mkdir": Permission.CREATE,
         "add_to_graph": Permission.READ,
         "rename": Permission.UPDATE,
@@ -144,35 +146,23 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         path = params.validated_data["path"]
 
         try:
-            file_bytes = self.manager.download(org_id, path)
+            download = self.manager.download(org_id, path, request.headers.get("Range"))
         except FileNotFoundError as e:
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         filename = path.rstrip("/").split("/")[-1] if path else "file"
-        response = HttpResponse(file_bytes, content_type="application/octet-stream")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
-
-    @extend_schema(**STORAGE_UPLOAD_SWAGGER)
-    @action(detail=False, methods=["post"], url_path="upload")
-    @parser_classes([MultiPartParser])
-    def upload(self, request):
-        org_id = self.get_active_org_id()
-        raw = request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
-        serializer = StorageUploadSerializer(data={**raw, "files": request.FILES.getlist("files")})
-        serializer.is_valid(raise_exception=True)
-        path = serializer.validated_data["path"]
-        files = serializer.validated_data["files"]
-
-        try:
-            results = [self.manager.upload_file(org_id, path, f) for f in files]
-        except ValueError as e:
-            raise ValidationError({"detail": str(e)}) from e
-
-        return Response(
-            {"uploaded": [r.to_dict() for r in results]},
-            status=status.HTTP_201_CREATED,
+        response = HttpResponse(
+            download.content,
+            content_type="application/octet-stream",
+            status=status.HTTP_206_PARTIAL_CONTENT
+            if download.content_range
+            else status.HTTP_200_OK,
         )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Accept-Ranges"] = "bytes"
+        if download.content_range:
+            response["Content-Range"] = download.content_range
+        return response
 
     @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")
@@ -425,3 +415,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 "results": results,
             }
         )
+
+    @extend_schema(**STORAGE_UPLOAD_LIMITS_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="upload-limits")
+    def upload_limits(self, request):
+        limits = upload_service.upload_limits(self.get_active_org_id())
+        return Response(StorageUploadLimitsResponseSerializer(limits).data)

@@ -1,6 +1,6 @@
 # RBAC — Auth Endpoints & Operator Guide
 
-Covers the auth surface delivered by EST-2615: first-time
+Covers the auth surface: first-time
 setup, JWT login, current-user, token introspection, API key validation,
 user reset (destructive), and the `reset_user` management command. Ends with
 a frontend migration checklist.
@@ -23,8 +23,8 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/auth/introspect/` | System ApiKey | Validate a JWT, return claims |
 | GET | `/api/auth/api-key/validate/` | ApiKey (any) | Metadata about the calling key |
 | POST | `/api/auth/swagger-token/` | public (throttled) | OAuth2 password flow for Swagger |
-| POST | `/api/auth/reset-user/` | Bearer JWT or ApiKey (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
-| POST | `/api/auth/password-reset/request/` | public (throttled) | Start password-recovery flow — see [password_recovery.md](password_recovery.md) |
+| POST | `/api/auth/reset-user/` | Bearer JWT (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
+| POST | `/api/auth/password-reset/request/` | public (throttled) | Start password-recovery flow; a no-op without SMTP (operators use `manage.py reset_password`) — see [password_recovery.md](password_recovery.md) |
 | POST | `/api/auth/password-reset/confirm/` | public | Consume reset token + set new password |
 | ~~POST~~ | ~~`/api/auth/password-change/`~~ | — | **REMOVED in Story 6** → use two-step `/api/profile/password-change/{request,confirm}/`, see [user_profile.md](user_profile.md) § "Two-step password change" |
 | POST | `/api/auth/admin/password-reset/` | Bearer JWT (superadmin) | Superadmin resets another user's password |
@@ -39,12 +39,34 @@ Base URL in examples: `http://localhost:8000`.
 
 | Endpoint | Bucket | Env var | Default |
 |---|---|---|---|
-| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `LOGIN_THROTTLE_RATE` | `5/min` |
-| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
-| `/api/auth/password-reset/confirm/` | `<ip>` | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
-| `/api/auth/refresh/` | `<ip>` | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` |
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>` | `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` |
+| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
+| `/api/auth/password-reset/request/` | `<ip>` | `DJANGO_PASSWORD_RESET_REQUEST_IP_THROTTLE_RATE` | `20/hour` |
+| `/api/auth/password-reset/confirm/` | `<ip>` | `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
+| `/api/auth/refresh/` | `<ip>` | `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
 
-The last two key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
+Login and reset-request each apply two buckets, and a request is refused when either is exhausted. The `<ip>|<email>` bucket limits what one address can do to one account (guesses at its password, reset emails to its mailbox) without one user's attempts using up the allowance of everyone behind the same NAT. It never stops an address that names a new email on each request, since every email is a fresh bucket; the `<ip>` bucket caps that total. The `<ip>` bucket's `429` depends only on the caller's IP, so it reveals nothing about which emails are registered.
+
+Refresh and confirm key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
+
+**Login has no account lockout.** Wrong passwords never lock or slow down an account; the two login throttles are the only brake on password guessing. The `<ip>|<email>` bucket limits guessing at one account (credential stuffing, brute force), the `<ip>` bucket limits trying one password across many accounts (password spraying). Both key on the client address, so everything below about that address protects the login endpoint directly. An attacker with many addresses is not stopped by either; that would need a lockout or a proxy-level limit, neither of which exists today.
+
+### Client address and the proxy contract
+
+Every `<ip>` above is DRF's `get_ident()`: the entry `NUM_PROXIES` positions from the end of `X-Forwarded-For`. That is only the caller's real address if each layer keeps its part of this contract:
+
+- **nginx** (`src/nginx/templates/default.conf.template`) sets the forwarding headers itself, per location:
+  - `X-Forwarded-Proto`: every location.
+  - `X-Forwarded-For` (`$proxy_add_x_forwarded_for`) and `X-Real-IP`: every location except `/static/` and `/media/`, which serve files and run no throttle.
+  - `X-Forwarded-Host`: only `/webhooks/`, `/voice/` and `/voice/stream`.
+  - `X-Forwarded-Port`: never.
+
+  Every proxying location also includes `strip-underscore-forwarding-headers.snippet`, which drops the spellings of `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Real-IP` that have an underscore in place of any dash (`X_Forwarded_For`, `X-Forwarded_For`, ...). Django maps a dash and an underscore to the same `META` key and joins the values, so without this a client-sent `X_Forwarded_For` lands after nginx's entry and becomes the throttle identity. A location added later must include the snippet too.
+- **Django** drops the same underscore spellings again, in any letter case, plus those of `X-Forwarded-Port`, before `META` is built (`DropUnderscoreForwardingHeadersMiddleware`, wrapped around the whole ASGI application in `django_app/asgi.py`). This covers a regressed nginx config or a different proxy in front. Django reads only `X-Forwarded-For` (through DRF) and `X-Forwarded-Proto` (`SECURE_PROXY_SSL_HEADER`); `USE_X_FORWARDED_HOST` and `USE_X_FORWARDED_PORT` are off, so the dash spellings of `X-Forwarded-Host` and `X-Forwarded-Port` are ignored.
+- **`DJANGO_NUM_PROXIES`** (default `1`, the bundled nginx) must equal the number of trusted proxies that append to `X-Forwarded-For` before Django. Set it too high and Django reads an entry the client wrote, so callers choose their own identity. Set it too low and Django reads a proxy's address, so every caller shares one bucket. Put a load balancer in front of nginx and the value becomes `2`, but only if that load balancer appends the client address to `X-Forwarded-For`.
+
+`underscores_in_headers on` stays enabled in nginx. Webhook triggers authenticate with a header whose name the user chooses (`request.headers.get(auth.header_name)` in `src/webhook/app/controllers/webhook_routes.py`), third-party senders often use names with underscores, and nginx drops those by default. That is why the forwarding look-alikes are stripped one by one instead of turning the directive off.
 
 **Refresh tokens rotate on every use** (`ROTATE_REFRESH_TOKENS=True`). The old refresh is blacklisted — replaying it returns `401`.
 
@@ -62,9 +84,11 @@ ApiKeyAuthentication]`:
 
 - Header: `Authorization: Bearer <access_token>`
 - Obtain via `POST /api/auth/login/` with `{ "email", "password" }`.
-- Access token lifetime: `JWT_ACCESS_MINUTES` env (default 15).
-- Refresh token lifetime: `JWT_REFRESH_DAYS` env (default 7).
-- Token carries custom claims: `user_id`, `email`, `is_superadmin`.
+- Access token lifetime: `ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME` (default `15m`).
+- Refresh token lifetime: `REFRESH_TOKEN_LIFETIME`, env `DJANGO_JWT_REFRESH_LIFETIME` (default `7d`).
+- Token carries custom claims: `user_id`, `email`, `is_superadmin`, and
+  `hash_password` (`CHECK_REVOKE_TOKEN=True`): every token is bound to the
+  user's password and is rejected with `401` once the password changes.
 
 ### API key (primary for internal services)
 
@@ -137,10 +161,11 @@ create_superadmin` workflow).
 
 | Env var | Default | Notes |
 |---|---|---|
-| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
-| `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
-| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
-| `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
+| `DJANGO_FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local dev (`src/.env` from `python scripts/envtool.py --dev`) sets `open`. |
+| `DJANGO_LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
+| `DJANGO_LOGIN_IP_THROTTLE_RATE` | `20/min` | Second rate for the same two endpoints, bucketed per IP whatever the email. |
+| `DJANGO_PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
+| `DJANGO_TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
 
 ### GET `/api/auth/first-setup/`
 
@@ -167,23 +192,36 @@ create_superadmin` workflow).
   ```json
   {
     "email": "admin@acme.com",
-    "password": "StrongPass123!"
+    "password": "StrongPass123!",
+    "display_name": "Admin"
   }
   ```
-  - `email` — must be a valid email.
+  - `email` — must pass the **new-account email rule**, stricter than the RFC
+    check that login and password reset use:
+    - only letters, digits and `. _ - +` before the `@`, starting and ending
+      with a letter or digit (`---@x.com`, `+john@x.com`, `o'brien@x.com`
+      are rejected);
+    - at most 64 characters before the `@` and 254 in total;
+    - an ASCII domain whose last label is 2+ letters (no `localhost`, no
+      non-ASCII domains).
+
+    Accounts created before this rule keep working: only creation applies it.
   - `password` — must pass Django's `AUTH_PASSWORD_VALIDATORS` (min length,
     not-too-common, not-all-numeric, not-too-similar-to-email).
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
   - Organization name is **not** taken from the request body; it comes from
     the `DEFAULT_ORGANIZATION_NAME` setting (env-driven, default
-    `"Organization"`). Any `organization_name` / `display_name`
-    fields passed in the body are silently ignored.
+    `"Organization"`). An `organization_name` field passed in the body is
+    silently ignored.
 - **Response 201:**
   ```json
   {
     "user": {
       "id": 1,
       "email": "admin@acme.com",
-      "display_name": null,
+      "display_name": "Admin",
       "is_superadmin": true
     },
     "organization": {
@@ -271,8 +309,10 @@ Response:
 - `401` on invalid credentials — flat envelope with no `errors` array, so the
   caller cannot distinguish which of email/password was wrong (user-enumeration
   protection).
-- `429` with `Retry-After` header once the composite `<ip>|<email>` bucket is
-  exhausted. Rate comes from `LOGIN_THROTTLE_RATE` (default `5/min`).
+- `429` with `Retry-After` header once either bucket is exhausted: the
+  composite `<ip>|<email>` bucket (`DJANGO_LOGIN_THROTTLE_RATE`, default
+  `5/min`) or the per-IP bucket (`DJANGO_LOGIN_IP_THROTTLE_RATE`, default
+  `20/min`).
 
 ### POST `/api/auth/refresh/`
 
@@ -283,6 +323,11 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
   refresh token and blacklists the one you just sent.
 - Replaying an old refresh returns `401`. If your storage was tampered with
   or the network duplicated the request, re-login.
+- A refresh token minted under a previous password — or before password
+  binding was enabled, so it has no `hash_password` claim — returns `401`
+  `{"detail": "Token is invalid or expired."}` and clears the refresh
+  cookie, the same as an expired token. The same happens when the token's
+  user no longer exists. The client must send the user to login.
 
 ### POST `/api/auth/logout/`
 
@@ -305,7 +350,8 @@ Body: `{ "refresh": "<jwt>" }` → returns a new `{access, refresh}` pair.
   not yours" from "garbage"). This stops a leaked refresh token from being
   weaponized to log the owner out.
 - The short-lived **access** token continues to work until its own expiry
-  (default 15 min). Keep access TTL short; consult `JWT_ACCESS_MINUTES`.
+  (`ACCESS_TOKEN_LIFETIME`, env `DJANGO_JWT_ACCESS_LIFETIME`, default `15m`).
+  Keep access TTL short.
 
 ---
 
@@ -418,8 +464,12 @@ Negative tests:
   `POST /api/profile/api-keys/`) → 403 `System API key required`.
 - Send a malformed token (`"token":"nope"`) → 200 with `active: false`.
 - Omit `token` → 400.
-- Wait `JWT_ACCESS_MINUTES` (default 15) and re-introspect the same token →
-  200 with `active: false` (expired).
+- Wait `ACCESS_TOKEN_LIFETIME` (env `DJANGO_JWT_ACCESS_LIFETIME`, default
+  `15m`) and re-introspect the same token → 200 with `active: false` (expired).
+- Introspect a token whose user was deactivated or deleted, or whose user's
+  password changed since it was minted, or a refresh token → 200 with
+  `active: false`. Introspection applies the same checks as Bearer
+  authentication.
 
 ---
 
@@ -481,10 +531,9 @@ Two entry points, same semantics, different callers.
 
 ### POST `/api/auth/reset-user/` (web, via JWT)
 
-- **Auth:** `IsAuthenticated` + `IsSuperadmin`. Both JWT and ApiKey
-  authentication are accepted (no `DenyApiKeyAuth` here) — the caller just
-  needs `is_superadmin=True`, which a superadmin-owned USER key or the
-  SYSTEM key both satisfy.
+- **Auth:** `IsAuthenticated` + `DenyApiKeyAuth` + `IsSuperadmin` — JWT
+  only. Any API key, including a superadmin-owned USER key and the SYSTEM
+  key, gets `403 permission_denied`.
 - **Behavior** (atomic):
   1. Delete all `User` rows → cascades `OrganizationUser`,
      `PasswordResetToken`, and every `ApiKey` owned by a deleted user
@@ -500,8 +549,12 @@ Two entry points, same semantics, different callers.
   `POST /api/profile/api-keys/` after logging in as the new superadmin.
 - **Request body:**
   ```json
-  { "email": "new@acme.com", "password": "AnotherPass123!" }
+  { "email": "new@acme.com", "password": "AnotherPass123!", "display_name": "New Admin" }
   ```
+  - `email` — same new-account email rule as first setup.
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
 - **Response 201:**
   ```json
   { "access": "<jwt-access>" }
@@ -512,7 +565,12 @@ Two entry points, same semantics, different callers.
 ### `python manage.py reset_user` (CLI / docker exec)
 
 Same functional outcome as the web endpoint, intended for operators who lost
-access to the UI.
+access to the UI. It runs the same validators before deleting anything, so an
+invalid email or password fails the command and leaves every user in place.
+
+Don't use Django's built-in `manage.py createsuperuser`: it skips these
+validators and the default-organization membership. Use `create_superadmin`
+or `reset_user` instead.
 
 ```bash
 # From inside the container

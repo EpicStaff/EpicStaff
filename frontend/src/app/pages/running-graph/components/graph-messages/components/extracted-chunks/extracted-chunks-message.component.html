@@ -6,7 +6,7 @@
         >
             <div class="play-arrow">
                 <app-svg-icon
-                    [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                    [icon]="isExpanded() ? 'caret-down-filled' : 'caret-right-filled'"
                     size="1rem"
                 />
             </div>
@@ -37,7 +37,7 @@
 
         <div
             class="content-wrapper"
-            [class.collapsed]="!isExpanded"
+            [class.collapsed]="!isExpanded()"
         >
             <div class="content">
                 <div class="stats">

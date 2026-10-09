@@ -117,39 +117,21 @@ class HasOrgPermission(BaseRbacPermission):
         return True
 
 
-class IsApiKeyAuthenticated(BasePermission):
-    """Allows only requests authenticated via a valid ApiKey (system or user).
-
-    For internal-service lookup endpoints that intentionally bypass org-context
-    scoping (e.g. by-token webhook resolution for inbound Twilio calls, where
-    the caller structurally cannot supply an `X-Organization-Id` header). A
-    regular JWT session must not be able to use these org-bypass paths — pair
-    this alone in `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`).
-
-    NOTE: this accepts BOTH `key_type=SYSTEM` and `key_type=USER` keys. Do not
-    use this on an endpoint that also skips org-scoping (like
-    `RealtimeChannelViewSet.lookup_by_token`) — any org member can self-issue
-    a USER key via `POST /api/profile/api-keys/`, so pairing org-bypass with
-    "any API key" lets a low-privilege user in one org read another org's
-    data. Use `IsSystemApiKeyAuthenticated` for those endpoints instead.
-    """
-
-    message = "This endpoint requires API key authentication."
-
-    def has_permission(self, request, view) -> bool:
-        return isinstance(request.auth, ApiKey)
-
-
 class IsSystemApiKeyAuthenticated(BasePermission):
     """Allows only requests authenticated via a `key_type=SYSTEM` ApiKey.
 
-    Stricter than `IsApiKeyAuthenticated`: a self-issued USER key is rejected.
-    Required for endpoints that ALSO bypass org-context scoping (the token
-    itself is the only authorization check performed), because a USER key
-    is scoped to its owner's own org's RBAC but this permission class runs
-    before, and instead of, any org check — e.g.
-    `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime`/`voice_app` services.
+    For internal-service lookup endpoints that intentionally bypass
+    org-context scoping, where the token itself is the only authorization
+    check performed (e.g. `RealtimeChannelViewSet.lookup_by_token`, restricted
+    to the trusted `realtime` service). Pair it alone in
+    `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`), so a
+    regular JWT session cannot use these org-bypass paths.
+
+    A `key_type=USER` key is rejected on purpose. Any org member can
+    self-issue one via `POST /api/profile/api-keys/`, and this class runs
+    before, and instead of, any org check — admitting "any API key" here would
+    let a low-privilege user in one org read another org's data. There is
+    deliberately no "any API key" variant of this gate.
     """
 
     message = "This endpoint requires system API key authentication."
@@ -161,14 +143,51 @@ class IsSystemApiKeyAuthenticated(BasePermission):
 class DenyApiKeyAuth(BasePermission):
     """Blocks API-key-authenticated callers.
 
-    Key management is JWT-only: a (possibly leaked) credential must not be
-    able to mint or destroy credentials. Pair AFTER IsAuthenticated.
+    For JWT-only endpoints: key management (a possibly leaked credential
+    must not mint or destroy credentials) and destructive account
+    operations (reset-user, admin password reset). Pair AFTER IsAuthenticated.
     """
 
-    message = "API keys cannot be used to manage API keys. Authenticate with a user session (JWT)."
+    message = "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 
     def has_permission(self, request, view):
         return not isinstance(request.auth, ApiKey)
+
+
+class RestrictApiKeyToUserKeyReads(BasePermission):
+    """Admin-surface gate: an API key may only read, and only as a USER key.
+
+    JWT callers pass untouched. An API-key caller passes only on a safe
+    method with a `key_type=USER` key, so an MCP-style tool can still list
+    roles with its owner's permissions. Every write is JWT-only: a leaked
+    credential must not be able to rewrite governance. The SYSTEM key is
+    rejected on reads too — its principal is superadmin-equivalent, so
+    letting it in would hand every cross-org row to whoever holds
+    `DJANGO_API_KEY`. Any key type other than USER is rejected, so a new
+    type is denied until someone decides otherwise. Safe in any position:
+    a non-key (or anonymous) request always passes.
+    """
+
+    write_message = (
+        "API keys cannot be used to change organizations, users, roles, memberships or API keys. "
+        "Authenticate with a user session (JWT)."
+    )
+    non_user_key_message = (
+        "The system API key cannot be used on the admin surface. "
+        "Authenticate with a user session (JWT)."
+    )
+
+    def has_permission(self, request, view):
+        key = request.auth
+        if not isinstance(key, ApiKey):
+            return True
+        if key.key_type != ApiKey.KeyType.USER:
+            self.message = self.non_user_key_message
+            return False
+        if request.method not in SAFE_METHODS:
+            self.message = self.write_message
+            return False
+        return True
 
 
 class HasResourcePermissionAnywhere(BaseRbacPermission):

@@ -281,6 +281,15 @@
         overflow-y: hidden;
     }
 
+    &__size-hint {
+        flex-shrink: 0;
+        margin: 0;
+        color: var(--color-ks-transparent-text-60);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
     &__drop-wrapper {
         display: flex;
         flex-direction: column;
@@ -332,6 +341,16 @@
         &:hover {
             background-color: var(--indigo-alpha-10);
         }
+
+        // Matches the dialog's disabled confirm button.
+        &--disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: transparent;
+            }
+        }
     }
 
     &__field {
@@ -369,16 +388,6 @@
         display: inline-flex;
         align-items: center;
         gap: 12px;
-    }
-
-    &__tooltip-icon {
-        width: 18px;
-        height: 18px;
-        color: var(--accent-color);
-
-        &:hover {
-            opacity: 0.7;
-        }
     }
 
     &__count {
@@ -573,12 +582,6 @@
         color: var(--color-text-primary);
         opacity: 0.16;
         white-space: nowrap;
-    }
-
-    &__node-spinner {
-        font-size: 0.75rem;
-        color: var(--color-text-secondary);
-        flex-shrink: 0;
     }
 
     // Input

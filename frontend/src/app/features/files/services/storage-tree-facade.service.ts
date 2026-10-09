@@ -1,10 +1,9 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
 import { downloadBlob } from '@shared/utils';
-import { EMPTY, forkJoin, Subject } from 'rxjs';
+import { EMPTY, forkJoin, Subject, Subscription } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
@@ -26,7 +25,10 @@ import {
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo } from '../models/storage.models';
 import { getFileExtension } from '../utils/storage-file.utils';
+import { toStorageItems } from '../utils/storage-tree.utils';
+import { describeUploadFailures } from '../utils/upload-error.utils';
 import { StorageApiService } from './storage-api.service';
+import { StorageUploadService } from './storage-upload.service';
 
 export interface StorageContextActionEvent {
     action: string;
@@ -40,6 +42,7 @@ export interface StorageContextActionEvent {
 export class StorageTreeFacade {
     private destroyRef = inject(DestroyRef);
     private storageApiService = inject(StorageApiService);
+    private storageUploadService = inject(StorageUploadService);
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private dialog = inject(Dialog);
@@ -49,6 +52,7 @@ export class StorageTreeFacade {
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
+    readonly searchTreeData = signal<StorageItem[] | null>(null);
 
     readonly selectInTree = new Subject<StorageItem>();
     readonly renameInTree = new Subject<StorageItem>();
@@ -57,6 +61,7 @@ export class StorageTreeFacade {
 
     private watchRefreshTick = false;
     private suppressNextTick = false;
+    private searchTreeRequest: Subscription | null = null;
 
     private readonly blockedUploadExtensions = new Set([
         'exe',
@@ -124,6 +129,7 @@ export class StorageTreeFacade {
             .subscribe({
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
+                    this.invalidateSearchTree();
                     this.afterTreeLoad?.();
                 },
                 error: () => this.error.set('Failed to load storage files'),
@@ -144,6 +150,7 @@ export class StorageTreeFacade {
             .subscribe({
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
+                    this.invalidateSearchTree();
                     this.notifyStorageChanged();
                     if (all.size) {
                         this.restoreExpandedPaths([...all], () => onDone?.());
@@ -153,6 +160,25 @@ export class StorageTreeFacade {
                 },
                 error: () => this.toastService.error('Failed to load storage files'),
             });
+    }
+
+    loadSearchTree(): void {
+        if (this.searchTreeRequest && !this.searchTreeRequest.closed) return;
+        this.searchTreeRequest = this.storageApiService
+            .tree()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                // Search covers at most the 50 000 entries the tree endpoint returns; beyond that it is truncated.
+                next: (response) => this.searchTreeData.set(toStorageItems(response.tree.children)),
+                error: () => this.toastService.error('Failed to search storage files'),
+            });
+    }
+
+    /** Drops the search tree, and any request for it sent before the change, which may answer with the old tree.
+     *  Called right after treeData is reloaded; the page reloads the search tree only while a search is active. */
+    private invalidateSearchTree(): void {
+        this.searchTreeRequest?.unsubscribe();
+        this.searchTreeData.set(null);
     }
 
     private collectExpandedPaths(nodes: StorageItem[]): string[] {
@@ -383,22 +409,26 @@ export class StorageTreeFacade {
         if (!validFiles.length) {
             return;
         }
-        this.storageApiService
-            .confirmOverwrite('', validFiles)
+        this.storageUploadService
+            .confirmUploadPlan('', validFiles)
             .pipe(
-                switchMap((confirmed) => (confirmed ? this.storageApiService.uploadMany('', validFiles) : EMPTY)),
+                // Files skipped for lack of Files/Update were already named in the dialog; they are not sent.
+                switchMap((filesToUpload) =>
+                    filesToUpload ? this.storageUploadService.uploadMany('', filesToUpload) : EMPTY
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toastService.success(`${validFiles.length} file(s) uploaded`);
-                    this.loadTree();
-                    this.notifyStorageChanged();
+                next: ({ uploaded, failed }) => {
+                    if (uploaded.length) {
+                        this.toastService.success(`${uploaded.length} file(s) uploaded`);
+                        this.loadTree();
+                        this.notifyStorageChanged();
+                    }
+                    if (failed.length) this.toastService.error(describeUploadFailures(failed));
                 },
-                error: (error: unknown) => {
-                    const checking = error instanceof HttpErrorResponse && error.url?.includes('/storage/list/');
-                    this.toastService.error(checking ? 'Failed to check existing files' : 'Failed to upload files');
-                },
+                // uploadMany reports failures in its result; only the overwrite check errors.
+                error: () => this.toastService.error('Failed to check existing files'),
             });
     }
 

@@ -20,7 +20,8 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            code=set_status_updated_at, reverse_code=migrations.RunPython.noop
+            code=set_status_updated_at, reverse_code=migrations.RunPython.noop,
+            elidable=True,
         ),
         migrations.AlterField(
             model_name="session",

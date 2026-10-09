@@ -4,10 +4,9 @@ import json
 import re
 from dataclasses import dataclass
 
-from shared.models.tools import McpToolData
-
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
+from shared.models.tools import McpToolData
 
 _MAX_MCP_DESCRIPTION_CHARS = 1024
 _C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")

@@ -29,11 +29,13 @@ class AuthValidationService(BaseRBACValidator):
         password = data.get("password")
 
         errors: list[FieldError] = []
-        errors.extend(self._validate_email_field(email))
-        errors.extend(self._validate_password_field(password, user_hints={"email": email}))
+        errors.extend(self._validate_new_account_email(email))
+        errors.extend(self._validate_password_field(password, user=self._prospective_user(email)))
+        display_name, display_name_errors = self._clean_display_name(data.get("display_name"))
+        errors.extend(display_name_errors)
 
         self._raise_if_any(errors)
-        return {"email": email, "password": password}
+        return {"email": email, "password": password, "display_name": display_name}
 
     def validate_reset_user(self, data: dict) -> dict:
         # Same field contract as first-setup; kept as a distinct method
@@ -56,7 +58,9 @@ class AuthValidationService(BaseRBACValidator):
 
         errors: list[FieldError] = []
         errors.extend(self._require_nonblank_string("token", token))
-        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
+        errors.extend(
+            self._validate_password_field(new_password, user=None, field_name="new_password")
+        )
 
         self._raise_if_any(errors)
         return {"token": token, "new_password": new_password}
@@ -67,7 +71,9 @@ class AuthValidationService(BaseRBACValidator):
 
         errors: list[FieldError] = []
         errors.extend(self._validate_positive_int_field("user_id", user_id))
-        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
+        errors.extend(
+            self._validate_password_field(new_password, user=None, field_name="new_password")
+        )
 
         self._raise_if_any(errors)
         return {"user_id": int(user_id), "new_password": new_password}
@@ -83,13 +89,11 @@ class AuthValidationService(BaseRBACValidator):
         self._raise_if_any(errors)
         return {"email": email, "password": password}
 
-    def validate_new_password(self, data: dict) -> dict:
-        """Validate `new_password` alone.
+    def validate_new_password(self, data: dict, *, user) -> dict:
+        """Validate `new_password` against the account it is about to be set on.
 
-        For callers that set a password without proving knowledge of the
-        current one — the CLI recovery commands, which are already
-        authorized by shell access. Runs the same
-        AUTH_PASSWORD_VALIDATORS as every other entry point.
+        Used by `PasswordWriter`, the one place every password-setting flow
+        passes through with the real account in hand.
 
         Raises:
             FormValidationError: the password failed one or more validators.
@@ -97,7 +101,9 @@ class AuthValidationService(BaseRBACValidator):
         new_password = data.get("new_password")
 
         errors: list[FieldError] = []
-        errors.extend(self._validate_password_field(new_password, field_name="new_password"))
+        errors.extend(
+            self._validate_password_field(new_password, field_name="new_password", user=user)
+        )
 
         self._raise_if_any(errors)
         return {"new_password": new_password}

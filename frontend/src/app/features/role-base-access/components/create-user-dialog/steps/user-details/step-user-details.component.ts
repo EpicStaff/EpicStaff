@@ -8,7 +8,7 @@ import {
     ToggleSwitchComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { notNumericOnlyValidator } from '@shared/form-validators';
+import { newAccountEmailValidator, notNumericOnlyValidator } from '@shared/form-validators';
 import { map } from 'rxjs';
 
 import { AggregatedUser } from '../../../../models/aggregated-user.model';
@@ -34,7 +34,7 @@ export class StepUserDetailsComponent {
     userData = input<AggregatedUser | null>(null);
 
     form = this.fb.group({
-        email: ['', [Validators.required, Validators.email]],
+        email: ['', [Validators.required, newAccountEmailValidator()]],
         password: new FormControl('', {
             nonNullable: true,
             validators: [

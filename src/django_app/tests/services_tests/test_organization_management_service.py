@@ -711,6 +711,7 @@ def test_storage_purge_does_not_short_circuit_on_a_folder_marker(
             secret_key="s",
             organization_prefix=prefix,
             endpoint_url=None,
+            part_size=8,
         )
     backend.client = mocker.MagicMock()
     # head_object succeeding is exactly the case that used to swallow the purge.

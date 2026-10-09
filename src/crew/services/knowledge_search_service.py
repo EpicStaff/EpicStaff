@@ -177,7 +177,7 @@ class KnowledgeSearchService:
             )
 
         if isinstance(result, str):
-            return [result]
+            return [result] if result.strip() else []
         return [chunk.text for chunk in result]
 
     @staticmethod

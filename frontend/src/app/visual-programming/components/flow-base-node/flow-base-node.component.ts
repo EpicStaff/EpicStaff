@@ -11,6 +11,7 @@ import {
     input,
     OnInit,
     Output,
+    output,
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -23,10 +24,7 @@ import { flowUrl } from '@shared/utils';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
-import {
-    keyValueCaption,
-    keyValueSubtitle as formatKeyValueSubtitle,
-} from '../../core/constants/key-value-mode-visuals';
+import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import {
@@ -90,6 +88,7 @@ export class FlowBaseNodeComponent implements OnInit {
     }>();
     @Output() editClicked = new EventEmitter<NodeModel>();
     @Output() deleteClicked = new EventEmitter<NodeModel>();
+    readonly unpackClicked = output<void>();
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     multiSelectActive = input<boolean>(false);
@@ -145,6 +144,13 @@ export class FlowBaseNodeComponent implements OnInit {
             return;
         }
         this.editClicked.emit(this.node);
+    }
+
+    public onUnpackClick(event: MouseEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.isBlockedSubgraph) return;
+        this.unpackClicked.emit();
     }
 
     trackByPort(index: number, port: { id: string }): string {
@@ -227,7 +233,8 @@ export class FlowBaseNodeComponent implements OnInit {
     }
 
     public get hasNumberChip(): boolean {
-        return this.node.nodeNumber != null && this.node.type !== NodeType.START && this.node.type !== NodeType.END;
+        if (this.node.type === NodeType.START || this.node.type === NodeType.END) return false;
+        return this.node.nodeNumber != null;
     }
 
     public get hasDeleteChip(): boolean {
@@ -250,16 +257,16 @@ export class FlowBaseNodeComponent implements OnInit {
         return node ? KEY_VALUE_MODE_COLORS[node.data.mode] : null;
     }
 
-    /** "Mode · Table · N keys" in full, and as the caption under the node shows it, its table name cut short. */
-    public get keyValueSummary(): { full: string; caption: string } | null {
+    /** "Mode / Table / N keys" in full, and as the parts the #N tab shows, its table name cut short. */
+    public get keyValueSummary(): { full: string; captionParts: string[] } | null {
         const node = this.keyValueNode;
         if (!node) return null;
         const table = this.keyValueTablesStorage.tables().find((t) => t.id === node.data.key_value_table);
         const tableName = table?.name ?? null;
         const keyCount = node.data.entries.length;
         return {
-            full: formatKeyValueSubtitle(node.data.mode, tableName, keyCount),
-            caption: keyValueCaption(node.data.mode, tableName, keyCount),
+            full: keyValueSummaryParts(node.data.mode, tableName, keyCount).join(' / '),
+            captionParts: keyValueSummaryParts(node.data.mode, tableName, keyCount, CAPTION_TABLE_NAME_LIMIT),
         };
     }
 

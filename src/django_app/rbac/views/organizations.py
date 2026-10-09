@@ -1,16 +1,20 @@
 import dataclasses
 
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from rbac.access.gates import DenyApiKeyAuth
+from rbac.access.gates import HasOrgPermission
+from rbac.access.org_context import OrgContextService
 from rbac.governance.organizations import (
     OrganizationManagementService,
 )
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.schemas.organizations import (
+    ORGANIZATION_SETTINGS_UPDATE,
     ORGANIZATIONS_CREATE_POST,
     ORGANIZATIONS_DEACTIVATE_POST,
     ORGANIZATIONS_DESTROY_DELETE,
@@ -23,6 +27,7 @@ from rbac.serializers.delete import OrganizationDeleteReportSerializer
 from rbac.serializers.organizations import (
     OrganizationListResponseSerializer,
     OrganizationResponseSerializer,
+    OrganizationSettingsUpdateSerializer,
 )
 from rbac.validation.hard_delete import HardDeleteValidationService
 from rbac.validation.organization import (
@@ -41,8 +46,9 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     """Adaptive management of Organizations.
 
     list / retrieve / partial_update are permission-aware (ORGANIZATIONS bits;
-    superadmin sees all). create / deactivate / reactivate are platform-level
-    and stay superadmin-only via `superadmin_actions`.
+    superadmin sees all). create / deactivate / reactivate / destroy are
+    platform-level and stay superadmin-only via `superadmin_actions`. Every
+    write is JWT-only through the base API-key gate.
 
     Domain errors (404 not-found, 400 name-conflict, 400 last-active-org) are
     raised by the service layer as CustomAPIExeption subclasses and rendered
@@ -62,13 +68,6 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
     _hard_delete_validator = HardDeleteValidationService()
-
-    def get_permissions(self):
-        """Permanent deletion is JWT-only; a leaked key must not erase a tenant."""
-        permissions = super().get_permissions()
-        if getattr(self, "action", None) == "destroy":
-            return [*permissions, DenyApiKeyAuth()]
-        return permissions
 
     @extend_schema(**ORGANIZATIONS_LIST_GET)
     def list(self, request):
@@ -166,3 +165,31 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @staticmethod
     def _is_truthy(raw):
         return str(raw).strip().lower() in ("true", "1") if raw is not None else False
+
+
+class OrganizationSelfServiceViewSet(viewsets.ViewSet):
+    """Active-context self-service settings for the caller's own organization.
+
+    PATCH /api/admin/organizations/settings/ (X-Organization-Id header) — an
+    Org Admin managing their own org's settings, distinct from
+    OrganizationAdminViewSet's superadmin-only org CRUD above.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.ORGANIZATIONS
+
+    _service = OrganizationManagementService()
+    _org_context = OrgContextService()
+
+    @extend_schema(**ORGANIZATION_SETTINGS_UPDATE)
+    def partial_update(self, request):
+        org_id = self._org_context.resolve(request=request, view_kwargs={})
+        serializer = OrganizationSettingsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        org = self._service.update_audit_retention(
+            org_id=org_id,
+            audit_retention_days=serializer.validated_data["audit_retention_days"],
+        )
+        return Response(OrganizationResponseSerializer(org).data)

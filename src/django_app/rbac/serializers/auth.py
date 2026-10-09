@@ -1,5 +1,14 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer,
+    TokenRefreshSerializer,
+)
+from rest_framework_simplejwt.settings import api_settings
+from tables.models.user import DISPLAY_NAME_MAX_LENGTH
+
+from rbac.identity.tokens import is_bound_to_current_password
 
 # ---- First-setup ----
 
@@ -15,6 +24,12 @@ class FirstSetupRequestSerializer(serializers.Serializer):
     # aggregated and formatted uniformly.
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+        help_text="Trimmed. Omit or send null to derive it from the email.",
+    )
 
 
 class _SetupUserPayload(serializers.Serializer):
@@ -65,6 +80,12 @@ class ResetUserRequestSerializer(serializers.Serializer):
     # `AuthValidationService.validate_reset_user`.
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    display_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        max_length=DISPLAY_NAME_MAX_LENGTH,
+        help_text="Trimmed. Omit or send null to derive it from the email.",
+    )
 
 
 class ResetUserResponseSerializer(serializers.Serializer):
@@ -112,8 +133,19 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetRequestResponseSerializer(serializers.Serializer):
-    detail = serializers.CharField()
-    smtp_configured = serializers.BooleanField()
+    detail = serializers.CharField(
+        help_text=(
+            "Human-readable outcome, the same for every email. With SMTP: a "
+            "link has been sent if the email is registered. Without SMTP: reset "
+            "by email is unavailable, ask an administrator."
+        )
+    )
+    smtp_configured = serializers.BooleanField(
+        help_text=(
+            "False when the server has no SMTP relay: self-service reset is "
+            "disabled and nothing was sent. Same value for every email."
+        )
+    )
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
@@ -142,6 +174,30 @@ class LoginSerializer(TokenObtainPairSerializer):
         token["email"] = user.email
         token["is_superadmin"] = user.is_superadmin
         return token
+
+
+class PasswordBoundTokenRefreshSerializer(TokenRefreshSerializer):
+    """Refresh serializer that also rejects tokens from a previous password.
+
+    simplejwt's refresh serializer does not apply `CHECK_REVOKE_TOKEN`, so
+    without this a refresh token outlives the password it was minted under.
+    Rejections raise `TokenError`, the same signal as an expired or
+    malformed token, so the view answers 401 and clears the cookie.
+    """
+
+    def validate(self, attrs):
+        # simplejwt 5.4.0 offers no hook between its decode and its user
+        # lookup, so the token is decoded here and again in super().validate().
+        refresh = self.token_class(attrs["refresh"])
+        user_id = refresh.get(api_settings.USER_ID_CLAIM)
+        user = (
+            get_user_model().objects.filter(**{api_settings.USER_ID_FIELD: user_id}).first()
+            if user_id is not None
+            else None
+        )
+        if user is None or not is_bound_to_current_password(refresh, user):
+            raise TokenError("Token is not bound to the user's current password.")
+        return super().validate(attrs)
 
 
 class LoginResponseSerializer(serializers.Serializer):

@@ -165,6 +165,9 @@ describe('KeyValueEntriesGridComponent rows', () => {
         const link = cell(element, '11', 'session')?.querySelector<HTMLAnchorElement>('a.entries-grid__session-link');
         expect(link?.textContent?.trim()).toBe('Customer onboarding, Session #123');
         expect(link?.getAttribute('href')).toBe('/graph/5/session/123');
+        expect(link?.querySelector('app-svg-icon[icon="arrow-up-right"]')).not.toBeNull();
+        // The link fills its cell, so the cell takes the link styling.
+        expect(cell(element, '11', 'session')?.classList).toContain('entries-grid__cell--link');
     });
 
     it('shows a muted "Manual edit" for a hand-edited entry', async () => {
@@ -172,6 +175,7 @@ describe('KeyValueEntriesGridComponent rows', () => {
         await settle(fixture);
         const modifiedBy = cell(element, '12', 'session');
         expect(modifiedBy?.querySelector('a')).toBeNull();
+        expect(modifiedBy?.classList).not.toContain('entries-grid__cell--link');
         const manualEdit = modifiedBy?.querySelector('.entries-grid__manual-edit');
         expect(manualEdit?.textContent?.trim()).toBe('Manual edit');
         expect(manualEdit?.getAttribute('title')).toBe(
@@ -322,6 +326,8 @@ describe('KeyValueEntriesGridComponent in-place editing', () => {
 
         expect(api.getEntry).toHaveBeenCalledWith(11);
         expect(valueEditor()?.value).toBe('{\n  "plan": "pro"\n}');
+        // In the body, not the grid: a grid only as tall as a few rows would clip it.
+        expect(element.contains(valueEditor())).toBe(false);
 
         type(valueEditor(), '{\n  "plan": "team"\n}');
         keydown(valueEditor(), 'Enter');

@@ -24,6 +24,7 @@ class SubGraphNode:
         subgraph_node_data: SubGraphNodeData,
         unique_subgraph_list: list[SubGraphData],
         graph_builder: StateGraph,
+        org_id: int,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
@@ -32,6 +33,7 @@ class SubGraphNode:
         self.subgraph_node_data = subgraph_node_data
         self._graph_builder = graph_builder
         self.session_id = session_id
+        self.org_id = org_id
         self.node_name = subgraph_node_data.node_name
         self.input_map = subgraph_node_data.input_map
         self.subgraph_data = self._get_graph_data(subgraph_node_data.subgraph_id)
@@ -68,6 +70,7 @@ class SubGraphNode:
             graph=self.subgraph_data.data,
             unique_subgraph_list=self.unique_subgraph_list,
             initial_state=initial_state,
+            org_id=self.org_id,
         )
 
     def _create_subgraph_builder(self):
@@ -222,10 +225,10 @@ class SubGraphNode:
 
         temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
-        if self.output_variable_path == "variables":
-            temp_state["variables"] = DotDict(subgraph_output)
-        elif self.output_variable_path:
-            if self.output_variable_path.startswith("variables."):
+        if self.output_variable_path:
+            if self.output_variable_path == "variables" or self.output_variable_path.startswith(
+                "variables."
+            ):
                 full_path = self.output_variable_path
             else:
                 full_path = f"variables.{self.output_variable_path}"

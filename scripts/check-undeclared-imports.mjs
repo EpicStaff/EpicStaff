@@ -3,7 +3,7 @@
  * CI regression guard: fail when frontend source imports a package that
  * package.json does not declare.
  *
- * Context: EST-3802. Three packages — uuid, jsonc-parser and @types/json-schema —
+ * Context: three packages — uuid, jsonc-parser and @types/json-schema —
  * were imported by src/ while absent from package.json, resolving only by accident
  * through orphaned lockfile entries and transitive devDependencies. A clean install
  * or the removal of an unrelated toolchain package silently broke the build. A grep
