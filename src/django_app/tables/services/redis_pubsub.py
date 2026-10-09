@@ -2,6 +2,7 @@ import contextlib
 import json
 import os
 import time
+from collections import defaultdict
 
 import redis
 from django.conf import settings
@@ -337,22 +338,21 @@ class RedisPubSub:
             if not members:
                 return
 
-            file_refs = []
-
+            paths_by_org = defaultdict(set)
             for member in members:
                 try:
                     member_str = member.decode() if isinstance(member, bytes) else member
                     org_id_str, path = member_str.split(":", 1)
-                    org_id = int(org_id_str)
-                    storage_file = StorageFile.objects.filter(org_id=org_id, path=path).first()
-
-                    if storage_file:
-                        file_refs.append(
-                            SessionStorageFile(session=session, storage_file=storage_file)
-                        )
-
-                except Exception as e:
+                    paths_by_org[int(org_id_str)].add(path)
+                except ValueError as e:
                     logger.warning(f"Skipping malformed session storage entry '{member}': {e}")
+
+            # One query per org, not one per file; a path with no row is skipped.
+            file_refs = [
+                SessionStorageFile(session=session, storage_file=storage_file)
+                for org_id, paths in paths_by_org.items()
+                for storage_file in StorageFile.objects.filter(org_id=org_id, path__in=paths)
+            ]
 
             if file_refs:
                 SessionStorageFile.objects.bulk_create(file_refs, ignore_conflicts=True)

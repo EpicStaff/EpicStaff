@@ -342,3 +342,37 @@ def test_repeated_status_does_not_restart_the_time_to_live_clock(
     running_session.refresh_from_db()
     assert running_session.status_updated_at == an_hour_ago
 
+
+
+@pytest.mark.django_db
+def test_end_status_links_every_written_file_with_one_lookup(
+    default_org, pubsub_with_redis, running_session
+):
+    pubsub, redis_client = pubsub_with_redis
+    written_files = [
+        StorageFile.objects.create(org=default_org, path=path, name=path.rsplit("/", 1)[-1])
+        for path in ("report.txt", "data/table.csv", "data/chart.png")
+    ]
+    redis_client.sadd(
+        f"session:{running_session.id}:storage_mutations",
+        *(f"{default_org.id}:{storage_file.path}" for storage_file in written_files),
+        f"{default_org.id}:deleted-before-the-end.txt",
+        "not-an-entry",
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        pubsub.session_status_handler(
+            _status_message(running_session.id, Session.SessionStatus.END)
+        )
+
+    storage_file_reads = [
+        query["sql"]
+        for query in captured.captured_queries
+        if query["sql"].startswith('SELECT "tables_storagefile"')
+    ]
+    assert len(storage_file_reads) == 1
+    assert set(
+        SessionStorageFile.objects.filter(session=running_session).values_list(
+            "storage_file_id", flat=True
+        )
+    ) == {storage_file.id for storage_file in written_files}
