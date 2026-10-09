@@ -27,6 +27,10 @@ export class PermissionsService implements StorageService {
     private readonly _active = signal<ActivePermissions | null>(null);
     readonly active = this._active.asReadonly();
 
+    /** `null` is a legitimate loaded value for `_active` (a user with zero memberships), so
+     *  "loaded" is tracked separately to tell it apart from "never loaded / cleared". */
+    private readonly _isActivePermissionsLoaded = signal(false);
+
     private readonly _isSuperadmin = signal(false);
 
     private readonly _catalog = signal<CatalogResponse | null>(null);
@@ -38,6 +42,19 @@ export class PermissionsService implements StorageService {
 
     setActivePermissions(p: ActivePermissions | null): void {
         this._active.set(p);
+        this._isActivePermissionsLoaded.set(true);
+    }
+
+    /** Whether the active-org permission set is known (loaded, possibly as `null`), as opposed to
+     *  never loaded or cleared. While false, `can()` returns false without meaning "denied". */
+    isActivePermissionsLoaded(): boolean {
+        return this._isActivePermissionsLoaded();
+    }
+
+    /** Whether the cross-org capabilities from `/me/orgs/` are known. While false,
+     *  `canInAnyOrg()` returns false without meaning "denied". */
+    isOrgPermissionsLoaded(): boolean {
+        return this._orgCaps() !== null;
     }
 
     setSuperadmin(value: boolean): void {
@@ -134,7 +151,7 @@ export class PermissionsService implements StorageService {
     loadActivePermissions(): Observable<ActivePermissions> {
         return this.http.get<ActivePermissions>(`${this.baseUrl}me/`).pipe(
             tap((permissions) => {
-                this._active.set(permissions);
+                this.setActivePermissions(permissions);
                 this.setSuperadmin(permissions.is_superadmin);
             })
         );
@@ -193,6 +210,7 @@ export class PermissionsService implements StorageService {
 
     clear(): void {
         this._active.set(null);
+        this._isActivePermissionsLoaded.set(false);
         this._isSuperadmin.set(false);
         this._catalog.set(null);
         this._orgCaps.set(null);
