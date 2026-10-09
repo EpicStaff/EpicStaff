@@ -18,7 +18,6 @@ from src.shared.redis_keys import (
 )
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
-from tables.models.vector_models import MemoryDatabase
 from tables.services.redis_service import RedisService
 from tables.services.session_access import get_accessible_session
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
@@ -215,15 +214,6 @@ class RunSessionSSEView(SSEMixin):
                 },
             }
 
-        # Memories
-        queryset = MemoryDatabase.objects.filter(payload__run_id=session_id).values("id", "payload")
-        async for memo in self.async_orm_generator(queryset):
-            self.__log(event="memory", state="initial", data=memo["id"])
-            yield {
-                "event": "memory",
-                "data": memo,
-            }
-
     async def get_live_updates(self, pubsub):
         async for item in self._send_held_live_messages():
             yield item
@@ -298,7 +288,7 @@ class RunSessionSSEView(SSEMixin):
         Returns events:
             - messages: for graph session messages
             - status: for session statuses
-            - memory: for memories
+            - done: once the session has finished, just before the stream closes
 
         Append ?test=true to the URL for a finite sample response
         """
