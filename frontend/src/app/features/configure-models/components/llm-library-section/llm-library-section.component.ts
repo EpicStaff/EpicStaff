@@ -28,6 +28,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, LlmLibraryProviderGroup, ModelTypes, ResourceCode } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, LLMLibraryService } from '@shared/services';
+import { escapeHtml } from '@shared/utils';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -298,7 +299,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     public onDelete(model: LlmLibraryModel): void {
         const opts: ConfirmationDialogData = {
             title: 'Delete the model?',
-            message: `Are you sure you want to delete the ${model.customName} model? This will delete it in all agents, tools and flows.`,
+            message: `Are you sure you want to delete the ${escapeHtml(model.customName)} model? This will delete it in all agents, tools and flows.`,
             type: 'danger',
         };
 
