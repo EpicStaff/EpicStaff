@@ -147,6 +147,18 @@ cosign verify-attestation \
   | jq -r '.payload | @base64d | fromjson | .predicate' > django_app.spdx.json
 ```
 
+The release's `docker-compose.yaml` and `.env.example` are signed as well, because the compose file is what decides *which* digests you run: an altered copy could point at an older, genuinely signed EpicStaff image and every per-image check above would still pass. Each file ships with a Sigstore bundle (`<file>.sigstore.json`) produced by `cosign sign-blob` in `publish_release.yml`, so the certificate identity names that workflow rather than `build-and-push.yml`. Verify the files before using them:
+
+```bash
+cosign verify-blob \
+  --bundle docker-compose.yaml.sigstore.json \
+  --certificate-identity-regexp "^https://github.com/EpicStaff/EpicStaff/\.github/workflows/publish_release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/.+)$" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  docker-compose.yaml
+```
+
+Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, including one whose digests were swapped for another release's, fails this check.
+
 ---
 
 ## Key Features 
