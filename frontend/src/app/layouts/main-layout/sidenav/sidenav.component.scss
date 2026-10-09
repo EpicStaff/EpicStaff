@@ -131,6 +131,21 @@
             display: flex;
             justify-content: center;
 
+            // Closes the bottom group with a divider like the workspace switcher's (.org-menu-wrapper
+            // above): it shrinks to the button, so the line is as wide as the button.
+            &.recycle-bin-block {
+                width: fit-content;
+                margin: 0 auto;
+                padding: 0 0 8px;
+                border-bottom: 1px solid var(--color-divider-subtle);
+            }
+
+            // The size of the nav icons above (app-svg-icon size="1.4rem"): Tabler's glyph has the same 24px box.
+            .recycle-bin-icon {
+                font-size: 1.4rem;
+                line-height: 1;
+            }
+
             .sidenav-nav-link {
                 display: flex;
                 align-items: center;

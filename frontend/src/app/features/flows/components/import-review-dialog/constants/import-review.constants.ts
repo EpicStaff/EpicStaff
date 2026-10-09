@@ -30,6 +30,7 @@ export const FLOW_NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
     [NodeType.TABLE]: 'Decision Table Node',
     [NodeType.NOTE]: 'Note',
     [NodeType.KEY_VALUE]: 'Key-Value Node',
+    [NodeType.KNOWLEDGE_RETRIEVER]: 'Knowledge Retriever Node',
 };
 
 export const ENTITY_TYPE_LABELS: Record<string, string> = {

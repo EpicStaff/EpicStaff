@@ -1,0 +1,379 @@
+@switch (status()) {
+    @case ('loading') {
+        <div class="bin-state">
+            <app-loading-spinner size="sm" />
+        </div>
+    }
+    @case ('error') {
+        <div class="bin-state">
+            <app-fetch-error-state
+                title="Couldn't load the recycle bin"
+                (retry)="retryRequested.emit()"
+            />
+        </div>
+    }
+    @default {
+        <!-- A search or filter that matches nothing keeps the table, so its filters can be undone. -->
+        @if (items().length === 0 && !filtered()) {
+            <div class="bin-state bin-empty">
+                <h4 class="empty-title">The recycle bin is empty</h4>
+                <p class="empty-subtitle">{{ emptyHint() }}</p>
+            </div>
+        } @else {
+            <div class="table-wrapper">
+                <div
+                    class="table-header"
+                    [style.grid-template-columns]="gridTemplateColumns()"
+                >
+                    @if (selectable()) {
+                        <div class="table-cell checkbox">
+                            <!-- Nothing to select on an empty (searched or filtered) list. -->
+                            @if (items().length > 0) {
+                                <app-checkbox
+                                    #headerCheckbox
+                                    color="secondary"
+                                    ariaLabel="Select all"
+                                    [checked]="allSelected()"
+                                    [indeterminate]="someSelected()"
+                                    (changed)="onHeaderCheckboxChanged()"
+                                />
+                            }
+                        </div>
+                    }
+                    <div class="table-cell"><span class="col-label">Name</span></div>
+                    @if (countLabel(); as label) {
+                        <div class="table-cell">
+                            <ng-container
+                                *ngTemplateOutlet="
+                                    filterHeader;
+                                    context: {
+                                        label: label,
+                                        items: countFilterItems,
+                                        value: countFilter(),
+                                        key: 'count',
+                                    }
+                                "
+                            />
+                        </div>
+                    }
+                    @if (showKind()) {
+                        <div class="table-cell">
+                            @if (kindFilterItems().length > 1) {
+                                <ng-container
+                                    *ngTemplateOutlet="
+                                        filterHeader;
+                                        context: {
+                                            label: 'Kind',
+                                            items: kindFilterItems(),
+                                            value: kindFilter(),
+                                            key: 'kind',
+                                        }
+                                    "
+                                />
+                            } @else {
+                                <span class="col-label">Kind</span>
+                            }
+                        </div>
+                    }
+                    <div
+                        class="table-cell"
+                        [attr.aria-sort]="ariaSort('deletedAt')"
+                    >
+                        <ng-container
+                            *ngTemplateOutlet="sortHeader; context: { field: 'deletedAt', label: 'Deleted at' }"
+                        />
+                    </div>
+                    <div
+                        class="table-cell"
+                        [attr.aria-sort]="ariaSort('daysLeft')"
+                    >
+                        <ng-container
+                            *ngTemplateOutlet="sortHeader; context: { field: 'daysLeft', label: 'Days left' }"
+                        />
+                    </div>
+                    @if (showActions()) {
+                        <div class="table-cell end"><span class="col-label">Actions</span></div>
+                    }
+                </div>
+                <div class="table-body">
+                    @if (items().length === 0) {
+                        <div class="bin-no-results">No items match the current search or filters.</div>
+                    }
+                    @for (item of items(); track item.key) {
+                        <div class="bin-row-wrapper">
+                            <div
+                                class="table-row"
+                                [class.selected]="isSelected(item)"
+                                [class.table-row--expandable]="isExpandable(item)"
+                                [style.grid-template-columns]="gridTemplateColumns()"
+                                (click)="toggle(item)"
+                            >
+                                @if (selectable()) {
+                                    <!-- Ticking a row doesn't expand it. -->
+                                    <div
+                                        class="table-cell checkbox"
+                                        (click)="$event.stopPropagation()"
+                                    >
+                                        <app-checkbox
+                                            color="secondary"
+                                            [ariaLabel]="'Select ' + item.displayName"
+                                            [checked]="isSelected(item)"
+                                            (changed)="selectionToggled.emit(item)"
+                                        />
+                                    </div>
+                                }
+                                <div class="table-cell">
+                                    @if (isExpandable(item)) {
+                                        <button
+                                            type="button"
+                                            class="bin-name bin-name--toggle"
+                                            [attr.aria-expanded]="isExpanded(item)"
+                                            (click)="$event.stopPropagation(); toggle(item)"
+                                        >
+                                            <app-svg-icon
+                                                icon="chevron-down"
+                                                size="1rem"
+                                                class="bin-collapse-icon"
+                                                [class.collapsed]="!isExpanded(item)"
+                                            />
+                                            <span
+                                                class="bin-name-text"
+                                                appTooltipOnOverflow
+                                                [matTooltip]="item.name"
+                                                matTooltipPosition="above"
+                                                matTooltipShowDelay="500"
+                                                matTooltipClass="bin-name-tooltip"
+                                                >{{ item.displayName }}</span
+                                            >
+                                        </button>
+                                    } @else {
+                                        <span class="bin-name">
+                                            <span
+                                                class="bin-name-text"
+                                                appTooltipOnOverflow
+                                                [matTooltip]="item.name"
+                                                matTooltipPosition="above"
+                                                matTooltipShowDelay="500"
+                                                matTooltipClass="bin-name-tooltip"
+                                                >{{ item.displayName }}</span
+                                            >
+                                        </span>
+                                    }
+                                </div>
+                                @if (countLabel()) {
+                                    <div class="table-cell">
+                                        <span class="bin-muted bin-count">{{ item.contentsTotal }}</span>
+                                    </div>
+                                }
+                                @if (showKind()) {
+                                    <div class="table-cell">
+                                        <span class="bin-muted bin-kind">{{ item.kind }}</span>
+                                    </div>
+                                }
+                                <div class="table-cell">
+                                    <span
+                                        class="bin-muted bin-deleted"
+                                        [matTooltip]="item.deletedAt | date: dateFormat"
+                                        matTooltipPosition="above"
+                                        >{{ deletedLabel(item) }}</span
+                                    >
+                                </div>
+                                <div class="table-cell">
+                                    <span
+                                        class="bin-muted bin-days-left"
+                                        [matTooltip]="purgeTitle(item)"
+                                        matTooltipPosition="above"
+                                        >{{ timeLeftLabel(item) }}</span
+                                    >
+                                </div>
+                                @if (showActions()) {
+                                    <div
+                                        class="table-cell end"
+                                        (click)="$event.stopPropagation()"
+                                    >
+                                        <div class="bin-actions">
+                                            @if (canRestore()) {
+                                                <app-activate-button
+                                                    icon="refresh"
+                                                    tooltip="Restore"
+                                                    [disabled]="isPending(item)"
+                                                    (triggered)="restoreRequested.emit(item)"
+                                                />
+                                            }
+                                            @if (canPurge()) {
+                                                <app-delete-button
+                                                    tooltip="Delete permanently"
+                                                    [disabled]="isPending(item)"
+                                                    (triggered)="purgeRequested.emit(item)"
+                                                />
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            @if (isExpandable(item)) {
+                                <div
+                                    class="bin-expansion grid-collapsible"
+                                    [class.expanded]="isExpanded(item)"
+                                >
+                                    <!-- The collapsing grid item: no padding or margin, so it can shrink to 0. -->
+                                    <div class="bin-expansion__clip">
+                                        @if (item.details.length) {
+                                            <dl class="bin-details">
+                                                @for (detail of item.details; track detail.label) {
+                                                    <div
+                                                        class="bin-details__row"
+                                                        [class.bin-details__row--notice]="detail.format === 'notice'"
+                                                    >
+                                                        <dt class="bin-details__label">{{ detail.label }}</dt>
+                                                        <dd class="bin-details__value">
+                                                            @switch (detail.format) {
+                                                                @case ('date') {
+                                                                    {{ detail.value | date: dateFormat }}
+                                                                }
+                                                                @case ('size') {
+                                                                    {{ detail.value | fileSize: 'auto' }}
+                                                                }
+                                                                @case ('empty') {
+                                                                    <span class="bin-details__empty">—</span>
+                                                                }
+                                                                @case ('notice') {
+                                                                    {{ detail.value }}
+                                                                }
+                                                                @default {
+                                                                    <!-- At most 3 lines; the full text is in the tooltip when cut.
+                                                                         Parts the backend joins with " · " (index states) read as a / list. -->
+                                                                    <span
+                                                                        class="bin-details__text"
+                                                                        appTooltipOnOverflow
+                                                                        [matTooltip]="detailText(detail)"
+                                                                        matTooltipPosition="above"
+                                                                        matTooltipShowDelay="500"
+                                                                        matTooltipClass="bin-name-tooltip"
+                                                                    >
+                                                                        @for (
+                                                                            part of detailParts(detail);
+                                                                            track $index;
+                                                                            let last = $last
+                                                                        ) {
+                                                                            {{ part }}
+                                                                            @if (!last) {
+                                                                                <span
+                                                                                    class="bin-details__separator"
+                                                                                    aria-hidden="true"
+                                                                                    >/</span
+                                                                                >
+                                                                            }
+                                                                        }
+                                                                    </span>
+                                                                }
+                                                            }
+                                                        </dd>
+                                                    </div>
+                                                }
+                                            </dl>
+                                        }
+                                        @if (item.contents.length > 0) {
+                                            <app-flow-node-list
+                                                [nodes]="item.contents"
+                                                [expanded]="isExpanded(item)"
+                                                [nodeTypeLabels]="contentLabels"
+                                                [kindVisuals]="contentVisuals"
+                                                [moreCount]="moreCount(item)"
+                                                [showAll]="canShowAll(item)"
+                                                [presetSearch]="contentSearch(item)"
+                                                [showAllLimit]="showAllLimit"
+                                                [showAllPending]="isLoadingContents(item)"
+                                                (showAllRequested)="showAllRequested.emit(item)"
+                                                [filterPlaceholder]="filterPlaceholder(item)"
+                                                [filterGroup]="contentFilterGroup(item)"
+                                                [flush]="true"
+                                                [tree]="item.source === 'storage'"
+                                                [filterable]="item.source !== 'storage'"
+                                                [hideSingleOptionFilter]="true"
+                                                [hideSingleItemSearch]="true"
+                                                [nodeTypeFilterTransparent]="true"
+                                                searchPlaceholder="Search..."
+                                                emptyText="Nothing matches."
+                                            />
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        @if (showPaginator()) {
+            @if (page(); as page) {
+                <div class="bin-pagination">
+                    <app-pagination-controls
+                        [pageSize]="page.size"
+                        [totalCount]="page.totalCount"
+                        [currentPage]="page.current"
+                        [maxPagesToShow]="5"
+                        (pageChange)="pageRequested.emit($event)"
+                    ></app-pagination-controls>
+                </div>
+            }
+        }
+    }
+}
+
+<!-- A sortable column title: the same reset button and label as app-table's clickable header. -->
+<ng-template
+    #sortHeader
+    let-field="field"
+    let-label="label"
+>
+    <button
+        type="button"
+        class="sort-header"
+        [class.sort-header--active]="sort().field === field"
+        (click)="sortRequested.emit(field)"
+    >
+        <span class="col-label">{{ label }}</span>
+        <!-- Always shown, pointing the way the column sorts (dimmed while another column is sorted). -->
+        <app-svg-icon
+            icon="chevron-down"
+            size="1rem"
+            class="sort-header__icon"
+            [class.sort-header__icon--asc]="arrowDirection(field) === 'asc'"
+        />
+    </button>
+</ng-template>
+
+<!-- A filterable column title: the single-choice filter header of the shared app-table (table.component.html). -->
+<ng-template
+    #filterHeader
+    let-label="label"
+    let-items="items"
+    let-value="value"
+    let-key="key"
+>
+    <app-select
+        #filterSelect
+        panelClass="bin-filter-menu"
+        [hideTrigger]="true"
+        [items]="items"
+        [selectedValue]="value"
+        (changed)="onFilterChange(key, $event)"
+    >
+        <button
+            type="button"
+            class="col-label col-label--filter"
+            [class.col-label--filter--active]="value !== null"
+            [appSelectTrigger]="filterSelect"
+        >
+            {{ label }}
+            @if (value !== null) {
+                <span class="col-label__count">(1)</span>
+            }
+            <app-svg-icon
+                icon="filter-rows"
+                size="1rem"
+            />
+        </button>
+    </app-select>
+</ng-template>

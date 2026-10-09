@@ -108,6 +108,32 @@
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
+        @if (recycleBinNavItem.isPermitted()) {
+            <li
+                class="sidenav-nav-item"
+                (mouseenter)="recycleBinNavItem.showTooltip = true"
+                (mouseleave)="recycleBinNavItem.showTooltip = false"
+            >
+                <div class="tooltip-wrapper recycle-bin-block">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="resolveRouteLink(recycleBinNavItem)"
+                    >
+                        <div class="sidenav-link-icon">
+                            <!-- Tabler's outline trash, from the webfont the app ships: the sprite's trash is solid. -->
+                            <i
+                                class="ti ti-trash recycle-bin-icon"
+                                aria-hidden="true"
+                            ></i>
+                        </div>
+                    </a>
+                    <app-tooltip
+                        [text]="recycleBinNavItem.label"
+                        [visible]="recycleBinNavItem.showTooltip"
+                    ></app-tooltip>
+                </div>
+            </li>
+        }
         @if (isEpicChatEnabled) {
             <li class="sidenav-nav-item">
                 <div class="tooltip-wrapper">

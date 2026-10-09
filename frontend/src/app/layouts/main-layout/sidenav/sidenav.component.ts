@@ -21,6 +21,7 @@ import { filter, map } from 'rxjs/operators';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
@@ -73,6 +74,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
+    public recycleBinNavItem: NavItem;
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
     public accessToken: string;
@@ -240,6 +242,18 @@ export class LeftSidebarComponent implements AfterViewInit {
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
         });
+
+        // Hidden when no bin tab is readable, the same rule as Files. It has no active (purple) state
+        // by design: it stays gray on /recycle-bin/*.
+        this.recycleBinNavItem = {
+            id: 'recycle-bin',
+            routeLink: 'recycle-bin',
+            icon: 'trash',
+            label: 'Recycle Bin',
+            isPermitted: () =>
+                visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
+            showTooltip: false,
+        };
     }
 
     public ngAfterViewInit(): void {

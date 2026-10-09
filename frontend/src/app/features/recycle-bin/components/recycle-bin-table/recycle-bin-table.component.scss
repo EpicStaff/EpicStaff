@@ -1,0 +1,368 @@
+// Takes the height the tab leaves it, so the header stays put and only the rows scroll.
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+// Table chrome mirrors the shared app-table (shared/components/table/table.component.scss), which the
+// Secrets list uses. The bin can't use app-table itself: its rows expand into their info and contents.
+.table-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table-header {
+    flex-shrink: 0;
+    display: grid;
+    align-items: center;
+    min-height: 2.25rem;
+    background: var(--color-background-body);
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.col-label {
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    color: var(--text);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.table-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+// The divider sits on the wrapper, so an opened row's info and contents stay inside its row's block.
+.bin-row-wrapper {
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.table-row {
+    display: grid;
+    align-items: center;
+    min-height: 3rem;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background: var(--transparent-white-4);
+    }
+}
+
+.table-cell {
+    display: flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    color: var(--text);
+    min-width: 0;
+
+    &.end {
+        justify-content: flex-end;
+    }
+
+    &.checkbox {
+        justify-content: center;
+        width: 2rem;
+        padding: 0;
+    }
+}
+
+// The Kind filter header: app-table's .col-label--filter (table.component.scss).
+.col-label--filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.col-label__count {
+    color: var(--accent-color);
+    white-space: nowrap;
+}
+
+// The whole row expands it (the name button stays the keyboard way in).
+.table-row--expandable {
+    cursor: pointer;
+}
+
+.table-row.selected {
+    background: var(--graphite-750);
+}
+
+// A sortable column title: app-table's clickable header group (.col-label-group--clickable).
+.sort-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    // Column titles stay white, sorted or not; the arrow marks the sorted one.
+    color: var(--color-text-primary);
+    cursor: pointer;
+
+    .col-label {
+        color: inherit;
+    }
+
+    &__icon {
+        transition: transform 0.2s ease;
+        // Dimmed until its column is the sorted one.
+        color: var(--text-secondary-60);
+
+        &--asc {
+            transform: rotate(180deg);
+        }
+    }
+
+    &--active &__icon {
+        color: inherit;
+    }
+}
+
+// Cell text: the same type as the Secrets list cells.
+.bin-name-text,
+.bin-muted {
+    font-weight: var(--text-body-weight);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    letter-spacing: 0;
+}
+
+.bin-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--color-text-primary);
+}
+
+// Expandable rows: the name is a real button (keyboard and screen readers), styled as plain text.
+.bin-name--toggle {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+}
+
+// The expanded area: details, then contents, flush with the row and with each other (no margins,
+// no gap; the node list gets `flush`). `.grid-collapsible` (styles/_collapsible.scss) collapses
+// __clip to a 0fr row, so __clip has no padding or margin.
+.bin-expansion__clip {
+    padding: 0;
+    margin: 0;
+}
+
+// Same block look as the node list below it (flow-node-list __inner), label/value type as the
+// Files details dialog (storage-details-dialog __label / __value).
+.bin-details {
+    display: grid;
+    grid-template-columns: minmax(96px, max-content) minmax(0, 1fr);
+    gap: 6px 16px;
+    margin: 0;
+    padding: 12px;
+    background: var(--color-ks-transparent-black-28);
+
+    &__row {
+        display: contents;
+    }
+
+    &__label {
+        margin: 0;
+        text-align: end;
+        color: var(--text-secondary-60);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+
+    &__value {
+        margin: 0;
+        min-width: 0;
+        color: var(--color-text-primary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        overflow-wrap: anywhere;
+        white-space: pre-line;
+    }
+
+    &__empty {
+        color: var(--text-secondary-60);
+    }
+
+    // Long text (a description, instructions) stops at 3 lines with "…".
+    &__text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        overflow: hidden;
+    }
+
+    &__separator {
+        margin: 0 6px;
+        color: var(--transparent-white-16);
+    }
+
+    // How the item comes back (shared, without an agent, into a new folder…): the system accent.
+    &__row--notice &__value {
+        color: var(--accent-color);
+    }
+}
+
+// The opened info and contents are square: a row below continues them. Only the last row's
+// opening ends rounded, clipped by the table's own rounded border (.table-wrapper).
+// The contents search takes a quarter of the row; the filter keeps its own width.
+.bin-expansion__clip > app-flow-node-list {
+    --flow-node-list-radius: 0;
+    --flow-node-list-search-width: 25%;
+}
+
+// Long names end in "…"; the tooltip holds the full name (a storage row's full path).
+.bin-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bin-collapse-icon {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+
+    &.collapsed {
+        transform: rotate(-90deg);
+    }
+}
+
+.bin-muted {
+    color: var(--text-secondary-60);
+}
+
+.bin-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.bin-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+}
+
+// Same empty state as the Organizations table (table.component.scss, [tableEmpty]).
+.bin-empty {
+    gap: 8px;
+    text-align: center;
+
+    .empty-title {
+        margin: 0;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        color: var(--text);
+    }
+
+    .empty-subtitle {
+        margin: 0;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        color: var(--text-secondary-60);
+    }
+}
+
+// The no-results row of the shared app-table (.table-no-results), under the header.
+.bin-no-results {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    color: var(--text-secondary-60);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    text-align: center;
+}
+
+.bin-pagination {
+    display: flex;
+    justify-content: center;
+}
+
+// The header filters open the same menu look as the flow card's "⋮" menu
+// (features/flows/.../flow-menu), not the boxed select panel.
+::ng-deep .bin-filter-menu .selector__dropdown {
+    min-width: 180px;
+    padding: 6px;
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-flow-card-bg);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px var(--black-alpha-30);
+}
+
+::ng-deep .bin-filter-menu .selector__list {
+    padding: 0;
+    border-radius: inherit;
+}
+
+::ng-deep .bin-filter-menu .selector__option {
+    min-height: 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    background: transparent;
+    transition: background-color 0.15s;
+
+    &:hover {
+        background-color: var(--white-alpha-8);
+    }
+
+    &:active {
+        background-color: var(--white-alpha-12);
+    }
+
+    &.selector__option--selected {
+        color: var(--accent-color);
+        background: transparent;
+    }
+
+    // "All" first, set apart like the menu's first item.
+    &:first-child {
+        border-bottom: 1px solid var(--color-flow-card-bg);
+        margin-bottom: 2px;
+        border-radius: 6px 6px 0 0;
+    }
+}

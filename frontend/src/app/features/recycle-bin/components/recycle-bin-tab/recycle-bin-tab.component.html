@@ -1,0 +1,82 @@
+<div class="bin-toolbar">
+    @if (showSearch()) {
+        <div class="bin-toolbar__lead">
+            <app-search
+                placeholder="Search by name..."
+                width="280px"
+                [searchTerm]="searchTerm()"
+                (searchTermChange)="onSearch($event)"
+            />
+            @if (expandableKeys().length > 0) {
+                <app-button
+                    class="bin-toolbar__expand-all"
+                    type="outline-primary"
+                    (click)="onToggleAllExpanded()"
+                >
+                    {{ allExpanded() ? 'Collapse all' : 'Expand all' }}
+                </app-button>
+            }
+        </div>
+    }
+    @if (selectedCount() > 0) {
+        <!-- Text buttons like the Flows pages' bulk buttons, outlined. -->
+        <div class="bin-toolbar__actions">
+            @if (canRestore()) {
+                <app-button
+                    class="bin-toolbar__restore-selected"
+                    type="outline-primary"
+                    leftIcon="refresh"
+                    [disabled]="bulkBusy()"
+                    (click)="onRestoreSelected()"
+                >
+                    {{ restoreSelectedLabel() }}
+                </app-button>
+            }
+            @if (canPurge()) {
+                <app-button
+                    class="bin-toolbar__delete-selected"
+                    type="outline-danger"
+                    leftIcon="trash"
+                    [disabled]="bulkBusy()"
+                    (click)="onDeleteSelected()"
+                >
+                    {{ deleteSelectedLabel() }}
+                </app-button>
+            }
+        </div>
+    }
+</div>
+
+<app-recycle-bin-table
+    [items]="items()"
+    [status]="status()"
+    [canRestore]="canRestore()"
+    [canPurge]="canPurge()"
+    [pluralNoun]="tab().pluralNoun"
+    [retentionDays]="retentionDays()"
+    [pendingKeys]="pendingKeys()"
+    [page]="page()"
+    [showKind]="showKind()"
+    [countLabel]="countLabel()"
+    [countFilter]="countFilter()"
+    [selectable]="selectable()"
+    [selectedKeys]="selectedKeys()"
+    [sort]="sort()"
+    [filtered]="filtered()"
+    [searchTerm]="searchTerm().trim()"
+    [kindOptions]="kindOptions()"
+    [kindFilter]="kindFilter()"
+    [(expandedKeys)]="expandedKeys"
+    [loadingContentKeys]="loadingContentKeys()"
+    (showAllRequested)="onShowAll($event)"
+    (restoreRequested)="onRestore($event)"
+    (purgeRequested)="onPurge($event)"
+    (retryRequested)="onRetry()"
+    (pageRequested)="onPageRequested($event)"
+    (selectionToggled)="onSelectionToggled($event)"
+    (allToggled)="onAllToggled($event)"
+    [columnDirections]="columnDirections()"
+    (sortRequested)="onSort($event)"
+    (kindFilterChanged)="onKindFilterChanged($event)"
+    (countFilterChanged)="onCountFilterChanged($event)"
+/>
