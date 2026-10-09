@@ -1,14 +1,11 @@
-import json
-from uuid import uuid4
-
 import fakeredis
 import pytest
-from django.conf import settings
 
-from tables.models import GraphSessionMessage
-from tables.models.graph_models import Graph
-from tables.models.session_models import Session
-from tables.services.redis_pubsub import RedisPubSub
+from tables.services.session_token_usage import (
+    MessageTokenUsage,
+    SessionTokenUsageCounter,
+    sum_token_usage,
+)
 
 # None of these tests touch the database themselves, but tests/conftest.py has an
 # autouse `heal_builtin_roles` fixture that queries the Role table before every
@@ -18,46 +15,35 @@ from tables.services.redis_pubsub import RedisPubSub
 pytestmark = pytest.mark.django_db
 
 
-class _StubRedisClient:
-    def __init__(self, keyed_payloads: dict[str, dict]):
-        self._keyed_payloads = keyed_payloads
-
-    def keys(self, pattern):
-        return list(self._keyed_payloads.keys())
-
-    def get(self, key):
-        return json.dumps(self._keyed_payloads[key])
+def _with_token_usage(token_usage: dict) -> dict:
+    return {"message_type": "agent", "token_usage": token_usage}
 
 
-def _message_with_token_usage(token_usage: dict) -> GraphSessionMessage:
-    return GraphSessionMessage(message_data={"token_usage": token_usage})
-
-
-def test_calculate_subgraph_token_usage_sums_cached_prompt_tokens():
-    messages = [
-        _message_with_token_usage(
-            {
-                "total_tokens": 100,
-                "prompt_tokens": 60,
-                "completion_tokens": 40,
-                "successful_requests": 1,
-                "cached_prompt_tokens": 20,
-                "total_cost_usd": 0.0012,
-            }
-        ),
-        _message_with_token_usage(
-            {
-                "total_tokens": 50,
-                "prompt_tokens": 30,
-                "completion_tokens": 20,
-                "successful_requests": 1,
-                "cached_prompt_tokens": 10,
-                "total_cost_usd": 0.0008,
-            }
-        ),
-    ]
-
-    total_usage = RedisPubSub._calculate_subgraph_token_usage(messages)
+def test_sum_token_usage_sums_cached_prompt_tokens():
+    total_usage = sum_token_usage(
+        [
+            _with_token_usage(
+                {
+                    "total_tokens": 100,
+                    "prompt_tokens": 60,
+                    "completion_tokens": 40,
+                    "successful_requests": 1,
+                    "cached_prompt_tokens": 20,
+                    "total_cost_usd": 0.0012,
+                }
+            ),
+            _with_token_usage(
+                {
+                    "total_tokens": 50,
+                    "prompt_tokens": 30,
+                    "completion_tokens": 20,
+                    "successful_requests": 1,
+                    "cached_prompt_tokens": 10,
+                    "total_cost_usd": 0.0008,
+                }
+            ),
+        ]
+    )
 
     assert total_usage == pytest.approx(
         {
@@ -71,8 +57,8 @@ def test_calculate_subgraph_token_usage_sums_cached_prompt_tokens():
     )
 
 
-def test_calculate_subgraph_token_usage_defaults_missing_cached_prompt_tokens_to_zero():
-    old_format_message = _message_with_token_usage(
+def test_sum_token_usage_defaults_missing_fields_to_zero():
+    old_format_message = _with_token_usage(
         {
             "total_tokens": 100,
             "prompt_tokens": 60,
@@ -81,103 +67,90 @@ def test_calculate_subgraph_token_usage_defaults_missing_cached_prompt_tokens_to
         }
     )
 
-    total_usage = RedisPubSub._calculate_subgraph_token_usage([old_format_message])
+    total_usage = sum_token_usage([old_format_message])
 
     assert total_usage["cached_prompt_tokens"] == 0
     assert total_usage["total_tokens"] == 100
     assert total_usage["total_cost_usd"] == 0
 
 
-def test_calculate_total_token_usage_skips_empty_message_data_without_aborting():
-    session_id = "session-1"
-    keyed_payloads = {
-        f"graph:message:{session_id}:1": {
-            "message_data": {
-                "token_usage": {
-                    "total_tokens": 100,
-                    "prompt_tokens": 60,
-                    "completion_tokens": 40,
-                    "successful_requests": 1,
-                    "cached_prompt_tokens": 20,
-                    "total_cost_usd": 0.0015,
-                }
-            }
-        },
-        f"graph:message:{session_id}:2": {"message_data": {}},
-        f"graph:message:{session_id}:3": {
-            "message_data": {
-                "token_usage": {
-                    "total_tokens": 50,
-                    "prompt_tokens": 30,
-                    "completion_tokens": 20,
-                    "successful_requests": 1,
-                    "cached_prompt_tokens": 10,
-                    "total_cost_usd": 0.0005,
-                }
-            }
-        },
-    }
+def test_sum_token_usage_reads_output_token_usage_and_skips_messages_without_any():
+    total_usage = sum_token_usage(
+        [
+            {"message_type": "finish", "output": {"token_usage": {"total_tokens": 7}}},
+            {"message_type": "finish", "output": "plain text"},
+            {},
+            None,
+        ]
+    )
 
-    redis_pubsub = RedisPubSub()
-    redis_pubsub.redis_client = _StubRedisClient(keyed_payloads)
+    assert total_usage["total_tokens"] == 7
 
-    total_usage = redis_pubsub._calculate_total_token_usage(session_id)
 
-    assert total_usage == pytest.approx(
-        {
-            "total_tokens": 150,
-            "prompt_tokens": 90,
-            "completion_tokens": 60,
-            "successful_requests": 2,
-            "cached_prompt_tokens": 30,
-            "total_cost_usd": 0.002,
-        }
+def _message_usage(session_id, message_uuid, total_tokens, total_cost_usd=0.0):
+    return MessageTokenUsage(
+        session_id=session_id,
+        message_uuid=message_uuid,
+        token_usage=sum_token_usage(
+            [_with_token_usage({"total_tokens": total_tokens, "total_cost_usd": total_cost_usd})]
+        ),
     )
 
 
-def test_calculate_total_token_usage_defaults_missing_total_cost_usd_to_zero():
-    session_id = "session-2"
-    keyed_payloads = {
-        f"graph:message:{session_id}:1": {
-            "message_data": {
-                "token_usage": {
-                    "total_tokens": 100,
-                    "prompt_tokens": 60,
-                    "completion_tokens": 40,
-                    "successful_requests": 1,
-                    "cached_prompt_tokens": 20,
-                }
-            }
-        },
-    }
+def test_counter_adds_per_session_and_reads_back_the_totals():
+    redis_client = fakeredis.FakeRedis(decode_responses=True)
+    counter = SessionTokenUsageCounter(redis_client)
 
-    redis_pubsub = RedisPubSub()
-    redis_pubsub.redis_client = _StubRedisClient(keyed_payloads)
+    counter.add_once([_message_usage(1, "a", 100, 0.0015)])
+    counter.add_once([_message_usage(1, "b", 50, 0.0005), _message_usage(2, "c", 50)])
 
-    total_usage = redis_pubsub._calculate_total_token_usage(session_id)
-
-    assert total_usage["total_cost_usd"] == 0
-    assert total_usage["total_tokens"] == 100
+    assert counter.read(1) == pytest.approx(
+        {
+            "total_tokens": 150,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.002,
+        }
+    )
+    assert counter.read(2)["total_tokens"] == 50
+    assert counter.read(3)["total_tokens"] == 0
 
 
-def test_graph_session_message_handler_buffers_node_type(default_org, monkeypatch):
-    # close_old_connections() would close the test transaction's connection.
-    monkeypatch.setattr("tables.services.redis_pubsub.close_old_connections", lambda: None)
-    graph = Graph.objects.create(name="flow", org=default_org)
-    session = Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
-    pubsub = RedisPubSub()
-    pubsub.redis_client = fakeredis.FakeRedis(decode_responses=True)
-    payload = {
-        "session_id": session.id,
-        "name": "agent_1 #5",
-        "execution_order": 0,
-        "timestamp": "2026-10-07T12:41:02.809000Z",
-        "message_data": {"message_type": "start", "input": {}},
-        "uuid": str(uuid4()),
-        "node_type": "AGENT",
-    }
+def test_counter_adds_a_message_once_however_often_it_is_offered():
+    counter = SessionTokenUsageCounter(fakeredis.FakeRedis(decode_responses=True))
 
-    pubsub.graph_session_message_handler({"data": json.dumps(payload)})
+    counter.add_once([_message_usage(1, "a", 100), _message_usage(1, "a", 100)])
+    counter.add_once([_message_usage(1, "a", 100), _message_usage(1, "b", 7)])
 
-    [buffered] = pubsub.buffers[settings.GRAPH_MESSAGES_CHANNEL]
-    assert buffered["node_type"] == "AGENT"
+    assert counter.read(1)["total_tokens"] == 107
+
+
+def test_counter_does_not_count_a_message_a_concurrent_caller_counted_meanwhile(monkeypatch):
+    server = fakeredis.FakeServer()
+    counter = SessionTokenUsageCounter(fakeredis.FakeRedis(server=server, decode_responses=True))
+    concurrent_counter = SessionTokenUsageCounter(
+        fakeredis.FakeRedis(server=server, decode_responses=True)
+    )
+    message_usage = _message_usage(1, "a", 100)
+    find_uncounted = SessionTokenUsageCounter._uncounted
+    calls = []
+
+    def concurrent_caller_counts_first(pipeline, message_usages):
+        uncounted = find_uncounted(pipeline, message_usages)
+        calls.append(len(uncounted))
+        if len(calls) == 1:
+            # Between this caller's check and its write, another one counts the message.
+            concurrent_counter.add_once([message_usage])
+        return uncounted
+
+    monkeypatch.setattr(
+        SessionTokenUsageCounter, "_uncounted", staticmethod(concurrent_caller_counts_first)
+    )
+
+    counter.add_once([message_usage])
+
+    assert counter.read(1)["total_tokens"] == 100
+    # This caller's first check, the concurrent caller's, then this caller's retry.
+    assert calls == [1, 1, 0]

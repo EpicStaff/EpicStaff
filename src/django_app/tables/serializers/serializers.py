@@ -6,6 +6,7 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.validators.trigger_payload_validator import validate_trigger_payload
 
@@ -248,13 +249,30 @@ class InspectImportRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
 
 
+class CodeRunTargetSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=sorted(CODE_RUN_TARGETS))
+    id = serializers.IntegerField(min_value=1)
+
+
 class RunPythonCodeSerializer(serializers.Serializer):
+    """Exactly one of `target` (a code slot of a node, run as a real run would)
+    or `python_code_id` (the bare code, without the node's storage)."""
+
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="python_code",
+        required=False,
     )
+    target = CodeRunTargetSerializer(required=False)
     variables = serializers.DictField(
         child=serializers.JSONField(),
         required=False,
         default=dict,
     )
+
+    def validate(self, attrs):
+        if ("target" in attrs) == ("python_code" in attrs):
+            raise serializers.ValidationError(
+                "Provide exactly one of `target` or `python_code_id`."
+            )
+        return attrs

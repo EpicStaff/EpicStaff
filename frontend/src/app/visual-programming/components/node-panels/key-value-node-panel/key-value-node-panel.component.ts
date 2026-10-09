@@ -37,7 +37,7 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
 import {
     catchError,
     debounceTime,
@@ -63,6 +63,7 @@ import { KeyValueTablesApiService } from '../../../../features/key-value-tables/
 import { KeyValueTablesStorageService } from '../../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { KEY_VALUE_MODE_LABELS } from '../../../core/constants/key-value-mode-visuals';
 import {
     canConfigureMode,
     duplicateWriteKeys,
@@ -112,11 +113,12 @@ const KEY_HELP = 'Use {variables.name} to insert a variable into the key';
 const DUPLICATE_VARIABLE_HINT = 'Duplicate variable — use a different variable';
 const OVERLAPPING_VARIABLE_HINT = 'Overlaps another variable — use a different variable';
 const CREATE_TABLE_ACTION: SelectDropdownHeaderAction = { icon: 'plus', label: 'Create table', iconOnly: true };
-const MODE_ITEMS: SelectItem<KeyValueMode>[] = [
-    { name: 'Read', value: 'read' },
-    { name: 'Write', value: 'write' },
-    { name: 'Delete', value: 'delete' },
-];
+// The dot takes the node's stripe colour, so the select and the canvas never disagree.
+const MODE_ITEMS: SelectItem<KeyValueMode>[] = (['read', 'write', 'delete'] as const).map((mode) => ({
+    name: KEY_VALUE_MODE_LABELS[mode],
+    value: mode,
+    dotColor: KEY_VALUE_MODE_COLORS[mode],
+}));
 const NO_READ_NOTICE = 'You need View permission on Key-Value Tables to configure this node.';
 // Names the permissions KEY_VALUE_MODE_ACTIONS lists, as the role editor calls them.
 const MODE_LOCKED_NOTICE: Record<KeyValueMode, string> = {
@@ -384,6 +386,11 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
             const draft = this.valueDrafts.valueFor(node.id, entries[index].key, occurrences[index]);
             if (mode === 'delete' && draft !== undefined) this.hiddenValues.set(row, draft);
         });
+        // A node with no keys opens on one blank row, as Add key adds, so the first key needs no extra click.
+        // The save leaves an empty row out, so the node stays unchanged until a key is typed.
+        if (entries.length === 0 && !untracked(this.configurationLocked)) {
+            form.controls.entries.push(this.createNewEntryGroup());
+        }
 
         // A write key or a read variable repeats because of the other rows, which its own row doesn't see change.
         const entriesArray = form.controls.entries;
@@ -467,7 +474,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
                 if (!table) return;
                 this.toastService.success(`Table "${table.name}" created`);
                 this.selectTable(table.id);
-                // Through the shared cache, so the Files page and other panels list the new table too;
+                // Through the shared cache, so the Storage page and other panels list the new table too;
                 // a reload, as a load already in flight may have started before the create.
                 this.trackTablesLoad(this.keyValueTablesStorage.reloadTables());
             });
@@ -478,12 +485,10 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         return this.entries.length >= KEY_VALUE_MAX_KEYS;
     }
 
-    /** Focuses the new row's key, so its key help shows under it as the user starts typing. */
+    /** Leaves the new row's key unfocused: focusing it would open its key suggestions unasked. */
     protected addEntry(): void {
         if (this.atKeyLimit) return;
         this.entries.push(this.createNewEntryGroup());
-        const newIndex = this.entries.length - 1;
-        afterNextRender(() => this.keyInputOf(newIndex)?.focus(), { injector: this.injector });
     }
 
     protected removeEntry(index: number): void {
@@ -497,12 +502,7 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
     protected onKeyInput(entryIndex: number, event: Event): void {
         const input = event.target as HTMLInputElement;
         this.keyVariablePicker.onInput(entryIndex, event);
-        if (input.value.includes('{')) {
-            this.dismissSuggestions();
-            return;
-        }
-        this.suggestionTarget.set({ entryIndex, input });
-        this.keySearch$.next({ entryIndex, search: input.value });
+        this.searchKeySuggestions(entryIndex, input);
     }
 
     /** An open list takes the keys it uses first, Enter included; Enter then moves on (moveOnEnter). */
@@ -518,8 +518,17 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         this.keyVariablePicker.onCaretMove(entryIndex, event);
     }
 
-    protected onKeyFocus(entryIndex: number): void {
+    /** A click into a key that already has focus, say after Escape closed the list, opens it again. */
+    protected onKeyClick(entryIndex: number, event: MouseEvent): void {
+        this.onKeyCaretMove(entryIndex, event);
+        if (this.suggestionTarget()?.entryIndex === entryIndex) return;
+        this.searchKeySuggestions(entryIndex, event.target as HTMLInputElement);
+    }
+
+    /** Offers the stored keys before anything is typed, the way a value field offers its variables. */
+    protected onKeyFocus(entryIndex: number, event: FocusEvent): void {
         this.keyHelpRow.set(this.entries.at(entryIndex));
+        this.searchKeySuggestions(entryIndex, event.target as HTMLInputElement);
     }
 
     protected onKeyBlur(entryIndex: number, event: FocusEvent): void {
@@ -727,10 +736,6 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         afterNextRender(() => this.rowFields(entryIndex + 1)[0]?.focus(), { injector: this.injector });
     }
 
-    private keyInputOf(entryIndex: number): HTMLInputElement | null {
-        return this.rowFields(entryIndex).find((field) => field.classList.contains('key-input')) ?? null;
-    }
-
     /** A row's inputs in the order they show. */
     private rowFields(entryIndex: number): HTMLInputElement[] {
         // A DOM query, not viewChildren: the inputs sit in ng-templates stamped in a per-mode order,
@@ -821,6 +826,15 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         this.dismissSuggestions();
         this.keyVariablePicker.close();
         this.variablePicker.close();
+    }
+
+    private searchKeySuggestions(entryIndex: number, input: HTMLInputElement): void {
+        if (input.value.includes('{')) {
+            this.dismissSuggestions();
+            return;
+        }
+        this.suggestionTarget.set({ entryIndex, input });
+        this.keySearch$.next({ entryIndex, search: input.value });
     }
 
     private showKeySuggestions(result: KeySearchResult): void {

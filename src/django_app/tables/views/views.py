@@ -31,7 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import SessionNotFoundError
+from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
 from tables.filters import SessionFilter
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -600,7 +600,6 @@ class RunPythonCodeAPIView(APIView):
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        python_code = serializer.validated_data["python_code"]
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
@@ -614,6 +613,23 @@ class RunPythonCodeAPIView(APIView):
             resource_type=ResourceType.FLOWS,
             action=Permission.UPDATE,
         )
+        if "target" in serializer.validated_data:
+            target = serializer.validated_data["target"]
+            try:
+                execution_id = run_python_code_service.run_target(
+                    target_type=target["type"],
+                    target_id=target["id"],
+                    variables=variables,
+                    organization_id=org_id,
+                    user=request.user,
+                )
+            except CodeRunTargetNotFoundError as error:
+                raise ValidationError(
+                    {"target": [f'Invalid pk "{error.target_id}" - object does not exist.']}
+                ) from error
+            return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
+
+        python_code = serializer.validated_data["python_code"]
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
         ).exists():
@@ -685,8 +701,7 @@ class InitRealtimeAPIView(APIView):
             # definition's own `organization` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
-            # API-key-authenticated requests (see IsApiKeyAuthenticated /
-            # ApiKeyAuthentication).
+            # API-key-authenticated requests (see ApiKeyAuthentication).
             #
             # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it

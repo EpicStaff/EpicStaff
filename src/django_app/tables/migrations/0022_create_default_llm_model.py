@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        migrations.RunPython(set_default_model_in_configllm),
+        migrations.RunPython(set_default_model_in_configllm, elidable=True),
         
         migrations.AlterField(
             model_name='configllm',

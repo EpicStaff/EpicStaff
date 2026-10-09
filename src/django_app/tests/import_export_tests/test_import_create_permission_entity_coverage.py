@@ -64,7 +64,7 @@ def _create_agent_definition(org):
         organization=org,
         name="carried agent definition",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
     )
 
 

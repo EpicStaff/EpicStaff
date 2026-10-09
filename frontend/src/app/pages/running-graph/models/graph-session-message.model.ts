@@ -83,10 +83,11 @@ export interface ExtractedChunk {
     similarity?: number;
 }
 
-// Graph RAG returns a single synthesized answer string rather than a list of
-// chunks — sent as a bare string inside `chunks` (crew service path)
-// or in a separate `answer` field (redis agent-service path).
+// A bare string only appears in old saved graph messages from the crew path,
+// which put the answer in chunks[0]. New graph messages use `answer` and send `chunks: []`.
 export type RawExtractedChunk = ExtractedChunk | string;
+
+export type ExtractedChunksRagType = 'naive' | 'graph';
 
 // Two backend paths emit this with different shapes:
 //   - redis-agent/TaskNode (shared/models/knowledge.py): `rag_type`, graph
@@ -96,8 +97,8 @@ export type RawExtractedChunk = ExtractedChunk | string;
 //     `max_context_tokens`).
 // Naive's fields are named the same in both.
 export interface RagSearchConfig {
-    rag_type?: 'naive' | 'graph';
-    rag_strategy?: 'naive' | 'graph';
+    rag_type?: ExtractedChunksRagType;
+    rag_strategy?: ExtractedChunksRagType;
     search_limit?: number;
     similarity_threshold?: number;
     method?: string;
@@ -116,7 +117,11 @@ export interface ExtractedChunksMessageData {
     collection_id: number;
     retrieved_chunks: number;
     knowledge_query: string;
+    /** Missing on old saved messages; fall back to `rag_search_config.rag_type` / `rag_strategy`. */
+    rag_type?: ExtractedChunksRagType;
+    /** naive: the chunks; graph: `[]` (old crew-path messages: the answer string in chunks[0]). */
     chunks: RawExtractedChunk[];
+    /** graph: the answer, `""` when the grounding guard found nothing; naive: null. */
     answer?: string | null;
     message_type: MessageType.EXTRACTED_CHUNKS;
     rag_search_config: RagSearchConfig;

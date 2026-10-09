@@ -4,8 +4,8 @@ import json
 import uuid
 from datetime import datetime
 
+import fakeredis
 import pytest
-from django.conf import settings
 
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import CsvExportFormatStrategy
@@ -17,7 +17,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.strategies.session import _node_types_by_name
 from tables.models.graph_models import Graph, GraphSessionMessage
 from tables.models.session_models import Session
-from tables.services.redis_pubsub import RedisPubSub
+from tables.services.graph_message_store import GraphMessageStore
 
 ANSWER = "FastAPI is a modern, high-performance web framework."
 USAGE = {
@@ -645,16 +645,17 @@ def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default
     root_graph = Graph.objects.create(name="root flow", org=default_org)
     child_graph = Graph.objects.create(name="child flow", org=default_org)
     root = Session.objects.create(graph=root_graph, status=Session.SessionStatus.END, graph_schema=GRAPH_SCHEMA)
+    execution_id = str(uuid.uuid4())
     inner_finish = {
         "message_type": "finish",
         "state": STATE,
         "output": {"message": ANSWER, "token_usage": USAGE, "stop_reason": "completed"},
-        "subgraph_execution_ids": ["sub-1"],
+        "subgraph_execution_ids": [execution_id],
     }
     for node_type, message_data in [
-        ("", {"message_type": "subgraph_start", "input": {}, "subgraph_id": child_graph.id, "subgraph_execution_id": "sub-1"}),
+        ("", {"message_type": "subgraph_start", "input": {}, "subgraph_id": child_graph.id, "subgraph_execution_id": execution_id}),
         ("AGENT", inner_finish),
-        ("", {"message_type": "subgraph_finish", "output": {}, "subgraph_execution_id": "sub-1"}),
+        ("", {"message_type": "subgraph_finish", "output": {}, "subgraph_execution_id": execution_id}),
     ]:
         GraphSessionMessage.objects.create(
             session=root,
@@ -663,13 +664,9 @@ def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default
             message_data=message_data,
             node_type=node_type,
             uuid=uuid.uuid4(),
+            parent_subgraph_execution_id=(message_data.get("subgraph_execution_ids") or [None])[0],
         )
-    pubsub = RedisPubSub()
-    pubsub._create_subgraph_sessions(root.id)
-    # _flush_buffer calls close_old_connections(), which closes the test transaction's connection.
-    GraphSessionMessage.objects.bulk_create(
-        GraphSessionMessage(**copy) for copy in pubsub.buffers[settings.GRAPH_MESSAGES_CHANNEL]
-    )
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root.id)
     child = Session.objects.get(parent_session=root)
     export = ExportService(entity_registry).export_entities
 

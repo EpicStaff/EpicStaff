@@ -1,4 +1,5 @@
 from agents.models.agent_models import AgentDefinition
+from django.core.validators import RegexValidator
 from rbac.scoping.fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
@@ -37,7 +38,18 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     # ElevenLabs uses a free-form voice id the frontend clears to '' when the
     # user hasn't entered one yet -- must accept blank, same as
     # RealtimeAgentWriteSerializer's identical override below.
-    voice = serializers.CharField(allow_blank=True, default="alloy")
+    voice = serializers.CharField(allow_blank=True, max_length=100, default="alloy")
+    language = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        validators=[
+            RegexValidator(
+                r"^[a-z]{2}$",
+                message="Language must be a lowercase ISO-639-1 code, e.g. 'en'.",
+            )
+        ],
+    )
     openai_config = OrgScopedPrimaryKeyRelatedField(
         queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )
@@ -53,6 +65,9 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeAgentDefinition
         fields = "__all__"
+
+    def validate_language(self, value):
+        return value or None
 
     def validate(self, attrs):
         if self.instance is not None and "agent_definition" in attrs:
@@ -362,7 +377,7 @@ class RealtimeAgentReadSerializer(serializers.ModelSerializer):
 
 
 class RealtimeAgentWriteSerializer(serializers.ModelSerializer):
-    voice = serializers.CharField(allow_blank=True, default="alloy")
+    voice = serializers.CharField(allow_blank=True, max_length=100, default="alloy")
     openai_config = OrgScopedPrimaryKeyRelatedField(
         queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )

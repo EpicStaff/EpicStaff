@@ -2,39 +2,39 @@ import contextlib
 import json
 import os
 import time
-from collections import defaultdict, deque
-from uuid import uuid4
 
 import redis
 from django.conf import settings
-from django.db import IntegrityError, close_old_connections, models, transaction
+from django.db import close_old_connections, reset_queries, transaction
 from django.utils import timezone
-from loguru import logger
 from src.shared.models import (
     CodeResultData,
-    GraphSessionMessageData,
     StorageMutationEvent,
     WebhookEventData,
 )
+from src.shared.redis_keys import (
+    SESSION_STATUS_CHANNEL_PATTERN,
+    session_final_variables_key,
+)
 from tables.models import (
-    GraphSessionMessage,
     Session,
     SessionStorageFile,
     StorageFile,
 )
-from tables.models.session_models import SessionPrincipal, SessionTrigger
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.session_token_usage import SessionTokenUsageCounter
 from tables.services.telegram_trigger_service import TelegramTriggerService
-from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.utils.memory_trim import start_periodic_malloc_trim
+from utils.logger import logger
 
 
 class RedisPubSub:
     def __init__(self):
         self.handlers = {}
-        self.buffers = {settings.GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
+        self.pattern_handlers = {}
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
         self.persistent_variables_service = PersistentVariablesService()
@@ -60,12 +60,26 @@ class RedisPubSub:
         self.pubsub = self.redis_client.pubsub()
 
     def subscribe_to_channels(self):
-        self.pubsub.subscribe(**self.handlers)
+        # Called again after every reconnect: the new pubsub starts with no subscriptions.
+        if self.handlers:
+            self.pubsub.subscribe(**self.handlers)
+        if self.pattern_handlers:
+            self.pubsub.psubscribe(**self.pattern_handlers)
 
     def set_handler(self, message_channel: str, handler: callable):
         if message_channel:
             self.handlers[message_channel] = handler
             logger.success(f"Set handler for {message_channel}")
+
+    def set_pattern_handler(self, channel_pattern: str, handler: callable):
+        """Register a handler for every channel matching a glob-style pattern.
+
+        The pattern must not match a channel registered with ``set_handler``:
+        Redis would deliver a message on it twice, once as ``message`` and once
+        as ``pmessage``.
+        """
+        self.pattern_handlers[channel_pattern] = handler
+        logger.success("Set handler for pattern {}", channel_pattern)
 
     def session_status_handler(self, message: dict):
         try:
@@ -73,7 +87,10 @@ class RedisPubSub:
             data = json.loads(message["data"])
             close_old_connections()
             with transaction.atomic():
-                session = Session.objects.get(id=data["session_id"])
+                # Locked so the token total read below cannot interleave with
+                # GraphMessageStore storing it: whichever runs second stores the full one.
+                # NO KEY UPDATE: it does not wait for the KEY SHARE locks of message inserts.
+                session = Session.objects.select_for_update(no_key=True).get(id=data["session_id"])
                 if data["status"] == Session.SessionStatus.EXPIRED and session.status in [
                     Session.SessionStatus.END,
                     Session.SessionStatus.ERROR,
@@ -81,46 +98,76 @@ class RedisPubSub:
                     logger.warning(
                         f"Unable change status from {session.status} to {data['status']}"
                     )
-                else:
-                    status_data = data.get("status_data", {})
-                    status_data["total_token_usage"] = self._calculate_total_token_usage(
-                        data["session_id"]
-                    )
-                    updated_rows = Session.objects.filter(pk=session.pk).update(
-                        status=data["status"],
-                        status_data=status_data,
-                        token_usage=status_data["total_token_usage"],
-                        finished_at=session.finished_at
-                        or (
-                            timezone.now()
-                            if data["status"]
-                            in [
-                                Session.SessionStatus.END,
-                                Session.SessionStatus.ERROR,
-                                Session.SessionStatus.EXPIRED,
-                                Session.SessionStatus.STOP,
-                            ]
-                            else None
-                        ),
-                    )
-                    if updated_rows == 0:
-                        logger.warning(
-                            f"Session {session.pk} was deleted concurrently, skipping status update"
-                        )
-                        return
+                    return
 
-                    if session.status in [
-                        Session.SessionStatus.END,
-                        Session.SessionStatus.ERROR,
-                    ]:
-                        self.persistent_variables_service.persist_session_results(
-                            session=session,
-                            final_variables=data.get("status_data", {}).get("variables"),
-                        )
-                        self._save_session_storage_files(session=session)
+                status_data = data.get("status_data", {})
+                final_variables = None
+                if data["status"] == Session.SessionStatus.END:
+                    final_variables = self._read_session_final_variables(data["session_id"])
+                    if final_variables is not None:
+                        status_data["variables"] = final_variables
+                status_data["total_token_usage"] = SessionTokenUsageCounter(self.redis_client).read(
+                    data["session_id"]
+                )
+                updated_rows = Session.objects.filter(pk=session.pk).update(
+                    status=data["status"],
+                    status_data=status_data,
+                    token_usage=status_data["total_token_usage"],
+                    finished_at=session.finished_at
+                    or (
+                        timezone.now()
+                        if data["status"]
+                        in [
+                            Session.SessionStatus.END,
+                            Session.SessionStatus.ERROR,
+                            Session.SessionStatus.EXPIRED,
+                            Session.SessionStatus.STOP,
+                        ]
+                        else None
+                    ),
+                )
+                if updated_rows == 0:
+                    logger.warning(
+                        f"Session {session.pk} was deleted concurrently, skipping status update"
+                    )
+                    return
+
+            # After the commit: the row lock is released, so these steps do not hold
+            # back GraphMessageStore, and a failure in them cannot undo the status.
+            if data["status"] in [
+                Session.SessionStatus.END,
+                Session.SessionStatus.ERROR,
+            ]:
+                self._persist_finished_session(session, final_variables)
 
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
+
+    def _persist_finished_session(self, session: Session, final_variables: dict | None) -> None:
+        # Each step is atomic on its own and logged on failure: one failing must not
+        # skip the other.
+        try:
+            with transaction.atomic():
+                self.persistent_variables_service.persist_session_results(
+                    session=session,
+                    final_variables=final_variables,
+                )
+        except Exception:
+            logger.exception("Could not persist the results of session {}", session.pk)
+        try:
+            with transaction.atomic():
+                self._save_session_storage_files(session=session)
+        except Exception:
+            logger.exception("Could not link the storage files of session {}", session.pk)
+
+    def _read_session_final_variables(self, session_id: int) -> dict | None:
+        # Not deleted after reading: the key expires on its own, so a redelivered
+        # `end` status and the SSE views still find it.
+        raw_variables = self.redis_client.get(session_final_variables_key(session_id))
+        if raw_variables is None:
+            logger.warning("No final variables stored for session {}", session_id)
+            return None
+        return json.loads(raw_variables)
 
     def code_results_handler(self, message: dict):
         try:
@@ -289,129 +336,21 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error saving session storage files: {e}")
 
-    def _buffer_save(self, data, model: type[models.Model]):
-        try:
-            close_old_connections()
-            with transaction.atomic():
-                created_objects = model.objects.bulk_create(data, ignore_conflicts=True)
-                logger.debug(
-                    "{} updated with {}/{} entities",
-                    model.__name__,
-                    len(created_objects),
-                    len(data),
-                )
-        except IntegrityError as e:
-            logger.error(f"Failed to save {model.__name__}: {e}")
-
-    def _calculate_total_token_usage(self, session_id):
-        pattern = f"graph:message:{session_id}:*"
-        cached_keys = self.redis_client.keys(pattern)
-
-        total_usage = {
-            "total_tokens": 0,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "successful_requests": 0,
-            "cached_prompt_tokens": 0,
-            "total_cost_usd": 0.0,
-        }
-
-        for key in cached_keys:
-            try:
-                data = json.loads(self.redis_client.get(key))
-                message_data = data.get("message_data", {})
-
-                if not message_data:
-                    continue
-
-                token_usage = None
-
-                output = message_data.get("output")
-                if isinstance(output, dict) and "token_usage" in message_data["output"]:
-                    token_usage = message_data["output"]["token_usage"]
-                elif "token_usage" in message_data:
-                    token_usage = message_data["token_usage"]
-
-                if token_usage:
-                    total_usage["total_tokens"] += token_usage.get("total_tokens", 0)
-                    total_usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-                    total_usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
-                    total_usage["successful_requests"] += token_usage.get("successful_requests", 0)
-                    total_usage["cached_prompt_tokens"] += token_usage.get(
-                        "cached_prompt_tokens", 0
-                    )
-                    total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
-
-            except Exception as e:
-                logger.error(f"Error parsing cached message for key {key}: {e}")
-
-        return total_usage
-
-    def graph_session_message_handler(self, message: dict):
-        try:
-            logger.debug("Received message from graph_message_handler: {}", message)
-            data = json.loads(message["data"])
-            graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            message_uuid = graph_session_message_data.uuid
-            session_id = graph_session_message_data.session_id
-            close_old_connections()
-            if not Session.objects.filter(pk=session_id).exists():
-                logger.warning(f"Session {session_id} was deleted")
-                return
-
-            buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
-
-            if any(d.get("uuid") == message_uuid for d in buffer):
-                logger.warning("This message already proceeded")
-                return
-
-            message_type = graph_session_message_data.message_data.get("message_type")
-
-            # Save in Redis.
-            self.redis_client.setex(
-                name=f"graph:message:{session_id}:{message_uuid}",
-                time=60,
-                value=json.dumps(data),
-            )
-
-            subgraph_execution_ids = (graph_session_message_data.message_data or {}).get(
-                "subgraph_execution_ids"
-            ) or []
-            parent_subgraph_execution_id = (
-                subgraph_execution_ids[0] if subgraph_execution_ids else None
-            )
-
-            # Save in buffer.
-            buffer.append(
-                {
-                    "session_id": session_id,
-                    "created_at": graph_session_message_data.timestamp,
-                    "name": graph_session_message_data.name,
-                    "execution_order": graph_session_message_data.execution_order,
-                    "message_data": graph_session_message_data.message_data,
-                    "node_type": graph_session_message_data.node_type,
-                    "uuid": message_uuid,
-                    "parent_subgraph_execution_id": parent_subgraph_execution_id,
-                }
-            )
-
-            # Notify SSE about updates.
-            self.redis_client.publish(
-                settings.GRAPH_MESSAGE_UPDATE_CHANNEL,
-                json.dumps({"uuid": str(message_uuid), "session_id": session_id}),
-            )
-
-            # After main flow completes, create subgraph sessions from message history.
-            if message_type == "graph_end":
-                self._flush_buffer()
-                self._create_subgraph_sessions(root_session_id=session_id)
-
-        except Exception as e:
-            logger.error(f"Error handling graph_session_message: {e}")
-
     def listen_for_messages(self):
+        try:
+            self._dispatch_next_message()
+        finally:
+            # With DEBUG on, Django keeps every executed query, parameters included, in
+            # connection.queries_log. Only the HTTP request cycle clears it, and the
+            # workers have none, so a 300 KB insert would stay alive forever. Reset after
+            # every read: get_message() runs the registered handlers itself.
+            reset_queries()
+
+    def _dispatch_next_message(self):
         message = None
         try:
+            # Calls the handler registered for the message's channel or pattern, and
+            # then returns None.
             message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.001)
         except (redis.ConnectionError, redis.TimeoutError) as e:
             logger.error(f"Error while listening for Redis messages: {e}")
@@ -442,7 +381,8 @@ class RedisPubSub:
 
     def listen_for_redis_messages_worker(self):
         logger.info(f"Start worker {os.getpid()} listening for Redis messages...")
-        self.set_handler(settings.SESSION_STATUS_CHANNEL, self.session_status_handler)
+        start_periodic_malloc_trim()
+        self.set_pattern_handler(SESSION_STATUS_CHANNEL_PATTERN, self.session_status_handler)
         self.set_handler(settings.CODE_RESULT_CHANNEL, self.code_results_handler)
         self.set_handler(settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
         self.set_handler(
@@ -456,270 +396,6 @@ class RedisPubSub:
                 self.listen_for_messages()
 
         self._run_with_reconnect("listener", inner_loop)
-
-    def cache_for_redis_messages_worker(self):
-        """Saves to DB a bunch of data"""
-        logger.info(f"Start worker {os.getpid()} caching for Redis messages...")
-        self.set_handler(settings.GRAPH_MESSAGES_CHANNEL, self.graph_session_message_handler)
-
-        start_time = time.time()
-
-        def inner_loop():
-            nonlocal start_time
-            while True:
-                self.listen_for_messages()
-                buffer = self.buffers.get(settings.GRAPH_MESSAGES_CHANNEL)
-                if buffer and time.time() - start_time >= 3:
-                    self._flush_buffer()
-                    start_time = time.time()
-
-        self._run_with_reconnect("cacher", inner_loop)
-
-    def _flush_buffer(self):
-        """Flush the graph messages buffer to the database.
-
-        Converts buffered dicts into GraphSessionMessage instances, groups them
-        by session_id, and bulk-saves each group. Clears the buffer afterwards.
-        """
-
-        buffer = self.buffers.get(settings.GRAPH_MESSAGES_CHANNEL)
-
-        try:
-            graph_session_message_list = [GraphSessionMessage(**data) for data in list(buffer)]
-
-        except Exception:
-            logger.critical("Error creating GraphSessionMessage in database")
-            buffer.clear()
-            return
-
-        buffer.clear()
-        sessions_data = defaultdict(deque)
-
-        for graph_session_message in graph_session_message_list:
-            session_id = graph_session_message.session.pk
-            if session_id is not None:
-                sessions_data[session_id].append(graph_session_message)
-            else:
-                logger.warning(
-                    f"Skipping entity for {GraphSessionMessage.__name__} with missing session_id: {session_id}"
-                )
-
-        for sessions_data_values in sessions_data.values():
-            self._buffer_save(data=sessions_data_values, model=GraphSessionMessage)
-
-    def _create_subgraph_sessions(self, root_session_id):
-        """Create subgraph sessions after main session completes.
-
-        Scans all messages for the root session, finds subgraph_start/finish
-        pairs, creates Session records with proper parent hierarchy, copies
-        relevant messages to each subgraph session, and calculates token usage.
-
-        Uses three passes:
-          1. Forward pass: create Session records (parents before children).
-          2. Copy messages: for each subgraph, copy messages whose
-             message_data.subgraph_execution_ids contains that exec_id.
-          3. Reverse pass: calculate token usage (children before parents
-             so parent can aggregate child usage).
-
-        Args:
-            root_session_id: The ID of the completed root session.
-        """
-        if Session.objects.filter(parent_session_id=root_session_id).exists():
-            logger.debug(f"Subgraph sessions already exist for root session {root_session_id}")
-            return
-
-        try:
-            root_session = Session.objects.get(pk=root_session_id)
-        except Session.DoesNotExist:
-            logger.warning(f"Root session {root_session_id} not found")
-            return
-
-        buffer = self.buffers.setdefault(settings.GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
-
-        all_messages = list(
-            GraphSessionMessage.objects.filter(session_id=root_session_id).order_by("id")
-        )
-
-        # look for the start/finish subgraph message_data
-        start_msgs = {}
-        finish_msgs = {}
-        ordered_exec_ids = []
-
-        for msg in all_messages:
-            msg_data = msg.message_data or {}
-            msg_type = msg_data.get("message_type")
-            if msg_type == "subgraph_start":
-                exec_id = msg_data.get("subgraph_execution_id")
-                if exec_id:
-                    start_msgs[exec_id] = msg_data
-                    ordered_exec_ids.append(exec_id)
-            elif msg_type == "subgraph_finish":
-                exec_id = msg_data.get("subgraph_execution_id")
-                if exec_id:
-                    finish_msgs[exec_id] = msg_data
-
-        if not start_msgs:
-            return
-
-        exec_id_to_session_id = {}
-        created_sessions = []
-
-        # Create sessions (forward order — parents before children)
-        for exec_id in ordered_exec_ids:
-            start_data = start_msgs[exec_id]
-            finish_data = finish_msgs.get(exec_id, {})
-
-            subgraph_id = start_data.get("subgraph_id")
-            subgraph_input = start_data.get("input", {})
-            subgraph_output = finish_data.get("output", {})
-
-            # check if parent subgraph exist
-            ancestor_exec_ids = start_data.get("subgraph_execution_ids") or []
-            if ancestor_exec_ids:
-                parent_session_id = exec_id_to_session_id.get(ancestor_exec_ids[0], root_session_id)
-            else:
-                parent_session_id = root_session_id
-
-            if not finish_data:
-                status = Session.SessionStatus.ERROR
-            else:
-                status = Session.SessionStatus.END
-
-            session = Session.objects.create(
-                graph_id=subgraph_id,
-                status=status,
-                parent_session_id=parent_session_id,
-                variables=subgraph_output or subgraph_input,
-                time_to_live=root_session.time_to_live,
-                graph_schema=root_session.graph_schema,
-            )
-
-            exec_id_to_session_id[exec_id] = session.pk
-            created_sessions.append((exec_id, session, finish_data))
-
-        SessionTrigger.objects.bulk_create(
-            [
-                SessionTrigger(
-                    session=session,
-                    **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
-                )
-                for _, session, _ in created_sessions
-            ]
-        )
-        root_principal = getattr(root_session, "principal", None)
-        root_principal_data = {"kind": SessionPrincipal.ActionKind.UNKNOWN}
-        if root_principal:
-            root_principal_data = {
-                "kind": root_principal.kind,
-                "user_id": root_principal.user_id,
-                "api_key": root_principal.api_key,
-                "email": root_principal.email,
-            }
-        SessionPrincipal.objects.bulk_create(
-            [
-                SessionPrincipal(session=session, **root_principal_data)
-                for _, session, _ in created_sessions
-            ]
-        )
-
-        # Copy messages to each subgraph session via buffer,
-        # and keep source messages per exec_id for token calculation.
-        exec_id_messages = {}
-        for exec_id, session, _ in created_sessions:
-            matching = [
-                msg
-                for msg in all_messages
-                if exec_id in ((msg.message_data or {}).get("subgraph_execution_ids") or [])
-            ]
-            exec_id_messages[exec_id] = matching
-
-            copies = []
-            for msg in matching:
-                # Re-derive ancestry within this subgraph's session scope.
-                src_message_data = msg.message_data or {}
-                ids = src_message_data.get("subgraph_execution_ids") or []
-                inner_ids = ids[: ids.index(exec_id)] if exec_id in ids else []
-                new_parent = inner_ids[0] if inner_ids else None
-
-                scoped_message_data = {
-                    **src_message_data,
-                    "subgraph_execution_ids": inner_ids,
-                }
-
-                copies.append(
-                    {
-                        "session_id": session.pk,
-                        "created_at": msg.created_at,
-                        "name": msg.name,
-                        "execution_order": msg.execution_order,
-                        "message_data": scoped_message_data,
-                        "node_type": msg.node_type,
-                        "uuid": uuid4(),
-                        "parent_subgraph_execution_id": new_parent,
-                    }
-                )
-
-            if copies:
-                buffer.extend(copies)
-
-        # Calculate token usage from source messages already in DB
-        # (reverse order — children before parents so parent can aggregate).
-        for exec_id, session, finish_data in reversed(created_sessions):
-            token_usage = self._calculate_subgraph_token_usage(exec_id_messages.get(exec_id, []))
-
-            subgraph_output = finish_data.get("output", {})
-
-            session.token_usage = token_usage
-            session.status_data = {
-                "total_token_usage": token_usage,
-                "variables": subgraph_output,
-            }
-            session.save()
-
-    @staticmethod
-    def _calculate_subgraph_token_usage(messages: list) -> dict:
-        """Calculate total token usage from a list of GraphSessionMessage instances.
-
-        Uses the same extraction logic as _calculate_total_token_usage but
-        operates on in-memory message objects instead of Redis cache.
-        This is needed because subgraph messages are only cached in Redis
-        under the root session ID, not under the subgraph session ID.
-
-        Args:
-            messages: List of GraphSessionMessage instances to aggregate from.
-
-        Returns:
-            Dict with total_tokens, prompt_tokens, completion_tokens,
-            successful_requests, cached_prompt_tokens, total_cost_usd.
-        """
-        total_usage = {
-            "total_tokens": 0,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "successful_requests": 0,
-            "cached_prompt_tokens": 0,
-            "total_cost_usd": 0.0,
-        }
-
-        for msg in messages:
-            msg_data = msg.message_data or {}
-            token_usage = None
-
-            output = msg_data.get("output")
-            if isinstance(output, dict) and "token_usage" in output:
-                token_usage = msg_data["output"]["token_usage"]
-            elif "token_usage" in msg_data:
-                token_usage = msg_data["token_usage"]
-
-            if token_usage:
-                total_usage["total_tokens"] += token_usage.get("total_tokens", 0)
-                total_usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
-                total_usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
-                total_usage["successful_requests"] += token_usage.get("successful_requests", 0)
-                total_usage["cached_prompt_tokens"] += token_usage.get("cached_prompt_tokens", 0)
-                total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
-
-        return total_usage
 
     def schedule_channel_handler(self, message: dict):
         """Router for schedule_channel messages coming from Manager.
@@ -742,7 +418,7 @@ class RedisPubSub:
             {"action": "run_session"|"deactivate", "node_id": <int>}
         """
         try:
-            logger.debug(f"[SchedulePubSub] Received: {message}")
+            logger.debug("[SchedulePubSub] Received: {}", message)
             data = json.loads(message["data"])
             action = data.get("action")
 

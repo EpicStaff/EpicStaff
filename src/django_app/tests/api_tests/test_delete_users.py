@@ -108,7 +108,7 @@ def test_dry_run_does_not_delete(superadmin, victim, django_user_model):
 def test_report_is_stable_across_calls(superadmin, victim):
     """Two calls against the same target return an identical affected_resources block."""
     # Enriched with a real outstanding refresh token so this exercises the
-    # `blacklist_all_for_user` path over the HTTP surface, not just the service.
+    # `revoke_all_credentials_for_user` path over the HTTP surface, not just the service.
     from rest_framework_simplejwt.tokens import RefreshToken
 
     RefreshToken.for_user(victim)

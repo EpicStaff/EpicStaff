@@ -2,6 +2,7 @@ import csv
 import io
 import uuid
 
+import fakeredis
 import pytest
 from django.utils import timezone
 
@@ -14,7 +15,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models.graph_models import Graph, GraphSessionMessage, ScheduleTriggerNode
 from tables.models.session_models import Session, SessionPrincipal
-from tables.services.redis_pubsub import RedisPubSub
+from tables.services.graph_message_store import GraphMessageStore
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -188,7 +189,7 @@ def test_export_subflow_session_json_and_csv_do_not_crash_and_include_principal(
         output={"result": "ok"},
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session_id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session_id)
 
     child_session = Session.objects.get(parent_session_id=root_session_id)
     _add_message(child_session.id)
@@ -288,3 +289,49 @@ def test_export_csv_started_by_unknown_or_missing_principal(default_org):
 
     assert (unknown_row["started_by_type"], unknown_row["started_by"]) == ("unknown", "")
     assert (missing_row["started_by_type"], missing_row["started_by"]) == ("unknown", "")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stream_type", ["agent_node_stream", "task_node_stream"])
+def test_export_csv_includes_agent_tool_events(
+    default_org, regular_user, monkeypatch, stream_type
+):
+    graph = Graph.objects.create(name="export-csv-tools", org=default_org)
+    sm = _stub_publish(monkeypatch)
+    session_id = sm.run_session(
+        graph_id=graph.id,
+        variables={},
+        user=regular_user,
+        trigger=TriggerSpec.manual(),
+    )
+    task = {"name": "lookup", "order": 0}
+    for step_id, event, data in [
+        (1, "tool_call", {"id": "c1", "name": "search", "arguments": '{"q": "x"}', "task": task}),
+        (2, "tool_result", {"tool_call_id": "c1", "name": "search", "content": "found", "is_error": False, "task": task}),
+    ]:
+        GraphSessionMessage.objects.create(
+            session_id=session_id,
+            created_at=timezone.now(),
+            name="agent",
+            execution_order=step_id,
+            message_data={
+                "message_type": stream_type,
+                "event": event,
+                "step_id": step_id,
+                "is_final": False,
+                "data": data,
+            },
+            uuid=uuid.uuid4(),
+        )
+
+    exported_types = [m["message_data"]["event"] for m in _export(session_id)["messages"]]
+    assert exported_types == ["tool_call", "tool_result"]
+
+    call, result = sorted(_export_csv_rows(session_id), key=lambda row: row["execution_order"])
+    assert call["message_type"] == stream_type
+    assert call["event"] == "tool_call"
+    assert result["event"] == "tool_result"
+    assert call["tool_name"] == "search"
+    assert call["tool_arguments"] == '{"q": "x"}'
+    assert result["tool_name"] == "search"
+    assert result["tool_result"] == "found"
