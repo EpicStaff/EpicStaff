@@ -1,5 +1,8 @@
 import pytest
 from copy import deepcopy
+from datetime import datetime, timezone as dt_timezone
+
+from django.utils import timezone
 
 from rest_framework.exceptions import ValidationError
 
@@ -62,7 +65,7 @@ def mcp_tool(default_org):
 @pytest.fixture
 def agent_definition(rich_seeded_db, default_org):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
@@ -216,7 +219,7 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service, default_org
     ):
         surface = Surface.objects.create(
-            organization=default_org, name="default_surface_x"
+            org=default_org, name="default_surface_x"
         )
         AgentDefaultSurface.objects.create(
             agent_definition=agent_definition,
@@ -248,7 +251,7 @@ class TestAgentDefinitionStrategy:
         assert strategy.find_existing(data, mapper, org_id=other_org.id) is None
         assert (
             strategy.find_existing(
-                data, mapper, org_id=agent_definition.organization_id
+                data, mapper, org_id=agent_definition.org_id
             )
             is not None
         )
@@ -400,7 +403,7 @@ class TestAgentDefinitionStrategyLegacyExecutionFields:
 @pytest.fixture
 def surface_with_tools(rich_seeded_db, default_org, mcp_tool):
     surface = Surface.objects.create(
-        organization=default_org, name="surface_1", instructions="do things"
+        org=default_org, name="surface_1", instructions="do things"
     )
     SurfacePythonTool.objects.create(
         surface=surface,
@@ -471,14 +474,14 @@ class TestSurfaceStrategy:
 @pytest.fixture
 def graph_with_agent_node(rich_seeded_db, default_org):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="flow_agent_def",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         llm_config=rich_seeded_db["llm_config"],
     )
     shared_surface = Surface.objects.create(
-        organization=default_org, name="flow_shared_surface"
+        org=default_org, name="flow_shared_surface"
     )
 
     graph = Graph.objects.create(
@@ -643,6 +646,50 @@ class TestLLMConfigStrategy:
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
 
+    def test_export_entity_omits_created_at(self, rich_seeded_db):
+        strategy = _get_strategy(EntityType.LLM_CONFIG)
+
+        data = strategy.export_entity(rich_seeded_db["llm_config"])
+
+        assert "created_at" not in data
+
+    def test_imported_config_gets_its_own_creation_time(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        source_config = exportable_agent_definition.llm_config
+        source_created_at = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
+        LLMConfig.objects.filter(pk=source_config.pk).update(created_at=source_created_at)
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        # A hand-edited file carrying the field must not set it either.
+        config_data["created_at"] = source_created_at.isoformat()
+        before = timezone.now()
+
+        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.created_at >= before
+
+    def test_import_of_pre_created_at_export_succeeds(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data.pop("created_at", None)
+
+        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.created_at is not None
+
     @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service
@@ -658,6 +705,119 @@ class TestLLMConfigStrategy:
         found = strategy.find_existing(config_data, mapper)
         assert found is not None
         assert found.id == rich_seeded_db["llm_config"].id
+
+
+# ──────────────────────────────────────────
+# created_at: EmbeddingConfig and AgentDefinition
+# ──────────────────────────────────────────
+
+SOURCE_CREATED_AT = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
+
+
+def _exported_with_old_creation_time(export_service, entity_type, instance) -> dict:
+    type(instance).objects.filter(pk=instance.pk).update(created_at=SOURCE_CREATED_AT)
+    return export_service.export_entities(entity_type, [instance.id])
+
+
+@pytest.mark.django_db
+class TestEmbeddingConfigCreatedAt:
+    def test_export_entity_omits_created_at(self, embedding_config):
+        data = _get_strategy(EntityType.EMBEDDING_CONFIG).export_entity(embedding_config)
+
+        assert "created_at" not in data
+
+    def test_imported_config_gets_its_own_creation_time(
+        self, embedding_config, export_service, default_org
+    ):
+        export_data = _exported_with_old_creation_time(
+            export_service, EntityType.EMBEDDING_CONFIG, embedding_config
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+        # A hand-edited file carrying the field must not set it either.
+        config_data["created_at"] = SOURCE_CREATED_AT.isoformat()
+        before = timezone.now()
+
+        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.pk != embedding_config.pk
+        assert new_config.created_at >= before
+
+    def test_import_of_pre_created_at_export_gets_a_creation_time(
+        self, embedding_config, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+        config_data.pop("created_at", None)
+
+        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.created_at is not None
+
+    def test_reimport_finds_the_existing_config(
+        self, embedding_config, export_service, default_org
+    ):
+        export_data = _exported_with_old_creation_time(
+            export_service, EntityType.EMBEDDING_CONFIG, embedding_config
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+
+        found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == embedding_config.id
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionCreatedAt:
+    def test_export_entity_omits_created_at(self, agent_definition):
+        data = _get_strategy(EntityType.AGENT_DEFINITION).export_entity(agent_definition)
+
+        assert "created_at" not in data
+
+    def test_imported_agent_gets_its_own_creation_time(
+        self, agent_definition, export_service, default_org
+    ):
+        export_data = _exported_with_old_creation_time(
+            export_service, EntityType.AGENT_DEFINITION, agent_definition
+        )
+        agent_data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        # A hand-edited file carrying the field must not set it either.
+        agent_data["created_at"] = SOURCE_CREATED_AT.isoformat()
+        before = timezone.now()
+
+        new_agent = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            agent_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_agent.refresh_from_db()
+        assert new_agent.pk != agent_definition.pk
+        assert new_agent.created_at >= before
+
+    def test_import_of_pre_created_at_export_gets_a_creation_time(
+        self, agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        agent_data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        agent_data.pop("created_at", None)
+
+        new_agent = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            agent_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_agent.refresh_from_db()
+        assert new_agent.created_at is not None
 
 
 # ──────────────────────────────────────────

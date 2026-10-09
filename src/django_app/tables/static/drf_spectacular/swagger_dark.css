@@ -1,0 +1,60 @@
+/*
+ * Completes the dark theme built into swagger-ui-dist 5.x (rules keyed on `html.dark-mode`).
+ * Covers only what the upstream theme leaves light, using the upstream dark palette:
+ * #1c2022 page, #e4e6e6 text, #b7bcbf muted text, #6b757a separators.
+ */
+
+html.dark-mode {
+  color-scheme: dark;
+}
+
+/* drf-spectacular's template paints the body #fafafa, which shows around and below the UI. */
+html.dark-mode body {
+  background: #1c2022;
+}
+
+html.dark-mode .swagger-ui .tab li,
+html.dark-mode .swagger-ui .opblock-description-wrapper h4,
+html.dark-mode .swagger-ui .opblock-external-docs-wrapper h4,
+html.dark-mode .swagger-ui .opblock-external-docs-wrapper p,
+html.dark-mode .swagger-ui .opblock-title_normal h4,
+html.dark-mode .swagger-ui .opblock-title_normal p,
+html.dark-mode .swagger-ui .servers > label,
+html.dark-mode .swagger-ui table.headers td,
+html.dark-mode .swagger-ui .errors-wrapper .errors h4,
+html.dark-mode .swagger-ui .errors-wrapper hgroup h4 {
+  color: #e4e6e6;
+}
+
+html.dark-mode .swagger-ui span.token-string,
+html.dark-mode .swagger-ui span.token-not-formatted,
+html.dark-mode .swagger-ui .model .external-docs,
+html.dark-mode .swagger-ui section.models h5,
+html.dark-mode .swagger-ui .errors-wrapper .errors small {
+  color: #b7bcbf;
+}
+
+html.dark-mode .swagger-ui .tab li:first-of-type:after {
+  background: #6b757a;
+}
+
+/*
+ * swagger-ui's JSON/code highlighter (.microlight) writes token colors as inline
+ * styles per span, generated at render time with no class to target per token type
+ * (only object keys carry a class, .hljs-attr). A uniform filter is the only way to
+ * tone down the whole palette at once without losing the key/string/number hue coding.
+ */
+html.dark-mode .swagger-ui .microlight {
+  filter: saturate(55%) brightness(70%);
+}
+
+html.dark-mode .swagger-ui .microlight .hljs-attr {
+  color: #c9ccce;
+}
+
+/* Inline `code` in markdown descriptions: upstream pairs a near-black box with a
+ * saturated purple that reads harsher than the rest of the dark theme. */
+html.dark-mode .swagger-ui .renderedMarkdown code {
+  background: #2a2e30;
+  color: #b9a6d6;
+}

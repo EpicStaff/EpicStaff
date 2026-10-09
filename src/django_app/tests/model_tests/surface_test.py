@@ -83,7 +83,7 @@ def other_org(db):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="agent-a",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
@@ -92,7 +92,7 @@ def agent(db, org):
 @pytest.fixture
 def agent_b(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="agent-b",
         instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
@@ -174,7 +174,7 @@ def graph_collection(db, org):
 @pytest.fixture
 def shared_surface(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="shared-surface",
         instructions="be concise",
         owner_agent=None,
@@ -189,7 +189,7 @@ def shared_surface(db, org):
 @pytest.mark.django_db
 def test_create_shared_surface_owner_agent_null(org):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="shared",
         instructions="shared instructions",
         owner_agent=None,
@@ -197,13 +197,13 @@ def test_create_shared_surface_owner_agent_null(org):
 
     assert surface.pk is not None
     assert surface.owner_agent is None
-    assert surface.organization == org
+    assert surface.org == org
 
 
 @pytest.mark.django_db
 def test_create_agent_specific_surface(org, agent):
     surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="agent-specific",
         instructions="agent instructions",
         owner_agent=agent,
@@ -214,12 +214,12 @@ def test_create_agent_specific_surface(org, agent):
 
 @pytest.mark.django_db
 def test_surface_unique_constraint_per_org_name(org):
-    Surface.objects.create(organization=org, name="dup-name")
+    Surface.objects.create(org=org, name="dup-name")
 
     from django.db import IntegrityError
 
     with pytest.raises(IntegrityError):
-        Surface.objects.create(organization=org, name="dup-name")
+        Surface.objects.create(org=org, name="dup-name")
 
 
 @pytest.mark.django_db
@@ -227,14 +227,14 @@ def test_serializer_duplicate_org_name_returns_surface_validation_error(org):
     """Duplicate (org, name) via serializer raises SurfaceValidationError (400), not IntegrityError (500)."""
     serializer_first = SurfaceWriteSerializer(
         data={"name": "dup-via-serializer"},
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
     )
     assert serializer_first.is_valid(), serializer_first.errors
-    serializer_first.save()
+    serializer_first.save(org_id=org.pk)
 
     serializer_second = SurfaceWriteSerializer(
         data={"name": "dup-via-serializer"},
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -246,13 +246,13 @@ def test_serializer_duplicate_org_name_returns_surface_validation_error(org):
 @pytest.mark.django_db
 def test_update_surface_with_unchanged_name_does_not_raise(org):
     """Regression: PATCH with the surface's own (unchanged) name must not raise
-    SurfaceValidationError for id/organization+name uniqueness against itself."""
-    surface = Surface.objects.create(organization=org, name="keep-my-name")
+    SurfaceValidationError for id/org+name uniqueness against itself."""
+    surface = Surface.objects.create(org=org, name="keep-my-name")
 
     serializer = SurfaceWriteSerializer(
         instance=surface,
         data={"name": "keep-my-name"},
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
         partial=True,
     )
 
@@ -263,13 +263,13 @@ def test_update_surface_with_unchanged_name_does_not_raise(org):
 def test_update_surface_name_colliding_with_other_surface_raises(org):
     """Renaming a surface to another existing surface's name in the same org
     must still be rejected."""
-    Surface.objects.create(organization=org, name="surf-a")
-    surface_b = Surface.objects.create(organization=org, name="surf-b")
+    Surface.objects.create(org=org, name="surf-a")
+    surface_b = Surface.objects.create(org=org, name="surf-b")
 
     serializer = SurfaceWriteSerializer(
         instance=surface_b,
         data={"name": "surf-a"},
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
         partial=True,
     )
 
@@ -491,7 +491,7 @@ def test_agent_default_surface_mix_shared_and_agent_specific(
     org, agent, shared_surface
 ):
     agent_surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="agent-surf",
         owner_agent=agent,
     )
@@ -544,11 +544,11 @@ def test_serializer_create_shared_surface(org):
             "name": "new-shared",
             "instructions": "be brief",
         },
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     assert surface.pk is not None
     assert surface.owner_agent is None
@@ -562,11 +562,11 @@ def test_serializer_create_with_owner_agent(org, agent, org_request):
             "name": "owned-surface",
             "owner_agent": agent.pk,
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     assert surface.owner_agent == agent
 
@@ -581,11 +581,11 @@ def test_serializer_create_with_python_tools(org, py_tool_a, py_tool_b, org_requ
                 {"python_tool": py_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     entries = {
         e.python_tool_id: e.mode
@@ -605,11 +605,11 @@ def test_serializer_create_with_mcp_tools(org, mcp_tool_a, mcp_tool_b, org_reque
                 {"mcp_tool": mcp_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     entries = {
         e.mcp_tool_id: e.mode for e in SurfaceMcpTool.objects.filter(surface=surface)
@@ -633,11 +633,11 @@ def test_serializer_create_with_storage_items(org, storage_file_a, org_request):
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     item = SurfaceStorageItem.objects.get(surface=surface, storage_file=storage_file_a)
     assert item.can_list == StorageAccess.ALLOW
@@ -663,11 +663,11 @@ def test_serializer_create_with_naive_search_config(org, naive_collection, org_r
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     sk = SurfaceKnowledge.objects.get(surface=surface, collection=naive_collection)
     assert sk.naive_search_config.search_limit == 7
@@ -687,11 +687,11 @@ def test_serializer_create_with_graph_basic_config(org, graph_collection, org_re
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     sk = SurfaceKnowledge.objects.get(surface=surface, collection=graph_collection)
     assert sk.graph_basic_search_config.k == 15
@@ -715,11 +715,11 @@ def test_serializer_create_with_graph_local_config(org, graph_collection, org_re
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid(), serializer.errors
 
-    surface = serializer.save()
+    surface = serializer.save(org_id=org.pk)
 
     sk = SurfaceKnowledge.objects.get(surface=surface, collection=graph_collection)
     assert sk.graph_local_search_config.top_k_entities == 20
@@ -736,7 +736,7 @@ def test_round_trip_get_returns_nested_python_tools(org, py_tool_a, py_tool_b):
         SurfaceReadSerializer,
     )
 
-    surface = Surface.objects.create(organization=org, name="rt-py")
+    surface = Surface.objects.create(org=org, name="rt-py")
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=py_tool_a, mode=ToolMode.ALLOW
     )
@@ -759,7 +759,7 @@ def test_round_trip_get_returns_nested_mcp_tools(org, mcp_tool_a):
         SurfaceReadSerializer,
     )
 
-    surface = Surface.objects.create(organization=org, name="rt-mcp")
+    surface = Surface.objects.create(org=org, name="rt-mcp")
     SurfaceMcpTool.objects.create(
         surface=surface, mcp_tool=mcp_tool_a, mode=ToolMode.DENY
     )
@@ -777,7 +777,7 @@ def test_round_trip_get_returns_storage_items(org, storage_file_a):
         SurfaceReadSerializer,
     )
 
-    surface = Surface.objects.create(organization=org, name="rt-storage")
+    surface = Surface.objects.create(org=org, name="rt-storage")
     SurfaceStorageItem.objects.create(
         surface=surface,
         storage_file=storage_file_a,
@@ -804,7 +804,7 @@ def test_round_trip_get_returns_knowledge_with_naive_config(org, naive_collectio
         SurfaceReadSerializer,
     )
 
-    surface = Surface.objects.create(organization=org, name="rt-knowledge")
+    surface = Surface.objects.create(org=org, name="rt-knowledge")
     sk = SurfaceKnowledge.objects.create(surface=surface, collection=naive_collection)
     SurfaceNaiveSearchConfig.objects.create(
         surface_knowledge=sk, search_limit=10, similarity_threshold="0.30"
@@ -826,12 +826,13 @@ def test_round_trip_read_includes_timestamps_and_id(org):
         SurfaceReadSerializer,
     )
 
-    surface = Surface.objects.create(organization=org, name="rt-meta")
+    surface = Surface.objects.create(org=org, name="rt-meta")
 
     data = SurfaceReadSerializer(surface).data
 
     assert "id" in data
-    assert "organization" in data
+    assert "org" in data
+    assert "created_by" in data
     assert "created_at" in data
     assert "updated_at" in data
 
@@ -852,7 +853,7 @@ def test_reject_duplicate_python_tool_id_in_payload(org, py_tool_a, org_request)
                 {"python_tool": py_tool_a.pk, "mode": "deny"},
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -872,7 +873,7 @@ def test_reject_duplicate_mcp_tool_id_in_payload(org, mcp_tool_a, org_request):
                 {"mcp_tool": mcp_tool_a.pk, "mode": "allow"},
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -904,7 +905,7 @@ def test_reject_duplicate_storage_file_id_in_payload(org, storage_file_a, org_re
                 },
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -936,7 +937,7 @@ def test_reject_storage_item_from_other_org(org, storage_file_other_org, org_req
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(DRFValidationError) as exc_info:
@@ -965,7 +966,7 @@ def test_reject_naive_config_on_graph_only_collection(
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -991,7 +992,7 @@ def test_reject_graph_config_on_naive_only_collection(
                 }
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -1008,7 +1009,7 @@ def test_reject_agent_default_surface_from_other_agent(
     from agents.validators.surface_validator import SurfaceValidator
 
     agent_b_surface = Surface.objects.create(
-        organization=org,
+        org=org,
         name="agent-b-surf",
         owner_agent=agent_b,
     )
@@ -1059,7 +1060,7 @@ def test_reject_duplicate_knowledge_collection_in_payload(
                 },
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
 
     with pytest.raises(SurfaceValidationError) as exc_info:
@@ -1077,7 +1078,7 @@ def test_reject_duplicate_knowledge_collection_in_payload(
 def test_valid_payload_no_tools_passes(org):
     serializer = SurfaceWriteSerializer(
         data={"name": "empty-surface"},
-        context={"organization_id": org.pk},
+        context={"org_id": org.pk},
     )
     assert serializer.is_valid() is True
 
@@ -1094,7 +1095,7 @@ def test_valid_payload_allow_deny_different_tools_passes(
                 {"python_tool": py_tool_b.pk, "mode": "deny"},
             ],
         },
-        context={"organization_id": org.pk, "request": org_request},
+        context={"org_id": org.pk, "request": org_request},
     )
     assert serializer.is_valid() is True
 
@@ -1106,7 +1107,7 @@ def test_valid_payload_allow_deny_different_tools_passes(
 
 @pytest.mark.django_db
 def test_agent_metadata_defaults_to_empty_dict(org):
-    agent = AgentDefinition.objects.create(organization=org, name="meta-default")
+    agent = AgentDefinition.objects.create(org=org, name="meta-default")
     assert agent.metadata == {}
 
 
@@ -1120,7 +1121,7 @@ def test_agent_write_serializer_accepts_arbitrary_metadata(org):
     serializer = AgentDefinitionWriteSerializer(data=payload)
     assert serializer.is_valid(), serializer.errors
 
-    instance = serializer.save(organization=org)
+    instance = serializer.save(org=org)
 
     instance.refresh_from_db()
     assert instance.metadata == {"ui_color": "red", "priority": 3}
@@ -1133,7 +1134,7 @@ def test_agent_read_serializer_returns_stored_metadata(org):
     )
 
     agent = AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="meta-read",
         metadata={"key": "value", "count": 42},
     )
@@ -1155,7 +1156,7 @@ def test_owned_surface_without_explicit_row_appears_as_all(org, agent):
     )
 
     owned = Surface.objects.create(
-        organization=org,
+        org=org,
         name="owned-no-explicit",
         owner_agent=agent,
     )
@@ -1174,7 +1175,7 @@ def test_owned_surface_with_explicit_row_keeps_explicit_place_not_duplicated(
     )
 
     owned = Surface.objects.create(
-        organization=org,
+        org=org,
         name="owned-with-explicit",
         owner_agent=agent,
     )
@@ -1217,7 +1218,7 @@ def test_mix_shared_explicit_and_owned_implicit(org, agent, shared_surface):
         place=SurfacePlace.CHAT,
     )
     owned = Surface.objects.create(
-        organization=org,
+        org=org,
         name="owned-mix",
         owner_agent=agent,
     )

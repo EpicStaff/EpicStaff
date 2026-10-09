@@ -1,4 +1,4 @@
-import { GraphDriftSearchConfig, GraphGlobalSearchConfig } from '@shared/models';
+import { AuthorshipFields, GraphDriftSearchConfig, GraphGlobalSearchConfig } from '@shared/models';
 
 export type ToolMode = 'allow' | 'deny';
 
@@ -60,9 +60,9 @@ export interface SurfaceKnowledge {
     graph_drift_search_config?: GraphDriftSearchConfig | null;
 }
 
-export interface Surface {
+export interface Surface extends AuthorshipFields {
     id: number;
-    organization: number;
+    org: number;
     name: string;
     instructions: string;
     owner_agent: number | null;

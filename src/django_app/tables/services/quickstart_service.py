@@ -1,5 +1,6 @@
 from django.db import transaction
 from loguru import logger
+from rbac.authorship import record_last_edits, resolve_author
 from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import (
@@ -13,6 +14,7 @@ from tables.models.tag_models import (
     EmbeddingConfigTag,
     LLMConfigTag,
 )
+from tables.models.user import User
 from tables.services.secrets import secret_service
 from utils.singleton_meta import SingletonMeta
 
@@ -46,14 +48,15 @@ class QuickstartService(metaclass=SingletonMeta):
         *,
         provider: str,
         org_id: int,
+        user: object,
         api_key: str | None = None,
         secret: Secret | None = None,
     ) -> dict:
-        """Create a matched set of provider configs backed by a single Secret.
+        """Create matched provider configs sharing one Secret, authored and last edited by `user`.
 
         Exactly one of `api_key` (cold start — a Secret is created and named after
         the bundle) or `secret` (reuse — nothing is created) is expected; the
-        serializer enforces that.
+        serializer enforces that. A `user` that is not a real user leaves the rows unauthored.
         """
         try:
             if provider not in self.PROVIDER_CONFIGS:
@@ -64,6 +67,7 @@ class QuickstartService(metaclass=SingletonMeta):
 
             config_name = self._generate_unique_quickstart_config_name(provider)
             provider_obj = Provider.objects.get(name=provider)
+            author = resolve_author(user)
             with transaction.atomic():
                 # One Secret backs the whole bundle. Resolved before any config
                 # exists, so every config can set the FK on its INSERT.
@@ -71,30 +75,43 @@ class QuickstartService(metaclass=SingletonMeta):
                     text=api_key,
                     org_id=org_id,
                     name=self._bundle_secret_name(bundle_name=config_name),
+                    created_by=author,
                 )
                 llm_config = self._create_llm_model_config(
                     provider=provider_obj,
                     config_name=config_name,
                     org_id=org_id,
                     secret=bundle_secret,
+                    author=author,
                 )
                 embedding_config = self._create_embedder_config(
                     provider=provider_obj,
                     config_name=config_name,
                     org_id=org_id,
                     secret=bundle_secret,
+                    author=author,
                 )
 
+                realtime_configs = []
                 if provider == "openai":
-                    self._create_openai_realtime_config(bundle_secret, config_name, org_id=org_id)
+                    realtime_configs.append(
+                        self._create_openai_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
+                    )
                 elif provider == "gemini":
-                    self._create_gemini_realtime_config(bundle_secret, config_name, org_id=org_id)
+                    realtime_configs.append(
+                        self._create_gemini_realtime_config(
+                            bundle_secret, config_name, org_id=org_id, author=author
+                        )
+                    )
 
                 self._apply_quickstart_tag(
                     llm_config=llm_config,
                     embedding_config=embedding_config,
                     org_id=org_id,
                 )
+                record_last_edits([llm_config, embedding_config, *realtime_configs], user)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
@@ -197,47 +214,65 @@ class QuickstartService(metaclass=SingletonMeta):
         return f"{bundle_name.replace('_', '-')}-api-key"
 
     def _create_llm_model_config(
-        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
+        self,
+        *,
+        provider: Provider,
+        config_name: str,
+        org_id: int,
+        secret: Secret,
+        author: User | None,
     ) -> LLMConfig:
-        llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id)
+        llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id, author=author)
         return LLMConfig.objects.create(
             model=llm_model,
             custom_name=config_name,
             org_id=org_id,
             api_key_secret=secret,
+            created_by=author,
         )
 
     def _create_embedder_config(
-        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
+        self,
+        *,
+        provider: Provider,
+        config_name: str,
+        org_id: int,
+        secret: Secret,
+        author: User | None,
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(provider=provider, org_id=org_id)
+        embedder_model = self._get_or_create_embedder_model(
+            provider=provider, org_id=org_id, author=author
+        )
         return EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
             org_id=org_id,
             api_key_secret=secret,
+            created_by=author,
         )
 
     def _create_openai_realtime_config(
-        self, secret: Secret, config_name: str, org_id: int
+        self, secret: Secret, config_name: str, org_id: int, author: User | None
     ) -> OpenAIRealtimeConfig:
         return OpenAIRealtimeConfig.objects.create(
             custom_name=config_name,
             api_key_secret=secret,
             transcription_api_key_secret=secret,
             org_id=org_id,
+            created_by=author,
         )
 
     def _create_gemini_realtime_config(
-        self, secret: Secret, config_name: str, org_id: int
+        self, secret: Secret, config_name: str, org_id: int, author: User | None
     ) -> GeminiRealtimeConfig:
         return GeminiRealtimeConfig.objects.create(
             custom_name=config_name,
             api_key_secret=secret,
             org_id=org_id,
+            created_by=author,
         )
 
-    def _get_or_create_llm_model(self, *, provider: Provider, org_id: int):
+    def _get_or_create_llm_model(self, *, provider: Provider, org_id: int, author: User | None):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
         if llm_model_name is None:
             raise KeyError(f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}")
@@ -252,6 +287,7 @@ class QuickstartService(metaclass=SingletonMeta):
                 name=llm_model_name,
                 org_id=org_id,
                 is_custom=True,
+                created_by=author,
             )
             logger.info(
                 "Created custom LLM model {} for provider {} in org {}",
@@ -261,7 +297,9 @@ class QuickstartService(metaclass=SingletonMeta):
             )
         return llm_model
 
-    def _get_or_create_embedder_model(self, *, provider: Provider, org_id: int):
+    def _get_or_create_embedder_model(
+        self, *, provider: Provider, org_id: int, author: User | None
+    ):
         embedder_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("embedding_model")
         if embedder_model_name is None:
             raise KeyError(
@@ -281,6 +319,7 @@ class QuickstartService(metaclass=SingletonMeta):
                 name=embedder_model_name,
                 org_id=org_id,
                 is_custom=True,
+                created_by=author,
             )
             logger.info(
                 "Created custom embedding model {} for provider {} in org {}",

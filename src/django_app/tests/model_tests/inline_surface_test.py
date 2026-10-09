@@ -748,7 +748,7 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     from agents.models import Surface
 
     catalog_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="inline-combine-catalog-surface",
         instructions="catalog instructions",
     )

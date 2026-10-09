@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import record_last_edits, resolve_author
 from tables.models import Graph, Label
 from tables.models.graph_models import Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
@@ -8,11 +9,10 @@ from tables.services.persistent_variables_service import PersistentVariablesServ
 
 
 class GraphCopyService(BaseCopyService):
-    """Copy service for Graph entities.
+    """Copy a Graph with its nodes (via NODE_COPY_HANDLERS) and its edges, remapping node ids.
 
-    Duplicates all scalar fields, then clones every node via NODE_COPY_HANDLERS,
-    building a node_id_map. Edges are cloned with remapped node IDs. Post-processing passes fix internal node ID references in
-    DecisionTableNode and ClassificationDecisionTableNode fields.
+    Node ids stored inside decision-table nodes are remapped to the copies too. The acting
+    user is recorded as the last editor of the new graph and of every new node.
     """
 
     def copy(
@@ -33,6 +33,7 @@ class GraphCopyService(BaseCopyService):
                 time_to_live=graph.time_to_live,
                 enable_persistent_variables=graph.enable_persistent_variables,
                 org_id=target_org_id,
+                created_by=resolve_author(user),
             )
         new_graph.labels.set(graph.labels.filter(scope=Label.Scope.FLOW))
         source_start = StartNode.objects.filter(graph=graph).first()
@@ -41,10 +42,12 @@ class GraphCopyService(BaseCopyService):
         )
 
         node_id_map: dict[int, int] = {}
+        new_nodes = []
         for relation_name, handler in NODE_COPY_HANDLERS.values():
             for node in getattr(graph, relation_name).all():
                 new_node = handler(new_graph, node, user=user)
                 node_id_map[node.id] = new_node.id
+                new_nodes.append(new_node)
 
         for edge in graph.edge_list.all():
             Edge.objects.create(
@@ -56,6 +59,7 @@ class GraphCopyService(BaseCopyService):
 
         self._remap_decision_table_references(new_graph, node_id_map)
         self._remap_classification_decision_table_references(new_graph, node_id_map)
+        record_last_edits([new_graph, *new_nodes], user)
 
         return new_graph
 

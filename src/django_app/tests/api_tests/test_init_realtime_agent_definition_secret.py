@@ -47,7 +47,7 @@ def rt_agent_definition(
     default_org, llm_config, openai_realtime_model_config, realtime_transcription_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
         instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],

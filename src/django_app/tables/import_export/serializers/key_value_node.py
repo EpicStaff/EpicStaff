@@ -13,7 +13,7 @@ class KeyValueNodeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = KeyValueNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
     def get_key_value_table_name(self, node: KeyValueNode) -> str | None:
         return node.key_value_table.name if node.key_value_table else None

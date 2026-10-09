@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
+from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import (
     SoftDeleteFields,
     TimestampMixin,
@@ -19,13 +21,7 @@ class StorageAccess(models.TextChoices):
     DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
 
 
-class Surface(TimestampMixin, models.Model):
-    organization = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="surfaces",
-        help_text="Organization this surface belongs to.",
-    )
+class Surface(OrgScopedModel, LastEditTrackedModel, TimestampMixin):
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier unique within the organization. Used as the user-facing name for this surface.",
@@ -45,10 +41,10 @@ class Surface(TimestampMixin, models.Model):
         help_text="Agent that owns this surface. Null means shared — any agent or place may use it. Set means agent-specific — only that agent.",
     )
 
-    class Meta(TimestampMixin.Meta):
+    class Meta(OrgScopedModel.Meta, TimestampMixin.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "name"],
+                fields=["org", "name"],
                 name="uniq_surface_org_name",
             ),
         ]

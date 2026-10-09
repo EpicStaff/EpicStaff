@@ -31,7 +31,7 @@ def organization(db):
 
 
 def _null_agent(organization, name):
-    agent = AgentDefinition.objects.create(organization=organization, name=name)
+    agent = AgentDefinition.objects.create(org=organization, name=name)
     AgentDefinition.objects.filter(pk=agent.pk).update(
         **{field_name: None for field_name in NULLABLE_BEFORE_MIGRATION}
     )
@@ -97,10 +97,10 @@ def test_out_of_range_singleton_value_is_clamped_after_backfill(
 
 @pytest.mark.django_db
 def test_out_of_range_values_are_clamped_and_in_range_values_kept(organization):
-    too_low = AgentDefinition.objects.create(organization=organization, name="too-low")
-    too_high = AgentDefinition.objects.create(organization=organization, name="too-high")
+    too_low = AgentDefinition.objects.create(org=organization, name="too-low")
+    too_high = AgentDefinition.objects.create(org=organization, name="too-high")
     in_range = AgentDefinition.objects.create(
-        organization=organization, name="in-range", max_iter=42, default_temperature=None
+        org=organization, name="in-range", max_iter=42, default_temperature=None
     )
     AgentDefinition.objects.filter(pk=too_low.pk).update(
         max_iter=0,
@@ -142,7 +142,7 @@ def test_out_of_range_values_are_clamped_and_in_range_values_kept(organization):
 @pytest.mark.django_db
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_non_finite_default_temperature_becomes_null(organization, value):
-    agent = AgentDefinition.objects.create(organization=organization, name="non-finite")
+    agent = AgentDefinition.objects.create(org=organization, name="non-finite")
     AgentDefinition.objects.filter(pk=agent.pk).update(default_temperature=value)
 
     backfill_migration.backfill_execution_fields(AgentDefinition, {})

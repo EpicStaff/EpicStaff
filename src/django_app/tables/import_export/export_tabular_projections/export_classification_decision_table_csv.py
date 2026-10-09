@@ -4,6 +4,7 @@ import io
 from tables.import_export.export_tabular_projections._csv_helpers import (
     _format_mapping,
     _llm_config_label,
+    _neutralize_formula,
     _node_label,
     _yes_no,
 )
@@ -76,22 +77,25 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
     buf = io.StringIO()
     writer = csv.writer(buf)
 
-    writer.writerow(["CLASSIFICATION DECISION TABLE"])
-    writer.writerow(["Node Name", node.node_name])
-    writer.writerow(["Default AI Model", _llm_config_label(node.default_llm_config)])
-    writer.writerow(["Pre-processing Script", _yes_no(node.pre_python_code_id)])
-    writer.writerow(["Post-processing Script", _yes_no(node.post_python_code_id)])
-    writer.writerow(["Default Next Step", _node_label(node.default_next_node_id, node_names)])
-    writer.writerow(["On Error Go To", _node_label(node.next_error_node_id, node_names)])
-    writer.writerow(["Number of Rules", len(groups)])
-    writer.writerow([])
+    def write(row: list) -> None:
+        writer.writerow([_neutralize_formula(value) for value in row])
+
+    write(["CLASSIFICATION DECISION TABLE"])
+    write(["Node Name", node.node_name])
+    write(["Default AI Model", _llm_config_label(node.default_llm_config)])
+    write(["Pre-processing Script", _yes_no(node.pre_python_code_id)])
+    write(["Post-processing Script", _yes_no(node.post_python_code_id)])
+    write(["Default Next Step", _node_label(node.default_next_node_id, node_names)])
+    write(["On Error Go To", _node_label(node.next_error_node_id, node_names)])
+    write(["Number of Rules", len(groups)])
+    write([])
 
     llm_configs = _collect_llm_configs(node, groups)
     if llm_configs:
-        writer.writerow(["AI MODELS USED"])
-        writer.writerow(LLM_CONFIG_COLUMNS)
+        write(["AI MODELS USED"])
+        write(LLM_CONFIG_COLUMNS)
         for config in llm_configs:
-            writer.writerow(
+            write(
                 [
                     config.custom_name,
                     config.model.name if config.model else "",
@@ -99,11 +103,11 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
                     config.max_tokens,
                 ]
             )
-        writer.writerow([])
+        write([])
 
-    writer.writerow(["DECISION RULES"])
-    writer.writerow(RULE_COLUMNS)
+    write(["DECISION RULES"])
+    write(RULE_COLUMNS)
     for number, group in enumerate(groups, start=1):
-        writer.writerow(rule_row(number, group, node_names))
+        write(rule_row(number, group, node_names))
 
     return buf

@@ -20,6 +20,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
     CheckboxComponent,
     ConfirmationDialogService,
     SelectDropdownComponent,
@@ -114,6 +115,7 @@ export class SurfaceCardComponent {
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
 
     surface = input<Surface | null>(null);
     readOnly = input<boolean>(false);
@@ -160,6 +162,9 @@ export class SurfaceCardComponent {
 
     readonly menuOpen = signal<boolean>(false);
     private readonly instructionsTextarea = viewChild<ElementRef<HTMLTextAreaElement>>('instrTa');
+    private readonly menuTriggerButton = viewChild<string, ElementRef<HTMLButtonElement>>('menuTrigger', {
+        read: ElementRef,
+    });
     private readonly knowledgeAdvanced = viewChild(SurfaceKnowledgeAdvancedComponent);
 
     /** True while the open knowledge settings hold an edit that cannot be saved. */
@@ -200,8 +205,14 @@ export class SurfaceCardComponent {
     readonly showSharedSurfacesMenu = computed(
         () => this.isShared() && !this.readOnly() && this.showMeta() && this.canCreateSurface()
     );
+    // Authorship is read-only, so anyone who can see the surface may view it — no permission gate.
+    protected readonly canViewDetails = computed(() => this.surface() !== null);
     readonly hasMenuItems = computed(
-        () => this.showAgentSpecificMenu() || this.showSharedInAgentMenu() || this.showSharedSurfacesMenu()
+        () =>
+            this.showAgentSpecificMenu() ||
+            this.showSharedInAgentMenu() ||
+            this.showSharedSurfacesMenu() ||
+            this.canViewDetails()
     );
     readonly showDelete = computed(() => !this.showSharedInAgentMenu());
 
@@ -308,6 +319,15 @@ export class SurfaceCardComponent {
             case 'delete':
                 this.deleteSurface.emit();
                 break;
+        }
+    }
+
+    protected onViewDetails(event: MouseEvent): void {
+        event.stopPropagation();
+        const surface = this.surface();
+        this.menuOpen.set(false);
+        if (surface) {
+            this.authorshipDetailsDialog.open('Surface Details', surface, this.menuTriggerButton()?.nativeElement);
         }
     }
 
