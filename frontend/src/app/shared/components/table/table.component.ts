@@ -189,12 +189,19 @@ export class AppTableComponent {
         return this.selectedIds().has(this.getRowId(item));
     }
 
+    /**
+     * Selects or deselects the selectable pool only. Selected rows outside the pool — non-selectable
+     * rows preselected via `initialSelectedIds`, or rows hidden by a header filter — are kept as they are.
+     */
     toggleAll(): void {
+        const poolIds = this.selectablePool().map((item) => this.getRowId(item));
+        const ids = new Set(this.selectedIds());
         if (this.allSelected()) {
-            this.selectedIds.set(new Set());
+            poolIds.forEach((id) => ids.delete(id));
         } else {
-            this.selectedIds.set(new Set(this.selectablePool().map((item) => this.getRowId(item))));
+            poolIds.forEach((id) => ids.add(id));
         }
+        this.selectedIds.set(ids);
         this.selectionChange.emit(this.selectedItems());
     }
 

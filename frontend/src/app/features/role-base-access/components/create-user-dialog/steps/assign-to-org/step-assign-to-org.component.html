@@ -8,6 +8,14 @@
             placeholder="Search by name..."
             [(searchTerm)]="searchTerm"
         />
+        <app-select
+            class="bulk-role-select"
+            placeholder="Role for selected"
+            [items]="bulkRoleItems()"
+            [selectedValue]="bulkRoleId()"
+            [disabled]="disabled()"
+            (changed)="onBulkRoleSelected($event)"
+        />
     </div>
 
     @if (disabled()) {
