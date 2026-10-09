@@ -206,6 +206,8 @@ class RunSessionSSEView(SSEMixin):
     async def get_live_updates(self, pubsub):
         async for item in self._send_held_live_messages():
             yield item
+        # Sending the held messages read the database again.
+        await self.release_database_connection()
 
         async for message in redis_service.redis_get_message(
             channels=self.get_channels(),
