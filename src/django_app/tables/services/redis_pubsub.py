@@ -34,6 +34,10 @@ from utils.logger import logger
 # this only bounds an idle wait; a shorter one turns the loop into a busy poll.
 READ_TIMEOUT_SECONDS = 1.0
 
+# The listener handles one message at a time: a handler this slow holds back every
+# message behind it, session statuses included, so it is logged as a warning.
+SLOW_HANDLER_SECONDS = 1.0
+
 
 class RedisPubSub:
     def __init__(self):
@@ -70,9 +74,11 @@ class RedisPubSub:
         if self.pattern_handlers:
             self.pubsub.psubscribe(**self.pattern_handlers)
 
-    def set_handler(self, message_channel: str, handler: callable):
+    def set_handler(
+        self, message_channel: str, handler: callable, *, log_every_duration: bool = False
+    ):
         if message_channel:
-            self.handlers[message_channel] = handler
+            self.handlers[message_channel] = _timed(message_channel, handler, log_every_duration)
             logger.success(f"Set handler for {message_channel}")
 
     def set_pattern_handler(self, channel_pattern: str, handler: callable):
@@ -82,7 +88,7 @@ class RedisPubSub:
         Redis would deliver a message on it twice, once as ``message`` and once
         as ``pmessage``.
         """
-        self.pattern_handlers[channel_pattern] = handler
+        self.pattern_handlers[channel_pattern] = _timed(channel_pattern, handler)
         logger.success("Set handler for pattern {}", channel_pattern)
 
     def session_status_handler(self, message: dict):
@@ -406,11 +412,17 @@ class RedisPubSub:
         start_periodic_malloc_trim()
         self.set_pattern_handler(SESSION_STATUS_CHANNEL_PATTERN, self.session_status_handler)
         self.set_handler(settings.CODE_RESULT_CHANNEL, self.code_results_handler)
-        self.set_handler(settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
+        # The trigger handlers start sessions inside this loop; their duration on every
+        # call shows how long the messages behind them wait.
+        self.set_handler(
+            settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler, log_every_duration=True
+        )
         self.set_handler(
             settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
         )
-        self.set_handler(settings.SCHEDULE_CHANNEL, self.schedule_channel_handler)
+        self.set_handler(
+            settings.SCHEDULE_CHANNEL, self.schedule_channel_handler, log_every_duration=True
+        )
         self.set_handler(settings.STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler)
 
         def inner_loop():
@@ -486,3 +498,25 @@ class RedisPubSub:
             ScheduleTriggerService().deactivate_node(node_id)
         except Exception as e:
             logger.error(f"[SchedulePubSub] Error deactivating node {node_id}: {e}")
+
+
+def _timed(label: str, handler: callable, log_every_duration: bool = False) -> callable:
+    """Wrap a handler to log how long it ran: always at INFO when ``log_every_duration``,
+    and as a warning whenever it ran ``SLOW_HANDLER_SECONDS`` or longer."""
+
+    def timed_handler(message: dict):
+        started_at = time.monotonic()
+        try:
+            return handler(message)
+        finally:
+            duration_seconds = time.monotonic() - started_at
+            if duration_seconds >= SLOW_HANDLER_SECONDS:
+                logger.warning(
+                    "Handler for {} took {:.0f} ms; the messages behind it waited",
+                    label,
+                    duration_seconds * 1000,
+                )
+            elif log_every_duration:
+                logger.info("Handler for {} took {:.0f} ms", label, duration_seconds * 1000)
+
+    return timed_handler
