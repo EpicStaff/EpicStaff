@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+from concurrent.futures import Executor, Future
 from io import BytesIO
 from typing import Callable
 
@@ -41,3 +42,19 @@ def run_concurrently(targets: list[Callable]) -> list:
         t.join(timeout=15)
 
     return [results.get(timeout=1) for _ in range(n)]
+
+
+class InlineExecutor(Executor):
+    """Run each submitted callable at once, on the calling thread.
+
+    Background jobs then finish before `submit` returns, inside the test's
+    database transaction, so tests stay deterministic and see their effects.
+    """
+
+    def submit(self, fn, /, *args, **kwargs):
+        future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as error:
+            future.set_exception(error)
+        return future

@@ -168,6 +168,7 @@ class KnowledgeSearchService:
             self._add_knowledges_to_graph_message(
                 request=request,
                 result=result,
+                rag_type=rag_type,
                 collection_id=knowledge_collection_id,
                 writer=writer,
                 session_id=session_id,
@@ -176,7 +177,7 @@ class KnowledgeSearchService:
             )
 
         if isinstance(result, str):
-            return [result]
+            return [result] if result.strip() else []
         return [chunk.text for chunk in result]
 
     @staticmethod
@@ -204,24 +205,24 @@ class KnowledgeSearchService:
     def _add_knowledges_to_graph_message(
         request: SearchRequest,
         result: list[FoundChunk] | str,
+        rag_type: str,
         collection_id: int,
         writer: "StreamWriter",
         session_id: int | None,
         node_name: str | None,
         execution_order: int | None,
     ) -> None:
-        if isinstance(result, str):
-            chunks = [result]
-        else:
-            chunks = [c.model_dump() for c in result]
-
+        # Same shape as the agent path (agent.knowledge_search): graph search returns an answer, not chunks.
+        chunks = [] if isinstance(result, str) else [chunk.model_dump() for chunk in result]
         knowledge_results_data = {
             "message_type": "extracted_chunks",
+            "rag_type": rag_type,
             "collection_id": collection_id,
             "retrieved_chunks": len(chunks),
             "knowledge_query": request.query,
             "rag_search_config": request.search_config.model_dump(),
             "chunks": chunks,
+            "answer": result if isinstance(result, str) else None,
             "token_usage": {},  # not yet in new contract thats why empty
         }
         graph_message = GraphMessage(

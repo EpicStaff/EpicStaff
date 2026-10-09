@@ -7,6 +7,7 @@ from tables.models import (
     WebhookTrigger,
 )
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class TelegramTriggerNodeFieldImportSerializer(
@@ -34,3 +35,4 @@ class TelegramTriggerNodeImportSerializer(
     class Meta:
         model = TelegramTriggerNode
         exclude = ["created_at", "updated_at", "telegram_bot_api_key_secret"]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}

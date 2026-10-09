@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.sandbox.client import SandboxClient
 from shared.models.agent_service import ToolResult
 from shared.models.tools import CodeTaskData, PythonCodeToolData
-
-from app.sandbox.client import SandboxClient
 
 
 class PythonCodeToolExecutor:

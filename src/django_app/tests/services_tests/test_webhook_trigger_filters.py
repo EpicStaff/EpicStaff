@@ -528,7 +528,7 @@ class TestCrossOrgPathCollisionIsolation:
     ):
         from django.db import IntegrityError, transaction
 
-        other_org = Organization.objects.create(name="est-3862-other-org")
+        other_org = Organization.objects.create(name="webhook-filters-other-org")
 
         graph_default = Graph.objects.create(
             name="collision-default-org-graph", org=default_org

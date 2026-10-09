@@ -37,7 +37,6 @@ import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
-import { SETTINGS_DIALOG_SIZE } from '../../services/configure-models-dialog.service';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
 import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
 
@@ -276,7 +275,8 @@ export class SecretsSectionComponent implements OnInit {
 
     public onOpenUsage(row: TableRow): void {
         this.dialog.open(SecretUsageDialogComponent, {
-            ...SETTINGS_DIALOG_SIZE,
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
             data: { secretId: row['id'] as number, secretName: row['name'] as string },
         });
     }

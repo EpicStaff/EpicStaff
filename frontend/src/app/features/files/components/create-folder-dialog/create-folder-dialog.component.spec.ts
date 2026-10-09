@@ -4,10 +4,16 @@ import { ConfirmationDialogService, ConfirmationResult } from '@shared/component
 import { of, Subject } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { StorageUploadLimits, StorageUploadOutcome } from '../../models/storage.models';
+import { StorageTreeResponse, StorageUploadLimits, StorageUploadOutcome } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageUploadService } from '../../services/storage-upload.service';
 import { CreateFolderDialogComponent } from './create-folder-dialog.component';
+
+const EMPTY_STORAGE_TREE: StorageTreeResponse = {
+    path: '',
+    truncated: false,
+    tree: { id: null, name: '', path: '', type: 'folder', size: 0, modified: null, children: [] },
+};
 
 /** Class logic only: the component is built without its template. */
 describe('CreateFolderDialogComponent dismissal', () => {
@@ -37,7 +43,7 @@ describe('CreateFolderDialogComponent dismissal', () => {
                 {
                     provide: StorageApiService,
                     useValue: {
-                        list: () => of([]),
+                        tree: () => of(EMPTY_STORAGE_TREE),
                         getUploadLimits: () => of(null),
                     } as unknown as StorageApiService,
                 },
@@ -202,7 +208,7 @@ describe('CreateFolderDialogComponent unpack badge', () => {
                 {
                     provide: StorageApiService,
                     useValue: {
-                        list: () => of([]),
+                        tree: () => of(EMPTY_STORAGE_TREE),
                         getUploadLimits: () => of(uploadLimits),
                     } as unknown as StorageApiService,
                 },

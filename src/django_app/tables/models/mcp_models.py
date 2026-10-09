@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from rbac.models.org_scoped import OrgScopedModel
 
@@ -6,6 +7,8 @@ from tables.models.base_models import (
     TimestampMixin,
     soft_delete_consistency_constraint,
 )
+from tables.validators.finite_number_validator import validate_finite_number
+from tables.validators.mcp_transport_validator import validate_mcp_transport_url
 
 
 class McpTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
@@ -23,11 +26,15 @@ class McpTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
     # internal services) -- it does NOT cover trusting the remote server's own
     # description/inputSchema once connected; that is separate, already-tracked work.
     transport = models.CharField(
-        max_length=2048, help_text="URL of the remote MCP server (SSE). Required."
+        max_length=2048,
+        validators=[validate_mcp_transport_url],
+        help_text="http(s) URL of the remote MCP server (SSE). Required.",
     )
     tool_name = models.CharField(max_length=255, help_text="Name of the MCP tool.")
     timeout = models.FloatField(
-        default=30, help_text="Request timeout in seconds. Recommended to set."
+        default=30,
+        validators=[validate_finite_number, MinValueValidator(1), MaxValueValidator(1800)],
+        help_text="Request timeout in seconds. Recommended to set.",
     )
     auth_secret = models.ForeignKey(
         "Secret",
@@ -38,6 +45,7 @@ class McpTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
     )
     init_timeout = models.FloatField(
         default=10,
+        validators=[validate_finite_number, MinValueValidator(1), MaxValueValidator(120)],
         help_text="Timeout for session initialization. Optional, default is 10 seconds.",
     )
     labels = models.ManyToManyField("Label", blank=True, related_name="mcp_tools")

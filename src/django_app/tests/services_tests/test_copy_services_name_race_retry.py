@@ -1,5 +1,4 @@
-"""
-EST-4002: bulk-copy races.
+"""Bulk-copy races.
 
 History of this file, since the fix went through two iterations before
 landing on the real root cause:
@@ -159,7 +158,7 @@ def test_mcp_tool_concurrent_copies_of_same_source_get_unique_names():
     }
 
 
-# ---- (b2) EST-4265: flow names are deduplicated per org, so concurrent flow
+# ---- (b2) flow names are deduplicated per org, so concurrent flow
 # copies and create-flow-from-version calls in the same org must serialize on
 # the same (org, clean_base) advisory lock as the tool copies ----
 

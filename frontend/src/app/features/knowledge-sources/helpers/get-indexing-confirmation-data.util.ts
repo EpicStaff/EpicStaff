@@ -1,4 +1,5 @@
 import { ConfirmationDialogData } from '@shared/components';
+import { escapeHtml } from '@shared/utils';
 
 export interface IndexingDocumentInfo {
     configId: number;
@@ -15,7 +16,7 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         const sections: string[] = [];
 
         if (reindexDocs.length) {
-            const reindexListHtml = reindexDocs.map((d) => `<li>• ${d.fileName}</li>`).join('');
+            const reindexListHtml = reindexDocs.map((d) => `<li>• ${escapeHtml(d.fileName)}</li>`).join('');
             sections.push(
                 `<details><summary>Re-indexing <strong>${reindexDocs.length}</strong> file(s)</summary> \n
                       <ul>${reindexListHtml}</ul></details>`
@@ -23,7 +24,7 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         }
 
         if (newDocs.length) {
-            const newListHtml = newDocs.map((d) => `<li>• ${d.fileName}</li>`).join('');
+            const newListHtml = newDocs.map((d) => `<li>• ${escapeHtml(d.fileName)}</li>`).join('');
             sections.push(
                 `<details><summary>Indexing <strong>${newDocs.length}</strong> new file(s)</summary> \n
                       <ul>${newListHtml}</ul></details>`

@@ -106,19 +106,33 @@ def _detail_text(text) -> str | None:
     return str(text).strip() or None
 
 
+def _agent_instructions(instruction_list) -> str:
+    """An agent's instructions as it applies them, from its stored named list."""
+    from agents.models import AgentDefinition
+
+    return AgentDefinition(instruction_list=instruction_list).instructions
+
+
 @dataclass(frozen=True)
 class DetailField:
-    """A detail line: `paths` are values() lookups, joined with " · " when there are several."""
+    """A detail line: `paths` are values() lookups, joined with " · " when there are several.
+
+    `to_text` turns a stored value into its text first, for a field that isn't plain text.
+    """
 
     label: str
     paths: tuple[str, ...]
     format: str = "text"
+    to_text: Callable[[object], object] | None = None
 
     def render(self, row: dict):
         if self.format != "text":
             value = row[self.paths[0]]
             return value.isoformat() if hasattr(value, "isoformat") else value
-        parts = [_detail_text(row[path]) for path in self.paths]
+        values = [row[path] for path in self.paths]
+        if self.to_text is not None:
+            values = [self.to_text(value) for value in values]
+        parts = [_detail_text(value) for value in values]
         return " · ".join(part for part in parts if part) or None
 
 
@@ -170,7 +184,7 @@ _DETAIL_FIELDS: dict[str, list[DetailField]] = {
     ],
     "agent": [
         DetailField("Description", ("description",)),
-        DetailField("Instructions", ("instructions",)),
+        DetailField("Instructions", ("instruction_list",), to_text=_agent_instructions),
         DetailField("LLM", ("llm_config__custom_name", "llm_config__model__name")),
     ],
     "surface": [

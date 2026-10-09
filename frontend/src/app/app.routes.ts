@@ -6,6 +6,7 @@ import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
+import { secretsPermissionGuard, settingsGuard, settingsIndexGuard } from './core/guards/settings.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import {
     permissionGuard,
@@ -203,11 +204,11 @@ export const routes: Routes = [
                     },
                     {
                         path: 'knowledge-sources',
-                        redirectTo: 'files',
+                        redirectTo: 'storage',
                         pathMatch: 'full',
                     },
                     {
-                        path: 'files',
+                        path: 'storage',
                         loadComponent: () =>
                             import('./features/files/pages/files-list-page/files-list-page.component').then(
                                 (m) => m.FilesListPageComponent
@@ -217,10 +218,10 @@ export const routes: Routes = [
                                 path: '',
                                 canActivate: [
                                     () => {
-                                        const last = inject(LastVisitedTabService).get('/files');
+                                        const last = inject(LastVisitedTabService).get('/storage');
                                         const permissions = inject(PermissionsService);
                                         return inject(Router).parseUrl(
-                                            last ?? permissions.resolveFilesTab() ?? permissions.resolveDefaultRoute()
+                                            last ?? permissions.resolveStorageTab() ?? permissions.resolveDefaultRoute()
                                         );
                                     },
                                 ],
@@ -236,7 +237,7 @@ export const routes: Routes = [
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
                             },
                             {
-                                path: 'storage',
+                                path: 'files',
                                 loadComponent: () =>
                                     import('./features/files/pages/files-list-page/components/storage-page/storage-page.component').then(
                                         (m) => m.StoragePageComponent
@@ -273,6 +274,84 @@ export const routes: Routes = [
                         path: 'recycle-bin',
                         loadChildren: () =>
                             import('./features/recycle-bin/recycle-bin.routes').then((m) => m.RECYCLE_BIN_ROUTES),
+                    },
+                    {
+                        path: 'audit',
+                        loadComponent: () =>
+                            import('./features/audit/audit-sessions-browser.component').then(
+                                (m) => m.AuditSessionsBrowserComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                    },
+                    {
+                        path: 'settings',
+                        loadComponent: () =>
+                            import('./features/configure-models/pages/settings-page/settings-page.component').then(
+                                (m) => m.SettingsPageComponent
+                            ),
+                        canActivate: [settingsGuard],
+                        children: [
+                            {
+                                path: '',
+                                pathMatch: 'full',
+                                canActivate: [settingsIndexGuard],
+                                children: [],
+                            },
+                            {
+                                path: 'quickstart',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/quickstart-section/quickstart-section.component').then(
+                                        (m) => m.QuickstartSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Create] },
+                            },
+                            {
+                                path: 'default-llms',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/default-llms-section/default-llms-section.component').then(
+                                        (m) => m.DefaultLlmsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'llm-library',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/llm-library-section/llm-library-section.component').then(
+                                        (m) => m.LlmLibrarySectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'webhook-triggers',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/webhook-triggers-section/webhook-triggers-section.component').then(
+                                        (m) => m.WebhookTriggersSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Webhooks, ActionCode.Read] },
+                            },
+                            {
+                                path: 'voice',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/voice-settings-section/voice-settings-section.component').then(
+                                        (m) => m.VoiceSettingsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Voice, ActionCode.Read] },
+                            },
+                            {
+                                path: 'secrets',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/secrets-section/secrets-section.component').then(
+                                        (m) => m.SecretsSectionComponent
+                                    ),
+                                canActivate: [secretsPermissionGuard],
+                            },
+                        ],
                     },
                     {
                         path: 'workspace',

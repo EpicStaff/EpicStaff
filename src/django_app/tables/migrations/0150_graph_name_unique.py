@@ -1,4 +1,4 @@
-# Generated manually for EST-2186
+# Generated manually
 
 from collections import defaultdict
 
@@ -36,6 +36,7 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             rename_duplicate_graph_names,
             migrations.RunPython.noop,
+            elidable=True,
         ),
         migrations.AlterField(
             model_name="graph",

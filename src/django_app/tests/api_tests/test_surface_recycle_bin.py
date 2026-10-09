@@ -73,7 +73,7 @@ class TestSurfaceGoesToTheRecycleBin:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("method", ["get", "put", "patch", "delete"])
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_a_binned_surface_is_not_reachable_by_id(auth_client, default_org, method):
     surface = Surface.objects.create(organization=default_org, name="Research")
     surface.delete()

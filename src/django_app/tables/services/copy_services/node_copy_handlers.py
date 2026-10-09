@@ -124,6 +124,7 @@ def copy_webhook_trigger_node(
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
         metadata=node.metadata,
+        test_payload=node.test_payload,
     )
 
 
@@ -136,6 +137,7 @@ def copy_telegram_trigger_node(
         telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
+        test_payload=node.test_payload,
     )
     for field in node.fields.all():
         TelegramTriggerNodeField.objects.create(

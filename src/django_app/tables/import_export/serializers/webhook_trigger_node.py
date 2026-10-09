@@ -3,6 +3,7 @@ from rest_framework import serializers
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import Graph, PythonCode, WebhookTrigger, WebhookTriggerNode
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class WebhookTriggerNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
@@ -25,3 +26,4 @@ class WebhookTriggerNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serialize
     class Meta:
         model = WebhookTriggerNode
         exclude = ["created_at", "updated_at"]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}

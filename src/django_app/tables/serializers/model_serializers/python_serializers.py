@@ -212,7 +212,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         `PythonCodeTool.labels` is a single M2M; a shared built-in tool
         (`org=None`) can carry attachments from several orgs on the same
         row. Without this, GET would leak another org's label ids on that
-        shared row (EST-3773).
+        shared row.
         """
         representation = super().to_representation(instance)
         representation["labels"] = org_scoped_label_ids(instance, self.context.get("request"))

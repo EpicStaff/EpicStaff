@@ -27,6 +27,7 @@ class SurfaceViewSet(OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.Mo
     rbac_resource_type = ResourceType.SURFACES
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "combine": Permission.READ}
     recycle_bin_resource_key = "surface"
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     queryset = Surface.objects.select_related(
         "organization",
         "owner_agent",
@@ -69,24 +70,6 @@ class SurfaceViewSet(OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.Mo
         return Response(
             SurfaceReadSerializer(instance, context=ctx).data,
             status=status.HTTP_201_CREATED,
-        )
-
-    @extend_schema(request=SurfaceWriteSerializer, responses=SurfaceReadSerializer)
-    @transaction.atomic
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        ctx = self.get_serializer_context()
-
-        write_serializer = SurfaceWriteSerializer(
-            instance, data=request.data, partial=False, context=ctx
-        )
-        write_serializer.is_valid(raise_exception=True)
-        instance = write_serializer.save()
-        instance.refresh_from_db()
-
-        return Response(
-            SurfaceReadSerializer(instance, context=ctx).data,
-            status=status.HTTP_200_OK,
         )
 
     @extend_schema(request=SurfacePatchWriteSerializer, responses=SurfaceReadSerializer)

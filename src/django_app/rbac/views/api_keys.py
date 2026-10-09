@@ -39,6 +39,9 @@ class ProfileApiKeysView(APIView):
             user=request.user,
             name=cleaned["name"],
             expires_in_days=cleaned["expires_in_days"],
+            # DenyApiKeyAuth leaves JwtAuthentication as the only way in, so
+            # request.auth is the caller's validated AccessToken.
+            session_token=request.auth,
         )
         payload = ApiKeySerializer(issued.api_key).data
         payload["api_key"] = issued.raw_key

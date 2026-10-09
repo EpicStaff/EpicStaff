@@ -1,5 +1,5 @@
 """Coverage for `OpenAIRealtimeModelNameValidationMixin.validate_model_name`
-(EST-3146) on the live API (OpenAIRealtimeConfigSerializer), exercised
+on the live API (OpenAIRealtimeConfigSerializer), exercised
 end-to-end through the real view (`auth_client`), not an isolated serializer
 instantiation -- this is a genuine DRF `request` in serializer context, so it
 exercises the request-based org-resolution branch (as opposed to the
