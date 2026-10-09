@@ -20,7 +20,7 @@
     &__title {
         font-size: var(--text-h3-size);
         font-weight: var(--text-h3-weight);
-        color: var(--configure-models-dialog-active-color);
+        color: var(--fog-200);
         margin: 0;
     }
 
@@ -80,7 +80,7 @@
     &__name {
         font-size: 0.9375rem;
         font-weight: 500;
-        color: var(--configure-models-dialog-active-color);
+        color: var(--fog-200);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -119,7 +119,7 @@
         border-radius: 50%;
         border: 1px solid var(--purple-alpha-40);
         background: transparent;
-        color: var(--configure-models-dialog-inactive-color);
+        color: var(--accent-color);
         display: inline-flex;
         align-items: center;
         justify-content: center;
