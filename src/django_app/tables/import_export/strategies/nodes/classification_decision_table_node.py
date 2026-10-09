@@ -8,7 +8,7 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.models import ClassificationDecisionTableNode
+from tables.models import ClassificationDecisionTableNode, PythonCode
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
@@ -51,24 +51,21 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         sections_data = data.pop("sections", [])
         prompt_configs_data = data.pop("prompt_configs", [])
 
-        pre_python_code_data = data.pop("pre_python_code", None)
-        if pre_python_code_data:
-            pre_serializer = PythonCodeImportSerializer(data=pre_python_code_data)
-            pre_serializer.is_valid(raise_exception=True)
-            data["pre_python_code_id"] = pre_serializer.save().id
-
-        post_python_code_data = data.pop("post_python_code", None)
-        if post_python_code_data:
-            post_serializer = PythonCodeImportSerializer(data=post_python_code_data)
-            post_serializer.is_valid(raise_exception=True)
-            data["post_python_code_id"] = post_serializer.save().id
+        # The import file is untrusted. PythonCode rows carry no org, so a raw id from
+        # the file could bind this node to a built-in tool's or another organization's
+        # code, which a later node PATCH would then rewrite in place. The node only
+        # ever gets code created here from the file's code body.
+        data.pop("pre_python_code_id", None)
+        data.pop("post_python_code_id", None)
+        pre_python_code = self._create_python_code(data.pop("pre_python_code", None))
+        post_python_code = self._create_python_code(data.pop("post_python_code", None))
 
         old_llm_config_id = data.pop("default_llm_config", None)
         data["default_llm_config"] = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_llm_config_id)
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(pre_python_code=pre_python_code, post_python_code=post_python_code)
 
         section_id_mapping = {}
         for s in sections_data:
@@ -111,3 +108,10 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
             group_serializer.save()
 
         return node
+
+    def _create_python_code(self, python_code_data: dict | None) -> PythonCode | None:
+        if not python_code_data:
+            return None
+        python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
+        python_code_serializer.is_valid(raise_exception=True)
+        return python_code_serializer.save()
