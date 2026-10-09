@@ -28,6 +28,20 @@ def _to_json_object(value: str) -> dict:
 class Env:
     BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
     NONE_VALUE = "none"
+    LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
+    # Services that emit benchmark checkpoints (src/shared/bench_log.py) also accept BENCH (15).
+    # The rest keep LOG_LEVELS: webhook passes its level to uvicorn, which has no BENCH level,
+    # and realtime and knowledge_new are not instrumented.
+    LOG_LEVELS_WITH_BENCH = (
+        "TRACE",
+        "DEBUG",
+        "BENCH",
+        "INFO",
+        "SUCCESS",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    )
 
     def __init__(self):
         self._envs: dict[str, str] = {}
@@ -242,6 +256,40 @@ class Env:
             return value.lower() in self.BOOLEAN_TRUE_VALUES
 
         return self.get_value(variable, default, cast)
+
+    def log_level(
+        self,
+        variable: str,
+        default: str | EllipsisType = ...,
+        allowed: tuple[str, ...] = LOG_LEVELS,
+    ) -> str:
+        """Read an environment variable as an upper-cased log level name.
+
+        Only the names in ``allowed`` are accepted (default: loguru's built-in levels;
+        ``LOG_LEVELS_WITH_BENCH`` adds BENCH). uvicorn knows all of them except
+        ``SUCCESS``, so a caller passing the level to uvicorn must map that one. Unlike the
+        other accessors, the ``none`` value is rejected: a sink always needs a level.
+
+        Args:
+            variable: Name of the environment variable to read.
+            default: Value returned when the variable is missing; not validated.
+            allowed: Level names accepted for a set variable.
+
+        Returns:
+            The upper-cased level name.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
+            ValueError: The value is not one of ``allowed``.
+        """
+        value = self._envs.get(variable)
+        if value is None:
+            return self.get_value(variable, default)
+
+        level = value.strip().upper()
+        if level not in allowed:
+            raise ValueError(f"{variable} must be one of {', '.join(allowed)}, got {value!r}.")
+        return level
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
         """Read an environment variable as a str.

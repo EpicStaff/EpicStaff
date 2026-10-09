@@ -1,7 +1,10 @@
+import logging
 import sys
 import traceback
 
+from django.conf import settings
 from loguru import logger
+from src.shared.bench_log import add_bench_sink, without_bench
 
 MAX_LOG_LENGTH = 200
 
@@ -15,7 +18,15 @@ def truncate_filter(record):
 
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level="INFO", filter=truncate_filter)
+# Numeric so DJANGO_LOG_LEVEL=NOTSET, valid for stdlib but unknown to loguru, means "log everything".
+level = logging.getLevelNamesMapping()[settings.LOG_LEVEL]
+logger.add(
+    sys.stdout,
+    format="{time} {level} {message}",
+    level=level,
+    filter=without_bench(truncate_filter),
+)
+add_bench_sink(sys.stdout, level)
 # logger.add("logs/file.log", rotation="1 MB", compression="zip")
 # TODO: setup saving and rotating log files with DEBUG level logs
 

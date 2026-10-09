@@ -25,7 +25,7 @@ class Settings:
 
     # --- Server ---
     WEBHOOK_PORT: int = env.int("WEBHOOK_PORT")
-    LOG_LEVEL: str = env.str("WEBHOOK_LOG_LEVEL")
+    LOG_LEVEL: str = env.log_level("WEBHOOK_LOG_LEVEL")
 
     # --- Redis ---
     REDIS_HOST: str = env.str("REDIS_HOST")

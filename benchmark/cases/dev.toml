@@ -1,0 +1,24 @@
+# Developer case: payload flow only (no LLM), 100 sessions with 25 in flight.
+# The payload flow comes from benchmark/flows/payload.json, a UI export the developer adds
+# (see benchmark/README.md); --graph payload=<id> uses an existing flow instead.
+name = "dev-payload"
+kind = "dev"
+
+[env]
+DJANGO_LOG_LEVEL = "BENCH"
+CREW_LOG_LEVEL = "BENCH"
+AGENT_LOG_LEVEL = "BENCH"
+SANDBOX_LOG_LEVEL = "BENCH"
+
+[dev]
+sessions = 100
+concurrency = 25
+
+[ladder]
+session_timeout_s = 300
+cooldown_s = 10
+baseline_s = 5
+
+[[phase]]
+name = "payload"
+# graph_id = 17

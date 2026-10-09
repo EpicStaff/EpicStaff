@@ -6,6 +6,7 @@ import settings
 from loguru import logger
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
@@ -61,6 +62,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
         await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="sandbox_dispatched",
+            session_id=code_task_data.session_id,
+            execution_id=unique_task_id,
+        )
         logger.info("Waiting for code_results")
 
         while True:

@@ -4,13 +4,16 @@ Generate `.env` file from env.yaml
 Usage:
     python scripts/envtool.py        # generate `.env` file with variables defaults for production
     python scripts/envtool.py --dev  # generate `.env` file with variables defaults for development
+    python scripts/envtool.py --update [--dev]  # append only the variables `.env` lacks
 
 Requires: PyYAML  (pip install pyyaml)
 """
 
 import argparse
+import re
+import sys
 import textwrap
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -41,6 +44,9 @@ GROUP_TITLE_PATTERN = """
 """
 REQUIRED_VARIABLE_PATTERN = "# {name}=<enter your value>\n"
 DEFAULT_VARIABLE_PATTERN = "{name}={default}\n"
+UPDATE_HEADER = "\n# Added by envtool --update on {day} ({target} defaults)\n"
+# `NAME=...` or `export NAME=...`; a commented line never matches, so it counts as not set.
+SET_VARIABLE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=", re.MULTILINE)
 
 
 def load_schema(schema_file: Path) -> dict:
@@ -59,42 +65,86 @@ def render_description(text: str) -> str:
     return "\n" + "\n".join(lines) + "\n"
 
 
+def resolve_default(declaration: dict, target: Literal["prod", "dev"]):
+    default = declaration.get("default")
+    return default.get(target) if isinstance(default, dict) else default
+
+
+def render_variable(name: str, declaration: dict, default) -> str:
+    description = declaration.get("description")
+    text = render_description(description) if description else ""
+    if default is None:
+        return text + REQUIRED_VARIABLE_PATTERN.format(name=name)
+    return text + DEFAULT_VARIABLE_PATTERN.format(name=name, default=default)
+
+
 def generate_env_file(
     schema: dict, target: Literal["prod", "dev"], schema_file: Path, env_file: Path
 ):
     content = [
         BANNER.format(
             schema_file=schema_file.relative_to(BASE_DIR.parent),
-            timestamp=datetime.now(),
+            timestamp=datetime.now(),  # noqa: DTZ005 (local wall-clock time, unchanged format)
         )
     ]
     for group, variables in schema["groups"].items():
         content.append(GROUP_TITLE_PATTERN.format(group=group.title()))
 
         for name, declaration in variables["vars"].items():
-            description = declaration.get("description")
-
-            if description:
-                content.append(render_description(description))
-
-            default = (
-                d.get(target)
-                if isinstance(d := declaration.get("default"), dict)
-                else d
-            )
-
-            if default is None:
-                content.append(REQUIRED_VARIABLE_PATTERN.format(name=name))
-            else:
-                content.append(
-                    DEFAULT_VARIABLE_PATTERN.format(name=name, default=default)
-                )
+            content.append(render_variable(name, declaration, resolve_default(declaration, target)))
 
     content = "".join(content)
     env_file.write_text(content, encoding="utf-8", newline="\n")
 
 
-def main():
+def update_env_file(
+    schema: dict, target: Literal["prod", "dev"], env_file: Path, day: date
+) -> tuple[list[str], list[str]]:
+    """Append the variables `env_file` does not set yet, leaving every existing line as it is.
+
+    Returns:
+        The names appended with a default, and the names that have no default for `target`
+        and still need a value. A required variable whose `# NAME=` placeholder is already in
+        the file is reported again but not appended twice, so repeated updates stay clean.
+    """
+    # bytes, not read_text: universal newlines would hide CRLF endings from the check below.
+    # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
+    original = env_file.read_bytes().decode("utf-8-sig")
+    already_set = set(SET_VARIABLE.findall(original))
+    added, needs_value, content = [], [], []
+    for variables in schema["groups"].values():
+        for name, declaration in variables["vars"].items():
+            if name in already_set:
+                continue
+            default = resolve_default(declaration, target)
+            if default is None:
+                needs_value.append(name)
+                placeholder = rf"^#\s*(?:export\s+)?{re.escape(name)}=<enter your value>\s*$"
+                if re.search(placeholder, original, re.MULTILINE):
+                    continue
+            else:
+                added.append(name)
+            content.append(render_variable(name, declaration, default))
+    if content:
+        # Match the file's own line endings, so a hand-edited CRLF file is not left mixed.
+        newline = "\r\n" if "\r\n" in original else "\n"
+        separator = "" if not original or original.endswith("\n") else "\n"
+        appended = separator + UPDATE_HEADER.format(day=day.isoformat(), target=target)
+        with env_file.open("a", encoding="utf-8", newline=newline) as file:
+            file.write(appended + "".join(content))
+    return added, needs_value
+
+
+def update_summary(added: list[str], needs_value: list[str]) -> str:
+    parts = []
+    if added:
+        parts.append(f"added {len(added)}: {', '.join(added)}")
+    if needs_value:
+        parts.append(f"needs a value: {', '.join(needs_value)}")
+    return "; ".join(parts) or "nothing to add"
+
+
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -102,13 +152,30 @@ def main():
         action="store_true",
         help="Generate `.env` with variable defaults for development.",
     )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Append only the variables the env file lacks; never change existing lines.",
+    )
     parser.add_argument("--env-file", default=".env", help="Env file path.")
     parser.add_argument("--schema-file", default="env.yaml", help="Schema file path.")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     target = "prod" if not args.dev else "dev"
     schema_file = BASE_DIR / args.schema_file
     env_file = BASE_DIR / args.env_file
+
+    if args.update:
+        if not env_file.is_file():
+            generate = "python scripts/envtool.py" + (" --dev" if args.dev else "")
+            sys.exit(
+                f"{env_file} does not exist: create it first by running without --update: {generate}"
+            )
+        added, needs_value = update_env_file(
+            load_schema(schema_file), target, env_file, datetime.now().astimezone().date()
+        )
+        print(f"{env_file}: {update_summary(added, needs_value)}")
+        return
 
     schema = load_schema(schema_file)
     generate_env_file(schema, target, schema_file, env_file)

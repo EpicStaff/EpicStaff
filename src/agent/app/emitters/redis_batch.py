@@ -14,6 +14,7 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk
 from app.logging_utils import redact
+from shared.bench_log import BENCH_LEVEL
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
 
@@ -109,6 +110,13 @@ class RedisStreamBatchEmitter(Emitter):
             lambda: redact(envelope.payload),
         )
         await self._publish(envelope)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="result_published",
+            correlation_id=self._correlation_id,
+            ok=True,
+        )
         logger.info("published agent.result correlation_id={}", self._correlation_id)
 
     async def on_error(self, error: Exception) -> None:
@@ -119,6 +127,13 @@ class RedisStreamBatchEmitter(Emitter):
             payload={"error": str(error), "warnings": self._warnings},
         )
         await self._publish(envelope)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="result_published",
+            correlation_id=self._correlation_id,
+            ok=False,
+        )
         logger.error(
             "published agent.error correlation_id={} error={}",
             self._correlation_id,

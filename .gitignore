@@ -282,3 +282,12 @@ pyrightconfig.json
 
 # Manager Logs
 src/manager/logs/*
+
+# Benchmark run folders (pushed to the results repo with `bench push`, never committed here)
+benchmark/results/
+
+# Which payload flow export each server and organization already imported (benchmark/flows.py)
+benchmark/.flow-cache.json
+
+# .env backup the benchmark keeps while a run overrides settings
+src/.env.bench-backup

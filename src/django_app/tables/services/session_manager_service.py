@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from rbac.identity.api_keys.principals import SystemServicePrincipal
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
     AgentNodeData,
     ConditionalEdgeData,
@@ -176,6 +177,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             SessionPrincipal.objects.create(
                 session=session, **self._resolve_principal_fields(user, api_key)
             )
+        logger.log(
+            BENCH_LEVEL, "bench {checkpoint}", checkpoint="session_created", session_id=session.pk
+        )
         return session
 
     def create_session_data(
@@ -257,6 +261,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
+            )
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="published",
+                session_id=session.pk,
+                received_n=received_n,
             )
             required_listeners = 2
             if received_n != required_listeners:

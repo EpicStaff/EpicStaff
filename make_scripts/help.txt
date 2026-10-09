@@ -47,4 +47,21 @@
    sandbox, knowledge_new, realtime, webhook, ...).
    Example: make crew-tests
    Example: make agent-tests ARGS="-k my_test"
+
+ ENV FILE AND BENCHMARK
+----------------------------------------------------------------
+ These run on the host Python 3.11+ (PYTHON=<interpreter> to
+ override), not on a service venv.
+
+ make env-update [DEV=1]
+   Append the variables src/.env lacks (from src/env.yaml);
+   existing lines are never changed. DEV=1: development defaults.
+
+ make bench-flow
+   Import benchmark/flows/payload.json (the payload benchmark
+   flow) and print its graph id.
+
+ make bench-dev ARGS=<bench-dev-options>
+   Developer benchmark check; see benchmark/README.md.
+   Example: make bench-dev ARGS='--note "before fix"'
 ================================================================

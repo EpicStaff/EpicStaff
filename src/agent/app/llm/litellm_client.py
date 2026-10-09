@@ -21,10 +21,44 @@ from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool, get_router_pool
 from app.logging_utils import redact
+from shared.bench_log import BENCH_LEVEL
 
 _STRIPPED_MODEL_CONFIG_KEYS = frozenset(
     {"model", "api_key", "base_url", "api_version", "max_retry_limit", "max_rpm"}
 )
+
+
+_USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens", "total_cost_usd")
+
+
+async def _bench_llm_span(
+    chunks: AsyncIterator[LLMChunk], model: str | None
+) -> AsyncIterator[LLMChunk]:
+    """Re-yield `chunks`, logging BENCH llm_start/llm_end around the whole call (retries and full
+    stream consumption included) so the benchmark can measure real LLM wall time."""
+    logger.log(BENCH_LEVEL, "bench {checkpoint}", checkpoint="llm_start", model=model)
+    usage: dict = {}
+    error_type = None
+    try:
+        async for chunk in chunks:
+            if chunk.usage:
+                usage = chunk.usage
+            yield chunk
+    except GeneratorExit:
+        raise
+    except BaseException as error:
+        error_type = type(error).__name__
+        raise
+    finally:
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="llm_end",
+            model=model,
+            ok=error_type is None,
+            error_type=error_type,
+            **{field: usage.get(field) for field in _USAGE_FIELDS},
+        )
 
 
 def _cached_prompt_tokens(data: dict) -> int:
@@ -129,7 +163,9 @@ class LiteLLMClient(LLMClient):
     ) -> AsyncIterator[LLMChunk]:
         """Return an async generator of normalized ``LLMChunk`` objects."""
         assert stream is True, "LiteLLMClient only supports streaming mode"
-        return self._stream(messages, tools, model_config, runtime_config)
+        return _bench_llm_span(
+            self._stream(messages, tools, model_config, runtime_config), model_config.get("model")
+        )
 
     async def _stream(
         self,

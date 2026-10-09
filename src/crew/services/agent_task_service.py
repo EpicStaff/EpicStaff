@@ -36,6 +36,7 @@ from collections.abc import Callable
 from loguru import logger
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import AgentDefinitionData, AgentNodeData, TaskNodeData
 from src.shared.models.agent_service import (
     FAILURE_STOP_REASONS,
@@ -124,6 +125,12 @@ class AgentTaskService:
             payload={"request_key": request_key},
         )
         await client.xadd(self.request_stream, envelope.to_fields())
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="agent_dispatched",
+            correlation_id=correlation_id,
+        )
         logger.info("published agent.run correlation_id={}", correlation_id)
 
         deadline = time.monotonic() + timeout_s

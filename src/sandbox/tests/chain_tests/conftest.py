@@ -16,6 +16,7 @@ def _set_env_defaults() -> None:
     """
     defaults = {
         "RUN_IN_DOCKER": "true",
+        "SANDBOX_LOG_LEVEL": "INFO",
         "REDIS_HOST": "localhost",
         "REDIS_PORT": "6379",
         "REDIS_USER": "test",
