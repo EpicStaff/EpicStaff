@@ -32,7 +32,7 @@ A permanent delete is always explicit: `purge()` on a root removes it and its wh
 
 Every `DeleteService.delete()` call creates one `soft_delete_batch` UUID and one timestamp and writes both to every row it bins, the root and its children alike. A restore brings back exactly the rows of one batch, never rows that were deleted on their own earlier. `DeleteService.delete()` returns the batch id, or `None` when the root was already in the bin; it locks the root first, so two concurrent deletes of the same item can't split a batch.
 
-`DJANGO_RECYCLE_BIN_RETENTION_DAYS` (default `7`, read into `settings.RECYCLE_BIN_RETENTION_DAYS`) sets how long a binned item stays before it is purged for good. It is declared in `src/env.yaml`, `src/.env.example` and `src/docker-compose.yaml`.
+`DJANGO_RECYCLE_BIN_RETENTION_DAYS` (required; `30` in `src/env.yaml` and `src/.env.example`, read into `settings.RECYCLE_BIN_RETENTION_DAYS`) sets how long a binned item stays before it is purged for good. It is declared in `src/env.yaml`, `src/.env.example` and `src/docker-compose.yaml`.
 
 ## 3. Model Mixins
 
@@ -84,9 +84,9 @@ This is the **entry-point** mixin: `.delete()` on an instance always delegates t
 - **`deleted_objects` (`DeletedManager`)** — filters `active=False`: the rows in the recycle bin.
 - **`all_objects` (plain `models.Manager`)** — unfiltered, sees every row including soft-deleted ones. Used when code genuinely needs to reach a soft-deleted row: e.g. freeing up a UUID held by a soft-deleted `Graph` during import (`tables/import_export/strategies/graph.py`), or `DeleteService`'s own batched cascade writes (see §7 for why it's also the model's `base_manager`).
 
-## 5. The 4 Soft-Delete Roots
+## 5. The Soft-Delete Roots
 
-Only these 4 models use `SoftDeleteMixin` (i.e., their `.delete()` goes to the recycle bin and they have `purge()`):
+These models use `SoftDeleteMixin` (their `.delete()` goes to the recycle bin and they have `purge()`). Every one but `GraphVersion` has a bin tab, listed in `tables/services/recycle_bin/registry.py` (`bin_resources()`):
 
 | Model | File |
 |---|---|
@@ -94,8 +94,17 @@ Only these 4 models use `SoftDeleteMixin` (i.e., their `.delete()` goes to the r
 | `GraphVersion` | `tables/models/graph_models.py` |
 | `SourceCollection` | `tables/models/knowledge_models/collection_models.py` |
 | `PythonCodeTool` | `tables/models/python_models.py` |
+| `McpTool` | `tables/models/mcp_models.py` |
+| `AgentDefinition` | `agents/models/agent_models.py` |
+| `Surface` | `agents/models/surface_models.py` |
+| `KeyValueTable` | `tables/models/key_value_models.py` |
+| `Secret` | `tables/models/secret_models.py` |
+| `RealtimeChannel` | `tables/models/webhook_models.py` |
+| `WebhookTrigger` | `tables/models/webhook_models.py` |
 
-Everything else that participates in soft delete (nodes, edges, condition groups, surface attachments, RAG documents, etc.) uses `SoftDeleteFields` only, and is soft-deleted purely as a side effect of one of these 4 roots' cascade.
+Everything else that participates in soft delete (nodes, edges, condition groups, surface attachments, RAG documents, a voice channel's `TwilioChannel`, a trigger's ngrok/localhost config, etc.) uses `SoftDeleteFields` only, and is soft-deleted purely as a side effect of a root's cascade.
+
+**Restore names.** A restore renames a root whose name was taken meanwhile (`name #2`). A `WebhookTrigger` path is unique across all organizations and can't hold spaces or `#`, so it gets `path-2` instead, checked against every org's live paths. A `RealtimeChannel` name isn't unique and never changes. A Twilio phone number can't be renamed: if a live channel took it meanwhile, the restored channel comes back without one, and its bin row warns about that first.
 
 ## 6. DeleteService Cascade Rules
 
@@ -122,6 +131,8 @@ An explicit `PROTECT`/`RESTRICT`/`SET_NULL`/`SET_DEFAULT`/`SET(...)` on the FK i
 **Rows already in the bin:** `SET_NULL`/`SET_DEFAULT`/`SET(...)` also reach binned rows, so a restored row never points at something deleted while it was binned. A `CASCADE` child that was binned earlier on its own is marked visited and not walked into again; it keeps its own batch.
 
 **M2M:** a deleted row keeps its own links (a flow's labels, a node's surfaces, a task's context tasks), so a restore brings them back. At the end of the call, `finish()` removes links that point at a binned row from live rows, in one query per relation; links from any binned row stay. M2M fields with an explicit `through=` model are real rows and follow the normal rules.
+
+**Kept references:** a root that other rows *use* (a `Secret`, a `WebhookTrigger`, a `RealtimeChannel`) sets `soft_delete_keeps_references = True`. Deleting it then leaves the `SET_NULL` / `SET_DEFAULT` / `SET(...)` links and the incoming M2M links that point at it untouched, so a restore brings everything back working. While it's binned, every lookup through `objects` treats it as missing: `SecretResolver` only reads live secrets, so a binned secret never decrypts. Its encrypted value stays in the table until the purge. A purge (Django's Collector) clears the links. A forward FK still reads the binned row, because it goes through the base manager, so code that follows one checks `active` (`TwilioChannel.validate_provider`, `WebhookTrigger.get_active_config`, the Telegram registration, the Twilio post-save handler).
 
 **Reference links:** a link model can list FK names in `soft_delete_reference_fields` (e.g. `("python_tool",)` on the surface tool links, `("collection",)` on the surface knowledge links, `("naive_rag",)` on `AgentNaiveRag`). A delete arriving through one of them means the link only *points at* the deleted row, so `finish()` hard-deletes the link: restoring a tool never re-links the surfaces that used it. A delete arriving through the link's owner FK bins it with the owner, so it comes back on restore. A link reached both ways in one call stays in the batch. Unlike M2M links, a reference link is removed even when its owner is already in the bin: deleting a tool permanently edits flows that are binned at that moment, which come back from a restore without that tool.
 
