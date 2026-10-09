@@ -155,7 +155,7 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
             }
 
             .start-content > :first-child {
-                margin-top: 1.25rem;
+                margin-top: 0.5rem;
             }
 
             /* Section styling */
