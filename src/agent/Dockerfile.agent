@@ -49,12 +49,16 @@ RUN groupadd --system --gid 1000 app \
  && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
  && chown -R app:app /app
 
-# Add virtualenv to PATH
+# Add virtualenv to PATH.
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` (confirmed by runtime
+# trace, see docs/backend-runtime-fetch-audit.md item 7).
 ENV PATH="/app/src/agent/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/src/agent/.venv
+    VIRTUAL_ENV=/app/src/agent/.venv \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/agent
 
