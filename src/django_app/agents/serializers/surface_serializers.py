@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
 )
@@ -392,7 +392,7 @@ class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
     )
 
 
-class SurfaceReadSerializer(serializers.ModelSerializer):
+class SurfaceReadSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     python_tools = SurfacePythonToolReadSerializer(many=True, read_only=True)
     mcp_tools = SurfaceMcpToolReadSerializer(many=True, read_only=True)
     storage_items = SurfaceStorageItemReadSerializer(many=True, read_only=True)
@@ -402,7 +402,8 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
         model = Surface
         fields = [
             "id",
-            "organization",
+            "org",
+            "created_by",
             "name",
             "instructions",
             "owner_agent",
@@ -416,7 +417,9 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SurfaceWriteSerializer(serializers.Serializer):
+class SurfaceWriteSerializer(AuthorStampingSerializerMixin, serializers.Serializer):
+    last_edit_state_serializer_class = SurfaceReadSerializer
+
     name = serializers.CharField(max_length=255)
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
     python_tools = SurfacePythonToolWriteSerializer(many=True, required=False, default=list)
@@ -428,7 +431,7 @@ class SurfaceWriteSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
         from agents.models.agent_models import AgentDefinition
 
-        self.fields["owner_agent"] = OrganizationScopedPrimaryKeyRelatedField(
+        self.fields["owner_agent"] = OrgScopedPrimaryKeyRelatedField(
             queryset=AgentDefinition.objects.all(),
             required=False,
             allow_null=True,
@@ -436,11 +439,9 @@ class SurfaceWriteSerializer(serializers.Serializer):
         )
 
     def validate(self, attrs):
-        organization_id = self.context["organization_id"]
-
         SurfaceService.validate_surface_data(
             instance=self.instance,
-            organization_id=organization_id,
+            org_id=self.context["org_id"],
             attrs=attrs,
         )
         SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
@@ -451,9 +452,8 @@ class SurfaceWriteSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        organization_id = self.context["organization_id"]
         return SurfaceService.create_surface(
-            organization_id=organization_id,
+            org_id=validated_data.pop("org_id"),
             validated_data=validated_data,
         )
 
@@ -483,11 +483,11 @@ class SurfaceCombineRequestSerializer(serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        organization_id = self.context.get("organization_id")
+        org_id = self.context.get("org_id")
 
-        if organization_id is not None:
+        if org_id is not None:
             self.fields["surface_ids"].child_relation.queryset = Surface.objects.filter(
-                organization_id=organization_id
+                org_id=org_id
             )
 
     def validate_surface_ids(self, value):

@@ -31,7 +31,7 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
 export class KeyValueTablesPageComponent {
     readonly selectedTableId = signal<number | null>(null);
     // A delete is on its way (usage, confirmation, delete): a second request for any table is ignored until it ends,
-    // so a double click or a held Enter cannot open two dialogs or send two deletes. The trash buttons stay enabled:
+    // so a held Enter or a reopened menu cannot open two dialogs or send two deletes. The Delete items stay enabled:
     // disabling the focused one would drop keyboard focus to <body>, where the dialog would then return it.
     readonly deletePending = signal(false);
     readonly selectedTable = computed(

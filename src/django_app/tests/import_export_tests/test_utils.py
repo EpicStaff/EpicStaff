@@ -129,7 +129,7 @@ class TestFilterByNameOrRenamedCopy:
     def surfaces(self, default_org):
         names = ["Surf (beta) #3", "Surf (beta)", "Surf (beta)#2", "Surf (beta) #x", "Surf (beta)ing #2"]
         return {
-            name: Surface.objects.create(organization=default_org, name=name) for name in names
+            name: Surface.objects.create(org=default_org, name=name) for name in names
         }
 
     def test_matches_exact_name_first_then_renamed_copies_newest_first(self, surfaces):

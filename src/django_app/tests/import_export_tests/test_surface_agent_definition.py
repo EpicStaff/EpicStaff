@@ -60,7 +60,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     for the "flow" place.
     """
     agent_def = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
@@ -68,7 +68,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     owned_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="owned_surface_1",
         instructions="owned surface instructions",
         owner_agent=agent_def,
@@ -85,7 +85,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     default_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="default_surface_1",
         instructions="default surface instructions",
     )
@@ -145,7 +145,7 @@ class TestSurfaceRoundTrip:
 
         assert new_surface.id != owned_surface.id
         assert new_surface.owner_agent is None
-        assert new_surface.organization_id == owned_surface.organization_id
+        assert new_surface.org_id == owned_surface.org_id
         assert new_surface.instructions == owned_surface.instructions
 
     def test_surface_name_collision_renamed(
@@ -344,7 +344,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
             surface_data, IDMapper(), org_id=active_org.id
         )
 
-        assert new_surface.organization_id == active_org.id
+        assert new_surface.org_id == active_org.id
 
     def test_surface_create_entity_falls_back_to_is_default_org_without_org_id(
         self, surface_agent_seeded_db, export_service, default_org
@@ -363,7 +363,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         strategy = entity_registry.get_strategy(EntityType.SURFACE)
         new_surface = strategy.create_entity(surface_data, IDMapper())
 
-        assert new_surface.organization_id == default_org.id
+        assert new_surface.org_id == default_org.id
 
     def test_agent_definition_create_entity_uses_active_org_from_kwargs(
         self, surface_agent_seeded_db, export_service, default_org
@@ -381,7 +381,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
             agent_definition_data, IDMapper(), org_id=active_org.id
         )
 
-        assert new_agent_definition.organization_id == active_org.id
+        assert new_agent_definition.org_id == active_org.id
 
     def test_agent_definition_create_entity_falls_back_to_is_default_org_without_org_id(
         self, surface_agent_seeded_db, export_service, default_org
@@ -400,4 +400,4 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
         new_agent_definition = strategy.create_entity(agent_definition_data, IDMapper())
 
-        assert new_agent_definition.organization_id == default_org.id
+        assert new_agent_definition.org_id == default_org.id

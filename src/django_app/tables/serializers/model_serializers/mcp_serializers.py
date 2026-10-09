@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -14,7 +15,12 @@ from tables.serializers.utils.org_scoped_labels import (
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class McpToolSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("auth_secret_id",)
 
     auth_secret_id = OrgScopedPrimaryKeyRelatedField(

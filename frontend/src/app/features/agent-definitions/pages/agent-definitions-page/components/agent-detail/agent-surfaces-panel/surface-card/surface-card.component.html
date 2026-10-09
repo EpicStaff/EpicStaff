@@ -165,6 +165,27 @@
                                         >
                                             Make Agent-Specific Copy
                                         </button>
+                                    } @else if (showSharedSurfacesMenu()) {
+                                        <button
+                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('duplicate', $event)"
+                                        >
+                                            Duplicate
+                                        </button>
+                                    }
+                                    @if (canViewDetails()) {
+                                        <!-- Read-only: anyone who sees the surface may see who authored it. -->
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onViewDetails($event)"
+                                        >
+                                            View Details
+                                        </button>
+                                    }
+                                    @if (showSharedInAgentMenu()) {
                                         <div
                                             *appHasPermission="[ResourceCode.Agents, ActionCode.Update]"
                                             class="surface-card__places"
@@ -204,15 +225,6 @@
                                                 <span>Realtime</span>
                                             </label>
                                         </div>
-                                    } @else if (showSharedSurfacesMenu()) {
-                                        <button
-                                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Create]"
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('duplicate', $event)"
-                                        >
-                                            Duplicate
-                                        </button>
                                     }
                                 </div>
                             </ng-template>

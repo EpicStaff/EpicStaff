@@ -18,6 +18,15 @@
 
     <div class="storage-details-dialog__content">
         <div class="storage-details-dialog__section">
+            <app-authorship-details
+                [owner]="owner"
+                [createdAt]="createdAt"
+                [lastEditor]="lastEditor"
+                [lastEditedAt]="lastEditedAt"
+            />
+        </div>
+
+        <div class="storage-details-dialog__section">
             <div class="storage-details-dialog__section-title">DATA</div>
             <div class="storage-details-dialog__data-grid">
                 @if (data.type !== 'folder') {

@@ -1,4 +1,5 @@
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
@@ -17,7 +18,7 @@ from tables.import_export.utils import (
     filter_by_name_or_renamed_copy,
     import_values,
 )
-from tables.models import PythonCode, PythonCodeTool
+from tables.models import PythonCode, PythonCodeTool, User
 
 # Scalar fields compared for reuse, next to the rename-aware name match,
 # get_org_scope_q and python_code_key. An explicit allowlist, not
@@ -104,9 +105,12 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        python_code_tool = serializer.save()
+        author = resolve_author(kwargs.get("user"))
+        python_code_tool = serializer.save(created_by=author)
 
-        self._create_python_tool_config(python_code_tool, python_tool_config_data, org_id)
+        self._create_python_tool_config(
+            python_code_tool, python_tool_config_data, org_id, author=author
+        )
 
         if import_labels and labels_data:
             attach_tool_labels(python_code_tool, id_mapper, labels_data)
@@ -164,7 +168,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return serializer.save()
 
     def _create_python_tool_config(
-        self, tool: PythonCodeTool, python_tool_config_data: dict, org_id
+        self, tool: PythonCodeTool, python_tool_config_data: dict, org_id, *, author: User | None
     ):
         for tool_config_data in python_tool_config_data:
             tool_config_data["tool_id"] = tool.id
@@ -172,4 +176,4 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 data={**tool_config_data, "org": org_id}
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            serializer.save(created_by=author)

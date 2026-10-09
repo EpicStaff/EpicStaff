@@ -5,6 +5,7 @@ from copy import deepcopy
 from agents.models import AgentDefaultSurface, AgentDefinition
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
+from rbac.authorship import record_last_edits, resolve_author
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES, OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
@@ -204,7 +205,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
-            existing_names = AgentDefinition.objects.filter(organization=organization).values_list(
+            existing_names = AgentDefinition.objects.filter(org=organization).values_list(
                 "name", flat=True
             )
             data["name"] = ensure_unique_identifier(
@@ -214,21 +215,29 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        agent_definition = serializer.save(organization=organization)
+        agent_definition = serializer.save(
+            org=organization, created_by=resolve_author(kwargs.get("user"))
+        )
 
         self._assign_llm_configs(
             agent_definition, old_llm_config_id, old_fcm_llm_config_id, id_mapper
         )
         # Owned surfaces are always created fresh for a new agent: a reused row
-        # is never re-owned, and each agent's owned surfaces are its own.
+        # is never re-owned, and each agent's owned surfaces are its own. They are
+        # created here rather than by the import service, so their last edit is
+        # recorded here too.
+        owned_surfaces = []
         for entry in owned_surface_entries:
             surface = self.surface_strategy.create_entity(
                 dict(entry),
                 id_mapper,
                 org_id=kwargs.get("org_id"),
+                user=kwargs.get("user"),
                 owner_agent=agent_definition,
             )
             id_mapper.map(EntityType.SURFACE, entry["id"], surface.id, was_created=True)
+            owned_surfaces.append(surface)
+        record_last_edits(owned_surfaces, kwargs.get("user"))
         self._assign_default_surfaces(agent_definition, default_surfaces, id_mapper)
 
         return agent_definition
@@ -377,7 +386,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(org_id)
         if organization is None:
             return Q()
-        return Q(organization=organization)
+        return Q(org=organization)
 
     def _assign_llm_configs(
         self,

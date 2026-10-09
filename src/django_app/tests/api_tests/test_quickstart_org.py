@@ -142,7 +142,7 @@ def test_quickstart_apply_denied_without_both_create_and_update(
 ):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id, user=None)
     role = Role.objects.create(name="LLM half-writer", org=org, is_built_in=False)
     RolePermission.objects.create(
         role=role,
@@ -164,7 +164,7 @@ def test_quickstart_apply_denied_without_both_create_and_update(
 def test_quickstart_apply_allowed_for_org_admin(db, django_user_model):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id, user=None)
     admin = _org_admin(django_user_model, org, "qadmin@example.com")
 
     resp = _client(admin, org).post("/api/quickstart/apply/", {}, format="json")
@@ -179,8 +179,8 @@ def test_quickstart_apply_writes_only_the_active_orgs_default_models(db, django_
     org_a = Organization.objects.create(name="Org A")
     org_b = Organization.objects.create(name="Org B")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart(provider="openai", api_key="sk-a", org_id=org_a.id)
-    QuickstartService().quickstart(provider="openai", api_key="sk-b", org_id=org_b.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-a", org_id=org_a.id, user=None)
+    QuickstartService().quickstart(provider="openai", api_key="sk-b", org_id=org_b.id, user=None)
     admin_b = _org_admin(django_user_model, org_b, "qadmin-b@example.com")
 
     resp = _client(admin_b, org_b).post("/api/quickstart/apply/", {}, format="json")
@@ -213,7 +213,7 @@ def test_quickstart_apply_allowed_for_superadmin(db, django_user_model):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
     QuickstartService().quickstart(
-        provider="openai", api_key="sk-test", org_id=org.id
+        provider="openai", api_key="sk-test", org_id=org.id, user=None
     )  # seed a config
     root = django_user_model.objects.create_user(
         email="root@example.com", password="StrongPass123!", is_superadmin=True
@@ -259,3 +259,157 @@ def test_quickstart_get_requires_org_membership(db, django_user_model):
     org_b = Organization.objects.create(name="Org B")
     member_a = _member(django_user_model, org_a, "m@example.com")
     assert _client(member_a, org_b).get("/api/quickstart/").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/quickstart/ — llm_configs READ gate
+# ---------------------------------------------------------------------------
+
+QUICKSTART_AUTHOR_DISPLAY_NAME = "Quickstart Author"
+QUICKSTART_STATUS_KEYS = {"supported_providers", "last_config", "is_synced"}
+
+
+def _builtin_role_user(django_user_model, org, email, role_name):
+    role = Role.objects.get(name=role_name, is_built_in=True, org__isnull=True)
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+def _custom_role_user(django_user_model, org, email, permissions_by_resource):
+    role = Role.objects.create(name=f"Custom role {email}", org=org, is_built_in=False)
+    for resource_type, permissions in permissions_by_resource.items():
+        RolePermission.objects.create(
+            role=role, resource_type=resource_type, permissions=int(permissions)
+        )
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+def _api_key_client(raw_key, org):
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+def _assert_denied_without_quickstart_data(response):
+    assert response.status_code == 403, response.content
+    body = response.json()
+    assert body["code"] == "permission_denied"
+    assert QUICKSTART_STATUS_KEYS.isdisjoint(body)
+    content = response.content.decode()
+    assert "quickstart_openai" not in content
+    assert QUICKSTART_AUTHOR_DISPLAY_NAME not in content
+
+
+@pytest.fixture
+def quickstart_org(db):
+    yield Organization.objects.create(name="Quickstart Org")
+
+
+@pytest.fixture
+def quickstart_author(db, django_user_model, quickstart_org):
+    """Org admin who ran the org's last quickstart, so its configs carry an author."""
+    Provider.objects.create(name="openai")
+    author = _org_admin(django_user_model, quickstart_org, "qauthor@example.com")
+    author.display_name = QUICKSTART_AUTHOR_DISPLAY_NAME
+    author.save(update_fields=["display_name"])
+    QuickstartService().quickstart(
+        provider="openai", api_key="sk-test", org_id=quickstart_org.id, user=author
+    )
+    yield author
+
+
+LLM_CONFIGS_READ_MISSING = pytest.mark.parametrize(
+    "permissions_by_resource",
+    [
+        {ResourceType.FLOWS: Permission.READ},
+        {ResourceType.LLM_CONFIGS: Permission.CREATE | Permission.UPDATE},
+    ],
+    ids=["no_llm_configs_grant", "llm_configs_write_without_read"],
+)
+
+
+@pytest.mark.django_db
+@LLM_CONFIGS_READ_MISSING
+def test_quickstart_get_denied_without_llm_configs_read(
+    django_user_model, quickstart_org, quickstart_author, permissions_by_resource
+):
+    user = _custom_role_user(
+        django_user_model, quickstart_org, "qnoread@example.com", permissions_by_resource
+    )
+
+    response = _client(user, quickstart_org).get("/api/quickstart/")
+
+    _assert_denied_without_quickstart_data(response)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "role_name", [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
+)
+def test_quickstart_get_allowed_for_builtin_roles(
+    django_user_model, quickstart_org, quickstart_author, role_name
+):
+    user = _builtin_role_user(django_user_model, quickstart_org, "qbuiltin@example.com", role_name)
+
+    response = _client(user, quickstart_org).get("/api/quickstart/")
+
+    assert response.status_code == 200, response.content
+    assert set(response.data) == QUICKSTART_STATUS_KEYS
+    assert "openai" in response.data["supported_providers"]
+    assert response.data["is_synced"] is False
+    last_config = response.data["last_config"]
+    assert last_config["config_name"] == "quickstart_openai"
+    for config_key in ("llm_config", "embedding_config"):
+        assert last_config[config_key]["created_by"]["id"] == quickstart_author.id
+        assert (
+            last_config[config_key]["created_by"]["display_name"]
+            == QUICKSTART_AUTHOR_DISPLAY_NAME
+        )
+
+
+@pytest.mark.django_db
+@LLM_CONFIGS_READ_MISSING
+def test_quickstart_get_denied_for_user_api_key_without_llm_configs_read(
+    django_user_model, issue_api_key, quickstart_org, quickstart_author, permissions_by_resource
+):
+    owner = _custom_role_user(
+        django_user_model, quickstart_org, "qkeynoread@example.com", permissions_by_resource
+    )
+    raw_key, _ = issue_api_key(user=owner)
+
+    response = _api_key_client(raw_key, quickstart_org).get("/api/quickstart/")
+
+    _assert_denied_without_quickstart_data(response)
+
+
+@pytest.mark.django_db
+def test_quickstart_get_allowed_for_user_api_key_with_llm_configs_read(
+    django_user_model, issue_api_key, quickstart_org, quickstart_author
+):
+    owner = _custom_role_user(
+        django_user_model,
+        quickstart_org,
+        "qkeyread@example.com",
+        {ResourceType.LLM_CONFIGS: Permission.READ},
+    )
+    raw_key, _ = issue_api_key(user=owner)
+
+    response = _api_key_client(raw_key, quickstart_org).get("/api/quickstart/")
+
+    assert response.status_code == 200, response.content
+    assert response.data["last_config"]["config_name"] == "quickstart_openai"
+
+
+@pytest.mark.django_db
+def test_quickstart_get_allowed_for_system_api_key(
+    issue_api_key, quickstart_org, quickstart_author
+):
+    raw_key, _ = issue_api_key(user=None)
+
+    response = _api_key_client(raw_key, quickstart_org).get("/api/quickstart/")
+
+    assert response.status_code == 200, response.content
+    assert response.data["last_config"]["config_name"] == "quickstart_openai"

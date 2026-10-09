@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.decision_table_node import (
@@ -31,7 +33,7 @@ class DecisionTableNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         for group_data in condition_groups_data:
             conditions_data = group_data.pop("conditions", [])

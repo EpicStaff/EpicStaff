@@ -66,13 +66,13 @@ def agent_flow(default_org):
         tool_name="search",
     )
     agent = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
     )
     owned_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="surf",
         instructions="owned surface",
         owner_agent=agent,
@@ -84,7 +84,7 @@ def agent_flow(default_org):
         surface=owned_surface, mcp_tool=mcp_tool, mode=ToolMode.ALLOW
     )
     default_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="default_surf",
         instructions="default surface",
     )
@@ -129,10 +129,10 @@ def _org_counts(org) -> dict:
     return {
         "python_tools": PythonCodeTool.objects.filter(org=org).count(),
         "mcp_tools": McpTool.objects.filter(org=org).count(),
-        "surfaces": Surface.objects.filter(organization=org).count(),
-        "agents": AgentDefinition.objects.filter(organization=org).count(),
+        "surfaces": Surface.objects.filter(org=org).count(),
+        "agents": AgentDefinition.objects.filter(org=org).count(),
         "default_surface_rows": AgentDefaultSurface.objects.filter(
-            agent_definition__organization=org
+            agent_definition__org=org
         ).count(),
     }
 
@@ -146,7 +146,7 @@ def _surface_state(agent: AgentDefinition) -> tuple[set, set]:
 
 def _assert_no_agent_owns_two_surfaces(org):
     assert not (
-        AgentDefinition.objects.filter(organization=org)
+        AgentDefinition.objects.filter(org=org)
         .annotate(owned_count=Count("owned_surfaces"))
         .filter(owned_count__gt=1)
         .exists()
@@ -505,7 +505,7 @@ class TestRenamedCopyReused:
         agent.description = "changed after export"
         agent.save(update_fields=["description"])
         agent_state_before = _surface_state(agent)
-        agents_before = AgentDefinition.objects.filter(organization=default_org).count()
+        agents_before = AgentDefinition.objects.filter(org=default_org).count()
 
         first_id_mapper = import_file(export_file)
         second_id_mapper = import_file(export_file)
@@ -520,10 +520,7 @@ class TestRenamedCopyReused:
         ]
         assert _surface_state(agent) == agent_state_before
         assert second_id_mapper.get(EntityType.AGENT_DEFINITION, agent.id) == renamed_agent.id
-        assert (
-            AgentDefinition.objects.filter(organization=default_org).count()
-            == agents_before + 1
-        )
+        assert AgentDefinition.objects.filter(org=default_org).count() == agents_before + 1
 
     def test_python_tool_renamed_for_different_code_is_reused_next_import(
         self, agent_flow, export_file, import_file, default_org
@@ -623,7 +620,7 @@ class TestAgentDefinitionSurfacesNeverRewired:
         agent = agent_flow["agent"]
         first_surface = agent_flow["owned_surface"]
         second_surface = Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name="surf_two",
             instructions="second owned surface",
             owner_agent=agent,
@@ -676,7 +673,7 @@ class TestAgentDefinitionSurfacesNeverRewired:
         agent = agent_flow["agent"]
         extra_surfaces = [
             Surface.objects.create(
-                organization=default_org,
+                org=default_org,
                 name=name,
                 instructions=f"{name} instructions",
                 owner_agent=agent,
@@ -755,10 +752,10 @@ class TestAgentDefinitionSurfacesNeverRewired:
         old_owned_surface_id = agent_flow["owned_surface"].id
         agent_flow["owned_surface"].delete()
         other_agent = AgentDefinition.objects.create(
-            organization=default_org, name="other agent", description="other"
+            org=default_org, name="other agent", description="other"
         )
         other_surface = Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name="surf",
             instructions="owned surface",
             owner_agent=other_agent,
@@ -924,9 +921,7 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
         self, agent_flow, export_file, import_file, default_org
     ):
         agent = agent_flow["agent"]
-        Surface.objects.create(
-            organization=default_org, name="added later", owner_agent=agent
-        )
+        Surface.objects.create(org=default_org, name="added later", owner_agent=agent)
 
         id_mapper = import_file(export_file)
 
@@ -938,7 +933,7 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
         agent = agent_flow["agent"]
         owned_surface = agent_flow["owned_surface"]
         twin = Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name="surf #2",
             instructions=owned_surface.instructions,
             owner_agent=agent,
@@ -974,11 +969,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
         # imported agent another agent's owned surface as a default.
         old_default_surface_id = agent_flow["default_surface"].id
         agent_flow["default_surface"].delete()
-        unrelated_agent = AgentDefinition.objects.create(
-            organization=default_org, name="unrelated agent"
-        )
+        unrelated_agent = AgentDefinition.objects.create(org=default_org, name="unrelated agent")
         unrelated_surface = Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name="default_surf #2",
             instructions="default surface",
             owner_agent=unrelated_agent,
@@ -1025,7 +1018,7 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
         self, agent_flow, export_file, import_file, default_org
     ):
         other_shared_surface = Surface.objects.create(
-            organization=default_org, name="other shared", instructions="other"
+            org=default_org, name="other shared", instructions="other"
         )
         AgentDefaultSurface.objects.filter(agent_definition=agent_flow["agent"]).update(
             surface=other_shared_surface
@@ -1064,7 +1057,7 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
         agent_flow["owned_surface"].delete()
         twins = [
             Surface.objects.create(
-                organization=default_org, name=name, instructions="twin", owner_agent=agent
+                org=default_org, name=name, instructions="twin", owner_agent=agent
             )
             for name in ("surf #2", "surf #3")
         ]
@@ -1155,12 +1148,12 @@ class TestOwnedSurfaceCreatePermission:
 def _flow_with_identical_owned_surfaces(org, agent_name: str, surface_count: int) -> Graph:
     """A flow whose agent owns `surface_count` content-identical surfaces named
     "<agent_name> surf", "<agent_name> surf #2", ... -- one name family."""
-    agent = AgentDefinition.objects.create(organization=org, name=agent_name)
+    agent = AgentDefinition.objects.create(org=org, name=agent_name)
     base_name = f"{agent_name} surf"
     Surface.objects.bulk_create(
         [
             Surface(
-                organization=org,
+                org=org,
                 name=base_name if number == 1 else f"{base_name} #{number}",
                 instructions="identical",
                 owner_agent=agent,
@@ -1252,7 +1245,7 @@ class TestHandEditedSurfaceValues:
         import_file(hand_edited_file)
 
         assert _org_counts(default_org) == counts_after_first_import
-        assert Surface.objects.filter(organization=default_org, instructions="5").count() == 1
+        assert Surface.objects.filter(org=default_org, instructions="5").count() == 1
         assert _surface_state(agent_flow["agent"]) == agent_state_before
 
     def test_unknown_mode_is_rejected_and_writes_nothing(
@@ -1301,12 +1294,10 @@ class TestReusedAgentSurfaceConflicts:
         export_file = json.dumps(
             export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
         )
-        other_agent = AgentDefinition.objects.create(
-            organization=default_org, name="other agent"
-        )
+        other_agent = AgentDefinition.objects.create(org=default_org, name="other agent")
         owned_surface = agent_flow["owned_surface"]
         other_agents_twin = Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name="other agent's surf",
             instructions=owned_surface.instructions,
             owner_agent=other_agent,

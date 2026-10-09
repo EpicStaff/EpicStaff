@@ -35,7 +35,7 @@ def tools(default_org):
 
 def _owned_surface(agent, name, instructions="", python=(), mcp=()):
     surface = Surface.objects.create(
-        organization=agent.organization, name=name, instructions=instructions, owner_agent=agent
+        org=agent.org, name=name, instructions=instructions, owner_agent=agent
     )
     for python_tool, mode in python:
         SurfacePythonTool.objects.create(surface=surface, python_tool=python_tool, mode=mode)
@@ -144,7 +144,7 @@ def _mcp_mode_changed(agent, tools):
 def test_agent_reused_exactly_when_owned_surfaces_match(
     build_case, expected_match, tools, export_service, default_org
 ):
-    agent = AgentDefinition.objects.create(organization=default_org, name="matching agent")
+    agent = AgentDefinition.objects.create(org=default_org, name="matching agent")
     case = build_case(agent, tools)
     if case is not None:
         next(case)

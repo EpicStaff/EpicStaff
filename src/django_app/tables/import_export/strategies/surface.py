@@ -1,5 +1,6 @@
 from agents.models import Surface, SurfaceMcpTool, SurfacePythonTool
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
@@ -46,9 +47,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
-            existing_names = Surface.objects.filter(organization=organization).values_list(
-                "name", flat=True
-            )
+            existing_names = Surface.objects.filter(org=organization).values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -56,7 +55,11 @@ class SurfaceStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        surface = serializer.save(organization=organization, owner_agent=kwargs.get("owner_agent"))
+        surface = serializer.save(
+            org=organization,
+            owner_agent=kwargs.get("owner_agent"),
+            created_by=resolve_author(kwargs.get("user")),
+        )
 
         self._create_python_tools(surface, tools, id_mapper)
         self._create_mcp_tools(surface, tools, id_mapper)
@@ -127,7 +130,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(org_id)
         if organization is None:
             return Q()
-        return Q(organization=organization)
+        return Q(org=organization)
 
     def _remap_tool_set(
         self, entries: list, id_field: str, entity_type: EntityType, id_mapper: IDMapper

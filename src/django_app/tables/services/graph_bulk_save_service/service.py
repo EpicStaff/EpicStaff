@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from django.apps import apps
 from django.db import connection, transaction
+from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
@@ -38,12 +39,18 @@ class GraphBulkSaveService:
 
     Raises BulkSaveValidationError with a structured error dict if any entity
     fails validation. No DB writes happen in that case.
+
+    A node gets a last edit only when its own state changed (a move is not a node
+    edit); the graph gets one when anything in it changed, moves included.
     """
 
     # The active request, set per-invocation in save(). Threaded into every
     # node/edge serializer's context so org-scoped fields can resolve the active
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
+    # Shared by every node/edge serializer of one save(); None without a request,
+    # because a save without an acting user records no last edit.
+    _last_edit_tracker: LastEditTracker | None = None
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -65,6 +72,9 @@ class GraphBulkSaveService:
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
         self._serializer_context = {"request": self._request}
+        self._last_edit_tracker = LastEditTracker(request.user) if request is not None else None
+        if self._last_edit_tracker is not None:
+            self._serializer_context[LAST_EDIT_TRACKER_CONTEXT_KEY] = self._last_edit_tracker
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -501,7 +511,7 @@ class GraphBulkSaveService:
 
         temp_id_map: dict[str, int] = {}
 
-        self._execute_deletions(graph, deleted_data)
+        deleted_count = self._execute_deletions(graph, deleted_data)
 
         # Nodes first — populates temp_id_map for new nodes.
         for ns in node_saveables:
@@ -511,9 +521,23 @@ class GraphBulkSaveService:
         for es in edge_saveables:
             es.resolve_and_save(temp_id_map)
 
-    def _execute_deletions(self, graph: Graph, deleted_data: dict):
-        """Delete all requested entities in edges-before-nodes order."""
+        self._record_last_edits(graph, deleted_count)
+
+    def _execute_deletions(self, graph: Graph, deleted_data: dict) -> int:
+        """Delete all requested entities in edges-before-nodes order; return the rows deleted."""
+        deleted_count = 0
         for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]:
             ids = deleted_data.get(config.delete_key) or []
             if ids:
-                config.model_class.objects.filter(id__in=ids, graph=graph).delete()
+                deleted, _ = config.model_class.objects.filter(id__in=ids, graph=graph).delete()
+                deleted_count += deleted
+        return deleted_count
+
+    def _record_last_edits(self, graph: Graph, deleted_count: int) -> None:
+        # Runs after every node, edge and deferred routing write, so nested child
+        # rows and routing refs are part of each node's comparison.
+        if self._last_edit_tracker is None:
+            return
+        if deleted_count:
+            self._last_edit_tracker.mark_edited(graph)
+        self._last_edit_tracker.finish()

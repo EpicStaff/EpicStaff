@@ -18,6 +18,10 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: 3,
     test_payload: { id: '104', text: 'hello' },
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const telegramDto: GetTelegramTriggerNodeRequest = {
@@ -29,6 +33,10 @@ const telegramDto: GetTelegramTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: 4,
     test_payload: { message: { text: 'hello' } },
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const emptyFlow = { nodes: [], connections: [] } as unknown as FlowModel;

@@ -134,7 +134,7 @@ class TestPythonToolLookupBound:
 def test_shared_surface_lookup_loads_at_most_the_bound(default_org):
     Surface.objects.bulk_create(
         [
-            Surface(organization=default_org, name=_family_name("S", number), instructions="same")
+            Surface(org=default_org, name=_family_name("S", number), instructions="same")
             for number in range(1, SEEDED_ROWS + 1)
         ]
     )
@@ -161,7 +161,7 @@ def test_shared_surface_lookup_loads_at_most_the_bound(default_org):
 
 @pytest.mark.django_db
 def test_agent_lookup_loads_at_most_the_bound(default_org):
-    template = AgentDefinition.objects.create(organization=default_org, name="template")
+    template = AgentDefinition.objects.create(org=default_org, name="template")
     agent_scalars = {
         key: value
         for key, value in entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
@@ -171,11 +171,9 @@ def test_agent_lookup_loads_at_most_the_bound(default_org):
     }
     template.delete()
     for number in range(1, SEEDED_ROWS + 1):
-        agent = AgentDefinition.objects.create(
-            organization=default_org, name=_family_name("agent", number)
-        )
+        agent = AgentDefinition.objects.create(org=default_org, name=_family_name("agent", number))
         Surface.objects.create(
-            organization=default_org,
+            org=default_org,
             name=f"owned {number}",
             instructions="other",
             owner_agent=agent,

@@ -200,7 +200,7 @@ def test_quickstart_llm_model_is_stamped_to_the_running_org(org_a, org_b):
     provider = Provider.objects.create(name="openai")
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.org_id == org_a.id
@@ -219,7 +219,7 @@ def test_quickstart_reuses_an_existing_builtin(org_a):
     )
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.id == builtin.id
@@ -246,7 +246,7 @@ def test_quickstart_prefers_own_org_row_over_builtin(org_a):
     for _ in range(5):  # .first() without ORDER BY was non-deterministic
         assert (
             QuickstartService()
-            ._get_or_create_llm_model(provider=provider, org_id=org_a.id)
+            ._get_or_create_llm_model(provider=provider, org_id=org_a.id, author=None)
             .id
             == mine.id
         )
@@ -261,7 +261,7 @@ def test_quickstart_does_not_reuse_another_orgs_row(org_a, org_b):
     )
 
     model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.id != theirs.id
@@ -273,7 +273,7 @@ def test_quickstart_embedding_model_is_stamped_to_the_running_org(org_a):
     provider = Provider.objects.create(name="openai")
 
     model = QuickstartService()._get_or_create_embedder_model(
-        provider=provider, org_id=org_a.id
+        provider=provider, org_id=org_a.id, author=None
     )
 
     assert model.org_id == org_a.id

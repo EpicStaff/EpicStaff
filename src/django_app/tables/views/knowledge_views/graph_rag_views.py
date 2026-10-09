@@ -124,6 +124,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 collection_id=collection_id,
                 embedder_id=embedder_id,
                 llm_id=llm_id,
+                user=request.user,
             )
 
             response_serializer = GraphRagDetailSerializer(graph_rag)
@@ -215,7 +216,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """
         self._assert_graph_rag_in_active_org(pk)
         try:
-            result = GraphRagService.delete_graph_rag(int(pk))
+            result = GraphRagService.delete_graph_rag(int(pk), user=request.user)
 
             return Response(
                 {"message": "GraphRag deleted successfully", **result},
@@ -257,6 +258,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             graph_rag = GraphRagService.update_index_config(
                 graph_rag_id=int(pk),
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             response_serializer = GraphRagDetailSerializer(graph_rag)
@@ -303,6 +305,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             result = GraphRagService.remove_documents_from_graph_rag(
                 graph_rag_id=int(pk),
                 document_ids=document_ids,
+                user=request.user,
             )
 
             return Response(
@@ -339,6 +342,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             result = GraphRagService.delete_document(
                 graph_rag_id=int(pk),
                 document_id=int(document_id),
+                user=request.user,
             )
 
             return Response(
@@ -402,7 +406,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         """
         self._assert_graph_rag_in_active_org(pk)
         try:
-            result = GraphRagService.init_documents_from_collection(int(pk))
+            result = GraphRagService.init_documents_from_collection(int(pk), user=request.user)
 
             message = (
                 f"Initialized {result['added_count']} document(s)"

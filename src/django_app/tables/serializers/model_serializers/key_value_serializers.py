@@ -1,3 +1,4 @@
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -13,7 +14,9 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.validators.key_value_entries_validator import resolved_key_error
 
 
-class KeyValueTableSerializer(serializers.ModelSerializer):
+class KeyValueTableSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     name = serializers.CharField(
         max_length=MAX_TABLE_NAME_LENGTH,
         validators=[
@@ -28,14 +31,38 @@ class KeyValueTableSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = KeyValueTable
-        fields = ["id", "name", "description", "entry_count", "created_at", "updated_at"]
-        read_only_fields = ["created_at", "updated_at"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "entry_count",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_by", "created_at", "updated_at"]
 
     def get_entry_count(self, table: KeyValueTable) -> int:
         return getattr(table, "entry_count", 0)
 
 
-class KeyValueTableEntrySerializer(serializers.ModelSerializer):
+class KeyValueTableEntryLastEditStateSerializer(serializers.ModelSerializer):
+    """An entry's content, compared to detect a user's edit of the entry's table.
+
+    `updated_by_session` is left out: a hand save always clears it, and clearing it alone
+    changes nothing the user wrote.
+    """
+
+    class Meta:
+        model = KeyValueTableEntry
+        fields = ["key", "value"]
+
+
+class KeyValueTableEntrySerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
+    # The mixin records a create, or an update that changes the entry's content, as a last
+    # edit of the entry's table; entries have no author of their own.
+    last_edit_state_serializer_class = KeyValueTableEntryLastEditStateSerializer
+
     table = OrgScopedPrimaryKeyRelatedField(queryset=KeyValueTable.objects.all())
     key = serializers.CharField(max_length=MAX_KEY_LENGTH, trim_whitespace=False)
     value = serializers.JSONField(allow_null=True)

@@ -1,7 +1,7 @@
 """org_visible_q / org_visible_queryset / OrgVisiblePrimaryKeyRelatedField must scope
-every org-owned model by its owning-org FK, found by convention (`org` on the `tables`
-models, `organization` on the `agents` models), and must refuse a model that has
-neither instead of returning it unfiltered."""
+every org-owned model by its owning-org FK, found by convention (named `org` on every
+org-owned model, `tables` and `agents` alike), and must refuse a model without one
+instead of returning it unfiltered."""
 
 from types import SimpleNamespace
 
@@ -13,7 +13,7 @@ from rest_framework import serializers
 from agents.models import AgentDefinition, Surface
 from rbac.models import Organization
 from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
     org_visible_q,
     org_visible_queryset,
@@ -22,7 +22,7 @@ from tables.models import Label, LLMModel, Provider, PythonCode, PythonCodeTool
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-ACCEPTED_ORG_FK_NAMES = {"org", "organization"}
+OWNING_ORG_FK_NAME = "org"
 
 
 def test_every_fk_to_organization_follows_naming_convention():
@@ -33,14 +33,13 @@ def test_every_fk_to_organization_follows_naming_convention():
         if field.concrete
         and (field.many_to_one or field.one_to_one)
         and field.related_model is Organization
-        and field.name not in ACCEPTED_ORG_FK_NAMES
+        and field.name != OWNING_ORG_FK_NAME
     ]
 
     assert not misnamed, (
-        f"ForeignKey/OneToOneField to Organization not named 'org' or 'organization': "
-        f"{misnamed}. org_visible_q finds the owning org by those two names only — "
-        f"rename the field, or extend org_visible_q in rbac/scoping/fields.py to "
-        f"recognise the new name."
+        f"ForeignKey/OneToOneField to Organization not named '{OWNING_ORG_FK_NAME}': "
+        f"{misnamed}. org_visible_q finds the owning org by that name only — rename "
+        f"the field to '{OWNING_ORG_FK_NAME}'."
     )
 
 
@@ -51,22 +50,22 @@ def _request_in(org):
 
 @pytest.fixture
 def agent_definitions(acme, beta):
-    own = AgentDefinition.objects.create(organization=acme, name="acme-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+    own = AgentDefinition.objects.create(org=acme, name="acme-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
     foreign = AgentDefinition.objects.create(
-        organization=beta, name="beta-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+        org=beta, name="beta-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
     )
     yield own, foreign
 
 
 @pytest.fixture
 def surfaces(acme, beta):
-    own = Surface.objects.create(organization=acme, name="acme-surface")
-    foreign = Surface.objects.create(organization=beta, name="beta-surface")
+    own = Surface.objects.create(org=acme, name="acme-surface")
+    foreign = Surface.objects.create(org=beta, name="beta-surface")
     yield own, foreign
 
 
 @pytest.mark.django_db
-class TestOrganizationNamedFk:
+class TestAgentsAppModels:
     def test_agent_definition_queryset_excludes_other_org(self, acme, agent_definitions):
         own, foreign = agent_definitions
 
@@ -85,7 +84,7 @@ class TestOrganizationNamedFk:
         assert own.id in visible_ids
         assert foreign.id not in visible_ids
 
-    def test_surface_q_filters_on_organization(self, acme, surfaces):
+    def test_surface_q_filters_on_org(self, acme, surfaces):
         own, foreign = surfaces
 
         visible = Surface.objects.filter(org_visible_q(Surface, acme.id))
@@ -98,12 +97,12 @@ class _SurfaceRefSerializer(serializers.Serializer):
 
 
 class _SurfaceStrictRefSerializer(serializers.Serializer):
-    surface = OrganizationScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
+    surface = OrgScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("serializer_class", [_SurfaceRefSerializer, _SurfaceStrictRefSerializer])
-class TestRelatedFieldOnOrganizationNamedFk:
+class TestRelatedFieldOnAgentsAppModel:
     def test_own_org_pk_accepted(self, serializer_class, acme, surfaces):
         own, _ = surfaces
         serializer = serializer_class(

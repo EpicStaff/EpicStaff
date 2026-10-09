@@ -14,6 +14,10 @@ from rbac.exceptions import (
     SelfAccountDeletionError,
     UserNotFoundError,
 )
+from rbac.governance.authorship import (
+    AuthorshipReleaseService,
+    SnapshotAuthorshipScrubService,
+)
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.delete_collector import (
     build_affected_resources,
@@ -196,8 +200,10 @@ class UserManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def revoke_superadmin(self, actor, target_user_id):
-        """Sets is_superadmin=False on target_user_id. Last-active-superadmin
-        guard. Idempotent if already False."""
+        """Sets is_superadmin=False on target_user_id and clears their authorship in
+        every org they are not a member of, including the authorship recorded in that
+        org's flow version snapshots. Last-active-superadmin guard.
+        Idempotent if already False."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
             UserModel.objects
@@ -216,15 +222,24 @@ class UserManagementService(CrossOrgResourceService):
             if target is None:
                 raise UserNotFoundError()
 
+        released = 0
+        scrubbed_snapshots = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
             target.refresh_from_db()
+            released = AuthorshipReleaseService().release_outside_memberships(user_id=target.pk)
+            scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_outside_memberships(
+                user_id=target.pk
+            )
 
         logger.info(
-            "UserManagementService.revoke_superadmin actor={a} target={t}",
+            "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
+            "scrubbed_snapshots={v}",
             a=getattr(actor, "email", "system"),
             t=target.email,
+            r=released,
+            v=scrubbed_snapshots,
         )
 
         return target
@@ -314,6 +329,11 @@ class UserManagementService(CrossOrgResourceService):
         """Permanently delete a user account, refusing self-deletion and removal of the last active superadmin.
 
         `verification_phrase` must be exactly `delete-<user email>`, compared against the unlocked read of the user before any lock is taken.
+
+        The user is cleared from the authorship recorded in every flow version snapshot, of
+        every organization, in the same transaction: a superadmin holds no memberships yet
+        may have authored flows in any organization, and restoring a version replays the
+        recorded ids, which would then point at no user.
         """
         UserModel = get_user_model()  # noqa: N806
         instance = self._target_user_or_404(target_user_id)
@@ -326,6 +346,11 @@ class UserManagementService(CrossOrgResourceService):
         external = self._user_external_artifacts(instance)
         # Captured before the delete: after it, the row these read from is gone.
         snapshot = self._user_delete_snapshot(instance)
+        # Before the locks below, so scanning every version snapshot never extends how
+        # long they are held; a guard failing after it rolls the scrub back.
+        scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_in_every_organization(
+            user_id=instance.pk
+        )
 
         # Re-fetch under lock and re-check the last-active-superadmin guard
         # against current state. Locks the active-superadmin set FIRST, in pk
@@ -365,10 +390,12 @@ class UserManagementService(CrossOrgResourceService):
         transaction.on_commit(lambda: self._cleanup_user_delete_external(snapshot))
 
         logger.info(
-            "UserManagementService.delete_user actor={a} target={t} resources={r}",
+            "UserManagementService.delete_user actor={a} target={t} resources={r} "
+            "scrubbed_snapshots={v}",
             a=getattr(actor, "email", "system"),
             t=instance.email,
             r=affected,
+            v=scrubbed_snapshots,
         )
         return payload
 

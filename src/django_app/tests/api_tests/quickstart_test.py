@@ -1,5 +1,7 @@
 import pytest
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 
 from tables.models.llm_models import (
@@ -121,6 +123,29 @@ def test_get_quickstart_is_synced_true_after_apply(
     response = auth_client.get(quickstart_url)
 
     assert response.data["is_synced"] is True
+
+
+@pytest.mark.django_db
+def test_get_quickstart_renders_llm_config_created_at_and_stays_synced(
+    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded
+):
+    before = timezone.now()
+    created = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+    applied = auth_client.post(quickstart_apply_url, format="json")
+    assert created.status_code == status.HTTP_200_OK, created.content
+    assert applied.status_code == status.HTTP_200_OK, applied.content
+
+    response = auth_client.get(quickstart_url)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    assert body["is_synced"] is True
+    rendered = body["last_config"]["llm_config"]["created_at"]
+    created_at = parse_datetime(rendered)
+    assert created_at is not None, f"created_at is not an ISO datetime: {rendered!r}"
+    assert created_at >= before
 
 
 # ---------------------------------------------------------------------------
