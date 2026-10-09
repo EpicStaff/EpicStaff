@@ -58,7 +58,7 @@ class DevSettings:
 @dataclass(frozen=True)
 class Phase:
     name: str
-    graph_id: int
+    graph_id: int | None  # None: imported from the phase's flow export once the stack is checked
     variables: dict | None
     pass_rules: PassRules
 
@@ -84,7 +84,19 @@ class Case:
     source_text: str
 
 
-def load_case(path: Path, graph_overrides: dict[str, int] | None = None) -> Case:
+def load_case(
+    path: Path,
+    graph_overrides: dict[str, int] | None = None,
+    flow_exports: dict[str, Path] | None = None,
+) -> Case:
+    """Parse and validate a case file.
+
+    Args:
+        graph_overrides: Graph id per phase name; wins over the case file.
+        flow_exports: Flow export file per phase name. A phase that neither the overrides nor
+            the case file give a graph id keeps graph_id None when its export exists; the
+            runner imports it after its checks. Loading never touches the stack.
+    """
     text = path.read_text(encoding="utf-8")
     try:
         data = tomllib.loads(text)
@@ -103,10 +115,19 @@ def load_case(path: Path, graph_overrides: dict[str, int] | None = None) -> Case
     for raw in data.get("phase", []):
         phase_name = _require(raw, "name", str, path)
         graph_id = overrides.get(phase_name, raw.get("graph_id"))
-        if not isinstance(graph_id, int) or isinstance(graph_id, bool) or graph_id < 1:
+        export = (flow_exports or {}).get(phase_name)
+        imported_later = graph_id is None and export is not None and export.is_file()
+        if not imported_later and (
+            not isinstance(graph_id, int) or isinstance(graph_id, bool) or graph_id < 1
+        ):
+            alternative = (
+                f", or save its flow export as {export} (python benchmark/bench.py flow import)"
+                if export is not None
+                else ""
+            )
             raise CaseError(
                 f"{path}: phase {phase_name!r} needs a positive integer graph_id "
-                f"(or --graph {phase_name}=<id>)"
+                f"(or --graph {phase_name}=<id>{alternative})"
             )
         variables = raw.get("variables")
         if variables is not None and not isinstance(variables, dict):

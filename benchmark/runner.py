@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import analyze
+import flows
 import stack
 from api import Api, ApiError, graph_hash
 from config import (
@@ -43,6 +44,11 @@ BENCH_LEVELS = ("BENCH", "DEBUG", "TRACE")
 CAP_VARIABLES = ("CREW_MAX_CONCURRENT_SESSIONS", "AGENT_MAX_CONCURRENT_RUNS")
 FINISH_MARGIN_S = 5  # past a level's finish cap: a few controller ticks for the timeout rule
 FALLBACK_REFRESH_S = 5  # how often fallback mode asks the sessions API whether sessions ended
+# `${NAME:?}` / `${NAME:?message}` in the compose file; `$${...}` is a literal, not a variable
+COMPOSE_REQUIRED_VARIABLE = re.compile(r"(?<!\$)\$\{([A-Za-z_]\w*):\?")
+DEBUG_LOG_LEVELS = ("DEBUG", "TRACE")
+TRUE_VALUES = ("1", "true", "yes", "on", "y", "ok")  # what Django's env.bool reads as true
+ENV_UPDATE_HINT = "run: python scripts/envtool.py --update (or make env-update)"
 
 
 @dataclass
@@ -56,6 +62,8 @@ class Options:
     restart: bool = True
     results_dir: Path = RESULTS_DIR
     repo: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
+    # flow export per phase name, for phases the case leaves without a graph id
+    flow_exports: dict[str, Path] = field(default_factory=dict)
 
 
 def evaluate_host(facts: dict) -> list[tuple[str, str]]:
@@ -78,6 +86,25 @@ def evaluate_host(facts: dict) -> list[tuple[str, str]]:
         )
     if facts["mem_avail_pct"] is not None and facts["mem_avail_pct"] < 20:
         findings.append(("error", f"only {facts['mem_avail_pct']:.0f}% RAM available"))
+    return findings
+
+
+def evaluate_env(facts: dict) -> list[tuple[str, str]]:
+    if not facts["env_exists"]:
+        message = "src/.env not found: generate it with python scripts/envtool.py (--dev for development defaults)"
+        return [("error", message)]
+    findings = []
+    if facts["missing"]:
+        names = ", ".join(facts["missing"])
+        message = f"src/.env does not set {names}, which docker-compose.yaml requires (unset or empty): {ENV_UPDATE_HINT}"
+        findings.append(("error", message))
+    if facts["debug"]:
+        settings = ", ".join(facts["debug"])
+        message = (
+            f"src/.env looks like the dev profile ({settings}): numbers include debug overhead; "
+            "use production defaults (envtool without --dev) for comparable results"
+        )
+        findings.append(("warn", message))
     return findings
 
 
@@ -582,11 +609,15 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
         if variant.ref:
             meta_git = {**stack.git_info(root), "ref": variant.ref}
         compose = stack.Compose(root / "src", env_path, project)
+        # against the compose file of the ref being built, before .env or the stack is touched
+        compose_file = root / "src" / "docker-compose.yaml"
+        _report(evaluate_env(_env_facts(compose_file, env_path, overrides)))
         try:
             try:
                 with stack.EnvOverride(env_path, overrides):
                     compose.up(build=options.build)
                     env = stack.read_env_file(env_path)
+                    case = _import_flows(case, api, options.flow_exports)
                     graphs = _resolve_graphs(api, case)
                     _report(evaluate_stack(_stack_facts(compose, api, case, env, graphs), case))
                     smoke = (
@@ -692,6 +723,44 @@ def _host_facts(repo: Path) -> dict:
         "mem_avail_pct": mem_avail_pct,
         "backup_exists": (repo / "src" / f".env{stack.BACKUP_SUFFIX}").exists(),
     }
+
+
+def _env_facts(compose_file: Path, env_path: Path, overrides: dict, environ=os.environ) -> dict:
+    """What src/.env leaves unset that compose requires, and the debug settings in effect.
+
+    The run's overrides count as set, and so does the shell environment, which compose also
+    interpolates from. Debug settings are judged after the overrides: a log level the case
+    raises to BENCH costs no debug overhead during the run.
+    """
+    if not env_path.is_file():
+        return {"env_exists": False, "missing": [], "debug": []}
+    env = {**stack.read_env_file(env_path), **overrides}
+    required = set(COMPOSE_REQUIRED_VARIABLE.findall(compose_file.read_text(encoding="utf-8")))
+    debug = [
+        f"{name}={value}"
+        for name, value in env.items()
+        if (name == "DJANGO_DEBUG" and value.lower() in TRUE_VALUES)
+        or (name.endswith("_LOG_LEVEL") and value.upper() in DEBUG_LOG_LEVELS)
+    ]
+    return {
+        "env_exists": True,
+        "missing": sorted(name for name in required if not env.get(name) and not environ.get(name)),
+        "debug": debug,
+    }
+
+
+def _import_flows(case: Case, api: Api, flow_exports: dict[str, Path]) -> Case:
+    """`case` with every phase that has no graph id given the id of its flow export, imported
+    only when this server does not have that export yet (flows.ensure_flow). Called after the
+    host and .env checks, so nothing is written to a stack that failed them."""
+    phases = []
+    for phase in case.phases:
+        if phase.graph_id is None:
+            flow = flows.ensure_flow(api, flow_exports[phase.name])
+            print(flows.describe(phase.name, flow))
+            phase = replace(phase, graph_id=flow.id)
+        phases.append(phase)
+    return replace(case, phases=tuple(phases))
 
 
 def _resolve_graphs(api: Api, case: Case) -> dict[str, dict]:
@@ -857,12 +926,16 @@ def run_dev(case: Case, options: Options, sessions: int, concurrency: int) -> Pa
 
 
 def preflight_only(case: Case, options: Options) -> int:
-    findings = evaluate_host(_host_facts(options.repo))
-    if _report(findings, fatal=False):
-        return 2  # any host-level error (e.g. docker down) makes the stack checks below meaningless
-    api = Api(options.api_base, options.api_key, options.org_id)
     env_path = options.repo / "src" / ".env"
+    compose_file = options.repo / "src" / "docker-compose.yaml"
+    findings = evaluate_host(_host_facts(options.repo))
+    findings += evaluate_env(_env_facts(compose_file, env_path, case.env))
+    if _report(findings, fatal=False):
+        # a host error (e.g. docker down) or an unusable .env makes the stack checks meaningless
+        return 2
+    api = Api(options.api_base, options.api_key, options.org_id)
     compose = stack.Compose(options.repo / "src", env_path, stack.detect_project())
+    case = _import_flows(case, api, options.flow_exports)
     graphs = _resolve_graphs(api, case)
     env = {**stack.read_env_file(env_path), **case.env}  # a run applies the case env on top
     facts = _stack_facts(compose, api, case, env, graphs, case_env=case.env)

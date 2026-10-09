@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 VOLATILE_GRAPH_KEYS = frozenset({"created_at", "updated_at", "save_version"})
 
@@ -20,17 +22,26 @@ class ApiError(Exception):
 class Api:
     def __init__(self, base_url: str, api_key: str, org_id: str, timeout_s: float = 30):
         self.base_url = base_url.rstrip("/")
+        self.org_id = str(org_id)
         self.timeout_s = timeout_s
         self._headers = {
             "X-Api-Key": api_key,
             "X-Organization-Id": str(org_id),
-            "Content-Type": "application/json",
         }
 
     def request(self, method: str, path: str, body=None, query: dict | None = None):
         url = self.base_url + path + ("?" + urllib.parse.urlencode(query) if query else "")
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(url, data=data, headers=self._headers, method=method)
+        return self._send(method, url, data, "application/json")
+
+    def upload(self, path: str, file_path: Path, fields: dict[str, str]):
+        """POST `file_path` as the multipart field `file`, next to the plain form `fields`."""
+        data, content_type = encode_multipart(fields, "file", file_path)
+        return self._send("POST", self.base_url + path, data, content_type)
+
+    def _send(self, method: str, url: str, data: bytes | None, content_type: str):
+        headers = {**self._headers, "Content-Type": content_type}
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
                 raw = response.read()
@@ -84,6 +95,22 @@ class Api:
             if not page.get("next"):
                 return rows
             offset += 1000
+
+
+def encode_multipart(fields: dict[str, str], file_field: str, file_path: Path) -> tuple[bytes, str]:
+    """A multipart/form-data body and its Content-Type header value."""
+    # 128 random bits: the chance that the file happens to contain the boundary is negligible
+    boundary = secrets.token_hex(16)
+    head = "".join(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+        for name, value in fields.items()
+    )
+    head += (
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{file_field}"; '
+        f'filename="{file_path.name}"\r\nContent-Type: application/json\r\n\r\n'
+    )
+    body = head.encode() + file_path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+    return body, f"multipart/form-data; boundary={boundary}"
 
 
 def graph_hash(graph: dict) -> str:

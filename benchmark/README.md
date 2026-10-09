@@ -2,58 +2,71 @@
 
 One tool that runs real sessions against a running EpicStaff stack, writes flat result files, and compares runs in a browser viewer. Plain Python standard library, Python 3.11 or newer (`tomllib`). It talks to the stack only through `docker` / `docker compose`, the HTTP API, and host files under `/proc` and `/sys/fs/cgroup` (Linux; Docker Desktop falls back to `docker stats`).
 
+## Quick start
+
+Developer check on a laptop, from the repository root, with the stack running.
+
+1. **`src/.env`**, once and after pulling new variables: `make env-update DEV=1`. It appends only the variables your `.env` lacks and never changes existing lines. No `src/.env` yet: `python scripts/envtool.py --dev`. The dev profile is fine on a laptop; pre-flight warns that the numbers include debug overhead.
+2. **API key**, once: create an API key for your organization in the UI and put it in `~/.epicstaff-bench.env`, then `chmod 600 ~/.epicstaff-bench.env`:
+   ```bash
+   export DJANGO_API_KEY=<org API key>
+   export BENCH_ORG_ID=1
+   ```
+3. **Payload flow**, once: build it in the UI (5 Python nodes, no LLM, no RAG), give it the `benchmark` label, export it and save the file as `benchmark/flows/payload.json`. Commit it, so everyone measures the same flow. `dev` imports it by itself on the first run and reuses that flow afterwards; see **Graph ids** below.
+4. **Measure**, then compare:
+   ```bash
+   make bench-dev ARGS='--note "before fix"'
+   # ... change code ...
+   make bench-dev ARGS='--note "after fix"'
+   python benchmark/bench.py compare benchmark/results/<before-run> benchmark/results/<after-run>
+   ```
+   For charts open `benchmark/viewer.html` and drop the run folders on it (section 7).
+
+## Commands reference
+
+All commands run from the repository root. A case argument is used as a path if that file exists, otherwise looked up under `benchmark/cases/`, so `server` and `server.toml` work from anywhere.
+
+| Command | Options | What it does |
+|---|---|---|
+| `python benchmark/bench.py dev` | `--case <name-or-path>` (default `dev`), `--graph PHASE=ID`, `--sessions N`, `--concurrency N`, `--note`, `--no-restart`, `--no-build` | Developer check: payload phase only, fixed load (default 100 sessions, 25 in flight), no ladder, no verdict. |
+| `python benchmark/bench.py run <case>` | `--graph PHASE=ID` (repeatable), `--variant a,b`, `--set KEY=VALUE` (repeatable), `--ref <git-ref>`, `--note`, `--no-build`, `--no-smoke` | Full run, one run folder per variant. `--set` and `--ref` add an ad-hoc variant named `<variant>-adhoc` on top of the chosen ones. |
+| `python benchmark/bench.py smoke <case>` | as `run` | First variant only, ladder cut to its first level, no bisect. |
+| `python benchmark/bench.py preflight <case>` | as `run` | Host, `.env` and stack checks without running load. Exit 2 on any error. |
+| `python benchmark/bench.py plan <case>` | as `run` | Prints variants, ladder levels per phase and the worst-case duration (every level waiting the full `session_timeout_s` in its finish step; a normal level waits about one session duration). Does not touch the stack and never imports; a payload phase without a graph id is fine as long as its export exists. |
+| `python benchmark/bench.py compare <run>...` | | Terminal comparison; the first run is the baseline, the others show Δ %. |
+| `python benchmark/bench.py push <run>...` | `--yes` | Copies run folders into the results repo, section 3 step 8. |
+| `python benchmark/bench.py flow import` | `--quiet` (print only the id) | Always imports `benchmark/flows/payload.json`, replacing the flow an earlier import created, and prints `payload flow: id <id> (created\|updated) "<name>"`. Exit 2 on an error. A replace recreates the nodes with new ids, so runs before and after it show "different workload". |
+| `python scripts/envtool.py` | `--dev` | Writes a new `src/.env` from `src/env.yaml` with production (or `--dev` development) defaults, overwriting the file. |
+| `python scripts/envtool.py --update` | `--dev` | Appends the variables `src/.env` lacks, with the chosen profile's defaults, under a dated `# Added by envtool --update` comment. Variables without a default are appended commented out and listed as "needs a value". Never changes or reorders existing lines. |
+| `make env-update` | `DEV=1` | `python scripts/envtool.py --update` (`--dev` with `DEV=1`). |
+| `make bench-flow` | | `python benchmark/bench.py flow import`. |
+| `make bench-dev` | `ARGS='<dev options>'` | `python benchmark/bench.py dev $(ARGS)`. |
+
+The make targets run the host Python (`python3`, `python` on Windows; override with `PYTHON=<interpreter>`); `envtool.py` also needs PyYAML.
+
+**Graph ids** come from the case file or `--graph <phase>=<id>`, for example `--graph payload=17 --graph complex=18`; `--graph` wins. When the `payload` phase has neither and `benchmark/flows/payload.json` exists, `dev`, `run`, `smoke` and `preflight` use the flow imported from that file: `preflight` after its host and `.env` checks, a run once the stack is up. It is imported only when this server and organization do not have it yet, when the file changed, or when the flow was deleted; otherwise the earlier import is reused (printed as `existing`). Re-importing an unchanged file would recreate its nodes with new ids and change the graph hash, so two runs of the same flow would look like different workloads. Which import belongs to which server, organization and file content is kept in `benchmark/.flow-cache.json` (gitignored; deleting it only costs one re-import). Every other phase still needs an id.
+
+**Settings** come from the environment: `DJANGO_API_KEY` (required by every command that talks to the stack, and by `push`), `BENCH_ORG_ID` (default 1), `BENCH_API` (default `http://localhost`), `BENCH_RESULTS_REPO` (for `push`). Any of these four that the environment does not set is read from `~/.epicstaff-bench.env` (`NAME=VALUE` or `export NAME=VALUE` lines; every other name in the file is ignored). An exported value always wins, so an exported `DJANGO_API_KEY` is used while `BENCH_ORG_ID` can still come from the file. On Linux and macOS the tool warns when that file is readable by other users.
+
+Exit codes: 0 ok, 2 case error, flow import error or pre-flight error, 3 smoke failed, 130 Ctrl+C, other non-zero on a crash.
+
 ## 1. What it measures
 
 - **Capacity**: how many sessions the server runs at the same time (sustained, within the pass rules) before it breaks, and which resource breaks first.
 - **Cost of one session**: CPU-seconds, MB per concurrent session, LLM tokens, time per stage and per node. These are per-session numbers, so they compare across load levels.
 - **Better or worse**: did a change improve capacity on the server, or a 1-minute developer check on a laptop. Any set of runs opens in one viewer, which says when two runs did not measure the same thing.
 
-## 2. Quick start
-
-All commands run from the repository root. The API key is read from the environment only.
+## 2. Server capacity run
 
 ```bash
-export DJANGO_API_KEY='<org API key>'      # required by every command that talks to the stack, and by `push`
-export BENCH_ORG_ID=1                      # default 1
-export BENCH_API=http://localhost          # default http://localhost
-```
-
-**Developer check (laptop).** Build the payload flow in your local UI first (5 Python nodes, no LLM, no RAG) and note its graph id.
-
-```bash
-python benchmark/bench.py dev --graph payload=<id> --note "before fix"
-# ... change code ...
-python benchmark/bench.py dev --graph payload=<id> --note "after fix"
-python benchmark/bench.py compare benchmark/results/<before-run> benchmark/results/<after-run>
-```
-
-Defaults: 100 sessions, 25 in flight, no ladder, no verdict. Options: `--sessions N`, `--concurrency N`, `--no-restart`, `--no-build`, `--case <name-or-path>` (default `dev`).
-
-**Server capacity run.**
-
-```bash
-python benchmark/bench.py preflight benchmark/cases/server.toml
-python benchmark/bench.py plan benchmark/cases/server.toml
-python benchmark/bench.py run benchmark/cases/server.toml --note "after the agent fix"
+python benchmark/bench.py preflight server
+python benchmark/bench.py plan server --graph complex=<id>
+python benchmark/bench.py run server --note "after the agent fix"
 python benchmark/bench.py compare benchmark/results/<run-a> benchmark/results/<run-b>
 python benchmark/bench.py push benchmark/results/<run-a>
 ```
 
-A case argument is used as a path if it exists, otherwise looked up under `benchmark/cases/`; `server` and `server.toml` therefore work from anywhere. Graph ids come from the case file or `--graph <phase>=<id>` (repeatable), for example `--graph payload=17 --graph complex=18`.
-
-| Command | What it does |
-|---|---|
-| `preflight <case>` | Host and stack checks without running load. Exit 2 on any error. |
-| `plan <case>` | Prints variants, ladder levels per phase and the worst-case duration (every level waiting the full `session_timeout_s` in its finish step; a normal level waits about one session duration). Does not touch the stack. |
-| `smoke <case>` | First variant only, ladder cut to its first level, no bisect. |
-| `run <case>` | Full run, one run folder per variant. |
-| `dev` | Developer check: payload phase only, fixed load, no verdict. |
-| `compare <run>...` | Terminal comparison; the first run is the baseline, the others show Δ %. |
-| `push <run>... [--yes]` | Copies run folders into the results repo, section 3 step 8. |
-
-`preflight`, `plan`, `smoke` and `run` accept `--graph PHASE=ID`, `--variant a,b`, `--set KEY=VALUE` (repeatable), `--ref <git-ref>`, `--note`, `--no-build`, `--no-smoke`. `--set` and `--ref` add an ad-hoc variant named `<variant>-adhoc` on top of the chosen ones.
-
-Exit codes: 0 ok, 2 case error or pre-flight error, 3 smoke failed, 130 Ctrl+C, other non-zero on a crash.
+The `complex` graph id is server-specific: set it in `benchmark/cases/server.toml` or pass `--graph complex=<id>`. The payload flow is imported from `benchmark/flows/payload.json` unless an id is given.
 
 ## 3. Server setup
 
@@ -79,10 +92,15 @@ Done once, on the machine that runs the benchmark and pushes results.
    git -C ~/epicstaff-benchmarks config user.name "EpicStaff Benchmarks"
    git -C ~/epicstaff-benchmarks config user.email "<address>"
    ```
-5. In `~/.bashrc`: `export BENCH_RESULTS_REPO=~/epicstaff-benchmarks`
-6. API key: create one in the EpicStaff UI for the benchmark organization. Keep it in `~/.epicstaff-bench.env` with `chmod 600`, containing `export DJANGO_API_KEY=...` and `export BENCH_ORG_ID=...`. Run `source ~/.epicstaff-bench.env` before a run.
-7. Flows: build both flows in the UI. This is the operator's job, on every server: the payload flow, the `complex` flow with its LLM config and key, and its RAG collection. Put their graph ids into `benchmark/cases/server.toml` (or pass `--graph`). The smoke run proves each flow completes.
-8. Run: `python3 benchmark/bench.py preflight benchmark/cases/server.toml`, then `plan`, then `run --note "..."`, then `push`.
+5. `src/.env` with production defaults: `python3 scripts/envtool.py` on a new server, `make env-update` after pulling new variables. Pre-flight warns when `.env` looks like the dev profile, whose debug overhead makes the numbers incomparable.
+6. API key and settings: create an API key in the EpicStaff UI for the benchmark organization, write it to `~/.epicstaff-bench.env` and `chmod 600 ~/.epicstaff-bench.env`. The tool reads the file by itself (exported values win), so no `source` is needed:
+   ```bash
+   export DJANGO_API_KEY=<org API key>
+   export BENCH_ORG_ID=<org id>
+   export BENCH_RESULTS_REPO=~/epicstaff-benchmarks
+   ```
+7. Flows: the payload flow is imported from `benchmark/flows/payload.json` (by itself on the first `preflight` or `run`, then reused; `make bench-flow` re-imports it by hand). Build the `complex` flow in the UI: this is the operator's job, on every server, with its LLM config and key, and its RAG collection. Put its graph id into `benchmark/cases/server.toml` (or pass `--graph complex=<id>`). The smoke run proves each flow completes.
+8. Run: `python3 benchmark/bench.py preflight server`, then `plan`, then `run --note "..."`, then `push`.
 
 Never put secrets into case files: a copy of the file is stored in every run folder as `case.toml`. Values of `[env]` and variant `env` keys outside the allowlist are replaced by `<redacted>` in that copy; phase `variables` and every other value are stored as written.
 
@@ -154,7 +172,7 @@ A `[[phase]]` can override any of these with `pass = { ... }`.
 | Key | Default | Meaning |
 |---|---|---|
 | `name` | required | Phase name. `--graph <name>=<id>` refers to it. |
-| `graph_id` | required (case file or `--graph`) | Positive integer. Server-specific. |
+| `graph_id` | required (case file or `--graph`) | Positive integer. Server-specific. The `payload` phase falls back to importing `benchmark/flows/payload.json` (Commands reference). |
 | `variables` | none | Table sent as the session's start variables. |
 | `pass` | `{}` | Per-phase override of `[pass]`. |
 
@@ -177,9 +195,9 @@ A `[[phase]]` can override any of these with `pass = { ... }`.
 
 `run` executes this per variant:
 
-1. **Pre-flight.** Errors stop the run, warnings are printed. Host checks: docker reachable, no leftover `src/.env.bench-backup`, load1 not above half the vCPUs, at least 20 % RAM available (the load and RAM checks need `/proc`, so they are Linux-only). After the build: containers healthy, each phase graph readable (this is also where a wrong id, org or rejected API key shows up), no leftover `pending`/`run` sessions on the phase graphs, container log driver `json-file` or `local`. Warnings: BENCH not active on a service, `CREW_MAX_CONCURRENT_SESSIONS` or `AGENT_MAX_CONCURRENT_RUNS` below `ladder.max`, no container memory limits (a break can then take the host down; the host-RAM abort guard is the only protection).
+1. **Pre-flight.** Errors stop the run, warnings are printed. Host checks: docker reachable, no leftover `src/.env.bench-backup`, load1 not above half the vCPUs, at least 20 % RAM available (the load and RAM checks need `/proc`, so they are Linux-only). `.env` checks, before anything is written: `src/.env` exists, and it sets every `${VAR:?}` variable of the `docker-compose.yaml` being built (a variable set only by the case or variant `env`, or exported in the shell, counts as set; an empty value does not). Only that compose file is scanned (`src/docker-compose.yaml`, or the worktree's for a `--ref` run); other compose files and `${VAR}` without `:?` are not checked. A missing one is an error that names it and says `run: python scripts/envtool.py --update (or make env-update)`. A warning when the settings in effect look like the dev profile (`DJANGO_DEBUG` true, or any `*_LOG_LEVEL` at `DEBUG`/`TRACE` after the case overrides): the numbers then include debug overhead. After the build: containers healthy, each phase graph readable (this is also where a wrong id, org or rejected API key shows up), no leftover `pending`/`run` sessions on the phase graphs, container log driver `json-file` or `local`. Warnings: BENCH not active on a service, `CREW_MAX_CONCURRENT_SESSIONS` or `AGENT_MAX_CONCURRENT_RUNS` below `ladder.max`, no container memory limits (a break can then take the host down; the host-RAM abort guard is the only protection).
 2. **Env and build.** `src/.env` is backed up to `src/.env.bench-backup`, the overrides are written, and `docker compose up -d --build` runs (`--no-build` skips the build and labels the run `build-unverified`). If a previous run crashed hard and left the backup behind, the next run refuses to start and prints `mv src/.env.bench-backup src/.env`; check the file, then do that.
-3. **Resolve graphs** and record the graph hash per phase.
+3. **Resolve graphs** and record the graph hash per phase. A payload phase without a graph id first gets the flow of `benchmark/flows/payload.json`, imported only if this server does not have it yet (Commands reference, **Graph ids**).
 4. **Smoke** (skip with `--no-smoke`): per phase, concurrency 2 for 60 s. The run stops with exit 3 if no session ends with `end`, any session fails, or a checkpoint is missing from a service that has BENCH active. The reason is printed, for example a missing LLM key or RAG collection on this server.
 5. **Per phase**, one *segment* for the ladder and one for every bisect probe. Each segment: restart `django_app crew agent sandbox knowledge_new` and wait healthy, one cold session (recorded with `cold=1`, excluded from aggregates), baseline sampling, the ladder levels, drain (wait for in-flight sessions up to `session_timeout_s`, then stop the rest), cooldown sampling. Each level (a bisect probe too) runs in three steps at the same concurrency:
    - **settle** (`settle_s`): sessions sent now are not measured;
@@ -293,10 +311,11 @@ Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox
 
 ```bash
 python -m unittest discover -s benchmark -p "test_*.py" -v
+python -m unittest scripts/test_envtool.py -v     # envtool --update; needs PyYAML
 ```
 
 ## Security notes
 
-- The API key is read from `DJANGO_API_KEY` only and never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file in the folder and its subfolders except `events_full.csv.gz`, the same set it copies), so it needs the variable set. It also needs `BENCH_RESULTS_REPO`. The scan looks for that one key only; other secrets are kept out by the allowlists below.
+- The API key is read from `DJANGO_API_KEY`, or from `~/.epicstaff-bench.env` when that is not exported; never from `src/.env`. It is never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file in the folder and its subfolders except `events_full.csv.gz`, the same set it copies), so it needs the key. It also needs `BENCH_RESULTS_REPO`. The scan looks for that one key only; other secrets are kept out by the allowlists below.
 - `bench push` requires a clean results clone, runs `git pull --ff-only`, prints the exact `git add`, `git commit`, `git push` commands, and runs them only after you answer `y` (or pass `--yes`). It copies each run folder without `events_full.csv.gz` and rebuilds `benchmarks/index.json` (existing run numbers are kept, new runs get the next number).
 - `meta.json` keeps environment values only for the allowlist; the stored `case.toml` replaces `[env]` and variant `env` values outside it with `<redacted>`; error reasons are truncated to 300 characters.

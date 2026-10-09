@@ -140,7 +140,7 @@ def push(
     if not viewer_src.exists():
         raise SystemExit(f"viewer_src does not exist: {viewer_src}")
 
-    repo_path = Path(repo)
+    repo_path = Path(repo).expanduser()  # a value from ~/.epicstaff-bench.env is not shell-expanded
 
     # Check clone is clean and pull
     status = _git(repo_path, "status", "--porcelain")

@@ -1,5 +1,7 @@
 # Server capacity case: two sequential phases, concurrency ladder until the first failing level.
-# Graph ids are server-specific: set them here or pass --graph payload=<id> --graph complex=<id>.
+# Graph ids are server-specific: set them here or pass --graph complex=<id>. The payload flow
+# comes from benchmark/flows/payload.json, a UI export the developer adds (see
+# benchmark/README.md); --graph payload=<id> uses an existing flow instead.
 name = "server-capacity"
 kind = "capacity"
 

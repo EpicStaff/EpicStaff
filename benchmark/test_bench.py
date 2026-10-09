@@ -3,8 +3,12 @@
 Run from the repo root:  python -m unittest discover -s benchmark -p "test_*.py"
 """
 
+import contextlib
 import csv
 import dataclasses
+import email.parser
+import email.policy
+import io
 import itertools
 import json
 import shutil
@@ -19,9 +23,11 @@ from unittest import mock
 
 import analyze
 import api
+import bench
 import compare
 import config
 import fixtures
+import flows
 import load
 import push
 import runner
@@ -79,6 +85,20 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(case.phases[0].graph_id, 99)
         with self.assertRaisesRegex(config.CaseError, "unknown phases"):
             config.load_case(write_case(), {"nope": 1})
+
+    def test_phase_with_a_flow_export_may_omit_its_graph_id(self):
+        export = Path(tempfile.mkdtemp()) / "payload.json"
+        export.write_text("{}", encoding="utf-8")
+        text = CASE_TOML.replace("graph_id = 17\n", "")
+        case = config.load_case(write_case(text), flow_exports={"payload": export})
+        self.assertIsNone(case.phases[0].graph_id)
+        self.assertEqual(case.case_hash, config.load_case(write_case()).case_hash)
+
+    def test_phase_whose_flow_export_is_missing_names_the_export(self):
+        export = Path(tempfile.mkdtemp()) / "payload.json"
+        text = CASE_TOML.replace("graph_id = 17\n", "")
+        with self.assertRaisesRegex(config.CaseError, "payload.json.*flow import"):
+            config.load_case(write_case(text), flow_exports={"payload": export})
 
     def test_missing_graph_id_names_the_flag(self):
         with self.assertRaisesRegex(config.CaseError, "--graph payload=<id>"):
@@ -1577,6 +1597,7 @@ class RunVariantSaveTest(unittest.TestCase):
         (repo / "src").mkdir()
         env_path = repo / "src" / ".env"
         env_path.write_text("A=1\n", encoding="utf-8")
+        (repo / "src" / "docker-compose.yaml").write_text("services: {}\n", encoding="utf-8")
         results = repo / "results"
         case = config.load_case(write_case())
         options = runner.Options(
@@ -1649,6 +1670,600 @@ class WorktreeCleanupTest(unittest.TestCase):
         self.assertTrue(any("prune" in call for call in calls))
         self.assertFalse(worktree._temp_root.exists())
         shutil.rmtree(repo, ignore_errors=True)
+
+
+class EnvPreflightTest(unittest.TestCase):
+    COMPOSE = textwrap.dedent(
+        """
+        services:
+          crew:
+            image: "crew:${IMAGE_TAG:?}"
+            environment:
+              SET_IN_ENV: ${SET_IN_ENV:?}
+              ONLY_IN_CASE: ${ONLY_IN_CASE:?set it in src/.env}
+              MISSING_ONE: ${MISSING_ONE:?}
+              EMPTY_ONE: ${EMPTY_ONE:?}
+              FROM_SHELL: ${FROM_SHELL:?}
+              OPTIONAL: ${OPTIONAL:-x}
+              LITERAL: $${ESCAPED_LITERAL:?}
+        """
+    )
+
+    def facts(self, env_text: str, overrides: dict, environ: dict | None = None) -> dict:
+        folder = Path(tempfile.mkdtemp())
+        compose_file = folder / "docker-compose.yaml"
+        compose_file.write_text(self.COMPOSE, encoding="utf-8")
+        env_path = folder / ".env"
+        env_path.write_text(env_text, encoding="utf-8")
+        return runner._env_facts(compose_file, env_path, overrides, environ or {})
+
+    def test_required_variables_missing_or_empty_are_an_error_naming_the_fix(self):
+        facts = self.facts(
+            "IMAGE_TAG=latest\nexport SET_IN_ENV=1\nEMPTY_ONE=\n# MISSING_ONE=x\n",
+            {"ONLY_IN_CASE": "1"},
+            {"FROM_SHELL": "1"},
+        )
+        self.assertEqual(facts["missing"], ["EMPTY_ONE", "MISSING_ONE"])
+        ((level, message),) = runner.evaluate_env(facts)
+        self.assertEqual(level, "error")
+        self.assertIn("EMPTY_ONE, MISSING_ONE", message)
+        self.assertIn("python scripts/envtool.py --update", message)
+        self.assertIn("make env-update", message)
+
+    def test_a_variable_set_only_by_the_case_counts_as_set(self):
+        env_text = "IMAGE_TAG=latest\nSET_IN_ENV=1\nMISSING_ONE=1\nEMPTY_ONE=1\nFROM_SHELL=1\n"
+        self.assertEqual(self.facts(env_text, {})["missing"], ["ONLY_IN_CASE"])
+        self.assertEqual(self.facts(env_text, {"ONLY_IN_CASE": "1"})["missing"], [])
+
+    def test_dev_profile_settings_are_a_warning_not_an_error(self):
+        env_text = (
+            "DJANGO_DEBUG=True\nCREW_LOG_LEVEL=DEBUG\nWEBHOOK_LOG_LEVEL=trace\n"
+            "AGENT_LOG_LEVEL=INFO\nKNOWLEDGE_DEBUG=true\n"
+        )
+        facts = self.facts(env_text, {"ONLY_IN_CASE": "1", "CREW_LOG_LEVEL": "BENCH"})
+        # the case raises crew to BENCH for the run, so only the settings still in effect count
+        self.assertEqual(facts["debug"], ["DJANGO_DEBUG=True", "WEBHOOK_LOG_LEVEL=trace"])
+        findings = runner.evaluate_env({**facts, "missing": []})
+        self.assertEqual([level for level, _ in findings], ["warn"])
+        self.assertIn("debug overhead", findings[0][1])
+        self.assertIn("without --dev", findings[0][1])
+
+    def test_production_settings_give_no_finding(self):
+        env_text = "DJANGO_DEBUG=false\nCREW_LOG_LEVEL=INFO\nDJANGO_LOG_LEVEL=BENCH\n"
+        facts = self.facts(env_text, {})
+        self.assertEqual(facts["debug"], [])
+        self.assertEqual(runner.evaluate_env({**facts, "missing": []}), [])
+
+    def test_every_spelling_django_reads_as_true_counts_as_debug(self):
+        for value in ("1", "True", "yes", "on", "y", "OK"):
+            facts = self.facts(f"DJANGO_DEBUG={value}\n", {})
+            self.assertEqual(facts["debug"], [f"DJANGO_DEBUG={value}"])
+
+    def test_missing_env_file_is_an_error(self):
+        folder = Path(tempfile.mkdtemp())
+        compose_file = folder / "docker-compose.yaml"
+        compose_file.write_text(self.COMPOSE, encoding="utf-8")
+        facts = runner._env_facts(compose_file, folder / ".env", {}, {})
+        ((level, message),) = runner.evaluate_env(facts)
+        self.assertEqual(level, "error")
+        self.assertIn("python scripts/envtool.py", message)
+
+
+class MultipartTest(unittest.TestCase):
+    def test_body_parses_back_into_the_fields_and_the_file(self):
+        path = Path(tempfile.mkdtemp()) / "payload.json"
+        content = b'{"main_entity": "Flow", "text": "\\r\\n--not-a-boundary"}'
+        path.write_bytes(content)
+        body, content_type = api.encode_multipart({"preserve_uuids": "true"}, "file", path)
+        message = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(
+            f"Content-Type: {content_type}\r\n\r\n".encode() + body
+        )
+        parts = {
+            part.get_param("name", header="content-disposition"): part
+            for part in message.iter_parts()
+        }
+        self.assertEqual(parts["preserve_uuids"].get_content(), "true")
+        self.assertEqual(parts["file"].get_filename(), "payload.json")
+        self.assertEqual(parts["file"].get_payload(decode=True), content)
+
+    def test_upload_sends_the_auth_headers_and_the_multipart_type(self):
+        path = Path(tempfile.mkdtemp()) / "payload.json"
+        path.write_text("{}", encoding="utf-8")
+        sent = {}
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        def fake_urlopen(request, timeout):
+            sent["request"] = request
+            return Response()
+
+        client = api.Api("http://host/", "secret-key", 3)
+        with mock.patch.object(api.urllib.request, "urlopen", side_effect=fake_urlopen):
+            status, payload = client.upload("/api/graphs/import/", path, {"a": "1"})
+        request = sent["request"]
+        self.assertEqual((status, payload), (200, {"ok": True}))
+        self.assertEqual(request.full_url, "http://host/api/graphs/import/")
+        self.assertEqual(request.get_header("X-api-key"), "secret-key")
+        self.assertEqual(request.get_header("X-organization-id"), "3")
+        self.assertTrue(request.get_header("Content-type").startswith("multipart/form-data"))
+
+
+class FakeFlowApi:
+    """The API calls of flows.py: the import upload and the light graph read."""
+
+    def __init__(
+        self,
+        summary=None,
+        created_at="2026-01-01T10:00:00.100000Z",
+        error=None,
+        org_id="1",
+        read_error=None,
+    ):
+        self.summary, self.created_at, self.error = summary, created_at, error
+        self.base_url, self.org_id, self.read_error = "http://host", org_id, read_error
+        self.graphs: dict[int, dict] = {}
+        self.uploads = []
+
+    def upload(self, path, file_path, fields):
+        self.uploads.append((path, file_path, fields))
+        if self.error:
+            raise self.error
+        for section in ("created", "reused"):
+            for item in (self.summary or {}).get("Flow", {}).get(section, {}).get("items", []):
+                self.graphs.setdefault(
+                    item["id"],
+                    {
+                        "name": item.get("name"),
+                        "created_at": self.created_at,
+                        "updated_at": "2026-01-01T10:00:00.400000Z",
+                    },
+                )
+        return 200, self.summary
+
+    def request(self, method, path, body=None, query=None):
+        if self.read_error:
+            raise self.read_error
+        graph_id = int(path.rstrip("/").rsplit("/", 1)[1])
+        if graph_id not in self.graphs:
+            raise api.ApiError(404, '{"detail": "Not found."}')
+        return 200, self.graphs[graph_id]
+
+
+def flow_summary(created=(), reused=()):
+    return {
+        "Label": {"total": 1, "created": {"count": 1, "items": [{"id": 3, "name": "benchmark"}]}},
+        "Flow": {
+            "total": len(created) + len(reused),
+            "created": {"count": len(created), "items": list(created)},
+            "reused": {"count": len(reused), "items": list(reused)},
+        },
+    }
+
+
+class FlowImportTest(unittest.TestCase):
+    def setUp(self):
+        folder = Path(tempfile.mkdtemp())
+        self.export = folder / "payload.json"
+        self.export.write_text('{"main_entity": "Flow"}', encoding="utf-8")
+        self.cache = folder / ".flow-cache.json"
+
+    def import_flow(self, fake, path=None):
+        return flows.import_flow(fake, path or self.export, self.cache)
+
+    def test_new_flow_is_created_with_uuid_preserving_replace_settings(self):
+        fake = FakeFlowApi(flow_summary(created=[{"id": 41, "name": "payload"}]))
+        self.assertEqual(self.import_flow(fake), flows.ImportedFlow(41, "payload", "created"))
+        ((path, file_path, fields),) = fake.uploads
+        self.assertEqual((path, file_path), ("/api/graphs/import/", self.export))
+        self.assertEqual(
+            fields, {"preserve_uuids": "true", "replace_existing": "true", "import_labels": "true"}
+        )
+
+    def test_replaced_flow_keeps_its_id_and_is_reported_updated(self):
+        # a replace keeps the row, so its created_at is older than the import
+        fake = FakeFlowApi(
+            flow_summary(created=[{"id": 41, "name": "payload"}]),
+            created_at="2025-12-31T09:00:00Z",
+        )
+        self.assertEqual(self.import_flow(fake), flows.ImportedFlow(41, "payload", "updated"))
+
+    def test_reused_flow_is_reported_updated(self):
+        fake = FakeFlowApi(flow_summary(reused=[{"id": 9, "name": "payload"}]))
+        self.assertEqual(self.import_flow(fake), flows.ImportedFlow(9, "payload", "updated"))
+
+    def test_missing_export_explains_how_to_create_it(self):
+        with self.assertRaises(flows.FlowImportError) as raised:
+            self.import_flow(FakeFlowApi(), self.export.with_name("absent.json"))
+        message = str(raised.exception)
+        self.assertIn("absent.json not found", message)
+        self.assertIn("5 Python nodes, no LLM", message)
+        self.assertIn("`benchmark` label", message)
+
+    def test_http_error_reports_status_and_body(self):
+        fake = FakeFlowApi(error=api.ApiError(403, '{"detail": "Missing CREATE permission"}'))
+        with self.assertRaisesRegex(flows.FlowImportError, "HTTP 403: .*Missing CREATE"):
+            self.import_flow(fake)
+
+    def test_answer_without_exactly_one_flow_is_an_error(self):
+        two = flow_summary(created=[{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
+        for summary in (two, {"Label": {}}):
+            with self.assertRaisesRegex(flows.FlowImportError, "exactly one flow"):
+                self.import_flow(FakeFlowApi(summary))
+
+    def test_summary_item_without_a_name_is_a_clear_error(self):
+        # the import summary's shape for an entity it could not read back
+        fake = FakeFlowApi(flow_summary(created=[{"id": 41, "error": "Not found"}]))
+        with self.assertRaisesRegex(flows.FlowImportError, "unexpected answer.*'name'"):
+            self.import_flow(fake)
+
+    def test_graph_without_timestamps_is_a_clear_error(self):
+        fake = FakeFlowApi(flow_summary(created=[{"id": 41, "name": "payload"}]))
+        fake.graphs[41] = {"name": "payload"}
+        with self.assertRaisesRegex(flows.FlowImportError, "unexpected answer.*'updated_at'"):
+            self.import_flow(fake)
+
+
+class FlowCacheTest(unittest.TestCase):
+    def setUp(self):
+        folder = Path(tempfile.mkdtemp())
+        self.export = folder / "payload.json"
+        self.export.write_text('{"main_entity": "Flow", "version": 1}', encoding="utf-8")
+        self.cache = folder / ".flow-cache.json"
+        self.fake = FakeFlowApi(flow_summary(created=[{"id": 41, "name": "payload"}]))
+
+    def ensure(self, fake=None):
+        return flows.ensure_flow(fake or self.fake, self.export, self.cache)
+
+    def test_second_resolve_with_an_unchanged_export_does_not_import_again(self):
+        first, second = self.ensure(), self.ensure()
+        self.assertEqual(len(self.fake.uploads), 1)
+        self.assertEqual(first, flows.ImportedFlow(41, "payload", "created"))
+        self.assertEqual(second, flows.ImportedFlow(41, "payload", "existing"))
+
+    def test_changed_export_is_imported_again(self):
+        self.ensure()
+        self.export.write_text('{"main_entity": "Flow", "version": 2}', encoding="utf-8")
+        self.ensure()
+        self.ensure()
+        self.assertEqual(len(self.fake.uploads), 2)
+
+    def test_flow_deleted_on_the_server_is_imported_again(self):
+        self.ensure()
+        self.fake.graphs.clear()
+        self.assertEqual(self.ensure().status, "created")
+        self.assertEqual(len(self.fake.uploads), 2)
+
+    def test_explicit_import_always_imports_and_refreshes_the_cache(self):
+        self.ensure()
+        flows.import_flow(self.fake, self.export, self.cache)
+        self.assertEqual(len(self.fake.uploads), 2)
+        self.ensure()
+        self.assertEqual(len(self.fake.uploads), 2)
+
+    def test_cache_is_per_server_organization(self):
+        self.ensure()
+        other_org = FakeFlowApi(flow_summary(created=[{"id": 7, "name": "payload"}]), org_id="2")
+        self.assertEqual(self.ensure(other_org).id, 7)
+        self.assertEqual(len(other_org.uploads), 1)
+        self.assertEqual(self.ensure().status, "existing")
+
+    def test_unreadable_cache_is_ignored(self):
+        self.cache.write_text("{not json", encoding="utf-8")
+        self.assertEqual(self.ensure().status, "created")
+        self.assertEqual(self.ensure().status, "existing")
+
+    def test_verification_failure_other_than_not_found_is_an_error_not_an_import(self):
+        self.ensure()
+        self.fake.read_error = api.ApiError(500, "boom")
+        with self.assertRaisesRegex(flows.FlowImportError, "HTTP 500: boom"):
+            self.ensure()
+        self.assertEqual(len(self.fake.uploads), 1)
+
+    def test_describe(self):
+        flow = flows.ImportedFlow(41, "payload", "existing")
+        self.assertEqual(
+            flows.describe("payload", flow), 'payload flow: id 41 (existing) "payload"'
+        )
+
+
+class ImportedPhaseTest(unittest.TestCase):
+    """Phases whose graph id comes from a flow export are resolved after the host and .env
+    checks, so a down stack or a broken .env is reported before anything is written."""
+
+    DEV_CASE = 'name = "dev"\nkind = "dev"\n[[phase]]\nname = "payload"\n'
+    HOST_OK = {
+        "docker_ok": True,
+        "load1": None,
+        "vcpu": 4,
+        "mem_avail_pct": None,
+        "backup_exists": False,
+    }
+
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp())
+        (self.repo / "src").mkdir()
+        (self.repo / "src" / ".env").write_text("NEEDED=1\n", encoding="utf-8")
+        (self.repo / "src" / "docker-compose.yaml").write_text(
+            "services:\n  crew:\n    environment:\n      NEEDED: ${NEEDED:?}\n", encoding="utf-8"
+        )
+        export = self.repo / "payload.json"
+        export.write_text("{}", encoding="utf-8")
+        self.exports = {"payload": export}
+        self.case = config.load_case(write_case(self.DEV_CASE), flow_exports=self.exports)
+        self.options = runner.Options(
+            "http://x",
+            "key",
+            "1",
+            build=False,
+            smoke=False,
+            repo=self.repo,
+            results_dir=self.repo / "results",
+            flow_exports=self.exports,
+        )
+        self.calls = []
+        patch = mock.patch.object(
+            runner.flows,
+            "ensure_flow",
+            side_effect=lambda *args: (
+                self.calls.append("import") or flows.ImportedFlow(42, "payload", "existing")
+            ),
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_case_keeps_the_graph_id_open(self):
+        self.assertIsNone(self.case.phases[0].graph_id)
+
+    def test_import_fills_the_graph_id_and_prints_one_line(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            case = runner._import_flows(self.case, mock.Mock(), self.exports)
+        self.assertEqual(case.phases[0].graph_id, 42)
+        self.assertEqual(output.getvalue(), 'payload flow: id 42 (existing) "payload"\n')
+
+    def preflight(self, host_facts):
+        output = io.StringIO()
+        with (
+            mock.patch.object(runner, "_host_facts", return_value=host_facts),
+            mock.patch.object(runner, "_resolve_graphs", return_value={}) as resolve,
+            mock.patch.object(runner, "_stack_facts", return_value={}),
+            mock.patch.object(runner, "evaluate_stack", return_value=[]),
+            mock.patch.object(runner.stack, "detect_project", return_value="src"),
+            contextlib.redirect_stdout(output),
+        ):
+            code = runner.preflight_only(self.case, self.options)
+        return code, output.getvalue(), resolve
+
+    def test_preflight_reports_a_host_error_without_importing(self):
+        code, output, _ = self.preflight({**self.HOST_OK, "docker_ok": False})
+        self.assertEqual(code, 2)
+        self.assertIn("docker is not reachable", output)
+        self.assertEqual(self.calls, [])
+
+    def test_preflight_reports_an_env_error_without_importing(self):
+        (self.repo / "src" / ".env").write_text("OTHER=1\n", encoding="utf-8")
+        code, output, _ = self.preflight(self.HOST_OK)
+        self.assertEqual(code, 2)
+        self.assertIn("does not set NEEDED", output)
+        self.assertEqual(self.calls, [])
+
+    def test_preflight_imports_after_the_checks_and_checks_the_imported_graph(self):
+        code, _, resolve = self.preflight(self.HOST_OK)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.calls, ["import"])
+        self.assertEqual(resolve.call_args.args[1].phases[0].graph_id, 42)
+
+    def test_run_imports_once_the_stack_is_up_and_before_resolving_graphs(self):
+        compose = mock.Mock()
+        compose.up.side_effect = lambda build: self.calls.append("up")
+        compose.images.return_value = {}
+        phase_runner = mock.Mock(fallback=False, records=[], windows=[], segments=[], events=[])
+        phase_runner.timeline, phase_runner.container_timeline = [], []
+
+        def resolve_graphs(api_client, case):
+            self.calls.append(f"resolve {case.phases[0].graph_id}")
+            return {}
+
+        git = {"ref": "dev", "sha": "abc1234", "dirty": False}
+        with (
+            mock.patch.object(runner, "_host_facts", return_value=self.HOST_OK),
+            mock.patch.object(runner, "_resolve_graphs", side_effect=resolve_graphs),
+            mock.patch.object(runner, "_stack_facts", return_value={}),
+            mock.patch.object(runner, "evaluate_stack", return_value=[]),
+            mock.patch.object(runner, "_container_limits", return_value={}),
+            mock.patch.object(runner, "PhaseRunner", return_value=phase_runner) as runner_class,
+            mock.patch.object(runner.stack, "Compose", return_value=compose),
+            mock.patch.object(runner.stack, "detect_project", return_value="src"),
+            mock.patch.object(runner.stack, "git_info", return_value=git),
+            mock.patch.object(runner.stack, "host_info", return_value={"hostname": "host"}),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            runner.run_variant(self.case, self.case.variants[0], self.options)
+        self.assertEqual(self.calls[:3], ["up", "import", "resolve 42"])
+        self.assertEqual(runner_class.call_args.args[1].graph_id, 42)
+
+    def test_run_with_an_env_error_stops_before_importing(self):
+        (self.repo / "src" / ".env").write_text("OTHER=1\n", encoding="utf-8")
+        with (
+            mock.patch.object(runner, "_host_facts", return_value=self.HOST_OK),
+            mock.patch.object(runner.stack, "detect_project", return_value="src"),
+            mock.patch.object(runner.stack, "git_info", return_value={"dirty": False}),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            runner.run_variant(self.case, self.case.variants[0], self.options)
+        self.assertEqual(self.calls, [])
+
+
+class BenchCliTest(unittest.TestCase):
+    DEV_CASE = 'name = "dev"\nkind = "dev"\n[[phase]]\nname = "payload"\n'
+
+    def setUp(self):
+        self.export = Path(tempfile.mkdtemp()) / "payload.json"
+        self.export.write_text("{}", encoding="utf-8")
+        patches = [
+            mock.patch.dict(bench.os.environ, {"DJANGO_API_KEY": "key"}),
+            # never read the developer's real ~/.epicstaff-bench.env from a test
+            mock.patch.object(bench, "load_bench_env"),
+            mock.patch.object(bench, "PAYLOAD_EXPORT", self.export),
+            mock.patch.object(
+                bench.flows,
+                "import_flow",
+                return_value=flows.ImportedFlow(42, "payload", "created"),
+            ),
+            mock.patch.object(bench.flows, "ensure_flow"),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def run_main(self, *argv: str) -> tuple[int, str, str]:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = bench.main(list(argv))
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def run_dev(self, *argv: str):
+        case = str(write_case(self.DEV_CASE))
+        with mock.patch.object(bench.runner, "run_dev") as run_dev:
+            code, stdout, stderr = self.run_main("dev", "--case", case, *argv)
+        return code, stdout, stderr, run_dev
+
+    def assert_nothing_imported(self):
+        bench.flows.import_flow.assert_not_called()
+        bench.flows.ensure_flow.assert_not_called()
+
+    def test_dev_leaves_the_payload_graph_to_the_export(self):
+        code, _, _, run_dev = self.run_dev()
+        self.assertEqual(code, 0)
+        case, run_options = run_dev.call_args.args[:2]
+        self.assertIsNone(case.phases[0].graph_id)
+        self.assertEqual(run_options.flow_exports, {"payload": self.export})
+        self.assert_nothing_imported()  # the runner imports, after its checks
+
+    def test_graph_override_wins_over_the_export(self):
+        code, _, _, run_dev = self.run_dev("--graph", "payload=7")
+        self.assertEqual((code, run_dev.call_args.args[0].phases[0].graph_id), (0, 7))
+
+    def test_graph_id_in_the_case_wins_over_the_export(self):
+        case = write_case(self.DEV_CASE + "graph_id = 17\n")
+        with mock.patch.object(bench.runner, "preflight_only", return_value=0) as preflight:
+            code, _, _ = self.run_main("preflight", str(case))
+        self.assertEqual((code, preflight.call_args.args[0].phases[0].graph_id), (0, 17))
+
+    def test_missing_export_keeps_the_graph_id_error_and_names_flow_import(self):
+        self.export.unlink()
+        code, _, stderr, run_dev = self.run_dev()
+        self.assertEqual(code, 2)
+        self.assertIn("--graph payload=<id>", stderr)
+        self.assertIn("bench.py flow import", stderr)
+        run_dev.assert_not_called()
+
+    def test_other_phases_still_need_a_graph_id(self):
+        case = write_case(self.DEV_CASE + '[[phase]]\nname = "complex"\n')
+        with mock.patch.object(bench.runner, "preflight_only") as preflight:
+            code, _, stderr = self.run_main("preflight", str(case))
+        self.assertEqual(code, 2)
+        self.assertIn("'complex' needs a positive integer graph_id", stderr)
+        preflight.assert_not_called()
+
+    def test_plan_works_without_the_payload_graph_id_and_never_imports(self):
+        code, stdout, _ = self.run_main("plan", str(write_case(self.DEV_CASE)))
+        self.assertEqual(code, 0)
+        self.assertIn("case dev", stdout)
+        self.assert_nothing_imported()
+
+    def test_case_name_matching_a_directory_is_looked_up_under_cases(self):
+        # the repo root has a `dev/` folder, so `bench dev` run from there must not open it
+        folder = Path(tempfile.mkdtemp())
+        (folder / "dev").mkdir()
+        with contextlib.chdir(folder):
+            self.assertEqual(bench.case_path("dev"), bench.HERE / "cases" / "dev.toml")
+
+    def test_flow_import_always_imports_and_prints_one_line_or_only_the_id(self):
+        self.assertEqual(
+            self.run_main("flow", "import"), (0, 'payload flow: id 42 (created) "payload"\n', "")
+        )
+        self.assertEqual(self.run_main("flow", "import", "--quiet"), (0, "42\n", ""))
+        self.assertEqual(bench.flows.import_flow.call_count, 2)
+        bench.flows.ensure_flow.assert_not_called()
+
+    def test_flow_import_error_exits_2(self):
+        bench.flows.import_flow.side_effect = flows.FlowImportError("HTTP 500: boom")
+        code, stdout, stderr = self.run_main("flow", "import")
+        self.assertEqual((code, stdout), (2, ""))
+        self.assertIn("HTTP 500: boom", stderr)
+
+
+class BenchEnvFileTest(unittest.TestCase):
+    def setUp(self):
+        self.path = Path(tempfile.mkdtemp()) / ".epicstaff-bench.env"
+        self.path.write_text(
+            "# benchmark settings\n"
+            "export DJANGO_API_KEY='file-key'\n"
+            'BENCH_ORG_ID="7"\n'
+            "export BENCH_API=http://server\n"
+            "BENCH_RESULTS_REPO=/srv/results\n"
+            "export OTHER_SECRET=nope\n",
+            encoding="utf-8",
+        )
+        self.path.chmod(0o600)
+
+    def load(self, environ: dict) -> tuple[dict, str]:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            bench.load_bench_env(self.path, environ)
+        return environ, stderr.getvalue()
+
+    def test_sets_only_the_known_names(self):
+        environ, _ = self.load({})
+        self.assertEqual(
+            environ,
+            {
+                "DJANGO_API_KEY": "file-key",
+                "BENCH_ORG_ID": "7",
+                "BENCH_API": "http://server",
+                "BENCH_RESULTS_REPO": "/srv/results",
+            },
+        )
+
+    def test_environment_values_win(self):
+        environ, _ = self.load({"BENCH_ORG_ID": "1"})
+        self.assertEqual((environ["BENCH_ORG_ID"], environ["DJANGO_API_KEY"]), ("1", "file-key"))
+
+    def test_exported_key_wins_and_the_other_names_still_load(self):
+        environ, _ = self.load({"DJANGO_API_KEY": "shell-key"})
+        self.assertEqual(environ["DJANGO_API_KEY"], "shell-key")
+        self.assertEqual(environ["BENCH_ORG_ID"], "7")
+
+    def test_missing_file_changes_nothing(self):
+        environ = {}
+        bench.load_bench_env(self.path.with_name("absent.env"), environ)
+        self.assertEqual(environ, {})
+
+    def test_group_or_world_readable_file_warns_on_posix(self):
+        self.path.chmod(0o644)
+        with mock.patch.object(bench.os, "name", "posix"):
+            _, warning = self.load({})
+        self.assertIn(f"chmod 600 {self.path}", warning)
+        with mock.patch.object(bench.os, "name", "nt"):  # Windows has no group/other bits
+            _, warning = self.load({})
+        self.assertEqual(warning, "")
+
+    @unittest.skipUnless(bench.os.name == "posix", "file modes are POSIX-only")
+    def test_private_file_does_not_warn(self):
+        _, warning = self.load({})
+        self.assertEqual(warning, "")
 
 
 if __name__ == "__main__":
