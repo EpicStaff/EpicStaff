@@ -28,7 +28,7 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { copyWithFeedback, deepEqual, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { copyWithFeedback, deepEqual, extractHttpErrorMessage } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
     AgGridEvent,
@@ -513,7 +513,7 @@ export class KeyValueEntriesGridComponent {
 
     protected onDelete(entry: KeyValueTableEntryListItem): void {
         this.confirmationDialogService
-            .confirmDelete(escapeHtml(entry.key))
+            .confirmDelete(entry.key)
             .pipe(
                 filter((confirmed) => confirmed === true),
                 switchMap(() => this.keyValueTablesApi.deleteEntry(entry.id)),

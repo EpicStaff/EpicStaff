@@ -7,6 +7,7 @@ import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
 import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
+import { SAFE_MARKED_OPTIONS_PROVIDER } from './core/config/safe-markdown-options.factory';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
@@ -41,7 +42,7 @@ export const appConfig: ApplicationConfig = {
                 networkConnectionInterceptor,
             ])
         ),
-        provideMarkdown(),
+        provideMarkdown({ markedOptions: SAFE_MARKED_OPTIONS_PROVIDER }),
         provideMonacoEditor(),
 
         provideAppInitializer(async () => {
