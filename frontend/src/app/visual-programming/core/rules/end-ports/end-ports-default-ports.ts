@@ -11,7 +11,6 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'python-out',
             'file-extractor-out',
             'table-out',
-            'llm-out-right',
             'subgraph-out',
             'audio-to-text-out',
             'webhook-trigger-out',

@@ -332,7 +332,6 @@ export function buildBulkSavePayload(
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
@@ -400,14 +399,6 @@ export function buildBulkSavePayload(
             surface_list: n.data.surface_list ?? [],
             inline_surface: n.data.inline_surface ?? null,
             tasks: buildAgentTasksPayload(n.data.tasks ?? []),
-            metadata: toNodeMetadata(n),
-        })),
-        llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            llm_config: n.data.id,
-            input_map: n.input_map || {},
-            output_variable_path: n.output_variable_path || null,
             metadata: toNodeMetadata(n),
         })),
         file_extractor_node_list: nodeItems(nodeDiff.fileExtractorNodes, (n) => ({

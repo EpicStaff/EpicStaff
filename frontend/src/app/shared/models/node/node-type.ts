@@ -2,7 +2,6 @@ export enum NodeType {
     AGENT = 'agent',
     TASK = 'task',
     TOOL = 'tool',
-    LLM = 'llm',
     PYTHON = 'python',
     START = 'start',
     TABLE = 'table',

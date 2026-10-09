@@ -284,9 +284,6 @@
             &.Tool-Node:not(.f-selected) {
                 fill: var(--tool-node-accent-color);
             }
-            &.LLM-Node:not(.f-selected) {
-                fill: var(--llm-node-accent-color);
-            }
             &.Project-Node:not(.f-selected) {
                 fill: var(--project-node-accent-color);
             }

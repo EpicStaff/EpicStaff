@@ -9,7 +9,6 @@ import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
 import { GetKeyValueNodeRequest } from '../../../visual-programming/core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../visual-programming/core/models/knowledge-retriever-node.model';
-import { GetLLMNodeRequest } from '../../../visual-programming/core/models/llm-node.model';
 import { PythonNode } from '../../../visual-programming/core/models/python-node.model';
 import {
     CreateScheduleTriggerNodeRequest,
@@ -52,7 +51,6 @@ export interface GraphDto extends GetGraphLightRequest {
     task_node_list: TaskNode[];
     agent_node_list?: AgentNode[];
     edge_list: Edge[];
-    llm_node_list: GetLLMNodeRequest[];
     file_extractor_node_list: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list: GetTelegramTriggerNodeRequest[];
@@ -77,7 +75,6 @@ export interface CreateGraphDtoRequest {
     start_node_list?: StartNode[];
     python_node_list?: PythonNode[];
     edge_list?: Edge[];
-    llm_node_list?: GetLLMNodeRequest[];
     file_extractor_node_list?: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list?: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list?: GetTelegramTriggerNodeRequest[];

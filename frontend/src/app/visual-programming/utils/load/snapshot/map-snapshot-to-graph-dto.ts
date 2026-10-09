@@ -46,11 +46,11 @@ export const SNAPSHOT_NODE_LIST_KEY = {
 
 type AssertNever<T extends never> = T;
 /**
- * Must stay `never`: a GraphDto node list that no snapshot type fills. `llm_node_list` is a
- * frontend-only leftover — no backend model or export produces it.
+ * Must stay `never`: every GraphDto node list has to be filled by some snapshot type. A new
+ * node list without a matching SNAPSHOT_NODE_LIST_KEY entry fails to compile here.
  */
 export type UnmappedGraphDtoNodeList = AssertNever<
-    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType] | 'llm_node_list'>
+    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType]>
 >;
 
 type SnapshotNodeOfType<TNodeType extends SnapshotNodeType> = Extract<SnapshotNode, { node_type: TNodeType }>;
@@ -234,7 +234,6 @@ function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphD
         python_node_list: [],
         task_node_list: [],
         agent_node_list: [],
-        llm_node_list: [],
         file_extractor_node_list: [],
         audio_transcription_node_list: [],
         subgraph_node_list: [],

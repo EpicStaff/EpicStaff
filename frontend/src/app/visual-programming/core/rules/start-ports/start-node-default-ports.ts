@@ -10,7 +10,6 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'project-in',
             'python-in',
             'table-in',
-            'llm-out-left',
             'file-extractor-in',
             'end-in',
             'subgraph-in',
