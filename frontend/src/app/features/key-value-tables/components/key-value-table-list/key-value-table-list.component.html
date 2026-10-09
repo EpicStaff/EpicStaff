@@ -28,6 +28,7 @@
         <li
             class="table-list__row"
             [class.active]="table.id === selectedId()"
+            [class.table-list__row--menu-open]="table.id === menuOpenTableId()"
         >
             <button
                 type="button"
@@ -53,26 +54,61 @@
                     <span class="table-list__count">{{ table.entry_count }} entries</span>
                 </span>
             </button>
-            @if (canRename() || canDelete()) {
-                <div class="table-list__actions">
+            <!-- A sibling of the select button, not inside it: opening the menu never selects the row. -->
+            <div class="table-list__hover-actions">
+                <button
+                    #menuTrigger="cdkMenuTriggerFor"
+                    #menuTriggerButton
+                    type="button"
+                    class="table-list__hover-btn"
+                    attr.aria-label="More actions for {{ table.name }}"
+                    [cdkMenuTriggerFor]="menu"
+                    [cdkMenuPosition]="menuPositions"
+                    (cdkMenuOpened)="menuOpenTableId.set(table.id)"
+                    (cdkMenuClosed)="menuOpenTableId.set(null)"
+                >
+                    <app-svg-icon
+                        icon="dots-vertical"
+                        size="1rem"
+                    />
+                </button>
+            </div>
+            <ng-template #menu>
+                <div
+                    cdkMenu
+                    class="table-list-menu"
+                >
                     @if (canRename()) {
-                        <app-icon-button
-                            icon="edit"
-                            tooltip="Rename"
-                            ariaLabel="Rename table"
-                            (onClick)="renameRequested.emit(table)"
-                        />
+                        <button
+                            cdkMenuItem
+                            type="button"
+                            class="table-list-menu__item"
+                            (cdkMenuItemTriggered)="onRename(table, menuTrigger, menuTriggerButton)"
+                        >
+                            Rename
+                        </button>
                     }
+                    <!-- Authorship is read-only, so seeing the table is enough to see who created and edited it. -->
+                    <button
+                        cdkMenuItem
+                        type="button"
+                        class="table-list-menu__item"
+                        (cdkMenuItemTriggered)="onViewDetails(table, menuTrigger, menuTriggerButton)"
+                    >
+                        View Details
+                    </button>
                     @if (canDelete()) {
-                        <app-icon-button
-                            icon="trash"
-                            tooltip="Delete"
-                            ariaLabel="Delete table"
-                            (onClick)="deleteRequested.emit(table)"
-                        />
+                        <button
+                            cdkMenuItem
+                            type="button"
+                            class="table-list-menu__item"
+                            (cdkMenuItemTriggered)="onDelete(table, menuTrigger, menuTriggerButton)"
+                        >
+                            Delete
+                        </button>
                     }
                 </div>
-            }
+            </ng-template>
         </li>
     } @empty {
         <li class="table-list__empty">{{ emptyMessage() }}</li>

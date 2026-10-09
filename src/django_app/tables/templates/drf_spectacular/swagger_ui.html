@@ -1,0 +1,41 @@
+{% extends "drf_spectacular/swagger_ui.html" %}
+{% load static %}
+{% comment %}
+swagger-ui-dist ships its dark theme keyed on the `dark-mode` class of <html>, but only its
+standalone top bar toggles that class and drf-spectacular renders the BaseLayout without it.
+The page stays light by default; triple-clicking the API title toggles the class and remembers
+the choice per browser. Reading the choice from <head> applies it before the first paint.
+{% endcomment %}
+{% block head %}
+{{ block.super }}
+<script>
+  (function () {
+    var storageKey = "swaggerDarkMode";
+    var root = document.documentElement;
+    try {
+      if (localStorage.getItem(storageKey) === "on") {
+        root.classList.add("dark-mode");
+      }
+    } catch (error) {
+      // Storage can be blocked (private windows); the toggle still works for this page.
+    }
+    document.addEventListener("click", function (event) {
+      if (event.detail !== 3 || !event.target.closest(".swagger-ui .info .title")) {
+        return;
+      }
+      var darkModeEnabled = root.classList.toggle("dark-mode");
+      window.getSelection().removeAllRanges();
+      try {
+        if (darkModeEnabled) {
+          localStorage.setItem(storageKey, "on");
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch (error) {
+        // Same as above: the choice just isn't remembered.
+      }
+    });
+  })();
+</script>
+<link rel="stylesheet" href="{% static 'drf_spectacular/swagger_dark.css' %}">
+{% endblock head %}

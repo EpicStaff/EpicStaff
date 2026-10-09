@@ -1,6 +1,16 @@
 from tables.models.base_models import BaseGlobalNode
 from tables.models.llm_models import LLMConfig
 
+# Leading characters a spreadsheet reads as a formula (OWASP CSV injection list).
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralize_formula(value: object) -> object:
+    """Prefix `'` so a spreadsheet shows the cell as text: exports carry outsider and LLM text."""
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGERS):
+        return f"'{value}"
+    return value
+
 
 def _yes_no(value: object) -> str:
     return "Yes" if value else "No"

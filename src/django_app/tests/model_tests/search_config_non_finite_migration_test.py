@@ -21,7 +21,7 @@ def test_non_finite_search_config_values_are_reset_to_defaults():
     node = KnowledgeNode.objects.create(graph=Graph.objects.create(org=organization, name="flow"))
     drift = KnowledgeNodeGraphRagDriftSearchConfig.objects.create(knowledge_node=node)
     surface_knowledge = SurfaceKnowledge.objects.create(
-        surface=Surface.objects.create(organization=organization, name="surface"),
+        surface=Surface.objects.create(org=organization, name="surface"),
         collection=SourceCollection.objects.create(org=organization, collection_name="kb"),
     )
     surface_local = SurfaceGraphLocalSearchConfig.objects.create(

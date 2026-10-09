@@ -58,7 +58,7 @@ def _rejected(resp):
 @pytest.mark.django_db
 def test_tasknode_create_rejects_cross_org_agent_definition(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_agent_definition = AgentDefinition.objects.create(name="adb", organization=org_b)
+    b_agent_definition = AgentDefinition.objects.create(name="adb", org=org_b)
     resp = client_a.post(
         "/api/tasknodes/",
         {"graph": graph.id, "agent_definition": b_agent_definition.id},
@@ -72,7 +72,7 @@ def test_tasknode_create_rejects_cross_org_agent_definition(client_a, org_a, org
 def test_tasknode_update_rejects_cross_org_agent_definition(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
     node = TaskNode.objects.create(graph=graph, node_name="ta")
-    b_agent_definition = AgentDefinition.objects.create(name="adb", organization=org_b)
+    b_agent_definition = AgentDefinition.objects.create(name="adb", org=org_b)
     resp = client_a.patch(
         f"/api/tasknodes/{node.id}/",
         {"agent_definition": b_agent_definition.id},
@@ -86,7 +86,7 @@ def test_tasknode_update_rejects_cross_org_agent_definition(client_a, org_a, org
 @pytest.mark.django_db
 def test_tasknode_create_allows_same_org_agent_definition(client_a, org_a):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_agent_definition = AgentDefinition.objects.create(name="ada", organization=org_a)
+    a_agent_definition = AgentDefinition.objects.create(name="ada", org=org_a)
     resp = client_a.post(
         "/api/tasknodes/",
         {"graph": graph.id, "agent_definition": a_agent_definition.id},
@@ -105,7 +105,7 @@ def test_tasknode_create_allows_same_org_agent_definition(client_a, org_a):
 @pytest.mark.django_db
 def test_tasknode_create_rejects_cross_org_surface(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_surface = Surface.objects.create(name="sb", organization=org_b)
+    b_surface = Surface.objects.create(name="sb", org=org_b)
     resp = client_a.post(
         "/api/tasknodes/",
         {"graph": graph.id, "surface_list": [b_surface.id]},
@@ -118,7 +118,7 @@ def test_tasknode_create_rejects_cross_org_surface(client_a, org_a, org_b):
 @pytest.mark.django_db
 def test_tasknode_create_allows_same_org_surface(client_a, org_a):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_surface = Surface.objects.create(name="sa", organization=org_a)
+    a_surface = Surface.objects.create(name="sa", org=org_a)
     resp = client_a.post(
         "/api/tasknodes/",
         {"graph": graph.id, "surface_list": [a_surface.id]},
@@ -153,7 +153,7 @@ def test_tasknode_create_rejects_cross_org_graph(client_a, org_b):
 @pytest.mark.django_db
 def test_agentnode_create_rejects_cross_org_agent_definition(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_agent_definition = AgentDefinition.objects.create(name="adb", organization=org_b)
+    b_agent_definition = AgentDefinition.objects.create(name="adb", org=org_b)
     resp = client_a.post(
         "/api/agentnodes/",
         {"graph": graph.id, "agent_definition": b_agent_definition.id},
@@ -167,7 +167,7 @@ def test_agentnode_create_rejects_cross_org_agent_definition(client_a, org_a, or
 def test_agentnode_update_rejects_cross_org_agent_definition(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
     node = AgentNode.objects.create(graph=graph, node_name="aa")
-    b_agent_definition = AgentDefinition.objects.create(name="adb", organization=org_b)
+    b_agent_definition = AgentDefinition.objects.create(name="adb", org=org_b)
     resp = client_a.patch(
         f"/api/agentnodes/{node.id}/",
         {"agent_definition": b_agent_definition.id},
@@ -181,7 +181,7 @@ def test_agentnode_update_rejects_cross_org_agent_definition(client_a, org_a, or
 @pytest.mark.django_db
 def test_agentnode_create_allows_same_org_agent_definition(client_a, org_a):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_agent_definition = AgentDefinition.objects.create(name="ada", organization=org_a)
+    a_agent_definition = AgentDefinition.objects.create(name="ada", org=org_a)
     resp = client_a.post(
         "/api/agentnodes/",
         {"graph": graph.id, "agent_definition": a_agent_definition.id},
@@ -200,7 +200,7 @@ def test_agentnode_create_allows_same_org_agent_definition(client_a, org_a):
 @pytest.mark.django_db
 def test_agentnode_create_rejects_cross_org_surface(client_a, org_a, org_b):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_surface = Surface.objects.create(name="sb", organization=org_b)
+    b_surface = Surface.objects.create(name="sb", org=org_b)
     resp = client_a.post(
         "/api/agentnodes/",
         {"graph": graph.id, "surface_list": [b_surface.id]},
@@ -213,7 +213,7 @@ def test_agentnode_create_rejects_cross_org_surface(client_a, org_a, org_b):
 @pytest.mark.django_db
 def test_agentnode_create_allows_same_org_surface(client_a, org_a):
     graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_surface = Surface.objects.create(name="sa", organization=org_a)
+    a_surface = Surface.objects.create(name="sa", org=org_a)
     resp = client_a.post(
         "/api/agentnodes/",
         {"graph": graph.id, "surface_list": [a_surface.id]},

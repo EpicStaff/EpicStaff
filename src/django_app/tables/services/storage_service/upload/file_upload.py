@@ -1,8 +1,11 @@
+import datetime
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import close_old_connections, transaction
+from rbac.authorship import RecordedLastEdit, restore_last_edits
 from rbac.models import Organization
 from tables.exceptions import StorageQuotaExceeded, UploadTooLarge
 from tables.models import StorageFile
@@ -29,9 +32,11 @@ async def upload_file(
     backend=None,
     validator: FileValidator | None = None,
     authorize_overwrite: Callable[[], None] | None = None,
+    user: object | None = None,
 ) -> dict:
     """Stream a plain file from the request body into object storage and record it.
-    `authorize_overwrite()` may raise to refuse replacing a file; None replaces silently."""
+    `authorize_overwrite()` may raise to refuse replacing a file; None replaces silently.
+    `user` authors the new rows and last edits the file; a replaced file keeps its author."""
     backend = backend or get_storage_backend(organization_prefix="")
     target = target_path(org_id, path, filename, validator or FileValidator())
     max_size = settings.MAX_STREAM_UPLOAD_FILE_SIZE
@@ -50,6 +55,7 @@ async def upload_file(
                 declared_size,
                 backend,
                 authorize_overwrite,
+                user=user,
             )
 
 
@@ -60,6 +66,8 @@ async def save_stream(
     declared_size: int | None,
     backend,
     authorize_overwrite: Callable[[], None] | None,
+    *,
+    user: object | None = None,
 ):
     """Upload `chunks` to `target` and write its StorageFile row within the quota.
     The row is written before the store commits, so a rejected row aborts the upload."""
@@ -76,12 +84,12 @@ async def save_stream(
         reject_if_too_big(declared_size)
 
     written_size: int | None = None
-    replaced_row: tuple[int | None] | None = None
+    replaced_row: _ReplacedFile | None = None
 
     async def write_row(size: int) -> None:
         nonlocal written_size, replaced_row
         replaced_row = await sync_to_async(_write_file_row)(
-            org_id, target, size, authorize_overwrite
+            org_id, target, size, authorize_overwrite, user
         )
         written_size = size
 
@@ -102,31 +110,51 @@ async def save_stream(
     return {"path": target, "size": size}
 
 
+@dataclass(frozen=True)
+class _ReplacedFile:
+    """The file row an upload wrote over, as it was before: its size and last edit."""
+
+    size: int | None
+    # (edited_by_id, edited_at), or None when the file had never been edited.
+    last_edit: tuple[int | None, datetime.datetime] | None
+
+
 def _write_file_row(
-    org_id: int, target: str, size: int, authorize_overwrite: Callable[[], None] | None
-) -> tuple[int | None] | None:
-    """Write the upload's row under the org lock; return the replaced row's (size,), or None."""
+    org_id: int,
+    target: str,
+    size: int,
+    authorize_overwrite: Callable[[], None] | None,
+    user: object | None,
+) -> _ReplacedFile | None:
+    """Write the upload's row under the org lock; return what it replaced, or None."""
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=org_id)
         replaced_row = (
             StorageFile.objects.filter(org_id=org_id, path=target, item_type="file")
-            .values_list("size")
+            .prefetch_related("last_edits")
             .first()
         )
         if replaced_row is not None and authorize_overwrite is not None:
             authorize_overwrite()
-        record_files_within_quota(org_id, [(target, size)])
-    return replaced_row
+        record_files_within_quota(org_id, [(target, size)], user=user)
+    if replaced_row is None:
+        return None
+    last_edit = next(iter(replaced_row.last_edits.all()), None)
+    return _ReplacedFile(
+        size=replaced_row.size,
+        last_edit=(last_edit.edited_by_id, last_edit.edited_at) if last_edit else None,
+    )
 
 
 def _undo_file_row(
     org_id: int,
     target: str,
     written_size: int,
-    replaced_row: tuple[int | None] | None,
+    replaced_row: _ReplacedFile | None,
     backend,
 ) -> None:
-    """After a failed upload, bring the row at `target` back in line with what the store holds."""
+    """After a failed upload, bring the row at `target` back in line with what the store holds.
+    A replaced file whose object is still there gets back its size and its last edit."""
     try:
         stored = backend.head_file(storage_key(org_id, target))
     except Exception:
@@ -144,6 +172,20 @@ def _undo_file_row(
             org_id=org_id, path=target, item_type="file", size=written_size
         )
         if replaced_row is not None and object_there:
-            row.update(size=replaced_row[0])
+            if row.update(size=replaced_row.size):
+                _restore_last_edit(
+                    StorageFile.objects.get(org_id=org_id, path=target, item_type="file"),
+                    replaced_row.last_edit,
+                )
         else:
             row.delete()
+
+
+def _restore_last_edit(
+    file_row: StorageFile, last_edit: tuple[int | None, datetime.datetime] | None
+) -> None:
+    if last_edit is None:
+        file_row.last_edits.all().delete()
+        return
+    edited_by_id, edited_at = last_edit
+    restore_last_edits([RecordedLastEdit(file_row, edited_by_id, edited_at)])

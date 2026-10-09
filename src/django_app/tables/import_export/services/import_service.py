@@ -2,6 +2,8 @@ from collections import defaultdict
 
 from django.db import transaction
 from loguru import logger
+from rbac.authorship import record_last_edits
+from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied
 
@@ -31,6 +33,7 @@ class ImportService:
 
         id_mapper = IDMapper()
         denied_resources = set()
+        created_resources: list[LastEditTrackedModel] = []
 
         with transaction.atomic():
             ordered_types = self._resolve_import_order(export_data)
@@ -60,6 +63,7 @@ class ImportService:
                         org_id=org_id,
                         user=user,
                         effective_permissions=effective_permissions,
+                        created_resources=created_resources,
                     )
                     if denied is not None:
                         denied_resources.add(denied)
@@ -69,6 +73,7 @@ class ImportService:
                 raise PermissionDenied(
                     f"Missing CREATE permission on: {names}. No changes were made."
                 )
+            record_last_edits(created_resources, user)
 
         return id_mapper, self.registry
 
@@ -94,6 +99,8 @@ class ImportService:
         org_id=None,
         user=None,
         effective_permissions=None,
+        *,
+        created_resources: list[LastEditTrackedModel],
         **kwargs,
     ):
         old_id = entity_data["id"]
@@ -118,6 +125,8 @@ class ImportService:
         )
         if instance is None:
             return denied
+        if was_created and isinstance(instance, LastEditTrackedModel):
+            created_resources.append(instance)
         # Some strategies (e.g. GraphStrategy) register their own mapping
         # at creation time so downstream logic within the same
         # create_entity call can resolve it. Don't overwrite that mapping.

@@ -43,7 +43,7 @@ from tables.services.copy_services.graph_copy_service import GraphCopyService
 @pytest.fixture
 def agent_definition(default_org):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="copy-test-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
@@ -51,7 +51,7 @@ def agent_definition(default_org):
 
 @pytest.fixture
 def shared_surface(default_org):
-    return Surface.objects.create(organization=default_org, name="copy-test-surface")
+    return Surface.objects.create(org=default_org, name="copy-test-surface")
 
 
 @pytest.fixture

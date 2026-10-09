@@ -1,5 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from '@shared/models';
+import {
+    CreateEmbeddingConfigRequest,
+    EmbeddingConfig,
+    GetEmbeddingConfigRequest,
+    UpdateEmbeddingConfigRequest,
+} from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -63,7 +68,7 @@ export class EmbeddingConfigStorageService implements StorageService {
         );
     }
 
-    updateConfig(data: EmbeddingConfig): Observable<EmbeddingConfig> {
+    updateConfig(data: UpdateEmbeddingConfigRequest): Observable<EmbeddingConfig> {
         return this.embeddingConfigsService.updateEmbeddingConfig(data).pipe(
             tap((updated) => this.updateConfigInCache(updated)),
             catchError((err) => throwError(() => err))

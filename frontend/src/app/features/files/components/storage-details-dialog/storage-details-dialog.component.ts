@@ -2,9 +2,9 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsComponent, ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
@@ -16,7 +16,7 @@ interface StorageDetailsDialogData extends StorageItemInfo {
 
 @Component({
     selector: 'app-storage-details-dialog',
-    imports: [AppSvgIconComponent, MatTooltipModule, FileSizePipe, HasPermissionDirective],
+    imports: [AppSvgIconComponent, AuthorshipDetailsComponent, MatTooltipModule, FileSizePipe, HasPermissionDirective],
     templateUrl: './storage-details-dialog.component.html',
     styleUrls: ['./storage-details-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,6 +29,13 @@ export class StorageDetailsDialogComponent {
     private readonly storageApiService = inject(StorageApiService);
 
     readonly usedInFlowsSignal = signal<StorageGraph[]>(this.data.usedIn ?? []);
+
+    // `/storage/info/` always sends the authorship fields, but the shared storage item type keeps them
+    // optional; a missing value is rendered like a null one (the shared block shows "—").
+    protected readonly owner: UserSummary | null = this.data.created_by ?? null;
+    protected readonly createdAt: string | null = this.data.created_at ?? null;
+    protected readonly lastEditor: UserSummary | null = this.data.last_edited_by ?? null;
+    protected readonly lastEditedAt: string | null = this.data.last_edited_at ?? null;
 
     get modifiedAt(): string {
         return this.formatDate(this.data.modified);
