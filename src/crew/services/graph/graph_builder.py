@@ -28,7 +28,7 @@ from services.graph.subgraphs.decision_table_node import (
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService, build_state_globals
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
@@ -104,6 +104,7 @@ class SessionGraphBuilder:
 
         if input_map is None:
             input_map = {}
+        code_reads_state = "state" in python_code_data.code
 
         # name = f"{from_node}_conditional_edge"
         # @psutil_wrapper
@@ -111,10 +112,7 @@ class SessionGraphBuilder:
             input_ = map_variables_to_input(state["variables"], input_map)
             additional_global_kwargs = {
                 **input_,
-                "state": {
-                    "variables": state["variables"].model_dump(),
-                    "state_history": state["state_history"],
-                },
+                **(build_state_globals(state) if code_reads_state else {}),
             }
 
             python_code_execution_data = await self.python_code_executor_service.run_code(

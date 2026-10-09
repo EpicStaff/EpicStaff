@@ -143,6 +143,11 @@ class SyncPubSubGroup:
             logger.warning(f"Subscriber not found in channel {self._channel}")
 
 
+def _encode(message: dict | str) -> str:
+    # A str must already be JSON (e.g. from model_dump_json); it is sent as is.
+    return message if isinstance(message, str) else json.dumps(message)
+
+
 class RedisService(metaclass=SingletonMeta):
     def __init__(self, host: str, port: int, user: str, password: str):
         self.host = host
@@ -233,12 +238,12 @@ class RedisService(metaclass=SingletonMeta):
                 self._sync_pubsub_groups[channel].subscribe(subscriber)
             logger.info(f"Subscribed to channels: {', '.join(channels)}")
 
-    async def apublish(self, channel: str, message: object):
-        await self.aioredis_client.publish(channel=channel, message=json.dumps(message))
+    async def apublish(self, channel: str, message: dict | str):
+        await self.aioredis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
-    def publish(self, channel: str, message: object):
-        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
+    def publish(self, channel: str, message: dict | str):
+        self.sync_redis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
     async def aadd_graph_message(self, message: dict) -> None:

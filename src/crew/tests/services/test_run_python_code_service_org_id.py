@@ -9,6 +9,7 @@ same-named agent/tool-config value in additional_global_kwargs -- mirrors the
 """
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -40,8 +41,8 @@ class FakeRedisService:
         # run_code() reads this to log the current subscriber count.
         self._async_pubsub_groups = {}
 
-    async def apublish(self, channel: str, message: dict):
-        self.published = message
+    async def apublish(self, channel: str, message: str):
+        self.published = json.loads(message)
 
 
 def make_python_code_data(**overrides) -> PythonCodeData:
