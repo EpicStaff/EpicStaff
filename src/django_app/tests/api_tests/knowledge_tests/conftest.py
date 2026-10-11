@@ -22,7 +22,7 @@ from tables.models.provider import Provider
 def source_collection(default_org):
     """Create a test source collection."""
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user", org=default_org
+        collection_name="Test Collection", org=default_org
     )
 
 
@@ -30,7 +30,7 @@ def source_collection(default_org):
 def empty_collection(default_org):
     """Create an empty source collection."""
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user", org=default_org
+        collection_name="Empty Collection", org=default_org
     )
 
 

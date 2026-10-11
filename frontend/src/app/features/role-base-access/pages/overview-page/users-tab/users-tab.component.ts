@@ -17,6 +17,7 @@ import {
     SelectItem,
     StopButtonComponent,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import {
     HasPermissionInAnyOrgDirective,
@@ -25,7 +26,7 @@ import {
     OverflowItemsDirective,
 } from '@shared/directives';
 import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
-import { getRelativeTime } from '@shared/utils';
+import { escapeHtml, getRelativeTime } from '@shared/utils';
 import { concat, Observable, of } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
@@ -43,7 +44,6 @@ import {
 } from '../../../components/create-user-dialog/create-user-dialog.component';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
@@ -238,7 +238,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Deactivate account?',
-                message: `<strong>${label}</strong> will no longer be able to sign in. You can reactivate them later.`,
+                message: `<strong>${escapeHtml(label)}</strong> will no longer be able to sign in. You can reactivate them later.`,
                 confirmText: 'Deactivate',
                 cancelText: 'Cancel',
                 type: 'danger',
@@ -269,7 +269,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Reactivate account?',
-                message: `<strong>${label}</strong> will regain the ability to sign in.`,
+                message: `<strong>${escapeHtml(label)}</strong> will regain the ability to sign in.`,
                 confirmText: 'Reactivate',
                 cancelText: 'Cancel',
             })
@@ -326,7 +326,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Remove from your organizations?',
-                message: `<strong>${label}</strong> will lose access to: ${orgNames}.`,
+                message: `<strong>${escapeHtml(label)}</strong> will lose access to: ${escapeHtml(orgNames)}.`,
                 confirmText: 'Remove',
                 cancelText: 'Cancel',
                 type: 'danger',

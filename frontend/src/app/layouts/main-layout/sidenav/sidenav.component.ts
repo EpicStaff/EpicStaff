@@ -14,16 +14,14 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
-import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
-import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
@@ -35,7 +33,7 @@ import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string | (() => string | null);
+    routeLink?: string;
     /** URL path prefixes that highlight this item: its own section plus pages that belong to it
      *  but live outside its route tree (e.g. flow sessions under Flows). */
     activePaths?: string[];
@@ -172,14 +170,13 @@ export class LeftSidebarComponent implements AfterViewInit {
         return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
     }
 
-    constructor(
-        public epicChatService: EpicChatService,
-        public activeOrgService: ActiveOrgService,
-        private configService: ConfigService,
-        private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService,
-        private permissionService: PermissionsService
-    ) {
+    public readonly epicChatService = inject(EpicChatService);
+    public readonly activeOrgService = inject(ActiveOrgService);
+    private readonly configService = inject(ConfigService);
+    private readonly authService = inject(AuthService);
+    private readonly permissionService = inject(PermissionsService);
+
+    constructor() {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
         // syncAgentsFromApi call always matches the actual access host (localhost vs 127.0.0.1),
@@ -211,7 +208,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.permissionService.resolveStorageTab(),
+                routeLink: 'storage',
                 activePaths: ['/storage'],
                 icon: 'sources',
                 label: 'Storage',
@@ -250,11 +247,11 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.bottomNavItems = [];
         this.bottomNavItems.push({
             id: 'settings',
+            routeLink: 'settings',
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
-            action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
         });
     }
@@ -263,10 +260,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }
-    }
-
-    private onSettingsClick(): void {
-        this.configureModelsDialogService.open();
     }
 
     public onLogoClick(): void {
@@ -316,7 +309,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     }
 
     public resolveRouteLink(item: NavItem): string | null {
-        if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
     }
 

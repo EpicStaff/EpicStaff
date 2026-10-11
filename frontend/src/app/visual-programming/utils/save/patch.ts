@@ -17,11 +17,6 @@ export function patchFlowStateWithBackendIds(
 ): FlowModel {
     const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
 
-    const pythonCodeIdByBackendId = new Map<number, number | null>();
-    for (const pn of responseGraph.python_node_list ?? []) {
-        pythonCodeIdByBackendId.set(pn.id, pn.python_code?.id ?? null);
-    }
-
     const scheduleDataByBackendId = new Map<
         number,
         { nextRunDateTime: string | null; isActive: boolean; currentRuns: number }
@@ -42,13 +37,6 @@ export function patchFlowStateWithBackendIds(
     const patchedNodes = currentFlow.nodes.map((node) => {
         const mappedBackendId = uiToBackendId.get(node.id);
         let patched = mappedBackendId != null ? { ...node, backendId: mappedBackendId } : node;
-
-        if (patched.type === NodeType.PYTHON) {
-            const resolvedBackendId = mappedBackendId ?? patched.backendId;
-            if (resolvedBackendId != null && pythonCodeIdByBackendId.has(resolvedBackendId)) {
-                patched = { ...patched, python_code_id: pythonCodeIdByBackendId.get(resolvedBackendId) ?? null };
-            }
-        }
 
         if (patched.type === NodeType.AGENT) {
             const resolvedBackendId = mappedBackendId ?? patched.backendId;

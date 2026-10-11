@@ -33,7 +33,10 @@ export class SurfaceSummaryDialogComponent {
         const c = this.data.combined;
         return {
             id: -1,
-            organization: 0,
+            org: 0,
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
             name: `${this.data.placeLabel} summary`,
             instructions: c.instructions,
             owner_agent: null,

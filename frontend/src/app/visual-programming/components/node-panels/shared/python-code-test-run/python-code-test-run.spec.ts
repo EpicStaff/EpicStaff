@@ -11,10 +11,7 @@ import {
 import { parseTestInputValues, PythonCodeTestRun } from './python-code-test-run';
 
 const REQUEST: RunPythonCodeRequest = {
-    python_code_id: 5,
-    code: 'def main(trigger_payload): pass',
-    entrypoint: 'main',
-    libraries: [],
+    target: { type: 'webhook_trigger_node', id: 21 },
     variables: { trigger_payload: { order: 1 } },
 };
 
@@ -66,7 +63,10 @@ describe('PythonCodeTestRun', () => {
     it('sends the request as is and logs its parameters', () => {
         codeRun.run(REQUEST);
 
-        expect(service.runPythonCode).toHaveBeenCalledWith(REQUEST);
+        expect(service.runPythonCode).toHaveBeenCalledWith({
+            target: { type: 'webhook_trigger_node', id: 21 },
+            variables: { trigger_payload: { order: 1 } },
+        });
         expect(codeRun.status()).toBe('processing');
         expect(messages()).toEqual([
             'info: Starting function main()...',
@@ -121,7 +121,7 @@ describe('PythonCodeTestRun', () => {
 
     it('ignores a run while one is in flight', () => {
         codeRun.run(REQUEST);
-        codeRun.run({ ...REQUEST, python_code_id: 6 });
+        codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} });
 
         expect(service.runPythonCode).toHaveBeenCalledTimes(1);
     });

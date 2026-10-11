@@ -872,7 +872,7 @@ def _restore_graph_via_real_pipeline(manager, graph, deps):
 def surface(default_org):
     from agents.models import Surface
 
-    return Surface.objects.create(organization=default_org, name="restore-test-surface")
+    return Surface.objects.create(org=default_org, name="restore-test-surface")
 
 
 @pytest.fixture
@@ -1159,7 +1159,7 @@ def test_restore_warns_and_drops_agent_node_surface_when_deleted(
     from tables.models import AgentNode
 
     surviving_surface = Surface.objects.create(
-        organization=default_org, name="surviving-surface"
+        org=default_org, name="surviving-surface"
     )
     agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
     agent_node.surface_list.set([surface, surviving_surface])

@@ -6,9 +6,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tables", "0170_graphversion"),
+        ("tables", "0166_storagefile_graphstoragefile_and_more_squashed_0175_merge_20260427_1053"),
         ("tables", "0174_remove_classificationconditiongroup_route_code_and_more"),
-        ("tables", "0174_storagefile_name_trgm_index"),
     ]
 
     operations = []

@@ -1,58 +1,45 @@
 import { NodeType } from '@shared/models';
 
-import { GraphDto } from '../../../../features/flows/models/graph.model';
 import {
     GraphVersionSnapshot,
     SnapshotNode,
     SnapshotNodeType,
 } from '../../../../features/flows/models/graph-version-preview.model';
-import { AgentNode } from '../../../core/models/agent-node.model';
-import { GetAudioToTextNodeRequest } from '../../../core/models/audio-to-text.model';
-import { GetClassificationDecisionTableNodeRequest } from '../../../core/models/classification-decision-table-node.model';
-import { GetDecisionTableNodeRequest } from '../../../core/models/decision-table-node.model';
 import { Edge } from '../../../core/models/edge.model';
-import { EndNode } from '../../../core/models/end-node.model';
-import { GetFileExtractorNodeRequest } from '../../../core/models/file-extractor.model';
 import { FlowModel } from '../../../core/models/flow.model';
-import { GraphNote } from '../../../core/models/graph-note.model';
-import { GetKeyValueNodeRequest } from '../../../core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../core/models/knowledge-retriever-node.model';
 import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
-import { PythonNode } from '../../../core/models/python-node.model';
-import { GetScheduleTriggerNodeRequest } from '../../../core/models/schedule-trigger.model';
-import { StartNode } from '../../../core/models/start-node.model';
-import { SubGraphNode } from '../../../core/models/subgraph-node.model';
-import { TaskNode } from '../../../core/models/task-node.model';
-import { GetTelegramTriggerNodeRequest } from '../../../core/models/telegram-trigger.model';
-import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
+import {
+    LIVE_AUTHORSHIP,
+    LIVE_NODE_ID as ID,
+    LIVE_WEBHOOK_TRIGGER_ID,
+    liveAgent,
+    liveAudio,
+    liveClassificationTable,
+    liveDecisionTable,
+    liveEdges,
+    liveEnd,
+    liveFileExtractor,
+    liveGraph,
+    liveKeyValue,
+    liveKnowledge,
+    liveNote,
+    livePython,
+    liveStart,
+    liveSubgraph,
+    liveTask,
+    liveTelegram,
+    liveWebhook,
+} from '../../testing/live-graph.fixture';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
     buildPreviewFlowModel,
+    mapNodeAuthorshipToCanvas,
     mapSnapshotToGraphDto,
     SNAPSHOT_NODE_LIST_KEY,
     UnmappedGraphDtoNodeList,
 } from './map-snapshot-to-graph-dto';
 import { toLocalNaiveIso } from './snapshot-field-adapters';
-
-// Node ids are unique across node tables on the backend, so they are here too.
-const ID = {
-    start: 1,
-    end: 2,
-    note: 3,
-    python: 4,
-    task: 5,
-    agent: 6,
-    fileExtractor: 7,
-    audio: 8,
-    subgraph: 9,
-    webhook: 10,
-    telegram: 11,
-    schedule: 12,
-    decisionTable: 13,
-    classificationTable: 14,
-    knowledge: 15,
-    keyValue: 16,
-} as const;
 
 const secretsByName = new Map([
     ['API_KEY', 101],
@@ -60,226 +47,14 @@ const secretsByName = new Map([
 ]);
 const availableFlows = [{ id: 99 }];
 
-// ── The same graph twice: as the live API returns it, and as the version export stores it ──
+// The live API side of the comparison is `liveGraph`; the version export stores the same graph below.
+// Authorship is not exported either: the preview leaves it unknown (null).
+const authorshipFields = Object.keys(LIVE_AUTHORSHIP);
 
-const persisted = { graph: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' };
-const nodeBase = { metadata: {}, input_map: {}, output_variable_path: null };
-
-const liveStart: StartNode = { id: ID.start, graph: 1, node_name: '__start__', variables: { topic: '' }, metadata: {} };
-const liveEnd: EndNode = { id: ID.end, graph: 1, node_name: '__end_node__', output_map: { answer: 'a' }, metadata: {} };
-const liveNote: GraphNote = { id: ID.note, graph: 1, node_name: 'Note', content: 'hello', metadata: {} };
-const livePython: PythonNode = {
-    ...nodeBase,
-    id: ID.python,
-    graph: 1,
-    node_name: 'Python',
-    test_input: {},
-    // The export has no python-code id; the preview uses 0.
-    python_code: {
-        id: 0,
-        code: 'def main(): pass',
-        entrypoint: 'main',
-        libraries: ['requests', 'pandas'],
-        secrets: [{ id: 101, name: 'API_KEY' }],
-    },
-};
-const liveTask: TaskNode = {
-    ...nodeBase,
-    ...persisted,
-    id: ID.task,
-    node_name: 'Task',
-    instructions: 'Do it',
-    output_schema: {},
-    remember_output: false,
-    agent_definition: 41,
-    surface_list: [51],
-    inline_surface: {
-        instructions: 'Be brief',
-        python_tools: [{ python_tool: 21, mode: 'allow' }],
-        mcp_tools: [{ mcp_tool: 31, mode: 'deny' }],
-        storage_items: [],
-        knowledge: [],
-    },
-};
-const liveAgent: AgentNode = {
-    ...nodeBase,
-    id: ID.agent,
-    graph: 1,
-    node_name: 'Agent',
-    agent_definition: null, // FK nulled by the backend for a missing dependency: node kept
-    surface_list: [],
-    tasks: [],
-    inline_surface: null,
-};
-const liveFileExtractor: GetFileExtractorNodeRequest = {
-    ...nodeBase,
-    id: ID.fileExtractor,
-    graph: 1,
-    node_name: 'Files',
-};
-const liveAudio: GetAudioToTextNodeRequest = { ...nodeBase, id: ID.audio, graph: 1, node_name: 'Audio' };
-const liveSubgraph: SubGraphNode = { ...nodeBase, id: ID.subgraph, graph: 1, node_name: 'Sub', subgraph: 99 };
-const liveWebhook: GetWebhookTriggerNodeRequest = {
-    ...nodeBase,
-    id: ID.webhook,
-    graph: 1,
-    node_name: 'Webhook',
-    webhook_trigger_path: '',
-    webhook_trigger: 77, // the export's bare id
-    python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
-    test_payload: { id: '104' },
-};
-const liveTelegram: GetTelegramTriggerNodeRequest = {
-    id: ID.telegram,
-    graph: 1,
-    node_name: 'Telegram',
-    metadata: {},
-    telegram_bot_api_key_secret_id: 102,
-    webhook_trigger: null,
-    fields: [{ id: 1, parent: 'message', field_name: 'text', variable_path: 'variables.text' }],
-    test_payload: { message: { text: 'hello' } },
-};
-const liveSchedule: GetScheduleTriggerNodeRequest = {
-    ...persisted,
-    id: ID.schedule,
-    node_name: 'Schedule',
-    metadata: {},
-    is_active: true,
-    content_hash: '',
-    current_runs: 2,
-    schedule: {
-        run_mode: 'repeat',
-        timezone: 'Europe/Kyiv',
-        start_date_time: '2026-07-01T12:00:00',
-        next_run_date_time: null,
-        interval: { every: 1, unit: 'hours', weekdays: [] },
-        end: { type: 'on_date', date_time: '2026-12-01T12:00:00', max_runs: null },
-    },
-};
-const liveDecisionTable: GetDecisionTableNodeRequest = {
-    id: ID.decisionTable,
-    graph: 1,
-    node_name: 'Decide',
-    metadata: {},
-    default_next_node_id: ID.task,
-    next_error_node_id: null,
-    condition_groups: [
-        {
-            id: 1,
-            decision_table_node: ID.decisionTable,
-            group_name: 'yes',
-            group_type: 'simple',
-            expression: null,
-            conditions: [{ id: 1, condition_group: 1, condition_name: 'always', condition: 'True' }],
-            manipulation: null,
-            next_node_id: ID.end,
-            order: 1,
-        },
-    ],
-};
-const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
-    id: ID.classificationTable,
-    graph: 1,
-    node_name: 'Classify',
-    metadata: {},
-    pre_python_code: {
-        code: 'def main(): pass',
-        entrypoint: 'main',
-        libraries: ['numpy'],
-        global_kwargs: {},
-        secrets: [{ id: 101, name: 'API_KEY' }],
-    },
-    pre_input_map: {},
-    pre_output_variable_path: null,
-    post_python_code: null,
-    post_input_map: {},
-    post_output_variable_path: null,
-    pre_use_storage: false,
-    post_use_storage: false,
-    prompt_configs: [],
-    default_llm_config: null,
-    default_next_node_id: ID.end,
-    next_error_node_id: null,
-    condition_groups: [
-        {
-            id: 2,
-            classification_decision_table_node: ID.classificationTable,
-            group_name: 'route',
-            order: 1,
-            expression: null,
-            prompt: null,
-            manipulation: null,
-            continue_flag: false,
-            route_code: 'A',
-            dock_visible: true,
-            field_expressions: {},
-            field_manipulations: {},
-            next_node_id: ID.agent,
-        },
-    ],
-};
-const liveKnowledge: GetKnowledgeRetrieverNodeRequest = {
-    ...nodeBase,
-    ...persisted,
-    id: ID.knowledge,
-    node_name: 'Knowledge',
-    source_collection: 5,
-    search_configs: { naive: { search_limit: 3, similarity_threshold: 0.7, is_suggested: false } },
-    query: 'q',
-    search_method: null,
-    rag_type: 'naive',
-    rag_id: 8,
-    content_hash: null,
-};
-const liveKeyValue: GetKeyValueNodeRequest = {
-    ...nodeBase,
-    id: ID.keyValue,
-    graph: 1,
-    node_name: 'Remember',
-    key_value_table: 61,
-    mode: 'write',
-    entries: [{ key: 'customer', value: 'variables.customer' }],
-};
-const liveEdges: Edge[] = [
-    { id: 1, graph: 1, start_node_id: ID.start, end_node_id: ID.python, metadata: {} },
-    { id: 2, graph: 1, start_node_id: ID.python, end_node_id: ID.decisionTable, metadata: {} },
-    { id: 3, graph: 1, start_node_id: ID.task, end_node_id: ID.classificationTable, metadata: {} },
-];
-
-const liveGraph = {
-    id: 1,
-    uuid: 'graph-uuid',
-    name: 'Flow',
-    description: '',
-    save_version: 3,
-    metadata: {},
-    start_node_list: [liveStart],
-    end_node_list: [liveEnd],
-    graph_note_list: [liveNote],
-    python_node_list: [livePython],
-    task_node_list: [liveTask],
-    agent_node_list: [liveAgent],
-    llm_node_list: [],
-    file_extractor_node_list: [liveFileExtractor],
-    audio_transcription_node_list: [liveAudio],
-    subgraph_node_list: [liveSubgraph],
-    webhook_trigger_node_list: [liveWebhook],
-    telegram_trigger_node_list: [liveTelegram],
-    schedule_trigger_node_list: [liveSchedule],
-    decision_table_node_list: [liveDecisionTable],
-    classification_decision_table_node_list: [liveClassificationTable],
-    knowledge_node_list: [liveKnowledge],
-    key_value_node_list: [liveKeyValue],
-    edge_list: liveEdges,
-    conditional_edge_list: [],
-} as unknown as GraphDto;
-
-/** What the export does to a row whose shape is otherwise identical: drop DB columns, tag the type. */
+/** What the export does to a row whose shape is otherwise identical: drop DB columns and authorship, tag the type. */
 function exported<T extends object>(nodeType: SnapshotNodeType, row: T): SnapshotNode {
     const copy: Record<string, unknown> = { ...row, node_type: nodeType };
-    delete copy['graph'];
-    delete copy['created_at'];
-    delete copy['updated_at'];
+    for (const field of ['graph', 'created_at', 'updated_at', ...authorshipFields]) delete copy[field];
     return copy as unknown as SnapshotNode;
 }
 
@@ -361,12 +136,12 @@ const snapshot: GraphVersionSnapshot = {
     },
 };
 
-/** Canvas ids are random; replace each by its order of first appearance. DB columns are not exported. */
+/** Canvas ids are random; replace each by its order of first appearance. DB columns and authorship are not exported. */
 function comparable(flow: FlowModel): unknown {
     const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
     const order = new Map<string, number>();
     const json = JSON.stringify(flow, (key, value: unknown) =>
-        ['graph', 'created_at', 'updated_at'].includes(key) ? undefined : value
+        ['graph', 'created_at', 'updated_at', ...authorshipFields].includes(key) ? undefined : value
     ).replace(uuidPattern, (uuid) => {
         if (!order.has(uuid)) order.set(uuid, order.size);
         return `uuid-${order.get(uuid)}`;
@@ -392,6 +167,21 @@ describe('mapSnapshotToGraphDto', () => {
             const list = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as { id: number }[];
             expect(list.map((item) => item.id)).toEqual([node.id]);
         }
+    });
+
+    it('leaves every node unattributed, since the export carries no authorship', () => {
+        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
+
+        for (const node of snapshot.nodes) {
+            const [item] = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as object[];
+            expect(item).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
+        }
+    });
+
+    it('leaves the graph itself unattributed', () => {
+        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
+
+        expect(graphDto).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
     });
 });
 
@@ -441,7 +231,7 @@ describe('buildPreviewFlowModel', () => {
 
     it('keeps inline surfaces, the webhook trigger id and a numeric similarity threshold', () => {
         expect((byId(ID.task).data as { inline_surface: unknown }).inline_surface).toEqual(liveTask.inline_surface);
-        expect((byId(ID.webhook).data as { webhook_trigger: unknown }).webhook_trigger).toBe(77);
+        expect((byId(ID.webhook).data as { webhook_trigger: unknown }).webhook_trigger).toBe(LIVE_WEBHOOK_TRIGGER_ID);
         const knowledge = byId(ID.knowledge).data as GetKnowledgeRetrieverNodeRequest;
         expect(knowledge.search_configs?.naive?.similarity_threshold).toBe(0.7);
     });
@@ -475,6 +265,38 @@ describe('buildPreviewFlowModel', () => {
         for (const node of legacyFlow.nodes.filter((item) => item.type !== NodeType.START)) {
             expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
         }
+    });
+});
+
+describe('mapNodeAuthorshipToCanvas', () => {
+    const grace = { id: 9, display_name: 'Grace Hopper', avatar_url: null };
+    const recorded = {
+        created_by: grace,
+        created_at: '2026-03-12T13:28:23Z',
+        last_edited_by: null,
+        last_edited_at: '2026-04-01T09:05:00Z',
+    };
+    const snapshotIdToNodeUuid = new Map([
+        [1, 'start-canvas-id'],
+        [2, 'python-canvas-id'],
+    ]);
+
+    it('re-keys the recorded authorship from snapshot node ids to canvas node ids', () => {
+        expect(mapNodeAuthorshipToCanvas({ '2': recorded }, snapshotIdToNodeUuid)).toEqual(
+            new Map([['python-canvas-id', recorded]])
+        );
+    });
+
+    it('drops an entry whose node is not on the canvas', () => {
+        expect(mapNodeAuthorshipToCanvas({ '3': recorded }, snapshotIdToNodeUuid)).toEqual(new Map());
+    });
+
+    it('keeps only the four authorship fields', () => {
+        const withExtra = { ...recorded, node_name: 'Python' } as typeof recorded;
+
+        expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToNodeUuid).get('python-canvas-id')).toEqual(
+            recorded
+        );
     });
 });
 

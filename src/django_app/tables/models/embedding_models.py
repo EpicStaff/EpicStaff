@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import DefaultBaseModel, EmbedderTask
@@ -32,7 +33,7 @@ class EmbeddingModel(OrgScopedModel, models.Model):
         ]
 
 
-class EmbeddingConfig(OrgScopedModel, models.Model):
+class EmbeddingConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
     model = models.ForeignKey("EmbeddingModel", on_delete=models.SET_NULL, null=True)
     custom_name = models.TextField()
     task_type = models.CharField(
@@ -47,6 +48,9 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
     )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(EmbeddingConfigTag, blank=True, related_name="embedding_configs")
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

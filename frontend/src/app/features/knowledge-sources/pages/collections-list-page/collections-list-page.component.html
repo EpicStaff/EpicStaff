@@ -16,11 +16,21 @@
                 ></app-spinner>
             </div>
         } @else {
-            <div class="collections-page__sidebar">
+            <div
+                #sidebarEl
+                class="collections-page__sidebar"
+                [style.width.px]="sidebarWidth()"
+            >
                 <app-collections-list-sidebar
                     [collections]="collections()"
                     (onCreateCollection)="createCollection()"
                 />
+
+                <div
+                    class="resizable-sidebar-handle"
+                    [appResizableSidebar]="sidebarStorageKey"
+                    [sidebarTarget]="sidebarEl"
+                ></div>
             </div>
 
             <div class="collections-page__content">

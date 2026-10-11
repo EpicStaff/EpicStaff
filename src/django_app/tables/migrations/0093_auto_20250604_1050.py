@@ -18,5 +18,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(populate_uuids, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(populate_uuids, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

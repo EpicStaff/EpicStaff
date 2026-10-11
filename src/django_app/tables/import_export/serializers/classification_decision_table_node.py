@@ -83,4 +83,4 @@ class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerialize
 
     class Meta:
         model = ClassificationDecisionTableNode
-        exclude = ["created_at", "updated_at", "prompts"]
+        exclude = ["created_at", "updated_at", "created_by", "prompts"]

@@ -159,6 +159,16 @@
                                         Duplicate
                                     </button>
                                 }
+                                @if (canViewSelectedDetails()) {
+                                    <!-- Read-only: anyone who sees the agent may see who authored it. -->
+                                    <button
+                                        type="button"
+                                        class="detail-header__menu-item"
+                                        (click)="onHeaderViewDetails()"
+                                    >
+                                        View Details
+                                    </button>
+                                }
                                 @if (canDeleteSelected()) {
                                     <button
                                         type="button"

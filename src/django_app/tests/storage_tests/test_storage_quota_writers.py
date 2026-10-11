@@ -384,6 +384,21 @@ class TestAgentWrites:
             f"{org.id}:after.txt",
         }
 
+    def test_a_write_without_a_session_is_recorded_and_touches_no_session_set(
+        self, session_pubsub, org
+    ):
+        # A test-mode run has no session: its writes land in the browser index
+        # but belong to no session's output files.
+        pubsub, backend, redis_client = session_pubsub
+        backend.put_bytes(f"org_{org.id}/test-runs/python_node-5/out.txt", b"abc")
+
+        pubsub.storage_mutations_handler(
+            self._session_message(org, None, ("write", "test-runs/python_node-5/out.txt"))
+        )
+
+        assert _row_sizes(org) == {"test-runs/python_node-5/out.txt": 3}
+        assert redis_client.keys("session:*") == []
+
     def test_a_failing_row_write_does_not_drop_the_rest(self, session_pubsub, org, monkeypatch):
         pubsub, backend, redis_client = session_pubsub
         backend.put_bytes(f"org_{org.id}/kept.txt", b"abc")

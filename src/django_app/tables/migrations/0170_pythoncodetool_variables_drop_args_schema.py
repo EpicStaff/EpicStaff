@@ -92,7 +92,7 @@ def migrate_to_variables(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tables", "0169_merge_imp_auth"),
+        ("tables", "0166_storagefile_graphstoragefile_and_more_squashed_0175_merge_20260427_1053"),
     ]
 
     operations = [
@@ -101,7 +101,7 @@ class Migration(migrations.Migration):
             name="variables",
             field=models.JSONField(blank=True, default=list),
         ),
-        migrations.RunPython(migrate_to_variables, migrations.RunPython.noop),
+        migrations.RunPython(migrate_to_variables, migrations.RunPython.noop, elidable=True),
         migrations.RemoveField(
             model_name="pythoncodetool",
             name="args_schema",

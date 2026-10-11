@@ -10,4 +10,4 @@ class GraphNoteImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GraphNote
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]

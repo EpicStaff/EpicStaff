@@ -1,11 +1,9 @@
 import { NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, inject, input, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { OrgAdmin } from '@shared/models';
-
-import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
     selector: 'app-admins-cell',

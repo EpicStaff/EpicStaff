@@ -105,7 +105,6 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 gap: 6px;
                 width: 100%;
                 height: 100%;
-                padding: 0 4px;
                 position: relative;
             }
             .params-group-header--add-only {
@@ -138,7 +137,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 background: none;
                 border: none;
                 padding: 0 2px;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 flex-shrink: 0;
                 display: flex;
                 align-items: center;
@@ -149,7 +148,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-label {
                 flex: 1;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 white-space: nowrap;
@@ -163,7 +162,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 color: var(--color-ks-transparent-text-60);
             }
             .drag-grip-btn {
-                display: inline-flex;
+                display: none;
                 align-items: center;
                 justify-content: center;
                 width: 24px;
@@ -173,6 +172,9 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 cursor: grab;
                 color: var(--color-ks-transparent-text-60);
                 transition: background 0.15s ease;
+            }
+            :host-context(.ag-header-cell-moving) .drag-grip-btn {
+                display: inline-flex;
             }
             .drag-grip-btn:hover {
                 background: var(--color-ghost-btn-hover);
@@ -210,7 +212,6 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
 
     mode: 'add-only' | 'full' = 'full';
     ownerLabel = '';
-
     private onAdd: ((event: MouseEvent) => void) | undefined;
     private onFreeze: (() => void) | undefined;
     private onHide: (() => void) | undefined;

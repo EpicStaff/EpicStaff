@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
@@ -40,7 +41,10 @@ from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
 class ConditionalEdgeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    ContentHashWritableMixin,
+    NestedPythonCodeMixin,
+    serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -50,7 +54,12 @@ class ConditionalEdgeSerializer(
         fields = "__all__"
 
 
-class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class StartNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -62,6 +71,7 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
             "graph",
             "variables",
             "node_name",
+            "created_by",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
         read_only_fields = ["node_name"]
@@ -91,7 +101,12 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         return instance
 
 
-class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class EndNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -103,6 +118,7 @@ class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
             "graph",
             "output_map",
             "node_name",
+            "created_by",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
         read_only_fields = ["node_name"]
@@ -128,7 +144,12 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
         fields = "__all__"
 
 
-class DecisionTableNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class DecisionTableNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -234,7 +255,9 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
         ]
 
 
-class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
+class ClassificationDecisionTableNodeSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
     prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)
@@ -263,6 +286,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",
+            "created_by",
             "created_at",
             "updated_at",
             "metadata",

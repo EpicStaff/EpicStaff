@@ -1,5 +1,7 @@
 """GET /graph-versions/<id>/preview/ — the read-only view of what a restore would apply."""
 
+from datetime import UTC, datetime
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -7,6 +9,9 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from rbac.authorship import record_last_edit, represent_authorship_time
+from rbac.governance.memberships import MembershipManagementService
+from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
@@ -49,6 +54,35 @@ def test_preview_returns_the_snapshot_and_secret_declaration(
     assert snapshot["secret_declarations"]["nodes"][node_id]["python_code"] == [
         "STRIPE_KEY"
     ]
+
+
+@pytest.mark.django_db
+def test_preview_omits_the_recorded_node_authorship(client, graph_with_declared_secret):
+    graph, _ = graph_with_declared_secret
+    version_id = save_version(client=client, graph=graph)
+    node_id = str(graph.python_node_list.get().id)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert "node_authorship" not in response.data["snapshot"]
+    stored_snapshot = GraphVersion.objects.get(pk=version_id).snapshot
+    assert set(stored_snapshot["node_authorship"]) == {node_id}
+
+
+@pytest.mark.django_db
+def test_preview_omits_the_recorded_node_last_edit(client, graph_with_declared_secret):
+    graph, _ = graph_with_declared_secret
+    node = graph.python_node_list.get()
+    record_last_edit(node, SystemServicePrincipal())
+    version_id = save_version(client=client, graph=graph)
+
+    response = _preview(client=client, version_id=version_id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert "node_last_edit" not in response.data["snapshot"]
+    stored_snapshot = GraphVersion.objects.get(pk=version_id).snapshot
+    assert set(stored_snapshot["node_last_edit"]) == {str(node.id)}
 
 
 @pytest.mark.django_db
@@ -252,7 +286,7 @@ def test_preview_query_count_does_not_grow_with_node_count(
 
 
 @pytest.mark.django_db
-def test_preview_response_has_exactly_snapshot_and_warnings(
+def test_preview_response_has_exactly_snapshot_warnings_and_node_authorship(
     client, graph_with_declared_secret
 ):
     graph, _ = graph_with_declared_secret
@@ -261,7 +295,7 @@ def test_preview_response_has_exactly_snapshot_and_warnings(
     response = _preview(client=client, version_id=version_id)
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert set(response.data) == {"snapshot", "warnings"}
+    assert set(response.data) == {"snapshot", "warnings", "node_authorship"}
     assert {
         "nodes",
         "edge_list",
@@ -382,3 +416,117 @@ def test_preview_returns_key_value_node_bound_to_its_live_table(client, org):
     assert node["key_value_table_name"] == "Customers"
     assert node["mode"] == "write"
     assert node["entries"] == [{"key": "k", "value": "variables.v"}]
+
+
+# ---- recorded node authorship ----
+
+NODE_CREATED_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+NODE_EDITED_AT = datetime(2024, 2, 3, 4, 5, 6, tzinfo=UTC)
+
+
+@pytest.fixture
+def node_author(db, django_user_model):
+    return django_user_model.objects.create_user(
+        email="preview-author@example.com", password="StrongPass123!", display_name="Ada Author"
+    )
+
+
+@pytest.fixture
+def node_editor(db, django_user_model):
+    return django_user_model.objects.create_user(
+        email="preview-editor@example.com", password="StrongPass123!", display_name="Ed Editor"
+    )
+
+
+def _flow_with_authored_node(*, org, author, editor, name="authored-flow"):
+    graph = _graph_with_python_nodes(org=org, name=name, node_count=1)
+    node = graph.python_node_list.get()
+    PythonNode.objects.filter(pk=node.pk).update(created_by=author, created_at=NODE_CREATED_AT)
+    record_last_edit(node, editor, edited_at=NODE_EDITED_AT)
+    return graph, node
+
+
+@pytest.mark.django_db
+def test_preview_returns_each_nodes_recorded_authorship_as_user_summaries(
+    client, org, node_author, node_editor
+):
+    graph, node = _flow_with_authored_node(org=org, author=node_author, editor=node_editor)
+    version = GraphVersioningService().save_version(graph, name="v1")
+
+    response = _preview(client=client, version_id=version.id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["node_authorship"] == {
+        str(node.id): {
+            "created_by": {"id": node_author.id, "display_name": "Ada Author", "avatar_url": None},
+            "created_at": represent_authorship_time(NODE_CREATED_AT),
+            "last_edited_by": {
+                "id": node_editor.id,
+                "display_name": "Ed Editor",
+                "avatar_url": None,
+            },
+            "last_edited_at": represent_authorship_time(NODE_EDITED_AT),
+        }
+    }
+    snapshot_node_ids = {
+        str(snapshot_node["id"]) for snapshot_node in response.data["snapshot"]["nodes"]
+    }
+    assert str(node.id) in snapshot_node_ids
+
+
+@pytest.mark.django_db
+def test_preview_returns_empty_node_authorship_for_a_legacy_version(
+    client, org, node_author, node_editor
+):
+    graph, _ = _flow_with_authored_node(org=org, author=node_author, editor=node_editor)
+    version = GraphVersioningService().save_version(graph, name="legacy")
+    legacy_snapshot = version.snapshot
+    del legacy_snapshot["node_authorship"]
+    del legacy_snapshot["node_last_edit"]
+    GraphVersion.objects.filter(pk=version.pk).update(snapshot=legacy_snapshot)
+
+    response = _preview(client=client, version_id=version.id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["node_authorship"] == {}
+
+
+@pytest.mark.django_db
+def test_preview_shows_a_removed_member_as_null_and_keeps_the_times(
+    client, org, node_author, node_editor, role_member, superadmin
+):
+    membership = OrganizationUser.objects.create(user=node_author, org=org, role=role_member)
+    graph, node = _flow_with_authored_node(org=org, author=node_author, editor=node_editor)
+    version = GraphVersioningService().save_version(graph, name="v1")
+    MembershipManagementService().remove_member(actor=superadmin, membership_id=membership.id)
+
+    response = _preview(client=client, version_id=version.id)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    entry = response.data["node_authorship"][str(node.id)]
+    assert entry["created_by"] is None
+    assert entry["created_at"] == represent_authorship_time(NODE_CREATED_AT)
+    assert entry["last_edited_by"]["id"] == node_editor.id
+
+
+@pytest.mark.django_db
+def test_preview_loads_the_recorded_users_in_one_query(
+    client, org, node_author, node_editor, django_assert_num_queries
+):
+    same_user_graph, _ = _flow_with_authored_node(
+        org=org, author=node_author, editor=node_author, name="same-user"
+    )
+    two_users_graph, _ = _flow_with_authored_node(
+        org=org, author=node_author, editor=node_editor, name="two-users"
+    )
+    same_user_version = GraphVersioningService().save_version(same_user_graph, name="same")
+    two_users_version = GraphVersioningService().save_version(two_users_graph, name="two")
+
+    with CaptureQueriesContext(connection) as same_user_queries:
+        same_user_response = _preview(client=client, version_id=same_user_version.id)
+    assert same_user_response.status_code == status.HTTP_200_OK, same_user_response.content
+
+    with django_assert_num_queries(len(same_user_queries.captured_queries)):
+        two_users_response = _preview(client=client, version_id=two_users_version.id)
+    [entry] = two_users_response.data["node_authorship"].values()
+    assert entry["last_edited_by"]["id"] == node_editor.id

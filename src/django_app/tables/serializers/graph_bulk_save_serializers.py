@@ -10,6 +10,7 @@ from tables.serializers.model_serializers import (
     FileExtractorNodeSerializer,
     GraphNoteSerializer,
     KeyValueNodeSerializer,
+    KnowledgeNodeReadSerializer,
     KnowledgeNodeSerializer,
     PythonNodeSerializer,
     ScheduleTriggerNodeSerializer,
@@ -124,7 +125,8 @@ class GraphNoteBulkSerializer(BulkSaveNodeMixin, GraphNoteSerializer):
 
 
 class KnowledgeNodeBulkSerializer(BulkSaveNodeMixin, KnowledgeNodeSerializer):
-    pass
+    # Search configs are saved beside the node; the read serializer includes them.
+    last_edit_state_serializer_class = KnowledgeNodeReadSerializer
 
 
 class WebhookTriggerNodeBulkSerializer(BulkSaveNodeMixin, WebhookTriggerNodeSerializer):

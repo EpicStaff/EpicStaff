@@ -30,13 +30,12 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { SETTINGS_DIALOG_SIZE } from '../../services/configure-models-dialog.service';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
 import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
 
@@ -188,7 +187,7 @@ export class SecretsSectionComponent implements OnInit {
         this.confirmationDialogService
             .confirm({
                 title: 'Delete Secret',
-                message: `You're about to delete <strong>${name}</strong>. This action can't be undone.`,
+                message: `You're about to delete <strong>${escapeHtml(name)}</strong>. This action can't be undone.`,
                 caution,
                 cautionTitle: caution ? 'Caution' : undefined,
                 confirmText: 'Delete',
@@ -269,7 +268,8 @@ export class SecretsSectionComponent implements OnInit {
 
     public onOpenUsage(row: TableRow): void {
         this.dialog.open(SecretUsageDialogComponent, {
-            ...SETTINGS_DIALOG_SIZE,
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
             data: { secretId: row['id'] as number, secretName: row['name'] as string },
         });
     }

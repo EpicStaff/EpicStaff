@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, model, output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -13,6 +13,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, switchMap } from 'rxjs';
 
 import { FileSizePipe } from '../../../../../../../shared/pipes/file-size.pipe';
+import { filterDocumentsByType } from '../../../../../helpers/filter-documents-by-type.util';
 import { DisplayedListDocument } from '../../../../../models/document.model';
 import { DocumentsStorageService } from '../../../../../services/documents-storage.service';
 
@@ -33,8 +34,14 @@ import { DocumentsStorageService } from '../../../../../services/documents-stora
 })
 export class CollectionFilesComponent {
     documents = model<DisplayedListDocument[]>([]);
+    /** "Filter by type" choice; `null` shows every type. Only narrows what is listed — `documents` stay whole. */
+    readonly fileTypeFilter = input<string | null>(null);
     downloadRequested = output<number>();
     previewRequested = output<number>();
+
+    protected readonly visibleDocuments = computed(() =>
+        filterDocumentsByType(this.documents(), this.fileTypeFilter())
+    );
 
     readonly documentsStorageService = inject(DocumentsStorageService);
     private confirmationDialogService = inject(ConfirmationDialogService);

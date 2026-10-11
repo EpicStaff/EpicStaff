@@ -20,6 +20,7 @@ import {
     StartNodeModel,
 } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
+import { PythonNode } from '../core/models/python-node.model';
 
 export interface FlattenedPort {
     nodeId: string;
@@ -49,6 +50,9 @@ export class FlowService {
     private readonly savedGraph = computed(() => this.savedGraphSource()?.() ?? null);
     private readonly savedWebhookPythonCodeByNodeId = computed(
         () => new Map((this.savedGraph()?.webhook_trigger_node_list ?? []).map((node) => [node.id, node.python_code]))
+    );
+    private readonly savedPythonNodeById = computed(
+        () => new Map((this.savedGraph()?.python_node_list ?? []).map((node) => [node.id, node]))
     );
     /** Whether the editor knows what the backend stores for this graph (see `bindSavedGraph`). */
     public readonly hasSavedGraph = computed(() => this.savedGraph() !== null);
@@ -102,6 +106,15 @@ export class FlowService {
     public savedWebhookPythonCode(backendId: number | null): GetPythonCodeRequest | null {
         if (backendId == null) return null;
         return this.savedWebhookPythonCodeByNodeId().get(backendId) ?? null;
+    }
+
+    /**
+     * The Python node `backendId` as the backend stores it (its code, libraries, secrets and storage flag);
+     * null for a node that is not in the saved graph (never saved, or deleted).
+     */
+    public savedPythonNode(backendId: number | null): PythonNode | null {
+        if (backendId == null) return null;
+        return this.savedPythonNodeById().get(backendId) ?? null;
     }
 
     public setFlow(flow: FlowModel) {

@@ -25,7 +25,9 @@ class AudioTranscriptionNode(PythonNode):
             venv_name="default",
             code=self._get_code(arg_names),
             entrypoint="main",
-            libraries=["faster_whisper", "pydub"],
+            # faster_whisper (up to 1.2.1) calls av.open(metadata_errors=...),
+            # a keyword PyAV 19 removed.
+            libraries=["faster_whisper", "pydub", "av<19"],
             use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -70,7 +72,7 @@ def transcribe_audio(file_data_path: str):
         os.remove(input_path)
 
     try:
-        model = WhisperModel("medium", device="cpu", compute_type="int8")
+        model = WhisperModel("small", device="cpu", compute_type="int8")
 
         segments, info = model.transcribe(
             wav_path,

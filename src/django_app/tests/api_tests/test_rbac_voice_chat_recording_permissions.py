@@ -21,13 +21,13 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from agents.models import AgentDefinition
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.models.realtime_models import (
     ConversationRecording,
-    OpenAIRealtimeConfig,
-    RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
 )
 
 
@@ -90,20 +90,17 @@ def client_for():
 
 
 @pytest.fixture
-def voice_agent(db, voice_org):
-    from tables.models import Agent
-
-    agent = Agent.objects.create(
-        org=voice_org, role="voice-rbac-agent", goal="goal", backstory="backstory"
+def voice_agent_definition(db, voice_org):
+    agent_definition = AgentDefinition.objects.create(
+        org=voice_org, name="voice-rbac-agent"
     )
-    config = OpenAIRealtimeConfig.objects.create(custom_name="voice-rbac-cfg", org=voice_org)
-    return RealtimeAgent.objects.create(agent=agent, openai_config=config)
+    return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 
 
 @pytest.fixture
-def voice_chat(db, voice_agent):
+def voice_chat(db, voice_agent_definition):
     return RealtimeAgentChat.objects.create(
-        rt_agent=voice_agent, connection_key="voice-rbac-conn"
+        rt_agent_definition=voice_agent_definition, connection_key="voice-rbac-conn"
     )
 
 

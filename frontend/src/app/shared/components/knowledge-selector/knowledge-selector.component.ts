@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { RAG_TYPE_LABELS } from '@shared/constants';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -29,12 +30,6 @@ export interface KnowledgeSelectorCollection {
     document_count: number;
     rag_configurations: KnowledgeSelectorRagConfig[];
 }
-
-const RAG_TYPE_LABELS: Record<string, string> = {
-    naive: 'Naive RAG',
-    graph: 'Graph RAG',
-    hybrid: 'Hybrid RAG',
-};
 
 @Component({
     selector: 'app-knowledge-selector',
@@ -83,7 +78,9 @@ export class KnowledgeSelectorComponent implements ControlValueAccessor {
     private onTouched: () => void = () => {};
 
     formatRagConfigurations(configs: KnowledgeSelectorRagConfig[]): string {
-        return configs.map((c) => RAG_TYPE_LABELS[c.rag_type] ?? c.rag_type).join(' / ');
+        return configs
+            .map((c) => RAG_TYPE_LABELS[c.rag_type as keyof typeof RAG_TYPE_LABELS] ?? c.rag_type)
+            .join(' / ');
     }
 
     toggle(): void {

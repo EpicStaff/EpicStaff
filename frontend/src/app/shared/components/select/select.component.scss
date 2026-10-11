@@ -73,7 +73,7 @@
         }
 
         &--transparent {
-            background-color: transparent;
+            background-color: var(--color-input-transparent);
         }
 
         &:disabled {

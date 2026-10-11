@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from loguru import logger
+from rbac.authorship import record_last_edits, resolve_author
 
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -188,7 +189,10 @@ class GraphStrategy(EntityImportExportStrategy):
         replaced_telegram_keys = []
         if replaced_graph is not None:
             replaced_telegram_keys = self._prepare_in_place_replace(replaced_graph)
-        graph = serializer.save()
+            # The flow is updated in place, so it keeps its author, or the lack of one.
+            graph = serializer.save()
+        else:
+            graph = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         # Register this graph's own GRAPH mapping immediately, keyed by its
         # real old exported id.
@@ -339,6 +343,11 @@ class GraphStrategy(EntityImportExportStrategy):
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
+        `user` is the acting user, handed to every node strategy: it authors each new
+        node and is recorded as its last editor, and references that need a permission
+        check (e.g. a key-value table) gate on it. `None` means there is no acting user,
+        so nodes get no author and no last edit.
+
         Args:
             user: The acting user, handed to every node strategy so references that
                 need a permission check (e.g. a key-value table) can gate on it.
@@ -355,7 +364,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper = IDMapper()
 
         # Pass 1: create all nodes and build the old→new node ID mapping
-        self._create_nodes(
+        created_nodes = self._create_nodes(
             nodes_data,
             graph,
             node_mapper,
@@ -371,6 +380,7 @@ class GraphStrategy(EntityImportExportStrategy):
         self._create_conditional_edges(conditional_edges_data, graph, node_mapper)
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
+        record_last_edits(created_nodes, user)
 
         # need only for versioning system
         return node_mapper
@@ -401,7 +411,7 @@ class GraphStrategy(EntityImportExportStrategy):
         user=None,
         *,
         keep_node_uuids: bool,
-    ) -> None:
+    ) -> list:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
         # graph, so imported nodes count up from the top instead of filling gaps
@@ -409,6 +419,7 @@ class GraphStrategy(EntityImportExportStrategy):
         # assigned number written back into metadata["nodeNumber"].
         counter = self._max_node_number(graph)
         kept_uuids = KeptNodeUuids(graph) if keep_node_uuids else None
+        created_nodes = []
 
         for node_data in nodes_data:
             node_type = node_data.pop("node_type")
@@ -454,6 +465,8 @@ class GraphStrategy(EntityImportExportStrategy):
 
             strategy = entity_registry.get_strategy(entity_type)
             node = strategy.create_entity(node_data, id_mapper, user=user)
+            if node:
+                created_nodes.append(node)
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
@@ -462,6 +475,8 @@ class GraphStrategy(EntityImportExportStrategy):
 
         if kept_uuids is not None:
             kept_uuids.save()
+
+        return created_nodes
 
     def _with_node_number(self, name: str, number: int) -> str:
         """Strip any trailing "#N" / "# N" suffix and append " #{number}"."""

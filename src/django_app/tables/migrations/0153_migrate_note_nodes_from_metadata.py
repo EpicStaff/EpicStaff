@@ -39,5 +39,6 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             migrate_note_nodes_from_metadata,
             reverse_code=migrations.RunPython.noop,
+            elidable=True,
         ),
     ]

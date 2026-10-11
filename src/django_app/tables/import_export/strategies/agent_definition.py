@@ -4,6 +4,7 @@ from copy import deepcopy
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -151,7 +152,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
-            existing_names = AgentDefinition.objects.filter(organization=organization).values_list(
+            existing_names = AgentDefinition.objects.filter(org=organization).values_list(
                 "name", flat=True
             )
             data["name"] = ensure_unique_identifier(
@@ -161,7 +162,9 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        agent_definition = serializer.save(organization=organization)
+        agent_definition = serializer.save(
+            org=organization, created_by=resolve_author(kwargs.get("user"))
+        )
 
         self._assign_llm_configs(
             agent_definition, old_llm_config_id, old_fcm_llm_config_id, id_mapper
@@ -207,7 +210,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         organization = resolve_import_organization(org_id)
         if organization is None:
             return Q()
-        return Q(organization=organization)
+        return Q(org=organization)
 
     def _assign_llm_configs(
         self,

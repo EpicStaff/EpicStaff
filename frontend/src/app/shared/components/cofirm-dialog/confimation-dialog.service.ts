@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { inject, Injectable } from '@angular/core';
+import { escapeHtml } from '@shared/utils';
 import { map, Observable } from 'rxjs';
 
 import { ConfirmationDialogComponent, ConfirmationDialogData, DialogResult } from './confirmation-dialog.component';
@@ -63,7 +64,7 @@ export class ConfirmationDialogService {
     confirmDelete(itemName: string): Observable<ConfirmationResult> {
         return this.confirm({
             title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${itemName}</strong>? <br> This action cannot be undone.`,
+            message: `Are you sure you want to delete <strong>${escapeHtml(itemName)}</strong>? <br> This action cannot be undone.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: 'danger',
@@ -75,7 +76,7 @@ export class ConfirmationDialogService {
 
         return this.confirm({
             title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${truncatedName}</strong>? <br> This action cannot be undone.`,
+            message: `Are you sure you want to delete <strong>${escapeHtml(truncatedName)}</strong>? <br> This action cannot be undone.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: 'danger',

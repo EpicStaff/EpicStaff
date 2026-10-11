@@ -4,9 +4,10 @@
     height: 100%;
 
     &__sidebar {
-        width: 280px;
         flex-shrink: 0;
         height: 100%;
+        // Anchors the absolutely positioned resize handle.
+        position: relative;
         // The table list scrolls its own rows, so its header stays put.
         overflow: hidden;
         // The regular divider, not the subtle one the Storage page's other tabs use: next to the grid's own borders

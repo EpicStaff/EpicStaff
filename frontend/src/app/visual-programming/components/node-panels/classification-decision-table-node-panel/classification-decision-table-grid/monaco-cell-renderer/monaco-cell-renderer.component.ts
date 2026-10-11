@@ -65,9 +65,6 @@ function ensureMonacoLoaded(): Promise<void> {
             class="code-cell"
             #codeContainer
         >
-            @if (!value) {
-                <span class="placeholder">—</span>
-            }
             @if (value && !colorized) {
                 <span class="plain-text">{{ displayText }}</span>
             }
@@ -86,7 +83,7 @@ function ensureMonacoLoaded(): Promise<void> {
                 overflow: hidden;
                 display: flex;
                 align-items: center;
-                padding: 0 8px;
+                padding: 0 8px 0 0;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
                 font-size: 0.75rem;
@@ -98,9 +95,6 @@ function ensureMonacoLoaded(): Promise<void> {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-            }
-            .placeholder {
-                color: rgba(255, 255, 255, 0.2);
             }
             .colorized-code {
                 white-space: nowrap;

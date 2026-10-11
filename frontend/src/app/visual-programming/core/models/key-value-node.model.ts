@@ -1,4 +1,4 @@
-import { KeyValueMode } from '@shared/models';
+import { AuthorshipFields, KeyValueMode } from '@shared/models';
 
 // Shared with the session card, which colours its stripe by mode too.
 export type { KeyValueMode };
@@ -25,8 +25,9 @@ export interface KeyValueNodeData {
     entries: KeyValueEntry[];
 }
 
-export interface GetKeyValueNodeRequest extends KeyValueNodeData {
+export interface GetKeyValueNodeRequest extends KeyValueNodeData, AuthorshipFields {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     input_map: Record<string, unknown>;

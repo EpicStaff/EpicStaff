@@ -54,7 +54,7 @@ def org_b(db):
 @pytest.fixture
 def agent_definition(default_org, llm_config):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
         instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
@@ -195,7 +195,7 @@ def test_init_realtime_agent_definition_resolves_surface_tools_and_knowledge(
 ):
     agent_definition = rt_agent_definition.agent_definition
     surface = Surface.objects.create(
-        organization=agent_definition.organization, name="voice-surface"
+        org=agent_definition.org, name="voice-surface"
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=py_tool_a, mode=ToolMode.ALLOW
@@ -239,7 +239,7 @@ def test_init_realtime_agent_definition_place_filtering(
     agent_definition = rt_agent_definition.agent_definition
 
     chat_only_surface = Surface.objects.create(
-        organization=agent_definition.organization, name="chat-only-surface"
+        org=agent_definition.org, name="chat-only-surface"
     )
     SurfacePythonTool.objects.create(
         surface=chat_only_surface, python_tool=py_tool_a, mode=ToolMode.ALLOW
@@ -251,7 +251,7 @@ def test_init_realtime_agent_definition_place_filtering(
     )
 
     owned_surface_implicit_all = Surface.objects.create(
-        organization=agent_definition.organization,
+        org=agent_definition.org,
         name="owned-implicit-all-surface",
         owner_agent=agent_definition,
     )
@@ -287,7 +287,7 @@ def test_init_realtime_agent_definition_graph_rag_basic_wins_over_local(
 ):
     agent_definition = rt_agent_definition.agent_definition
     surface = Surface.objects.create(
-        organization=agent_definition.organization, name="graph-tie-break-surface"
+        org=agent_definition.org, name="graph-tie-break-surface"
     )
     knowledge = SurfaceKnowledge.objects.create(
         surface=surface, collection=graph_collection
@@ -348,7 +348,7 @@ def test_init_realtime_cross_org_agent_definition_rejected(auth_client, org_b):
     """An org_a caller must not be able to init a realtime session for another
     org's AgentDefinition by guessing/reusing its RealtimeAgentDefinition pk."""
     other_agent_definition = AgentDefinition.objects.create(
-        organization=org_b, name="other-org-agent"
+        org=org_b, name="other-org-agent"
     )
     other_config = OpenAIRealtimeConfig.objects.create(
         custom_name="other-org-openai-config", org=org_b

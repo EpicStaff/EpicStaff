@@ -13,6 +13,10 @@ export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map(
 
 export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20 MB
 
+/** Longest "Guidance for Agents" (collection description) the backend accepts — keep in sync with
+ * COLLECTION_DESCRIPTION_MAX_LENGTH in src/django_app/tables/serializers/knowledge_serializers.py. */
+export const COLLECTION_DESCRIPTION_MAX_LENGTH = 2000;
+
 export const RAG_TYPE_CONFIG: Record<RagType, { name: string; icon: string }> = {
     naive: { name: 'Naive RAG', icon: 'mouse' },
     graph: { name: 'Graph RAG', icon: 'web' },

@@ -1,7 +1,6 @@
-# Squashed migration: CodeAgentNode + stream_config + epicchat_enabled
-# Replaces 0148_codeagentnode, 0149_codeagentnode_session_id,
-#          0150_crewnode_stream_config_pythonnode_stream_config_and_more,
-#          0151_codeagentnode_output_schema, 0152_add_epicchat_enabled_to_graph
+# Originally a squash of 0148_codeagentnode ... 0152_add_epicchat_enabled_to_graph
+# (CodeAgentNode + stream_config + epicchat_enabled). Those files are gone and the
+# `replaces` list was dropped, so this is now an ordinary migration.
 
 import django.db.models.deletion
 import tables.models.base_models
@@ -9,14 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
-    replaces = [
-        ("tables", "0148_codeagentnode"),
-        ("tables", "0149_codeagentnode_session_id"),
-        ("tables", "0150_crewnode_stream_config_pythonnode_stream_config_and_more"),
-        ("tables", "0151_codeagentnode_output_schema"),
-        ("tables", "0152_add_epicchat_enabled_to_graph"),
-    ]
 
     dependencies = [
         ("tables", "0152_alter_conditionaledge_id"),

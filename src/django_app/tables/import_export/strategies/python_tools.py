@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -16,7 +17,7 @@ from tables.import_export.utils import (
     ensure_unique_identifier,
     python_code_equal,
 )
-from tables.models import PythonCode, PythonCodeTool
+from tables.models import PythonCode, PythonCodeTool, User
 
 
 class PythonCodeToolStrategy(EntityImportExportStrategy):
@@ -83,9 +84,12 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        python_code_tool = serializer.save()
+        author = resolve_author(kwargs.get("user"))
+        python_code_tool = serializer.save(created_by=author)
 
-        self._create_python_tool_config(python_code_tool, python_tool_config_data, org_id)
+        self._create_python_tool_config(
+            python_code_tool, python_tool_config_data, org_id, author=author
+        )
 
         if import_labels and labels_data:
             attach_tool_labels(python_code_tool, id_mapper, labels_data)
@@ -121,7 +125,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return serializer.save()
 
     def _create_python_tool_config(
-        self, tool: PythonCodeTool, python_tool_config_data: dict, org_id
+        self, tool: PythonCodeTool, python_tool_config_data: dict, org_id, *, author: User | None
     ):
         for tool_config_data in python_tool_config_data:
             tool_config_data["tool_id"] = tool.id
@@ -129,4 +133,4 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 data={**tool_config_data, "org": org_id}
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            serializer.save(created_by=author)

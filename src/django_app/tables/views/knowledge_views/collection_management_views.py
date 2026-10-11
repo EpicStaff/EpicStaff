@@ -4,6 +4,7 @@ from drf_spectacular.utils import (
 )
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import authorship_prefetches
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status, viewsets
@@ -72,7 +73,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents").annotate(
+            queryset = queryset.prefetch_related("documents", *authorship_prefetches()).annotate(
                 document_count=Count("documents")
             )
 
@@ -114,12 +115,14 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
             collection = CollectionManagementService.create_collection(
                 collection_name=serializer.validated_data.get("collection_name"),
                 description=serializer.validated_data.get("description", ""),
-                user_id=serializer.validated_data.get("user_id"),
+                created_by=request.user,
                 collection_origin=serializer.validated_data.get("collection_origin"),
                 org_id=self.get_active_org_id(),
             )
 
-            output_serializer = SourceCollectionDetailSerializer(collection)
+            output_serializer = SourceCollectionDetailSerializer(
+                collection, context=self.get_serializer_context()
+            )
             return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
@@ -143,9 +146,12 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 collection_id=instance.collection_id,
                 collection_name=serializer.validated_data.get("collection_name"),
                 description=serializer.validated_data.get("description"),
+                user=request.user,
             )
 
-            output_serializer = SourceCollectionDetailSerializer(updated_collection)
+            output_serializer = SourceCollectionDetailSerializer(
+                updated_collection, context=self.get_serializer_context()
+            )
             return Response(output_serializer.data)
 
         except CollectionNotFoundException as e:
@@ -233,9 +239,12 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
                 source_collection_id=collection.collection_id,
                 new_collection_name=serializer.validated_data.get("new_collection_name"),
                 org_id=self.get_active_org_id(),
+                user=request.user,
             )
 
-            output_serializer = SourceCollectionDetailSerializer(new_collection)
+            output_serializer = SourceCollectionDetailSerializer(
+                new_collection, context=self.get_serializer_context()
+            )
 
             return Response(
                 {
