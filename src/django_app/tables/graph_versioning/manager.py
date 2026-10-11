@@ -727,6 +727,8 @@ class GraphVersioningManager:
             filtered_snapshot,
             id_mapper,
             user=user,
+            # The restored nodes are the version's nodes, so a diff can match them.
+            keep_node_uuids=True,
         )
 
         return node_mapper
@@ -824,6 +826,8 @@ class GraphVersioningManager:
             },
             id_mapper,
             user=user,
+            # A new flow: its nodes are new, not the version's.
+            keep_node_uuids=False,
         )
 
         return graph, node_mapper

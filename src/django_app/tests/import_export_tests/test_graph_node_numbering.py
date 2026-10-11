@@ -32,7 +32,7 @@ def _import_one_crew_node(graph, crew, node_name, metadata):
             "metadata": dict(metadata),
         }
     ]
-    strategy._create_nodes(nodes_data, graph, node_mapper, id_mapper)
+    strategy._create_nodes(nodes_data, graph, node_mapper, id_mapper, keep_node_uuids=False)
 
 
 @pytest.mark.django_db

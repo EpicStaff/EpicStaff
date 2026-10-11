@@ -56,7 +56,14 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = StartNode
-        fields = ["id", "graph", "variables", "node_name", *BaseGraphEntityMixin.Meta.common_fields]
+        fields = [
+            "id",
+            "uuid",
+            "graph",
+            "variables",
+            "node_name",
+            *BaseGraphEntityMixin.Meta.common_fields,
+        ]
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
@@ -92,6 +99,7 @@ class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         model = EndNode
         fields = [
             "id",
+            "uuid",
             "graph",
             "output_map",
             "node_name",
@@ -241,6 +249,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
         model = ClassificationDecisionTableNode
         fields = [
             "id",
+            "uuid",
             "graph",
             "node_name",
             "pre_python_code",

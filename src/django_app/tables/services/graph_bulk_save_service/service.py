@@ -1,7 +1,8 @@
 from functools import lru_cache
+from uuid import UUID
 
 from django.apps import apps
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
@@ -16,6 +17,10 @@ from tables.services.graph_bulk_save_service.data_types import (
     NodeListValidationResult,
     NodeRef,
     ParsedNodeRef,
+)
+from tables.services.graph_bulk_save_service.node_uuid_validator import (
+    TAKEN_UUID_MESSAGE,
+    NodeUuidValidator,
 )
 from tables.services.graph_bulk_save_service.registry import (
     EDGE_DELETE_CONFIGS,
@@ -37,7 +42,8 @@ class GraphBulkSaveService:
               so the temp_id -> real_id map is ready when edges are written.
 
     Raises BulkSaveValidationError with a structured error dict if any entity
-    fails validation. No DB writes happen in that case.
+    fails validation. No DB writes happen in that case. A node uuid constraint
+    violation at write time is raised the same way, so it is never a 500.
     """
 
     # The active request, set per-invocation in save(). Threaded into every
@@ -79,18 +85,26 @@ class GraphBulkSaveService:
 
         # Pass 1: validate nodes (driven by registry — no hardcoded lists)
         routing_refs_to_validate: set[int] = set()
+        created_uuids: dict[str, list[tuple[int, UUID]]] = {}
         for config in NODE_TYPE_REGISTRY:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
                 continue
             db_map = {obj.id: obj for obj in config.model_class.objects.filter(graph=graph)}
             result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
+            if result.created_uuids:
+                created_uuids[config.list_key] = result.created_uuids
             if result.errors:
                 all_errors[config.list_key] = result.errors
             else:
                 node_saveables.extend(result.node_saveables)
                 edge_saveables.extend(result.deferred_saveables)
                 routing_refs_to_validate |= result.real_routing_node_ids
+
+        # Pass 1: validate client-sent node uuids across all node lists and tables
+        uuid_errors = NodeUuidValidator().find_errors(graph, created_uuids, deleted_data)
+        for list_key, errors in uuid_errors.items():
+            all_errors.setdefault(list_key, []).extend(errors)
 
         # Pass 1: validate edges
         existing_node_ref_errors = []
@@ -145,13 +159,22 @@ class GraphBulkSaveService:
             raise BulkSaveValidationError(all_errors)
 
         # Pass 2: atomic write
-        self._execute_writes(
-            graph,
-            deleted_data,
-            node_saveables,
-            edge_saveables,
-            expected_save_version,
-        )
+        try:
+            self._execute_writes(
+                graph,
+                deleted_data,
+                node_saveables,
+                edge_saveables,
+                expected_save_version,
+            )
+        except IntegrityError as error:
+            # Safety net: the save_version check already serialises writers, so
+            # no current writer gets here. StartNode and EndNode violate their
+            # older one-per-graph index first, which stays a plain IntegrityError.
+            if not NodeUuidValidator.is_uuid_conflict(error):
+                raise
+            # The atomic block rolls back every write of this request.
+            raise BulkSaveValidationError({"nodes": [TAKEN_UUID_MESSAGE]}) from error
         return graph
 
     def _validate_node_list(
@@ -167,6 +190,10 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            graph_error = self._foreign_graph_error(item_data, graph, index)
+            if graph_error is not None:
+                result.errors.append(graph_error)
+                continue
             item_id = item_data.get("id")
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
@@ -193,6 +220,8 @@ class GraphBulkSaveService:
                 result.errors.append(build.error)
             else:
                 result.node_saveables.append(_NodeSaveable(build.inner_saveable, temp_id or None))
+                if build.created_uuid is not None:
+                    result.created_uuids.append((index, build.created_uuid))
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
                     result.real_routing_node_ids |= self._collect_real_routing_refs(
@@ -228,7 +257,11 @@ class GraphBulkSaveService:
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)
-        return BuildSaveableResult(inner_saveable=inner, deferred_saveable=deferred)
+        return BuildSaveableResult(
+            inner_saveable=inner,
+            deferred_saveable=deferred,
+            created_uuid=s.validated_data.get("uuid") if instance is None else None,
+        )
 
     @staticmethod
     def _collect_real_routing_refs(deferred) -> set[int]:
@@ -259,6 +292,10 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            graph_error = self._foreign_graph_error(item_data, graph, index)
+            if graph_error is not None:
+                result.errors.append(graph_error)
+                continue
             item_id = item_data.get("id")
 
             start_parsed = self._parse_node_ref(
@@ -322,6 +359,10 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            graph_error = self._foreign_graph_error(item_data, graph, index)
+            if graph_error is not None:
+                result.errors.append(graph_error)
+                continue
             item_id = item_data.get("id")
 
             source_parsed = self._parse_node_ref(
@@ -366,6 +407,20 @@ class GraphBulkSaveService:
                 )
 
         return result
+
+    @staticmethod
+    def _foreign_graph_error(item_data: dict, graph: Graph, index: int) -> dict | None:
+        """Return an item error when its `graph` is not the flow being saved.
+
+        Checked on the raw value, before the serializer resolves it, so the
+        answer is the same whether the other flow exists, is in this
+        organization or not. A missing or null `graph` is left to the
+        serializer, which requires it.
+        """
+        graph_value = item_data.get("graph")
+        if graph_value is None or str(graph_value) == str(graph.pk):
+            return None
+        return {"index": index, "errors": {"graph": ["Must be this flow."]}}
 
     @staticmethod
     def _parse_node_ref(

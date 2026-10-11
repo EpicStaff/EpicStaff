@@ -89,6 +89,8 @@ class PartialImportService:
                 id_mapper,
                 is_partial=True,
                 user=user,
+                # The same nodes can be pasted into one graph more than once.
+                keep_node_uuids=False,
             )
 
         return id_mapper

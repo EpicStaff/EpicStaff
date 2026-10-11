@@ -10,11 +10,12 @@ from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
 from tables.models import Graph
-from tables.models.base_models import BaseGlobalNode
+from tables.models.base_models import BaseGlobalNode, NodeIdentityMixin
 from tables.models.graph_models import EndNode, GraphNote, StartNode
 from tests.graph_node_builders import (
     MULTIPLE_PER_GRAPH_NODE_MODELS,
     NODE_MODELS,
+    create_every_node,
     create_node,
     node_fields,
 )
@@ -47,8 +48,33 @@ def test_uuid_is_on_exactly_the_exported_node_models():
         for model in BaseGlobalNode.get_all_node_models()
         if any(field.name == "uuid" for field in model._meta.fields)
     }
+    node_models = NodeIdentityMixin.get_node_models()
 
     assert models_with_uuid == set(NODE_MODELS)
+    assert sorted(node_models, key=str) == sorted(NODE_MODELS, key=str)
+
+
+def test_active_node_uuids_reads_every_node_table_of_the_graph_only(graph, other_graph):
+    nodes = create_every_node(graph)
+    create_every_node(other_graph)
+
+    assert NodeIdentityMixin.active_node_uuids(graph) == {node.uuid for node in nodes.values()}
+
+
+def test_active_node_uuids_leaves_out_soft_deleted_excluded_and_unasked_nodes(graph):
+    kept, excluded, soft_deleted, unasked = (create_node(GraphNote, graph) for _ in range(4))
+    GraphNote.all_objects.filter(pk=soft_deleted.pk).update(
+        is_soft_deleted=True, soft_deleted_at=timezone.now()
+    )
+
+    active_uuids = NodeIdentityMixin.active_node_uuids(
+        graph,
+        among={kept.uuid, excluded.uuid, soft_deleted.uuid},
+        excluded_ids_by_model={GraphNote: [excluded.id]},
+    )
+
+    assert active_uuids == {kept.uuid}
+    assert unasked.uuid in NodeIdentityMixin.active_node_uuids(graph)
 
 
 def test_raw_insert_without_uuid_gets_one_from_the_database(graph):

@@ -36,44 +36,72 @@ class BulkSaveEntityMixin:
         return fields
 
 
-class PythonNodeBulkSerializer(BulkSaveEntityMixin, PythonNodeSerializer):
+class StrictUUIDField(serializers.UUIDField):
+    """UUIDField that accepts strings only; DRF would also take an integer as a uuid."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail("invalid")
+        return super().to_internal_value(data)
+
+
+class BulkSaveNodeMixin(BulkSaveEntityMixin):
+    """
+    Makes the node uuid writable for bulk-save input.
+    Create: optional; the model generates one when it is omitted.
+    Update: fixed; the stored value may be echoed, a different one is rejected.
+    Uniqueness inside the graph is checked by GraphBulkSaveService.
+    """
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["uuid"] = StrictUUIDField(required=False)
+        return fields
+
+    def validate_uuid(self, value):
+        if self.instance is not None and value != self.instance.uuid:
+            raise serializers.ValidationError("A node uuid cannot be changed.")
+        return value
+
+
+class PythonNodeBulkSerializer(BulkSaveNodeMixin, PythonNodeSerializer):
     pass
 
 
-class FileExtractorNodeBulkSerializer(BulkSaveEntityMixin, FileExtractorNodeSerializer):
+class FileExtractorNodeBulkSerializer(BulkSaveNodeMixin, FileExtractorNodeSerializer):
     pass
 
 
-class KeyValueNodeBulkSerializer(BulkSaveEntityMixin, KeyValueNodeSerializer):
+class KeyValueNodeBulkSerializer(BulkSaveNodeMixin, KeyValueNodeSerializer):
     pass
 
 
-class AudioTranscriptionNodeBulkSerializer(BulkSaveEntityMixin, AudioTranscriptionNodeSerializer):
+class AudioTranscriptionNodeBulkSerializer(BulkSaveNodeMixin, AudioTranscriptionNodeSerializer):
     pass
 
 
-class StartNodeBulkSerializer(BulkSaveEntityMixin, StartNodeSerializer):
+class StartNodeBulkSerializer(BulkSaveNodeMixin, StartNodeSerializer):
     pass
 
 
-class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
+class EndNodeBulkSerializer(BulkSaveNodeMixin, EndNodeSerializer):
     pass
 
 
-class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
+class SubGraphNodeBulkSerializer(BulkSaveNodeMixin, SubGraphNodeSerializer):
     pass
 
 
-class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
+class TaskNodeBulkSerializer(BulkSaveNodeMixin, TaskNodeSerializer):
     pass
 
 
-class AgentNodeBulkSerializer(BulkSaveEntityMixin, AgentNodeSerializer):
+class AgentNodeBulkSerializer(BulkSaveNodeMixin, AgentNodeSerializer):
     pass
 
 
 class ClassificationDecisionTableNodeBulkSerializer(
-    BulkSaveEntityMixin, ClassificationDecisionTableNodeSerializer
+    BulkSaveNodeMixin, ClassificationDecisionTableNodeSerializer
 ):
     def get_validators(self):
         # The UniqueTogetherValidator for (graph, node_name) fires during Pass 1
@@ -87,27 +115,27 @@ class ClassificationDecisionTableNodeBulkSerializer(
         return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
 
 
-class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSerializer):
+class DecisionTableNodeBulkSerializer(BulkSaveNodeMixin, DecisionTableNodeSerializer):
     pass
 
 
-class GraphNoteBulkSerializer(BulkSaveEntityMixin, GraphNoteSerializer):
+class GraphNoteBulkSerializer(BulkSaveNodeMixin, GraphNoteSerializer):
     pass
 
 
-class KnowledgeNodeBulkSerializer(BulkSaveEntityMixin, KnowledgeNodeSerializer):
+class KnowledgeNodeBulkSerializer(BulkSaveNodeMixin, KnowledgeNodeSerializer):
     pass
 
 
-class WebhookTriggerNodeBulkSerializer(BulkSaveEntityMixin, WebhookTriggerNodeSerializer):
+class WebhookTriggerNodeBulkSerializer(BulkSaveNodeMixin, WebhookTriggerNodeSerializer):
     pass
 
 
-class TelegramTriggerNodeBulkSerializer(BulkSaveEntityMixin, TelegramTriggerNodeSerializer):
+class TelegramTriggerNodeBulkSerializer(BulkSaveNodeMixin, TelegramTriggerNodeSerializer):
     pass
 
 
-class ScheduleTriggerNodeBulkSerializer(BulkSaveEntityMixin, ScheduleTriggerNodeSerializer):
+class ScheduleTriggerNodeBulkSerializer(BulkSaveNodeMixin, ScheduleTriggerNodeSerializer):
     pass
 
 

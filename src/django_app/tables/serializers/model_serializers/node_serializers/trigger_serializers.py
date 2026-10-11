@@ -82,6 +82,7 @@ class WebhookTriggerNodeSerializer(
         model = WebhookTriggerNode
         fields = [
             "id",
+            "uuid",
             "node_name",
             "graph",
             "python_code",
@@ -137,6 +138,7 @@ class TelegramTriggerNodeSerializer(
         model = TelegramTriggerNode
         fields = [
             "id",
+            "uuid",
             "node_name",
             "telegram_bot_api_key_secret_id",
             "graph",
@@ -281,6 +283,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     """
 
     id = serializers.IntegerField(read_only=True)
+    uuid = serializers.UUIDField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     node_name = serializers.CharField(max_length=255)
     is_active = serializers.BooleanField(required=False)

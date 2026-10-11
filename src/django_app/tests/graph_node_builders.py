@@ -40,3 +40,16 @@ def node_fields(model) -> dict:
 
 def create_node(model, graph: Graph, **overrides):
     return model.objects.create(graph=graph, **{**node_fields(model), **overrides})
+
+
+def create_every_node(graph: Graph, models=NODE_MODELS) -> dict:
+    """Create one node of each of `models` in `graph`; return them by model."""
+    return {model: create_node(model, graph) for model in models}
+
+
+def node_uuids_by_model(graph: Graph, models=NODE_MODELS) -> dict:
+    """Return the uuids of the active nodes of `graph`, per model."""
+    return {
+        model: sorted(model.objects.filter(graph=graph).values_list("uuid", flat=True))
+        for model in models
+    }
