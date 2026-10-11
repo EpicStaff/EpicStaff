@@ -1,5 +1,5 @@
 import { escapeHtml } from '@shared/utils';
-import { Parser, Token } from 'marked';
+import { Token } from 'marked';
 import { MARKED_OPTIONS, MarkedOptions, MarkedRenderer } from 'ngx-markdown';
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
@@ -24,15 +24,23 @@ export function safeMarkdownOptionsFactory(): MarkedOptions {
         return `<a href="${escapeHtml(safeHref)}" rel="noopener noreferrer" target="_blank" title="Open image: ${escapeHtml(label)}">[image: ${escapeHtml(label)}]</a>`;
     };
 
-    renderer.link = ({ href, title, tokens }: { href: string; title?: string | null; tokens: Token[] }) => {
+    renderer.link = function (
+        this: MarkedRenderer,
+        { href, title, tokens }: { href: string; title?: string | null; tokens: Token[] }
+    ) {
         const safeHref = sanitizeHref(href);
-        const body = Parser.parseInline(tokens);
+        const body = this.parser.parseInline(tokens);
         if (!safeHref) {
             return body;
         }
         const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
         return `<a href="${escapeHtml(safeHref)}" rel="noopener noreferrer" target="_blank"${titleAttr}>${body}</a>`;
     };
+
+    // Raw HTML tokens (e.g. <img>, <video>) bypass the image/link overrides above.
+    // Angular's DomSanitizer allows <img src="https://..."> through, so we must escape
+    // all raw HTML to prevent no-click data exfiltration.
+    renderer.html = ({ text }: { text: string }) => escapeHtml(text);
 
     return { renderer, gfm: true };
 }
