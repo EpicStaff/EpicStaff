@@ -3021,6 +3021,32 @@ def test_litellm_client_drops_provider_unsupported_params(llm_config):
     assert kwargs["drop_params"] is True
 
 
+@pytest.mark.parametrize(
+    "provider_name, model_name, expected_store",
+    [
+        ("openai", "gpt-5.6-luna", False),
+        ("azure", "gpt-5.6-luna", False),
+        ("azure_openai", "gpt-5.6-luna", False),
+        ("anthropic", "claude-sonnet-4-5", None),
+        ("ollama", "ollama/mistral", None),
+    ],
+)
+def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
+    db, provider_name, model_name, expected_store
+):
+    """OpenAI/Azure calls send store=False; other providers never get the key."""
+    from tables.services.llm_clients.litellm_client import LiteLLMClient
+
+    provider = Provider.objects.create(name=provider_name)
+    model = LLMModel.objects.create(name=model_name, llm_provider=provider)
+    config = LLMConfig.objects.create(custom_name="test-config", model=model)
+
+    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+
+    assert kwargs.get("store") == expected_store
+    assert ("store" in kwargs) is (expected_store is not None)
+
+
 # ── Final-turn JSON parse fallback tests ─────────────────────────────────────
 
 
