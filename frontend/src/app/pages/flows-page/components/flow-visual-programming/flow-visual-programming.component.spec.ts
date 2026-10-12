@@ -5,7 +5,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { AppSvgIconComponent, SpinnerComponent, UnsavedChangesDialogService } from '@shared/components';
-import { GraphSessionStatus } from '@shared/models';
+import { GraphSessionStatus, NodeType } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -33,8 +33,10 @@ import { FLOW_EDITOR_STATE_PROVIDERS } from '../../../../visual-programming/core
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
+import { livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
 import {
     FlowVisualProgrammingComponent,
     RUN_WHILE_SAVING_MESSAGE,
@@ -52,7 +54,19 @@ function graphDto(overrides: Partial<GraphDto> = {}): GraphDto {
 
 const RESTORED_GRAPH = graphDto({
     save_version: 2,
-    graph_note_list: [{ id: 99, node_name: 'Restored note', graph: 1, content: 'restored', metadata: {} }],
+    graph_note_list: [
+        {
+            id: 99,
+            created_at: '2026-01-01T00:00:00Z',
+            node_name: 'Restored note',
+            graph: 1,
+            content: 'restored',
+            metadata: {},
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
+        },
+    ],
 });
 
 @Component({
@@ -532,6 +546,10 @@ describe('FlowVisualProgrammingComponent', () => {
             metadata: {},
             webhook_trigger: null,
             test_payload: {},
+            created_at: '2026-01-01T00:00:00Z',
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
         };
         let testRun: FlowTestRunService;
         let webhookNode: WebhookTriggerNodeModel;
@@ -727,6 +745,10 @@ describe('FlowVisualProgrammingComponent', () => {
                                 metadata: {},
                                 webhook_trigger: null,
                                 test_payload: {},
+                                created_at: '2026-01-01T00:00:00Z',
+                                created_by: null,
+                                last_edited_by: null,
+                                last_edited_at: null,
                             },
                         ],
                     })
@@ -768,6 +790,161 @@ describe('FlowVisualProgrammingComponent', () => {
             loadFlowWithWebhookNode(3);
 
             expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+        });
+    });
+
+    describe('node authorship for the details dialog', () => {
+        const grace = { id: 9, display_name: 'Grace Hopper', avatar_url: null };
+        const pythonGraph = graphDto({ python_node_list: [livePython] });
+        let nextRouteId = 100;
+
+        // The page's own store, which the live canvas's side panel reads.
+        const pageStore = (): NodeAuthorshipStore => fixture.debugElement.injector.get(NodeAuthorshipStore);
+        const livePythonNode = () => flowService.getFlowState().nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        function enterPreview(): void {
+            component.onVersionPreviewRequested(VERSION_A);
+            fixture.detectChanges();
+        }
+
+        it('shows the author of a node as the loaded graph lists it', () => {
+            openFlow(pythonGraph);
+
+            expect(pageStore().authorshipOf(livePythonNode())).toEqual({
+                created_by: livePython.created_by,
+                created_at: livePython.created_at,
+                last_edited_by: livePython.last_edited_by,
+                last_edited_at: livePython.last_edited_at,
+            });
+        });
+
+        it('shows the fresh last editor after a flow save, from the save response', () => {
+            openFlow(pythonGraph);
+            const node = livePythonNode();
+            flowService.setFlow({ nodes: [{ ...node, position: { x: 500, y: 0 } }], connections: [] });
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(
+                    graphDto({
+                        save_version: 2,
+                        python_node_list: [
+                            { ...livePython, last_edited_by: grace, last_edited_at: '2026-10-06T10:00:00Z' },
+                        ],
+                    })
+                )
+            );
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(pageStore().authorshipOf(livePythonNode())).toEqual(
+                expect.objectContaining({ last_edited_by: grace, last_edited_at: '2026-10-06T10:00:00Z' })
+            );
+        });
+
+        it('shows the fresh last editor after a single-node save from the side panel', () => {
+            openFlow(pythonGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [{ ...livePython, last_edited_by: grace }] }))
+            );
+
+            TestBed.inject(SidePanelService).requestSaveNode({ ...livePythonNode(), node_name: 'Renamed' });
+
+            expect(pageStore().authorshipOf(livePythonNode()).last_edited_by).toEqual(grace);
+        });
+
+        it("gives a node re-created by undo after its deletion was saved the new row's authorship", () => {
+            openFlow(pythonGraph);
+            const deletedNode = livePythonNode();
+            flowsApi['bulkSaveGraph'].mockReturnValue(of(graphDto({ save_version: 2, python_node_list: [] })));
+            flowService.setFlow({ nodes: [], connections: [] });
+            component.onGraphSave(flowService.getFlowState());
+
+            // Undo brings the node back with the id of the row the save deleted.
+            flowService.setFlow({ nodes: [deletedNode], connections: [] });
+            const recreatedRow = {
+                ...livePython,
+                id: 40,
+                created_by: grace,
+                created_at: '2026-10-06T11:00:00Z',
+                last_edited_by: grace,
+                last_edited_at: '2026-10-06T11:00:00Z',
+            };
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 3, python_node_list: [recreatedRow] }))
+            );
+            component.onGraphSave(flowService.getFlowState());
+
+            const recreatedNode = livePythonNode();
+            expect(recreatedNode.backendId).toBe(40);
+            expect(pageStore().authorshipOf(recreatedNode)).toEqual({
+                created_by: grace,
+                created_at: '2026-10-06T11:00:00Z',
+                last_edited_by: grace,
+                last_edited_at: '2026-10-06T11:00:00Z',
+            });
+            expect(pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id })).toEqual(
+                expect.objectContaining({ created_by: null, last_edited_by: null })
+            );
+        });
+
+        it('shows the fresh last editor after a partial import, which reloads the whole graph', () => {
+            openFlow(pythonGraph);
+            flowsApi['getGraphById'].mockReturnValue(
+                of(graphDto({ python_node_list: [{ ...livePython, last_edited_by: grace }] }))
+            );
+
+            component.handlePartialImportComplete();
+
+            expect(
+                pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id }).last_edited_by
+            ).toEqual(grace);
+        });
+
+        it('takes the rename response as the whole graph: fresh rows win, nodes it no longer lists are dropped', () => {
+            openFlow(graphDto({ python_node_list: [livePython], task_node_list: [liveTask] }));
+            expect(pageStore().authorshipOf({ type: NodeType.TASK, backendId: liveTask.id }).created_by).toEqual(
+                liveTask.created_by
+            );
+
+            component.onFlowEdited(
+                graphDto({
+                    name: 'Renamed',
+                    python_node_list: [{ ...livePython, last_edited_by: grace }],
+                    task_node_list: [],
+                })
+            );
+
+            expect(
+                pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id }).last_edited_by
+            ).toEqual(grace);
+            expect(pageStore().authorshipOf({ type: NodeType.TASK, backendId: liveTask.id })).toEqual({
+                created_by: null,
+                created_at: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            });
+        });
+
+        it('gives the version preview its own store, which the live graph never fills', () => {
+            openFlow(pythonGraph);
+            enterPreview();
+
+            const previewStore = fixture.debugElement
+                .query(By.directive(FlowVersionPreviewStubComponent))
+                .injector.get(NodeAuthorshipStore);
+
+            expect(previewStore).not.toBe(pageStore());
+            expect(previewStore.authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id })).toEqual({
+                created_by: null,
+                created_at: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            });
         });
     });
 });

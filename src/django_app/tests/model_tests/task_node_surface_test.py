@@ -54,7 +54,7 @@ def graph(db, org):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="task-node-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
@@ -63,7 +63,7 @@ def agent(db, org):
 @pytest.fixture
 def agent_b(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="task-node-agent-b",
         instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
@@ -72,7 +72,7 @@ def agent_b(db, org):
 @pytest.fixture
 def shared_surface(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-shared-surface",
         owner_agent=None,
     )
@@ -81,7 +81,7 @@ def shared_surface(db, org):
 @pytest.fixture
 def shared_surface_b(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-shared-surface-b",
         owner_agent=None,
     )
@@ -90,7 +90,7 @@ def shared_surface_b(db, org):
 @pytest.fixture
 def other_org_surface(db, other_org):
     return Surface.objects.create(
-        organization=other_org,
+        org=other_org,
         name="task-node-other-org-surface",
         owner_agent=None,
     )
@@ -99,7 +99,7 @@ def other_org_surface(db, other_org):
 @pytest.fixture
 def agent_owned_surface(db, org, agent):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-agent-owned-surface",
         owner_agent=agent,
     )
@@ -108,7 +108,7 @@ def agent_owned_surface(db, org, agent):
 @pytest.fixture
 def agent_b_owned_surface(db, org, agent_b):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-agent-b-owned-surface",
         owner_agent=agent_b,
     )

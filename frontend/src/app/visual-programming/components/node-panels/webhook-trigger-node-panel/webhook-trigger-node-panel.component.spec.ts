@@ -48,6 +48,10 @@ const DTO: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: SAVED_PAYLOAD,
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 /** The template-facing members the panel's test payload editor binds to. */

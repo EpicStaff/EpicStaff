@@ -1,3 +1,8 @@
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -19,7 +24,9 @@ from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
+class EmbeddingModelSerializer(
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+):
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 
@@ -49,7 +56,11 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 
 class EmbeddingConfigSerializer(
-    SecretReferenceGuardMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
@@ -77,4 +88,4 @@ class EmbeddingConfigSerializer(
     class Meta:
         model = EmbeddingConfig
         exclude = ["api_key_secret"]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]

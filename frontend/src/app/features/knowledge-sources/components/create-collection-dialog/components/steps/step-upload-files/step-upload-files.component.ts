@@ -40,7 +40,7 @@ import {
 } from 'rxjs';
 
 import { ToastService } from '../../../../../../../services/notifications';
-import { FILE_TYPES } from '../../../../../constants/constants';
+import { COLLECTION_DESCRIPTION_MAX_LENGTH, FILE_TYPES } from '../../../../../constants/constants';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../../models/document.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
@@ -83,7 +83,7 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
         notWhitespaceValidator(),
         Validators.maxLength(255),
     ]);
-    description: FormControl = new FormControl('', [Validators.maxLength(250)]);
+    description: FormControl = new FormControl('', [Validators.maxLength(COLLECTION_DESCRIPTION_MAX_LENGTH)]);
     private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
     collection = input.required<CreateCollectionDtoResponse>();
     documents = model<DisplayedListDocument[]>([]);

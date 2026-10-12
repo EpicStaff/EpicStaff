@@ -2,6 +2,7 @@ import itertools
 
 from django.db.models import Count, F
 from loguru import logger
+from rbac.authorship import AuthorSummarySerializerMixin, LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     BaseRagType,
@@ -239,7 +240,7 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SourceCollectionListSerializer(serializers.ModelSerializer):
+class SourceCollectionListSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for listing collections.
     Shows basic collection info plus a compact view of available RAG
@@ -260,7 +261,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -304,7 +305,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             return []
 
 
-class SourceCollectionDetailSerializer(serializers.ModelSerializer):
+class SourceCollectionDetailSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):
     """
     Serializer for retrieving a single collection with all details.
     Includes RAG configurations to show what RAG types are available.
@@ -321,7 +322,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "document_count",
             "rag_configurations",
@@ -363,7 +364,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             return []
 
 
-class SourceCollectionCreateSerializer(serializers.ModelSerializer):
+class SourceCollectionCreateSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     """
     Serializer for creating a new empty collection.
     """
@@ -374,13 +375,14 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
             "collection_id",
             "collection_name",
             "description",
-            "user_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "collection_id",
+            "created_by",
             "status",
             "created_at",
             "updated_at",
@@ -388,7 +390,6 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "collection_name": {"required": False, "allow_blank": True},
             "description": {"required": False, "allow_blank": True},
-            "user_id": {"required": False},
         }
         validators = []
 

@@ -102,7 +102,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
         try:
             # Use service to handle all business logic
             created_documents = DocumentManagementService.upload_files_batch(
-                collection_id=collection_id, uploaded_files=files
+                collection_id=collection_id, uploaded_files=files, user=request.user
             )
 
             # Serialize response
@@ -151,7 +151,9 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
 
         try:
             # Use service to handle deletion
-            result = DocumentManagementService.delete_documents_batch(document_ids)
+            result = DocumentManagementService.delete_documents_batch(
+                document_ids, user=request.user
+            )
 
             return Response(
                 {
@@ -248,7 +250,7 @@ class DocumentViewSet(
 
         try:
             # Use service for deletion
-            result = DocumentManagementService.delete_document(document_id)
+            result = DocumentManagementService.delete_document(document_id, user=request.user)
 
             return Response(
                 {
@@ -304,6 +306,7 @@ class DocumentViewSet(
                     collection_id=serializer.validated_data["collection_id"],
                     document_ids=serializer.validated_data["document_ids"],
                     org_id=self.get_active_org_id(),
+                    user=request.user,
                 )
             )
 

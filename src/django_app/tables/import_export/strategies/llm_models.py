@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -76,7 +77,7 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data

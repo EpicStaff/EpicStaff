@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rbac.authorship import OMIT_AUTHORSHIP_CONTEXT_KEY
+
 from agents.models.surface_models import AgentInlineSurface, InlineSurface
 from agents.serializers.inline_surface_serializers import (
     AgentInlineSurfaceReadSerializer,
@@ -14,7 +16,11 @@ from agents.services.surface_combine_service import SurfaceCombineService
 class NodeSurfaceService:
     @staticmethod
     def build_combined_surface(node) -> dict:
-        surface_dicts = [SurfaceReadSerializer(s).data for s in node.surface_list.all()]
+        # Combining reads only the surfaces' rules, so authorship is never loaded.
+        surface_dicts = [
+            SurfaceReadSerializer(surface, context={OMIT_AUTHORSHIP_CONTEXT_KEY: True}).data
+            for surface in node.surface_list.all()
+        ]
 
         inline_surface = getattr(node, "inline_surface", None)
         if isinstance(inline_surface, AgentInlineSurface):

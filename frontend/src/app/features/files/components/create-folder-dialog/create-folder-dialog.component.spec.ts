@@ -12,7 +12,19 @@ import { CreateFolderDialogComponent } from './create-folder-dialog.component';
 const EMPTY_STORAGE_TREE: StorageTreeResponse = {
     path: '',
     truncated: false,
-    tree: { id: null, name: '', path: '', type: 'folder', size: 0, modified: null, children: [] },
+    tree: {
+        id: null,
+        name: '',
+        path: '',
+        type: 'folder',
+        size: 0,
+        modified: null,
+        children: [],
+        created_at: null,
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
+    },
 };
 
 /** Class logic only: the component is built without its template. */

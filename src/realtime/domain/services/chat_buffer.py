@@ -4,6 +4,20 @@ import uuid
 from loguru import logger
 from utils.tokenizer import Tokenizer
 
+# Trailing/leading punctuation stripped from every word of user input, so that a
+# spoken "agent," still matches the configured wake word "agent".
+INPUT_WORD_STRIP_CHARS = "!?., "
+
+
+def split_into_words(text: str) -> list[str]:
+    """Lowercase, split on whitespace, and strip punctuation from each word, dropping empties.
+
+    Shared by `ChatBuffer.get_last_input()` and wake-word parsing in `ConversationService`
+    so both normalize user input and the configured wake word the same way.
+    """
+    words = (word.strip(INPUT_WORD_STRIP_CHARS) for word in text.lower().split())
+    return [word for word in words if word]
+
 
 class ChatBuffer:
     """
@@ -55,7 +69,7 @@ class ChatBuffer:
 
     def get_last_input(self) -> list[str]:
         # .append() sets '_last_input'
-        last_input = [word.strip("!?., ") for word in self._last_input.split()]
+        last_input = split_into_words(self._last_input)
         logger.debug(f"get_last_input: {last_input}")
         return last_input
 

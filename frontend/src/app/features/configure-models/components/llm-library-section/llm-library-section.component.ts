@@ -14,6 +14,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ButtonComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
@@ -39,13 +41,17 @@ import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elev
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
+import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
+import {
+    LlmLibraryCardComponent,
+    LlmLibraryCardViewDetailsEvent,
+} from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
     RealtimeProvider,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
 
-interface VoiceProviderConfig {
+interface VoiceProviderConfig extends AuthorshipDetailsSource {
     id: number;
     custom_name: string;
     model_name: string;
@@ -68,6 +74,7 @@ type SectionKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | RealtimeP
     imports: [
         FormsModule,
         LlmLibraryCardComponent,
+        ConfigCardMoreMenuComponent,
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
@@ -88,6 +95,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialog = inject(Dialog);
@@ -261,6 +269,11 @@ export class LlmLibrarySectionComponent implements OnInit {
         });
     }
 
+    /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
+    onViewConfigDetails(config: VoiceProviderConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
+    }
+
     onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
         this.confirmationDialogService
             .confirmDelete(config.custom_name)
@@ -294,6 +307,17 @@ export class LlmLibrarySectionComponent implements OnInit {
             width: '600px',
             data: { configId: model.id },
         });
+    }
+
+    public onViewDetails({ model, trigger }: LlmLibraryCardViewDetailsEvent): void {
+        const findDetails: Partial<Record<ModelTypes, () => AuthorshipDetailsSource | undefined>> = {
+            [ModelTypes.LLM]: () => this.llmConfigStorageService.configs().find((config) => config.id === model.id),
+            [ModelTypes.EMBEDDING]: () =>
+                this.embeddingConfigStorage.configs().find((config) => config.id === model.id),
+        };
+        const details = findDetails[model.configType]?.();
+        if (!details) return;
+        this.authorshipDetailsDialog.open('Configuration Details', details, trigger);
     }
 
     public onDelete(model: LlmLibraryModel): void {

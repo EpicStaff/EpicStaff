@@ -107,7 +107,7 @@ def test_update_task_node_replaces_surface_list(
     auth_client, graph, task_node, shared_surface
 ):
     surface_b = Surface.objects.create(
-        organization=shared_surface.organization,
+        org=shared_surface.org,
         name="bulk-save-shared-surface-b",
         owner_agent=None,
     )
@@ -272,7 +272,7 @@ def test_create_task_node_rejects_foreign_agent_owned_surface(
     auth_client, graph, bulk_save_org, agent_definition, agent_owned_surface
 ):
     other_agent = AgentDefinition.objects.create(
-        organization=agent_definition.organization,
+        org=agent_definition.org,
         name="bulk-save-other-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )

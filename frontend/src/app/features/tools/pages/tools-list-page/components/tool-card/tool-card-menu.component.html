@@ -40,6 +40,15 @@
         <span class="label">Show Used Places</span>
     </button>
     @if (!isBuiltIn()) {
+        <!-- Read-only: anyone who sees the tool may see who authored it. Built-in tools have no author. -->
+        <button
+            type="button"
+            class="menu-item"
+            role="menuitem"
+            (click)="onSelect('view_details')"
+        >
+            <span class="label">View Details</span>
+        </button>
         <button
             *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
             type="button"

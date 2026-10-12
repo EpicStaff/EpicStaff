@@ -38,7 +38,7 @@ def graph(default_org):
 @pytest.fixture
 def surface(default_org):
     return Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="surface-knowledge-warning-surface",
         instructions="",
     )

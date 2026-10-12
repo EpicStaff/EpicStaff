@@ -4,7 +4,13 @@ import { Observable, of, throwError } from 'rxjs';
 import { catchError, delay, shareReplay, tap } from 'rxjs/operators';
 
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../models/flow-filter.model';
-import { CreateGraphDtoRequest, GetGraphLightRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
+import {
+    CreateGraphDtoRequest,
+    GetGraphLightRequest,
+    GraphDto,
+    PatchGraphDtoRequest,
+    UpdateGraphDtoRequest,
+} from '../models/graph.model';
 import { compareFlowsByName, evaluateCustomFilter } from '../utils/flow-filter.utils';
 import { FlowsApiService } from './flows-api.service';
 import { LabelsStorageService } from './labels-storage.service';
@@ -200,7 +206,7 @@ export class FlowsStorageService implements StorageService {
         );
     }
 
-    public patchUpdateFlow(id: number, updateData: Partial<GraphDto>, saveVersion: number): Observable<GraphDto> {
+    public patchUpdateFlow(id: number, updateData: PatchGraphDtoRequest, saveVersion: number): Observable<GraphDto> {
         return this.flowsApiService.patchGraph(id, { ...updateData, save_version: saveVersion }).pipe(
             tap((updatedFlow) => {
                 const currentFlows = this.flowsSignal();
@@ -215,7 +221,7 @@ export class FlowsStorageService implements StorageService {
     }
 
     public updateFlowLabels(id: number, labelIds: number[], saveVersion?: number): Observable<GraphDto> {
-        const body: Partial<GraphDto> = { label_ids: labelIds };
+        const body: PatchGraphDtoRequest = { label_ids: labelIds };
         if (saveVersion !== undefined) {
             body.save_version = saveVersion;
         }

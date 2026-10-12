@@ -1,0 +1,36 @@
+:host {
+    display: block;
+}
+
+.authorship-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+
+    &__column {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    &__user,
+    &__when {
+        overflow: hidden;
+        margin: 0;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__label {
+        color: var(--color-text-secondary);
+    }
+
+    &__name {
+        color: var(--color-text-primary);
+    }
+
+    &__when {
+        color: var(--color-text-secondary);
+    }
+}

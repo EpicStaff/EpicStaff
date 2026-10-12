@@ -1,4 +1,5 @@
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -22,7 +23,9 @@ class PythonCode(ContentHashMixin, models.Model):
         return list(filter(None, self.libraries.split(" ")))
 
 
-class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Model):
+class PythonCodeTool(
+    OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixin, models.Model
+):
     objects = ActiveManager()
     all_objects = models.Manager()
 
@@ -45,6 +48,11 @@ class PythonCodeTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin, models.Mod
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]
+
+    def records_last_edit(self) -> bool:
+        # Built-in tools are shared by every organization; an editor of one org
+        # must not be shown to the others.
+        return not self.built_in
 
 
 class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields):
