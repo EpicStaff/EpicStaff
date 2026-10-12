@@ -7,8 +7,11 @@ DATABASE_URL = f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,  # Set to True only for debugging
-    pool_size=10,  # Number of connections to maintain in pool
-    max_overflow=100,  # Additional connections beyond pool_size
+    # Every service shares Postgres's max_connections (default 100), and the
+    # manager only runs short single-row SELECTs, so 10 connections is ample
+    # even when many session-timeout checks wake at once.
+    pool_size=5,
+    max_overflow=5,
     pool_pre_ping=True,
     pool_recycle=3600,
     connect_args={
