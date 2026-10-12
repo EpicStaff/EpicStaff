@@ -352,7 +352,7 @@ below). **Header:** none.
       "assigned_count": 2,
       "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
       "permissions": [
-        { "resource_type": "secrets", "actions": ["read", "update"] }
+        { "resource_type": "secrets", "actions": ["read", "use"] }
       ]
     }
   ],
@@ -469,7 +469,7 @@ the target org is `org_id` in the body.
   "name": "Billing Manager",
   "description": "Manage billing and secrets",
   "permissions": [
-    { "resource_type": "secrets", "actions": ["read", "update"] }
+    { "resource_type": "secrets", "actions": ["read", "use"] }
   ]
 }
 ```
