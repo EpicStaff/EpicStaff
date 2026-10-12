@@ -71,10 +71,7 @@ export class RecycleBinBulkService {
         return concat(...calls.map((call) => this.api.restore(call.source, call.selection))).pipe(
             toArray(),
             map((responses: RecycleBinBulkRestoreResponse[]) => ({
-                // concat keeps the calls' order: response `index` answers calls[index].
-                restored: responses.flatMap((response, index) =>
-                    response.restored.map((item) => toRestoreOutcome(calls[index].source, item))
-                ),
+                restored: responses.flatMap((response) => response.restored.map(toRestoreOutcome)),
                 failed: responses.flatMap((response) => response.failed.map(toFailure)),
             }))
         );

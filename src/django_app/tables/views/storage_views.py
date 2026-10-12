@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import HasOrgPermission
+from rbac.access.gates import DenyApiKeyAuth, HasOrgPermission
 from rbac.authorship import (
     authorship_prefetches,
     record_last_edit,
@@ -545,6 +545,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                             "id": restored.object.pk,
                             "name": restored.object.path,
                             "renamed_from": restored.renamed_from,
+                            # A file loses its links on delete (db_sync._delete_links_to).
+                            "links_restored": False,
                         }
                         for restored in result.restored
                     ],
@@ -553,12 +555,19 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             ).data
         )
 
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # Purging can't be undone, so API keys can't (as with the other bins' purges).
+        if self.action == "purge":
+            permissions.append(DenyApiKeyAuth())
+        return permissions
+
     @extend_schema(
         request=RecycleBinBulkRequestSerializer, responses=RecycleBinBulkPurgeResponseSerializer
     )
     @action(detail=False, methods=["post"], url_path="recycle-bin/purge")
     def purge(self, request):
-        """Delete the selected ids for good, or empty the bin with `all: true`."""
+        """Delete the selected ids for good, or empty the bin with `all: true`. API keys get 403."""
         result = StorageRecycleBinService(self.manager).purge_many(
             self.get_active_org_id(), self._bulk_ids(request), actor=request_actor(request)
         )

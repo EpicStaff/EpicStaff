@@ -16,6 +16,18 @@ from django.utils import timezone
 from tables.models.base_models import SoftDeleteFields
 
 
+def keeps_references(model: type[models.Model]) -> bool:
+    """Rows of `model` keep the links pointing at them while they're binned.
+
+    Set by the model's `soft_delete_keeps_references`. Settings items (a secret, a
+    webhook trigger, a voice channel) are used by rows elsewhere. Clearing those
+    links on delete would make a restore bring back an item nothing uses any more.
+    The links stay; a lookup through the filtered `objects` manager treats the
+    binned row as missing, and a purge (Django's Collector) clears the links then.
+    """
+    return getattr(model, "soft_delete_keeps_references", False)
+
+
 class DeleteService:
     """
     Centralized deletion service.
@@ -468,7 +480,7 @@ class _DeleteContext:
         field = relation.field
         on_delete = field.remote_field.on_delete
 
-        if self._keeps_references(parent) and (
+        if keeps_references(type(parent)) and (
             on_delete in (models.SET_NULL, models.SET_DEFAULT) or self._is_set_callable(on_delete)
         ):
             return
@@ -609,18 +621,6 @@ class _DeleteContext:
     # ==========================================================
 
     @staticmethod
-    def _keeps_references(obj: models.Model) -> bool:
-        """The deleted row's model keeps the links pointing at it while it's binned.
-
-        Settings items (a secret, a webhook trigger, a voice channel) are used by
-        rows elsewhere. Clearing those links on delete would make a restore bring
-        back an item nothing uses any more. The links stay; a lookup through the
-        filtered `objects` manager treats the binned row as missing, and a purge
-        (Django's Collector) clears the links then.
-        """
-        return getattr(type(obj), "soft_delete_keeps_references", False)
-
-    @staticmethod
     def _is_set_callable(on_delete):
         if not callable(on_delete):
             return False
@@ -668,7 +668,7 @@ class _DeleteContext:
         into the recycle bin and come back on restore. Explicit through models
         are real rows, walked by _process_reverse_relations instead.
         """
-        if self._keeps_references(obj):
+        if keeps_references(type(obj)):
             return
         for relation in obj._meta.get_fields(include_hidden=True):
             if (

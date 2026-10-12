@@ -2,7 +2,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ConfirmationDialogData } from '@shared/components';
 import { escapeHtml } from '@shared/utils';
 
-import { RECYCLE_BIN_LINK_KEEPING_SOURCES } from '../constants/recycle-bin-sources.constants';
 import {
     RecycleBinFailure,
     RecycleBinItem,
@@ -17,8 +16,8 @@ export type RecycleBinAction = 'restore' | 'delete';
 // The toasts below are plain text: ToastService renders text, not HTML.
 
 /**
- * Restoring brings the item back. A secret, voice channel or webhook trigger kept its links, so what used it
- * works again; any other item comes back without the links it had (they were removed for good).
+ * Restoring brings the item back. The backend says whether its links came back too; when they didn't, they
+ * were removed for good.
  */
 export function restoreSuccessMessage(outcome: RecycleBinRestoreOutcome): string {
     const restored =
@@ -30,7 +29,7 @@ export function restoreSuccessMessage(outcome: RecycleBinRestoreOutcome): string
 
 /** What happened to the links: connected again when every item kept them, otherwise not restored. */
 function linksNote(outcomes: readonly RecycleBinRestoreOutcome[], object: string, possessive: string): string {
-    return outcomes.every((outcome) => RECYCLE_BIN_LINK_KEEPING_SOURCES.has(outcome.source))
+    return outcomes.every((outcome) => outcome.linksRestored)
         ? `Everything that used ${object} is connected again.`
         : `${possessive} links to other items aren't restored.`;
 }

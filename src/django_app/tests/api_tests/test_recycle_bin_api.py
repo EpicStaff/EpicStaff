@@ -26,6 +26,7 @@ from agents.models import (
 )
 from agents.views.agent_definition_views import AgentDefinitionViewSet
 from agents.views.surface_views import SurfaceViewSet
+from rbac.access.gates import DenyApiKeyAuth
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import ApiKey, Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
@@ -54,7 +55,13 @@ from tables.models.graph_models import KeyValueNode
 from tables.models.knowledge_models import GraphRag
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.models.mcp_models import McpTool
-from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, FLOW_BIN_NODE_TYPES
+from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, BinContentsService
+from tables.services.recycle_bin.presentation import (
+    FLOW_BIN_NODE_TYPES,
+    BinDetail,
+    BinPresentation,
+    bin_presentations,
+)
 from tables.services.recycle_bin.registry import bin_resources
 from tables.services.secrets.secret_service import secret_service
 from tables.views.knowledge_views.collection_management_views import SourceCollectionViewSet
@@ -171,7 +178,7 @@ class TestFlowRecycleBin:
         response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
-        assert response.json() == {"id": graph.pk, "name": "Comeback", "renamed_from": None}
+        assert response.json() == {"id": graph.pk, "name": "Comeback", "renamed_from": None, "links_restored": False}
         assert admin_client.get(f"{FLOWS_URL}{graph.pk}/").status_code == 200
         assert TaskNode.objects.filter(graph=graph).count() == 1
         assert _bin(admin_client, FLOWS_URL) == []
@@ -184,7 +191,12 @@ class TestFlowRecycleBin:
         response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
-        assert response.json() == {"id": graph.pk, "name": "Report #2", "renamed_from": "Report"}
+        assert response.json() == {
+            "id": graph.pk,
+            "name": "Report #2",
+            "renamed_from": "Report",
+            "links_restored": False,
+        }
 
     def test_purge_removes_the_flow_for_good(self, admin_client, acme):
         graph = Graph.objects.create(org=acme, name="Gone")
@@ -416,6 +428,8 @@ class BinCase:
     url: str
     delete_status: int
     make: Callable[[Organization, str], Model]
+    # What used the item is connected again on restore: it kept its links in the bin.
+    links_restored: bool = False
 
     @property
     def model(self) -> type[Model]:
@@ -434,9 +448,9 @@ CASES = [
     BinCase("surface", SURFACES_URL, 204, _make_surface),
     BinCase("collection", "/api/source-collections/", 200, _make_collection),
     BinCase("key_value_table", KEY_VALUE_TABLES_URL, 204, _make_key_value_table),
-    BinCase("secret", "/api/secrets/", 204, _make_secret),
-    BinCase("realtime_channel", "/api/realtime-channels/", 204, _make_realtime_channel),
-    BinCase("webhook_trigger", "/api/webhook-triggers/", 204, _make_webhook_trigger),
+    BinCase("secret", "/api/secrets/", 204, _make_secret, links_restored=True),
+    BinCase("realtime_channel", "/api/realtime-channels/", 204, _make_realtime_channel, links_restored=True),
+    BinCase("webhook_trigger", "/api/webhook-triggers/", 204, _make_webhook_trigger, links_restored=True),
 ]
 
 
@@ -455,7 +469,12 @@ class TestEveryBinResource:
 
         restored = admin_client.post(f"{detail_url}restore/")
         assert restored.status_code == 200, restored.content
-        assert restored.json() == {"id": row.pk, "name": name, "renamed_from": None}
+        assert restored.json() == {
+            "id": row.pk,
+            "name": name,
+            "renamed_from": None,
+            "links_restored": case.links_restored,
+        }
         assert admin_client.get(detail_url).status_code == 200
         assert _bin(admin_client, case.url) == []
 
@@ -538,6 +557,7 @@ class TestBulkActions:
 
         assert response.status_code == 200, response.content
         assert {item["id"] for item in response.json()["restored"]} == {rows[0].pk, rows[1].pk}
+        assert [item["links_restored"] for item in response.json()["restored"]] == [case.links_restored] * 2
         assert response.json()["failed"] == []
         assert case.model.deleted_objects.filter(pk=rows[2].pk).exists()
 
@@ -577,6 +597,62 @@ class TestBulkActions:
         assert purger.post(f"{case.url}recycle-bin/restore/", {"all": True}, format="json").status_code == 403
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
+@pytest.fixture
+def api_key_client(issue_api_key, acme):
+    """Factory: a client in Acme that authenticates with a user or a system API key."""
+
+    def _make(user=None) -> APIClient:
+        raw, _ = issue_api_key(user=user)
+        client = APIClient()
+        client.credentials(HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(acme.id))
+        return client
+
+    return _make
+
+
+@pytest.mark.django_db
+class TestApiKeys:
+    @pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
+    def test_a_user_api_key_cannot_purge(self, case, api_key_client, admin_acme, acme):
+        row = case.make(acme, f"Keyed {case.key}")
+        row.delete()
+        client = api_key_client(admin_acme)
+
+        single = client.delete(f"{case.url}{row.pk}/purge/")
+        selected = client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+        everything = client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+
+        for response in (single, selected, everything):
+            assert response.status_code == 403
+            assert response.json()["message"] == DenyApiKeyAuth.message
+        assert case.model.deleted_objects.filter(pk=row.pk).exists()
+
+    def test_a_system_api_key_cannot_purge(self, api_key_client, acme):
+        graph = Graph.objects.create(org=acme, name="System keyed")
+        graph.delete()
+        client = api_key_client()
+
+        single = client.delete(f"{FLOWS_URL}{graph.pk}/purge/")
+        everything = client.post(f"{FLOWS_URL}recycle-bin/purge/", {"all": True}, format="json")
+
+        for response in (single, everything):
+            assert response.status_code == 403
+            assert response.json()["message"] == DenyApiKeyAuth.message
+        assert Graph.deleted_objects.filter(pk=graph.pk).exists()
+
+    def test_a_user_api_key_can_list_and_restore(self, api_key_client, admin_acme, acme):
+        graphs = [Graph.objects.create(org=acme, name=f"Keyed restore {index}") for index in range(2)]
+        for graph in graphs:
+            graph.delete()
+        client = api_key_client(admin_acme)
+
+        assert {entry["id"] for entry in _bin(client, FLOWS_URL)} == {graph.pk for graph in graphs}
+        assert client.post(f"{FLOWS_URL}{graphs[0].pk}/restore/").status_code == 200
+        bulk = client.post(f"{FLOWS_URL}recycle-bin/restore/", {"ids": [graphs[1].pk]}, format="json")
+        assert bulk.status_code == 200, bulk.content
+        assert Graph.objects.filter(pk__in=[graph.pk for graph in graphs]).count() == 2
+
+
 WIRED_VIEWSETS = [
     (GraphViewSet, "flow"),
     (PythonCodeToolViewSet, "python_tool"),
@@ -593,6 +669,29 @@ WIRED_VIEWSETS = [
 
 def test_every_bin_resource_has_a_viewset():
     assert {key for _, key in WIRED_VIEWSETS} == set(bin_resources())
+
+
+def test_every_bin_resource_has_a_lifecycle_case():
+    assert {case.key for case in CASES} == set(bin_resources())
+
+
+def test_every_bin_resource_has_a_presentation():
+    # A missing key would 500 the tab; an extra one is a typo that never shows.
+    assert set(bin_presentations()) == set(bin_resources())
+
+
+@pytest.mark.django_db
+def test_extra_details_show_without_detail_fields(acme):
+    graph = Graph.objects.create(org=acme, name="Extras only")
+    graph.delete()
+    notice = BinDetail(label="Note", value="extra", format="notice")
+    presentation = BinPresentation(
+        detail_fields=(), extra_details=lambda ids, context: {graph_id: [notice] for graph_id in ids}
+    )
+
+    entries = BinContentsService.entries(bin_resources()["flow"], presentation, acme.id)
+
+    assert [entry.details for entry in entries] == [[notice]]
 
 
 @pytest.mark.parametrize("viewset, key", WIRED_VIEWSETS, ids=[key for _, key in WIRED_VIEWSETS])
@@ -1035,7 +1134,12 @@ class TestKeyValueTableBin:
         response = admin_client.post(f"{KEY_VALUE_TABLES_URL}{table.pk}/restore/")
 
         assert response.status_code == 200, response.content
-        assert response.json() == {"id": table.pk, "name": "Prices #2", "renamed_from": "Prices"}
+        assert response.json() == {
+            "id": table.pk,
+            "name": "Prices #2",
+            "renamed_from": "Prices",
+            "links_restored": False,
+        }
 
     def test_flows_lose_the_deleted_table(self, admin_client, acme):
         table = KeyValueTable.objects.create(org=acme, name="Prices")

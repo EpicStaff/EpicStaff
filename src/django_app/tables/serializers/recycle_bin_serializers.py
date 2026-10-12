@@ -54,6 +54,10 @@ class RestoreResultSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     renamed_from = serializers.CharField(allow_null=True)
+    links_restored = serializers.BooleanField(
+        help_text="True when what used the item is connected to it again (it kept its links "
+        "in the bin); false when the links were removed on delete and don't come back"
+    )
 
 
 class RecycleBinSettingsSerializer(serializers.Serializer):

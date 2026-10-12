@@ -1,4 +1,29 @@
-"""The models that have a recycle bin, and how to name and scope their rows."""
+"""The models that have a recycle bin, and how to name and scope their rows.
+
+Adding a resource to the recycle bin, and the test that fails if a step is missed:
+
+1. Model: add SoftDeleteMixin with its three managers (caught by
+   test_soft_delete_managers.py) and run `make django-makemigrations` by hand: no
+   test or CI job catches a missing migration. Decide `soft_delete_keeps_references`:
+   True when other rows keep their link to it while it's binned (a secret), so a
+   restore reconnects them. The cost: every writable PrimaryKeyRelatedField pointing
+   at the model must become a KeptLinkPrimaryKeyRelatedField or get an EXEMPT entry,
+   caught by test_kept_reference_coverage.py.
+2. Registry: a BinResource in `bin_resources()` below.
+3. Presentation: a BinPresentation in `presentation.bin_presentations()` under the
+   same key, even with no contents. Caught by
+   test_recycle_bin_api.py::test_every_bin_resource_has_a_presentation.
+4. Viewset: RecycleBinActionsMixin, `recycle_bin_resource_key` and
+   RECYCLE_BIN_ACTION_MAP in its `rbac_action_map`. Add it to WIRED_VIEWSETS and a
+   BinCase to CASES in test_recycle_bin_api.py: test_every_bin_resource_has_a_viewset
+   and test_every_bin_resource_has_a_lifecycle_case fail until you do, and the
+   cases then run the restore, purge and cross-org checks.
+5. Empty order: the key in `empty_service.EMPTY_ORDER`. Caught by
+   test_recycle_bin_empty.py::test_empty_names_every_bin_the_registry_has.
+6. Frontend: the key in RecycleBinSourceKey and the maps in
+   frontend/src/app/features/recycle-bin/constants (source path and kind, tab).
+   The TypeScript build fails on a map that misses it.
+"""
 
 import uuid
 from collections.abc import Callable
@@ -7,6 +32,7 @@ from functools import cache
 
 from django.db.models import Model, Q
 from rbac.models.enums import ResourceType
+from tables.services.soft_delete import keeps_references as model_keeps_references
 
 
 @dataclass(frozen=True)
@@ -51,6 +77,11 @@ class BinResource:
     global_names: bool = field(default=False)
     before_restore: Callable[[Model, uuid.UUID], None] | None = field(default=None)
     after_restore: Callable[[Model], None] | None = field(default=None)
+
+    @property
+    def keeps_references(self) -> bool:
+        """Rows that link to a binned row keep the link, so a restore reconnects them."""
+        return model_keeps_references(self.model)
 
 
 @cache

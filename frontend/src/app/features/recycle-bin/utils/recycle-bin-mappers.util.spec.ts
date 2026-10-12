@@ -94,8 +94,8 @@ describe('recycle bin mappers', () => {
     });
 
     it('maps a restore response', () => {
-        const outcome = toRestoreOutcome('flow', { id: 1, name: 'Report #2', renamed_from: 'Report' });
-        expect(outcome).toEqual({ source: 'flow', name: 'Report #2', renamedFrom: 'Report' });
+        const outcome = toRestoreOutcome({ id: 1, name: 'Report #2', renamed_from: 'Report', links_restored: false });
+        expect(outcome).toEqual({ name: 'Report #2', renamedFrom: 'Report', linksRestored: false });
     });
 
     it('sorts newest first, then higher id first', () => {

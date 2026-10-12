@@ -11,14 +11,10 @@ from rbac.models import Organization
 from rest_framework.exceptions import APIException
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
-from tables.services.recycle_bin.bin_contents_service import (
-    CONTENTS_LIMIT,
-    SHOW_ALL_LIMIT,
-    BinContent,
-    BinDetail,
-)
+from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, SHOW_ALL_LIMIT
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult, BulkRestoreResult
+from tables.services.recycle_bin.presentation import BinContent, BinDetail
 from tables.services.recycle_bin.restore_service import RestoreResult
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
 from tables.services.storage_service.manager import StorageManager

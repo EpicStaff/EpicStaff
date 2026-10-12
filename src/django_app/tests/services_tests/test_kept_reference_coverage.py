@@ -4,6 +4,7 @@
 import pytest
 from rest_framework.relations import ManyRelatedField, PrimaryKeyRelatedField
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.services.soft_delete import keeps_references
 from tests.services_tests.test_secret_reference_coverage import (
     _all_serializer_classes,
     _try_instantiate,
@@ -48,7 +49,7 @@ def _kept_reference_fields(serializer):
         if not isinstance(relation, PrimaryKeyRelatedField) or relation.read_only:
             continue
         queryset = getattr(relation, "queryset", None)
-        if queryset is not None and getattr(queryset.model, "soft_delete_keeps_references", False):
+        if queryset is not None and keeps_references(queryset.model):
             yield name, relation
 
 

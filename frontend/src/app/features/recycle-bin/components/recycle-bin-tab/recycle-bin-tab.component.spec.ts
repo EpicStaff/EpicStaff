@@ -187,7 +187,10 @@ describe('RecycleBinTabComponent', () => {
             click(element, ROW_RESTORE);
             const request = httpTesting.expectOne({ method: 'POST', url: `${FLOWS_LIST}restore/` });
             expect(request.request.body).toEqual({ ids: [5] });
-            request.flush({ restored: [{ id: 5, name: 'Report #2', renamed_from: 'Report' }], failed: [] });
+            request.flush({
+                restored: [{ id: 5, name: 'Report #2', renamed_from: 'Report', links_restored: false }],
+                failed: [],
+            });
 
             expect(toast.success).toHaveBeenCalledWith(
                 `"Report" restored as "Report #2", because that name was taken. Its links to other items aren't restored.`
@@ -203,9 +206,13 @@ describe('RecycleBinTabComponent', () => {
             fixture.detectChanges();
 
             click(element, ROW_RESTORE);
-            httpTesting
-                .expectOne({ method: 'POST', url: `${secretsBin}restore/` })
-                .flush({ restored: [{ id: 3, name: 'API key', renamed_from: null }], failed: [] });
+            httpTesting.expectOne({ method: 'POST', url: `${secretsBin}restore/` }).flush({
+                restored: [{ id: 3, name: 'API key', renamed_from: null, links_restored: true }],
+                failed: [],
+            });
+            expect(toast.success).toHaveBeenCalledWith(
+                `"API key" restored. Everything that used it is connected again.`
+            );
 
             // The tab's own reload, and the pickers' cache: the live list and the bin list.
             httpTesting.expectOne(`${API_URL}secrets/`).flush({ results: [] });
@@ -362,8 +369,8 @@ describe('RecycleBinTabComponent', () => {
             expect(request.request.body).toEqual({ ids: [5, 6] });
             request.flush({
                 restored: [
-                    { id: 5, name: 'Report #2', renamed_from: 'Report' },
-                    { id: 6, name: 'Digest', renamed_from: null },
+                    { id: 5, name: 'Report #2', renamed_from: 'Report', links_restored: false },
+                    { id: 6, name: 'Digest', renamed_from: null, links_restored: false },
                 ],
                 failed: [],
             });
@@ -647,9 +654,10 @@ describe('RecycleBinTabComponent', () => {
         fixture.detectChanges();
 
         click(element, ROW_RESTORE);
-        httpTesting
-            .expectOne({ method: 'POST', url: `${API_URL}key-value-tables/recycle-bin/restore/` })
-            .flush({ restored: [{ id: 6, name: 'Prices #2', renamed_from: 'Prices' }], failed: [] });
+        httpTesting.expectOne({ method: 'POST', url: `${API_URL}key-value-tables/recycle-bin/restore/` }).flush({
+            restored: [{ id: 6, name: 'Prices #2', renamed_from: 'Prices', links_restored: false }],
+            failed: [],
+        });
         httpTesting.expectOne(`${API_URL}key-value-tables/recycle-bin/`).flush([]);
     });
 

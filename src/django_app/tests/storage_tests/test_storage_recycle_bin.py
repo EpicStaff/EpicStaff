@@ -7,6 +7,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from rbac.access.gates import DenyApiKeyAuth
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
@@ -301,8 +302,8 @@ class TestStorageBinApi:
         assert response.status_code == 200, response.content
         assert response.json() == {
             "restored": [
-                {"id": folder.pk, "name": "docs/", "renamed_from": None},
-                {"id": loose.pk, "name": "notes.txt", "renamed_from": None},
+                {"id": folder.pk, "name": "docs/", "renamed_from": None, "links_restored": False},
+                {"id": loose.pk, "name": "notes.txt", "renamed_from": None, "links_restored": False},
             ],
             "failed": [],
         }
@@ -350,6 +351,20 @@ class TestStorageBinApi:
         assert response.status_code == 200, response.content
         assert response.json() == {"purged": [row.pk], "failed": []}
         assert not StorageFile.all_objects.filter(pk=row.pk).exists()
+
+    @pytest.mark.parametrize("everything", [False, True], ids=["selected", "all"])
+    def test_an_api_key_cannot_purge(self, real_manager, acme, admin_acme, issue_api_key, everything):
+        row = _binned(real_manager, acme, "a.txt")
+        raw, _ = issue_api_key(user=admin_acme)
+        client = APIClient()
+        client.credentials(HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+        body = {"all": True} if everything else {"ids": [row.pk]}
+        response = client.post(f"{BIN}purge/", body, format="json")
+
+        assert response.status_code == 403, response.content
+        assert response.json()["message"] == DenyApiKeyAuth.message
+        assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
 
     def test_all_empties_the_bin(self, admin_client, real_manager, acme, beta):
         ours = [_binned(real_manager, acme, name) for name in ("a.txt", "b.txt")]

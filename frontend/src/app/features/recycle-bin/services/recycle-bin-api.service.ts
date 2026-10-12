@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-import { RECYCLE_BIN_SOURCE_PATHS } from '../constants/recycle-bin-sources.constants';
+import { RECYCLE_BIN_SOURCES } from '../constants/recycle-bin-sources.constants';
 import {
     GetRecycleBinContentsResponse,
     GetRecycleBinEntryResponse,
@@ -50,7 +50,7 @@ export class RecycleBinApiService {
         const url =
             source === 'storage'
                 ? `${this.binUrl('storage')}${id}/contents/`
-                : `${this.configService.apiUrl}${RECYCLE_BIN_SOURCE_PATHS[source]}${id}/recycle-bin-contents/`;
+                : `${this.configService.apiUrl}${RECYCLE_BIN_SOURCES[source].path}${id}/recycle-bin-contents/`;
         return this.http.get<GetRecycleBinContentsResponse>(url);
     }
 
@@ -68,6 +68,6 @@ export class RecycleBinApiService {
     }
 
     private binUrl(source: RecycleBinSourceKey): string {
-        return `${this.configService.apiUrl}${RECYCLE_BIN_SOURCE_PATHS[source]}recycle-bin/`;
+        return `${this.configService.apiUrl}${RECYCLE_BIN_SOURCES[source].path}recycle-bin/`;
     }
 }

@@ -2,6 +2,10 @@ import { ResourceCode } from '@shared/models';
 
 import { RecycleBinTabDefinition, RecycleBinTabKey } from '../models/recycle-bin.model';
 
+/**
+ * Every tab, written in page order: RECYCLE_BIN_TABS (and so the routes and the tab bar) follows the order
+ * of these entries, so a new tab goes where it should appear on the page.
+ */
 export const RECYCLE_BIN_TAB_BY_KEY: Record<RecycleBinTabKey, RecycleBinTabDefinition> = {
     flows: {
         key: 'flows',
@@ -79,16 +83,5 @@ export const RECYCLE_BIN_TAB_BY_KEY: Record<RecycleBinTabKey, RecycleBinTabDefin
     },
 };
 
-/** Tab order on the page, and the order the default tab is picked in. */
-export const RECYCLE_BIN_TABS: readonly RecycleBinTabDefinition[] = [
-    RECYCLE_BIN_TAB_BY_KEY.flows,
-    RECYCLE_BIN_TAB_BY_KEY.agents,
-    RECYCLE_BIN_TAB_BY_KEY.surfaces,
-    RECYCLE_BIN_TAB_BY_KEY.tools,
-    RECYCLE_BIN_TAB_BY_KEY.files,
-    RECYCLE_BIN_TAB_BY_KEY['knowledge-sources'],
-    RECYCLE_BIN_TAB_BY_KEY['key-value-tables'],
-    RECYCLE_BIN_TAB_BY_KEY.secrets,
-    RECYCLE_BIN_TAB_BY_KEY['voice-channels'],
-    RECYCLE_BIN_TAB_BY_KEY['webhook-triggers'],
-];
+/** Tab order on the page, and the order the default tab is picked in: the order of RECYCLE_BIN_TAB_BY_KEY. */
+export const RECYCLE_BIN_TABS: readonly RecycleBinTabDefinition[] = Object.values(RECYCLE_BIN_TAB_BY_KEY);

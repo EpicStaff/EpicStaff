@@ -1,6 +1,7 @@
 """Recycle-bin actions for every viewset whose items can be restored."""
 
 from drf_spectacular.utils import extend_schema
+from rbac.access.gates import DenyApiKeyAuth
 from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission
 from rest_framework import status
@@ -21,6 +22,7 @@ from tables.services.recycle_bin.bin_contents_service import (
 )
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_service import RecycleBinBulkService
+from tables.services.recycle_bin.presentation import BinPresentation, bin_presentations
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import BinResource, bin_resources
 from tables.services.recycle_bin.restore_service import RestoreService
@@ -35,6 +37,8 @@ RECYCLE_BIN_ACTION_MAP = {
     "bulk_restore": Permission.CREATE,
     "bulk_purge": Permission.DELETE,
 }
+# Purging is the one bin action that can't be undone, so only a user session may do it.
+API_KEY_REFUSED_ACTIONS = frozenset({"purge", "bulk_purge"})
 
 
 class RecycleBinActionsMixin:
@@ -42,24 +46,36 @@ class RecycleBinActionsMixin:
     ("Show all"), `<pk>/restore/`, `<pk>/purge/`, and the bulk `recycle-bin/restore/` and
     `recycle-bin/purge/`.
 
-    The viewset sets `recycle_bin_resource_key` (a key of `bin_resources()`),
-    merges RECYCLE_BIN_ACTION_MAP into its `rbac_action_map`, and has
-    `get_active_org_id()` (every OrgScoped* mixin provides it). Every action
+    The viewset sets `recycle_bin_resource_key` (a key of `bin_resources()` and
+    `bin_presentations()`), merges RECYCLE_BIN_ACTION_MAP into its `rbac_action_map`,
+    and has `get_active_org_id()` (every OrgScoped* mixin provides it). Every action
     starts from RecycleBinService.binned(), so a row of another org, a live
     row, or a row the list hides is a 404.
+
+    Both purges refuse API keys (403), as emptying the whole bin does: a purge
+    can't be undone, so a leaked key must not wipe the bin type by type. Listing
+    and restoring stay open to API keys.
     """
 
     recycle_bin_resource_key: str
     recycle_bin_entry_serializer_class = RecycleBinEntrySerializer
 
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # After the viewset's own classes: DenyApiKeyAuth expects IsAuthenticated first.
+        if self.action in API_KEY_REFUSED_ACTIONS:
+            permissions.append(DenyApiKeyAuth())
+        return permissions
+
     def _bin_resource(self) -> BinResource:
         return bin_resources()[self.recycle_bin_resource_key]
 
+    def _bin_presentation(self) -> BinPresentation:
+        return bin_presentations()[self.recycle_bin_resource_key]
+
     def recycle_bin_entries(self, org_id: int) -> list[RecycleBinEntryWithContents]:
         """Entries the list action returns, each with what its restore brings back."""
-        return BinContentsService.entries(
-            self.recycle_bin_resource_key, self._bin_resource(), org_id
-        )
+        return BinContentsService.entries(self._bin_resource(), self._bin_presentation(), org_id)
 
     def _get_binned_or_404(self, pk):
         # DRF's get_object_or_404 turns a non-numeric pk into a 404, not a 500.
@@ -77,7 +93,7 @@ class RecycleBinActionsMixin:
     def recycle_bin_contents(self, request, pk=None):
         """One binned item's contents, up to 5,000: "Show all" when the list's 100 aren't enough."""
         contents, total = BinContentsService.contents_of(
-            self.recycle_bin_resource_key, self._get_binned_or_404(pk)
+            self._bin_presentation(), self._get_binned_or_404(pk)
         )
         return Response(
             RecycleBinContentsSerializer({"contents": contents, "contents_total": total}).data
@@ -87,13 +103,15 @@ class RecycleBinActionsMixin:
     @action(detail=True, methods=["post"], url_path="restore")
     def restore(self, request, pk=None):
         result = RestoreService.restore(self._get_binned_or_404(pk))
+        resource = self._bin_resource()
         restored = result.object
         return Response(
             RestoreResultSerializer(
                 {
                     "id": restored.pk,
-                    "name": getattr(restored, self._bin_resource().name_field),
+                    "name": getattr(restored, resource.name_field),
                     "renamed_from": result.renamed_from,
+                    "links_restored": resource.keeps_references,
                 }
             ).data
         )
@@ -114,15 +132,16 @@ class RecycleBinActionsMixin:
         result = RecycleBinBulkService.restore_many(
             self._bin_resource(), self.get_active_org_id(), ids
         )
-        name_field = self._bin_resource().name_field
+        resource = self._bin_resource()
         return Response(
             RecycleBinBulkRestoreResponseSerializer(
                 {
                     "restored": [
                         {
                             "id": restored.object.pk,
-                            "name": getattr(restored.object, name_field),
+                            "name": getattr(restored.object, resource.name_field),
                             "renamed_from": restored.renamed_from,
+                            "links_restored": resource.keeps_references,
                         }
                         for restored in result.restored
                     ],

@@ -55,14 +55,14 @@ describe('RecycleBinBulkService', () => {
         expect(python.request.body).toEqual({ ids: [1, 3] });
         python.flush({
             restored: [
-                { id: 1, name: 'A', renamed_from: null },
-                { id: 3, name: 'C', renamed_from: null },
+                { id: 1, name: 'A', renamed_from: null, links_restored: false },
+                { id: 3, name: 'C', renamed_from: null, links_restored: false },
             ],
             failed: [],
         });
         const mcp = httpTesting.expectOne({ method: 'POST', url: `${API_URL}mcp-tools/recycle-bin/restore/` });
         expect(mcp.request.body).toEqual({ ids: [2] });
-        mcp.flush({ restored: [{ id: 2, name: 'B', renamed_from: null }], failed: [] });
+        mcp.flush({ restored: [{ id: 2, name: 'B', renamed_from: null, links_restored: false }], failed: [] });
 
         expect(restoredNames).toEqual(['A', 'C', 'B']);
     });

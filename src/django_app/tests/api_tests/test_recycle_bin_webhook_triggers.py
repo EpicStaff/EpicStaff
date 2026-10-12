@@ -68,7 +68,12 @@ def test_a_path_another_org_took_comes_back_with_a_dash_number(admin_client, acm
 
         restored = admin_client.post(f"{TRIGGERS_URL}{trigger.pk}/restore/").json()
 
-    assert restored == {"id": trigger.pk, "name": "orders-2", "renamed_from": "orders"}
+    assert restored == {
+        "id": trigger.pk,
+        "name": "orders-2",
+        "renamed_from": "orders",
+        "links_restored": True,
+    }
 
 
 def test_a_twilio_channel_keeps_its_trigger_through_bin_and_restore_and_loses_it_on_purge(acme):

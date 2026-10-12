@@ -46,7 +46,7 @@ const DATA_COLUMN = '128px';
 const ACTIONS_COLUMN = '96px';
 // The same width as app-table's selection column.
 const CHECKBOX_COLUMN = '2rem';
-/** How the backend joins the parts of a text detail (bin_contents_service.py, _collection_indexes). */
+/** How the backend joins the parts of a text detail (recycle_bin/presentation.py, _collection_indexes). */
 const DETAIL_PART_SEPARATOR = ' · ';
 
 /** The bin list of one tab. Presentational: the tab decides what the buttons do. */

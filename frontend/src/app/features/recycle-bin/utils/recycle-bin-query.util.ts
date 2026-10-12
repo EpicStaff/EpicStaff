@@ -1,4 +1,4 @@
-import { RECYCLE_BIN_SOURCE_KINDS, STORAGE_ITEM_KINDS } from '../constants/recycle-bin-sources.constants';
+import { RECYCLE_BIN_SOURCES, STORAGE_ITEM_KINDS } from '../constants/recycle-bin-sources.constants';
 import {
     GetStorageRecycleBinEntryResponse,
     RecycleBinFilterOption,
@@ -64,7 +64,7 @@ export function kindFilterOptions(tab: RecycleBinTabDefinition): RecycleBinFilte
     }
     if (tab.sources.length < 2) return [];
     return tab.sources.flatMap((source) =>
-        source === 'storage' ? [] : [{ name: RECYCLE_BIN_SOURCE_KINDS[source], value: source }]
+        source === 'storage' ? [] : [{ name: RECYCLE_BIN_SOURCES[source].kind, value: source }]
     );
 }
 

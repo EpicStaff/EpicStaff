@@ -1,51 +1,25 @@
-import {
-    GetStorageRecycleBinEntryResponse,
-    RecycleBinResourceSourceKey,
-    RecycleBinSourceKey,
-} from '../models/recycle-bin.model';
+import { GetStorageRecycleBinEntryResponse, RecycleBinSourceDefinitions } from '../models/recycle-bin.model';
 
-/** List URL of each source, relative to the API root. The bin endpoints hang off it. */
-export const RECYCLE_BIN_SOURCE_PATHS: Record<RecycleBinSourceKey, string> = {
-    storage: 'storage/',
-    flow: 'graphs/',
-    agent: 'agent-definitions/',
-    surface: 'surfaces/',
-    python_tool: 'python-code-tool/',
-    mcp_tool: 'mcp-tools/',
-    collection: 'source-collections/',
-    key_value_table: 'key-value-tables/',
-    secret: 'secrets/',
-    realtime_channel: 'realtime-channels/',
-    webhook_trigger: 'webhook-triggers/',
+/** Every source of the bin, once. Adding a source means one entry here (the type requires it). */
+export const RECYCLE_BIN_SOURCES: RecycleBinSourceDefinitions = {
+    storage: { path: 'storage/' },
+    flow: { path: 'graphs/', kind: 'Flow' },
+    agent: { path: 'agent-definitions/', kind: 'Agent' },
+    surface: { path: 'surfaces/', kind: 'Surface' },
+    python_tool: { path: 'python-code-tool/', kind: 'Python tool' },
+    mcp_tool: { path: 'mcp-tools/', kind: 'MCP tool' },
+    collection: { path: 'source-collections/', kind: 'Collection' },
+    key_value_table: { path: 'key-value-tables/', kind: 'Key-value table' },
+    secret: { path: 'secrets/', kind: 'Secret' },
+    realtime_channel: { path: 'realtime-channels/', kind: 'Voice channel' },
+    webhook_trigger: { path: 'webhook-triggers/', kind: 'Webhook trigger' },
 };
 
-export const RECYCLE_BIN_SOURCE_KINDS: Record<RecycleBinResourceSourceKey, string> = {
-    flow: 'Flow',
-    agent: 'Agent',
-    surface: 'Surface',
-    python_tool: 'Python tool',
-    mcp_tool: 'MCP tool',
-    collection: 'Collection',
-    key_value_table: 'Key-value table',
-    secret: 'Secret',
-    realtime_channel: 'Voice channel',
-    webhook_trigger: 'Webhook trigger',
-};
-
+/** Kinds of the storage rows, by `item_type`. */
 export const STORAGE_ITEM_KINDS: Record<GetStorageRecycleBinEntryResponse['item_type'], string> = {
     file: 'File',
     folder: 'Folder',
 };
-
-/**
- * Sources whose items keep their links in the bin (the backend's soft_delete_keeps_references): a restore
- * connects back everything that used them. Any other item comes back without the links it had.
- */
-export const RECYCLE_BIN_LINK_KEEPING_SOURCES: ReadonlySet<RecycleBinSourceKey> = new Set([
-    'secret',
-    'realtime_channel',
-    'webhook_trigger',
-]);
 
 /** "Show all" loads at most this many items of a row (the backend's SHOW_ALL_LIMIT); past it, "and N more". */
 export const RECYCLE_BIN_SHOW_ALL_LIMIT = 5000;

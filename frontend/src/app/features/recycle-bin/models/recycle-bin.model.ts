@@ -30,6 +30,22 @@ export type RecycleBinSourceKey =
 /** Every source that uses `<list URL>recycle-bin/`, `<id>/restore/`, `<id>/purge/`. */
 export type RecycleBinResourceSourceKey = Exclude<RecycleBinSourceKey, 'storage'>;
 
+/** What the frontend needs to know about one source. */
+export interface RecycleBinSourceDefinition {
+    /** List URL relative to the API root; the bin endpoints hang off it. */
+    path: string;
+}
+
+/** A resource source's rows all share one kind; storage rows take theirs from `item_type` (STORAGE_ITEM_KINDS). */
+export interface RecycleBinResourceSourceDefinition extends RecycleBinSourceDefinition {
+    /** The Kind column label and Kind filter option: "Flow", "Python tool", … */
+    kind: string;
+}
+
+/** Every source once: a resource source without `kind`, or a missing source, does not compile. */
+export type RecycleBinSourceDefinitions = Record<RecycleBinResourceSourceKey, RecycleBinResourceSourceDefinition> &
+    Record<'storage', RecycleBinSourceDefinition>;
+
 export interface RecycleBinTabDefinition {
     key: RecycleBinTabKey;
     label: string;
@@ -111,6 +127,8 @@ export interface RestoreRecycleBinItemResponse {
     id: number;
     name: string;
     renamed_from: string | null;
+    /** Whether everything that used the item is connected again (it kept its links in the bin). */
+    links_restored: boolean;
 }
 
 // View models (camelCase)
@@ -147,10 +165,10 @@ export type RecycleBinDetail =
     | { label: string; format: 'empty'; value: null };
 
 export interface RecycleBinRestoreOutcome {
-    /** Where it came from: whether what used it is connected again depends on it. */
-    source: RecycleBinSourceKey;
     name: string;
     renamedFrom: string | null;
+    /** Everything that used it is connected again; otherwise it came back without its links. */
+    linksRestored: boolean;
 }
 
 export type RecycleBinLoadStatus = 'loading' | 'loaded' | 'error';

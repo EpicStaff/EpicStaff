@@ -1,6 +1,6 @@
 import { NodeListItem } from '@shared/components';
 
-import { RECYCLE_BIN_SOURCE_KINDS, STORAGE_ITEM_KINDS } from '../constants/recycle-bin-sources.constants';
+import { RECYCLE_BIN_SOURCES, STORAGE_ITEM_KINDS } from '../constants/recycle-bin-sources.constants';
 import {
     GetRecycleBinContentResponse,
     GetRecycleBinDetailResponse,
@@ -21,7 +21,7 @@ export function toRecycleBinItem(
     source: RecycleBinResourceSourceKey,
     entry: GetRecycleBinEntryResponse
 ): RecycleBinItem {
-    return baseItem(source, RECYCLE_BIN_SOURCE_KINDS[source], entry);
+    return baseItem(source, RECYCLE_BIN_SOURCES[source].kind, entry);
 }
 
 export function toStorageRecycleBinItem(entry: GetStorageRecycleBinEntryResponse): RecycleBinItem {
@@ -73,11 +73,8 @@ export function storageOwnName(path: string): string {
     return isFolder ? `${ownName}/` : ownName;
 }
 
-export function toRestoreOutcome(
-    source: RecycleBinSourceKey,
-    response: RestoreRecycleBinItemResponse
-): RecycleBinRestoreOutcome {
-    return { source, name: response.name, renamedFrom: response.renamed_from };
+export function toRestoreOutcome(response: RestoreRecycleBinItemResponse): RecycleBinRestoreOutcome {
+    return { name: response.name, renamedFrom: response.renamed_from, linksRestored: response.links_restored };
 }
 
 /** Sort comparator: newest `deletedAt` first, then higher id first (the backend's own order). */
