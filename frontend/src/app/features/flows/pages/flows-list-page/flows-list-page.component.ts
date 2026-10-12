@@ -530,7 +530,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         const enriched = enrichImportResult(result, fileData);
 
         this.dialog.open(ImportResultDialogComponent, {
-            width: '80vw',
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
             data: { importResult: enriched },
         });
 

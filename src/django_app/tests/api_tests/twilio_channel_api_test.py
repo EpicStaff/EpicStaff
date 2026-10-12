@@ -2,6 +2,8 @@ import itertools
 from unittest import mock
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from agents.models import AgentDefinition
@@ -16,6 +18,7 @@ from tables.models.webhook_models import (
 )
 from tables.models import Agent
 from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
+from rbac.authorship import record_last_edit
 from rbac.models import Organization
 from tables.services.secrets import secret_resolver, secret_service
 
@@ -103,7 +106,7 @@ def _make_realtime_agent_definition(org):
     """Create a RealtimeAgentDefinition — the only supported destination
     going forward for `RealtimeChannel.realtime_agent_definition`."""
     agent_definition = AgentDefinition.objects.create(
-        organization=org, name="voice-agent-definition"
+        org=org, name="voice-agent-definition"
     )
     return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 
@@ -775,6 +778,42 @@ class TestRealtimeChannelLookupByToken:
         twilio = response.json().get("twilio")
         assert twilio is not None
         assert twilio["auth_token"] == "webhook-signature-secret"
+
+    def test_lookup_by_token_omits_authorship_and_reads_no_user(
+        self, api_client, db, default_org, env_api_key, django_user_model
+    ):
+        """The realtime service never reads authorship, so lookup-by-token sends no
+        user ids, names or avatars -- top level or on the nested webhook trigger --
+        and loads no user or last edit to render them."""
+        raw_key, _key = env_api_key
+        editor = django_user_model.objects.create_user(
+            email="lookup-editor@example.com",
+            password="StrongPass123!",
+            display_name="Lookup Editor Name",
+        )
+        rc = _make_realtime_channel(db, default_org, created_by=editor)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="lookup-authorship")
+        _make_twilio_channel(rc, webhook_trigger=trigger)
+        record_last_edit(rc, editor)
+        record_last_edit(trigger, editor)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = api_client.get(self._url(), {"token": str(rc.token)})
+
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert body["twilio"]["webhook_trigger"]["id"] == trigger.pk
+        authorship_keys = {"created_by", "last_edited_by", "last_edited_at"}
+        assert not authorship_keys & set(body)
+        assert not authorship_keys & set(body["twilio"]["webhook_trigger"])
+        assert "Lookup Editor Name" not in response.content.decode()
+        authorship_tables = ('FROM "rbac_user"', 'FROM "rbac_resourcelastedit"')
+        assert not [
+            query["sql"]
+            for query in captured.captured_queries
+            if any(table in query["sql"] for table in authorship_tables)
+        ]
 
     def test_list_still_requires_org_context(self, api_client, db, env_api_key):
         """Regression guard: normal list/CRUD on /realtime-channels/ must keep

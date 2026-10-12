@@ -26,7 +26,17 @@ describe('KeyValueTablesStorageService', () => {
 
     it('loads tables and caches them in the tables signal', () => {
         const tables: KeyValueTable[] = [
-            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'Customers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         apiService.getTables.mockReturnValue(of(tables));
 
@@ -37,7 +47,17 @@ describe('KeyValueTablesStorageService', () => {
 
     it('empties the tables signal on clear (org switch / logout)', () => {
         const tables: KeyValueTable[] = [
-            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'Customers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         apiService.getTables.mockReturnValue(of(tables));
         service.loadTables().subscribe();
@@ -50,7 +70,17 @@ describe('KeyValueTablesStorageService', () => {
 
     it('shares one in-flight request across concurrent callers (e.g. several canvas nodes)', () => {
         const tables: KeyValueTable[] = [
-            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'Customers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         const response$ = new Subject<KeyValueTable[]>();
         apiService.getTables.mockReturnValue(response$);
@@ -67,7 +97,17 @@ describe('KeyValueTablesStorageService', () => {
 
     it('issues a fresh request once the previous one has completed', () => {
         const tables: KeyValueTable[] = [
-            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'Customers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         apiService.getTables.mockReturnValue(of(tables));
 
@@ -85,7 +125,17 @@ describe('KeyValueTablesStorageService', () => {
         service.clear();
 
         response$.next([
-            { id: 1, name: 'OrgACustomers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'OrgACustomers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ]);
         response$.complete();
 
@@ -95,7 +145,17 @@ describe('KeyValueTablesStorageService', () => {
     it('fires a fresh request after clear() and populates tables from it, not the stale one', () => {
         const staleResponse$ = new Subject<KeyValueTable[]>();
         const freshTables: KeyValueTable[] = [
-            { id: 2, name: 'OrgBCustomers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 2,
+                name: 'OrgBCustomers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         apiService.getTables.mockReturnValueOnce(staleResponse$).mockReturnValueOnce(of(freshTables));
 
@@ -127,11 +187,31 @@ describe('KeyValueTablesStorageService', () => {
 
     describe('reloadTables (after a create, rename or delete)', () => {
         const before: KeyValueTable[] = [
-            { id: 1, name: 'Customers', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 1,
+                name: 'Customers',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
         const after: KeyValueTable[] = [
             ...before,
-            { id: 2, name: 'Orders', description: '', entry_count: 0, created_at: '', updated_at: '' },
+            {
+                id: 2,
+                name: 'Orders',
+                description: '',
+                entry_count: 0,
+                created_at: '',
+                updated_at: '',
+                created_by: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            },
         ];
 
         it('does not join a pending load, and keeps its own response over the late stale one', () => {

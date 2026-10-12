@@ -5,19 +5,25 @@ import {
     Component,
     DestroyRef,
     HostListener,
-    Inject,
+    inject,
     OnInit,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsSource, AuthorshipFooterComponent } from '@shared/components';
 
 import { GraphNoteModel } from '../../core/models/node.model';
 
+export interface NoteEditDialogData {
+    node: GraphNoteModel;
+    /** Who created and who last edited the note; the dialog cannot read the editor's store itself. */
+    authorship: AuthorshipDetailsSource;
+}
+
 @Component({
     selector: 'app-note-edit-dialog',
-    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule, AuthorshipFooterComponent],
     template: `
         <div
             class="backdrop"
@@ -59,6 +65,14 @@ import { GraphNoteModel } from '../../core/models/node.model';
                         ></textarea>
                     </div>
                 </div>
+
+                <app-authorship-footer
+                    class="dialog-footer"
+                    [createdBy]="data.authorship.created_by"
+                    [createdAt]="data.authorship.created_at"
+                    [lastEditedBy]="data.authorship.last_edited_by"
+                    [lastEditedAt]="data.authorship.last_edited_at"
+                />
             </div>
         </div>
     `,
@@ -166,6 +180,12 @@ import { GraphNoteModel } from '../../core/models/node.model';
             .note-textarea:focus {
                 border-color: var(--accent-color, #4a6da7);
             }
+
+            .dialog-footer {
+                flex-shrink: 0;
+                padding: 12px 24px;
+                border-top: 1px solid var(--color-divider-subtle);
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -173,12 +193,10 @@ import { GraphNoteModel } from '../../core/models/node.model';
 export class NoteEditDialogComponent implements OnInit {
     noteContent: string = '';
 
-    constructor(
-        public dialogRef: DialogRef<{ content: string }>,
-        @Inject(DIALOG_DATA) public data: { node: GraphNoteModel },
-        private cdr: ChangeDetectorRef,
-        private destroyRef: DestroyRef
-    ) {}
+    public readonly dialogRef = inject<DialogRef<{ content: string }>>(DialogRef);
+    public readonly data = inject<NoteEditDialogData>(DIALOG_DATA);
+    private readonly cdr = inject(ChangeDetectorRef);
+    private readonly destroyRef = inject(DestroyRef);
 
     ngOnInit(): void {
         // Initialize with the current note content

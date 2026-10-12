@@ -97,7 +97,7 @@ Two reference styles, and the distinction matters throughout the codebase:
 > is right.
 
 **Declaration sites** — `PythonCode.secrets` is an M2M to `Secret`, and it **is the
-allow-list**: it says which secrets that code may read at runtime. Six places own a
+allow-list**: it says which secrets that code may read at runtime. Five places own a
 `PythonCode` (`tables/services/secrets/python_code_sites.py`, `PYTHON_CODE_SITES`):
 
 | Model | Field | Node type |
@@ -106,18 +106,17 @@ allow-list**: it says which secrets that code may read at runtime. Six places ow
 | `WebhookTriggerNode` | `python_code` | `webhook-trigger` |
 | `ClassificationDecisionTableNode` | `pre_python_code` | `classification-decision-table` |
 | `ClassificationDecisionTableNode` | `post_python_code` | `classification-decision-table` |
-| `ConditionalEdge` | `python_code` | `edge` |
 | `PythonCodeTool` | `python_code` | — (org-owned, not a flow node) |
 
-`GRAPH_PYTHON_CODE_SITES` is the first five — the ones reachable from a graph id.
+`GRAPH_PYTHON_CODE_SITES` is the first four — the ones reachable from a graph id.
 `PythonCodeTool` is org-owned, so a per-graph walk cannot find it and it is gated separately
 (§6.2).
 
 > **`PYTHON_CODE_SITES` is shared deliberately.** The declaration validator (§6.2) and the
 > usage sources ([secret_usage.md](secret_usage.md) §1) both read it, so the two features
-> cannot drift on which sites exist. If you add a seventh site, add it there and both pick it
+> cannot drift on which sites exist. If you add a sixth site, add it there and both pick it
 > up — and the canary test
-> `test_graph_python_code_sites_still_holds_exactly_the_five_known_sites`
+> `test_graph_python_code_sites_still_holds_exactly_the_four_known_sites`
 > (`tests/graph_versioning_tests/test_secret_declarations.py`) will fail until you also teach
 > versioning about it.
 

@@ -32,7 +32,7 @@ def org(db):
 @pytest.fixture
 def agent_definition(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="realtime-surface-storage-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
@@ -41,7 +41,7 @@ def agent_definition(db, org):
 @pytest.fixture
 def surface(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="realtime-surface-storage-surface",
         instructions="",
     )
@@ -211,7 +211,7 @@ class TestResolveEndToEnd:
         assert python_code.storage_org_prefix is None
         # org_id is unconditional (not gated on use_storage/grants) -- always
         # the agent-definition's own authoritative org.
-        assert python_code.org_id == agent_definition.organization_id
+        assert python_code.org_id == agent_definition.org_id
 
     def test_storage_tool_without_grant_raises(
         self, agent_definition, surface, storage_py_tool

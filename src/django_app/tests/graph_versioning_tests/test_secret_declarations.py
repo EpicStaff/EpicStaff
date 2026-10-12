@@ -16,10 +16,9 @@ from rest_framework.test import APIClient
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.graph_versioning.services import GraphVersioningService
-from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.id_mapper import IDMapper
 from rbac.models import Organization
-from tables.models import ClassificationDecisionTableNode, ConditionalEdge, Graph, PythonCode, PythonNode, Secret, StartNode, TelegramTriggerNode, WebhookTriggerNode
+from tables.models import ClassificationDecisionTableNode, Graph, PythonCode, PythonNode, Secret, TelegramTriggerNode, WebhookTriggerNode
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
@@ -89,7 +88,6 @@ class TestCollectSecretDeclarations:
     def test_an_empty_graph_produces_empty_sub_blocks(self, manager, graph):
         assert manager.collect_secret_declarations(graph=graph) == {
             "nodes": {},
-            "conditional_edges": [],
             "telegram": {},
         }
 
@@ -118,23 +116,6 @@ class TestCollectSecretDeclarations:
             "post_python_code": ["POST_KEY"],
         }
 
-    def test_a_declaring_conditional_edge_is_recorded_against_its_source_node(
-        self, manager, graph, default_org
-    ):
-        secret = _secret(org=default_org, name="EDGE_KEY")
-        source = StartNode.objects.create(graph=graph, variables={})
-        python_code = PythonCode.objects.create(code=CODE.format(name="EDGE_KEY"))
-        python_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=source.pk, python_code=python_code
-        )
-
-        recorded = manager.collect_secret_declarations(graph=graph)
-
-        assert recorded["conditional_edges"] == [
-            {"source_node_id": source.pk, "names": ["EDGE_KEY"]}
-        ]
-
     def test_a_telegram_bot_token_is_recorded(self, manager, graph, default_org):
         """A plain FK, not the M2M, but excluded from its import serializer for the
         same reason and therefore lost the same way."""
@@ -147,11 +128,11 @@ class TestCollectSecretDeclarations:
 
         assert recorded["telegram"] == {str(node.pk): "TG_TOKEN"}
 
-    def test_graph_python_code_sites_still_holds_exactly_the_five_known_sites(self):
+    def test_graph_python_code_sites_still_holds_exactly_the_four_known_sites(self):
         """Canary for the decision-5 invariant. The collector walks this same tuple —
         the one the session-start validator walks — so a site the validator enforces
         cannot be a site the snapshot forgets. This asserts the constant's contents
-        rather than the collector's behaviour: if a sixth site appears upstream it
+        rather than the collector's behaviour: if a fifth site appears upstream it
         fails here, prompting a matching round-trip test below.
         """
         walked = {(site.model, site.code_field) for site in GRAPH_PYTHON_CODE_SITES}
@@ -161,7 +142,6 @@ class TestCollectSecretDeclarations:
             (WebhookTriggerNode, "python_code"),
             (ClassificationDecisionTableNode, "pre_python_code"),
             (ClassificationDecisionTableNode, "post_python_code"),
-            (ConditionalEdge, "python_code"),
         }
 
     def test_save_version_stores_the_block_in_the_snapshot(self, graph, default_org):
@@ -444,70 +424,68 @@ class TestBackwardCompatibility:
         assert "not restored" in warnings[0]["reason"]
 
 
+def _with_legacy_conditional_edge(*, version, source_node_id):
+    """Rewrite a stored snapshot into the shape saved while conditional edges existed."""
+    version.snapshot["conditional_edge_list"] = [
+        {
+            "id": 990001,
+            "graph": version.graph_id,
+            "source_node_id": source_node_id,
+            "python_code": {
+                "code": CODE.format(name="EDGE_KEY"),
+                "entrypoint": "main",
+                "libraries": "",
+                "global_kwargs": {},
+            },
+            "input_map": {},
+            "metadata": {},
+        }
+    ]
+    version.snapshot["secret_declarations"]["conditional_edges"] = [
+        {"source_node_id": source_node_id, "names": ["EDGE_KEY"]}
+    ]
+    version.save(update_fields=["snapshot"])
+    return version
+
+
 @pytest.mark.django_db
-class TestConditionalEdgeCorrelation:
-    def test_a_single_edge_on_a_source_node_relinks(self, graph, default_org):
-        secret = _secret(org=default_org, name="EDGE_KEY")
-        source = StartNode.objects.create(graph=graph, variables={})
-        python_code = PythonCode.objects.create(code=CODE.format(name="EDGE_KEY"))
-        python_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=source.pk, python_code=python_code
+class TestLegacyConditionalEdgeSnapshot:
+    """Snapshots saved before conditional edges were removed still restore and preview.
+
+    The edges and their secret declarations are discarded with one ``edge_dropped``
+    warning; everything else in the snapshot comes back as before.
+    """
+
+    def test_restore_drops_the_edges_and_keeps_the_rest(self, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _secret(org=default_org, name="EDGE_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _with_legacy_conditional_edge(
+            version=_save(graph=graph), source_node_id=node.pk
         )
-        version = _save(graph=graph)
 
         result = _restore(version=version, graph=graph)
 
-        edge = (
-            ConditionalEdge.objects.filter(graph=graph)
-            .select_related("python_code")
-            .get()
-        )
-        assert list(edge.python_code.secrets.values_list("name", flat=True)) == [
-            "EDGE_KEY"
-        ]
-        assert result["warnings"] == []
+        assert result["restored"] is True
+        assert [w["type"] for w in result["warnings"]] == ["edge_dropped"]
+        assert "no longer supported" in result["warnings"][0]["reason"]
+        assert _declared_names(graph=graph) == ["STRIPE_KEY"]
+        assert PythonNode.objects.filter(graph=graph).count() == 1
+        assert not PythonCode.objects.filter(code=CODE.format(name="EDGE_KEY")).exists()
 
-    def test_an_edge_with_no_source_node_warns_instead_of_guessing(
-        self, manager, graph, default_org
-    ):
-        _secret(org=default_org, name="EDGE_KEY")
-
-        warnings = manager.restore_secret_declarations(
-            graph=graph,
-            declarations={
-                "conditional_edges": [{"source_node_id": None, "names": ["EDGE_KEY"]}]
-            },
-            node_mapper=IDMapper(),
+    def test_preview_drops_the_edges_and_their_declarations(self, service, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _with_legacy_conditional_edge(
+            version=_save(graph=graph), source_node_id=node.pk
         )
 
-        assert [w["type"] for w in warnings] == ["secret_declaration_dropped"]
-        assert "no source node" in warnings[0]["reason"]
+        preview = service.preview_version(version)
 
-    def test_two_recorded_edges_on_one_source_are_ambiguous_and_warn(
-        self, manager, graph, default_org
-    ):
-        """Two edges branching off one node cannot be told apart after restore, so
-        neither is linked — guessing would grant a declaration to an edge nobody
-        declared it for."""
-        _secret(org=default_org, name="EDGE_KEY")
-        source = StartNode.objects.create(graph=graph, variables={})
-        node_mapper = IDMapper()
-        node_mapper.map(NODE_MAPPING_KEY, source.pk, source.pk)
-
-        warnings = manager.restore_secret_declarations(
-            graph=graph,
-            declarations={
-                "conditional_edges": [
-                    {"source_node_id": source.pk, "names": ["EDGE_KEY"]},
-                    {"source_node_id": source.pk, "names": ["EDGE_KEY"]},
-                ]
-            },
-            node_mapper=node_mapper,
-        )
-
-        assert [w["type"] for w in warnings] == ["secret_declaration_dropped"]
-        assert "ambiguous" in warnings[0]["reason"]
+        assert [w["type"] for w in preview["warnings"]] == ["edge_dropped"]
+        assert "conditional_edge_list" not in preview["snapshot"]
+        assert set(preview["snapshot"]["secret_declarations"]) == {"nodes", "telegram"}
+        assert len(preview["snapshot"]["nodes"]) == 1
 
 
 @pytest.mark.django_db

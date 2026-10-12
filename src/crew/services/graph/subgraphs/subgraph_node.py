@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import asdict
 from uuid import uuid4
 
 from dotdict import DotDict
@@ -10,6 +9,7 @@ from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
     SubGraphStartMessageData,
+    dataclass_to_shallow_dict,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
@@ -46,6 +46,7 @@ class SubGraphNode:
         self.session_graph_builder = session_graph_builder
         self.stop_event = stop_event
         self.storage_credentials = storage_credentials
+        self._compiled_subgraph: CompiledStateGraph | None = None
 
     def build(self, initial_state) -> CompiledStateGraph:
         """
@@ -121,10 +122,12 @@ class SubGraphNode:
         )
 
         subgraph_state = self._create_subgraph_state(state, subgraph_input)
-        compiled_subgraph = self.build(initial_state=subgraph_input)
+        # Compiled lazily, not in __init__: a subflow that contains itself would recurse forever.
+        if self._compiled_subgraph is None:
+            self._compiled_subgraph = self.build(initial_state=subgraph_input)
 
         result = await self._execute_subgraph(
-            compiled_subgraph, subgraph_state, writer, subgraph_execution_id
+            self._compiled_subgraph, subgraph_state, writer, subgraph_execution_id
         )
 
         # advance parent counter past the range the child consumed
@@ -211,7 +214,7 @@ class SubGraphNode:
                         msg_data = data.message_data
 
                         if not isinstance(msg_data, dict):
-                            msg_data = asdict(msg_data)
+                            msg_data = dataclass_to_shallow_dict(msg_data)
                             data.message_data = msg_data
 
                         existing = msg_data.get("subgraph_execution_ids") or []
@@ -229,7 +232,8 @@ class SubGraphNode:
 
     def _process_subgraph_result(self, state, subgraph_input, result) -> dict:
         """Process subgraph result and update parent state."""
-        subgraph_output = result["variables"].deep_dump()
+        # No copy needed: set_output_variables copies containers on assignment (DotDict._copy_wrap).
+        subgraph_output = result["variables"]
 
         temp_state = {"variables": DotDict(state["variables"].deep_dump())}
 
@@ -243,9 +247,7 @@ class SubGraphNode:
 
             set_output_variables(temp_state, full_path, subgraph_output)
 
-        state_history_item = self._create_state_history_item(
-            subgraph_input, subgraph_output, temp_state["variables"].deep_dump()
-        )
+        state_history_item = self._create_state_history_item(subgraph_input, subgraph_output)
 
         counts = dict(state.get("execution_counts", {}))
         counts[self.node_name] = counts.get(self.node_name, 0) + 1
@@ -257,9 +259,7 @@ class SubGraphNode:
             "execution_counts": counts,
         }
 
-    def _create_state_history_item(
-        self, subgraph_input, subgraph_output, updated_variables
-    ) -> dict:
+    def _create_state_history_item(self, subgraph_input, subgraph_output) -> dict:
         """Create state history item for subgraph execution."""
         return {
             "type": "SUBGRAPH",
@@ -270,7 +270,6 @@ class SubGraphNode:
             },
             "input": subgraph_input,
             "output": subgraph_output,
-            "variables": updated_variables,
         }
 
     def _send_finish_message(

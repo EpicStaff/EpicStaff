@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('tables', '0170_classificationconditiongroup_created_at_and_more'),
-        ('tables', '0170_merge_20260417_1811'),
+        ("tables", "0166_storagefile_graphstoragefile_and_more_squashed_0175_merge_20260427_1053"),
     ]
 
     operations = [

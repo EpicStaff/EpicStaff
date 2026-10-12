@@ -43,7 +43,7 @@ def test_concurrent_update_surface_does_not_raise_integrity_error():
     delete-then-recreate, so no IntegrityError is raised and the final rows
     equal exactly one of the two submitted lists."""
     org = Organization.objects.create(name="concurrency-org")
-    surface = Surface.objects.create(organization=org, name="concurrency-surface")
+    surface = Surface.objects.create(org=org, name="concurrency-surface")
 
     shared_collection = _make_naive_collection("shared-coll", org)
     collection_a = _make_naive_collection("coll-a", org)

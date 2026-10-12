@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.exceptions import RagException
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -57,7 +59,7 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         for key, model in self._CONFIG_MODELS.items():
             config_data = configs.get(key)

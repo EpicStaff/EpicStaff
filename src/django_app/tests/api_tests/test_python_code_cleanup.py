@@ -24,7 +24,6 @@ from rest_framework import status
 
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     PythonNode,
     WebhookTriggerNode,
 )
@@ -102,27 +101,6 @@ def test_delete_python_node_deletes_python_code(
 
     with django_capture_on_commit_callbacks(execute=True):
         response = auth_client.delete(reverse("pythonnode-detail", args=[node.id]))
-
-    assert response.status_code == status.HTTP_204_NO_CONTENT
-    assert not PythonCode.objects.filter(id=python_code_id).exists()
-
-
-# ---------------------------------------------------------------------------
-# ConditionalEdge
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_delete_conditional_edge_deletes_python_code(
-    auth_client, graph, python_code, django_capture_on_commit_callbacks
-):
-    edge = ConditionalEdge.objects.create(
-        graph=graph, python_code=python_code, source_node_id=None, input_map={}
-    )
-    python_code_id = python_code.id
-
-    with django_capture_on_commit_callbacks(execute=True):
-        response = auth_client.delete(reverse("conditionaledge-detail", args=[edge.id]))
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not PythonCode.objects.filter(id=python_code_id).exists()

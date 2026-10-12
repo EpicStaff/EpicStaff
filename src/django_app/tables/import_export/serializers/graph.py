@@ -6,7 +6,6 @@ from tables.models import (
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -35,13 +34,13 @@ class BaseNodeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = None
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class StartNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = StartNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
@@ -61,7 +60,7 @@ class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = WebhookTriggerNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class ConditionImportSerializer(serializers.ModelSerializer):
@@ -91,7 +90,7 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = DecisionTableNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
@@ -147,7 +146,7 @@ class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = ClassificationDecisionTableNode
-        exclude = ["created_at", "updated_at", "prompts"]
+        exclude = ["created_at", "updated_at", "created_by", "prompts"]
 
 
 class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
@@ -161,7 +160,7 @@ class TelegramTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta:
         model = TelegramTriggerNode
-        exclude = ["created_at", "updated_at", "telegram_bot_api_key_secret"]
+        exclude = ["created_at", "updated_at", "created_by", "telegram_bot_api_key_secret"]
 
 
 class PythonNodeImportSerializer(BaseNodeImportSerializer):
@@ -174,37 +173,37 @@ class PythonNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = PythonNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class EndNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = EndNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class FileExtractorNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = FileExtractorNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = AudioTranscriptionNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class GraphNoteImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = GraphNote
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class EdgeImportSerializer(serializers.ModelSerializer):
@@ -213,22 +212,8 @@ class EdgeImportSerializer(serializers.ModelSerializer):
         exclude = ["created_at", "updated_at", "graph"]
 
 
-class ConditionalEdgeImportSerializer(serializers.ModelSerializer):
-    python_code = PythonCodeImportSerializer(read_only=True)
-    python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="python_code",
-        write_only=True,
-    )
-
-    class Meta:
-        model = ConditionalEdge
-        exclude = ["created_at", "updated_at"]
-
-
 class GraphImportSerializer(serializers.ModelSerializer):
     edge_list = EdgeImportSerializer(many=True, read_only=True)
-    conditional_edge_list = ConditionalEdgeImportSerializer(many=True, read_only=True)
     nodes = serializers.JSONField(required=False)
 
     class Meta:
@@ -249,7 +234,7 @@ class GraphImportSerializer(serializers.ModelSerializer):
 class ScheduleTriggerNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = ScheduleTriggerNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
     def create(self, validated_data):
         # Schedule config is preserved verbatim; activation state is reset so

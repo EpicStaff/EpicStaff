@@ -59,9 +59,6 @@ SAVE_FLOW_SWAGGER = {
             "edge_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
-            "conditional_edge_list": drf_serializers.ListField(
-                child=drf_serializers.DictField(), required=False
-            ),
             "deleted": inline_serializer(
                 name="DeletedIds",
                 fields={
@@ -79,7 +76,6 @@ SAVE_FLOW_SWAGGER = {
                     "telegram_trigger_node_ids": _id_list_field,
                     "schedule_trigger_node_ids": _id_list_field,
                     "edge_ids": _id_list_field,
-                    "conditional_edge_ids": _id_list_field,
                 },
                 required=False,
             ),
@@ -174,7 +170,6 @@ SAVE_FLOW_SWAGGER = {
                         "metadata": {},
                     },
                 ],
-                "conditional_edge_list": [],
                 "deleted": {
                     "python_node_ids": [8],
                     "edge_ids": [14],

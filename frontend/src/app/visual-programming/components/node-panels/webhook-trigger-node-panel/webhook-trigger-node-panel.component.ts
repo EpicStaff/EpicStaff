@@ -34,6 +34,16 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 import { parseCommaSeparatedList } from '../node-panel-form.utils';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
+import {
+    PYTHON_CODE_RUNNING_MESSAGE,
+    pythonCodeSignature,
+    resolveStoredCodeState,
+    SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_TO_RUN_LATEST_CODE_MESSAGE,
+    STORED_GRAPH_OUTDATED_MESSAGE,
+    StoredCodeState,
+} from '../shared/python-code-test-run/stored-python-code';
 import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
 import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
 import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload-section/trigger-test-payload.state';
@@ -41,34 +51,7 @@ import { TriggerTestPayloadState, withTestPayload } from '../shared/test-payload
 /** The editor shown in the big right-hand pane of the expanded panel; the other one moves to the left column. */
 type WebhookExpandedPane = 'code' | 'payload';
 
-/**
- * How this node's code relates to the code stored on the backend: `outdated` (another user saved the graph),
- * `not-created` (no backend id yet), `missing` (its backend id is not in the stored graph), `changed` (the panel's
- * code, libraries or secrets differ) or `stored`.
- */
-type StoredCodeState = 'outdated' | 'not-created' | 'missing' | 'changed' | 'stored';
-
 export const RUN_PYTHON_CODE_LABEL = 'Run python code';
-export const PYTHON_CODE_RUNNING_MESSAGE = 'The code is already running...';
-export const SAVE_NODE_BEFORE_CODE_RUN_MESSAGE = 'Click Save to save the node before running the code';
-export const SAVE_TO_RUN_LATEST_CODE_MESSAGE = 'Click Save to run your latest code changes';
-/** A node with a backend id the stored graph no longer has (deleted, then restored by undo): only a graph save recreates it. */
-export const SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE =
-    'Click Save in the top panel to save the graph before running the code';
-export const STORED_GRAPH_OUTDATED_MESSAGE = 'Another user saved this graph: refresh it to run the code';
-
-/**
- * What a code-only run executes, in a comparable form. The order of the secrets is not a difference, and
- * neither is surrounding whitespace of the code: the backend's PythonCodeSerializer stores `code` through a
- * DRF CharField (trim_whitespace), so it keeps code.strip() while the canvas keeps the code as typed.
- */
-function pythonCodeSignature(code: string, libraries: string[], secretIds: number[]): string {
-    return JSON.stringify({
-        code: code.trim(),
-        libraries,
-        secretIds: [...secretIds].sort((first, second) => first - second),
-    });
-}
 
 @Component({
     selector: 'app-webhook-trigger-node-panel',
@@ -134,13 +117,14 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly savedPythonCode = computed<GetPythonCodeRequest | null>(() =>
         this.flowService.savedWebhookPythonCode(this.node().backendId)
     );
-    private readonly storedCodeState = computed<StoredCodeState>(() => {
-        if (!this.flowService.hasSavedGraph()) return 'outdated';
-        if (this.node().backendId == null) return 'not-created';
-        const savedCode = this.savedPythonCode();
-        if (savedCode === null) return 'missing';
-        return this.differsFromSaved(savedCode) ? 'changed' : 'stored';
-    });
+    private readonly storedCodeState = computed<StoredCodeState>(() =>
+        resolveStoredCodeState(
+            this.flowService.hasSavedGraph(),
+            this.node().backendId,
+            this.savedPythonCode(),
+            (savedCode) => this.differsFromSaved(savedCode)
+        )
+    );
     /** Why "Run python code" cannot run now, or null. It runs the code saved on the backend, not the editor's. */
     protected readonly runCodeBlocker = computed<string | null>(() => {
         if (this.codeTestRun.isRunning()) return PYTHON_CODE_RUNNING_MESSAGE;
@@ -239,15 +223,12 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     /** Runs the stored code alone, as a webhook delivery of the test payload would call it. */
     protected runPythonCode(): void {
         const payload = this.testPayload.check().payload;
-        const savedCode = this.savedPythonCode();
-        if (this.runCodeBlocker() !== null || payload === null || savedCode === null) return;
+        const backendId = this.node().backendId;
+        if (this.runCodeBlocker() !== null || payload === null || backendId == null) return;
         this.isCodeTerminalShown.set(true);
+        // The backend runs the code it stores for the node; the blocker ensures the panel's code matches it.
         this.codeTestRun.run({
-            python_code_id: savedCode.id,
-            // The backend runs the stored row and ignores code and libraries; the blocker ensures they match it.
-            code: this.pythonCode,
-            entrypoint: 'main',
-            libraries: this.libraries(),
+            target: { type: 'webhook_trigger_node', id: backendId },
             variables: { trigger_payload: payload },
         });
     }

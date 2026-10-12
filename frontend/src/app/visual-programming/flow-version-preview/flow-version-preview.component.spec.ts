@@ -3,14 +3,15 @@ import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FDragStartedEvent } from '@foblex/flow';
-import { NodeType } from '@shared/models';
+import { NodeType, UserSummary } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { of, Subject, throwError } from 'rxjs';
 
-import { GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
+import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import {
     GraphVersionSnapshot,
     PreviewGraphVersionResponse,
+    SnapshotNodeAuthorship,
 } from '../../features/flows/models/graph-version-preview.model';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -19,6 +20,7 @@ import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { NodeNameValidatorService } from '../services/node-name-validator.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -36,6 +38,15 @@ const EDITOR_SERVICES: Type<unknown>[] = [
     NodeNameValidatorService,
     UniqueNodeNameValidatorService,
 ];
+
+const CREATOR: UserSummary = { id: 7, display_name: 'Ivan Bohun', avatar_url: null };
+const LAST_EDITOR: UserSummary = { id: 8, display_name: 'Olena Pchilka', avatar_url: null };
+const NOTHING_RECORDED: SnapshotNodeAuthorship = {
+    created_by: null,
+    created_at: null,
+    last_edited_by: null,
+    last_edited_at: null,
+};
 
 function version(id: number): GraphVersionDto {
     return { id, graph_id: 1, name: `Version ${id}`, description: '', created_at: '2026-01-01T00:00:00Z' };
@@ -92,6 +103,8 @@ describe('FlowVersionPreviewComponent', () => {
                 { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
                 // A user who may edit flows: any read-only below comes from the preview itself.
                 { provide: PermissionsService, useValue: { can: () => true } },
+                // The live editor's store, which the flow page around the preview provides.
+                NodeAuthorshipStore,
             ],
         });
         // jsdom cannot lay out the Foblex canvas; the handlers under test do not need it.
@@ -115,10 +128,11 @@ describe('FlowVersionPreviewComponent', () => {
     async function respondWith(
         versionId: number,
         snapshot: GraphVersionSnapshot,
-        warnings: RestoreWarning[] = []
+        warnings: RestoreWarning[] = [],
+        nodeAuthorship: Record<string, SnapshotNodeAuthorship> = {}
     ): Promise<void> {
         const response = responses.get(versionId)!;
-        response.next({ snapshot, warnings });
+        response.next({ snapshot, warnings, node_authorship: nodeAuthorship });
         response.complete();
         await fixture.whenStable();
         fixture.detectChanges();
@@ -184,7 +198,7 @@ describe('FlowVersionPreviewComponent', () => {
 
         expect(firstResponse.observed).toBe(false);
         await respond(2, 'Second');
-        firstResponse.next({ snapshot: snapshotFor('First'), warnings: [] });
+        firstResponse.next({ snapshot: snapshotFor('First'), warnings: [], node_authorship: {} });
         fixture.detectChanges();
 
         const names = previewFlowService()
@@ -363,6 +377,101 @@ describe('FlowVersionPreviewComponent', () => {
         expect(element.querySelector('app-flow-graph')).toBeNull();
         expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
         expect(consoleError).toHaveBeenCalled();
+    });
+
+    describe('node authorship', () => {
+        /** What this preview's own store gives the node details of the Start node (snapshot id 1) and the Python node (2). */
+        function previewAuthorshipOfNodes(): SnapshotNodeAuthorship[] {
+            const store = fixture.debugElement.injector.get(NodeAuthorshipStore);
+            return previewFlowService()
+                .nodes()
+                .map((node) => store.authorshipOf(node));
+        }
+
+        beforeEach(() => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+        });
+
+        it('gives each node the authorship the version recorded for it, and dashes to a node it has none for', async () => {
+            const pythonAuthorship: SnapshotNodeAuthorship = {
+                created_by: CREATOR,
+                created_at: '2026-03-12T13:28:23Z',
+                last_edited_by: LAST_EDITOR,
+                last_edited_at: '2026-04-01T09:05:00Z',
+            };
+            await render(1);
+            await respondWith(1, snapshotFor('Python'), [], { '2': pythonAuthorship });
+
+            expect(previewAuthorshipOfNodes()).toEqual([NOTHING_RECORDED, pythonAuthorship]);
+        });
+
+        it('keeps the moment of a user who left the organization, whose user the version holds as null', async () => {
+            const leftAuthorship: SnapshotNodeAuthorship = {
+                created_by: null,
+                created_at: '2026-03-12T13:28:23Z',
+                last_edited_by: null,
+                last_edited_at: '2026-04-01T09:05:00Z',
+            };
+            await render(1);
+            await respondWith(1, snapshotFor('Python'), [], { '2': leftAuthorship });
+
+            expect(previewAuthorshipOfNodes()[1]).toEqual(leftAuthorship);
+        });
+
+        it('gives every node dashes for a version saved before node authorship was recorded', async () => {
+            await render(1);
+            await respondWith(1, snapshotFor('Python'), [], {});
+
+            expect(previewAuthorshipOfNodes()).toEqual([NOTHING_RECORDED, NOTHING_RECORDED]);
+        });
+
+        it('keeps each node its recorded authorship when the canvas is rebuilt with new node ids', async () => {
+            const pythonAuthorship: SnapshotNodeAuthorship = { ...NOTHING_RECORDED, created_by: CREATOR };
+            await render(1);
+            await respondWith(1, snapshotFor('Python'), [], { '2': pythonAuthorship });
+            const pythonNodeBefore = previewFlowService()
+                .nodes()
+                .find((node) => node.type === NodeType.PYTHON)!;
+
+            // A new list of flows the user can open rebuilds the preview canvas.
+            fixture.componentRef.setInput('flowsLight', [{ id: 99 } as GetGraphLightRequest]);
+            fixture.detectChanges();
+
+            const pythonNodeAfter = previewFlowService()
+                .nodes()
+                .find((node) => node.type === NodeType.PYTHON)!;
+            expect(pythonNodeAfter.id).not.toBe(pythonNodeBefore.id);
+            expect(previewAuthorshipOfNodes()).toEqual([NOTHING_RECORDED, pythonAuthorship]);
+        });
+
+        it('never writes the live (flow page) store', async () => {
+            const liveStore = TestBed.inject(NodeAuthorshipStore);
+            const liveStoreSpies = spyOnAllMethods(liveStore);
+            await render(1);
+            await respondWith(1, snapshotFor('Python'), [], { '2': { ...NOTHING_RECORDED, created_by: CREATOR } });
+
+            expect(fixture.debugElement.injector.get(NodeAuthorshipStore)).not.toBe(liveStore);
+            for (const spy of liveStoreSpies) {
+                expect(spy, spy.getMockName()).not.toHaveBeenCalled();
+            }
+        });
+
+        it('drops the authorship of the previous version when another version is previewed', async () => {
+            const firstAuthorship: SnapshotNodeAuthorship = { ...NOTHING_RECORDED, created_by: CREATOR };
+            const secondAuthorship: SnapshotNodeAuthorship = { ...NOTHING_RECORDED, created_by: LAST_EDITOR };
+            await render(1);
+            await respondWith(1, snapshotFor('First'), [], { '2': firstAuthorship });
+            const firstPythonNode = previewFlowService()
+                .nodes()
+                .find((node) => node.type === NodeType.PYTHON)!;
+
+            await render(2);
+            await respondWith(2, snapshotFor('Second'), [], { '2': secondAuthorship });
+
+            const store = fixture.debugElement.injector.get(NodeAuthorshipStore);
+            expect(store.authorshipOf(firstPythonNode)).toEqual(NOTHING_RECORDED);
+            expect(previewAuthorshipOfNodes()).toEqual([NOTHING_RECORDED, secondAuthorship]);
+        });
     });
 
     describe('Esc', () => {
