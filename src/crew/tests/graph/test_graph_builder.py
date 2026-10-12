@@ -25,7 +25,6 @@ from src.shared.models import (
     EdgeData,
     DecisionTableNodeData,
     TaskNodeData,
-    ConditionalEdgeData,
     SubGraphData,
     SubGraphNodeData,
 )
@@ -458,7 +457,7 @@ class FakeStorageAwarePythonCodeExecutorService(FakePythonCodeExecutorService):
 
     `read_from_storage` is exposed to the executed code exactly like the sandbox
     exposes its storage helpers, and refuses to read without the matching
-    credentials — so a conditional edge that never receives them cannot route.
+    credentials — so a node that never receives them cannot read.
     """
 
     def __init__(self, access_key: str, storage_objects: dict[str, str]):
@@ -502,144 +501,6 @@ class FakeStorageAwarePythonCodeExecutorService(FakePythonCodeExecutorService):
             stop_event=stop_event,
             storage_credentials=storage_credentials,
         )
-
-
-def _storage_conditional_edge_session_data(
-    storage_credentials: StorageCredentials | None,
-) -> SessionData:
-    return SessionData(
-        id=321,        
-        org_id=1,
-        initial_state={},
-        storage_credentials=storage_credentials,
-        graph=GraphData(
-            name="storage_conditional_edge_graph",
-            python_node_list=[
-                PythonNodeData(
-                    node_name="start_node",
-                    python_code=PythonCodeData(
-                        venv_name="venv-default",
-                        code="def main(): return 'started'",
-                        entrypoint="main",
-                        libraries=[],
-                        global_kwargs={},
-                    ),
-                    input_map={},
-                    output_variable_path="variables.start_output",
-                ),
-                PythonNodeData(
-                    node_name="end_node",
-                    python_code=PythonCodeData(
-                        venv_name="venv-default",
-                        code="def main(): return 'end'",
-                        entrypoint="main",
-                        libraries=[],
-                        global_kwargs={},
-                    ),
-                    input_map={},
-                    output_variable_path="variables.end_output",
-                ),
-            ],
-            edge_list=[EdgeData(start_key="__start__", end_key="start_node")],
-            conditional_edge_list=[
-                ConditionalEdgeData(
-                    source="start_node",
-                    python_code=PythonCodeData(
-                        venv_name="venv-default",
-                        code="def main(): return read_from_storage('routes/next')",
-                        entrypoint="main",
-                        libraries=[],
-                        global_kwargs={},
-                        use_storage=True,
-                        storage_allowed_paths=["org_1/"],
-                        storage_org_prefix="org_1",
-                        org_id=1,
-                    ),
-                    then=None,
-                    input_map={},
-                )
-            ],
-            entrypoint="start_node",
-            end_node=None,
-        ),
-    )
-
-
-def test_conditional_edge_receives_storage_credentials_and_routes(mock_services):
-    storage_credentials = StorageCredentials(
-        access_key="session-access-key", secret_key="session-secret-key"
-    )
-    executor = FakeStorageAwarePythonCodeExecutorService(
-        access_key="session-access-key",
-        storage_objects={"routes/next": "end_node"},
-    )
-    builder = SessionGraphBuilder(
-        session_id=321,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=executor,
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-    )
-
-    compiled_graph = builder.compile_from_schema(
-        _storage_conditional_edge_session_data(storage_credentials)
-    )
-
-    state = {
-        "state_history": [],
-        "variables": DotDict({}),
-        "system_variables": {},
-    }
-
-    async def run_graph():
-        asyncio.create_task(mock_services["redis_service"].connect())
-        last_chunk = None
-        async for _stream_mode, chunk in compiled_graph.astream(
-            state, stream_mode=["values"]
-        ):
-            last_chunk = chunk
-        return last_chunk
-
-    last_chunk = asyncio.run(run_graph())
-
-    assert last_chunk["variables"]["end_output"] == "end"
-    assert storage_credentials in executor.received_storage_credentials
-
-
-def test_conditional_edge_without_session_credentials_gets_none(mock_services):
-    executor = FakeStorageAwarePythonCodeExecutorService(
-        access_key="session-access-key",
-        storage_objects={"routes/next": "end_node"},
-    )
-    builder = SessionGraphBuilder(
-        session_id=321,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=executor,
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-    )
-
-    compiled_graph = builder.compile_from_schema(
-        _storage_conditional_edge_session_data(None)
-    )
-
-    state = {
-        "state_history": [],
-        "variables": DotDict({}),
-        "system_variables": {},
-    }
-
-    async def run_graph():
-        asyncio.create_task(mock_services["redis_service"].connect())
-        async for _stream_mode, _chunk in compiled_graph.astream(
-            state, stream_mode=["values"]
-        ):
-            pass
-
-    with pytest.raises(AssertionError, match="output should be a string for decision edge"):
-        asyncio.run(run_graph())
-
-    assert executor.received_storage_credentials == [None, None]
 
 
 def _storage_python_node_data(

@@ -80,9 +80,6 @@ class _StorageDemandWalker:
         for node in graph.task_node_list:
             self._visit_tools(node.tools)
 
-        for edge in graph.conditional_edge_list:
-            self._check_storage_scoped(edge.python_code)
-
     def _visit_tools(self, tools: list[BaseToolData]) -> None:
         """Traverse tools list to find PythonCodeData nodes."""
         for tool in tools:

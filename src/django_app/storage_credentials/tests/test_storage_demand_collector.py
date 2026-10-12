@@ -13,7 +13,6 @@ from src.shared.models.graph_nodes import (
     AgentNodeData,
     AudioTranscriptionNodeData,
     ClassificationDecisionTableNodeData,
-    ConditionalEdgeData,
     EdgeData,
     EndNodeData,
     FileExtractorNodeData,
@@ -251,29 +250,6 @@ def test_task_node_tool_python_code_with_storage_is_found():
     assert org_prefix == "org_7"
 
 
-def test_conditional_edge_python_code_with_storage_is_found():
-    """ConditionalEdgeData.python_code is checked."""
-    graph = _make_empty_graph()
-    graph.conditional_edge_list = [
-        ConditionalEdgeData(
-            source="node1",
-            python_code=_make_python_code_data(
-                use_storage=True,
-                storage_allowed_paths=["edge/code"],
-                storage_org_prefix="org_8",
-            ),
-            input_map={},
-        )
-    ]
-    session = _make_session_data(graph)
-
-    needs_storage, union_paths, org_prefix = collect_storage_demand(session)
-
-    assert needs_storage is True
-    assert "edge/code" in union_paths
-    assert org_prefix == "org_8"
-
-
 def test_webhook_trigger_node_with_storage_is_found():
     """WebhookTriggerNodeData.python_code is checked."""
     graph = _make_empty_graph()
@@ -434,15 +410,6 @@ def test_every_storage_capable_node_list_is_collected():
             ],
         )
     ]
-    graph.conditional_edge_list = [
-        ConditionalEdgeData(
-            source="node1",
-            python_code=_make_python_code_data(
-                use_storage=True, storage_allowed_paths=["p/conditional_edge"]
-            ),
-            input_map={},
-        )
-    ]
     session = _make_session_data(graph)
 
     needs_storage, union_paths, _ = collect_storage_demand(session)
@@ -457,7 +424,6 @@ def test_every_storage_capable_node_list_is_collected():
         "p/classify_post",
         "p/agent_tool",
         "p/task_tool",
-        "p/conditional_edge",
     }
 
 
@@ -476,7 +442,6 @@ def test_graph_data_has_no_untriaged_node_lists():
         "classification_decision_table_node_list",
         "agent_node_list",
         "task_node_list",
-        "conditional_edge_list",
     }
     no_storage_fields = {
         "knowledge_node_list",
