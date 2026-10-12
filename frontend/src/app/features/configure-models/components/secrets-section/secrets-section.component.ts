@@ -36,7 +36,7 @@ import { forkJoin } from 'rxjs';
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
 import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
 
@@ -82,7 +82,7 @@ export class SecretsSectionComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly permissionsService = inject(PermissionsService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly usedByFilterSelect = viewChild.required<SelectComponent>('usedByFilterSelect');
 
     protected readonly ResourceCode = ResourceCode;

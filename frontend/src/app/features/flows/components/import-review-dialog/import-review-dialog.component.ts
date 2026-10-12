@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService } from '@shared/components';
+import { FLOW_NODE_TYPE_LABELS } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
@@ -22,7 +23,6 @@ import { ToastService } from '../../../../services/notifications';
 import { EntityGroupComponent } from './components/entity-group/entity-group.component';
 import { ImportSummaryTabsComponent } from './components/import-summary-tabs/import-summary-tabs.component';
 import { ReviewNavigatorComponent } from './components/review-navigator/review-navigator.component';
-import { FLOW_NODE_TYPE_LABELS } from './constants/import-review.constants';
 import { ReviewSessionStore } from './review-session.store';
 import { getEntityTypeResult, getTotalItemsCount, getVisibleEntityTypes } from './utils/entity-result.util';
 

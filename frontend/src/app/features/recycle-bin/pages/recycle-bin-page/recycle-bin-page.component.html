@@ -19,11 +19,7 @@
                         [disabled]="emptying()"
                         (click)="onEmptyRecycleBin()"
                     >
-                        @if (emptying() && emptyingLeft(); as left) {
-                            Emptying… {{ left }} left
-                        } @else {
-                            Empty recycle bin
-                        }
+                        {{ emptyButtonLabel() }}
                     </app-button>
                 </div>
             }

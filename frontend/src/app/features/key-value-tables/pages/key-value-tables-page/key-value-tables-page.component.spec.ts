@@ -10,7 +10,7 @@ import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import { KeyValueTableDialogComponent } from '../../components/key-value-table-dialog/key-value-table-dialog.component';
 import { KeyValueTableListComponent } from '../../components/key-value-table-list/key-value-table-list.component';
@@ -60,7 +60,7 @@ describe('KeyValueTablesPageComponent key search', () => {
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => false } },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 {
                     provide: KeyValueTablesApiService,
                     useValue: {
@@ -102,7 +102,7 @@ describe('KeyValueTablesPageComponent create table', () => {
                     provide: PermissionsService,
                     useValue: { can: (_: string, action: ActionCode) => canCreate && action === ActionCode.Create },
                 },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: Dialog, useValue: { open: dialogOpen } },
                 {
                     provide: KeyValueTablesApiService,
@@ -165,7 +165,7 @@ describe('KeyValueTablesPageComponent delete table', () => {
             providers: [
                 provideRouter([]),
                 { provide: PermissionsService, useValue: { can: () => true } },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: KeyValueTablesApiService, useValue: api },
                 { provide: ConfirmationDialogService, useValue: confirmation },
             ],

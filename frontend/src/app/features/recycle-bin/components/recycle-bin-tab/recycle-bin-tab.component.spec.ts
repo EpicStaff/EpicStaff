@@ -15,7 +15,7 @@ import { Observable, of } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { GetRecycleBinDetailResponse, RecycleBinTabKey } from '../../models/recycle-bin.model';
 import { RecycleBinTableComponent } from '../recycle-bin-table/recycle-bin-table.component';
 import { RecycleBinTabComponent } from './recycle-bin-tab.component';
@@ -89,7 +89,7 @@ describe('RecycleBinTabComponent', () => {
                 },
                 { provide: ToastService, useValue: toast },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
             ],
         });
         httpTesting = TestBed.inject(HttpTestingController);
@@ -383,7 +383,7 @@ describe('RecycleBinTabComponent', () => {
             expect(element.querySelector('.bin-toolbar__actions')).toBeNull();
         });
 
-        it('asks for "delete-<N>-items" before deleting the selected rows, and lists what failed', () => {
+        it('confirms deleting the selected rows without a typed phrase, and lists what failed', () => {
             const element = openFlowsWith([
                 entry(5, 'Report', { deleted_at: '2026-10-03T10:00:00Z' }),
                 entry(6, 'Digest', { deleted_at: '2026-10-02T10:00:00Z' }),

@@ -9,7 +9,7 @@ import { Observable, of, throwError } from 'rxjs';
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { GetGraphLightRequest } from '../../../../models/graph.model';
 import { FlowsApiService } from '../../../../services/flows-api.service';
@@ -48,7 +48,7 @@ describe('MyFlowsComponent copy action', () => {
                 { provide: RunGraphService, useValue: {} },
                 { provide: ToastService, useValue: { success: toastSuccess, error: vi.fn() } },
                 { provide: ConfirmationDialogService, useValue: {} },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays: signal(7) } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: ImportExportService, useValue: {} },
             ],
         });

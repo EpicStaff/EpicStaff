@@ -199,7 +199,7 @@ class TestTargetLookupIsOrgScoped:
     def test_soft_deleted_node_is_not_found(self, acme_client, acme_graph, redis_client_mock):
         node = _python_node(acme_graph, use_storage=True)
         PythonNode.all_objects.filter(pk=node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
 
         response = _run_target(acme_client, "python_node", node.id)

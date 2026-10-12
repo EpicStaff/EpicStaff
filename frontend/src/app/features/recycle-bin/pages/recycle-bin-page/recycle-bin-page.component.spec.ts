@@ -4,12 +4,12 @@ import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { ConfirmationDialogData, ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { Observable, of } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
-import { RecycleBinPurgeResult, RecycleBinTabKey } from '../../models/recycle-bin.model';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { RecycleBinEmptyResult, RecycleBinTabKey } from '../../models/recycle-bin.model';
 import { RECYCLE_BIN_ROUTES } from '../../recycle-bin.routes';
 import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
 
@@ -43,8 +43,14 @@ describe('RecycleBinPageComponent', () => {
     let deletable: ResourceCode[];
     let retentionDays: WritableSignal<number | null>;
     let confirm: ReturnType<typeof vi.fn<(options: ConfirmationDialogData) => Observable<ConfirmationResult>>>;
-    let emptyAll: ReturnType<typeof vi.fn<() => Observable<RecycleBinPurgeResult>>>;
-    let toast: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
+    let emptyAll: ReturnType<
+        typeof vi.fn<(onRemaining?: (remaining: number) => void) => Observable<RecycleBinEmptyResult>>
+    >;
+    let toast: {
+        success: ReturnType<typeof vi.fn>;
+        error: ReturnType<typeof vi.fn>;
+        warning: ReturnType<typeof vi.fn>;
+    };
 
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
@@ -54,8 +60,8 @@ describe('RecycleBinPageComponent', () => {
         deletable = [];
         retentionDays = signal<number | null>(7);
         confirm = vi.fn(() => of<ConfirmationResult>(true));
-        emptyAll = vi.fn(() => of<RecycleBinPurgeResult>({ purgedCount: 3, failed: [] }));
-        toast = { success: vi.fn(), error: vi.fn() };
+        emptyAll = vi.fn(() => of<RecycleBinEmptyResult>({ purgedCount: 3, failed: [], leftCount: 0 }));
+        toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([
@@ -71,7 +77,7 @@ describe('RecycleBinPageComponent', () => {
                         resolveDefaultRoute: () => '/profile',
                     },
                 },
-                { provide: RecycleBinSettingsStorageService, useValue: { retentionDays } },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: RecycleBinBulkService, useValue: { emptyAll } },
                 { provide: ToastService, useValue: toast },
@@ -139,7 +145,7 @@ describe('RecycleBinPageComponent', () => {
         expect(emptyBinButton(harness)).toBeNull();
     });
 
-    it('empties only the tabs the user may delete on, Tools as both tool bins, after the typed phrase', async () => {
+    it('asks for the typed phrase, then empties the bin and says how many items were deleted', async () => {
         readable = [ResourceCode.Flows, ResourceCode.Files, ResourceCode.Tools];
         deletable = [ResourceCode.Flows, ResourceCode.Tools, ResourceCode.Agents];
         const harness = await open('/recycle-bin/flows');
@@ -158,7 +164,11 @@ describe('RecycleBinPageComponent', () => {
         readable = [ResourceCode.Flows];
         deletable = [ResourceCode.Flows];
         emptyAll.mockReturnValue(
-            of<RecycleBinPurgeResult>({ purgedCount: 0, failed: [{ name: 'Report', message: 'It is locked.' }] })
+            of<RecycleBinEmptyResult>({
+                purgedCount: 0,
+                failed: [{ name: 'Report', message: 'It is locked.' }],
+                leftCount: 0,
+            })
         );
         const harness = await open('/recycle-bin/flows');
 
@@ -166,6 +176,45 @@ describe('RecycleBinPageComponent', () => {
 
         expect(toast.success).not.toHaveBeenCalled();
         expect(toast.error).toHaveBeenCalled();
+    });
+
+    it('says how many items are still in the bin when emptying stopped short, never "already empty"', async () => {
+        readable = [ResourceCode.Flows];
+        deletable = [ResourceCode.Flows];
+        emptyAll.mockReturnValue(of<RecycleBinEmptyResult>({ purgedCount: 0, failed: [], leftCount: 7 }));
+        const harness = await open('/recycle-bin/flows');
+
+        emptyBinButton(harness)?.click();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(toast.warning).toHaveBeenCalledWith('7 items are still in the recycle bin. Try emptying it again.');
+    });
+
+    it('shows "Emptying…" from the click on, with the count left once the first answer comes', async () => {
+        readable = [ResourceCode.Flows];
+        deletable = [ResourceCode.Flows];
+        const answers = new Subject<RecycleBinEmptyResult>();
+        let reportLeft: (remaining: number) => void = () => undefined;
+        emptyAll.mockImplementation((onRemaining) => {
+            reportLeft = onRemaining ?? reportLeft;
+            return answers;
+        });
+        const harness = await open('/recycle-bin/flows');
+        const label = (): string | undefined => emptyBinButton(harness)?.textContent?.trim();
+        expect(label()).toBe('Empty recycle bin');
+
+        emptyBinButton(harness)?.click();
+        harness.detectChanges();
+        expect(label()).toBe('Emptying…');
+
+        reportLeft(1200);
+        harness.detectChanges();
+        expect(label()).toBe('Emptying… 1200 left');
+
+        answers.next({ purgedCount: 1300, failed: [], leftCount: 0 });
+        answers.complete();
+        harness.detectChanges();
+        expect(label()).toBe('Empty recycle bin');
     });
 
     it('sends nothing when emptying the bin is cancelled', async () => {

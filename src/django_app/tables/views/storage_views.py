@@ -97,6 +97,12 @@ def _with_descendants(entries: list[dict]) -> Iterator[dict]:
         yield from _with_descendants(entry.get("children") or [])
 
 
+class StorageRecycleBinPagination(LimitOffsetPagination):
+    """Caps `?limit=`: every folder on a page costs two more queries for its contents."""
+
+    max_limit = 100
+
+
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]
@@ -504,7 +510,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="recycle-bin")
     def recycle_bin(self, request):
         # Paged: loose deleted files can be thousands.
-        paginator = LimitOffsetPagination()
+        paginator = StorageRecycleBinPagination()
         rows = StorageRecycleBinService.entry_rows(
             self.get_active_org_id(),
             search=request.query_params.get("search", "").strip(),

@@ -7,7 +7,7 @@ import { EMPTY, forkJoin, Subject, Subscription } from 'rxjs';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../services/recycle-bin';
 import {
     AddToFlowDialogComponent,
     AddToFlowDialogData,
@@ -46,7 +46,7 @@ export class StorageTreeFacade {
     private storageUploadService = inject(StorageUploadService);
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);

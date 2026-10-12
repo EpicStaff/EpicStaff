@@ -95,6 +95,7 @@ export * from './unsaved-changes-dialog';
 export * from './user-avatar/user-avatar.component';
 export * from './view-button/view-button.component';
 export * from './voice-selector/voice-selector.component';
+export * from './warning-note/warning-note.component';
 export * from './webhook-trigger-dialog/webhook-trigger-dialog.component';
 export * from './webhook-trigger-field/webhook-trigger-field.component';
 export * from './webhook-trigger-select/webhook-trigger-select.component';

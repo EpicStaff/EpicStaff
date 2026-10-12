@@ -124,8 +124,7 @@ def test_patch_version_updates_name_and_description(auth_client, make_graph_vers
 
 
 @pytest.mark.django_db
-def test_delete_version_soft_deletes(auth_client, make_graph_version, settings):
-    settings.SOFT_DELETE = True
+def test_delete_version_moves_it_to_the_recycle_bin(auth_client, make_graph_version):
     version = make_graph_version(name="to-delete")
     version_id = version["id"]
 
@@ -145,8 +144,7 @@ def test_delete_version_soft_deletes(auth_client, make_graph_version, settings):
 
 
 @pytest.mark.django_db
-def test_all_endpoint_includes_soft_deleted(auth_client, make_graph_version, settings):
-    settings.SOFT_DELETE = True
+def test_all_endpoint_includes_binned_versions(auth_client, make_graph_version):
     version = make_graph_version(name="will-be-deleted")
     version_id = version["id"]
 

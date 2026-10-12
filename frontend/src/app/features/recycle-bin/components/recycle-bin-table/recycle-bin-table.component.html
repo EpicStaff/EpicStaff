@@ -216,86 +216,92 @@
                                     class="bin-expansion grid-collapsible"
                                     [class.expanded]="isExpanded(item)"
                                 >
-                                    <!-- The collapsing grid item: no padding or margin, so it can shrink to 0. -->
+                                    <!-- The collapsing grid item: no padding or margin, so it can shrink to 0.
+                                         Its content renders from the row's first opening (renderedKeys), so a
+                                         closed row costs nothing; the wrappers stay, so that opening still animates. -->
                                     <div class="bin-expansion__clip">
-                                        @if (item.details.length) {
-                                            <dl class="bin-details">
-                                                @for (detail of item.details; track detail.label) {
-                                                    <div
-                                                        class="bin-details__row"
-                                                        [class.bin-details__row--notice]="detail.format === 'notice'"
-                                                    >
-                                                        <dt class="bin-details__label">{{ detail.label }}</dt>
-                                                        <dd class="bin-details__value">
-                                                            @switch (detail.format) {
-                                                                @case ('date') {
-                                                                    {{ detail.value | date: dateFormat }}
-                                                                }
-                                                                @case ('size') {
-                                                                    {{ detail.value | fileSize: 'auto' }}
-                                                                }
-                                                                @case ('empty') {
-                                                                    <span class="bin-details__empty">—</span>
-                                                                }
-                                                                @case ('notice') {
-                                                                    {{ detail.value }}
-                                                                }
-                                                                @default {
-                                                                    <!-- At most 3 lines; the full text is in the tooltip when cut.
-                                                                         Parts the backend joins with " · " (index states) read as a / list. -->
-                                                                    <span
-                                                                        class="bin-details__text"
-                                                                        appTooltipOnOverflow
-                                                                        [matTooltip]="detailText(detail)"
-                                                                        matTooltipPosition="above"
-                                                                        matTooltipShowDelay="500"
-                                                                        matTooltipClass="bin-name-tooltip"
-                                                                    >
-                                                                        @for (
-                                                                            part of detailParts(detail);
-                                                                            track $index;
-                                                                            let last = $last
-                                                                        ) {
-                                                                            {{ part }}
-                                                                            @if (!last) {
-                                                                                <span
-                                                                                    class="bin-details__separator"
-                                                                                    aria-hidden="true"
-                                                                                    >/</span
-                                                                                >
+                                        @if (isRendered(item)) {
+                                            @if (item.details.length) {
+                                                <dl class="bin-details">
+                                                    @for (detail of item.details; track detail.label) {
+                                                        <div
+                                                            class="bin-details__row"
+                                                            [class.bin-details__row--notice]="
+                                                                detail.format === 'notice'
+                                                            "
+                                                        >
+                                                            <dt class="bin-details__label">{{ detail.label }}</dt>
+                                                            <dd class="bin-details__value">
+                                                                @switch (detail.format) {
+                                                                    @case ('date') {
+                                                                        {{ detail.value | date: dateFormat }}
+                                                                    }
+                                                                    @case ('size') {
+                                                                        {{ detail.value | fileSize: 'auto' }}
+                                                                    }
+                                                                    @case ('empty') {
+                                                                        <span class="bin-details__empty">—</span>
+                                                                    }
+                                                                    @case ('notice') {
+                                                                        {{ detail.value }}
+                                                                    }
+                                                                    @default {
+                                                                        <!-- At most 3 lines; the full text is in the tooltip when cut.
+                                                                             Parts the backend joins with " · " (index states) read as a / list. -->
+                                                                        <span
+                                                                            class="bin-details__text"
+                                                                            appTooltipOnOverflow
+                                                                            [matTooltip]="detailText(detail)"
+                                                                            matTooltipPosition="above"
+                                                                            matTooltipShowDelay="500"
+                                                                            matTooltipClass="bin-name-tooltip"
+                                                                        >
+                                                                            @for (
+                                                                                part of detailParts(detail);
+                                                                                track $index;
+                                                                                let last = $last
+                                                                            ) {
+                                                                                {{ part }}
+                                                                                @if (!last) {
+                                                                                    <span
+                                                                                        class="bin-details__separator"
+                                                                                        aria-hidden="true"
+                                                                                        >/</span
+                                                                                    >
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    </span>
+                                                                        </span>
+                                                                    }
                                                                 }
-                                                            }
-                                                        </dd>
-                                                    </div>
-                                                }
-                                            </dl>
-                                        }
-                                        @if (item.contents.length > 0) {
-                                            <app-flow-node-list
-                                                [nodes]="item.contents"
-                                                [expanded]="isExpanded(item)"
-                                                [nodeTypeLabels]="contentLabels"
-                                                [kindVisuals]="contentVisuals"
-                                                [moreCount]="moreCount(item)"
-                                                [showAll]="canShowAll(item)"
-                                                [presetSearch]="contentSearch(item)"
-                                                [showAllLimit]="showAllLimit"
-                                                [showAllPending]="isLoadingContents(item)"
-                                                (showAllRequested)="showAllRequested.emit(item)"
-                                                [filterPlaceholder]="filterPlaceholder(item)"
-                                                [filterGroup]="contentFilterGroup(item)"
-                                                [flush]="true"
-                                                [tree]="item.source === 'storage'"
-                                                [filterable]="item.source !== 'storage'"
-                                                [hideSingleOptionFilter]="true"
-                                                [hideSingleItemSearch]="true"
-                                                [nodeTypeFilterTransparent]="true"
-                                                searchPlaceholder="Search..."
-                                                emptyText="Nothing matches."
-                                            />
+                                                            </dd>
+                                                        </div>
+                                                    }
+                                                </dl>
+                                            }
+                                            @if (item.contents.length > 0) {
+                                                <app-flow-node-list
+                                                    [nodes]="item.contents"
+                                                    [expanded]="isExpanded(item)"
+                                                    [nodeTypeLabels]="contentLabels"
+                                                    [kindVisuals]="contentVisuals"
+                                                    [moreCount]="moreCount(item)"
+                                                    [showAll]="canShowAll(item)"
+                                                    [presetSearch]="contentSearch(item)"
+                                                    [showAllLimit]="showAllLimit"
+                                                    [showAllPending]="isLoadingContents(item)"
+                                                    (showAllRequested)="showAllRequested.emit(item)"
+                                                    [filterPlaceholder]="filterPlaceholder(item)"
+                                                    [filterGroup]="contentFilterGroup(item)"
+                                                    [flush]="true"
+                                                    [tree]="item.source === 'storage'"
+                                                    [filterable]="item.source !== 'storage'"
+                                                    [hideSingleOptionFilter]="true"
+                                                    [hideSingleItemSearch]="true"
+                                                    [nodeTypeFilterTransparent]="true"
+                                                    searchPlaceholder="Search..."
+                                                    emptyText="Nothing matches."
+                                                />
+                                            }
                                         }
                                     </div>
                                 </div>

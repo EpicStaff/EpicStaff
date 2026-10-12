@@ -1,5 +1,5 @@
 import { DatePipe, formatDate, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, LOCALE_ID, model, output, viewChild } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, LOCALE_ID, model, output, viewChild } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
     ActivateButtonComponent,
@@ -124,10 +124,6 @@ export class RecycleBinTableComponent {
 
     private readonly headerCheckbox = viewChild<CheckboxComponent>('headerCheckbox');
 
-    private readonly locale = inject(LOCALE_ID);
-
-    protected readonly dateFormat = RECYCLE_BIN_DATE_FORMAT;
-
     protected readonly showActions = computed(() => this.canRestore() || this.canPurge());
     protected readonly gridTemplateColumns = computed(() =>
         [
@@ -158,18 +154,35 @@ export class RecycleBinTableComponent {
         const options = this.kindOptions();
         return options.length === 0 ? [] : [{ name: 'All', value: null }, ...options];
     });
-    protected readonly countFilterItems: SelectItem<string | null>[] = [
-        { name: 'All', value: null },
-        ...COUNT_FILTER_OPTIONS,
-    ];
     protected readonly showPaginator = computed(() => {
         const page = this.page();
         return page !== null && page.totalCount > page.size;
     });
+    /**
+     * Rows opened at least once. A row's details and contents (up to 5,000 items, with their own search
+     * and filter) render only from its first opening, and stay rendered after it closes, so the close
+     * animation has something to shrink and reopening is instant. Only ever grows.
+     */
+    protected readonly renderedKeys = linkedSignal<ReadonlySet<string>, ReadonlySet<string>>({
+        source: this.expandedKeys,
+        computation: (expanded, previous) => {
+            if (!previous) return new Set(expanded);
+            const rendered = previous.value;
+            if ([...expanded].every((key) => rendered.has(key))) return rendered;
+            return new Set([...rendered, ...expanded]);
+        },
+    });
 
+    protected readonly dateFormat = RECYCLE_BIN_DATE_FORMAT;
+    protected readonly countFilterItems: SelectItem<string | null>[] = [
+        { name: 'All', value: null },
+        ...COUNT_FILTER_OPTIONS,
+    ];
     protected readonly contentLabels = RECYCLE_BIN_CONTENT_LABELS;
     protected readonly contentVisuals = RECYCLE_BIN_CONTENT_VISUALS;
     protected readonly showAllLimit = RECYCLE_BIN_SHOW_ALL_LIMIT;
+
+    private readonly locale = inject(LOCALE_ID);
 
     protected isExpandable(item: RecycleBinItem): boolean {
         return isExpandableItem(item);
@@ -179,15 +192,23 @@ export class RecycleBinTableComponent {
         return this.expandedKeys().has(item.key);
     }
 
-    /** Flow contents are nodes, as the import modal says; the other sources hold mixed kinds. */
-    protected filterPlaceholder(item: RecycleBinItem): string {
-        if (item.source === 'flow') return 'Select node type';
-        return this.contentFilterGroup(item) ? 'Select format' : 'Select kind';
+    protected isRendered(item: RecycleBinItem): boolean {
+        return this.renderedKeys().has(item.key);
     }
 
     /**
-     * Folders and collections are filtered by file format (PDF, MD…; plus Folder in a folder)
-     * rather than by kind, where every item would be File / Document.
+     * Flow contents are nodes, as the import modal says; a collection's documents are filtered by format;
+     * the other sources hold mixed kinds. A folder (storage) has no filter: it shows as a tree.
+     */
+    protected filterPlaceholder(item: RecycleBinItem): string {
+        if (item.source === 'flow') return 'Select node type';
+        return item.source === 'collection' ? 'Select format' : 'Select kind';
+    }
+
+    /**
+     * Folders and collections are grouped by file format (PDF, MD…; plus Folder in a folder) rather than
+     * by kind, where every item would be File / Document. The group is each item's label, and a
+     * collection's filter options (a folder has no filter).
      */
     protected contentFilterGroup(item: RecycleBinItem): ((content: NodeListItem) => string) | null {
         if (item.source === 'storage') return storageFormatGroup;

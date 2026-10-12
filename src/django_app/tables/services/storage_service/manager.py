@@ -10,6 +10,7 @@ from django.db.models import Case, F, IntegerField, Q, QuerySet, Sum, Value, Whe
 from django.db.models.functions import Lower
 from django.utils.dateparse import parse_datetime
 from rbac.authorship import org_member_ids, represent_authorship_time
+from rbac.models import Organization
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend, SourceCleanupError
 from tables.services.storage_service.dataclasses import (
@@ -236,6 +237,10 @@ class StorageManager:
         """
         live_key = self._build_storage_key(org_id, path)  # validates before any DB work
         with transaction.atomic():
+            # The org row lock restores and uploads take, first as they do: a delete
+            # runs alone among them, so a restore can't move a folder back into a
+            # subtree this delete is binning, nor an upload land in it meanwhile.
+            Organization.objects.select_for_update().get(pk=org_id)
             subtree = StorageFileSync.on_soft_delete(org_id, path)
             if subtree is None:
                 return None

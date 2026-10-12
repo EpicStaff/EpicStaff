@@ -64,6 +64,12 @@ describe('RecycleBinTableComponent', () => {
         return fixture.nativeElement as HTMLElement;
     }
 
+    /** Renders with every row open, as a row's contents render only once it has been opened. */
+    function renderOpen(inputs: Record<string, unknown>): HTMLElement {
+        const items = (inputs['items'] as RecycleBinItem[] | undefined) ?? [FLOW, AGENT];
+        return render({ expandedKeys: new Set(items.map((item) => item.key)), ...inputs });
+    }
+
     function headerCells(element: HTMLElement): string[] {
         return Array.from(
             element.querySelectorAll('.table-header .col-label'),
@@ -104,18 +110,17 @@ describe('RecycleBinTableComponent', () => {
         fixture.detectChanges();
 
         expect(restoreSpy).toHaveBeenCalledWith(FLOW);
-        const nodeList = fixture.debugElement.query(By.directive(FlowNodeListComponent));
-        expect(nodeList.componentInstance.expanded()).toBe(false);
+        expect(element.querySelector('.bin-expansion')?.classList).not.toContain('expanded');
     });
 
     it('expands and collapses a flow row through its name button, flipping aria-expanded', () => {
         const element = render({});
         const toggle = bodyRows(element)[0].querySelector<HTMLButtonElement>('button.bin-name')!;
-        const nodeList = fixture.debugElement.query(By.directive(FlowNodeListComponent));
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
         toggle.click();
         fixture.detectChanges();
+        const nodeList = fixture.debugElement.query(By.directive(FlowNodeListComponent));
         expect(nodeList.componentInstance.expanded()).toBe(true);
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
 
@@ -128,12 +133,62 @@ describe('RecycleBinTableComponent', () => {
     // jsdom can't measure layout. This guards the structure the 0-height collapse relies on: the
     // collapsing grid child must be the padding-free __clip, with the padded __inner inside it.
     it('renders a collapsed node list whose collapsing child carries no padding', () => {
-        const element = render({});
+        const element = renderOpen({});
+        fixture.componentRef.setInput('expandedKeys', new Set());
+        fixture.detectChanges();
         const list = bodyRows(element)[0].querySelector<HTMLElement>('.flow-node-list')!;
         expect(list.classList).toContain('grid-collapsible');
         expect(list.classList).not.toContain('expanded');
         expect(list.firstElementChild?.classList).toContain('flow-node-list__clip');
         expect(list.firstElementChild?.firstElementChild?.classList).toContain('flow-node-list__inner');
+    });
+
+    it('renders nothing inside a closed row until it is first opened, and keeps it after closing', () => {
+        const element = render({});
+        const expansion = bodyRows(element)[0].querySelector<HTMLElement>('.bin-expansion')!;
+        const toggle = bodyRows(element)[0].querySelector<HTMLButtonElement>('button.bin-name')!;
+        // The animated wrappers are there from the start, so the first opening animates too.
+        expect(expansion.querySelector('.bin-expansion__clip')?.children.length).toBe(0);
+        expect(element.querySelector('app-flow-node-list')).toBeNull();
+
+        toggle.click();
+        fixture.detectChanges();
+        expect(expansion.classList).toContain('expanded');
+        expect(expansion.querySelector('app-flow-node-list')).not.toBeNull();
+
+        // Kept while it closes, so the close animation has something to shrink.
+        toggle.click();
+        fixture.detectChanges();
+        expect(expansion.classList).not.toContain('expanded');
+        expect(expansion.querySelector('app-flow-node-list')).not.toBeNull();
+    });
+
+    it('renders every row opened all at once ("Expand all"), and keeps them after "Collapse all"', () => {
+        const agent = binItem({ key: 'agent-3', contents: [{ name: 'Chat', nodeType: 'surface' }], contentsTotal: 1 });
+        const element = render({ items: [FLOW, agent] });
+        expect(element.querySelectorAll('app-flow-node-list').length).toBe(0);
+
+        fixture.componentRef.setInput('expandedKeys', new Set([FLOW.key, agent.key]));
+        fixture.detectChanges();
+        expect(element.querySelectorAll('.bin-expansion.expanded app-flow-node-list').length).toBe(2);
+
+        fixture.componentRef.setInput('expandedKeys', new Set());
+        fixture.detectChanges();
+        expect(element.querySelectorAll('.bin-expansion.expanded').length).toBe(0);
+        expect(element.querySelectorAll('app-flow-node-list').length).toBe(2);
+    });
+
+    it('keeps an opened row rendered when a reload or search hides it for a while', () => {
+        const element = render({ expandedKeys: new Set([FLOW.key]) });
+        fixture.componentRef.setInput('expandedKeys', new Set());
+        fixture.componentRef.setInput('items', [AGENT]);
+        fixture.detectChanges();
+        expect(element.querySelector('app-flow-node-list')).toBeNull();
+
+        fixture.componentRef.setInput('items', [{ ...FLOW }, AGENT]);
+        fixture.detectChanges();
+        expect(element.querySelector('app-flow-node-list')).not.toBeNull();
+        expect(element.querySelector('.bin-expansion')?.classList).not.toContain('expanded');
     });
 
     it('makes the expand control a native, focusable button, so the keyboard can use it', () => {
@@ -247,7 +302,7 @@ describe('RecycleBinTableComponent', () => {
             contents: [{ name: 'a.txt', nodeType: 'file' }],
             contentsTotal: 2301,
         });
-        const element = render({ items: [folder] });
+        const element = renderOpen({ items: [folder] });
         const requested = vi.fn();
         fixture.componentInstance.showAllRequested.subscribe(requested);
 
@@ -258,7 +313,7 @@ describe('RecycleBinTableComponent', () => {
     });
 
     it('has no "more" line when every content is listed', () => {
-        const element = render({});
+        const element = renderOpen({});
         expect(element.querySelector('.flow-node-list__more')).toBeNull();
     });
 
@@ -321,7 +376,7 @@ describe('RecycleBinTableComponent', () => {
             ],
             contentsTotal: 2,
         });
-        const element = render({ items: [one, two] });
+        const element = renderOpen({ items: [one, two] });
         const lists = element.querySelectorAll('app-flow-node-list');
 
         expect(lists[0].querySelector('app-search')).toBeNull();
@@ -388,7 +443,7 @@ describe('RecycleBinTableComponent', () => {
                 { label: 'Size', format: 'size', value: 1536 },
             ],
         });
-        const element = render({ items: [file] });
+        const element = renderOpen({ items: [file] });
 
         const values = Array.from(element.querySelectorAll('.bin-details__value'), (cell) => cell.textContent?.trim());
         expect(values).toEqual([new DatePipe('en-US').transform(created, RECYCLE_BIN_DATE_FORMAT), '2 KB']);
@@ -401,7 +456,7 @@ describe('RecycleBinTableComponent', () => {
             contents: [{ name: 'Support chat', nodeType: 'surface' }],
             contentsTotal: 1,
         });
-        const element = render({ items: [agent] });
+        const element = renderOpen({ items: [agent] });
 
         const clip = element.querySelector('.bin-expansion > .bin-expansion__clip');
         const blocks = Array.from(clip?.children ?? [], (child) => child.tagName.toLowerCase());
@@ -414,7 +469,7 @@ describe('RecycleBinTableComponent', () => {
             contents: [{ name: 'Support chat', nodeType: 'surface' }],
             contentsTotal: 1,
         });
-        render({ items: [FLOW, agent] });
+        renderOpen({ items: [FLOW, agent] });
 
         const lists = fixture.debugElement.queryAll(By.directive(FlowNodeListComponent));
         expect(lists.map((list) => list.componentInstance.filterPlaceholder())).toEqual([
@@ -429,7 +484,7 @@ describe('RecycleBinTableComponent', () => {
             source: 'python_tool',
             details: [{ label: 'Description', format: 'empty', value: null }],
         });
-        const element = render({ items: [tool] });
+        const element = renderOpen({ items: [tool] });
         expect(element.querySelector('.bin-details__value .bin-details__empty')?.textContent?.trim()).toBe('—');
     });
 
@@ -444,7 +499,7 @@ describe('RecycleBinTableComponent', () => {
         expect(element.querySelector('.bin-name-text')?.textContent?.trim()).toBe('report.pdf');
     });
 
-    it('offers the file formats of an expanded folder in its filter', () => {
+    it('labels an expanded folder\u2019s contents by file format, without a filter', () => {
         const folder = binItem({
             key: 'storage-6',
             source: 'storage',
@@ -458,18 +513,14 @@ describe('RecycleBinTableComponent', () => {
             ],
             contentsTotal: 4,
         });
-        render({ items: [folder] });
+        const element = renderOpen({ items: [folder] });
 
-        const list = fixture.debugElement.query(By.directive(FlowNodeListComponent));
-        const options = list.componentInstance.nodeTypeFilterItems().map((option: { name: string }) => option.name);
-        expect(options).toEqual(['All', 'PDF', 'Folder', 'MD']);
-        expect(list.componentInstance.filterPlaceholder()).toBe('Select format');
-
-        list.componentInstance.onNodeTypeFilterChange('PDF');
-        expect(list.componentInstance.filteredNodes().map((node: { name: string }) => node.name)).toEqual([
-            'a.pdf',
-            'c.pdf',
-        ]);
+        const labels = Array.from(element.querySelectorAll('.flow-node-list__node-type'), (label) =>
+            label.textContent?.trim()
+        );
+        expect(labels).toEqual(['PDF', 'Folder', 'MD', 'PDF']);
+        // A folder shows as a tree, so it has no filter.
+        expect(element.querySelector('.flow-node-list__toolbar app-select')).toBeNull();
     });
 
     it('uses the refresh (two arrows) icon on the Restore button', () => {
@@ -483,7 +534,7 @@ describe('RecycleBinTableComponent', () => {
             contents: [{ name: 'Support chat', nodeType: 'surface' }],
             contentsTotal: 1,
         });
-        const element = render({ items: [agent] });
+        const element = renderOpen({ items: [agent] });
         expect(element.querySelector('.flow-node-list')?.classList).toContain('flow-node-list--flush');
     });
 
@@ -499,13 +550,13 @@ describe('RecycleBinTableComponent', () => {
             ],
             contentsTotal: 2,
         });
-        const element = render({ items: [agent] });
+        const element = renderOpen({ items: [agent] });
         expect(filterIn(element, 0)).toBeNull();
         expect(bodyRows(element)[0].querySelector('.flow-node-list__toolbar app-search')).not.toBeNull();
     });
 
     it('shows the kind filter when the contents have two or more kinds', () => {
-        const element = render({ items: [FLOW] });
+        const element = renderOpen({ items: [FLOW] });
         expect(filterIn(element, 0)).not.toBeNull();
     });
 
@@ -552,7 +603,7 @@ describe('RecycleBinTableComponent', () => {
     }
 
     it('offers the document formats of a collection with mixed formats', () => {
-        const element = render({ items: [collection('collection-1', ['a.pdf', 'b.docx', 'c.pdf', 'd.txt'])] });
+        const element = renderOpen({ items: [collection('collection-1', ['a.pdf', 'b.docx', 'c.pdf', 'd.txt'])] });
         expect(filterIn(element, 0)).not.toBeNull();
 
         const list = fixture.debugElement.query(By.directive(FlowNodeListComponent));
@@ -567,7 +618,7 @@ describe('RecycleBinTableComponent', () => {
     });
 
     it('shows only the search for a collection whose documents share one format', () => {
-        const element = render({ items: [collection('collection-2', ['a.pdf', 'b.pdf'])] });
+        const element = renderOpen({ items: [collection('collection-2', ['a.pdf', 'b.pdf'])] });
         expect(filterIn(element, 0)).toBeNull();
     });
 

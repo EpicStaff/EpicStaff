@@ -224,7 +224,10 @@ class CollectionManagementService:
 
         collection.delete()
         logger.info(
-            f"Soft-deleted collection '{collection_name}' (ID: {collection_id}) with {document_count} documents"
+            "Soft-deleted collection '{}' (ID: {}) with {} documents",
+            collection_name,
+            collection_id,
+            document_count,
         )
         return {
             "collection_id": collection_id,
@@ -291,8 +294,11 @@ class CollectionManagementService:
                 unreferenced_content.delete()
 
         logger.info(
-            f"Purged collection '{collection_name}' (ID: {collection_id}) with {document_count} documents "
-            f"and {unreferenced_count} unreferenced content records"
+            "Purged collection '{}' (ID: {}) with {} documents and {} unreferenced content records",
+            collection_name,
+            collection_id,
+            document_count,
+            unreferenced_count,
         )
         return {
             "collection_id": collection_id,
@@ -370,7 +376,7 @@ class CollectionManagementService:
             deleted_count += 1
 
         logger.info(
-            f"Bulk soft-deleted {deleted_count} collections with {document_count} documents"
+            "Bulk soft-deleted {} collections with {} documents", deleted_count, document_count
         )
 
         return {

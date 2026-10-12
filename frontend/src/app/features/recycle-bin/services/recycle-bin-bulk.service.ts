@@ -7,6 +7,7 @@ import {
     RecycleBinBulkPurgeResponse,
     RecycleBinBulkRestoreResponse,
     RecycleBinEmptyResponse,
+    RecycleBinEmptyResult,
     RecycleBinFailure,
     RecycleBinItem,
     RecycleBinPurgeResult,
@@ -45,9 +46,10 @@ export class RecycleBinBulkService {
     /**
      * Everything in every bin the user may delete in, whatever the lists show. Each request
      * purges for a limited time, so a large bin takes several: it calls again while items remain
-     * and the last call got somewhere (failed items stay, and are tried again only once).
+     * and the last call got somewhere (failed items stay, and are tried again only once). When it
+     * stops with more left than the failed items, `leftCount` says how many.
      */
-    emptyAll(onRemaining?: (remaining: number) => void): Observable<RecycleBinPurgeResult> {
+    emptyAll(onRemaining?: (remaining: number) => void): Observable<RecycleBinEmptyResult> {
         return this.api.emptyAll().pipe(
             expand((response) => (response.remaining > 0 && response.purged_count > 0 ? this.api.emptyAll() : EMPTY)),
             tap((response) => onRemaining?.(response.remaining)),
@@ -58,9 +60,12 @@ export class RecycleBinBulkService {
                 for (const failure of responses.flatMap((response) => response.failed)) {
                     failures.set(`${failure.source}:${failure.id}`, failure);
                 }
+                // `remaining` counts the failed items too: they are still in the bin.
+                const remaining = responses.at(-1)?.remaining ?? 0;
                 return {
                     purgedCount: responses.reduce((total, response) => total + response.purged_count, 0),
                     failed: [...failures.values()].map(toFailure),
+                    leftCount: Math.max(0, remaining - failures.size),
                 };
             })
         );

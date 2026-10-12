@@ -30,7 +30,10 @@ from tables.models.webhook_models import (
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 from tables.services.secrets import secret_resolver
 
 
@@ -292,7 +295,10 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
 
 class RealtimeChannelSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    serializers.ModelSerializer,
 ):
     twilio = _TwilioChannelReadSerializer(read_only=True)
     # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).

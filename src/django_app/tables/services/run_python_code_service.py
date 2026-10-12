@@ -131,6 +131,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_id=python_code.pk,
             code=python_code_data.code,
             declared=set(python_code_data.secret_names),
+            binned=binned_secret_names(python_code),
         )
         resolved = secret_resolver.resolve_payload(payload=python_code_data, org_id=organization_id)
 

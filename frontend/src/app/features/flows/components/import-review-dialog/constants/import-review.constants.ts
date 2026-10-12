@@ -1,5 +1,3 @@
-import { NodeType } from '@shared/models';
-
 export const HIDDEN_ENTITY_TYPES = new Set(['LLMModelTag']);
 
 export const ENTITY_TYPE_ORDER = [
@@ -13,25 +11,6 @@ export const ENTITY_TYPE_ORDER = [
     'RealtimeModel',
     'RealtimeConfig',
 ];
-
-export const FLOW_NODE_TYPE_LABELS: Partial<Record<NodeType, string>> = {
-    [NodeType.PYTHON]: 'Python Node',
-    [NodeType.CLASSIFICATION_TABLE]: 'Classification Decision Table',
-    [NodeType.WEBHOOK_TRIGGER]: 'Webhook Node',
-    [NodeType.TELEGRAM_TRIGGER]: 'Telegram Node',
-    [NodeType.AGENT]: 'Agent Node',
-    [NodeType.TASK]: 'Task Node',
-    [NodeType.SUBGRAPH]: 'Subgraph Node',
-    [NodeType.START]: 'Start Node',
-    [NodeType.END]: 'End Node',
-    [NodeType.FILE_EXTRACTOR]: 'File Extractor Node',
-    [NodeType.AUDIO_TO_TEXT]: 'Audio Transcription Node',
-    [NodeType.SCHEDULE_TRIGGER]: 'Schedule Trigger Node',
-    [NodeType.TABLE]: 'Decision Table Node',
-    [NodeType.NOTE]: 'Note',
-    [NodeType.KEY_VALUE]: 'Key-Value Node',
-    [NodeType.KNOWLEDGE_RETRIEVER]: 'Knowledge Retriever Node',
-};
 
 export const ENTITY_TYPE_LABELS: Record<string, string> = {
     Agent: 'Agent',

@@ -166,3 +166,9 @@ export function failedItemsMessage(action: RecycleBinAction, failed: readonly Re
     const rest = failed.length - shown.length;
     return `Couldn't ${action} ${itemCount(failed.length)}. ${shown.join(' ')}${rest > 0 ? ` …and ${rest} more.` : ''}`;
 }
+
+/** Warning toast when emptying stopped with items it didn't get to (besides the failed ones). `null` for none. */
+export function leftInBinMessage(leftCount: number): string | null {
+    if (leftCount <= 0) return null;
+    return `${itemCount(leftCount)} ${leftCount === 1 ? 'is' : 'are'} still in the recycle bin. Try emptying it again.`;
+}

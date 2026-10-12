@@ -12,7 +12,7 @@ import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { KeyValueEntriesGridComponent } from '../../components/key-value-entries-grid/key-value-entries-grid.component';
 import {
     KeyValueTableDialogComponent,
@@ -75,7 +75,7 @@ export class KeyValueTablesPageComponent {
     private readonly permissions = inject(PermissionsService);
     private readonly dialog = inject(Dialog);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 

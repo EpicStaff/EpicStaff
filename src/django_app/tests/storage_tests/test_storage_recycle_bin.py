@@ -4,6 +4,8 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -14,6 +16,7 @@ from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from tables.views.storage_views import StorageRecycleBinPagination
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
@@ -226,6 +229,19 @@ def _binned(manager, org, path, content=b"x") -> StorageFile:
     return StorageFile.deleted_objects.get(org=org, path=path)
 
 
+def test_delete_locks_the_org_row_before_any_storage_row(real_manager, acme):
+    # Restores and uploads lock the org row first too, so they queue behind a delete.
+    seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
+
+    with CaptureQueriesContext(connection) as queries:
+        real_manager.delete(acme.id, "docs")
+
+    locks = [query["sql"] for query in queries.captured_queries if "FOR UPDATE" in query["sql"]]
+    assert locks, "the delete took no row lock"
+    assert '"rbac_organization"' in locks[0]
+    assert StorageFile.deleted_objects.filter(org=acme, path="docs/a.txt").exists()
+
+
 class TestStorageBinApi:
     def test_list_shows_binned_rows_newest_first(self, admin_client, real_manager, acme, beta):
         older = _binned(real_manager, acme, "old.txt")
@@ -290,6 +306,16 @@ class TestStorageBinApi:
         assert {entry["id"] for entry in first["results"] + second["results"]} == set(
             StorageFile.deleted_objects.filter(org=acme).values_list("pk", flat=True)
         )
+
+    def test_limit_is_capped(self, admin_client, real_manager, acme, mocker):
+        mocker.patch.object(StorageRecycleBinPagination, "max_limit", 2)
+        for index in range(3):
+            _binned(real_manager, acme, f"f{index}.txt")
+
+        page = admin_client.get(BIN, {"limit": 50}).json()
+
+        assert page["count"] == 3
+        assert len(page["results"]) == 2
 
     def test_restore_returns_each_id_with_its_path(self, admin_client, real_manager, acme):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")

@@ -27,7 +27,7 @@ import { catchError, finalize } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
 import { FILE_TYPES } from '../../../../constants/constants';
@@ -65,7 +65,7 @@ const ALL_FILE_TYPES_ITEM: SelectItem<string | null> = { name: 'All types', valu
 })
 export class CollectionDetailsComponent {
     private confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
     private documentsApiService = inject(DocumentsApiService);

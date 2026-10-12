@@ -6,6 +6,7 @@ import {
     bulkActionErrorMessage,
     emptyRecycleBinConfirmationDialog,
     failedItemsMessage,
+    leftInBinMessage,
     purgeConfirmationDialog,
     purgeConfirmationMessage,
     purgeResultMessage,
@@ -170,6 +171,12 @@ describe('recycle bin messages', () => {
                 `Couldn't restore 4 items. "a": Locked. "b": Locked. "c": Locked. …and 1 more.`
             );
             expect(failedItemsMessage('delete', [])).toBeNull();
+        });
+
+        it('says how many items emptying left in the bin', () => {
+            expect(leftInBinMessage(1)).toBe('1 item is still in the recycle bin. Try emptying it again.');
+            expect(leftInBinMessage(7)).toBe('7 items are still in the recycle bin. Try emptying it again.');
+            expect(leftInBinMessage(0)).toBeNull();
         });
 
         it('explains a 404 of a bulk call, and leaves a 403 to the interceptor', () => {

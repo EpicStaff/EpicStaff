@@ -13,8 +13,8 @@ export function fileFormatGroup(name: string): string {
 }
 
 /**
- * Filter group of a storage folder's content: its file format, or "Folder". Lets the filter in an
- * expanded folder offer formats instead of File / Folder.
+ * Group of a storage folder's content: its file format, or "Folder". Labels each item of an expanded
+ * folder by format instead of File / Folder (a folder shows as a tree, without a filter).
  */
 export function storageFormatGroup(content: NodeListItem): string {
     return content.nodeType === 'folder' ? FOLDER_FORMAT_GROUP : fileFormatGroup(content.name);

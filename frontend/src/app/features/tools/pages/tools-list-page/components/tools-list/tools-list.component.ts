@@ -30,7 +30,7 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { hasReviewableItems, ImportReviewDialogCloseResult } from '../../../../../../core/models/review-item.model';
 import { ToastService } from '../../../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { ImportReviewDialogComponent } from '../../../../../flows/components/import-review-dialog/import-review-dialog.component';
 import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
@@ -73,7 +73,7 @@ export class ToolsListComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);

@@ -81,7 +81,7 @@ def next_copy_name(
             models need it: their built-in rows (`org IS NULL`) are visible to every
             org, so a copy must not reuse a built-in name.
         name_field: The model's name column (`collection_name` on SourceCollection).
-        org_field: The model's organization FK (`organization` on AgentDefinition and Surface).
+        org_field: The model's organization FK (`org` on every org-scoped model).
         extra_taken_names: Names that aren't live yet but will be once the caller's
             transaction ends (other rows a restore brings back), so they count as taken.
         case_insensitive_names: The model's names are unique regardless of case, so

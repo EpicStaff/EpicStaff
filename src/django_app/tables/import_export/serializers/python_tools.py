@@ -70,8 +70,6 @@ class PythonCodeToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.M
             "created_by",
             "created_at",
             "updated_at",
-            "is_soft_deleted",
-            "soft_deleted_at",
         ]
 
     def get_python_code_tool_config(self, instance: PythonCodeTool) -> list[dict]:

@@ -101,6 +101,27 @@ describe('RecycleBinBulkService', () => {
         expect(result).toEqual({
             purgedCount: 6,
             failed: [{ name: 'docs/a.txt', message: 'Storage is unreachable.' }],
+            leftCount: 0,
+        });
+    });
+
+    it('counts what is left besides the failed items when a call deletes nothing', () => {
+        let result: unknown;
+        service.emptyAll().subscribe((value) => (result = value));
+        const stuck = { source: 'flow', id: 3, name: 'Report', message: 'It is locked.' };
+        const answer = (purged_count: number, remaining: number) =>
+            httpTesting
+                .expectOne({ method: 'POST', url: `${API_URL}recycle-bin/empty/` })
+                .flush({ purged_count, failed: [stuck], remaining });
+
+        answer(5, 8);
+        // The failed item ate this call's time: 7 others are still there, untried.
+        answer(0, 8);
+
+        expect(result).toEqual({
+            purgedCount: 5,
+            failed: [{ name: 'Report', message: 'It is locked.' }],
+            leftCount: 7,
         });
     });
 

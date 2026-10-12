@@ -2,7 +2,12 @@
 reference to them, then drops the table.
 
 The model no longer exists in the current code, so the rows are created through
-the historical models of the state just before 0264.
+the historical models of the state just before 0264. BEFORE and AFTER both include the
+soft-delete migrations up to the 0268 merge, as on a fresh database: the other
+models have `active` by then, while ConditionalEdge keeps `is_soft_deleted`, since
+no soft-delete migration touches the model 0264 deletes. A database that is
+already at developer when it upgrades is covered by
+tests/migration_tests/test_developer_upgrade_order.py.
 """
 
 import pytest
@@ -10,8 +15,11 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-BEFORE = [("tables", "0263_merge_20261009_0941")]
-AFTER = [("tables", "0264_alter_graphversion_snapshot_delete_conditionaledge")]
+BEFORE = [("tables", "0263_merge_20261009_0941"), ("tables", "0268_merge_20261009_1151")]
+AFTER = [
+    ("tables", "0264_alter_graphversion_snapshot_delete_conditionaledge"),
+    ("tables", "0268_merge_20261009_1151"),
+]
 
 
 def _migrate(targets):

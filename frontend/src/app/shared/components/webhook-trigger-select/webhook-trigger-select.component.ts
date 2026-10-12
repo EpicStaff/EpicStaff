@@ -31,6 +31,7 @@ import {
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
+import { WarningNoteComponent } from '../warning-note/warning-note.component';
 import {
     WebhookTriggerDialogComponent,
     WebhookTriggerDialogData,
@@ -40,7 +41,7 @@ import {
     selector: 'app-webhook-trigger-select',
     templateUrl: './webhook-trigger-select.component.html',
     styleUrls: ['./webhook-trigger-select.component.scss'],
-    imports: [FormsModule, OverlayModule, TooltipComponent],
+    imports: [FormsModule, OverlayModule, TooltipComponent, WarningNoteComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

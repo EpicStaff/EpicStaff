@@ -262,8 +262,9 @@ class SoftDeleteFields(models.Model):
 
 class SoftDeleteMixin(SoftDeleteFields):
     """
-    A recycle-bin root (Graph, GraphVersion, SourceCollection, PythonCodeTool,
-    McpTool, Surface).
+    A recycle-bin root: every model in `bin_resources()`
+    (tables/services/recycle_bin/registry.py), plus GraphVersion, which is binned
+    on its own but has no bin tab.
 
     `delete()` always moves the row and its soft-delete subtree to the recycle
     bin through DeleteService and returns the batch id (None if the row was

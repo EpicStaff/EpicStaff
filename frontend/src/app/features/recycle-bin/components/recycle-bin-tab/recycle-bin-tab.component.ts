@@ -24,7 +24,7 @@ import {
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { RECYCLE_BIN_TAB_BY_KEY } from '../../constants/recycle-bin-tabs.constants';
 import {
     RecycleBinItem,
@@ -84,7 +84,7 @@ export class RecycleBinTabComponent implements OnInit {
 
     // Declared above the state on purpose: the fields below read their signals while the class initializes.
     private readonly storage = inject(RecycleBinStorageService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     /** Absent outside the page (the tab's own specs). */
     private readonly reloadRequests = inject(RecycleBinReloadService, { optional: true });
 

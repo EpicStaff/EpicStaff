@@ -1,8 +1,10 @@
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from loguru import logger
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuthKind
+from tables.services.recycle_bin.restoring import is_restoring
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.signals.webhook_signals import cleanup_orphaned_auth_if_unclaimed
@@ -53,10 +55,25 @@ def telegram_trigger_node_pre_save_handler(sender, instance: TelegramTriggerNode
         instance._previous_webhook_trigger_id = None
 
 
+def _register_restored_node(id_: int) -> None:
+    """Register a restored node's bot once the restore has committed, if it's still live."""
+    node = TelegramTriggerNode.objects.filter(pk=id_).first()
+    if node is None:
+        return
+    _resync_tunnel_registration(id_)
+    TelegramTriggerService().register_and_log(node)
+
+
 @receiver(post_save, sender=TelegramTriggerNode)
 def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **kwargs):
     id_ = instance.pk
-    logger.info(f"Triggered post_save signal for TelegramTriggerNode ID: {id_}")
+    logger.info("Triggered post_save signal for TelegramTriggerNode ID: {}", id_)
+
+    if is_restoring(instance):
+        # A restore only flips the soft-delete fields, so there's no old trigger to
+        # clean up: registering is all that's left, and it waits for the commit.
+        transaction.on_commit(lambda: _register_restored_node(id_))
+        return
 
     _resync_tunnel_registration(id_)
 

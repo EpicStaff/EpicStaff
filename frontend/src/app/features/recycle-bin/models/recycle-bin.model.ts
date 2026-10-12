@@ -62,7 +62,6 @@ export type CanFunction = (resource: ResourceCode, action: ActionCode) => boolea
 
 // API shapes (snake_case, as the backend sends them)
 
-/** One thing a restore brings back with its entry. */
 /** Every content of one binned item ("Show all"); the list sends at most 100. */
 export interface GetRecycleBinContentsResponse {
     contents: GetRecycleBinContentResponse[];
@@ -76,7 +75,7 @@ export interface GetRecycleBinContentResponse {
     kind: string;
 }
 
-/** `warning` is text the UI highlights (the item won't come back quite as it was). */
+/** `notice` is text the UI highlights (the item won't come back quite as it was). */
 export type RecycleBinDetailFormat = 'text' | 'date' | 'size' | 'notice';
 
 /** One line of basic info. Every field of the tab is sent, in a fixed order, and long text whole. */
@@ -224,6 +223,12 @@ export interface RecycleBinRestoreResult {
 export interface RecycleBinPurgeResult {
     purgedCount: number;
     failed: RecycleBinFailure[];
+}
+
+/** "Empty recycle bin": what it deleted and skipped, and what it left without trying. */
+export interface RecycleBinEmptyResult extends RecycleBinPurgeResult {
+    /** Items still in the bin besides the failed ones: emptying stopped when a call deleted nothing. */
+    leftCount: number;
 }
 
 // Search and sort

@@ -6,7 +6,7 @@ import { RecycleBinSettingsApiService } from './recycle-bin-settings-api.service
 
 /** Recycle-bin settings. Global, so they are fetched once, the first time anything injects this service. */
 @Injectable({ providedIn: 'root' })
-export class RecycleBinSettingsStorageService {
+export class RecycleBinSettingsService {
     private readonly api = inject(RecycleBinSettingsApiService);
 
     /** Days an item stays in the bin. `null` until loaded, or when the request failed. */

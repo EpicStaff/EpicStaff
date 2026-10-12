@@ -14,6 +14,7 @@ from tables.services.secrets import secret_encryption
 from tables.services.soft_delete import DeleteService
 from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tests.helpers import run_concurrently
 
 
@@ -147,6 +148,24 @@ class TestRestoreRunsSaveSignals:
         register.assert_called_once()
         assert register.call_args.kwargs["telegram_trigger_instance"].pk == node.pk
         assert WebhookTriggerAuth.objects.filter(trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM).exists()
+
+    def test_telegram_registration_waits_for_the_restore_to_commit(
+        self, graph, mocker, django_capture_on_commit_callbacks
+    ):
+        mocker.patch.object(WebhookTriggerService, "register_webhooks", return_value=True)
+        register = mocker.patch.object(TelegramTriggerService, "register_telegram_trigger", return_value={"ok": True})
+        node = TelegramTriggerNode.objects.create(node_name="bot", graph=graph)
+        graph.delete()
+        register.reset_mock()
+
+        with django_capture_on_commit_callbacks(execute=False) as callbacks:
+            RestoreService.restore(_binned(Graph, graph.pk))
+
+        register.assert_not_called()
+        for callback in callbacks:
+            callback()
+        register.assert_called_once()
+        assert register.call_args.kwargs["telegram_trigger_instance"].pk == node.pk
 
 def test_every_registered_resource_points_at_real_fields():
     for model in (Graph, PythonCodeTool, SourceCollection):

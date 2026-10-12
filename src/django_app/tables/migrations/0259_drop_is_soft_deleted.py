@@ -81,10 +81,6 @@ class Migration(migrations.Migration):
             options={'default_manager_name': 'objects', 'ordering': ['order']},
         ),
         migrations.AlterModelOptions(
-            name='conditionaledge',
-            options={'default_manager_name': 'objects'},
-        ),
-        migrations.AlterModelOptions(
             name='conditiongroup',
             options={'default_manager_name': 'objects', 'ordering': ['order']},
         ),
@@ -297,11 +293,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterModelManagers(
             name='condition',
-            managers=[
-            ],
-        ),
-        migrations.AlterModelManagers(
-            name='conditionaledge',
             managers=[
             ],
         ),
@@ -549,10 +540,6 @@ class Migration(migrations.Migration):
             name='tables_condition_soft_delete_consistency',
         ),
         migrations.RemoveConstraint(
-            model_name='conditionaledge',
-            name='tables_conditionaledge_soft_delete_consistency',
-        ),
-        migrations.RemoveConstraint(
             model_name='conditiongroup',
             name='tables_conditiongroup_soft_delete_consistency',
         ),
@@ -774,10 +761,6 @@ class Migration(migrations.Migration):
             name='is_soft_deleted',
         ),
         migrations.RemoveField(
-            model_name='conditionaledge',
-            name='is_soft_deleted',
-        ),
-        migrations.RemoveField(
             model_name='conditiongroup',
             name='is_soft_deleted',
         ),
@@ -980,10 +963,6 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='condition',
             constraint=models.CheckConstraint(condition=models.Q(models.Q(('active', True), ('soft_deleted_at__isnull', True)), models.Q(('active', False), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_condition_soft_delete_consistency'),
-        ),
-        migrations.AddConstraint(
-            model_name='conditionaledge',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('active', True), ('soft_deleted_at__isnull', True)), models.Q(('active', False), ('soft_deleted_at__isnull', False)), _connector='OR'), name='tables_conditionaledge_soft_delete_consistency'),
         ),
         migrations.AddConstraint(
             model_name='conditiongroup',

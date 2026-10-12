@@ -76,10 +76,6 @@ class Migration(migrations.Migration):
             options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
         ),
         migrations.AlterModelOptions(
-            name='conditionaledge',
-            options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects'},
-        ),
-        migrations.AlterModelOptions(
             name='conditiongroup',
             options={'base_manager_name': 'all_objects', 'default_manager_name': 'objects', 'ordering': ['order']},
         ),
@@ -321,13 +317,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterModelManagers(
             name='condition',
-            managers=[
-                ('objects', django.db.models.manager.Manager()),
-                ('all_objects', django.db.models.manager.Manager()),
-            ],
-        ),
-        migrations.AlterModelManagers(
-            name='conditionaledge',
             managers=[
                 ('objects', django.db.models.manager.Manager()),
                 ('all_objects', django.db.models.manager.Manager()),

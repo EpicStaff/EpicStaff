@@ -13,12 +13,14 @@ class ExcludeSoftDeleteFieldsMixin:
     `soft_delete_batch`. Exposed, they let a client or an import file bin a row
     past DeleteService, or break the consistency check (a 500).
 
-    NOTE: DRF builds the validator for a conditional unique constraint
-    (`condition=Q(active=True)`) only when `active` is among the fields, so on a
-    serializer of such a model (Graph, PythonCodeTool, SourceCollection, McpTool,
-    Surface) the name
-    clash surfaces as an IntegrityError instead of a 400. Add an explicit
-    validator if that serializer writes names without deduplicating them first.
+    NOTE: DRF (3.16) builds the validator for a conditional unique constraint over
+    several fields, such as a name unique per org among live rows
+    (`fields=("org", "name"), condition=Q(active=True)`), only when `active` is
+    among the serializer's fields. With this mixin it never is, so such a clash
+    surfaces as an IntegrityError instead of a 400: add an explicit validator if
+    the serializer writes names without deduplicating them first. A conditional
+    constraint on one field (TwilioChannel's `phone_number`) is unaffected: DRF
+    always gives that field a UniqueValidator filtered by the condition.
     """
 
     def get_field_names(self, declared_fields, info):

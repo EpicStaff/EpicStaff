@@ -9,13 +9,14 @@ import { filter, finalize, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
 import { RecycleBinReloadService } from '../../services/recycle-bin-reload.service';
 import {
     bulkActionErrorMessage,
     emptyRecycleBinConfirmationDialog,
     failedItemsMessage,
+    leftInBinMessage,
     purgeResultMessage,
 } from '../../utils/recycle-bin-messages.util';
 import { visibleRecycleBinTabs } from '../../utils/visible-recycle-bin-tabs.util';
@@ -52,9 +53,15 @@ export class RecycleBinPageComponent {
     protected readonly emptying = signal(false);
     /** Items left while a large bin empties over several requests; null before the first answer. */
     protected readonly emptyingLeft = signal<number | null>(null);
+    /** "Emptying…" from the click on (the first answer can take a while), with the count once known. */
+    protected readonly emptyButtonLabel = computed(() => {
+        if (!this.emptying()) return 'Empty recycle bin';
+        const left = this.emptyingLeft();
+        return left === null ? 'Emptying…' : `Emptying… ${left} left`;
+    });
 
     private readonly permissionsService = inject(PermissionsService);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly bulk = inject(RecycleBinBulkService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
@@ -84,9 +91,13 @@ export class RecycleBinPageComponent {
                 next: (result) => {
                     const success = purgeResultMessage(result);
                     if (success !== null) this.toastService.success(success);
-                    else if (result.failed.length === 0) this.toastService.success('The recycle bin is already empty.');
+                    else if (result.failed.length === 0 && result.leftCount === 0) {
+                        this.toastService.success('The recycle bin is already empty.');
+                    }
                     const failure = failedItemsMessage('delete', result.failed);
                     if (failure !== null) this.toastService.error(failure);
+                    const left = leftInBinMessage(result.leftCount);
+                    if (left !== null) this.toastService.warning(left);
                     this.reloadRequests.request();
                 },
                 error: (error: HttpErrorResponse) => {

@@ -102,11 +102,6 @@ class Migration(migrations.Migration):
             field=models.BooleanField(db_default=True, default=True),
         ),
         migrations.AddField(
-            model_name='conditionaledge',
-            name='active',
-            field=models.BooleanField(db_default=True, default=True),
-        ),
-        migrations.AddField(
             model_name='conditiongroup',
             name='active',
             field=models.BooleanField(db_default=True, default=True),

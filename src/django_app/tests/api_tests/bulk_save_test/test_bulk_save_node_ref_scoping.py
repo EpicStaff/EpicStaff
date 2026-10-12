@@ -86,7 +86,7 @@ def nonexistent_node_id(graph) -> int:
 def soft_deleted_node(graph) -> StartNode:
     node = StartNode.objects.create(graph=graph, variables={})
     StartNode.all_objects.filter(pk=node.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
     return node
 

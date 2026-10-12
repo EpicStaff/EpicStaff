@@ -260,11 +260,11 @@ export class LeftSidebarComponent implements AfterViewInit {
         });
 
         // Hidden when no bin tab is readable, the same rule as Files. It has no active (purple) state
-        // by design: it stays gray on /recycle-bin/*.
+        // by design: it stays gray on /recycle-bin/*. No `icon`: that names a sprite icon, and the
+        // template draws Tabler's outline trash instead (the sprite's trash is solid).
         this.recycleBinNavItem = {
             id: 'recycle-bin',
             routeLink: 'recycle-bin',
-            icon: 'trash',
             label: 'Recycle Bin',
             isPermitted: () =>
                 visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,

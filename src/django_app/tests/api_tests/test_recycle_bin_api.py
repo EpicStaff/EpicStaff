@@ -211,14 +211,15 @@ class TestFlowRecycleBin:
         assert admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
 
     def test_restoring_a_flow_re_registers_its_telegram_trigger(
-        self, admin_client, acme, mock_telegram_service, redis_client_mock
+        self, admin_client, acme, mock_telegram_service, redis_client_mock, django_capture_on_commit_callbacks
     ):
         graph = Graph.objects.create(org=acme, name="Telegram flow")
         node = TelegramTriggerNode.objects.create(graph=graph, node_name="bot")
         assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
         mock_telegram_service.reset_mock()
 
-        response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
+        with django_capture_on_commit_callbacks(execute=True):
+            response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
         mock_telegram_service.assert_called_once()

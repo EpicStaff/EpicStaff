@@ -12,6 +12,7 @@ from tables.import_export.utils import clean_base_name, slug_base
 from tables.models.base_models import SoftDeleteFields
 from tables.services.copy_services.helpers import name_lock_key, next_copy_name
 from tables.services.recycle_bin.registry import BinResource, bin_resource_for, bin_resources
+from tables.services.recycle_bin.restoring import mark_restoring
 
 _RESTORED_FIELDS = ["active", "soft_deleted_at", "soft_delete_batch"]
 
@@ -285,4 +286,6 @@ class RestoreService:
                 row.active = True
                 row.soft_deleted_at = None
                 row.soft_delete_batch = None
+                # Receivers that call an outside service wait for the commit.
+                mark_restoring(row)
                 row.save(update_fields=_RESTORED_FIELDS)

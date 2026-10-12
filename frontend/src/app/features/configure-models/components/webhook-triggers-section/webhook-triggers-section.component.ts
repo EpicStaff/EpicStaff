@@ -19,7 +19,7 @@ import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 
 @Component({
     selector: 'app-webhook-triggers-section',
@@ -43,7 +43,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
-    private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);

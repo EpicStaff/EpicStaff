@@ -508,7 +508,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         try:
             self.register_telegram_trigger(telegram_trigger_instance=telegram_trigger_instance)
             logger.info(
-                f"Successfully registered telegram trigger for TelegramTriggerNode : {node_id}"
+                "Successfully registered telegram trigger for TelegramTriggerNode : {}", node_id
             )
         except APIException as error:
             # An APIException detail (RegisterTelegramTriggerError,

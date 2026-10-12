@@ -52,11 +52,19 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
             const el = this.target();
-            // Cut at the side (ellipsis) or at the bottom (a line clamp).
-            const overflowing = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+            // Cut at the side (ellipsis), or at the bottom when the text is line-clamped. Only a clamp counts
+            // at the bottom: another host can have a fixed height its content outgrows without cutting the text.
+            const cutAtSide = el.scrollWidth > el.clientWidth + 1;
+            const cutAtBottom = isLineClamped(el) && el.scrollHeight > el.clientHeight + 1;
+            const overflowing = cutAtSide || cutAtBottom;
             if (this.tooltip.disabled === overflowing) {
                 this.ngZone.run(() => (this.tooltip.disabled = !overflowing));
             }
         });
     }
+}
+
+function isLineClamped(element: HTMLElement): boolean {
+    const clamp = getComputedStyle(element).getPropertyValue('-webkit-line-clamp');
+    return clamp !== '' && clamp !== 'none';
 }

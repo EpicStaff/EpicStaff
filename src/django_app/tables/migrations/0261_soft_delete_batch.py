@@ -76,11 +76,6 @@ class Migration(migrations.Migration):
             field=models.UUIDField(blank=True, db_index=True, null=True),
         ),
         migrations.AddField(
-            model_name='conditionaledge',
-            name='soft_delete_batch',
-            field=models.UUIDField(blank=True, db_index=True, null=True),
-        ),
-        migrations.AddField(
             model_name='conditiongroup',
             name='soft_delete_batch',
             field=models.UUIDField(blank=True, db_index=True, null=True),

@@ -1,7 +1,6 @@
 import { NodeListKindVisual } from '@shared/components';
-import { NODE_COLORS, NodeType } from '@shared/models';
+import { FLOW_NODE_TYPE_LABELS, NODE_COLORS, NodeType } from '@shared/models';
 
-import { FLOW_NODE_TYPE_LABELS } from '../../flows/components/import-review-dialog/constants/import-review.constants';
 import { RecycleBinContentKind } from '../models/recycle-bin.model';
 
 const CONTENT_KIND_LABELS: Record<RecycleBinContentKind, string> = {
