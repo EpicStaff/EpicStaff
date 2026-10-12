@@ -220,36 +220,37 @@ function routeStacked(source: IPoint, target: IPoint, sourceRect: Rect, targetRe
 // ---------------------------------------------------------------------------
 
 function routeAroundObstacles(source: IPoint, target: IPoint, initialPoints: IPoint[], obstacles: Rect[]): IPoint[] {
-    // Sort obstacles left-to-right so detour points are generated in wire order.
-    const sorted = [...obstacles].sort((first, second) => first.left - second.left);
-    const throughPoints: IPoint[] = [];
+    // For curved routing, keep the same 2-point S-curve shape from
+    // computeForwardControlPoints but shift each point's Y so the curve
+    // passes above or below every obstacle instead of through it.
+    const clearance = WIRE_CLEARANCE * DETOUR_CLEARANCE_MULTIPLIER;
+    const point1 = { ...initialPoints[0] };
+    const point2 = { ...initialPoints[1] };
 
-    let currentY = source.y;
-    for (const obstacle of sorted) {
-        // Decide whether to detour above or below this obstacle.
+    for (const obstacle of obstacles) {
         const midY = (source.y + target.y) / 2;
         const obstacleCenterY = (obstacle.top + obstacle.bottom) / 2;
         const detourAbove = midY <= obstacleCenterY;
-        const detourY = detourAbove
-            ? obstacle.top - WIRE_CLEARANCE * DETOUR_CLEARANCE_MULTIPLIER
-            : obstacle.bottom + WIRE_CLEARANCE * DETOUR_CLEARANCE_MULTIPLIER;
 
-        throughPoints.push({ x: obstacle.left - WIRE_CLEARANCE, y: currentY });
-        throughPoints.push({ x: obstacle.left - WIRE_CLEARANCE, y: detourY });
-        throughPoints.push({ x: obstacle.right + WIRE_CLEARANCE, y: detourY });
-        currentY = detourY;
-    }
+        const detourY = detourAbove ? obstacle.top - clearance : obstacle.bottom + clearance;
 
-    // After the last obstacle, add a point to return toward the target's Y.
-    if (throughPoints.length > 0) {
-        const lastPoint = throughPoints[throughPoints.length - 1];
-        if (lastPoint.y !== target.y) {
-            throughPoints.push({ x: lastPoint.x, y: target.y });
+        // Push whichever through-point overlaps the obstacle's X range.
+        if (point1.x >= obstacle.left - WIRE_CLEARANCE && point1.x <= obstacle.right + WIRE_CLEARANCE) {
+            point1.y = detourAbove ? Math.min(point1.y, detourY) : Math.max(point1.y, detourY);
+        }
+        if (point2.x >= obstacle.left - WIRE_CLEARANCE && point2.x <= obstacle.right + WIRE_CLEARANCE) {
+            point2.y = detourAbove ? Math.min(point2.y, detourY) : Math.max(point2.y, detourY);
+        }
+
+        // If neither through-point is in the obstacle's X range (obstacle is
+        // between them), push both to ensure the curve clears it.
+        if (point1.x < obstacle.left - WIRE_CLEARANCE && point2.x > obstacle.right + WIRE_CLEARANCE) {
+            point1.y = detourAbove ? Math.min(point1.y, detourY) : Math.max(point1.y, detourY);
+            point2.y = detourAbove ? Math.min(point2.y, detourY) : Math.max(point2.y, detourY);
         }
     }
 
-    // If no detours were generated (shouldn't happen given the guard), fall back to initial points.
-    return throughPoints.length > 0 ? throughPoints : initialPoints;
+    return [point1, point2];
 }
 
 // ---------------------------------------------------------------------------
