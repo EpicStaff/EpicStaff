@@ -1,7 +1,7 @@
 from importlib import import_module
 
 import pytest
-from django.apps import apps as django_apps
+from django.db.migrations.loader import MigrationLoader
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -794,13 +794,21 @@ class TestSuperadminMembershipMigration:
         )
         OrganizationUser.objects.create(user=ordinary, org=org_acme, role=role_member)
 
-        module = import_module("tables.migrations.0211_purge_superadmin_memberships")
-        module.purge_superadmin_memberships(django_apps, None)
+        # The migration resolves `tables.OrganizationUser`, which only exists in
+        # the historical state: the model has since moved to `rbac`.
+        migration_name = "0211_purge_superadmin_memberships"
+        historical_apps = (
+            MigrationLoader(None, ignore_no_migrations=True)
+            .project_state(("tables", migration_name))
+            .apps
+        )
+        module = import_module(f"tables.migrations.{migration_name}")
+        module.purge_superadmin_memberships(historical_apps, None)
 
         assert not OrganizationUser.objects.filter(user=sa_lesser).exists()
         assert OrganizationUser.objects.filter(user=sa_bootstrap).exists()
         assert OrganizationUser.objects.filter(user=ordinary).exists()
 
-        module.purge_superadmin_memberships(django_apps, None)
+        module.purge_superadmin_memberships(historical_apps, None)
         assert OrganizationUser.objects.filter(user=sa_bootstrap).count() == 1
         assert OrganizationUser.objects.filter(user=ordinary).count() == 1

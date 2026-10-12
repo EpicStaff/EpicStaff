@@ -219,6 +219,15 @@ class GeminiRealtimeConfigSerializer(
         read_only_fields = ["org", "created_by", "created_at"]
 
 
+class TwilioAuthTokenSecretSerializer(serializers.Serializer):
+    """A client-supplied Twilio auth-token Secret id, scoped to the active org.
+
+    Another org's id is rejected exactly like an unknown one, so existence never leaks.
+    """
+
+    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(queryset=Secret.objects.all())
+
+
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("auth_token_secret_id",)
 

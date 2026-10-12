@@ -6,11 +6,15 @@ fixture return 403 for everything. Pattern follows
 tests/api_tests/test_secret_selection_cross_org.py.
 """
 
+from unittest.mock import patch
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from rbac.access.resolver import PermissionResolver
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from rest_framework.test import APIClient
-
 from tables.models import LLMConfig, McpTool, PythonCode
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -18,8 +22,6 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.llm_models import LLMModel
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
@@ -104,13 +106,13 @@ class TestUsageCountOnList:
 
         assert resp.status_code == 200, resp.content
         row = next(item for item in _results(resp) if item["id"] == secret.pk)
-        assert row["usage_count"] == 0
+        assert row["usage_count"] == {"readable": 0, "hidden": 0}
 
     def test_used_secret_reports_its_resource_count(self, admin_client, used_secret):
         resp = admin_client.get("/api/secrets/")
 
         row = next(item for item in _results(resp) if item["id"] == used_secret.pk)
-        assert row["usage_count"] == 3
+        assert row["usage_count"] == {"readable": 3, "hidden": 0}
 
     def test_usage_count_is_read_only(self, admin_client, org):
         """A client-supplied value must be ignored, not stored or echoed back."""
@@ -121,7 +123,7 @@ class TestUsageCountOnList:
         )
 
         assert resp.status_code == 201, resp.content
-        assert resp.data["usage_count"] == 0
+        assert resp.data["usage_count"] == {"readable": 0, "hidden": 0}
 
     def test_query_count_does_not_grow_with_the_number_of_secrets(
         self, admin_client, org
@@ -184,6 +186,22 @@ class TestUsageCountOnList:
         assert len(unions) == 1, f"{len(unions)} union queries for 6 secrets"
 
 
+@pytest.mark.django_db
+class TestPermissionsResolveOncePerRequest:
+    """The gate's resolution is reused by the serializer and the usage action."""
+
+    @pytest.mark.parametrize("path", ["/api/secrets/", "/api/secrets/{pk}/usage/"])
+    def test_one_resolution_per_request(self, admin_client, used_secret, path):
+        original_resolve = PermissionResolver.resolve
+        with patch.object(
+            PermissionResolver, "resolve", autospec=True, side_effect=original_resolve
+        ) as resolve:
+            resp = admin_client.get(path.format(pk=used_secret.pk))
+
+        assert resp.status_code == 200, resp.content
+        assert resolve.call_count == 1
+
+
 def _unions(captured):
     return [
         query for query in captured.captured_queries if "UNION" in query["sql"].upper()
@@ -206,7 +224,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
             resp = admin_client.get(f"/api/secrets/{used_secret.pk}/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data["usage_count"] == 3
+        assert resp.data["usage_count"] == {"readable": 3, "hidden": 0}
         assert len(_unions(captured)) == 1
 
     def test_retrieve_is_cheaper_than_list(self, admin_client, org, used_secret):
@@ -232,7 +250,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
         row = next(item for item in _results(listed) if item["id"] == used_secret.pk)
         retrieved = admin_client.get(f"/api/secrets/{used_secret.pk}/")
 
-        assert retrieved.data["usage_count"] == row["usage_count"] == 3
+        assert retrieved.data["usage_count"] == row["usage_count"] == {"readable": 3, "hidden": 0}
 
     def test_create_counts_its_own_secret_rather_than_assuming_zero(
         self, admin_client, org
@@ -250,7 +268,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
             )
 
         assert resp.status_code == 201, resp.content
-        assert resp.data["usage_count"] == 0
+        assert resp.data["usage_count"] == {"readable": 0, "hidden": 0}
         assert len(_unions(captured)) == 1
 
     def test_delete_computes_no_usage_at_all(self, admin_client, used_secret):
@@ -288,7 +306,7 @@ class TestUsageDetailEndpoint:
         resp = admin_client.get(f"/api/secrets/{secret.pk}/usage/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data == {"total": 0, "categories": []}
+        assert resp.data == {"readable_total": 0, "hidden_total": 0, "categories": []}
 
     def test_a_decision_table_reports_pre_and_post_as_separate_blocks(
         self, admin_client, org, secret
@@ -317,13 +335,14 @@ class TestUsageDetailEndpoint:
         ]
         assert {node["name"] for node in nodes} == {"classify"}
         # One flow to lose, so the count the list endpoint shows is unchanged.
-        assert resp.data["total"] == 1
+        assert resp.data["readable_total"] == 1
 
     def test_payload_shape_across_all_three_categories(self, admin_client, used_secret):
         resp = admin_client.get(f"/api/secrets/{used_secret.pk}/usage/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data["total"] == 3
+        assert resp.data["readable_total"] == 3
+        assert resp.data["hidden_total"] == 0
         assert [category["key"] for category in resp.data["categories"]] == [
             "flows",
             "tools",
@@ -354,7 +373,10 @@ class TestUsageDetailEndpoint:
         row = next(item for item in _results(listed) if item["id"] == used_secret.pk)
         detail = admin_client.get(f"/api/secrets/{used_secret.pk}/usage/")
 
-        assert row["usage_count"] == detail.data["total"]
+        assert row["usage_count"] == {
+            "readable": detail.data["readable_total"],
+            "hidden": detail.data["hidden_total"],
+        }
 
     def test_another_orgs_secret_is_404_not_403(self, admin_client, other_org):
         """403 would confirm the row exists. Queryset scoping must make it a 404."""

@@ -56,9 +56,7 @@ def main() -> int:
         if status is not None:
             break
 
-        print(
-            f"CLA status not found yet for {sha} (attempt {attempt}/{MAX_ATTEMPTS}), retrying..."
-        )
+        print(f"CLA status not found yet for {sha} (attempt {attempt}/{MAX_ATTEMPTS}), retrying...")
         time.sleep(RETRY_DELAY_SECONDS)
 
     if status is None:

@@ -53,7 +53,11 @@ def test_run_merges_org_variables_into_session(org_client, default_org, monkeypa
     # run_session publishes to Redis and builds SessionData; stub both so the
     # run completes without the live stack, leaving the merged session to inspect.
     svc = SessionManagerService()
-    monkeypatch.setattr(svc, "create_session_data", lambda session: _FakeSessionData())
+    monkeypatch.setattr(
+        svc,
+        "create_session_data",
+        lambda session, token_budget=None, run_type="": _FakeSessionData(),
+    )
     monkeypatch.setattr(
         svc.redis_service, "publish_session_data", lambda session_data, org_id: 2
     )

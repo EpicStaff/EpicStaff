@@ -73,7 +73,9 @@ class SecretReferenceGuard:
                 type(serializer).__name__,
             )
             raise serializers.ValidationError({field_name: _DENIED})
-        effective = self._resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
+        effective = self._resolver.resolve_cached(
+            request=request, org_id=resolve_active_org_id(request)
+        )
         if not effective.can(ResourceType.SECRETS.value, Permission.USE):
             raise serializers.ValidationError({field_name: _DENIED})
 

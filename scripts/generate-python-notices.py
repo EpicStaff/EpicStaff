@@ -38,6 +38,7 @@ Only stdlib is imported by this script itself.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
 import json
@@ -323,7 +324,8 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         log(f"  pip-licenses failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
         return []
     finally:
-        try:
+        # Best-effort cleanup: it must never mask the scan's own result or error.
+        with contextlib.suppress(Exception):
             run(
                 [
                     "uv",
@@ -337,8 +339,6 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
                 ],
                 check=False,
             )
-        except Exception:
-            pass
 
 
 def is_internal_placeholder_package(version: str, entry: dict) -> bool:
@@ -656,7 +656,7 @@ def main() -> int:
     if sys.argv[1:] == ["--check"]:
         return check()
     sha = get_git_sha()
-    date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    date = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     lock_hashes_str = current_lock_hashes()
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")

@@ -246,6 +246,9 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
 )
+from tables.serializers.model_serializers.realtime_serializers import (
+    TwilioAuthTokenSecretSerializer,
+)
 from tables.serializers.serializers import (
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
@@ -931,7 +934,7 @@ class GraphViewSet(
 
         graph = self.get_object()
         org_id = self.get_active_org_id()
-        effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
+        effective_permissions = PermissionResolver().resolve_cached(request=request, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
         id_mapper = partial_import_service.import_data(
             export_data=data,
@@ -1786,7 +1789,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
-        """Return this channel's Twilio incoming phone numbers."""
+        """Return the incoming phone numbers of the Twilio account named by `sid`."""
 
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
@@ -1797,10 +1800,23 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # The id is client input: validate it against the active org first, so a
+        # foreign or unknown id is a 400 rather than a failed stored-reference
+        # resolution (500).
+        secret_input = TwilioAuthTokenSecretSerializer(
+            data={"auth_token_secret_id": auth_token_secret_id},
+            context={"request": request},
+        )
+        if not secret_input.is_valid():
+            return Response(
+                {"error": str(secret_input.errors["auth_token_secret_id"][0])},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             TwilioService().validate_account_sid(sid)
             auth_token = secret_resolver.resolve(
-                secret_id=auth_token_secret_id,
+                secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
                 org_id=resolve_active_org_id(request),
                 context="TwilioChannel.auth_token",
             )
@@ -2615,7 +2631,9 @@ class SecretViewSet(
     def usage(self, request, pk=None):
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
-        effective = PermissionResolver().resolve(user=request.user, org_id=self.get_active_org_id())
+        effective = PermissionResolver().resolve_cached(
+            request=request, org_id=self.get_active_org_id()
+        )
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 

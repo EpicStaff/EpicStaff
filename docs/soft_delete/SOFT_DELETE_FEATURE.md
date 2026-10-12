@@ -80,6 +80,7 @@ class SoftDeleteMixin(SoftDeleteFields):
 
     def soft_delete(self, using=None):
         from tables.services.soft_delete import DeleteService
+
         return DeleteService.delete(self, using=using)
 
     def hard_delete(self, using=None, keep_parents=False):

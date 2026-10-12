@@ -115,10 +115,10 @@ class TestCollectionCreate:
 
         test_collection_name = source_collection.collection_name
         collection_1 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name
+            collection_name=test_collection_name, org_id=source_collection.org_id
         )
         collection_2 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name
+            collection_name=test_collection_name, org_id=source_collection.org_id
         )
 
         # All should be created successfully with different names

@@ -25,7 +25,7 @@ class TestCancelNaiveRagDocumentChunkingView:
     def test_upstream_404_returns_204(self, auth_client, naive_rag_document_config):
         """knowledge_new 404 (no running operation) is a no-op — caller gets 204."""
         naive_rag_id = naive_rag_document_config.naive_rag_id
-        document_config_id = naive_rag_document_config.id
+        document_config_id = naive_rag_document_config.pk
 
         with patch(
             "tables.clients.knowledge.KnowledgeClient.cancel",
@@ -38,7 +38,7 @@ class TestCancelNaiveRagDocumentChunkingView:
     def test_upstream_5xx_returns_error(self, auth_client, naive_rag_document_config):
         """Upstream service failure must not be swallowed — caller gets the error status."""
         naive_rag_id = naive_rag_document_config.naive_rag_id
-        document_config_id = naive_rag_document_config.id
+        document_config_id = naive_rag_document_config.pk
 
         with patch(
             "tables.clients.knowledge.KnowledgeClient.cancel",
