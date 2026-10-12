@@ -76,9 +76,16 @@ def test_drop_net_admin_raises_when_capget_fails(monkeypatch):
 
 
 @pytest.fixture
-def main_module():
-    """Import main with its startup os.chdir('savefiles') isolated from other tests."""
+def main_module(tmp_path):
+    """Import main, whose module-level os.chdir('savefiles') runs at import time.
+
+    `main` does a relative `os.chdir("savefiles")` on import, so the cwd must
+    contain that directory or the import raises FileNotFoundError. Run it from a
+    throwaway dir that has it, and restore the cwd afterwards.
+    """
     saved_cwd = os.getcwd()
+    (tmp_path / "savefiles").mkdir()
+    os.chdir(tmp_path)
     try:
         import main
 
