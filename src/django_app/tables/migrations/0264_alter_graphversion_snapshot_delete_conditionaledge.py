@@ -16,7 +16,7 @@ a removed id are deleted, nullable routing references to one are cleared.
 from functools import reduce
 from operator import or_
 
-from django.db import migrations
+from django.db import migrations, models
 from django.db.models import Q
 from django.db.models.deletion import SET_NULL
 from loguru import logger
@@ -88,7 +88,7 @@ def delete_conditional_edges(apps, schema_editor):
     schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
     logger.info(
-        "0262: deleted {} conditional edge(s), {} orphaned PythonCode row(s) "
+        "0264: deleted {} conditional edge(s), {} orphaned PythonCode row(s) "
         "(kept {} still referenced elsewhere), {} edge(s) touching a conditional "
         "edge, cleared {} routing reference(s)",
         len(conditional_edge_ids),
@@ -102,10 +102,15 @@ def delete_conditional_edges(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0261_merge_20261007_1300'),
+        ('tables', '0263_merge_20261009_0941'),
     ]
 
     operations = [
+        migrations.AlterField(
+            model_name='graphversion',
+            name='snapshot',
+            field=models.JSONField(help_text='Serialized graph state: nodes, edges, metadata.'),
+        ),
         # Irreversible: the conditional edges and their code are deleted and the
         # feature has no replacement entity, so there is nothing to restore.
         migrations.RunPython(

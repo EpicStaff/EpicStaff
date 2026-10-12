@@ -1,8 +1,8 @@
-"""tables 0262 deletes conditional edges, the code only they used, and every
+"""tables 0264 deletes conditional edges, the code only they used, and every
 reference to them, then drops the table.
 
 The model no longer exists in the current code, so the rows are created through
-the historical models of the state just before 0262.
+the historical models of the state just before 0264.
 """
 
 import pytest
@@ -10,8 +10,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-BEFORE = [("tables", "0261_merge_20261007_1300")]
-AFTER = [("tables", "0262_delete_conditionaledge")]
+BEFORE = [("tables", "0263_merge_20261009_0941")]
+AFTER = [("tables", "0264_alter_graphversion_snapshot_delete_conditionaledge")]
 
 
 def _migrate(targets):
