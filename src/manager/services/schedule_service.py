@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import json
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import settings
@@ -19,6 +21,10 @@ from src.shared.models import (
 from src.shared.schedule.trigger_builder import build_trigger
 
 from services.redis_service import RedisService
+
+
+class ScheduleSyncError(Exception):
+    """The active schedule nodes could not be read from the DB."""
 
 
 class ScheduleService:
@@ -46,12 +52,36 @@ class ScheduleService:
 
         self.schedule_nodes: dict[int, str] = {}
         self._manual_removals: set[str] = set()
+        self.listener_task: asyncio.Task | None = None
 
     async def start(self):
-        """Load active schedules, start APScheduler, subscribe to the Redis channel."""
+        """Subscribe to the Redis channel, load active schedules, start APScheduler.
+
+        Subscribing first means a node update Django publishes while the DB
+        load runs is buffered on the subscription instead of lost.
+        """
+        initial_pubsub = await self._subscribe_or_none()
         await self.load_schedules_from_django()
         self.scheduler.start()
-        asyncio.create_task(self._start_redis_listener())  # noqa: RUF006
+        self.listener_task = asyncio.create_task(self._start_redis_listener(initial_pubsub))
+
+    async def _subscribe(self):
+        pubsub = self.redis_service.aioredis_client.pubsub()
+        try:
+            await pubsub.subscribe(settings.SCHEDULE_CHANNEL)
+        except BaseException:
+            with contextlib.suppress(Exception):
+                await pubsub.aclose()
+            raise
+        return pubsub
+
+    async def _subscribe_or_none(self):
+        try:
+            return await self._subscribe()
+        except Exception:
+            # The listener retries the subscription and reconciles once it succeeds.
+            logger.exception("[ScheduleService] Initial subscribe failed; the listener will retry")
+            return None
 
     async def load_schedules_from_django(self):
         """Initial sync of active schedules from the DB into APScheduler.
@@ -65,7 +95,7 @@ class ScheduleService:
             try:
                 active_nodes = await self.repository.get_all_active_schedule_nodes()
                 if active_nodes is None:
-                    raise RuntimeError("Repository returned None (DB unreachable)")
+                    raise ScheduleSyncError("Could not read active schedule nodes from the DB")
 
                 for node in active_nodes:
                     await self.add_schedule(node)
@@ -117,6 +147,10 @@ class ScheduleService:
         except Exception:
             logger.exception(f"[ScheduleService] Error registering Job for node {node_id}")
             self._manual_removals.discard(job_id)
+            # Reconcile reads "tracked but no job" as "once-node already fired", so a
+            # node whose job was never registered must not stay tracked.
+            if self.scheduler.get_job(job_id) is None:
+                self.schedule_nodes.pop(node_id, None)
 
     def _on_job_removed(self, event):
         """APScheduler EVENT_JOB_REMOVED handler.
@@ -223,20 +257,122 @@ class ScheduleService:
             logger.warning(f"[ScheduleService] Unknown tz {name!r}, falling back to server tz")
             return self.tz
 
-    async def _start_redis_listener(self):
-        """Subscribe to schedule_channel and apply live node updates from Django."""
-        pubsub = self.redis_service.aioredis_client.pubsub()
-        await pubsub.subscribe(settings.SCHEDULE_CHANNEL)
+    async def _start_redis_listener(self, pubsub=None):
+        """Apply live node updates from Django published on schedule_channel.
 
-        try:
-            async for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                await self._handle_message(message["data"])
-        except Exception:
-            logger.exception("[ScheduleService] Error in Redis listener")
-        finally:
-            await pubsub.unsubscribe(settings.SCHEDULE_CHANNEL)
+        Re-subscribes forever after any error. Pub/sub does not replay what was
+        published while the subscription was down, so every re-subscribe is
+        followed by a reconcile against the DB.
+
+        Args:
+            pubsub: Subscription opened before the initial DB load, so nothing
+                published since then is lost. None means there was none, and the
+                first subscription made here is reconciled.
+        """
+        missed_messages_possible = pubsub is None
+        while True:
+            try:
+                if pubsub is None:
+                    pubsub = await self._subscribe()
+                # Reconcile only after subscribing, so an update published
+                # during the reconcile is buffered on the subscription rather
+                # than lost.
+                if missed_messages_possible:
+                    await self.reconcile_schedules_with_db()
+                    missed_messages_possible = False
+
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    await self._handle_message(message["data"])
+            except ScheduleSyncError as error:
+                missed_messages_possible = True
+                # The repository already logged the DB failure with its cause.
+                logger.warning(
+                    "[ScheduleService] Reconcile failed ({}), retrying in {} s",
+                    error,
+                    settings.SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS,
+                )
+                await asyncio.sleep(settings.SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS)
+            except Exception:
+                missed_messages_possible = True
+                logger.exception(
+                    "[ScheduleService] Redis listener failed, re-subscribing in {} s",
+                    settings.SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS,
+                )
+                await asyncio.sleep(settings.SCHEDULE_LISTENER_RECONNECT_DELAY_SECONDS)
+            finally:
+                if pubsub is not None:
+                    # The connection is usually already broken here; closing it
+                    # only releases it, so a failure to close is not actionable.
+                    with contextlib.suppress(Exception):
+                        await pubsub.aclose()
+                    pubsub = None
+
+    async def reconcile_schedules_with_db(self):
+        """Make the APScheduler jobs match the active schedule nodes in the DB.
+
+        Removes jobs whose node is no longer active and adds or replaces jobs
+        whose node is new or changed. Removals go through remove_schedule, so
+        they are marked manual and never publish 'deactivate': the node is
+        already inactive or deleted in Django.
+
+        Raises:
+            ScheduleSyncError: The DB could not be read; the jobs are left untouched.
+        """
+        active_nodes = await self.repository.get_all_active_schedule_nodes()
+        if active_nodes is None:
+            raise ScheduleSyncError("Could not read active schedule nodes from the DB")
+
+        active_node_ids = {node.id for node in active_nodes}
+        removed_node_ids = [
+            node_id for node_id in list(self.schedule_nodes) if node_id not in active_node_ids
+        ]
+        for node_id in removed_node_ids:
+            await self.remove_schedule(node_id)
+
+        changed_nodes = [node for node in active_nodes if self._needs_reschedule(node)]
+        for node in changed_nodes:
+            await self.add_schedule(node)
+
+        logger.info(
+            "[ScheduleService] Reconciled with DB: {} active, {} removed, {} added or replaced",
+            len(active_nodes),
+            len(removed_node_ids),
+            len(changed_nodes),
+        )
+
+    def _needs_reschedule(self, node: ScheduleTriggerNodePayload) -> bool:
+        if (
+            node.run_mode == "once"
+            and node.id in self.schedule_nodes
+            and self._once_start_has_passed(node)
+        ):
+            # Already scheduled here, so it has fired (or misfired) or is about
+            # to: _on_job_removed keeps once-nodes in schedule_nodes after they
+            # fire, and Django may not have processed their 'deactivate' yet.
+            # Re-adding would fire it a second time inside the misfire grace.
+            # A once-node never seen here (its create was lost) falls through
+            # and is added; APScheduler's misfire grace decides whether it runs.
+            return False
+
+        job = self.scheduler.get_job(f"schedule_{node.id}")
+        if job is None:
+            return True
+        # current_runs changes on every fire without changing the schedule;
+        # replacing the job for it would only churn the trigger.
+        scheduled_node: ScheduleTriggerNodePayload = job.args[0]
+        return scheduled_node.model_dump(exclude={"current_runs"}) != node.model_dump(
+            exclude={"current_runs"}
+        )
+
+    def _once_start_has_passed(self, node: ScheduleTriggerNodePayload) -> bool:
+        if node.start_date_time is None:
+            return False
+        start = node.start_date_time
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=UTC)
+        return start <= datetime.now(UTC)
 
     async def _handle_message(self, raw: bytes | str):
         """Validate one Redis message and dispatch on the inner action."""

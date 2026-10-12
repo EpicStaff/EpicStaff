@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 
 from app.core.settings import settings
-from app.services.redis_service import RedisService, get_redis_service
+from app.services.redis_service import (
+    NoWebhookSubscriberError,
+    RedisService,
+    get_redis_service,
+)
 from app.services.tunnel_registry import (
     AmbiguousWebhookPathError,
     TunnelRegistry,
@@ -67,11 +71,21 @@ async def handle_webhook(
         f"AUTH: '{auth.kind}' strategy matched."
     )
 
-    await redis.publish_webhook(
-        path=custom_path,
-        payload=payload,
-        config_id=config_id,
-    )
+    try:
+        await redis.publish_webhook(
+            path=custom_path,
+            payload=payload,
+            config_id=config_id,
+        )
+    except NoWebhookSubscriberError as e:
+        logger.warning("Webhook PATH: {} | CONFIG ID: {} | {}", custom_path, config_id, str(e))
+        # Senders such as Telegram redeliver only after a non-2xx; a 200 here would
+        # acknowledge an event nobody received.
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook receiver is temporarily unavailable",
+            headers={"Retry-After": "30"},
+        ) from e
 
     if custom_path in settings.webhook_empty_json_paths_set:
         return {}

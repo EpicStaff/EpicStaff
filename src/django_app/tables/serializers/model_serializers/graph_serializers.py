@@ -1,4 +1,11 @@
 from django.db import transaction
+from django.db.models import Prefetch
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    authorship_prefetches,
+)
+from rbac.authorship.policy import AUTHOR_FIELD
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -26,7 +33,6 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
 )
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     DecisionTableNodeSerializer,
     EndNodeSerializer,
     StartNodeSerializer,
@@ -39,7 +45,12 @@ from tables.serializers.model_serializers.node_serializers.trigger_serializers i
 from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
 
 
-class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
+class GraphNoteSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    BaseGraphEntityMixin,
+    serializers.ModelSerializer,
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -146,25 +157,52 @@ class GraphLightBaseSerializer(serializers.ModelSerializer):
         ]
 
 
-class GraphLightSerializer(GraphLightBaseSerializer):
+class GraphLightSerializer(LastEditFieldsSerializerMixin, GraphLightBaseSerializer):
     subflows = serializers.SerializerMethodField()
 
     class Meta(GraphLightBaseSerializer.Meta):
-        fields = [*GraphLightBaseSerializer.Meta.fields, "subflows"]
+        fields = [*GraphLightBaseSerializer.Meta.fields, "created_by", "subflows"]
 
     def get_subflows(self, obj):
         graphs = Graph.objects.get_transitive_subflows(obj.id)
         return GraphLightBaseSerializer(graphs, many=True).data
 
 
-class GraphSerializer(serializers.ModelSerializer):
+class GraphLastEditStateSerializer(serializers.ModelSerializer):
+    """The Graph's own persisted fields, compared to detect an edit of the Graph itself.
+
+    Nodes and edges are left out: nodes record their own last edits, and a Graph REST
+    write cannot change either.
+    """
+
+    label_ids = serializers.PrimaryKeyRelatedField(many=True, read_only=True, source="labels")
+
+    class Meta:
+        model = Graph
+        fields = [
+            "uuid",
+            "name",
+            "description",
+            "metadata",
+            "time_to_live",
+            "enable_persistent_variables",
+            "epicchat_enabled",
+            "tags",
+            "label_ids",
+        ]
+
+
+class GraphSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
+    last_edit_state_serializer_class = GraphLastEditStateSerializer
+
     # Reverse relationships
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
     key_value_node_list = KeyValueNodeSerializer(many=True, read_only=True)
     audio_transcription_node_list = AudioTranscriptionNodeSerializer(many=True, read_only=True)
     edge_list = EdgeSerializer(many=True, read_only=True)
-    conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
     webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
     start_node_list = StartNodeSerializer(many=True, read_only=True)
     decision_table_node_list = DecisionTableNodeSerializer(many=True, read_only=True)
@@ -208,7 +246,6 @@ class GraphSerializer(serializers.ModelSerializer):
             "key_value_node_list",
             "audio_transcription_node_list",
             "edge_list",
-            "conditional_edge_list",
             "webhook_trigger_node_list",
             "decision_table_node_list",
             "classification_decision_table_node_list",
@@ -226,14 +263,44 @@ class GraphSerializer(serializers.ModelSerializer):
             "label_ids",
             "graph_note_list",
             "save_version",
+            "created_by",
+            "created_at",
         ]
         # Derived on Domain save — never set directly by the client.
-        read_only_fields = ["enable_persistent_variables"]
+        read_only_fields = ["enable_persistent_variables", "created_by", "created_at"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance is None:
             self.fields["save_version"].required = False
+
+    @classmethod
+    def authorship_prefetch_lookups(cls) -> list[Prefetch]:
+        """Prefetches that let this serializer render every author and last edit without a query per row.
+
+        Derived from the declared node-list fields, so a new node list is covered as soon
+        as its serializer carries LastEditFieldsSerializerMixin; its author is prefetched
+        only when that serializer exposes `created_by`.
+        """
+        node_serializers = {
+            field.source or field_name: field.child
+            for field_name, field in cls._declared_fields.items()
+            if isinstance(field, serializers.ListSerializer)
+            and isinstance(field.child, LastEditFieldsSerializerMixin)
+        }
+        return [
+            *authorship_prefetches(),
+            *(
+                prefetch
+                for relation, node_serializer in node_serializers.items()
+                for prefetch in authorship_prefetches(
+                    relation, author=AUTHOR_FIELD in node_serializer.fields
+                )
+            ),
+            # SubGraphNodeSerializer renders the referenced flow, author included, with
+            # GraphLightSerializer.
+            *authorship_prefetches("subgraph_node_list__subgraph"),
+        ]
 
     def create(self, validated_data):
         labels = validated_data.pop("labels", [])

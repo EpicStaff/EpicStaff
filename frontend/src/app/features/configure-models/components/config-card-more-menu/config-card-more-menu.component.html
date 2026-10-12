@@ -1,0 +1,33 @@
+<button
+    #menuTrigger="cdkMenuTriggerFor"
+    type="button"
+    class="more-menu__trigger"
+    aria-label="More actions"
+    matTooltip="More"
+    matTooltipPosition="above"
+    [cdkMenuTriggerFor]="menu"
+    [cdkMenuPosition]="menuPositions"
+    [class.more-menu__trigger--active]="menuTrigger.isOpen()"
+>
+    <i
+        class="ti ti-dots-vertical"
+        aria-hidden="true"
+    ></i>
+</button>
+<ng-template #menu>
+    <div
+        cdkMenu
+        class="more-menu-panel"
+    >
+        <!-- Every item needs (keydown.escape): see onMenuItemEscape(). -->
+        <button
+            cdkMenuItem
+            type="button"
+            class="more-menu-panel__item"
+            (cdkMenuItemTriggered)="onViewDetails()"
+            (keydown.escape)="onMenuItemEscape($event)"
+        >
+            View Details
+        </button>
+    </div>
+</ng-template>

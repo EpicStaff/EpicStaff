@@ -29,5 +29,5 @@ class TelegramTriggerNodeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TelegramTriggerNode
-        exclude = ["created_at", "updated_at", "telegram_bot_api_key_secret"]
+        exclude = ["created_at", "updated_at", "created_by", "telegram_bot_api_key_secret"]
         extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}

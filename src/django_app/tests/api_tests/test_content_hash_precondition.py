@@ -7,7 +7,7 @@ from rest_framework import status
 
 from tables.exceptions import ContentHashConflictError
 from tables.models import AgentNode, Graph, StartNode
-from tables.models.graph_models import ConditionalEdge, WebhookTriggerNode
+from tables.models.graph_models import WebhookTriggerNode
 from tables.models.python_models import PythonCode
 from tables.services.secrets import secret_service
 from tables.models.webhook_models import (
@@ -221,16 +221,6 @@ def webhook_node(graph, python_code):
 
 
 @pytest.fixture
-def conditional_edge(graph, python_code):
-    return ConditionalEdge.objects.create(
-        graph=graph,
-        python_code=python_code,
-        source_node_id=None,
-        input_map={},
-    )
-
-
-@pytest.fixture
 def ngrok_config(default_org):
     trigger = WebhookTrigger.objects.create(
         path="ngrokConfigFixturePath",
@@ -381,54 +371,3 @@ class TestWebhookNodeNestedHashValidation:
         auth.delete()
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash == hash_before
-
-
-# ---------------------------------------------------------------------------
-# ConditionalEdge: node hash propagates from python_code changes
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestConditionalEdgeHashPropagation:
-    def test_node_hash_changes_after_python_code_edit(
-        self, auth_client, conditional_edge
-    ):
-        """Editing python_code on a conditional edge must change the edge hash."""
-        original_edge_hash = conditional_edge.content_hash
-        url = reverse("conditionaledge-detail", args=[conditional_edge.id])
-
-        auth_client.patch(
-            url,
-            {
-                "python_code": {
-                    "code": "def main(): return 'changed'",
-                    "entrypoint": "main",
-                    "libraries": [],
-                    "global_kwargs": {},
-                },
-            },
-            format="json",
-        )
-
-        conditional_edge.python_code.refresh_from_db()
-        conditional_edge.refresh_from_db()
-        assert conditional_edge.content_hash != original_edge_hash
-
-    def test_stale_python_code_hash_returns_409(self, auth_client, conditional_edge):
-        """Sending a stale python_code.content_hash must be rejected with 409."""
-        url = reverse("conditionaledge-detail", args=[conditional_edge.id])
-        response = auth_client.patch(
-            url,
-            {
-                "python_code": {
-                    "code": "def main(): return 'changed'",
-                    "entrypoint": "main",
-                    "libraries": [],
-                    "global_kwargs": {},
-                    "content_hash": "stale_hash",
-                },
-            },
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_409_CONFLICT, response.content

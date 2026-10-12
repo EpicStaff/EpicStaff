@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from rbac.access.gates import IsSuperadmin
 from rbac.access.org_context import OrgContextService
+from rbac.authorship import resolve_author
 from rbac.exceptions import BuiltInModelImmutableError
 
 
@@ -39,7 +40,9 @@ class OrgScopedViewSetMixin(OrgScopedResolverMixin):
         return super().get_queryset().filter(org_id=self.get_active_org_id())
 
     def perform_create(self, serializer):
-        serializer.save(org_id=self.get_active_org_id(), created_by=self.request.user)
+        serializer.save(
+            org_id=self.get_active_org_id(), created_by=resolve_author(self.request.user)
+        )
 
 
 class OrgScopedChildViewSetMixin(OrgScopedResolverMixin):
@@ -119,7 +122,7 @@ class OrgScopedHybridViewSetMixin(OrgScopedResolverMixin):
             raise NotImplementedError(f"{self.__class__.__name__} must set custom_create_values.")
         serializer.save(
             org_id=self.get_active_org_id(),
-            created_by=self.request.user,
+            created_by=resolve_author(self.request.user),
             **self.custom_create_values,
         )
 

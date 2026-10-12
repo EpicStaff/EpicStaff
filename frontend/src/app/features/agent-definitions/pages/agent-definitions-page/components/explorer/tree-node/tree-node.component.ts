@@ -14,12 +14,19 @@ import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util'
 export interface ExplorerTreeMenuEvent {
     node: BranchTreeNode;
     action: string;
+    /**
+     * The row's ⋮ button that opened the menu — where a dialog opened from the menu returns focus.
+     * It only takes focus while visible: `.row__hover-actions` is `visibility: hidden` once the row
+     * loses hover, so today focus falls back to <body> when the dialog closes.
+     */
+    trigger: HTMLElement;
 }
 
 export interface ExplorerTreeMenuOpenEvent {
     node: BranchTreeNode;
     items: ExplorerMenuItem[];
     position: ExplorerMenuPosition;
+    trigger: HTMLElement;
 }
 
 export interface ExplorerTreeAttachSurfaceEvent {
@@ -254,6 +261,11 @@ export class TreeNodeComponent implements OnInit {
         event.stopPropagation();
         const items = this.hoverMenuItems();
         if (!items.length) return;
-        this.menuOpen.emit({ node: this.node(), items, position: menuPositionFromClick(event) });
+        this.menuOpen.emit({
+            node: this.node(),
+            items,
+            position: menuPositionFromClick(event),
+            trigger: event.currentTarget as HTMLElement,
+        });
     }
 }

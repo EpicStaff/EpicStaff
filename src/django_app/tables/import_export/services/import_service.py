@@ -2,6 +2,8 @@ from collections import defaultdict
 
 from django.db import transaction
 from loguru import logger
+from rbac.authorship import record_last_edits
+from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied
 
@@ -9,6 +11,7 @@ from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
 
@@ -31,6 +34,8 @@ class ImportService:
 
         id_mapper = IDMapper()
         denied_resources = set()
+        export_data = prepare_import_data(export_data)
+        created_resources: list[LastEditTrackedModel] = []
 
         with transaction.atomic():
             ordered_types = self._resolve_import_order(export_data)
@@ -50,7 +55,7 @@ class ImportService:
                     entities = self._resolve_graph_order(entities)
 
                 for entity_data in entities:
-                    denied = self._import_single_entity(
+                    denied_resources |= self._import_single_entity(
                         entity_data,
                         entity_type,
                         strategy,
@@ -60,15 +65,15 @@ class ImportService:
                         org_id=org_id,
                         user=user,
                         effective_permissions=effective_permissions,
+                        created_resources=created_resources,
                     )
-                    if denied is not None:
-                        denied_resources.add(denied)
 
             if denied_resources:
                 names = ", ".join(sorted(r.value for r in denied_resources))
                 raise PermissionDenied(
                     f"Missing CREATE permission on: {names}. No changes were made."
                 )
+            record_last_edits(created_resources, user)
 
         return id_mapper, self.registry
 
@@ -94,6 +99,8 @@ class ImportService:
         org_id=None,
         user=None,
         effective_permissions=None,
+        *,
+        created_resources: list[LastEditTrackedModel],
         **kwargs,
     ):
         old_id = entity_data["id"]
@@ -104,11 +111,14 @@ class ImportService:
 
         was_created = existing is None
 
-        denied = None
+        denied = set()
         if was_created and effective_permissions is not None:
-            resource = ENTITY_RESOURCE_MAP.get(entity_type)
-            if resource is not None and not effective_permissions.can(resource, Permission.CREATE):
-                denied = resource
+            for created_type in (entity_type, *strategy.nested_entity_types(entity_data)):
+                resource = ENTITY_RESOURCE_MAP.get(created_type)
+                if resource is not None and not effective_permissions.can(
+                    resource, Permission.CREATE
+                ):
+                    denied.add(resource)
 
         kwargs["org_id"] = org_id
         kwargs["user"] = user
@@ -118,6 +128,8 @@ class ImportService:
         )
         if instance is None:
             return denied
+        if was_created and isinstance(instance, LastEditTrackedModel):
+            created_resources.append(instance)
         # Some strategies (e.g. GraphStrategy) register their own mapping
         # at creation time so downstream logic within the same
         # create_entity call can resolve it. Don't overwrite that mapping.

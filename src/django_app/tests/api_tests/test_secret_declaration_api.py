@@ -414,7 +414,7 @@ class TestSaveTimeValidation:
 
 @pytest.mark.django_db
 def test_every_python_code_nesting_site_shares_the_validating_serializer():
-    """One validate() covers all six sites only because they all nest the same
+    """One validate() covers all five sites only because they all nest the same
     serializer. If a site ever swaps in its own, validation silently stops applying
     there — so the claim is asserted rather than trusted.
     """
@@ -423,7 +423,6 @@ def test_every_python_code_nesting_site_shares_the_validating_serializer():
     )
     from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
         ClassificationDecisionTableNodeSerializer,
-        ConditionalEdgeSerializer,
     )
     from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
         WebhookTriggerNodeSerializer,
@@ -436,12 +435,11 @@ def test_every_python_code_nesting_site_shares_the_validating_serializer():
     nested = [
         PythonNodeSerializer().fields["python_code"],
         WebhookTriggerNodeSerializer().fields["python_code"],
-        ConditionalEdgeSerializer().fields["python_code"],
         ClassificationDecisionTableNodeSerializer().fields["pre_python_code"],
         ClassificationDecisionTableNodeSerializer().fields["post_python_code"],
         PythonCodeToolSerializer().fields["python_code"],
     ]
 
-    assert len(nested) == 6
+    assert len(nested) == 5
     for field in nested:
         assert isinstance(field, PythonCodeSerializer)

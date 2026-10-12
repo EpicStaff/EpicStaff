@@ -166,7 +166,7 @@ def test_default_models_kept_separately_per_org(django_user_model, org_a, org_b)
 
 
 def _chat(org):
-    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    agent_definition = AgentDefinition.objects.create(org=org, name="a")
     rt_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition
     )

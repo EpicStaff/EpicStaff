@@ -36,7 +36,7 @@ def test_copy_telegram_trigger_node_propagates_secret_fk(org, secret):
     )
 
     other_graph = Graph.objects.create(name="target-graph", org=org)
-    copied = copy_telegram_trigger_node(other_graph, node)
+    copied = copy_telegram_trigger_node(other_graph, node, user=None)
 
     assert copied.id != node.id
     assert copied.telegram_bot_api_key_secret_id == secret.id

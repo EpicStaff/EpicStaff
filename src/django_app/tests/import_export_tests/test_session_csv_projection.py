@@ -677,3 +677,14 @@ def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default
     assert len(root_rows) == 3
     assert (child_row["session_id"], child_row["flow_name"]) == (str(child.id), "child flow")
     assert (child_row["node_type"], child_row["cost_usd"]) == ("agent", "0.0001542")
+
+
+def test_formula_cells_are_neutralized():
+    finish = AGENT_SESSION_MESSAGES[4]
+    payload = '=HYPERLINK("http://evil.example","click")'
+    message = {**finish, "message_data": {**finish["message_data"], "output": {**finish["message_data"]["output"], "message": payload}}}
+
+    rows = _rows_by_message_id([message])
+
+    assert rows["45"]["output"] == "'" + payload
+    assert rows["45"]["total_tokens"] == "740"

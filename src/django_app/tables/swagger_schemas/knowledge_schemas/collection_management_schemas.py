@@ -262,7 +262,6 @@ SOURCE_COLLECTION_COPY_POST = {
                         "collection": {
                             "collection_id": 2,
                             "collection_name": "My Copy",
-                            "user_id": 1,
                             "status": "active",
                             "document_count": 5,
                             "rag_configurations": [],

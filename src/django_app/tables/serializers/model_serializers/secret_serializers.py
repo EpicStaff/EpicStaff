@@ -1,5 +1,6 @@
 from django.utils.functional import SimpleLazyObject
 from rbac.access.resolver import PermissionResolver
+from rbac.authorship import AuthorSummarySerializerMixin
 from rbac.scoping.fields import (
     OrgScopedUniqueTogetherValidator,
     resolve_active_org_id,
@@ -29,7 +30,7 @@ class SecretUsageCountListSerializer(serializers.ListSerializer):
         return super().to_representation(data)
 
 
-class SecretSerializer(serializers.ModelSerializer):
+class SecretSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     # Write-only and required: a Secret is created with its value and never
     # updated, so there is no "omit to keep the existing one" case.
     value = serializers.CharField(write_only=True)

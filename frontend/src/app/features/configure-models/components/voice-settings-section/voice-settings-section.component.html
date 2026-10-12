@@ -42,6 +42,39 @@
                         </div>
                         <div class="channel-card__actions">
                             <button
+                                #menuTriggerButton
+                                #menuTrigger="cdkMenuTriggerFor"
+                                type="button"
+                                class="channel-card__action"
+                                aria-label="More actions"
+                                title="More"
+                                [cdkMenuTriggerFor]="menu"
+                                [cdkMenuPosition]="menuPositions"
+                                [class.channel-card__action--active]="menuTrigger.isOpen()"
+                            >
+                                <i
+                                    class="ti ti-dots-vertical"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                            <ng-template #menu>
+                                <div
+                                    cdkMenu
+                                    class="channel-card-menu"
+                                >
+                                    <!-- Every item needs (keydown.escape): see onMenuItemEscape(). -->
+                                    <button
+                                        cdkMenuItem
+                                        type="button"
+                                        class="channel-card-menu__item"
+                                        (cdkMenuItemTriggered)="onViewDetails(channel, menuTriggerButton)"
+                                        (keydown.escape)="onMenuItemEscape($event, menuTrigger, menuTriggerButton)"
+                                    >
+                                        View Details
+                                    </button>
+                                </div>
+                            </ng-template>
+                            <button
                                 *appHasPermission="[ResourceCode.Voice, ActionCode.Update]"
                                 type="button"
                                 class="channel-card__action"

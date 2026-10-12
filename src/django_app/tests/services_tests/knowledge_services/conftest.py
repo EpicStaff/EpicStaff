@@ -39,14 +39,14 @@ from tables.constants.knowledge_constants import (
 @pytest.fixture
 def source_collection(default_org):
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user", org=default_org
+        collection_name="Test Collection", org=default_org
     )
 
 
 @pytest.fixture
 def empty_collection(default_org):
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user_empty", org=default_org
+        collection_name="Empty Collection", org=default_org
     )
 
 

@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 export type AgentSurfacePlace = 'all' | 'flow' | 'chat' | 'realtime';
 
 export const FLOW_CONTEXT_PLACES: readonly AgentSurfacePlace[] = ['all', 'flow'];
@@ -15,9 +17,9 @@ export interface AgentInstruction {
     content: string;
 }
 
-export interface AgentDefinition {
+export interface AgentDefinition extends AuthorshipFields {
     id: number;
-    organization: number;
+    org: number;
     name: string;
     description: string;
     /** Read-only: every `instruction_list` content joined by a blank line, compiled by the backend. */
@@ -39,6 +41,8 @@ export interface AgentDefinition {
     tool_timeout: number;
     max_consecutive_failures: number;
     schema_max_retries: number;
+    /** Read-only ISO 8601 creation time; null for agents created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateAgentDefinitionRequest {

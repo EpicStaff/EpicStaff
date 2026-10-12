@@ -316,6 +316,10 @@ function telegramNode(testPayload: Record<string, unknown> = {}): TelegramTrigge
         metadata: {},
         webhook_trigger: null,
         test_payload: testPayload,
+        created_at: '2026-01-01T00:00:00Z',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
     };
     return mapTelegramTriggerNodeToModel(dto);
 }

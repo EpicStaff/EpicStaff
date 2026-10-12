@@ -71,8 +71,6 @@ class SecretDeclarationValidator:
 
 def _node_name(*, row, site) -> str:
     """A human-usable identity for the offending row."""
-    if site.name_field is None:
-        return f"Conditional edge #{row.pk}"
     return getattr(row, site.name_field) or f"{site.model.__name__} #{row.pk}"
 
 

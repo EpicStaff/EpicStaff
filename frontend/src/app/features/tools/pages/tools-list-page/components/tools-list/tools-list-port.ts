@@ -1,5 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { InjectionToken } from '@angular/core';
+import { AuthorshipDetailsSource } from '@shared/components';
 import { Observable } from 'rxjs';
 
 import { InspectResult } from '../../../../../../core/models/review-item.model';
@@ -13,7 +14,13 @@ import { ToolKind } from '../tool-card/tool-card.model';
  * `ToolsListComponent` calls only into these methods so it stays kind-agnostic.
  */
 export interface ToolsListPort<
-    T extends { id: number; name: string; labels: number[]; is_favorite: boolean; updated_at?: string },
+    T extends AuthorshipDetailsSource & {
+        id: number;
+        name: string;
+        labels: number[];
+        is_favorite: boolean;
+        updated_at?: string;
+    },
 > {
     // discriminators / labels
     readonly kind: ToolKind;

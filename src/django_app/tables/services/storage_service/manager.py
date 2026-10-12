@@ -2,11 +2,12 @@ import io
 import mimetypes
 import re
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 
-from django.db.models import Case, IntegerField, Q, Sum, Value, When
+from django.db.models import Case, F, IntegerField, Q, QuerySet, Sum, Value, When
 from django.db.models.functions import Lower
 from django.utils.dateparse import parse_datetime
+from rbac.authorship import org_member_ids, represent_authorship_time
 from tables.models import StorageFile
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -39,6 +40,74 @@ def _parse_byte_range(header: str | None) -> tuple[int, int | None] | None:
     return first, last
 
 
+def _path_within(entry_path: str, path: str) -> str:
+    """Return `path` relative to the entry at `entry_path`: "" for the entry itself.
+
+    A folder's own row ("docs/") and a file's row ("docs/a.txt" moved as itself) are "";
+    rows beneath a folder keep their relative path ("a.txt", "sub/").
+    """
+    if path.rstrip("/") == entry_path:
+        return ""
+    return path[len(entry_path) + 1 :] if entry_path else path
+
+
+def _authors_at_destination(
+    destination_folder: str,
+    copied_paths: list[str],
+    authors_by_path_within: Mapping[str, int | None],
+) -> dict[str, int | None]:
+    """Translate authors keyed by path within a copied entry to its destination paths.
+
+    The backend copies the entry into `destination_folder` under a possibly deduplicated
+    name, so every copied path is `<destination_folder>/<entry name>[/<path within>]`.
+    A copied path whose source had no row gets no author. A folder entry also maps
+    source rows the backend reported no object for (folders with no marker), so they
+    are not mistaken for new ancestor folders.
+    """
+    prefix = f"{destination_folder.rstrip('/')}/" if destination_folder.strip("/") else ""
+    authors: dict[str, int | None] = {}
+    folder_base = None
+    for path in copied_paths:
+        entry_name, separator, path_within = path[len(prefix) :].partition("/")
+        authors[path] = authors_by_path_within.get(path_within)
+        if separator:
+            folder_base = f"{prefix}{entry_name}/"
+    if folder_base is not None:
+        for path_within, author_id in authors_by_path_within.items():
+            authors.setdefault(f"{folder_base}{path_within}", author_id)
+    return authors
+
+
+def _with_last_edit(rows: QuerySet[StorageFile]) -> QuerySet[StorageFile]:
+    """Annotate each row with its last editor id and edit time, read in the same query."""
+    return rows.annotate(
+        last_editor_id=F("last_edits__edited_by"), last_edit_time=F("last_edits__edited_at")
+    )
+
+
+def _authorship_of(row: StorageFile) -> dict:
+    """Return the author and last-edit fields of a row loaded through `_with_last_edit`.
+
+    User fields are ids; the API layer replaces them with user summaries.
+    """
+    return {
+        "created_by": row.created_by_id,
+        "created_at": represent_authorship_time(row.created_at),
+        "last_edited_by": row.last_editor_id,
+        "last_edited_at": represent_authorship_time(row.last_edit_time),
+    }
+
+
+# Tree nodes without a row of their own (the requested root, folders implied by a deeper
+# path) have no author or editor.
+_NO_AUTHORSHIP = {
+    "created_by": None,
+    "created_at": None,
+    "last_edited_by": None,
+    "last_edited_at": None,
+}
+
+
 class StorageManager:
     """
     Org-aware wrapper around AbstractStorageBackend.
@@ -52,6 +121,9 @@ class StorageManager:
     IsAuthenticated + HasOrgPermission(FILES) + active-org membership, and
     superadmin-only for cross-org transfers). This manager only composes
     org-scoped keys and delegates to the backend.
+
+    Mutating methods take the acting `user`, which authors the rows they create
+    (see StorageFileSync); system callers omit it.
     """
 
     def __init__(self, backend: AbstractStorageBackend):
@@ -77,7 +149,7 @@ class StorageManager:
     def list_(self, org_id: int, prefix: str = "") -> list[FileListItem]:
         norm = (prefix.rstrip("/") + "/") if prefix else ""
         rows = list(
-            StorageFile.objects.filter(org_id=org_id, parent_path=norm).order_by(
+            _with_last_edit(StorageFile.objects.filter(org_id=org_id, parent_path=norm)).order_by(
                 Case(
                     When(item_type="folder", then=Value(0)),
                     default=Value(1),
@@ -108,6 +180,7 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=row.path not in non_empty,
+                        **_authorship_of(row),
                     )
                 )
             else:
@@ -119,6 +192,7 @@ class StorageManager:
                         size=row.size or 0,
                         modified=row.s3_modified.isoformat() if row.s3_modified else None,
                         is_empty=False,
+                        **_authorship_of(row),
                     )
                 )
 
@@ -143,19 +217,33 @@ class StorageManager:
         self._backend.delete(self._build_storage_key(org_id, path))
         StorageFileSync.on_delete(org_id, path)
 
-    def mkdir(self, org_id: int, path: str) -> None:
+    def mkdir(self, org_id: int, path: str, *, user: object | None = None) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
-        StorageFileSync.on_mkdir(org_id, path)
+        StorageFileSync.on_mkdir(org_id, path, user=user)
 
-    def move(self, org_id: int, source_path: str, destination_path: str) -> None:
+    def move(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
         actual_key = self._backend.move(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
         actual_path = self._strip_org_prefix(org_id, actual_key)
-        StorageFileSync.on_move(org_id, source_path, actual_path)
+        StorageFileSync.on_move(org_id, source_path, actual_path, user=user)
 
-    def rename(self, org_id: int, source_path: str, destination_path: str) -> None:
+    def rename(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
         destination_clean = destination_path.rstrip("/")
         destination_exists = StorageFile.objects.filter(
             org_id=org_id, path__in=[destination_clean, destination_clean + "/"]
@@ -169,16 +257,36 @@ class StorageManager:
         )
         # rename never dedupes — the guard above confirmed this exact path was
         # free, so destination_path IS the actual path (unlike move).
-        StorageFileSync.on_move(org_id, source_path, destination_path)
+        StorageFileSync.on_move(org_id, source_path, destination_path, user=user)
 
-    def copy(self, org_id: int, source_path: str, destination_path: str) -> None:
-        self._copy_within_quota(org_id, source_path, org_id, destination_path)
+    def copy(
+        self,
+        org_id: int,
+        source_path: str,
+        destination_path: str,
+        *,
+        user: object | None = None,
+    ) -> None:
+        self._copy_within_quota(org_id, source_path, org_id, destination_path, user=user)
 
     def _copy_within_quota(
-        self, src_org_id: int, source_path: str, dst_org_id: int, destination_path: str
+        self,
+        src_org_id: int,
+        source_path: str,
+        dst_org_id: int,
+        destination_path: str,
+        *,
+        user: object | None = None,
+        authors_by_path_within: Mapping[str, int | None] | None = None,
     ) -> None:
         """Copy source into the destination folder and record the copies within its org's quota.
-        Over quota the copies are deleted again; the org lock is never held across the S3 copy."""
+        Over quota the copies are deleted again; the org lock is never held across the S3 copy.
+
+        The copies are authored by `user` unless `authors_by_path_within` is given: it maps
+        each source row's path within the copied entry ("" for the entry itself, see
+        `_path_within`) to the author its copy gets, and a copy it does not name gets no
+        author. Ancestor folders the copy creates are still authored by `user`.
+        """
         # Early reject only: rows of files that predate size tracking count as 0 here.
         ensure_fits_quota(dst_org_id, self._recorded_size(src_org_id, source_path))
 
@@ -195,11 +303,49 @@ class StorageManager:
             else:
                 files.append((path, size))
 
+        authors_by_path = None
+        if authors_by_path_within is not None:
+            authors_by_path = _authors_at_destination(
+                self._strip_org_prefix(
+                    dst_org_id, self._build_storage_key(dst_org_id, destination_path)
+                ),
+                [*(path for path, _ in files), *folders],
+                authors_by_path_within,
+            )
+
         try:
-            record_files_within_quota(dst_org_id, files, folders)
+            record_files_within_quota(
+                dst_org_id, files, folders, user=user, authors_by_path=authors_by_path
+            )
         except BaseException:
             self._backend.discard_keys([key for key, _ in copied])
             raise
+
+    @staticmethod
+    def _kept_authors_by_path_within(
+        src_org_id: int, source_path: str, dst_org_id: int
+    ) -> dict[str, int | None]:
+        """Map each source row's path within the moved entry to the author it keeps.
+
+        An author is kept only while a member of the destination org. Two queries,
+        whatever the number of rows.
+        """
+        source = sanitize_storage_path(source_path, allow_empty=True, allow_leading_slash=True)
+        source = source.rstrip("/")
+        rows = list(
+            StorageFile.objects.filter(org_id=src_org_id)
+            .filter(Q(path=source) | Q(path__startswith=f"{source}/" if source else ""))
+            .values_list("path", "created_by_id")
+        )
+        # NOTE: membership is read before the copy, so a user removed from the destination
+        # org while the copy runs can still land as author. Accepted: the window is tiny.
+        kept_author_ids = org_member_ids(
+            org_id=dst_org_id, user_ids={author_id for _, author_id in rows}
+        )
+        return {
+            _path_within(source, path): (author_id if author_id in kept_author_ids else None)
+            for path, author_id in rows
+        }
 
     @staticmethod
     def _recorded_size(org_id: int, source_path: str) -> int:
@@ -221,8 +367,9 @@ class StorageManager:
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
+        org_rows = _with_last_edit(StorageFile.objects.filter(org_id=org_id))
         try:
-            row = StorageFile.objects.get(org_id=org_id, path=clean_path)
+            row = org_rows.get(path=clean_path)
             content_type, _ = mimetypes.guess_type(row.name)
             return FileInfo(
                 id=row.id,
@@ -231,18 +378,20 @@ class StorageManager:
                 size=row.size or 0,
                 content_type=content_type or "application/octet-stream",
                 modified=(row.s3_modified or row.created_at).isoformat(),
+                **_authorship_of(row),
             )
         except StorageFile.DoesNotExist:
             pass
 
         folder_path = clean_path + "/"
         try:
-            row = StorageFile.objects.get(org_id=org_id, path=folder_path)
+            row = org_rows.get(path=folder_path)
             return FolderInfo(
                 id=row.id,
                 name=row.name,
                 path=row.path,
                 modified=(row.s3_modified or row.created_at).isoformat(),
+                **_authorship_of(row),
             )
         except StorageFile.DoesNotExist:
             pass
@@ -324,13 +473,16 @@ class StorageManager:
             "type": "folder",
             "size": 0,
             "modified": None,
+            **_NO_AUTHORSHIP,
             "children_map": {},
         }
         nodes_by_path: dict[str, dict] = {norm: root_dict}
         truncated = False
         count = 0
 
-        rows = StorageFile.objects.filter(org_id=org_id, path__startswith=norm).order_by("path")
+        rows = _with_last_edit(
+            StorageFile.objects.filter(org_id=org_id, path__startswith=norm)
+        ).order_by("path")
 
         for row in rows:
             if row.path == norm:
@@ -365,6 +517,7 @@ class StorageManager:
                         "type": "folder",
                         "size": 0,
                         "modified": None,
+                        **_NO_AUTHORSHIP,
                         "children_map": {},
                     }
                     nodes_by_path[cur_path] = node
@@ -395,6 +548,7 @@ class StorageManager:
                     "type": "folder",
                     "size": 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
+                    **_authorship_of(row),
                     "children_map": {},
                 }
             else:
@@ -405,6 +559,7 @@ class StorageManager:
                     "type": "file",
                     "size": row.size or 0,
                     "modified": row.s3_modified.isoformat() if row.s3_modified else None,
+                    **_authorship_of(row),
                     "children_map": None,
                 }
 
@@ -429,6 +584,10 @@ class StorageManager:
                 size=node_dict["size"],
                 modified=node_dict["modified"],
                 children=children,
+                created_by=node_dict["created_by"],
+                created_at=node_dict["created_at"],
+                last_edited_by=node_dict["last_edited_by"],
+                last_edited_at=node_dict["last_edited_at"],
             )
 
         return build(root_dict), truncated
@@ -441,15 +600,39 @@ class StorageManager:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """Substring search on filename within an org."""
+        """Substring search on filename within an org, with each result's author and last edit."""
         qs = StorageFile.objects.filter(org_id=org_id, name__icontains=q, item_type="file")
 
         if path:
             qs = qs.filter(path__startswith=path.rstrip("/") + "/")
 
         total = qs.count()
-        rows = list(qs.order_by("path").values("id", "path", "name")[offset : offset + limit])
-        return rows, total
+        rows = (
+            _with_last_edit(qs)
+            .order_by("path")
+            .values(
+                "id",
+                "path",
+                "name",
+                "created_by_id",
+                "created_at",
+                "last_editor_id",
+                "last_edit_time",
+            )[offset : offset + limit]
+        )
+        results = [
+            {
+                "id": row["id"],
+                "path": row["path"],
+                "name": row["name"],
+                "created_by": row["created_by_id"],
+                "created_at": represent_authorship_time(row["created_at"]),
+                "last_edited_by": row["last_editor_id"],
+                "last_edited_at": represent_authorship_time(row["last_edit_time"]),
+            }
+            for row in rows
+        ]
+        return results, total
 
     # --- Cross-org operations (superadmin-only; enforced at the API layer) ---
 
@@ -459,13 +642,15 @@ class StorageManager:
         src_path: str,
         dst_org_id: int,
         dst_path: str,
+        *,
+        user: object | None = None,
     ) -> None:
         """
         Copy a file or folder from one org to another, within the destination
         org's quota. Caller authorization (superadmin) is enforced at the API
         layer. Uses a server-side S3 copy — no data streams through the app.
         """
-        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path)
+        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path, user=user)
 
     def move_cross_org(
         self,
@@ -473,13 +658,30 @@ class StorageManager:
         src_path: str,
         dst_org_id: int,
         dst_path: str,
+        *,
+        user: object | None = None,
     ) -> None:
         """
         Move a file or folder from one org to another, within the destination
         org's quota; over quota the source stays untouched. Caller authorization
         (superadmin) is enforced at the API layer. Non-atomic: if the delete step
         fails after a successful copy, the file will exist in both orgs.
+
+        A move is not a creation: each moved row keeps its author while that user is a
+        member of the destination org, and otherwise has none; `user` only authors the
+        ancestor folders the move creates there. An existing destination file keeps its
+        own author. Every moved row gets `user` as its last editor: the move is an edit in
+        the destination org.
         """
-        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path)
+        self._copy_within_quota(
+            src_org_id,
+            src_path,
+            dst_org_id,
+            dst_path,
+            user=user,
+            authors_by_path_within=self._kept_authors_by_path_within(
+                src_org_id, src_path, dst_org_id
+            ),
+        )
         self._backend.delete(self._build_storage_key(src_org_id, src_path))
         StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))
