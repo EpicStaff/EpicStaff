@@ -164,6 +164,8 @@ export type RecycleBinDetail =
     | { label: string; format: 'empty'; value: null };
 
 export interface RecycleBinRestoreOutcome {
+    /** Which bin it came from: a renamed secret needs a note, since code reads secrets by name. */
+    source: RecycleBinSourceKey;
     name: string;
     renamedFrom: string | null;
     /** Everything that used it is connected again; otherwise it came back without its links. */

@@ -20,11 +20,17 @@ export type RecycleBinAction = 'restore' | 'delete';
  * were removed for good.
  */
 export function restoreSuccessMessage(outcome: RecycleBinRestoreOutcome): string {
-    const restored =
-        outcome.renamedFrom === null
-            ? `"${outcome.name}" restored.`
-            : `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken.`;
+    if (outcome.renamedFrom === null) return `"${outcome.name}" restored. ${linksNote([outcome], 'it', 'Its')}`;
+    const restored = `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken.`;
+    // Tools stay linked to a renamed secret, but their code still asks for it by the old name.
+    if (isRenamedSecret(outcome)) {
+        return `${restored} Tools that read it as "${outcome.renamedFrom}" in their code need to use the new name.`;
+    }
     return `${restored} ${linksNote([outcome], 'it', 'Its')}`;
+}
+
+function isRenamedSecret(outcome: RecycleBinRestoreOutcome): boolean {
+    return outcome.source === 'secret' && outcome.renamedFrom !== null;
 }
 
 /** What happened to the links: connected again when every item kept them, otherwise not restored. */
@@ -149,7 +155,10 @@ export function restoreResultMessage(result: RecycleBinRestoreResult): string | 
         renamed.length === 0
             ? ''
             : `, ${renamed.length} renamed: ${renames.join(', ')}${moreRenames > 0 ? ` and ${moreRenames} more` : ''}`;
-    return `${restored.length} restored${renameNote}. ${linksNote(restored, 'them', 'Their')}`;
+    const secretNote = restored.some(isRenamedSecret)
+        ? ' Tools that read a renamed secret by its old name in their code need to use the new name.'
+        : '';
+    return `${restored.length} restored${renameNote}. ${linksNote(restored, 'them', 'Their')}${secretNote}`;
 }
 
 /** Success toast of a permanent delete; `itemName` for a single row. `null` when nothing was deleted. */

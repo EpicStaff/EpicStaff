@@ -38,20 +38,20 @@ function binItem(source: RecycleBinItem['source'], name: string): RecycleBinItem
 
 describe('recycle bin messages', () => {
     it('says an item was restored, without its links', () => {
-        expect(restoreSuccessMessage({ name: 'Report', renamedFrom: null, linksRestored: false })).toBe(
+        expect(restoreSuccessMessage({ source: 'flow', name: 'Report', renamedFrom: null, linksRestored: false })).toBe(
             `"Report" restored. Its links to other items aren't restored.`
         );
     });
 
     it('says the items come back connected when the backend restored their links', () => {
-        expect(restoreSuccessMessage({ name: 'API_KEY', renamedFrom: null, linksRestored: true })).toBe(
-            `"API_KEY" restored. Everything that used it is connected again.`
-        );
+        expect(
+            restoreSuccessMessage({ source: 'secret', name: 'API_KEY', renamedFrom: null, linksRestored: true })
+        ).toBe(`"API_KEY" restored. Everything that used it is connected again.`);
         expect(
             restoreResultMessage({
                 restored: [
-                    { name: 'orders', renamedFrom: null, linksRestored: true },
-                    { name: 'calls', renamedFrom: null, linksRestored: true },
+                    { source: 'webhook_trigger', name: 'orders', renamedFrom: null, linksRestored: true },
+                    { source: 'webhook_trigger', name: 'calls', renamedFrom: null, linksRestored: true },
                 ],
                 failed: [],
             })
@@ -62,8 +62,8 @@ describe('recycle bin messages', () => {
         expect(
             restoreResultMessage({
                 restored: [
-                    { name: 'API_KEY', renamedFrom: null, linksRestored: true },
-                    { name: 'Report', renamedFrom: null, linksRestored: false },
+                    { source: 'secret', name: 'API_KEY', renamedFrom: null, linksRestored: true },
+                    { source: 'flow', name: 'Report', renamedFrom: null, linksRestored: false },
                 ],
                 failed: [],
             })
@@ -71,8 +71,36 @@ describe('recycle bin messages', () => {
     });
 
     it('names the new name when the restore had to rename', () => {
-        expect(restoreSuccessMessage({ name: 'Report #2', renamedFrom: 'Report', linksRestored: false })).toBe(
+        expect(
+            restoreSuccessMessage({ source: 'flow', name: 'Report #2', renamedFrom: 'Report', linksRestored: false })
+        ).toBe(
             `"Report" restored as "Report #2", because that name was taken. Its links to other items aren't restored.`
+        );
+    });
+
+    it('tells tools to use the new name when a restore renames a secret', () => {
+        expect(
+            restoreSuccessMessage({
+                source: 'secret',
+                name: 'OPENAI_KEY #2',
+                renamedFrom: 'OPENAI_KEY',
+                linksRestored: true,
+            })
+        ).toBe(
+            `"OPENAI_KEY" restored as "OPENAI_KEY #2", because that name was taken. ` +
+                `Tools that read it as "OPENAI_KEY" in their code need to use the new name.`
+        );
+        expect(
+            restoreResultMessage({
+                restored: [
+                    { source: 'secret', name: 'OPENAI_KEY #2', renamedFrom: 'OPENAI_KEY', linksRestored: true },
+                    { source: 'secret', name: 'API_KEY', renamedFrom: null, linksRestored: true },
+                ],
+                failed: [],
+            })
+        ).toBe(
+            `2 restored, 1 renamed: OPENAI_KEY → OPENAI_KEY #2. Everything that used them is connected again. ` +
+                `Tools that read a renamed secret by its old name in their code need to use the new name.`
         );
     });
 
@@ -144,17 +172,20 @@ describe('recycle bin messages', () => {
             expect(
                 restoreResultMessage({
                     restored: [
-                        { name: 'Report #2', renamedFrom: 'Report', linksRestored: false },
-                        { name: 'a', renamedFrom: null, linksRestored: false },
-                        { name: 'b', renamedFrom: null, linksRestored: false },
-                        { name: 'c', renamedFrom: null, linksRestored: false },
-                        { name: 'd', renamedFrom: null, linksRestored: false },
+                        { source: 'flow', name: 'Report #2', renamedFrom: 'Report', linksRestored: false },
+                        { source: 'flow', name: 'a', renamedFrom: null, linksRestored: false },
+                        { source: 'flow', name: 'b', renamedFrom: null, linksRestored: false },
+                        { source: 'flow', name: 'c', renamedFrom: null, linksRestored: false },
+                        { source: 'flow', name: 'd', renamedFrom: null, linksRestored: false },
                     ],
                     failed: [],
                 })
             ).toBe(`5 restored, 1 renamed: Report → Report #2. Their links to other items aren't restored.`);
             expect(
-                restoreResultMessage({ restored: [{ name: 'a', renamedFrom: null, linksRestored: false }], failed: [] })
+                restoreResultMessage({
+                    restored: [{ source: 'flow', name: 'a', renamedFrom: null, linksRestored: false }],
+                    failed: [],
+                })
             ).toBe(`"a" restored. Its links to other items aren't restored.`);
             expect(restoreResultMessage({ restored: [], failed: [] })).toBeNull();
         });

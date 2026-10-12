@@ -73,11 +73,20 @@ export class RecycleBinBulkService {
 
     private restore(calls: BulkCall[]): Observable<RecycleBinRestoreResult> {
         if (calls.length === 0) return of({ restored: [], failed: [] });
-        return concat(...calls.map((call) => this.api.restore(call.source, call.selection))).pipe(
+        return concat(
+            ...calls.map((call) =>
+                this.api.restore(call.source, call.selection).pipe(
+                    map((response: RecycleBinBulkRestoreResponse) => ({
+                        restored: response.restored.map((item) => toRestoreOutcome(call.source, item)),
+                        failed: response.failed.map(toFailure),
+                    }))
+                )
+            )
+        ).pipe(
             toArray(),
-            map((responses: RecycleBinBulkRestoreResponse[]) => ({
-                restored: responses.flatMap((response) => response.restored.map(toRestoreOutcome)),
-                failed: responses.flatMap((response) => response.failed.map(toFailure)),
+            map((results: RecycleBinRestoreResult[]) => ({
+                restored: results.flatMap((result) => result.restored),
+                failed: results.flatMap((result) => result.failed),
             }))
         );
     }

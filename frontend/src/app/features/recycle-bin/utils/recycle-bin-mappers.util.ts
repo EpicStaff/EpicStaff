@@ -73,8 +73,11 @@ export function storageOwnName(path: string): string {
     return isFolder ? `${ownName}/` : ownName;
 }
 
-export function toRestoreOutcome(response: RestoreRecycleBinItemResponse): RecycleBinRestoreOutcome {
-    return { name: response.name, renamedFrom: response.renamed_from, linksRestored: response.links_restored };
+export function toRestoreOutcome(
+    source: RecycleBinSourceKey,
+    response: RestoreRecycleBinItemResponse
+): RecycleBinRestoreOutcome {
+    return { source, name: response.name, renamedFrom: response.renamed_from, linksRestored: response.links_restored };
 }
 
 /** Sort comparator: newest `deletedAt` first, then higher id first (the backend's own order). */
