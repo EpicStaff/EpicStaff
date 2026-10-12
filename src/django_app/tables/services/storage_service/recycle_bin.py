@@ -1,5 +1,6 @@
 """The storage recycle bin: what it holds, restoring an item, and deleting it for good."""
 
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -318,10 +319,19 @@ class StorageRecycleBinService:
         )
         return RestoreResult(object=root, renamed_from=old_path if final_path != old_path else None)
 
-    def purge_many(self, org_id: int, row_ids: list[int] | None, *, actor: str) -> BulkPurgeResult:
+    def purge_many(
+        self,
+        org_id: int,
+        row_ids: list[int] | None,
+        *,
+        actor: str,
+        until: float | None = None,
+    ) -> BulkPurgeResult:
         """Purge each id, or every binned row of the org when `row_ids` is None.
 
-        An id an earlier folder purge already removed is skipped.
+        An id an earlier folder purge already removed is skipped. `until` is a
+        `time.monotonic()` deadline, checked after each row: past it, the rest is left
+        for a later call.
 
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
@@ -336,6 +346,8 @@ class StorageRecycleBinService:
                 result.purged.append(row_id)
             except Exception as error:  # one item mustn't stop the rest; reported per item
                 result.failed.append(_failure(row, error))
+            if until is not None and time.monotonic() >= until:
+                break
         return result
 
     def _target_ids(self, org_id: int, row_ids: list[int] | None) -> list[int]:

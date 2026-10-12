@@ -163,14 +163,23 @@ export interface RecycleBinPage {
     totalCount: number;
 }
 
-// Bulk actions: every bin takes `{ids}` (1–100) or `{all: true}` on `<list>/recycle-bin/restore|purge/`.
+// Bulk actions: every bin takes `{ids}` (1–100) on `<list>/recycle-bin/restore|purge/`. Emptying
+// every bin at once is its own endpoint (`recycle-bin/empty/`).
 
-export type RecycleBinSelection = { ids: number[] } | { all: true };
+export type RecycleBinSelection = { ids: number[] };
 
 export interface RecycleBinBulkFailureResponse {
     id: number;
     name: string;
     message: string;
+}
+
+/** POST recycle-bin/empty/: one slice of every bin the user may delete in; call again while `remaining`. */
+export interface RecycleBinEmptyResponse {
+    purged_count: number;
+    /** Items still in those bins: left for the next call, or ones that failed. */
+    remaining: number;
+    failed: (RecycleBinBulkFailureResponse & { source: RecycleBinSourceKey })[];
 }
 
 export interface RecycleBinBulkRestoreResponse {

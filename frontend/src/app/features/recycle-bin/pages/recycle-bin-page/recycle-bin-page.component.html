@@ -19,29 +19,19 @@
                         [disabled]="emptying()"
                         (click)="onEmptyRecycleBin()"
                     >
-                        Empty recycle bin
+                        @if (emptying() && emptyingLeft(); as left) {
+                            Emptying… {{ left }} left
+                        } @else {
+                            Empty recycle bin
+                        }
                     </app-button>
                 </div>
             }
         </header>
-        <nav class="tabs">
-            <div class="tabs-left">
-                @for (tab of visibleTabs(); track tab.key; let last = $last) {
-                    <app-tab-button
-                        mod="sm"
-                        [routerLink]="tab.key"
-                        routerLinkActive="active"
-                        #rla="routerLinkActive"
-                        [active]="rla.isActive"
-                    >
-                        {{ tab.label }}
-                    </app-tab-button>
-                    @if (!last) {
-                        <span class="tab-sep">/</span>
-                    }
-                }
-            </div>
-        </nav>
+        <app-route-tabs
+            class="tabs"
+            [tabs]="routeTabs()"
+        />
     </div>
     <section class="body">
         <router-outlet></router-outlet>

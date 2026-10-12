@@ -55,29 +55,9 @@
         }
     }
 
+    // The settings page's tab row: app-route-tabs, with the same gutters as the header above.
     .tabs {
-        display: flex;
-        align-items: center;
-        margin-bottom: 0;
-        background: transparent;
-        padding: 0 3.75rem 0 2.75rem;
-        border-bottom: 1px solid var(--color-divider-subtle);
-
-        .tabs-left {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .tab-sep {
-            text-align: center;
-            font-size: 1.625rem;
-            padding: 0 12px;
-            color: var(--transparent-white-16);
-            font-weight: 500;
-            opacity: 0.3;
-            user-select: none;
-        }
+        padding: 4px 3.75rem 0 2.5rem;
     }
 
     // The tab inside scrolls its own table rows; the body itself doesn't scroll.

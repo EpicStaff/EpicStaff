@@ -82,20 +82,26 @@ describe('RecycleBinBulkService', () => {
         expect(purgedCount).toBe(150);
     });
 
-    it('empties every given source with `all: true`, storage included', () => {
-        let failedNames: string[] = [];
-        service
-            .purgeAll(['flow', 'storage'])
-            .subscribe((result) => (failedNames = result.failed.map((failure) => failure.name)));
+    it('empties a large bin over several calls, reporting what is left and each failure once', () => {
+        const left: number[] = [];
+        let result: unknown;
+        service.emptyAll((remaining) => left.push(remaining)).subscribe((value) => (result = value));
+        const stuck = { source: 'storage', id: 9, name: 'docs/a.txt', message: 'Storage is unreachable.' };
+        const answer = (purged_count: number, remaining: number) =>
+            httpTesting
+                .expectOne({ method: 'POST', url: `${API_URL}recycle-bin/empty/` })
+                .flush({ purged_count, failed: [stuck], remaining });
 
-        const flows = httpTesting.expectOne({ method: 'POST', url: `${API_URL}graphs/recycle-bin/purge/` });
-        expect(flows.request.body).toEqual({ all: true });
-        flows.flush({ purged: [1], failed: [] });
-        const files = httpTesting.expectOne({ method: 'POST', url: `${API_URL}storage/recycle-bin/purge/` });
-        expect(files.request.body).toEqual({ all: true });
-        files.flush({ purged: [], failed: [{ id: 9, name: 'docs/a.txt', message: 'Storage is unreachable.' }] });
+        answer(4, 3);
+        answer(2, 1);
+        // Only the failed item is left, and this call got nowhere: stop.
+        answer(0, 1);
 
-        expect(failedNames).toEqual(['docs/a.txt']);
+        expect(left).toEqual([3, 1, 1]);
+        expect(result).toEqual({
+            purgedCount: 6,
+            failed: [{ name: 'docs/a.txt', message: 'Storage is unreachable.' }],
+        });
     });
 
     it('sends nothing for no items', () => {

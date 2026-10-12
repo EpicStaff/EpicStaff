@@ -10,6 +10,7 @@ import {
     GetStorageRecycleBinPageResponse,
     RecycleBinBulkPurgeResponse,
     RecycleBinBulkRestoreResponse,
+    RecycleBinEmptyResponse,
     RecycleBinResourceSourceKey,
     RecycleBinSelection,
     RecycleBinSourceKey,
@@ -21,7 +22,8 @@ import {
  * buttons only with CREATE / DELETE, so a 403 means permissions changed meanwhile and should surface.
  *
  * Every action, a single row's included, goes through the bulk endpoints
- * (`<list>/recycle-bin/restore|purge/` with `{ids}` or `{all: true}`), so they share one result shape.
+ * (`<list>/recycle-bin/restore|purge/` with `{ids}`), so they share one result shape. "Empty recycle
+ * bin" is one request to `recycle-bin/empty/`.
  */
 @Injectable({ providedIn: 'root' })
 export class RecycleBinApiService {
@@ -58,6 +60,11 @@ export class RecycleBinApiService {
 
     purge(source: RecycleBinSourceKey, selection: RecycleBinSelection): Observable<RecycleBinBulkPurgeResponse> {
         return this.http.post<RecycleBinBulkPurgeResponse>(`${this.binUrl(source)}purge/`, selection);
+    }
+
+    /** Empties every bin the user may delete in; the server picks them by the user's permissions. */
+    emptyAll(): Observable<RecycleBinEmptyResponse> {
+        return this.http.post<RecycleBinEmptyResponse>(`${this.configService.apiUrl}recycle-bin/empty/`, {});
     }
 
     private binUrl(source: RecycleBinSourceKey): string {

@@ -96,7 +96,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
 )
-from tables.views.recycle_bin_views import RecycleBinSettingsView
+from tables.views.recycle_bin_views import RecycleBinEmptyView, RecycleBinSettingsView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
@@ -241,6 +241,7 @@ urlpatterns = [
         RecycleBinSettingsView.as_view(),
         name="recycle-bin-settings",
     ),
+    path("recycle-bin/empty/", RecycleBinEmptyView.as_view(), name="recycle-bin-empty"),
     path(
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),

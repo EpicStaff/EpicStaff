@@ -88,3 +88,18 @@ class RecycleBinBulkRestoreResponseSerializer(serializers.Serializer):
 class RecycleBinBulkPurgeResponseSerializer(serializers.Serializer):
     purged = serializers.ListField(child=serializers.IntegerField())
     failed = RecycleBinBulkFailureSerializer(many=True)
+
+
+class RecycleBinEmptyFailureSerializer(RecycleBinBulkFailureSerializer):
+    source = serializers.CharField(help_text="The bin the item was in, e.g. `flow` or `secret`.")
+
+
+class RecycleBinEmptyResponseSerializer(serializers.Serializer):
+    purged_count = serializers.IntegerField(help_text="How many items were deleted for good.")
+    failed = RecycleBinEmptyFailureSerializer(many=True)
+    remaining = serializers.IntegerField(
+        help_text=(
+            "Items still in those bins: call again while it goes down. One call purges for "
+            "a limited time, so a large bin takes several."
+        )
+    )

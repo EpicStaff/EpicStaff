@@ -1,5 +1,7 @@
 """Restore or purge several recycle-bin items at once: selected ones, or a whole bin."""
 
+import time
+
 from rest_framework.exceptions import APIException
 from tables.exceptions import NotInRecycleBinError
 from tables.services.recycle_bin.bin_service import RecycleBinService
@@ -34,9 +36,18 @@ class RecycleBinBulkService:
 
     @classmethod
     def purge_many(
-        cls, resource: BinResource, org_id: int, ids: list[int] | None, *, actor: str
+        cls,
+        resource: BinResource,
+        org_id: int,
+        ids: list[int] | None,
+        *,
+        actor: str,
+        until: float | None = None,
     ) -> BulkPurgeResult:
         """Delete `ids` for good, or every item of the org's bin when `ids` is None.
+
+        `until` is a `time.monotonic()` deadline: past it, the items left are left for a
+        later call. It's checked after each item, so a call always does at least one.
 
         Raises:
             NotInRecycleBinError: an id isn't in this org's bin; nothing is purged.
@@ -49,6 +60,8 @@ class RecycleBinBulkService:
                 result.purged.append(pk)
             except Exception as error:  # one item mustn't stop the rest; reported per item
                 result.failed.append(cls._failure(resource, root, error, pk=pk))
+            if until is not None and time.monotonic() >= until:
+                break
         return result
 
     @staticmethod

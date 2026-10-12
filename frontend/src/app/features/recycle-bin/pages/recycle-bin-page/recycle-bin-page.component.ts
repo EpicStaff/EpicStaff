@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ButtonComponent, ConfirmationDialogService, TabButtonComponent } from '@shared/components';
+import { RouterOutlet } from '@angular/router';
+import { ButtonComponent, ConfirmationDialogService, RouteTab, RouteTabsComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode } from '@shared/models';
 import { filter, finalize, switchMap } from 'rxjs';
@@ -22,14 +22,7 @@ import { visibleRecycleBinTabs } from '../../utils/visible-recycle-bin-tabs.util
 
 @Component({
     selector: 'app-recycle-bin-page',
-    imports: [
-        RouterOutlet,
-        RouterLink,
-        RouterLinkActive,
-        TabButtonComponent,
-        ButtonComponent,
-        HideInlineSubtitleOnOverflowDirective,
-    ],
+    imports: [RouterOutlet, RouteTabsComponent, ButtonComponent, HideInlineSubtitleOnOverflowDirective],
     templateUrl: './recycle-bin-page.component.html',
     styleUrls: ['./recycle-bin-page.component.scss'],
     providers: [RecycleBinReloadService],
@@ -37,6 +30,14 @@ import { visibleRecycleBinTabs } from '../../utils/visible-recycle-bin-tabs.util
 export class RecycleBinPageComponent {
     protected readonly visibleTabs = computed(() =>
         visibleRecycleBinTabs((resource, action) => this.permissionsService.can(resource, action))
+    );
+    /** The visible tabs, as the settings page shows its own (already filtered by permission). */
+    protected readonly routeTabs = computed<RouteTab[]>(() =>
+        this.visibleTabs().map((tab) => ({
+            routerLink: tab.key,
+            label: tab.label,
+            isPermitted: () => true,
+        }))
     );
     /** The tabs "Empty recycle bin" empties: every visible tab the user may delete on. */
     protected readonly purgeableTabs = computed(() =>
@@ -49,6 +50,8 @@ export class RecycleBinPageComponent {
             : `Deleted items stay here for ${days} ${days === 1 ? 'day' : 'days'}, then they're removed for good.`;
     });
     protected readonly emptying = signal(false);
+    /** Items left while a large bin empties over several requests; null before the first answer. */
+    protected readonly emptyingLeft = signal<number | null>(null);
 
     private readonly permissionsService = inject(PermissionsService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsStorageService);
@@ -67,8 +70,13 @@ export class RecycleBinPageComponent {
                 switchMap(() => {
                     this.emptying.set(true);
                     return this.bulk
-                        .purgeAll(tabs.flatMap((tab) => tab.sources))
-                        .pipe(finalize(() => this.emptying.set(false)));
+                        .emptyAll((left) => this.emptyingLeft.set(left))
+                        .pipe(
+                            finalize(() => {
+                                this.emptying.set(false);
+                                this.emptyingLeft.set(null);
+                            })
+                        );
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )

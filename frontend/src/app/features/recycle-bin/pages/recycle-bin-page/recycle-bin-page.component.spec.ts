@@ -9,7 +9,7 @@ import { Observable, of } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsStorageService } from '../../../../services/recycle-bin';
-import { RecycleBinPurgeResult, RecycleBinSourceKey, RecycleBinTabKey } from '../../models/recycle-bin.model';
+import { RecycleBinPurgeResult, RecycleBinTabKey } from '../../models/recycle-bin.model';
 import { RECYCLE_BIN_ROUTES } from '../../recycle-bin.routes';
 import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
 
@@ -43,9 +43,7 @@ describe('RecycleBinPageComponent', () => {
     let deletable: ResourceCode[];
     let retentionDays: WritableSignal<number | null>;
     let confirm: ReturnType<typeof vi.fn<(options: ConfirmationDialogData) => Observable<ConfirmationResult>>>;
-    let purgeAll: ReturnType<
-        typeof vi.fn<(sources: readonly RecycleBinSourceKey[]) => Observable<RecycleBinPurgeResult>>
-    >;
+    let emptyAll: ReturnType<typeof vi.fn<() => Observable<RecycleBinPurgeResult>>>;
     let toast: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
 
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
@@ -56,7 +54,7 @@ describe('RecycleBinPageComponent', () => {
         deletable = [];
         retentionDays = signal<number | null>(7);
         confirm = vi.fn(() => of<ConfirmationResult>(true));
-        purgeAll = vi.fn(() => of<RecycleBinPurgeResult>({ purgedCount: 3, failed: [] }));
+        emptyAll = vi.fn(() => of<RecycleBinPurgeResult>({ purgedCount: 3, failed: [] }));
         toast = { success: vi.fn(), error: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
@@ -75,7 +73,7 @@ describe('RecycleBinPageComponent', () => {
                 },
                 { provide: RecycleBinSettingsStorageService, useValue: { retentionDays } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
-                { provide: RecycleBinBulkService, useValue: { purgeAll } },
+                { provide: RecycleBinBulkService, useValue: { emptyAll } },
                 { provide: ToastService, useValue: toast },
             ],
         });
@@ -111,8 +109,9 @@ describe('RecycleBinPageComponent', () => {
     it('shows only the tabs the user can read', async () => {
         readable = [ResourceCode.Tools, ResourceCode.Agents];
         const harness = await open('/recycle-bin/agents');
-        const tabLabels = Array.from(harness.routeNativeElement?.querySelectorAll('app-tab-button') ?? [], (tab) =>
-            tab.textContent?.trim()
+        const tabLabels = Array.from(
+            harness.routeNativeElement?.querySelectorAll('app-route-tabs .route-tab') ?? [],
+            (tab) => tab.textContent?.trim()
         );
         expect(tabLabels).toEqual(['Agents', 'Tools']);
     });
@@ -151,14 +150,14 @@ describe('RecycleBinPageComponent', () => {
             type: 'danger',
             verification: { phrase: 'empty-recycle-bin' },
         });
-        expect(purgeAll).toHaveBeenCalledWith(['flow', 'python_tool', 'mcp_tool']);
+        expect(emptyAll).toHaveBeenCalledTimes(1);
         expect(toast.success).toHaveBeenCalledWith('3 items deleted permanently.');
     });
 
     it('reports only the failure when nothing could be deleted, never "already empty"', async () => {
         readable = [ResourceCode.Flows];
         deletable = [ResourceCode.Flows];
-        purgeAll.mockReturnValue(
+        emptyAll.mockReturnValue(
             of<RecycleBinPurgeResult>({ purgedCount: 0, failed: [{ name: 'Report', message: 'It is locked.' }] })
         );
         const harness = await open('/recycle-bin/flows');
@@ -177,6 +176,6 @@ describe('RecycleBinPageComponent', () => {
 
         emptyBinButton(harness)?.click();
 
-        expect(purgeAll).not.toHaveBeenCalled();
+        expect(emptyAll).not.toHaveBeenCalled();
     });
 });

@@ -1,11 +1,12 @@
 import { inject, Injectable } from '@angular/core';
-import { concat, map, Observable, of, toArray } from 'rxjs';
+import { concat, EMPTY, expand, map, Observable, of, tap, toArray } from 'rxjs';
 
 import { RECYCLE_BIN_BULK_ID_LIMIT } from '../constants/recycle-bin-sources.constants';
 import {
     RecycleBinBulkFailureResponse,
     RecycleBinBulkPurgeResponse,
     RecycleBinBulkRestoreResponse,
+    RecycleBinEmptyResponse,
     RecycleBinFailure,
     RecycleBinItem,
     RecycleBinPurgeResult,
@@ -41,9 +42,28 @@ export class RecycleBinBulkService {
         return this.purge(callsForItems(items));
     }
 
-    /** Everything in the bin of each source, whatever the list shows (search and paging aside). */
-    purgeAll(sources: readonly RecycleBinSourceKey[]): Observable<RecycleBinPurgeResult> {
-        return this.purge(sources.map((source) => ({ source, selection: { all: true } })));
+    /**
+     * Everything in every bin the user may delete in, whatever the lists show. Each request
+     * purges for a limited time, so a large bin takes several: it calls again while items remain
+     * and the last call got somewhere (failed items stay, and are tried again only once).
+     */
+    emptyAll(onRemaining?: (remaining: number) => void): Observable<RecycleBinPurgeResult> {
+        return this.api.emptyAll().pipe(
+            expand((response) => (response.remaining > 0 && response.purged_count > 0 ? this.api.emptyAll() : EMPTY)),
+            tap((response) => onRemaining?.(response.remaining)),
+            toArray(),
+            map((responses) => {
+                // A failed item is tried again by the next call: keep its last answer only.
+                const failures = new Map<string, RecycleBinEmptyResponse['failed'][number]>();
+                for (const failure of responses.flatMap((response) => response.failed)) {
+                    failures.set(`${failure.source}:${failure.id}`, failure);
+                }
+                return {
+                    purgedCount: responses.reduce((total, response) => total + response.purged_count, 0),
+                    failed: [...failures.values()].map(toFailure),
+                };
+            })
+        );
     }
 
     private restore(calls: BulkCall[]): Observable<RecycleBinRestoreResult> {
