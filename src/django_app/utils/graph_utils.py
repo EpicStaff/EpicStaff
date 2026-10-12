@@ -30,29 +30,39 @@ def generate_node_name(id: int | None, node_name: str | None = None) -> str | No
     return f"{node_name} #{id}"
 
 
-def resolve_node_names(ids: Iterable[int]) -> dict[int, str]:
+def resolve_node_names(ids: Iterable[int], *, graph_ids: Iterable[int]) -> dict[int, str]:
     """Batch-resolve node IDs to formatted names, minimising DB round-trips.
 
     Runs a single UNION ALL query to identify which concrete table each ID
     belongs to, then one bulk SELECT per matching table.
     Returns ``{id: "name #id"}`` for every ID that is not None.
+
+    Only a node in one of ``graph_ids`` resolves to its name. Any other id
+    (nonexistent, or in another graph or organization) becomes
+    ``"unknown node #id"``, so a stored reference to a foreign node never
+    exposes that node's name.
     """
     ids = list({i for i in ids if i is not None})
     if not ids:
         return {}
+    graph_ids = list(set(graph_ids))
 
     node_models = BaseGlobalNode.get_all_node_models()
-    if not node_models:
+    if not node_models or not graph_ids:
         return {i: f"unknown node #{i}" for i in ids}
 
     table_to_model = {m._meta.db_table: m for m in node_models}
 
-    placeholders = ", ".join(["%s"] * len(ids))
+    id_placeholders = ", ".join(["%s"] * len(ids))
+    graph_placeholders = ", ".join(["%s"] * len(graph_ids))
     union_parts = [
-        f"SELECT id, '{t}' as tbl FROM {t} WHERE id IN ({placeholders})" for t in table_to_model
+        f"SELECT id, '{t}' as tbl FROM {t} "
+        f"WHERE {m._meta.get_field('graph').column} IN ({graph_placeholders}) "
+        f"AND id IN ({id_placeholders})"
+        for t, m in table_to_model.items()
     ]
     query = " UNION ALL ".join(union_parts)
-    params = ids * len(table_to_model)
+    params = (graph_ids + ids) * len(table_to_model)
 
     with connection.cursor() as cursor:
         cursor.execute(query, params)
@@ -65,7 +75,7 @@ def resolve_node_names(ids: Iterable[int]) -> dict[int, str]:
     result: dict[int, str] = {}
     for tbl, tbl_ids in table_ids.items():
         model = table_to_model[tbl]
-        for instance in model.objects.filter(id__in=tbl_ids):
+        for instance in model.objects.filter(id__in=tbl_ids, graph_id__in=graph_ids):
             try:
                 name = instance.node_name
             except AttributeError:
@@ -82,17 +92,31 @@ def resolve_node_names(ids: Iterable[int]) -> dict[int, str]:
 class NodeNameResolver:
     """Call-scoped, batch-prefetched node name resolver.
 
-    Created once per graph build with all known IDs; passed explicitly
-    into converter methods so ConverterService stays stateless.
+    Created once per graph build, seeded with a ``cache`` of names the caller
+    already resolved; passed explicitly into converter methods so
+    ConverterService stays stateless.
+
+    With ``graph_id`` set, an id missing from the cache resolves only within
+    that graph, so a reference to another graph's node never exposes its name,
+    and the result is memoized. Without it, a miss falls back to an unscoped
+    lookup that is not memoized (the module-level default instance would
+    otherwise cache names for the process lifetime): use that only for a node's
+    own id, never for a reference stored on it.
     """
 
-    def __init__(self, ids: Iterable[int] = (), cache: dict[int, str] | None = None):
-        self._cache = cache if cache is not None else resolve_node_names(ids)
+    def __init__(self, cache: dict[int, str] | None = None, graph_id: int | None = None):
+        self._cache = cache if cache is not None else {}
+        self._graph_id = graph_id
 
     def __call__(self, id: int | None) -> str | None:
         if id is None:
             return None
-        return self._cache.get(id) or generate_node_name(id)
+        if id in self._cache:
+            return self._cache[id]
+        if self._graph_id is None:
+            return generate_node_name(id)
+        self._cache[id] = resolve_node_names([id], graph_ids=[self._graph_id])[id]
+        return self._cache[id]
 
 
 #: Default resolver with an empty cache — falls back to individual DB lookups.

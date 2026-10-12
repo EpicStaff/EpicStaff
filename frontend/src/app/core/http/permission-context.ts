@@ -13,23 +13,26 @@ export interface PermissionRequirement<T = unknown> {
     resource: ResourceCode;
     action: ActionCode;
     scope: PermissionScope;
-    /** Body emitted synthetically (HTTP 200) when the gate fails, so callers get a well-typed
-     *  empty result instead of an error. */
+    /** Body emitted synthetically (HTTP 200) when the permission set for `scope` is loaded and does
+     *  not grant the permission, so callers get a well-typed empty result instead of an error.
+     *  While that set is not loaded the request goes to the network instead. */
     fallback: T;
 }
 
 export const PERMISSION_CTX = new HttpContextToken<PermissionRequirement | null>(() => null);
 
 /** Tags an HTTP request with a required permission (checked against the ACTIVE org) and a
- *  fallback body used when the actor lacks that permission. `preflightPermissionInterceptor`
- *  short-circuits the request with the fallback so no 403 round-trip is made and no
- *  forbidden-loop is triggered. Use for single-org endpoints. */
+ *  fallback body. When the active-org permissions are loaded and lack that permission,
+ *  `preflightPermissionInterceptor` short-circuits the request with the fallback so no 403
+ *  round-trip is made and no forbidden-loop is triggered; while they are not loaded the request
+ *  is sent. Use for single-org endpoints. */
 export function withPermission<T>(resource: ResourceCode, action: ActionCode, fallback: T): HttpContext {
     return new HttpContext().set(PERMISSION_CTX, { resource, action, scope: 'active', fallback });
 }
 
 /** Cross-org variant of `withPermission`. The gate passes when the actor holds the permission
- *  in AT LEAST ONE org, independent of the active-org selector. Use for cross-org endpoints
+ *  in AT LEAST ONE org, independent of the active-org selector; the fallback is used only once the
+ *  cross-org capabilities (`/me/orgs/`) are loaded. Use for cross-org endpoints
  *  (workspace admin panel: orgs/users/roles/memberships lists). */
 export function withCrossOrgPermission<T>(resource: ResourceCode, action: ActionCode, fallback: T): HttpContext {
     return new HttpContext().set(PERMISSION_CTX, { resource, action, scope: 'anyOrg', fallback });

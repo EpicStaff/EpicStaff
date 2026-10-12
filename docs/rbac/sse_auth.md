@@ -1,7 +1,7 @@
 # SSE Authentication — Frontend Migration Guide
 
 **Audience:** frontend developers.
-**Scope:** all `text/event-stream` (SSE) endpoints — `run-session` live stream, filtered external stream, and any future SSE route.
+**Scope:** all `text/event-stream` (SSE) endpoints — `run-session` live stream (`/api/run-session/subscribe/<session_id>/`), flow-assistant conversation stream (`/api/flow-assistants/<graph_id>/conversations/<conversation_id>/stream/`), and any future SSE route.
 
 ---
 
@@ -11,9 +11,9 @@
 
 Tickets are:
 
-- **Short-lived** — 30 seconds (hardcoded in `settings.SSE_TICKET_TTL_SECONDS`).
+- **Short-lived** — 30 seconds (hardcoded in `settings.SSE_TICKET_TTL`).
 - **Single-use** — consumed the first time the SSE connection is opened with them. Reconnects require a fresh ticket.
-- **User-bound** — each ticket resolves to the JWT-authenticated user who requested it.
+- **Resolves to a user** — each ticket maps to the JWT-authenticated user who requested it. Possession of the ticket is the whole check: the server does not compare whoever presents the ticket with the user who requested it, so treat a ticket like a bearer token until it is consumed.
 - **Stored in Redis** — the ticket itself is an opaque random string; no user info is encoded in it.
 
 ---
@@ -56,7 +56,7 @@ async function fetchSseTicket(accessToken) {
 ```js
 async function openSessionStream(sessionId, accessToken) {
   const { ticket } = await fetchSseTicket(accessToken);
-  const url = `/api/sessions/${sessionId}/stream?ticket=${encodeURIComponent(ticket)}`;
+  const url = `/api/run-session/subscribe/${sessionId}/?ticket=${encodeURIComponent(ticket)}`;
   return new EventSource(url);
 }
 ```
@@ -128,7 +128,7 @@ The `text/event-stream` handshake never starts when the ticket is rejected; you 
 
 | Setting | Value | Effect |
 |---|---|---|
-| `SSE_TICKET_TTL_SECONDS` | `30` (hardcoded in `settings.py`) | How long a freshly issued ticket is valid before consume. |
+| `SSE_TICKET_TTL` | `30` (hardcoded in `django_app/settings/base.py`) | How long a freshly issued ticket is valid before consume. |
 
 Tickets are stored in Redis via the raw `django_redis` client under the `rbac:sse_ticket:<sha256-of-token>` key. Redis holds only the SHA-256 digest of the ticket, never the ticket itself, so read access to Redis yields no replayable credential. Consume hashes the incoming ticket and uses `GETDEL` (Redis 6.2+) so get-and-delete is atomic — two simultaneous consumers cannot both succeed. They are not persisted to the database.
 

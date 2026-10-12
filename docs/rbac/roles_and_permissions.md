@@ -101,7 +101,7 @@ of caller and org. Cache-friendly.
     { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "delete", "use"] },
+    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider credentials and sensitive configuration", "applicable_actions": ["create", "read", "delete", "use"] },
     { "code": "voice",             "label": "Voice",               "group": "config",    "description": "Voice model configurations and settings",        "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "webhooks",          "label": "Webhooks",            "group": "config",    "description": "Webhook trigger ingress routes and their auth configuration", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] },
     { "code": "key_value_tables",  "label": "Key-Value Tables",    "group": "workspace", "description": "Key-value tables that flows read and write across runs", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] }
@@ -352,7 +352,7 @@ below). **Header:** none.
       "assigned_count": 2,
       "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
       "permissions": [
-        { "resource_type": "secrets", "actions": ["read", "update"] }
+        { "resource_type": "secrets", "actions": ["read", "use"] }
       ]
     }
   ],
@@ -469,7 +469,7 @@ the target org is `org_id` in the body.
   "name": "Billing Manager",
   "description": "Manage billing and secrets",
   "permissions": [
-    { "resource_type": "secrets", "actions": ["read", "update"] }
+    { "resource_type": "secrets", "actions": ["read", "use"] }
   ]
 }
 ```
