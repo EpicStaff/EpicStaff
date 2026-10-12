@@ -31,8 +31,8 @@ export interface PartialExportRequest {
 interface ExportAllBody {
     graph_id?: number;
     status?: string[];
-    node_name?: string;
     is_error_cause?: boolean;
+    id_search?: string;
 }
 
 @Injectable({
@@ -127,16 +127,16 @@ export class ImportExportService {
         filters: {
             graph?: number | null;
             status?: string[] | null;
-            node_name?: string | null;
             is_error_cause?: boolean;
+            id_search?: string | null;
         },
         format: ExportFormat = 'json'
     ): Observable<Blob> {
         const body: ExportAllBody = {};
         if (filters.graph != null) body.graph_id = filters.graph;
         if (filters.status != null && filters.status.length > 0) body.status = filters.status;
-        if (filters.node_name != null) body.node_name = filters.node_name;
         if (filters.is_error_cause === true) body.is_error_cause = true;
+        if (filters.id_search) body.id_search = filters.id_search;
         return this.http.post<Blob>(`${this.sessionsApiUrl}export_all/?export_format=${format}`, body, {
             responseType: 'blob' as 'json',
         });

@@ -19,6 +19,7 @@
         <button
             type="button"
             class="input__step input__step--minus"
+            aria-label="Decrease"
             (mousedown)="onStep(-1); $event.preventDefault()"
             [disabled]="isDisabled() || !canStepDown()"
         >
@@ -31,6 +32,7 @@
         class="input"
         [ngClass]="'input--mod-' + mod()"
         [placeholder]="placeholder()"
+        [attr.aria-label]="ariaLabel() || null"
         [ngModel]="value()"
         (ngModelChange)="onInputChange($event)"
         (blur)="onTouched()"
@@ -42,6 +44,7 @@
         <button
             type="button"
             class="input__step input__step--plus"
+            aria-label="Increase"
             (mousedown)="onStep(1); $event.preventDefault()"
             [disabled]="isDisabled() || !canStepUp()"
         >

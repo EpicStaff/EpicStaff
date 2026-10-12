@@ -99,7 +99,7 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         nodeName?: string | null,
-        isErrorCause?: boolean,
+        idSearch?: string | null,
         durationFilter?: DurationFilter | null,
         triggerType?: TriggerType[],
         dateFilter?: DateRangeFilter | null,
@@ -113,7 +113,7 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         nodeName?: string | null,
-        isErrorCause?: boolean,
+        idSearch?: string | null,
         durationFilter?: DurationFilter | null,
         triggerType?: TriggerType[],
         dateFilter?: DateRangeFilter | null,
@@ -126,7 +126,7 @@ export class GraphSessionService {
         if (offset !== undefined) params = params.set('offset', offset.toString());
         if (status !== undefined && !status.includes('all')) params = params.set('status', status.join(','));
         if (nodeName) params = params.set('node_name', nodeName);
-        if (isErrorCause) params = params.set('is_error_cause', 'true');
+        if (idSearch) params = params.set('id_search', idSearch);
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
         if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (dateFilter) params = this.applyDateParams(params, dateFilter);

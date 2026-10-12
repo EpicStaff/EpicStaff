@@ -138,6 +138,71 @@
     }
 }
 
+// This stylesheet is shared with the table-header filters (type, trigger, flow name);
+// only the standalone node filter renders its toggle as an input-like field
+// with a compact panel of the same width.
+.node-filter-dropdown--field {
+    .dropdown-panel {
+        min-width: 0;
+        width: 278px;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .dropdown-menu {
+        min-width: 0;
+        max-height: 240px;
+        padding: 4px;
+
+        li {
+            padding: 6px 10px;
+            gap: 8px;
+            margin-bottom: 2px;
+            border-radius: 4px;
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+            line-height: var(--text-body-line-height);
+
+            > span:not(.checkmark) {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
+    }
+}
+
+.dropdown-toggle--field {
+    min-width: 0;
+    width: 278px;
+    height: 2.5rem;
+    gap: 1rem;
+    padding: 0 1rem;
+    border-color: var(--color-input-border);
+    border-radius: 10px;
+    background: var(--color-input-background);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    transition: border-color 0.2s ease;
+
+    &:focus,
+    &:hover {
+        background: var(--color-input-background);
+    }
+
+    .selected-label {
+        min-width: 0;
+    }
+
+    .selected-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
 .node-filter-dropdown.open .dropdown-toggle,
 .node-filter-dropdown.has-value .dropdown-toggle {
     color: var(--accent-color);

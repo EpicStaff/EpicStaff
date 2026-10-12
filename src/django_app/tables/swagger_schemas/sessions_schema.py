@@ -345,6 +345,17 @@ SESSION_LIST_GET = {
             ),
             required=False,
         ),
+        OpenApiParameter(
+            name="id_search",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            description=(
+                "Partial match on the session id: `12` returns sessions 12, 112, 1203, … "
+                "Surrounding whitespace is ignored and an empty value does not filter. "
+                "A value containing non-digits matches no session."
+            ),
+            required=False,
+        ),
     ],
     "responses": {
         200: OpenApiResponse(

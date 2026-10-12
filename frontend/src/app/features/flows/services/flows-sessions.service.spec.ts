@@ -33,7 +33,7 @@ describe('GraphSessionService run type filter', () => {
 
     for (const { runType, expected } of cases) {
         it(`sends is_test_run=${expected} for ${JSON.stringify(runType)} on the flow sessions list`, () => {
-            service.getSessionsByGraphId(3, false, 10, 0, ['all'], null, false, null, [], null, runType).subscribe();
+            service.getSessionsByGraphId(3, false, 10, 0, ['all'], null, null, null, [], null, runType).subscribe();
 
             const request = httpMock.expectOne((req) => req.url === '/api/sessions/');
             expect(request.request.params.get('is_test_run')).toBe(expected);
@@ -49,4 +49,16 @@ describe('GraphSessionService run type filter', () => {
             request.flush({ count: 0, results: [] });
         });
     }
+
+    it('sends id_search on the flow sessions list only when a search term is given', () => {
+        service.getSessionsByGraphId(3, false, 10, 0, ['all'], null, '42').subscribe();
+        const searched = httpMock.expectOne((req) => req.url === '/api/sessions/');
+        expect(searched.request.params.get('id_search')).toBe('42');
+        searched.flush({ count: 0, results: [] });
+
+        service.getSessionsByGraphId(3, false, 10, 0, ['all'], null, '').subscribe();
+        const unsearched = httpMock.expectOne((req) => req.url === '/api/sessions/');
+        expect(unsearched.request.params.has('id_search')).toBe(false);
+        unsearched.flush({ count: 0, results: [] });
+    });
 });

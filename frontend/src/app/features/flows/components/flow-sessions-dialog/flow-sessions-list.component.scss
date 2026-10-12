@@ -1,39 +1,68 @@
 .dialog-wrapper {
     display: flex;
     flex-direction: column;
-    background-color: var(--color-background-body);
+    background-color: var(--color-nodes-sidepanel-bg);
     color: var(--color-text-primary);
-    padding: 32px;
     border-radius: 12px;
-    box-shadow: 0 8px 32px var(--black-alpha-25);
+    border: 1px solid var(--color-divider-subtle);
     margin: 0 auto;
 
-    height: 90vh;
-    max-height: 800px;
-    width: 100%;
-    max-width: 1300px;
+    // the dialog is centred, so this leaves 18px above and below and 20px on each side
+    height: calc(100vh - 2 * 18px);
+    width: calc(100vw - 2 * 20px);
 
     .dialog-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-bottom: 2rem;
-        gap: 16px;
+        padding: 2rem 2.5rem 1.75rem;
+        gap: 1rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
         flex-shrink: 0;
 
         h2 {
             flex: 1 1 auto;
             min-width: 0;
             margin: 0;
-            font-size: 1.5em;
-            font-weight: 500;
+            font-size: var(--text-h3-size);
+            font-weight: var(--text-h3-weight);
+            line-height: var(--text-h3-line-height);
+            // overflow: hidden clips at the padding box; with line-height 1 descenders
+            // (g, y, p) sit below the line box, so this padding keeps them visible
+            padding-block: 0.125rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        .close-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid var(--accent-color);
+            background: transparent;
+            color: var(--accent-color);
+            cursor: pointer;
+
+            &:hover {
+                border-color: var(--accent-color-hover);
+                color: var(--accent-color-hover);
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
+            }
+        }
     }
 
     .dialog-content {
+        padding: 1.5rem 2.5rem 1.25rem;
         display: flex;
         flex-direction: column;
         flex: 1;
@@ -44,7 +73,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 16px;
+            margin-bottom: 1.25rem;
             flex-shrink: 0;
 
             .action-buttons {
@@ -52,6 +81,15 @@
                 display: flex;
                 gap: 8px;
                 align-items: center;
+                // both buttons size their label in em, so this scales them down together
+                font-size: 0.875rem;
+
+                // the shared button gets the same height as Delete Selected beside it
+                app-action-dropdown-button {
+                    ::ng-deep .adb {
+                        height: 35px;
+                    }
+                }
             }
         }
 
@@ -68,7 +106,7 @@
             margin-top: 16px;
             display: flex;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: space-between;
             gap: 16px;
         }
     }
@@ -77,60 +115,81 @@
 .page-size-selector {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
+    gap: 1rem;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    color: var(--color-text-primary);
     white-space: nowrap;
 }
 
-.error-cause-filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    color: var(--color-text-primary);
-    user-select: none;
-    padding: 5px;
+// the shared pagination keeps its own look elsewhere; this dialog follows its own design
+.pagination-container app-pagination-controls ::ng-deep {
+    .page-btn {
+        min-width: 0;
+        height: 40px;
+        padding: 0 12px;
+        border-radius: 4px;
 
-    span {
-        white-space: nowrap;
+        &.active {
+            border-width: 0;
+        }
+
+        &.nav {
+            width: 40px;
+
+            &:disabled {
+                background: var(--inactive-purple);
+                border-color: transparent;
+                color: var(--white);
+                opacity: 1;
+            }
+        }
+    }
+
+    .dots {
+        height: 40px;
+        color: var(--accent-color);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: 1;
     }
 }
 
-.toggle-switch {
-    position: relative;
-    width: 36px;
-    height: 20px;
-    border-radius: 5px;
-    background: var(--color-divider-regular);
-    transition: background 0.2s;
-    cursor: pointer;
+.page-size-input {
+    width: 160px;
+
+    // the shared input-number frames itself with 4px corners and the generic input border
+    ::ng-deep .input__wrapper {
+        border-radius: 8px;
+
+        // keep the red border of an out-of-range value
+        &:not(.input__wrapper--invalid) {
+            border-color: var(--color-ks-line);
+        }
+    }
+}
+
+// the shared search keeps its own look elsewhere; this dialog follows its own design
+.id-search {
+    width: 280px;
     flex-shrink: 0;
 
-    &.active {
-        background: var(--accent-color);
-    }
+    ::ng-deep {
+        .search__icon {
+            color: var(--color-text-secondary);
+        }
 
-    &.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-        pointer-events: none;
-    }
-}
+        .search__input {
+            font-size: var(--text-body-size);
+            font-weight: var(--text-body-weight);
+            line-height: var(--text-body-line-height);
+            color: var(--color-text-primary);
 
-.toggle-thumb {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
-    border-radius: 30%;
-    background: var(--white);
-    transition: transform 0.2s;
-
-    .toggle-switch.active & {
-        transform: translateX(16px);
+            &::placeholder {
+                color: var(--color-text-secondary);
+            }
+        }
     }
 }
 
@@ -139,7 +198,8 @@
     color: var(--white) !important;
     border: none;
     outline: none;
-    padding: 6px 14px;
+    height: 35px;
+    padding: 0 14px;
     border-radius: 6px;
     font-size: 0.95em;
     font-weight: 500;

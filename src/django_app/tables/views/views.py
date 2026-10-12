@@ -32,7 +32,7 @@ from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
 from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
-from tables.filters import SessionFilter
+from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
     CsvExportFormatStrategy,
@@ -318,6 +318,8 @@ class SessionViewSet(
             qs = qs.filter(finished_at__gte=data["finished_at_after"])
         if "finished_at_before" in data:
             qs = qs.filter(finished_at__lte=data["finished_at_before"])
+        if "id_search" in data:
+            qs = filter_sessions_by_id_search(qs, data["id_search"])
 
         node_name = data.get("node_name")
         if node_name:

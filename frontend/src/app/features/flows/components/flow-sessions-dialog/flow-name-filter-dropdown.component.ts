@@ -29,6 +29,7 @@ interface FlowOption {
                 min-width: unset !important;
                 width: auto !important;
                 justify-content: flex-start !important;
+                font: inherit !important;
             }
             :host .dropdown-panel {
                 z-index: 1100 !important;
