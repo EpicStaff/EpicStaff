@@ -2,7 +2,12 @@ from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
     CONDITION_INPUT_FIELDS,
 )
-from tables.exceptions import SectionIdConflictError, SectionNotFoundError
+from tables.exceptions import (
+    BulkSaveValidationError,
+    NodeChildValidationError,
+    SectionIdConflictError,
+    SectionNotFoundError,
+)
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -14,6 +19,7 @@ from tables.models.graph_models import (
 from tables.services.classification_decision_table_node_children import (
     CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
     CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS,
+    resolve_group_prompt,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 from tables.services.rag_assignment_service import SearchConfigService
@@ -378,15 +384,16 @@ class ClassificationDecisionTableNodeSaveable:
                     if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
                 }
 
-                # `prompt` and `section` are never input columns. Resolve the prompt
-                # FK node-locally: prefer prompt_key (works for a prompt created in
-                # this same payload), fall back to numeric pk.
-                key = group_data.get("prompt_key")
-                old_prompt_id = group_data.get("prompt")
-                if key:
-                    gd["prompt"] = prompt_by_key.get(key)
-                elif old_prompt_id is not None:
-                    gd["prompt"] = prompt_by_id.get(old_prompt_id)
+                # `prompt` and `section` are never input columns; both resolve among
+                # this node's own rows. The raw request dict carries the numeric
+                # prompt pk under `prompt` (the single-node serializer maps it to
+                # `prompt_id`).
+                gd["prompt"] = resolve_group_prompt(
+                    group_data.get("prompt_key"),
+                    group_data.get("prompt"),
+                    prompt_by_key,
+                    prompt_by_id,
+                )
 
                 # Resolve the section FK node-locally, mirroring the prompt
                 # resolution above: the section may have just been created in
@@ -469,14 +476,27 @@ class _NodeSaveable:
 
     After the inner save(), if temp_id is set the real DB id is registered
     in the shared temp_id_map so edge saveables can resolve it.
+
+    list_key and index locate the item in the request, so an error that can
+    only be detected while writing is reported like a Pass 1 item error.
     """
 
-    def __init__(self, inner, temp_id: str | None):
+    def __init__(self, inner, temp_id: str | None, list_key: str, index: int):
         self._inner = inner
         self._temp_id = temp_id
+        self._list_key = list_key
+        self._index = index
 
     def save(self, temp_id_map: dict):
-        instance = self._inner.save()
+        try:
+            instance = self._inner.save()
+        except NodeChildValidationError as exc:
+            # Nested child rows (e.g. a group's prompt or section) resolve against
+            # rows synced by this same save, so they cannot be checked before the
+            # write. Raising rolls the whole save back.
+            raise BulkSaveValidationError(
+                {self._list_key: [{"index": self._index, "errors": [str(exc.detail)]}]}
+            ) from exc
         if self._temp_id and instance is not None:
             temp_id_map[self._temp_id] = instance.id
 

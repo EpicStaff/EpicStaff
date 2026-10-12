@@ -20,13 +20,13 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
         condition_groups_data = data.pop("condition_groups", None)
         sections_data = data.pop("sections", None)
 
-        routing_errors: list[str] = []
+        preprocess_errors: list[str] = []
         node_routing_refs: dict[str, NodeRef | None] = {}
 
         for id_field, temp_field in self._NODE_ROUTING_PAIRS:
             parsed = self._parse_optional_routing_ref(data, id_field, temp_field, payload_temp_ids)
             if parsed.error:
-                routing_errors.append(parsed.error)
+                preprocess_errors.append(parsed.error)
             else:
                 node_routing_refs[id_field] = parsed.ref
                 if parsed.ref is not None and parsed.ref.is_temp:
@@ -34,7 +34,9 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
                 elif parsed.ref is None:
                     data.setdefault(id_field, None)
 
-        routing_errors.extend(validate_classification_condition_group_names(condition_groups_data))
+        preprocess_errors.extend(
+            validate_classification_condition_group_names(condition_groups_data)
+        )
 
         group_routing_refs: list[NodeRef | None] = []
 
@@ -49,7 +51,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
                     context=f"condition_groups[{group_idx}]",
                 )
                 if parsed.error:
-                    routing_errors.append(parsed.error)
+                    preprocess_errors.append(parsed.error)
                     group_routing_refs.append(None)
                 else:
                     group_routing_refs.append(parsed.ref)
@@ -63,7 +65,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
             "sections": sections_data,
             "node_routing_refs": node_routing_refs,
             "group_routing_refs": group_routing_refs,
-            "routing_errors": routing_errors,
+            "preprocess_errors": preprocess_errors,
         }
         return data, extra
 

@@ -34,7 +34,9 @@ class GraphBulkSaveService:
               so the temp_id -> real_id map is ready when edges are written.
 
     Raises BulkSaveValidationError with a structured error dict if any entity
-    fails validation. No DB writes happen in that case.
+    fails validation. No DB writes happen in that case. An item error that can
+    only be detected during Pass 2 (a node's nested child reference) is raised in
+    the same shape, and the whole transaction is rolled back.
 
     A node gets a last edit only when its own state changed (a move is not a node
     edit); the graph gets one when anything in it changed, moves included.
@@ -118,9 +120,13 @@ class GraphBulkSaveService:
         # Batch-validate that every real (non-temp) edge endpoint and decision table
         # routing ref belongs to this graph. The message is the
         # same for a nonexistent and a foreign id, so existence never leaks.
+        # A node deleted by this request still exists now but not after Pass 2,
+        # so a reference to it counts as outside the graph too.
         all_real_refs = edge_refs_to_validate | routing_refs_to_validate
         if all_real_refs:
-            invalid_ids = self._find_node_ids_outside_graph(all_real_refs, graph.id)
+            invalid_ids = self._find_node_ids_outside_graph(all_real_refs, graph.id) | (
+                all_real_refs & self._collect_deleted_node_ids(deleted_data)
+            )
             if invalid_ids:
                 # Partition errors by source for clearer attribution.
                 invalid_edge_refs = invalid_ids & edge_refs_to_validate
@@ -192,7 +198,9 @@ class GraphBulkSaveService:
             if build.error:
                 result.errors.append(build.error)
             else:
-                result.node_saveables.append(_NodeSaveable(build.inner_saveable, temp_id or None))
+                result.node_saveables.append(
+                    _NodeSaveable(build.inner_saveable, temp_id or None, config.list_key, index)
+                )
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
                     result.real_routing_node_ids |= self._collect_real_routing_refs(
@@ -212,11 +220,11 @@ class GraphBulkSaveService:
         """Build one saveable via the config factory."""
         data, extra = config.saveable_factory.preprocess_data(data, payload_temp_ids)
 
-        # Surface routing validation errors collected by preprocess_data before
-        # attempting serializer construction.
-        routing_errors = extra.get("routing_errors", [])
-        if routing_errors:
-            return BuildSaveableResult(error={"index": index, "errors": routing_errors})
+        # Surface validation errors collected by preprocess_data (routing refs,
+        # nested configs, ...) before attempting serializer construction.
+        preprocess_errors = extra.get("preprocess_errors", [])
+        if preprocess_errors:
+            return BuildSaveableResult(error={"index": index, "errors": preprocess_errors})
 
         s = (
             config.serializer_class(instance, data=data, context=self._serializer_context)
@@ -386,6 +394,15 @@ class GraphBulkSaveService:
                 if tid is not None:
                     temp_ids.add(str(tid))
         return temp_ids
+
+    @staticmethod
+    def _collect_deleted_node_ids(deleted_data: dict) -> set[int]:
+        """Return the node ids this request deletes, across every node type."""
+        return {
+            node_id
+            for config in NODE_TYPE_REGISTRY
+            for node_id in deleted_data.get(config.delete_key) or []
+        }
 
     @staticmethod
     def _find_node_ids_outside_graph(node_ids: set[int], graph_id: int) -> set[int]:
