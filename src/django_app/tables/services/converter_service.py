@@ -551,6 +551,36 @@ class ConverterService(metaclass=SingletonMeta):
             ),
         )
 
+    def _convert_code_slot(
+        self,
+        python_code: PythonCode,
+        use_storage: bool,
+        graph_id: int | None,
+        session_id: int | None,
+        extra_storage_paths: list[str] | None,
+    ) -> PythonCodeData:
+        writable_paths = list(extra_storage_paths or [])
+        if session_id is not None:
+            writable_paths.append(f"sessions/{session_id}/")
+        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
+            graph_id=graph_id,
+            use_storage=use_storage,
+            extra_paths=writable_paths,
+        )
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
+        return self.convert_python_code_to_pydantic(
+            python_code=python_code,
+            use_storage=use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
+        )
+
     def convert_python_node_to_pydantic(
         self,
         python_node: PythonNode,
@@ -567,26 +597,12 @@ class ConverterService(metaclass=SingletonMeta):
             extra_storage_paths: Further writable folders for a run without a
                 session, such as a test-mode run's own folder.
         """
-        writable_paths = list(extra_storage_paths or [])
-        if session_id is not None:
-            writable_paths.append(f"sessions/{session_id}/")
-        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
-            graph_id=graph_id,
-            use_storage=python_node.use_storage,
-            extra_paths=writable_paths,
-        )
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
-
-        python_code_data = self.convert_python_code_to_pydantic(
+        python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
             use_storage=python_node.use_storage,
-            storage_allowed_paths=storage_allowed_paths,
-            storage_org_prefix=storage_org_prefix,
+            graph_id=graph_id,
             session_id=session_id,
-            org_id=org_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -759,9 +775,24 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         webhook_trigger_node: WebhookTriggerNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+        extra_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
-        python_code_data = self.convert_python_code_to_pydantic(
-            python_code=webhook_trigger_node.python_code
+        """Convert a webhook trigger node into the data a run sends to the sandbox.
+
+        Args:
+            session_id: The running session; its `sessions/<id>/` folder becomes
+                writable when the node uses storage.
+            extra_storage_paths: Further writable folders for a run without a
+                session, such as a test-mode run's own folder.
+        """
+        python_code_data = self._convert_code_slot(
+            python_code=webhook_trigger_node.python_code,
+            use_storage=webhook_trigger_node.use_storage,
+            graph_id=graph_id,
+            session_id=session_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),

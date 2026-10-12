@@ -498,7 +498,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         webhook_trigger_node_data_list = [
             cv.convert_webhook_trigger_node_to_pydantic(
-                webhook_trigger_node=item, resolver=resolver
+                webhook_trigger_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in webhook_trigger_node_list
         ]

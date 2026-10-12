@@ -147,25 +147,49 @@ class TestPythonNodeTarget:
         assert not PythonCodeResult.objects.exists()
 
 
-@pytest.mark.django_db
-def test_webhook_trigger_node_target_runs_without_storage(
-    acme_client, acme_graph, attached_file, redis_client_mock
-):
+def _webhook_trigger_node(graph, *, use_storage):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-    node = WebhookTriggerNode.objects.create(
-        graph=acme_graph, node_name="webhook_entry", python_code=python_code
+    return WebhookTriggerNode.objects.create(
+        graph=graph, node_name="webhook_entry", python_code=python_code, use_storage=use_storage
     )
 
-    response = _run_target(acme_client, "webhook_trigger_node", node.id)
 
-    assert response.status_code == 200, response.data
-    [task] = _published_tasks(redis_client_mock)
-    assert task["use_storage"] is False
-    assert task["storage_allowed_paths"] is None
-    assert task["storage_org_prefix"] is None
-    assert PythonCodeResult.objects.get(
-        execution_id=response.data["execution_id"]
-    ).python_code_id == python_code.id
+@pytest.mark.django_db
+class TestWebhookTriggerNodeTarget:
+    def test_storage_node_gets_attached_files_and_its_test_run_folder(
+        self, acme_client, acme, acme_graph, attached_file, redis_client_mock
+    ):
+        node = _webhook_trigger_node(acme_graph, use_storage=True)
+
+        response = _run_target(acme_client, "webhook_trigger_node", node.id)
+
+        assert response.status_code == 200, response.data
+        [task] = _published_tasks(redis_client_mock)
+        assert task["use_storage"] is True
+        assert task["storage_allowed_paths"] == [
+            "docs/input.csv",
+            f"test-runs/webhook_trigger_node-{node.id}/",
+        ]
+        assert task["storage_org_prefix"] == f"org_{acme.id}"
+        assert task["org_id"] == acme.id
+        assert task["session_id"] is None
+        assert PythonCodeResult.objects.get(
+            execution_id=response.data["execution_id"]
+        ).python_code_id == node.python_code_id
+
+    def test_node_without_storage_sends_no_storage_fields(
+        self, acme_client, acme, acme_graph, attached_file, redis_client_mock
+    ):
+        node = _webhook_trigger_node(acme_graph, use_storage=False)
+
+        response = _run_target(acme_client, "webhook_trigger_node", node.id)
+
+        assert response.status_code == 200, response.data
+        [task] = _published_tasks(redis_client_mock)
+        assert task["use_storage"] is False
+        assert task["storage_allowed_paths"] is None
+        assert task["storage_org_prefix"] is None
+        assert task["org_id"] == acme.id
 
 
 @pytest.mark.django_db
