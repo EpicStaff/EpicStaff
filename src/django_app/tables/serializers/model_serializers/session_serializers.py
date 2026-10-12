@@ -47,6 +47,7 @@ class SessionPrincipalSerializer(serializers.ModelSerializer):
 class SessionSerializer(serializers.ModelSerializer):
     trigger = SessionTriggerSerializer(read_only=True)
     principal = SessionPrincipalSerializer(read_only=True)
+    callback_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Session
@@ -63,7 +64,12 @@ class SessionSerializer(serializers.ModelSerializer):
             "parent_session",
             "trigger",
             "principal",
+            "callback_status",
         ]
+
+    def get_callback_status(self, session) -> str | None:
+        callback = getattr(session, "callback", None)
+        return callback.status if callback is not None else None
 
 
 class SessionLightSerializer(serializers.ModelSerializer):

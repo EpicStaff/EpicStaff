@@ -24,6 +24,7 @@ from tables.models import (
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.session_token_usage import SessionTokenUsageCounter
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -38,6 +39,7 @@ class RedisPubSub:
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
         self.persistent_variables_service = PersistentVariablesService()
+        self.session_callback_service = SessionCallbackService()
 
     @staticmethod
     def _create_redis_client() -> redis.Redis:
@@ -131,6 +133,19 @@ class RedisPubSub:
                         f"Session {session.pk} was deleted concurrently, skipping status update"
                     )
                     return
+                try:
+                    self.session_callback_service.enqueue(
+                        session_id=session.pk,
+                        status=data["status"],
+                        token_usage=status_data["total_token_usage"],
+                    )
+                # a callback failure must never roll back the session status
+                except Exception as exc:
+                    logger.error(
+                        "Session {} callback enqueue failed; the row stays registered: {}",
+                        session.pk,
+                        exc,
+                    )
 
             # After the commit: the row lock is released, so these steps do not hold
             # back GraphMessageStore, and a failure in them cannot undo the status.

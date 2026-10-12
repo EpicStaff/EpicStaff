@@ -39,6 +39,10 @@ python manage.py listen_redis &
 echo "Starting Redis caching..."
 python manage.py cache_redis &
 
+# Start session callback sender in the background
+echo "Starting session callback sender..."
+python manage.py send_session_callbacks &
+
 # Start Django application
 PORT="${DJANGO_PORT}"
 

@@ -26,7 +26,7 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
@@ -88,6 +88,7 @@ from tables.services.session_access import (
     get_accessible_session,
     get_runnable_graph,
 )
+from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
@@ -211,7 +212,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger", "principal").filter(
+        qs = Session.objects.select_related("graph", "trigger", "principal", "callback").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -424,6 +425,13 @@ class RunSession(APIView):
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        callback_url = serializer.validated_data.get("callback_url")
+        callback_secret = serializer.validated_data.get("callback_secret")
+        if callback_url is not None and not (
+            isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
+            raise PermissionDenied("Session callbacks require the system API key.")
+
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
@@ -461,6 +469,8 @@ class RunSession(APIView):
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
+                callback_url=callback_url,
+                callback_secret=callback_secret,
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -550,6 +560,14 @@ class StopSession(APIView):
                     "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
                 }
                 session.save()
+                try:
+                    SessionCallbackService().enqueue(
+                        session_id=session.pk,
+                        status=Session.SessionStatus.ERROR,
+                        token_usage={},
+                    )
+                except Exception as exc:  # a callback failure must never mask the stop error
+                    logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
 
         except Session.DoesNotExist:
             raise SessionNotFoundError() from None

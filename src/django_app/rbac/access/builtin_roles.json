@@ -22,6 +22,7 @@
       "voice": [ "create", "read", "update", "delete" ],
       "webhooks": [ "create", "read", "update", "delete" ],
       "key_value_tables": [ "create", "read", "update", "delete" ],
+      "chats": [ "create", "read", "update", "delete", "use" ],
       "audit": [ "read", "export" ]
     }
   },
@@ -38,7 +39,8 @@
       "llm_configs": [ "read" ],
       "voice": [ "read" ],
       "webhooks": [ "create", "read", "update", "delete" ],
-      "key_value_tables": [ "read" ]
+      "key_value_tables": [ "read" ],
+      "chats": [ "read", "use" ]
     }
   },
   "Viewer": {

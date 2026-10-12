@@ -24,6 +24,7 @@ from tables.models import (
     KnowledgeNode,
     PythonNode,
     Session,
+    SessionCallback,
 )
 from tables.models.graph_models import (
     AgentNode,
@@ -52,6 +53,7 @@ from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
 )
+from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
 )
@@ -133,6 +135,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         token_budget: int | None = None,
         user=None,
         api_key=None,
+        callback_url: str | None = None,
+        callback_secret: str | None = None,
     ) -> Session:
         if variables is None:
             variables = {}
@@ -174,6 +178,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             SessionPrincipal.objects.create(
                 session=session, **self._resolve_principal_fields(user, api_key)
             )
+            if callback_url is not None:
+                # Same transaction as the Session: the status listener must find the row
+                # even if the run finishes before this request returns.
+                SessionCallback.objects.create(
+                    session=session, url=callback_url, secret=callback_secret
+                )
         return session
 
     def create_session_data(
@@ -214,7 +224,14 @@ class SessionManagerService(metaclass=SingletonMeta):
         parent_session_id: int | None = None,
         token_budget: int | None = None,
         api_key=None,
+        callback_url: str | None = None,
+        callback_secret: str | None = None,
     ) -> int:
+        """Create a session and publish it to crew.
+
+        `callback_url` / `callback_secret`: delivered on the terminal status by the
+        callback sender; validated by the caller.
+        """
         variables = self._get_actual_variables(variables)
         logger.info("'run_session' got variables: {}", variables)
 
@@ -236,6 +253,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             token_budget=token_budget,
             user=user,
             api_key=api_key,
+            callback_url=callback_url,
+            callback_secret=callback_secret,
         )
         try:
             violations = secret_declaration_validator.violations(graph_id=graph_id)
@@ -273,6 +292,15 @@ class SessionManagerService(metaclass=SingletonMeta):
             raise
         finally:
             session.save()
+
+        if session.status == Session.SessionStatus.ERROR:
+            # Publish was not received; the status handler will never see this session end.
+            try:
+                SessionCallbackService().enqueue(
+                    session_id=session.pk, status=Session.SessionStatus.ERROR, token_usage={}
+                )
+            except Exception as exc:  # a callback failure must never mask the session error
+                logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
 
         surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(graph)
         all_warnings = run_vars.warnings + surface_knowledge_warnings
