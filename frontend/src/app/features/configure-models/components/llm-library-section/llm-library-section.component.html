@@ -63,6 +63,7 @@
                                         [model]="model"
                                         (editClick)="onEdit($event)"
                                         (deleteClick)="onDelete($event)"
+                                        (viewDetailsClick)="onViewDetails($event)"
                                     ></app-llm-library-card>
                                 }
                             </div>
@@ -92,6 +93,9 @@
                                 <div class="top">
                                     <span class="model">{{ c.model_name }}</span>
                                     <div class="actions">
+                                        <app-config-card-more-menu
+                                            (viewDetailsClick)="onViewConfigDetails(c, $event)"
+                                        />
                                         <button
                                             *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                                             type="button"

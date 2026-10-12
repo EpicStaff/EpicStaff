@@ -1,0 +1,25 @@
+# Keeps the commit-SHA pins in .github/workflows/ current. Every third-party
+# action is pinned as `owner/repo@<40-char sha> # vX.Y.Z`; Dependabot reads the
+# trailing version comment and bumps the SHA and the comment together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: developer
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    # A release must be a week old before it is proposed: a hijacked action tag
+    # is usually caught and pulled within days. Security updates skip this wait.
+    cooldown:
+      default-days: 7
+    groups:
+      # Minor and patch bumps land as one weekly PR; major bumps stay separate
+      # so each breaking upgrade is reviewed on its own.
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

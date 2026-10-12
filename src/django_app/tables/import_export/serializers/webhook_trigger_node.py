@@ -25,5 +25,5 @@ class WebhookTriggerNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serialize
 
     class Meta:
         model = WebhookTriggerNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
         extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}

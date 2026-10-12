@@ -11,6 +11,9 @@ class Migration(migrations.Migration):
         ('rbac', '0003_key_value_tables_resource_type'),
     ]
 
+    # The unique name stays as it was here: it moves to the `org` field in
+    # 0010_agentdefinition_surface_org_scoped, and becomes live-rows-only in
+    # 0019_unique_names_on_org_live_only, which runs after both.
     operations = [
         migrations.AlterModelOptions(
             name='surface',
@@ -22,10 +25,6 @@ class Migration(migrations.Migration):
                 ('objects', django.db.models.manager.Manager()),
                 ('all_objects', django.db.models.manager.Manager()),
             ],
-        ),
-        migrations.RemoveConstraint(
-            model_name='surface',
-            name='uniq_surface_org_name',
         ),
         migrations.AddField(
             model_name='surface',
@@ -45,9 +44,5 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='surface',
             constraint=models.CheckConstraint(condition=models.Q(models.Q(('active', True), ('soft_deleted_at__isnull', True)), models.Q(('active', False), ('soft_deleted_at__isnull', False)), _connector='OR'), name='agents_surface_soft_delete_consistency'),
-        ),
-        migrations.AddConstraint(
-            model_name='surface',
-            constraint=models.UniqueConstraint(condition=models.Q(('active', True)), fields=('organization', 'name'), name='uniq_surface_org_name'),
         ),
     ]

@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
+from rbac.authorship import record_last_edit, resolve_author
 from tables.models import Label
 from tables.models.python_models import PythonCodeTool
 from tables.serializers.utils.description_sanitizer import sanitize_description
@@ -33,7 +34,9 @@ class PythonCodeToolCopyService(BaseCopyService):
                 variables=tool.variables,
                 python_code=new_code,
                 org_id=target_org_id,
+                created_by=resolve_author(user),
             )
+            record_last_edit(new_tool, user)
 
         new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id))
         return new_tool

@@ -12,7 +12,7 @@ class TaskNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSe
 
     class Meta:
         model = TaskNode
-        exclude = ["created_at", "updated_at", "surface_list"]
+        exclude = ["created_at", "updated_at", "created_by", "surface_list"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

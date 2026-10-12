@@ -5,7 +5,6 @@ from tables.models import (
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
     Graph,
-    PythonCode,
 )
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
@@ -69,23 +68,12 @@ class ClassificationDecisionTableNodeImportSerializer(
     prompt_configs = ClassificationDecisionTablePromptImportSerializer(
         many=True, required=False, read_only=True
     )
+    # Read-only on purpose: PythonCode rows carry no org, so accepting an id here would
+    # let an import file attach any existing row. The strategy creates the code from
+    # the exported body and passes it to save().
     pre_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    pre_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="pre_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
     post_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    post_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="post_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
 
     class Meta:
         model = ClassificationDecisionTableNode
-        exclude = ["created_at", "updated_at", "prompts"]
+        exclude = ["created_at", "updated_at", "created_by", "prompts"]

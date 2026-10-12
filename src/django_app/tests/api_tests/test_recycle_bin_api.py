@@ -382,11 +382,11 @@ def _make_mcp_tool(org: Organization, name: str) -> Model:
 
 
 def _make_agent(org: Organization, name: str) -> Model:
-    return AgentDefinition.objects.create(organization=org, name=name, instruction_list=[{"name": "Instruction_1.md", "content": "Do things."}])
+    return AgentDefinition.objects.create(org=org, name=name, instruction_list=[{"name": "Instruction_1.md", "content": "Do things."}])
 
 
 def _make_surface(org: Organization, name: str) -> Model:
-    return Surface.objects.create(organization=org, name=name)
+    return Surface.objects.create(org=org, name=name)
 
 
 def _make_key_value_table(org: Organization, name: str) -> Model:
@@ -621,8 +621,8 @@ def test_built_in_tools_never_show_in_an_org_bin(admin_client):
 class TestOwnedSurfaces:
     @staticmethod
     def _agent_with_surface(acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "Do things."}])
-        surface = Surface.objects.create(organization=acme, name="Owned", owner_agent=agent)
+        agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "Do things."}])
+        surface = Surface.objects.create(org=acme, name="Owned", owner_agent=agent)
         return agent, surface
 
     def test_surface_binned_with_its_agent_is_listed_and_restores_shared(self, admin_client, acme):
@@ -768,9 +768,9 @@ class TestBinContents:
     """Each row lists what its restore brings back, from the same batch."""
 
     def test_an_agent_lists_its_own_surfaces(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
-        Surface.objects.create(organization=acme, name="Own surface", owner_agent=agent)
-        Surface.objects.create(organization=acme, name="Shared surface")
+        agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+        Surface.objects.create(org=acme, name="Own surface", owner_agent=agent)
+        Surface.objects.create(org=acme, name="Shared surface")
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
         entry = _bin(admin_client, AGENTS_URL)[0]
@@ -779,7 +779,7 @@ class TestBinContents:
         assert entry["contents_total"] == 1
 
     def test_a_surface_lists_its_tools_and_sources(self, admin_client, acme):
-        surface = Surface.objects.create(organization=acme, name="Research")
+        surface = Surface.objects.create(org=acme, name="Research")
         tool = _make_python_tool(acme, "Search tool")
         mcp_tool = _make_mcp_tool(acme, "Web MCP")
         collection = SourceCollection.objects.create(org=acme, collection_name="Docs")
@@ -809,8 +809,8 @@ class TestBinContents:
         assert entry["contents"] == [{"name": "a.txt", "kind": "document"}]
 
     def test_items_deleted_earlier_on_their_own_are_not_listed(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
-        earlier = Surface.objects.create(organization=acme, name="Deleted before", owner_agent=agent)
+        agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+        earlier = Surface.objects.create(org=acme, name="Deleted before", owner_agent=agent)
         earlier.delete()
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
@@ -879,7 +879,7 @@ class TestBinDetails:
 
     def test_an_agent_shows_description_instructions_and_llm(self, admin_client, acme, llm_config):
         agent = AgentDefinition.objects.create(
-            organization=acme,
+            org=acme,
             name="Helper",
             description="Answers support questions",
             instruction_list=[{"name": "Instruction_1.md", "content": "  Be   brief.\nUse the FAQ.  "}],
@@ -896,7 +896,7 @@ class TestBinDetails:
 
     def test_an_agent_lists_its_instruction_files_in_order(self, admin_client, acme):
         agent = AgentDefinition.objects.create(
-            organization=acme,
+            org=acme,
             name="Layered",
             instruction_list=[
                 {"name": "Tone.md", "content": "Be kind."},
@@ -913,7 +913,7 @@ class TestBinDetails:
         assert "Instructions" not in details
 
     def test_empty_fields_are_sent_as_null(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Terse", instruction_list=[])
+        agent = AgentDefinition.objects.create(org=acme, name="Terse", instruction_list=[])
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
         details = _details(_bin(admin_client, AGENTS_URL)[0])
@@ -926,7 +926,7 @@ class TestBinDetails:
     def test_a_description_is_sent_whole(self, admin_client, acme):
         description = "word_" * 100  # 500 characters
         agent = AgentDefinition.objects.create(
-            organization=acme, name="Wordy", description=description, instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+            org=acme, name="Wordy", description=description, instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
         )
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
@@ -969,8 +969,8 @@ class TestBinDetails:
         assert "Status" not in details
 
     def test_every_tab_sends_the_same_fields_for_every_row(self, admin_client, acme):
-        Surface.objects.create(organization=acme, name="Bare").delete()
-        Surface.objects.create(organization=acme, name="Full", instructions="Do it").delete()
+        Surface.objects.create(org=acme, name="Bare").delete()
+        Surface.objects.create(org=acme, name="Full", instructions="Do it").delete()
 
         rows = _bin(admin_client, SURFACES_URL)
 
@@ -979,8 +979,8 @@ class TestBinDetails:
         }
 
     def test_a_surface_whose_agent_is_binned_says_it_comes_back_shared(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
-        Surface.objects.create(organization=acme, name="Own", owner_agent=agent)
+        agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+        Surface.objects.create(org=acme, name="Own", owner_agent=agent)
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
         details = _details(_bin(admin_client, SURFACES_URL)[0])
@@ -989,8 +989,8 @@ class TestBinDetails:
         assert details["Comes back as"][1] == "notice"
 
     def test_an_owned_surface_names_its_agent(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
-        surface = Surface.objects.create(organization=acme, name="Own", owner_agent=agent, instructions="Use docs")
+        agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
+        surface = Surface.objects.create(org=acme, name="Own", owner_agent=agent, instructions="Use docs")
         admin_client.delete(f"{SURFACES_URL}{surface.pk}/")
 
         details = _details(_bin(admin_client, SURFACES_URL)[0])

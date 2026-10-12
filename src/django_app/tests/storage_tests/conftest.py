@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser
 from rbac.models import Role
-from tables.services.storage_service.upload import admission
+from tables.services.storage_service.upload import admission, archive_upload, file_upload
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
@@ -111,3 +111,13 @@ def sample_tar():
 @pytest.fixture
 def api_client():
     return APIClient()
+
+
+@pytest.fixture
+def stream_backend(monkeypatch, settings, backend):
+    """Send every streamed upload to the test's in-memory `backend`, with room for any size."""
+    settings.ORG_STORAGE_QUOTA = 10**9
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    monkeypatch.setattr(file_upload, "get_storage_backend", lambda **_: backend)
+    monkeypatch.setattr(archive_upload, "get_storage_backend", lambda **_: backend)
+    return backend

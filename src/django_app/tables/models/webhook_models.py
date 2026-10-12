@@ -4,6 +4,7 @@ from typing import ClassVar, Protocol
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -164,7 +165,7 @@ class WebhookTriggerAuth(SoftDeleteFields):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
 
 
-class WebhookTrigger(OrgScopedModel, SoftDeleteMixin, models.Model):
+class WebhookTrigger(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin):
     """A public webhook endpoint. `path` is the routing key, unique among live
     triggers across all organizations. In the recycle bin its tunnel and auth are
     binned with it, and flow nodes and Twilio channels keep their link to it
@@ -188,6 +189,9 @@ class WebhookTrigger(OrgScopedModel, SoftDeleteMixin, models.Model):
         null=True,
         blank=True,
     )
+    # Nullable because triggers created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         abstract = False
@@ -225,7 +229,7 @@ class WebhookTrigger(OrgScopedModel, SoftDeleteMixin, models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(OrgScopedModel, EnabledToggleFields, SoftDeleteMixin, models.Model):
+class RealtimeChannel(OrgScopedModel, LastEditTrackedModel, EnabledToggleFields, SoftDeleteMixin):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -286,6 +290,9 @@ class RealtimeChannel(OrgScopedModel, EnabledToggleFields, SoftDeleteMixin, mode
         on_delete=models.SET_NULL,
         related_name="channels",
     )
+    # Nullable because channels created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def clean(self):
         # A channel answers to exactly one destination — either a staff

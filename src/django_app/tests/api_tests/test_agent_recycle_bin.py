@@ -15,8 +15,8 @@ def _results(response):
 
 
 def _agent_with_owned_things(org, python_code_tool, name="Helper"):
-    agent = AgentDefinition.objects.create(organization=org, name=name)
-    owned_surface = Surface.objects.create(organization=org, name=f"{name} surface", owner_agent=agent)
+    agent = AgentDefinition.objects.create(org=org, name=name)
+    owned_surface = Surface.objects.create(org=org, name=f"{name} surface", owner_agent=agent)
     owned = [
         owned_surface,
         SurfacePythonTool.objects.create(surface=owned_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW),
@@ -41,12 +41,12 @@ class TestAgentGoesToTheRecycleBin:
         assert agent.id not in {item["id"] for item in _results(auth_client.get("/api/agent-definitions/"))}
 
     def test_a_binned_agent_frees_its_name(self, default_org):
-        AgentDefinition.objects.create(organization=default_org, name="Helper").delete()
+        AgentDefinition.objects.create(org=default_org, name="Helper").delete()
 
-        AgentDefinition.objects.create(organization=default_org, name="Helper")
+        AgentDefinition.objects.create(org=default_org, name="Helper")
 
     def test_flows_lose_the_deleted_agent(self, default_org, graph):
-        agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
+        agent = AgentDefinition.objects.create(org=default_org, name="Helper")
         task_node = TaskNode.objects.create(graph=graph, node_name="task", agent_definition=agent)
 
         agent.delete()
@@ -58,7 +58,7 @@ class TestAgentGoesToTheRecycleBin:
 @pytest.mark.django_db
 @pytest.mark.parametrize("method", ["get", "put", "patch", "delete"])
 def test_a_binned_agent_is_not_reachable_by_id(auth_client, default_org, method):
-    agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
+    agent = AgentDefinition.objects.create(org=default_org, name="Helper")
     agent.delete()
 
     response = getattr(auth_client, method)(f"/api/agent-definitions/{agent.id}/", {"name": "x"}, format="json")
@@ -79,9 +79,9 @@ class TestAgentRestore:
             assert type(row).objects.filter(pk=row.pk).exists(), type(row)
 
     def test_restore_renames_the_agent_when_its_name_is_taken(self, default_org):
-        agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
+        agent = AgentDefinition.objects.create(org=default_org, name="Helper")
         agent.delete()
-        AgentDefinition.objects.create(organization=default_org, name="Helper")
+        AgentDefinition.objects.create(org=default_org, name="Helper")
 
         result = RestoreService.restore(AgentDefinition.all_objects.get(pk=agent.pk))
 
@@ -93,7 +93,7 @@ class TestAgentRestore:
         agent, owned = _agent_with_owned_things(default_org, python_code_tool)
         owned_surface = owned[0]
         agent.delete()
-        Surface.objects.create(organization=default_org, name=owned_surface.name)
+        Surface.objects.create(org=default_org, name=owned_surface.name)
 
         RestoreService.restore(AgentDefinition.all_objects.get(pk=agent.pk))
 
@@ -141,8 +141,8 @@ class TestOwnedSurfaceRestoredOnItsOwn:
         assert Surface.objects.get(pk=surface.pk).owner_agent_id == agent.pk
 
     def test_a_surface_deleted_before_its_agent_also_comes_back_shared(self, default_org):
-        agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
-        surface = Surface.objects.create(organization=default_org, name="Owned", owner_agent=agent)
+        agent = AgentDefinition.objects.create(org=default_org, name="Helper")
+        surface = Surface.objects.create(org=default_org, name="Owned", owner_agent=agent)
         surface.delete()
         agent.delete()
 
@@ -163,7 +163,7 @@ class TestOwnedSurfaceRestoredOnItsOwn:
 
 @pytest.mark.django_db
 def test_agent_nodes_lose_the_deleted_agent(default_org, graph):
-    agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
+    agent = AgentDefinition.objects.create(org=default_org, name="Helper")
     agent_node = AgentNode.objects.create(graph=graph, node_name="agent", agent_definition=agent)
 
     agent.delete()
@@ -175,7 +175,7 @@ def test_agent_nodes_lose_the_deleted_agent(default_org, graph):
 @pytest.mark.django_db
 def test_another_orgs_agent_cannot_be_deleted(auth_client):
     other_org = Organization.objects.create(name="Other org")
-    agent = AgentDefinition.objects.create(organization=other_org, name="Theirs")
+    agent = AgentDefinition.objects.create(org=other_org, name="Theirs")
 
     response = auth_client.delete(f"/api/agent-definitions/{agent.id}/")
 
@@ -187,11 +187,11 @@ def test_another_orgs_agent_cannot_be_deleted(auth_client):
 def test_restore_does_not_rename_one_batch_row_onto_another(default_org):
     # The batch holds "Foo" and "Foo #2", and a live "Foo" exists: renaming the
     # first to "Foo #2" would collide with the second one.
-    agent = AgentDefinition.objects.create(organization=default_org, name="Helper")
-    first = Surface.objects.create(organization=default_org, name="Foo", owner_agent=agent)
-    second = Surface.objects.create(organization=default_org, name="Foo #2", owner_agent=agent)
+    agent = AgentDefinition.objects.create(org=default_org, name="Helper")
+    first = Surface.objects.create(org=default_org, name="Foo", owner_agent=agent)
+    second = Surface.objects.create(org=default_org, name="Foo #2", owner_agent=agent)
     agent.delete()
-    Surface.objects.create(organization=default_org, name="Foo")
+    Surface.objects.create(org=default_org, name="Foo")
 
     RestoreService.restore(AgentDefinition.all_objects.get(pk=agent.pk))
 

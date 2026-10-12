@@ -10,4 +10,4 @@ class StartNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelS
 
     class Meta:
         model = StartNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]

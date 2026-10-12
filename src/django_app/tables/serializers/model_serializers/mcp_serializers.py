@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -19,7 +20,11 @@ from tables.serializers.utils.soft_delete_fields import (
 
 
 class McpToolSerializer(
-    ExcludeSoftDeleteFieldsMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("auth_secret_id",)
 

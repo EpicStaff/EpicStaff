@@ -12,6 +12,9 @@ class Migration(migrations.Migration):
         ('tables', '0264_soft_delete_mcp_tool'),
     ]
 
+    # The unique name stays as it was here: it moves to the `org` field in
+    # 0010_agentdefinition_surface_org_scoped, and becomes live-rows-only in
+    # 0019_unique_names_on_org_live_only, which runs after both.
     operations = [
         migrations.AlterModelOptions(
             name='agentdefinition',
@@ -23,10 +26,6 @@ class Migration(migrations.Migration):
                 ('objects', django.db.models.manager.Manager()),
                 ('all_objects', django.db.models.manager.Manager()),
             ],
-        ),
-        migrations.RemoveConstraint(
-            model_name='agentdefinition',
-            name='unique_agent_definition_name_per_organization',
         ),
         migrations.AddField(
             model_name='agentdefinition',
@@ -46,9 +45,5 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='agentdefinition',
             constraint=models.CheckConstraint(condition=models.Q(models.Q(('active', True), ('soft_deleted_at__isnull', True)), models.Q(('active', False), ('soft_deleted_at__isnull', False)), _connector='OR'), name='agents_agentdefinition_soft_delete_consistency'),
-        ),
-        migrations.AddConstraint(
-            model_name='agentdefinition',
-            constraint=models.UniqueConstraint(condition=models.Q(('active', True)), fields=('organization', 'name'), name='unique_agent_definition_name_per_organization'),
         ),
     ]

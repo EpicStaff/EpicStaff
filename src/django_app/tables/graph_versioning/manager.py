@@ -1,7 +1,18 @@
-from collections import defaultdict
 from copy import deepcopy
+from datetime import datetime
 
+from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Q
+from rbac.authorship import (
+    RecordedLastEdit,
+    record_last_edit,
+    resolve_author,
+    restore_last_edits,
+)
+from rbac.authorship.user_summary import USER_SUMMARY_FIELDS
+from rbac.models import AuthorModel, LastEditTrackedModel, ResourceLastEdit
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
@@ -13,10 +24,12 @@ from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.graph import GraphStrategy
-from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
+from tables.import_export.strategies.nodes.node_maps import (
+    NODE_RELATIONS,
+    NODE_TYPE_TO_ENTITY_TYPE,
+)
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
-    ConditionalEdge,
     Graph,
     KeyValueNode,
     PythonCode,
@@ -44,15 +57,14 @@ class GraphVersioningManager:
 
     def create_snapshot(self, graph: Graph) -> dict:
         """
-        Serialize the graph's internal state (metadata, nodes, edges,
-        conditional edges) into a JSON-serializable dict.
+        Serialize the graph's internal state (metadata, nodes, edges)
+        into a JSON-serializable dict.
         """
         return self._graph_strategy.export_entity(graph)
 
     def collect_secret_declarations(self, *, graph: Graph) -> dict:
         """Which secret names each of this graph's Python-code sites declares."""
         nodes: dict[str, dict[str, list[str]]] = {}
-        conditional_edges: list[dict] = []
 
         for site in GRAPH_PYTHON_CODE_SITES:
             rows = (
@@ -68,14 +80,10 @@ class GraphVersioningManager:
                 names = sorted(secret.name for secret in python_code.linked_secrets())
                 if not names:
                     continue
-                if site.model is ConditionalEdge:
-                    conditional_edges.append({"source_node_id": row.source_node_id, "names": names})
-                else:
-                    nodes.setdefault(str(row.pk), {})[site.code_field] = names
+                nodes.setdefault(str(row.pk), {})[site.code_field] = names
 
         return {
             "nodes": nodes,
-            "conditional_edges": conditional_edges,
             "telegram": self._collect_telegram_secrets(graph=graph),
         }
 
@@ -97,18 +105,14 @@ class GraphVersioningManager:
         if not declarations:
             return []
 
+        # Snapshots saved while conditional edges existed also carry a
+        # "conditional_edges" key. Those edges are dropped by filter_snapshot, so
+        # their declarations have nothing to attach to and are not read here.
         warnings: list[dict] = []
         warnings.extend(
             self._restore_node_declarations(
                 graph=graph,
                 recorded=declarations.get("nodes") or {},
-                node_mapper=node_mapper,
-            )
-        )
-        warnings.extend(
-            self._restore_conditional_edge_declarations(
-                graph=graph,
-                recorded=declarations.get("conditional_edges") or [],
                 node_mapper=node_mapper,
             )
         )
@@ -187,7 +191,7 @@ class GraphVersioningManager:
     def _find_site_row(*, graph: Graph, node_id: int, code_field: str):
         """The restored row for one (node id, code field) pair."""
         for site in GRAPH_PYTHON_CODE_SITES:
-            if site.model is ConditionalEdge or site.code_field != code_field:
+            if site.code_field != code_field:
                 continue
             row = (
                 site.model.objects.filter(pk=node_id, graph=graph)
@@ -197,73 +201,6 @@ class GraphVersioningManager:
             if row is not None:
                 return row
         return None
-
-    def _restore_conditional_edge_declarations(
-        self, *, graph: Graph, recorded: list, node_mapper: IDMapper
-    ) -> list[dict]:
-        """Correlate edge declarations through the node each edge branches off."""
-        warnings: list[dict] = []
-        by_source: dict[object, list[dict]] = defaultdict(list)
-        for entry in recorded:
-            by_source[entry.get("source_node_id")].append(entry)
-
-        for old_source_id, entries in by_source.items():
-            names = sorted({name for entry in entries for name in entry["names"]})
-            label = f"conditional edge from node #{old_source_id}"
-
-            if old_source_id is None:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            "the edge has no source node, so it cannot be identified after restore."
-                        ),
-                    )
-                )
-                continue
-
-            new_source_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_source_id))
-            if new_source_id is None:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            "its source node was not restored, so the edge cannot be identified."
-                        ),
-                    )
-                )
-                continue
-
-            edges = list(
-                ConditionalEdge.objects.filter(
-                    graph=graph, source_node_id=new_source_id
-                ).select_related("python_code")
-            )
-            if len(edges) != 1 or len(entries) != 1:
-                warnings.extend(
-                    self._dropped(
-                        names=names,
-                        node_name=label,
-                        reason_suffix=(
-                            f"{len(entries)} recorded declaration(s) and "
-                            f"{len(edges)} restored edge(s) share that source "
-                            "node, so the pairing is ambiguous."
-                        ),
-                    )
-                )
-                continue
-
-            warnings.extend(
-                self._link(
-                    python_code=edges[0].python_code,
-                    names=names,
-                    org_id=graph.org_id,
-                    node_name=label,
-                )
-            )
-        return warnings
 
     def _restore_telegram_declarations(
         self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
@@ -359,6 +296,197 @@ class GraphVersioningManager:
             graph=graph, telegram_bot_api_key_secret__isnull=False
         ).select_related("telegram_bot_api_key_secret")
         return {str(row.pk): row.telegram_bot_api_key_secret.name for row in rows}
+
+    def resolve_node_authorship(
+        self, *, recorded_authorship: dict | None, recorded_last_edits: dict | None
+    ) -> dict[str, dict]:
+        """Return each recorded node's author and last edit, with users loaded in one query.
+
+        Keyed by the snapshot's node ids: every node with a ``node_authorship`` or a
+        ``node_last_edit`` entry. Users are instances carrying only the user-summary
+        columns, ``None`` when none was recorded, it was cleared, or the user no longer
+        exists; times are datetimes, ``None`` when not recorded. Empty for a snapshot
+        saved before node authorship was recorded.
+        """
+        recorded_authorship = recorded_authorship or {}
+        recorded_last_edits = recorded_last_edits or {}
+        node_ids = recorded_authorship.keys() | recorded_last_edits.keys()
+        recorded_by_node_id = {
+            node_id: (recorded_authorship.get(node_id, {}), recorded_last_edits.get(node_id, {}))
+            for node_id in node_ids
+        }
+        wanted_user_ids = {
+            user_id
+            for authorship, last_edit in recorded_by_node_id.values()
+            for user_id in (authorship.get("created_by"), last_edit.get("edited_by"))
+            if user_id is not None
+        }
+        users_by_id = (
+            get_user_model().objects.only(*USER_SUMMARY_FIELDS).in_bulk(wanted_user_ids)
+            if wanted_user_ids
+            else {}
+        )
+        return {
+            node_id: {
+                "created_by": users_by_id.get(authorship.get("created_by")),
+                "created_at": self._parse_recorded_time(authorship.get("created_at")),
+                "last_edited_by": users_by_id.get(last_edit.get("edited_by")),
+                "last_edited_at": self._parse_recorded_time(last_edit.get("edited_at")),
+            }
+            for node_id, (authorship, last_edit) in recorded_by_node_id.items()
+        }
+
+    @staticmethod
+    def _parse_recorded_time(recorded_time: str | None) -> datetime | None:
+        return datetime.fromisoformat(recorded_time) if recorded_time else None
+
+    def collect_node_authorship(self, *, graph: Graph) -> dict[str, dict]:
+        """Record each node's author id and ISO-8601 ``created_at``, keyed by node id."""
+        authorship: dict[str, dict] = {}
+        for node_model in self._author_tracked_node_models():
+            rows = node_model.objects.filter(graph=graph).values_list(
+                "id", "created_by_id", "created_at"
+            )
+            for node_id, author_id, created_at in rows:
+                authorship[str(node_id)] = {
+                    "created_by": author_id,
+                    "created_at": created_at.isoformat(),
+                }
+        return authorship
+
+    def restore_node_authorship(
+        self, *, graph: Graph, recorded_authorship: dict | None, node_mapper: IDMapper
+    ) -> None:
+        """Replay each recreated node's recorded author and ``created_at`` verbatim.
+
+        A restore replays recorded state and never makes the restoring user an author. A
+        node recorded without an author, or with no ``node_authorship`` entry at all (e.g.
+        a version saved before authorship was recorded), ends up without one; its
+        ``created_at`` is then left as the recreation set it. Recorded authors are not
+        checked against the organization's members: removing a member, revoking a
+        superadmin or deleting a user clears them from the snapshots of every organization
+        they no longer belong to (``VersionSnapshotAuthorshipScrubber``).
+        """
+        recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
+        if not recreated_node_ids:
+            return
+
+        recorded_by_new_id = self._recorded_by_new_node_id(recorded_authorship, node_mapper)
+
+        for node_model in self._author_tracked_node_models():
+            # Through the model manager: the graph's related manager would load each
+            # row's deferred graph_id with its own query.
+            nodes = list(
+                node_model.objects.filter(graph=graph, id__in=recreated_node_ids).only(
+                    "id", "created_by", "created_at"
+                )
+            )
+            if not nodes:
+                continue
+            for node in nodes:
+                entry = recorded_by_new_id.get(node.id)
+                if entry is None:
+                    node.created_by_id = None
+                    continue
+                node.created_by_id = entry["created_by"]
+                node.created_at = datetime.fromisoformat(entry["created_at"])
+            # Restore replays recorded state, so bypassing AuthorModel.save()'s author-change
+            # guard and created_at's auto_now_add is intended. Must run after every step that
+            # saves recreated nodes: a later full save() of a stale instance would overwrite it.
+            node_model.objects.bulk_update(nodes, ["created_by", "created_at"])
+
+    def collect_node_last_edits(self, *, graph: Graph) -> dict[str, dict]:
+        """Record each node's last editor id and ISO-8601 ``edited_at``, keyed by node id.
+
+        Nodes that were never edited have no entry.
+        """
+        graph_nodes = Q()
+        for node_model in self._last_edit_tracked_node_models():
+            graph_nodes |= Q(
+                content_type=ContentType.objects.get_for_model(node_model),
+                object_id__in=node_model.objects.filter(graph=graph).values("id"),
+            )
+        rows = ResourceLastEdit.objects.filter(graph_nodes).values_list(
+            "object_id", "edited_by_id", "edited_at"
+        )
+        return {
+            str(node_id): {"edited_by": editor_id, "edited_at": edited_at.isoformat()}
+            for node_id, editor_id, edited_at in rows
+        }
+
+    def restore_node_last_edits(
+        self, *, graph: Graph, recorded_last_edits: dict | None, node_mapper: IDMapper
+    ) -> None:
+        """Replay each recreated node's recorded last edit verbatim.
+
+        A recreated node without a recorded entry (never edited when the version was
+        saved, or a version saved before last edits were recorded) ends up without a last
+        edit, discarding the one its recreation recorded. Nodes that were not recreated
+        are skipped. Recorded editors are not checked against the organization's members:
+        removing a member, revoking a superadmin or deleting a user clears them from the
+        snapshots of every organization they no longer belong to
+        (``VersionSnapshotAuthorshipScrubber``).
+        """
+        recreated_node_ids = node_mapper.get_new_ids(NODE_MAPPING_KEY)
+        if not recreated_node_ids:
+            return
+
+        recorded_by_new_id = self._recorded_by_new_node_id(recorded_last_edits, node_mapper)
+        restored: list[RecordedLastEdit] = []
+        never_edited_nodes = Q()
+        for node_model in self._last_edit_tracked_node_models():
+            nodes = node_model.objects.filter(graph=graph, id__in=recreated_node_ids).only("id")
+            never_edited_ids = []
+            for node in nodes:
+                entry = recorded_by_new_id.get(node.id)
+                if entry is None:
+                    never_edited_ids.append(node.id)
+                    continue
+                restored.append(
+                    RecordedLastEdit(
+                        resource=node,
+                        edited_by_id=entry["edited_by"],
+                        edited_at=datetime.fromisoformat(entry["edited_at"]),
+                    )
+                )
+            if never_edited_ids:
+                never_edited_nodes |= Q(
+                    content_type=ContentType.objects.get_for_model(node_model),
+                    object_id__in=never_edited_ids,
+                )
+        if never_edited_nodes:
+            ResourceLastEdit.objects.filter(never_edited_nodes).delete()
+        restore_last_edits(restored)
+
+    @staticmethod
+    def _recorded_by_new_node_id(
+        recorded_by_old_node_id: dict | None, node_mapper: IDMapper
+    ) -> dict[int, dict]:
+        """Re-key a snapshot's per-node entries by recreated node id, dropping unmapped nodes."""
+        recorded_by_new_id: dict[int, dict] = {}
+        for old_node_id, entry in (recorded_by_old_node_id or {}).items():
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            if new_node_id is not None:
+                recorded_by_new_id[new_node_id] = entry
+        return recorded_by_new_id
+
+    @staticmethod
+    def _author_tracked_node_models() -> list[type[AuthorModel]]:
+        node_models = (
+            Graph._meta.get_field(relation_name).related_model
+            for relation_name in NODE_RELATIONS.values()
+        )
+        return [node_model for node_model in node_models if issubclass(node_model, AuthorModel)]
+
+    @staticmethod
+    def _last_edit_tracked_node_models() -> list[type[LastEditTrackedModel]]:
+        node_models = (
+            Graph._meta.get_field(relation_name).related_model
+            for relation_name in NODE_RELATIONS.values()
+        )
+        return [
+            node_model for node_model in node_models if issubclass(node_model, LastEditTrackedModel)
+        ]
 
     def collect_dependencies(self, graph: Graph) -> dict:
         """
@@ -681,27 +809,27 @@ class GraphVersioningManager:
 
         return kept_edges, warnings
 
-    def _filter_conditional_edges(
-        self, conditional_edges: list[dict], skipped_node_ids: set[int]
-    ) -> tuple[list[dict], list[dict]]:
-        """
-        Filter conditional edges based on non existing nodes
-        """
-        kept_cond_edges = []
-        warnings = []
-        for edge in conditional_edges:
-            source = edge.get("source_node_id")
-            if source in skipped_node_ids:
-                warnings.append(
-                    {
-                        "type": "edge_dropped",
-                        "reason": f"Conditional edge from {source} references a skipped node.",
-                    }
-                )
-                continue
-            kept_cond_edges.append(edge)
+    @staticmethod
+    def _discard_conditional_edges(snapshot: dict) -> list[dict]:
+        """Remove conditional-edge data from a snapshot saved before they were dropped.
 
-        return kept_cond_edges, warnings
+        Conditional edges are no longer supported, so their edges and secret
+        declarations are discarded in place. Returns one ``edge_dropped`` warning
+        when the snapshot had any edges, so the user learns branching was lost.
+        """
+        conditional_edges = snapshot.pop("conditional_edge_list", None) or []
+        (snapshot.get("secret_declarations") or {}).pop("conditional_edges", None)
+        if not conditional_edges:
+            return []
+        return [
+            {
+                "type": "edge_dropped",
+                "reason": (
+                    f"{len(conditional_edges)} conditional edge(s) were dropped: conditional "
+                    "edges are no longer supported. Use a Decision Table node for branching."
+                ),
+            }
+        ]
 
     def filter_snapshot(self, snapshot: dict, missing: dict) -> tuple[dict, list[dict]]:
         """
@@ -732,11 +860,7 @@ class GraphVersioningManager:
         filtered_snapshot["edge_list"] = kept_edges
         warnings.extend(edge_warnings)
 
-        kept_cond_edges, cond_warnings = self._filter_conditional_edges(
-            filtered_snapshot.get("conditional_edge_list", []), skipped_node_ids
-        )
-        filtered_snapshot["conditional_edge_list"] = kept_cond_edges
-        warnings.extend(cond_warnings)
+        warnings.extend(self._discard_conditional_edges(filtered_snapshot))
 
         return filtered_snapshot, warnings
 
@@ -806,6 +930,8 @@ class GraphVersioningManager:
         """
         Create a brand-new Graph from a filtered snapshot.
         The new graph is independent — no GraphVersion rows, own id/uuid.
+        `user` authors the new graph and every node recreated in it, and is recorded
+        as their last editor.
         """
         snapshot_copy = deepcopy(filtered_snapshot)
 
@@ -827,14 +953,13 @@ class GraphVersioningManager:
 
         nodes_data = snapshot_copy.pop("nodes", [])
         edges_data = snapshot_copy.pop("edge_list", [])
-        cond_edges_data = snapshot_copy.pop("conditional_edge_list", [])
 
         with transaction.atomic():
             snapshot_copy["name"] = next_copy_name(Graph, org_id=org_id, base_name=new_graph_name)
 
-            serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
-            serializer.is_valid(raise_exception=True)
-            graph = serializer.save(org_id=org_id)
+        serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
+        serializer.is_valid(raise_exception=True)
+        graph = serializer.save(org_id=org_id, created_by=resolve_author(user))
 
         start_node = StartNode.objects.filter(graph=graph).first()
         PersistentVariablesService().seed_for_copy(
@@ -846,11 +971,11 @@ class GraphVersioningManager:
             {
                 "nodes": nodes_data,
                 "edge_list": edges_data,
-                "conditional_edge_list": cond_edges_data,
             },
             id_mapper,
             user=user,
         )
+        record_last_edit(graph, user)
 
         return graph, node_mapper
 

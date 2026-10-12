@@ -101,6 +101,7 @@ def test_a_telegram_node_on_a_binned_trigger_isnt_registered(acme):
     node = SimpleNamespace(
         pk=1,
         telegram_bot_api_key_secret_id=1,
+        telegram_bot_api_key_secret=SimpleNamespace(active=True),
         webhook_trigger=WebhookTrigger.all_objects.get(pk=trigger.pk),
     )
     # The service is a singleton: call the method on a stand-in instead of building one.

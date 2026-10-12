@@ -3,6 +3,7 @@ from typing import Any, Literal
 from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch
 from loguru import logger
+from rbac.authorship import record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.search_config_suggestion import SuggestedCollectionMetrics
 from tables.clients import KnowledgeClient
@@ -117,7 +118,7 @@ class CollectionManagementService:
     def create_collection(
         collection_name: str | None = None,
         description: str = "",
-        user_id: str | None = None,
+        created_by: object = None,
         collection_origin: str | None = None,
         org_id: int | None = None,
     ) -> SourceCollection:
@@ -128,7 +129,8 @@ class CollectionManagementService:
             collection_name: Name for collection (auto-generated if None)
             description: LLM-facing context appended to generated knowledge tool
                 descriptions (defaults to blank)
-            user_id: User ID (defaults to "dummy_user")
+            created_by: Acting user recorded as author and last editor (no author if not
+                a real user)
             collection_origin: Origin of collection (defaults to USER)
             org_id: Owning organization id (required — collection.org is NOT NULL)
 
@@ -138,10 +140,11 @@ class CollectionManagementService:
         collection = SourceCollection.objects.create(
             collection_name=collection_name or "Untitled Collection",
             description=description or "",
-            user_id=user_id or "dummy_user",
+            created_by=resolve_author(created_by),
             collection_origin=collection_origin or SourceCollection.SourceCollectionOrigin.USER,
             org_id=org_id,
         )
+        record_last_edit(collection, created_by)
 
         logger.info(
             f"Created collection '{collection.collection_name}' (ID: {collection.collection_id})"
@@ -155,6 +158,7 @@ class CollectionManagementService:
         collection_id: int,
         collection_name: str | None = None,
         description: str | None = None,
+        user: object = None,
     ) -> SourceCollection:
         """
         Update collection name and/or description.
@@ -163,6 +167,8 @@ class CollectionManagementService:
             collection_id: ID of collection to update
             collection_name: New collection name (unchanged if None)
             description: New description (unchanged if None)
+            user: Acting user; becomes the last editor if the name or description changed.
+                Never becomes the author, even of a collection that has none.
 
         Returns:
             SourceCollection: Updated collection
@@ -171,6 +177,7 @@ class CollectionManagementService:
             CollectionNotFoundException: If collection not found
         """
         collection = CollectionManagementService.get_collection(collection_id)
+        state_before = (collection.collection_name, collection.description)
 
         update_fields = []
 
@@ -184,6 +191,9 @@ class CollectionManagementService:
 
         if update_fields:
             collection.save()
+        changed = (collection.collection_name, collection.description) != state_before
+        if changed:
+            record_last_edit(collection, user)
 
         logger.info(f"Updated collection {collection_id} fields: {update_fields or 'none'}")
 
@@ -376,6 +386,7 @@ class CollectionManagementService:
         source_collection_id: int,
         new_collection_name: str | None = None,
         org_id: int | None = None,
+        user: object = None,
     ) -> SourceCollection:
         """
         Copy a collection without duplicating binary content.
@@ -384,7 +395,8 @@ class CollectionManagementService:
         Args:
             source_collection_id: ID of collection to copy
             new_collection_name: Name for new collection (auto-generated if None)
-            user_id: User ID for new collection (uses source if None)
+            org_id: Owning organization id of the new collection
+            user: Acting user recorded as author and last editor of the copy
 
         Returns:
             SourceCollection: New collection instance
@@ -400,7 +412,9 @@ class CollectionManagementService:
             collection_name=new_collection_name or f"{source_collection.collection_name} (Copy)",
             description=source_collection.description,
             org_id=org_id,
+            created_by=resolve_author(user),
         )
+        record_last_edit(new_collection, user)
 
         # Get source documents with content
         source_documents = DocumentMetadata.objects.filter(

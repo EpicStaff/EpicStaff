@@ -3,8 +3,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import authorship_prefetches
 from rbac.models.enums import ResourceType
-from rbac.scoping.mixins import OrgScopedResolverMixin
+from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -17,14 +18,14 @@ from agents.serializers.agent_definition_serializers import (
 )
 
 
-class AgentDefinitionViewSet(OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
+class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
     recycle_bin_resource_key = "agent"
     queryset = AgentDefinition.objects.select_related(
-        "organization", "llm_config", "fcm_llm_config", "realtime_agent"
-    ).prefetch_related("default_surfaces__surface", "owned_surfaces")
+        "org", "llm_config", "fcm_llm_config", "realtime_agent"
+    ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["llm_config", "fcm_llm_config"]
 
@@ -32,12 +33,6 @@ class AgentDefinitionViewSet(OrgScopedResolverMixin, RecycleBinActionsMixin, vie
         if self.action in ["list", "retrieve"]:
             return AgentDefinitionReadSerializer
         return AgentDefinitionWriteSerializer
-
-    def get_queryset(self):
-        return super().get_queryset().filter(organization_id=self.get_active_org_id())
-
-    def perform_create(self, serializer):
-        serializer.save(organization_id=self.get_active_org_id())
 
     @extend_schema(request=AgentDefinitionWriteSerializer, responses=AgentDefinitionReadSerializer)
     @transaction.atomic

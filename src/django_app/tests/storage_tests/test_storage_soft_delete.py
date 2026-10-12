@@ -105,7 +105,7 @@ class TestOnSoftDelete:
         graph = Graph.objects.create(org=org, name="Uses a file")
         GraphStorageFile.objects.create(graph=graph, storage_file=row)
         SessionStorageFile.objects.create(session=Session.objects.create(graph=graph), storage_file=row)
-        surface = Surface.objects.create(organization=org, name="Reads a file")
+        surface = Surface.objects.create(org=org, name="Reads a file")
         SurfaceStorageItem.objects.create(surface=surface, storage_file=row)
 
         StorageFileSync.on_soft_delete(org.id, "a.txt")

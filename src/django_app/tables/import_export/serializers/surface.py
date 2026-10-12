@@ -8,7 +8,7 @@ from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsM
 class SurfaceImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = Surface
-        exclude = ["organization", "owner_agent"]
+        exclude = ["org", "created_by", "owner_agent"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

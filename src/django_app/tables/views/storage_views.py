@@ -1,7 +1,15 @@
+from collections.abc import Iterator
+
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import HasOrgPermission
+from rbac.authorship import (
+    authorship_prefetches,
+    record_last_edit,
+    resolve_author,
+    user_summaries_by_id,
+)
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
@@ -64,6 +72,30 @@ from tables.swagger_schemas.storage_schema import (
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, request_actor
 
+_USER_ID_KEYS = ("created_by", "last_edited_by")
+
+
+def _replace_user_ids_with_summaries(entries: list[dict], request) -> None:
+    """Swap, in place, the author and editor ids in each entry for their user summaries.
+
+    The storage manager reports `created_by` and `last_edited_by` as ids; this renders
+    them for the response. Folder `children` are walked recursively and every author
+    and editor loads in one query. A user deleted since renders as None.
+    """
+    all_entries = list(_with_descendants(entries))
+    summaries = user_summaries_by_id(
+        (entry[key] for entry in all_entries for key in _USER_ID_KEYS), request
+    )
+    for entry in all_entries:
+        for key in _USER_ID_KEYS:
+            entry[key] = summaries.get(entry[key])
+
+
+def _with_descendants(entries: list[dict]) -> Iterator[dict]:
+    for entry in entries:
+        yield entry
+        yield from _with_descendants(entry.get("children") or [])
+
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
@@ -119,8 +151,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             except FileNotFoundError as e:
                 raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
-        items = self.manager.list_(org_id, prefix)
-        return Response({"path": prefix, "items": [i.to_dict() for i in items]})
+        items = [item.to_dict() for item in self.manager.list_(org_id, prefix)]
+        _replace_user_ids_with_summaries(items, request)
+        return Response({"path": prefix, "items": items})
 
     @extend_schema(**STORAGE_INFO_SWAGGER)
     @action(detail=False, methods=["get"], url_path="info")
@@ -136,6 +169,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         response = data.to_dict()
+        _replace_user_ids_with_summaries([response], request)
 
         graph_path = path
         if isinstance(data, FolderInfo) and not graph_path.endswith("/"):
@@ -213,7 +247,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise ValidationError({"detail": str(e)}) from e
 
         try:
-            self.manager.mkdir(org_id, path)
+            self.manager.mkdir(org_id, path, user=request.user)
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
         return Response({"path": path, "created": True}, status=status.HTTP_201_CREATED)
@@ -243,7 +277,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         to_path = serializer.validated_data["to"]
 
         try:
-            self.manager.rename(org_id, from_path, to_path)
+            self.manager.rename(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except FileExistsError as e:
@@ -266,9 +300,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.move_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
+                self.manager.move_cross_org(
+                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                )
             else:
-                self.manager.move(org_id, from_path, to_path)
+                self.manager.move(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
@@ -289,9 +325,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.copy_cross_org(int(src_org_id), from_path, int(dst_org_id), to_path)
+                self.manager.copy_cross_org(
+                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                )
             else:
-                self.manager.copy(org_id, from_path, to_path)
+                self.manager.copy(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
@@ -330,7 +368,13 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             if isinstance(path_info, FolderInfo) and not path.endswith("/"):
                 path = path + "/"
 
-            sf, _ = StorageFile.objects.get_or_create(org_id=org_id, path=path)
+            sf, created = StorageFile.objects.get_or_create(
+                org_id=org_id,
+                path=path,
+                defaults={"created_by": resolve_author(request.user)},
+            )
+            if created:
+                record_last_edit(sf, request.user)
 
             for graph_id in graph_ids:
                 obj, _ = GraphStorageFile.objects.get_or_create(graph_id=graph_id, storage_file=sf)
@@ -379,7 +423,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise ValidationError({"path": "tree requires a folder path"})
 
         root, truncated = self.manager.list_tree(org_id, prefix, max_depth=max_depth)
-        return Response({"path": prefix, "truncated": truncated, "tree": root.to_dict()})
+        tree = root.to_dict()
+        _replace_user_ids_with_summaries([tree], request)
+        return Response({"path": prefix, "truncated": truncated, "tree": tree})
 
     @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     @action(detail=False, methods=["get"], url_path="graph-files")
@@ -406,8 +452,10 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         org_id = self.get_active_org_id()
         params = StorageFilesByIdsQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
-        qs = StorageFile.objects.filter(org_id=org_id, id__in=params.validated_data["ids"])
-        return Response(StorageFileSerializer(qs, many=True).data)
+        qs = StorageFile.objects.filter(
+            org_id=org_id, id__in=params.validated_data["ids"]
+        ).prefetch_related(*authorship_prefetches())
+        return Response(StorageFileSerializer(qs, many=True, context={"request": request}).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)
     @action(detail=False, methods=["get"], url_path="search")
@@ -422,6 +470,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             limit=params.validated_data["limit"],
             offset=params.validated_data["offset"],
         )
+        _replace_user_ids_with_summaries(results, request)
         return Response(
             {
                 "total": total,

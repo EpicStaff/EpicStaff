@@ -871,7 +871,7 @@ class TestOwnerVersusReferenceLinks:
     row that belongs to the deleted row goes to the bin in the same batch."""
 
     def test_tool_delete_removes_surface_links(self, python_code_tool, default_org, graph):
-        surface = Surface.objects.create(organization=default_org, name="S")
+        surface = Surface.objects.create(org=default_org, name="S")
         surface_link = SurfacePythonTool.objects.create(
             surface=surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
         )
@@ -1067,7 +1067,7 @@ class TestSoftDeleteStateStaysOutOfApiImportAndCopy:
         config = KnowledgeNodeNaiveRagSearchConfig.objects.create(knowledge_node=knowledge_node)
         KnowledgeNodeNaiveRagSearchConfig.objects.filter(pk=config.pk).update(soft_delete_batch=uuid.uuid4())
 
-        new_node = copy_knowledge_node(graph, KnowledgeNode.objects.get(pk=knowledge_node.pk))
+        new_node = copy_knowledge_node(graph, KnowledgeNode.objects.get(pk=knowledge_node.pk), user=None)
 
         new_config = KnowledgeNodeNaiveRagSearchConfig.objects.get(knowledge_node=new_node)
         assert new_config.active is True

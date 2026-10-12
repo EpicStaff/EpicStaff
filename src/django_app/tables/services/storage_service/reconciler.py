@@ -99,6 +99,7 @@ class StorageReconciler:
         # insert already made the live row. ON CONFLICT DO NOTHING (no target)
         # honors the partial unique index.
         StorageFile.objects.bulk_create(to_create, batch_size=_BATCH_SIZE, ignore_conflicts=True)
+        # NOTE: never add created_by to _SYNCED_FIELDS: the update would erase authors.
         StorageFile.objects.bulk_update(to_update, _SYNCED_FIELDS, batch_size=_BATCH_SIZE)
         for start in range(0, len(stale_ids), _BATCH_SIZE):
             StorageFile.objects.filter(id__in=stale_ids[start : start + _BATCH_SIZE]).delete()

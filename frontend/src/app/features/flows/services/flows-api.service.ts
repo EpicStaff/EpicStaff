@@ -18,6 +18,7 @@ import {
     GraphVersionCreateRequest,
     GraphVersionDto,
     GraphVersionUpdateRequest,
+    PatchGraphDtoRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
 import { PreviewGraphVersionResponse } from '../models/graph-version-preview.model';
@@ -68,6 +69,10 @@ export class FlowsApiService {
         return this.getAllFlowPages<GraphDto>(`${this.configService.apiUrl}graph-light/`, params);
     }
 
+    getGraphLightById(id: number): Observable<GetGraphLightRequest> {
+        return this.http.get<GetGraphLightRequest>(`${this.configService.apiUrl}graph-light/${id}/`);
+    }
+
     getGraphById(id: number, forceRefresh = false): Observable<GraphDto> {
         const params = forceRefresh ? new HttpParams().set('_ts', Date.now().toString()) : undefined;
         return this.http.get<GraphDto>(`${this.apiUrl}${id}/`, { params });
@@ -85,7 +90,7 @@ export class FlowsApiService {
         });
     }
 
-    patchGraph(id: number, fields: Partial<GraphDto>): Observable<GraphDto> {
+    patchGraph(id: number, fields: PatchGraphDtoRequest): Observable<GraphDto> {
         return this.http.patch<GraphDto>(`${this.apiUrl}${id}/`, fields, {
             headers: this.httpHeaders,
         });

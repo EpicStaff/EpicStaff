@@ -1,5 +1,7 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
+from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import (
     AbstractDefaultFillableModel,
     SoftDeleteFields,
@@ -27,14 +29,10 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel, SoftDeleteMixin):
+class AgentDefinition(
+    OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel, SoftDeleteMixin
+):
     # Identity
-    organization = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="agent_definitions",
-        help_text="Organization this agent belongs to.",
-    )
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier (slug-like) unique within an organization. Used to reference this agent from flows, code, and the UI.",
@@ -134,6 +132,14 @@ class AgentDefinition(AbstractDefaultFillableModel, SoftDeleteMixin):
         help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
     )
 
+    # Nullable because agents created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        help_text="When this agent definition was created. Null for agents created before creation times were recorded.",
+    )
+
     @property
     def instructions(self) -> str:
         """Return the non-blank instruction contents joined in application order."""
@@ -149,13 +155,13 @@ class AgentDefinition(AbstractDefaultFillableModel, SoftDeleteMixin):
     def __repr__(self) -> str:
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         default_manager_name = "objects"
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
-                fields=["organization", "name"],
+                fields=["org", "name"],
                 condition=models.Q(active=True),
                 name="unique_agent_definition_name_per_organization",
             ),

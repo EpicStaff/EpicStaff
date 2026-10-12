@@ -3,11 +3,8 @@ from typing import Any, Literal, TypedDict
 from dotdict import DotDict
 
 
-class ReturnCodeError(Exception): ...
-
-
 class StateHistoryItem(TypedDict):
-    type: Literal["CREW", "PYTHON", "FILE_EXTRACTOR", "CONDITIONAL_EDGE", "LLM", "END"]
+    type: Literal["CREW", "PYTHON", "FILE_EXTRACTOR", "LLM", "END"]
     name: str
     additional_data: dict
     variables: dict  # for output

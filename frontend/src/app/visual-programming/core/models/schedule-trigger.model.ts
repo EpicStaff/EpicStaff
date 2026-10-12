@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '@shared/models';
+
 export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 export type ScheduleRunMode = 'once' | 'repeat';
@@ -61,7 +63,7 @@ export interface GetScheduleBlock {
 // ── HTTP DTOs ────────────────────────────────────────────────────────────────
 
 /** Shape returned by GET /api/schedule-trigger-nodes/{id}/ and as the response body of POST/PUT/PATCH. */
-export interface GetScheduleTriggerNodeRequest {
+export interface GetScheduleTriggerNodeRequest extends AuthorshipFields {
     id: number;
     node_name: string;
     graph: number;

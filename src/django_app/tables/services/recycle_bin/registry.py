@@ -15,8 +15,7 @@ class BinResource:
 
     Attributes:
         name_field: The column a restore renames when the name is taken.
-        org_field: The FK to the owning organization. `org` here; the agents app's
-            models (agents, surfaces) name it `organization`.
+        org_field: The FK to the owning organization.
         resource_type: The RBAC resource the bin actions are checked against.
         also_taken: Rows outside the org whose names count as taken on restore
             (built-in tools are visible to every org).
@@ -79,9 +78,9 @@ def bin_resources() -> dict[str, BinResource]:
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),
         "mcp_tool": BinResource(McpTool, "name", "org", ResourceType.TOOLS),
-        "agent": BinResource(AgentDefinition, "name", "organization", ResourceType.AGENTS),
+        "agent": BinResource(AgentDefinition, "name", "org", ResourceType.AGENTS),
         "surface": BinResource(
-            Surface, "name", "organization", ResourceType.SURFACES, owner_field="owner_agent"
+            Surface, "name", "org", ResourceType.SURFACES, owner_field="owner_agent"
         ),
         "key_value_table": BinResource(
             KeyValueTable, "name", "org", ResourceType.KEY_VALUE_TABLES, case_insensitive_names=True

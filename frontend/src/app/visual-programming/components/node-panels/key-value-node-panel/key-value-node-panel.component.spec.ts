@@ -35,6 +35,7 @@ import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
+import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
@@ -58,6 +59,10 @@ const DTO: GetKeyValueNodeRequest = {
     input_map: {},
     output_variable_path: 'variables.saved',
     metadata: {},
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 // Stands in for the form-bound shared controls so the real template renders without their dependencies.
@@ -168,6 +173,8 @@ function createPanel(
             // Its own stand-in: the one above answers every resource alike, Flows included.
             { provide: FlowReadOnlyService, useValue: { isReadOnly: flowReadOnly, notifyBlocked } },
             { provide: Dialog, useValue: { open: openDialog } },
+            // The panel shell, mounted by some tests below, reads node authorship from the flow page's store.
+            NodeAuthorshipStore,
             {
                 provide: UniqueNodeNameValidatorService,
                 useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },

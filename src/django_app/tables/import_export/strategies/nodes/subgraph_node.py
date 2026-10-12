@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.subgraph_node import SubgraphNodeImportSerializer
@@ -31,4 +33,4 @@ class SubgraphNodeStrategy(EntityImportExportStrategy):
             data={**data, "graph": graph_id, "subgraph": subgraph_id}
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))

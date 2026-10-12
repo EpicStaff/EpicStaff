@@ -60,7 +60,7 @@ class TestMcpToolGoesToTheRecycleBin:
 
     def test_delete_removes_surface_links_and_bins_favorites(self, default_org, regular_user):
         tool = _mcp_tool(default_org)
-        surface = Surface.objects.create(organization=default_org, name="S")
+        surface = Surface.objects.create(org=default_org, name="S")
         link = SurfaceMcpTool.objects.create(surface=surface, mcp_tool=tool, mode=ToolMode.ALLOW)
         favorite = McpToolFavorite.objects.create(user=regular_user, tool=tool)
 

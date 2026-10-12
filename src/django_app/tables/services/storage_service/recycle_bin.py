@@ -147,7 +147,7 @@ class StorageRecycleBinService:
             updated_at,
         ) in rows:
             contents, total = (
-                cls._folder_contents(path, batch) if item_type == "folder" else ([], 0)
+                cls._folder_contents(org_id, path, batch) if item_type == "folder" else ([], 0)
             )
             entries.append(
                 StorageRecycleBinEntry(
@@ -219,18 +219,19 @@ class StorageRecycleBinService:
             raise NotInRecycleBinError()
         if row.item_type != "folder":
             return [], 0
-        return cls._folder_contents(row.path, row.soft_delete_batch, limit=SHOW_ALL_LIMIT)
+        return cls._folder_contents(org_id, row.path, row.soft_delete_batch, limit=SHOW_ALL_LIMIT)
 
     @staticmethod
     def _folder_contents(
-        folder_path: str, batch: uuid.UUID, limit: int | None = CONTENTS_LIMIT
+        org_id: int, folder_path: str, batch: uuid.UUID, limit: int | None = CONTENTS_LIMIT
     ) -> tuple[list[BinContent], int]:
         """The rows deleted with the folder, under its path (at most `limit`, None for all).
 
-        Two queries per folder on the page.
+        Two queries per folder on the page. Scoped to the org as well as the batch: a batch
+        id never crosses orgs, but nothing here should rest on that.
         """
         rows = StorageFile.deleted_objects.filter(
-            soft_delete_batch=batch, path__startswith=folder_path
+            org_id=org_id, soft_delete_batch=batch, path__startswith=folder_path
         ).exclude(path=folder_path)
         named = rows.order_by("path").values_list("path", "item_type")
         if limit is not None:

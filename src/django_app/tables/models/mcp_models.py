@@ -1,5 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from tables.models.base_models import (
@@ -11,7 +12,7 @@ from tables.validators.finite_number_validator import validate_finite_number
 from tables.validators.mcp_transport_validator import validate_mcp_transport_url
 
 
-class McpTool(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
+class McpTool(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixin):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
