@@ -9,10 +9,17 @@ class StreamEnvelope(BaseModel):
     payload: dict
 
     def to_fields(self) -> dict[str, str]:
+        return self.encoded_fields(self.type, self.correlation_id, json.dumps(self.payload))
+
+    @staticmethod
+    def encoded_fields(
+        envelope_type: str, correlation_id: str, encoded_payload: str
+    ) -> dict[str, str]:
+        """Stream entry fields for a payload the producer has already encoded as JSON."""
         return {
-            "type": self.type,
-            "correlation_id": self.correlation_id,
-            "payload": json.dumps(self.payload),
+            "type": envelope_type,
+            "correlation_id": correlation_id,
+            "payload": encoded_payload,
         }
 
     @classmethod

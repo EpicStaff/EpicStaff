@@ -16,19 +16,20 @@ GRAPH_MESSAGE_ENVELOPE_TYPE = "graph.message"
 DEFAULT_GRAPH_MESSAGE_STREAM_MAXLEN = 2000
 
 
-def graph_message_fields(message: dict) -> dict[str, str]:
+def graph_message_fields(correlation_id: str, encoded_message: str) -> dict[str, str]:
     """Wrap one graph session message into the stream entry fields crew appends.
 
     The ``payload`` field holds the message as JSON. django_app parses it once and
     forwards that exact string to the session's SSE channel, so the envelope must not
     nest it further.
 
+    Crew encodes each message once and hands the same string to the audit trail, so
+    it is passed here already encoded rather than as a dict.
+
     Args:
-        message: A ``GraphSessionMessageData``-shaped dict; its ``uuid`` becomes the
-            envelope's ``correlation_id``.
+        correlation_id: The message's ``uuid``.
+        encoded_message: A ``GraphSessionMessageData``-shaped message as JSON.
     """
-    return StreamEnvelope(
-        type=GRAPH_MESSAGE_ENVELOPE_TYPE,
-        correlation_id=message["uuid"],
-        payload=message,
-    ).to_fields()
+    return StreamEnvelope.encoded_fields(
+        GRAPH_MESSAGE_ENVELOPE_TYPE, correlation_id, encoded_message
+    )

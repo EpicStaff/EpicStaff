@@ -132,7 +132,7 @@ def _add(redis_client, session_id, text="hello"):
         "message_data": {"message_type": "agent", "text": text},
         "uuid": str(uuid4()),
     }
-    redis_client.xadd(STREAM, graph_message_fields(message))
+    redis_client.xadd(STREAM, graph_message_fields(message["uuid"], json.dumps(message)))
     return message["uuid"]
 
 
