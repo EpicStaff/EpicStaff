@@ -1,5 +1,7 @@
 import { AuthorshipFields } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
+
 export interface ConditionGroupBackend {
     id: number;
     decision_table_node: number;
@@ -34,7 +36,7 @@ export interface CreateConditionRequest {
     condition: string;
 }
 
-export interface GetDecisionTableNodeRequest extends AuthorshipFields {
+export interface GetDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto {
     id: number;
     created_at: string;
     graph: number;

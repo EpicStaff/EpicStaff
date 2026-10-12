@@ -128,6 +128,7 @@ function cloneNodesWithFreshIds(
             ...node,
             id: newId,
             backendId: null,
+            nodeUuid: generateUuid(),
             node_name: resolvedName,
             data: clonedData,
             input_map: clonedInputMap,

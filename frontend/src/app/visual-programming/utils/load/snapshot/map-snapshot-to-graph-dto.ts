@@ -9,6 +9,7 @@ import {
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
 import { FlowModel } from '../../../core/models/flow.model';
+import { NodeIdentityDto } from '../../../core/models/node-identity.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
     buildScheduleBlock,
@@ -64,12 +65,12 @@ interface AdapterContext {
     secretDeclarations: SnapshotSecretDeclarations | undefined;
 }
 
-/** Authorship is added to every node in `adaptNode`, so an adapter leaves it out. */
+/** Authorship and the node uuid are added to every node in `adaptNode`, so an adapter leaves them out. */
 type SnapshotNodeAdapters = {
     [TNodeType in SnapshotNodeType]: (
         node: SnapshotNodeOfType<TNodeType>,
         context: AdapterContext
-    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields>;
+    ) => Omit<NodeListItem<(typeof SNAPSHOT_NODE_LIST_KEY)[TNodeType]>, keyof AuthorshipFields | keyof NodeIdentityDto>;
 };
 
 /**
@@ -274,7 +275,8 @@ export function mapNodeAuthorshipToCanvas(
 
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
     const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
-    return { ...adapter(node, context), ...NO_AUTHORSHIP };
+    const identity: NodeIdentityDto = { uuid: node.uuid ?? null };
+    return { ...adapter(node, context), ...identity, ...NO_AUTHORSHIP };
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {

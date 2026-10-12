@@ -10,6 +10,7 @@ export function mapGraphNoteToModel(nn: GraphNote): GraphNoteModel {
     return {
         id: generateUuid(),
         backendId: nn.id,
+        nodeUuid: nn.uuid,
         type: NodeType.NOTE,
         node_name: nn.node_name,
         data: {

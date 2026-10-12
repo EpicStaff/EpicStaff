@@ -10,6 +10,7 @@ export function mapDecisionTableNodeToModel(dn: GetDecisionTableNodeRequest): De
     return {
         id: generateUuid(),
         backendId: dn.id,
+        nodeUuid: dn.uuid,
         type: NodeType.TABLE,
         node_name: dn.node_name,
         nodeNumber: ui.nodeNumber,

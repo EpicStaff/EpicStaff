@@ -10,6 +10,7 @@ import { NoteEditDialogComponent, NoteEditDialogData } from './note-edit-dialog.
 const NOTE: GraphNoteModel = {
     id: 'note-1',
     backendId: 3,
+    nodeUuid: 'node-uuid-note-1',
     type: NodeType.NOTE,
     node_name: 'Note',
     data: { content: 'hello' },

@@ -1,5 +1,7 @@
 import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -70,7 +72,7 @@ export interface CDTPythonCodeBlock {
     secrets?: DeclaredSecretRef[];
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NodeIdentityDto {
     id: number;
     created_at: string;
     graph: number;

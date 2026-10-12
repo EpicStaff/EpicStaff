@@ -31,6 +31,8 @@ export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {
     return {
         id: generateUuid(),
         backendId: ln.id,
+        // No uuid: the backend has no LLM node model (dead node type, to be removed separately).
+        nodeUuid: null,
         type: NodeType.LLM,
         node_name: ln.node_name,
         nodeNumber: ui.nodeNumber,

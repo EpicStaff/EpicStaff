@@ -12,6 +12,7 @@ import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
 import {
     LIVE_AUTHORSHIP,
     LIVE_NODE_ID as ID,
+    LIVE_NODE_UUID as UUID,
     LIVE_WEBHOOK_TRIGGER_ID,
     liveAgent,
     liveAudio,
@@ -95,6 +96,7 @@ const snapshot: GraphVersionSnapshot = {
         exported('TelegramTriggerNode', { ...liveTelegram, telegram_bot_api_key_secret_id: undefined }),
         {
             id: ID.schedule,
+            uuid: UUID.schedule,
             node_type: 'ScheduleTriggerNode',
             node_name: 'Schedule',
             metadata: {},
@@ -183,6 +185,34 @@ describe('mapSnapshotToGraphDto', () => {
 
         expect(graphDto).toMatchObject({ created_by: null, last_edited_by: null, last_edited_at: null });
     });
+
+    it('passes every node uuid through', () => {
+        const graphDto = mapSnapshotToGraphDto(snapshot, secretsByName);
+
+        for (const node of snapshot.nodes) {
+            const [item] = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as { uuid: string | null }[];
+            expect(node.uuid).toEqual(expect.any(String));
+            expect(item.uuid).toBe(node.uuid);
+        }
+    });
+
+    it('gives a node of an old version without a uuid a null one', () => {
+        const withoutUuids: GraphVersionSnapshot = {
+            ...snapshot,
+            nodes: snapshot.nodes.map((node) => {
+                const copy = { ...node };
+                delete copy.uuid;
+                return copy;
+            }),
+        };
+
+        const graphDto = mapSnapshotToGraphDto(withoutUuids, secretsByName);
+
+        for (const node of withoutUuids.nodes) {
+            const [item] = graphDto[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as { uuid: string | null }[];
+            expect(item.uuid).toBeNull();
+        }
+    });
 });
 
 describe('buildPreviewFlowModel', () => {
@@ -194,6 +224,12 @@ describe('buildPreviewFlowModel', () => {
         const detachedLiveFlow = { ...liveFlow, nodes: liveFlow.nodes.map((node) => ({ ...node, backendId: null })) };
 
         expect(comparable(flow)).toEqual(comparable(detachedLiveFlow));
+    });
+
+    it('keeps the node uuid of every node', () => {
+        for (const node of snapshot.nodes) {
+            expect(byId(node.id).nodeUuid).toBe(node.uuid);
+        }
     });
 
     it('detaches every node from the backend and maps every snapshot id to a canvas node', () => {

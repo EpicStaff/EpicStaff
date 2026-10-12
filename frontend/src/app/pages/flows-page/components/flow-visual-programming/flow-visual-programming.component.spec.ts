@@ -57,6 +57,7 @@ const RESTORED_GRAPH = graphDto({
     graph_note_list: [
         {
             id: 99,
+            uuid: '00000000-0000-4000-8000-000000000099',
             created_at: '2026-01-01T00:00:00Z',
             node_name: 'Restored note',
             graph: 1,
@@ -537,6 +538,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('test run from a trigger node', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
+            uuid: '00000000-0000-4000-8000-000000000021',
             graph: 1,
             node_name: 'Webhook Trigger #1',
             python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
@@ -736,6 +738,7 @@ describe('FlowVisualProgrammingComponent', () => {
                         webhook_trigger_node_list: [
                             {
                                 id: 21,
+                                uuid: '00000000-0000-4000-8000-000000000021',
                                 graph: graphId,
                                 node_name: 'Webhook Trigger #1',
                                 python_code: STORED_PYTHON_CODE,
