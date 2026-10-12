@@ -4,12 +4,14 @@ stream, get-updates, stop). A different status or body would confirm the row
 exists. A member of the owning org whose role lacks the permission still gets 403.
 """
 
+import asyncio
 import uuid
 
+import fakeredis
 import pytest
 from asgiref.sync import async_to_sync
 from django.db.models import Max
-from django.test import Client
+from django.test import AsyncClient, Client
 from django.urls import reverse
 from rest_framework import status
 
@@ -17,6 +19,7 @@ from rbac.identity.tickets import sse_ticket_service
 from rbac.models import OrganizationUser, Role
 from tables.models import Graph, PythonCode, Session, StartNode
 from tables.models.graph_models import Edge, PythonNode
+from tables.views import sse_views
 from tables.views.sse_views import RunSessionSSEView
 from tests.fixtures import redis_client_mock  # noqa: F401
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -235,6 +238,76 @@ def test_sse_member_lacking_flows_read_gets_403(no_flows_acme, session_in_acme):
     response = _subscribe(no_flows_acme, session_in_acme.id)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+
+
+@pytest.fixture
+def fake_async_redis(monkeypatch):
+    # Own server: fakeredis clients share one by default, so a subscription left
+    # by another test could otherwise show up in this test's counts.
+    redis_client = fakeredis.FakeAsyncRedis(server=fakeredis.FakeServer(), decode_responses=True)
+    # The SSE mixin and the view share this singleton.
+    monkeypatch.setattr(sse_views.redis_service, "_async_redis_client", redis_client)
+    yield redis_client
+
+
+# Fixture names: (refused caller, authorized caller, session, refused status).
+_SSE_REFUSALS = {
+    "foreign_org_session": ("member_only", "superadmin", "session_in_beta", 404),
+    "member_lacking_flows_read": ("no_flows_acme", "member_only", "session_in_acme", 403),
+}
+
+
+@pytest.fixture(params=list(_SSE_REFUSALS.values()), ids=list(_SSE_REFUSALS))
+def sse_refusal(request):
+    refused_user_name, authorized_user_name, session_name, refused_status = request.param
+    return (
+        request.getfixturevalue(refused_user_name),
+        request.getfixturevalue(authorized_user_name),
+        request.getfixturevalue(session_name),
+        refused_status,
+    )
+
+
+async def _subscribe_async(user, session_id: int):
+    ticket, _ = sse_ticket_service.issue(user)
+    url = reverse("run-session-subscribe", args=[session_id])
+    return await AsyncClient().get(url, {"ticket": ticket})
+
+
+async def _session_subscriber_counts(redis_client, session_id: int) -> dict:
+    channels = [f"session:update:{session_id}:status", f"session:update:{session_id}:messages"]
+    return dict(await redis_client.pubsub_numsub(*channels))
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_sse_refused_caller_never_subscribes_to_the_sessions_channels(
+    fake_async_redis, sse_refusal
+):
+    refused_user, authorized_user, session, refused_status = sse_refusal
+
+    refused = await _subscribe_async(refused_user, session.id)
+    subscribers_after_refusal = await _session_subscriber_counts(fake_async_redis, session.id)
+
+    # Control on the same channels: without it, a stream that never subscribes
+    # at all would pass the refusal check too.
+    authorized = await _subscribe_async(authorized_user, session.id)
+    assert authorized.status_code == status.HTTP_200_OK, authorized.content
+    frames = authorized.streaming_content
+    first_frame = await asyncio.wait_for(anext(frames), timeout=2)
+    subscribers_while_streaming = await _session_subscriber_counts(fake_async_redis, session.id)
+    await frames.aclose()
+
+    assert refused.status_code == refused_status, refused.content
+    assert subscribers_after_refusal == {
+        f"session:update:{session.id}:status": 0,
+        f"session:update:{session.id}:messages": 0,
+    }
+    assert first_frame == b"event: status\n"
+    assert subscribers_while_streaming == {
+        f"session:update:{session.id}:status": 1,
+        f"session:update:{session.id}:messages": 1,
+    }
 
 
 def _authorize(user, session_id: int):

@@ -29,6 +29,12 @@
         border-bottom-color: var(--text);
     }
 
+    &__icon-font {
+        font-size: 1.125rem;
+        line-height: 1;
+        color: inherit;
+    }
+
     &:not(:first-child) {
         margin-left: 32px;
 

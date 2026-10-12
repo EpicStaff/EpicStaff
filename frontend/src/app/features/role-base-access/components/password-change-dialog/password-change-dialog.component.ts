@@ -7,6 +7,7 @@ import {
     AppSvgIconComponent,
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     PasswordStrengthComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
@@ -29,6 +30,7 @@ type DialogStep = 'verify' | 'new-password';
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        HintMessageComponent,
         PasswordStrengthComponent,
         ValidationErrorsComponent,
         ServerErrorsDirective,

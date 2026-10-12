@@ -11,6 +11,21 @@ from rbac.exceptions import (
 )
 
 
+def build_avatar_url(user, request) -> str | None:
+    """Return the URL of the user's avatar, or None when unset or unresolvable.
+
+    Absolute when a request is given, otherwise the storage-relative URL.
+    """
+    if not user.avatar:
+        return None
+    try:
+        return (
+            request.build_absolute_uri(user.avatar.url) if request is not None else user.avatar.url
+        )
+    except ValueError:
+        return None
+
+
 class UserAvatarStorageService:
     """Validate, store, and atomically replace a user's avatar.
 

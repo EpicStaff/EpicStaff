@@ -36,6 +36,7 @@ class Migration(migrations.Migration):
         migrations.RunPython(
             rename_duplicate_graph_names,
             migrations.RunPython.noop,
+            elidable=True,
         ),
         migrations.AlterField(
             model_name="graph",

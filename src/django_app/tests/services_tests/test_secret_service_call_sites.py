@@ -54,7 +54,7 @@ class TestQuickstartWrapsKeyInSecret:
         Provider.objects.get_or_create(name="openai")
 
         result = QuickstartService().quickstart(
-            provider="openai", api_key="sk-quickstart-test-9876", org_id=org.id
+            provider="openai", api_key="sk-quickstart-test-9876", org_id=org.id, user=None
         )
 
         assert result, "quickstart returned nothing"
@@ -86,10 +86,10 @@ class TestQuickstartWrapsKeyInSecret:
     def test_quickstart_secret_names_do_not_collide(self, org):
         Provider.objects.get_or_create(name="openai")
         QuickstartService().quickstart(
-            provider="openai", api_key="sk-first", org_id=org.id
+            provider="openai", api_key="sk-first", org_id=org.id, user=None
         )
         QuickstartService().quickstart(
-            provider="openai", api_key="sk-second", org_id=org.id
+            provider="openai", api_key="sk-second", org_id=org.id, user=None
         )
 
         names = list(
@@ -184,7 +184,7 @@ class TestTelegramRegistrationReadsSecret:
 
         seen = {}
 
-        def fake_call(method, api_key, endpoint, params=None):
+        def fake_call(method, api_key, endpoint, params=None, single_attempt=False):
             seen.update(
                 method=method, api_key=api_key, endpoint=endpoint, params=params
             )

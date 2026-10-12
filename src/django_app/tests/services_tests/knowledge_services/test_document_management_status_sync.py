@@ -35,7 +35,7 @@ GS = GraphRagDocument.Status
 def _make_collection(default_org, suffix=""):
     """Each test gets an isolated collection to avoid cross-test conflicts."""
     return SourceCollection.objects.create(
-        collection_name=f"dm_coll{suffix}", user_id=f"dm_user{suffix}", org=default_org
+        collection_name=f"dm_coll{suffix}", org=default_org
     )
 
 

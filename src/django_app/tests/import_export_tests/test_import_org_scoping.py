@@ -51,7 +51,7 @@ class TestStrictCrossOrg:
         new_definition = AgentDefinition.objects.get(
             id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
         )
-        assert new_definition.organization_id == org_b.id
+        assert new_definition.org_id == org_b.id
 
         new_cfg_ids = id_mapper.get_created_ids(EntityType.LLM_CONFIG)
         assert new_cfg_ids, "LLM config should be created in org_b, not reused"

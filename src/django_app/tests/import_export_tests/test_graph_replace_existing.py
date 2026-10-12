@@ -348,6 +348,23 @@ class TestReplaceInPlace:
         assert holder.created_by_id == member_only.id
 
 
+    def test_replace_of_unauthored_flow_leaves_it_unauthored_and_authors_new_nodes(
+        self, client_as, admin_acme, acme
+    ):
+        holder, export_data = _flow_edited_after_export(acme)
+        assert holder.created_by_id is None
+
+        response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
+
+        assert response.status_code == 200
+        holder.refresh_from_db()
+        assert holder.created_by_id is None
+        assert holder.description == "from file"
+        recreated_note = holder.graph_note_list.get()
+        assert recreated_note.content == "file note"
+        assert recreated_note.created_by_id == admin_acme.id
+
+
 @pytest.mark.django_db
 class TestReplaceKeepsTriggerSetup:
     def test_webhook_trigger_auth_survives_the_replace(

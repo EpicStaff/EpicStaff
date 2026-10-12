@@ -4,7 +4,6 @@ from django.db import transaction
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
-    ConditionalEdgeData,
     EdgeData,
     GraphData,
     GraphSessionMessageData,
@@ -30,7 +29,6 @@ from tables.models.graph_models import (
     AgentNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     GraphSessionMessage,
@@ -182,6 +180,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         session: Session,
         token_budget: int | None = None,
+        run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
@@ -197,9 +196,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return SessionData(
             id=session.pk,
+            org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
+            run_type=run_type,
         )
 
     def run_session(
@@ -244,7 +245,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
 
             session_data: SessionData = self.create_session_data(
-                session=session, token_budget=token_budget
+                session=session,
+                token_budget=token_budget,
+                run_type=trigger.trigger_type,
             )
             # TODO: add ping or waiting for crew to accept connections
 
@@ -286,7 +289,9 @@ class SessionManagerService(metaclass=SingletonMeta):
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            session = Session.objects.get(id=graph_session_message_data.session_id)
+            session = Session.objects.select_related("graph").get(
+                id=graph_session_message_data.session_id
+            )
             GraphSessionMessage.objects.create(
                 session=session,
                 name=graph_session_message_data.name,
@@ -296,9 +301,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 created_at=created_at_dt,
             )
 
-            self.redis_service.publish_user_graph_message(
-                session.id, str(graph_session_message_data.uuid), data
-            )
+            self.redis_service.publish_user_graph_message(session.id, data)
 
         else:
             raise ValueError(f"Unsupported message_type: {data['message_data']['message_type']}")
@@ -337,17 +340,18 @@ class SessionManagerService(metaclass=SingletonMeta):
         key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(graph=graph.pk)
         edge_list = Edge.objects.filter(graph=graph.pk)
-        conditional_edge_list = ConditionalEdge.objects.filter(graph=graph.pk).select_related(
-            "python_code"
-        )
         decision_table_node_list = DecisionTableNode.objects.filter(
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
         subgraph_node_list = SubGraphNode.objects.filter(graph=graph.pk).select_related("subgraph")
-        webhook_trigger_node_list = WebhookTriggerNode.objects.filter(
-            graph=graph.pk
-        ).select_related("python_code")
-        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
+        webhook_trigger_node_list = (
+            WebhookTriggerNode.objects.filter(graph=graph.pk)
+            .defer("test_payload")
+            .select_related("python_code")
+        )
+        telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
+            "test_payload"
+        )
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = ClassificationDecisionTableNode.objects.filter(
             graph=graph.pk
@@ -466,7 +470,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             + [n.next_error_node_id for n in classification_decision_table_node_list]
             + [e.start_node_id for e in edge_list]
             + [e.end_node_id for e in edge_list]
-            + [e.source_node_id for e in conditional_edge_list]
             + condition_group_next_ids
             + classification_condition_group_next_ids
         )
@@ -572,15 +575,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         if entrypoint is None:
             raise GraphEntryPointException()
 
-        conditional_edge_data_list: list[ConditionalEdgeData] = []
-        for item in conditional_edge_list:
-            if item.source_node_id is None:
-                logger.warning(f"Conditional edge {item.pk} has no source_node_id, skipping.")
-                continue
-            conditional_edge_data_list.append(
-                cv.convert_conditional_edge_to_pydantic(item, resolver=resolver)
-            )
-
         if start_node_obj is None and entrypoint is None:
             raise GraphEntryPointException()
 
@@ -642,7 +636,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,
             edge_list=edge_data_list,
-            conditional_edge_list=conditional_edge_data_list,
             decision_table_node_list=decision_table_node_data_list,
             subgraph_node_list=subgraph_node_data_list,
             entrypoint=entrypoint,

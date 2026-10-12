@@ -28,9 +28,6 @@ export function snapPointToGrid(point: IPoint): IPoint {
 
 export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data'>): CollisionBounds {
     switch (node.type) {
-        case NodeType.EDGE:
-            return { width: 308, height: 196, offsetX: 5, offsetY: -12 };
-
         case NodeType.TABLE: {
             const conditionGroups = (node as DecisionTableNodeModel).data.table?.condition_groups ?? [];
             return {

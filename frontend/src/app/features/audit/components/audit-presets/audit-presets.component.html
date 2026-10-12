@@ -1,0 +1,284 @@
+<div class="presets">
+    <div class="presets__toolbar">
+        <app-search
+            class="presets__search"
+            mod="small"
+            placeholder="Search presets..."
+            [(searchTerm)]="searchTerm"
+        />
+        <button
+            class="presets__btn presets__btn--accent"
+            type="button"
+            [disabled]="isSaving()"
+            (click)="openCreate()"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="12px"
+            />
+            New Preset
+        </button>
+    </div>
+
+    @if (isCreating()) {
+        <ng-container [ngTemplateOutlet]="editorForm" />
+    }
+
+    @if (isLoading()) {
+        <p class="presets__state">Loading...</p>
+    } @else if (loadError()) {
+        <p class="presets__state presets__state--error">Could not load presets.</p>
+    } @else if (presets().length === 0) {
+        @if (!isCreating()) {
+            <p class="presets__state">No presets yet. Create a preset to save and reuse your configuration.</p>
+        }
+    } @else {
+        <div class="presets__list">
+            @for (card of cards(); track card.preset.id) {
+                @if (editor()?.presetId === card.preset.id) {
+                    <ng-container [ngTemplateOutlet]="editorForm" />
+                } @else {
+                    <div
+                        class="preset-card"
+                        [class.is-disabled]="card.state === null"
+                    >
+                        <button
+                            class="preset-card__main"
+                            type="button"
+                            [disabled]="card.state === null"
+                            (click)="applyPreset(card)"
+                        >
+                            <span class="preset-card__head">
+                                <span class="preset-card__name">{{ card.preset.name }}</span>
+                                <span class="preset-card__mode">{{ card.modeLabel }}</span>
+                            </span>
+                            @if (card.state === null) {
+                                <span class="preset-card__hint">{{ unavailableHint }}</span>
+                            }
+                            @if (card.chips.length > 0) {
+                                <span class="preset-card__chips">
+                                    @for (chip of card.chips; track chip.key) {
+                                        <span
+                                            class="preset-chip"
+                                            [title]="chip.label + ' ' + chip.value"
+                                        >
+                                            <span class="preset-chip__label">{{ chip.label }}</span>
+                                            <span class="preset-chip__value">{{ chip.value }}</span>
+                                        </span>
+                                    }
+                                    @if (card.hiddenChipCount > 0) {
+                                        <span class="preset-chip preset-chip--more">+{{ card.hiddenChipCount }}</span>
+                                    }
+                                </span>
+                            }
+                        </button>
+
+                        <button
+                            #menuTrigger="cdkOverlayOrigin"
+                            cdkOverlayOrigin
+                            class="preset-card__menu-btn"
+                            type="button"
+                            aria-haspopup="menu"
+                            [attr.aria-expanded]="openMenuId() === card.preset.id"
+                            [attr.aria-label]="'More actions for ' + card.preset.name"
+                            (click)="toggleMenu(card.preset.id)"
+                        >
+                            <app-svg-icon
+                                icon="dots-vertical"
+                                size="14px"
+                            />
+                        </button>
+                        <ng-template
+                            cdkConnectedOverlay
+                            [cdkConnectedOverlayOrigin]="menuTrigger"
+                            [cdkConnectedOverlayOpen]="openMenuId() === card.preset.id"
+                            [cdkConnectedOverlayPositions]="menuPositions"
+                            [cdkConnectedOverlayFlexibleDimensions]="true"
+                            (overlayOutsideClick)="closeMenu(card.preset.id)"
+                            (attach)="focusFirstMenuItem()"
+                            (detach)="closeMenu(card.preset.id)"
+                        >
+                            <div
+                                class="preset-menu"
+                                role="menu"
+                            >
+                                @if (card.state !== null) {
+                                    <button
+                                        #menuItem
+                                        class="preset-menu__item"
+                                        type="button"
+                                        role="menuitem"
+                                        [disabled]="isSaving()"
+                                        (click)="openEdit(card)"
+                                    >
+                                        Edit
+                                    </button>
+                                }
+                                <button
+                                    #menuItem
+                                    class="preset-menu__item"
+                                    type="button"
+                                    role="menuitem"
+                                    (click)="duplicate(card)"
+                                >
+                                    Duplicate
+                                </button>
+                                @if (card.state !== null) {
+                                    <button
+                                        class="preset-menu__item"
+                                        type="button"
+                                        role="menuitem"
+                                        (click)="overwrite(card)"
+                                    >
+                                        Overwrite with current filters
+                                    </button>
+                                    <button
+                                        class="preset-menu__item"
+                                        type="button"
+                                        role="menuitem"
+                                        [disabled]="card.state.mode !== 'query'"
+                                        [attr.title]="card.state.mode === 'query' ? null : queryOnlyHint"
+                                        (click)="copyQuery(card)"
+                                    >
+                                        Copy as query code
+                                    </button>
+                                }
+                                <button
+                                    class="preset-menu__item"
+                                    type="button"
+                                    role="menuitem"
+                                    (click)="confirmDelete(card.preset)"
+                                >
+                                    Delete preset
+                                </button>
+                            </div>
+                        </ng-template>
+                    </div>
+                }
+            } @empty {
+                <p class="presets__state">No presets match your search.</p>
+            }
+        </div>
+    }
+</div>
+
+<ng-template #editorForm>
+    @if (editor(); as editorState) {
+        <div class="preset-form">
+            <label
+                class="preset-form__label"
+                for="audit-preset-name"
+            >
+                Preset Name
+            </label>
+            <input
+                #nameInput
+                id="audit-preset-name"
+                class="preset-form__input"
+                type="text"
+                maxlength="150"
+                [value]="editorState.name"
+                (input)="setEditorName($event)"
+            />
+            @if (editorState.error) {
+                <p
+                    class="preset-form__error"
+                    role="alert"
+                >
+                    {{ editorState.error }}
+                </p>
+            }
+
+            <span class="preset-form__label">Built With</span>
+            <div
+                class="preset-form__toggle"
+                role="group"
+                aria-label="Built with"
+            >
+                <button
+                    class="preset-form__toggle-option"
+                    type="button"
+                    [class.is-active]="editorState.state.mode === 'builder'"
+                    [attr.aria-pressed]="editorState.state.mode === 'builder'"
+                    (click)="setEditorMode('builder')"
+                >
+                    Builder
+                </button>
+                <button
+                    class="preset-form__toggle-option"
+                    type="button"
+                    [class.is-active]="editorState.state.mode === 'query'"
+                    [attr.aria-pressed]="editorState.state.mode === 'query'"
+                    (click)="setEditorMode('query')"
+                >
+                    Query code
+                </button>
+            </div>
+
+            <app-audit-match-scope
+                [scope]="editorState.state.matchScope"
+                (scopeChange)="setEditorMatchScope($event)"
+            />
+
+            @if (editorState.state.mode === 'query') {
+                <label
+                    class="preset-form__section"
+                    for="audit-preset-query"
+                >
+                    Query
+                </label>
+                <textarea
+                    id="audit-preset-query"
+                    class="preset-form__query"
+                    rows="4"
+                    [value]="editorState.state.query"
+                    (input)="setEditorQuery($event)"
+                ></textarea>
+            } @else if (editorChips().length > 0) {
+                <div class="preset-card__chips">
+                    @for (chip of editorChips(); track chip.key) {
+                        <span
+                            class="preset-chip"
+                            [title]="chip.label + ' ' + chip.value"
+                        >
+                            <span class="preset-chip__label">{{ chip.label }}</span>
+                            <span class="preset-chip__value">{{ chip.value }}</span>
+                        </span>
+                    }
+                </div>
+            } @else {
+                <p class="preset-form__muted">No builder filters — set them on the Builder tab first.</p>
+            }
+
+            <div class="preset-form__actions">
+                @if (editedPreset(); as preset) {
+                    <button
+                        class="presets__btn"
+                        type="button"
+                        [disabled]="editorState.isSaving"
+                        (click)="confirmDelete(preset)"
+                    >
+                        Delete preset
+                    </button>
+                }
+                <span class="preset-form__spacer"></span>
+                <button
+                    class="presets__btn"
+                    type="button"
+                    [disabled]="editorState.isSaving"
+                    (click)="cancelEdit()"
+                >
+                    Cancel
+                </button>
+                <button
+                    class="presets__btn presets__btn--primary"
+                    type="button"
+                    [disabled]="!canSave()"
+                    (click)="save()"
+                >
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    }
+</ng-template>

@@ -56,5 +56,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(make_collection_names_unique, reverse_migration),
+        migrations.RunPython(make_collection_names_unique, reverse_migration, elidable=True),
     ]

@@ -14,7 +14,7 @@ class NotifyEmailThrottle(SimpleRateThrottle):
     relevant abuse vector here: an authenticated agent using this endpoint as
     a mail relay to spam arbitrary external addresses. Rate is driven by the
     `notify_email` scope (default 10/hour, env var
-    `NOTIFY_EMAIL_THROTTLE_RATE`).
+    `DJANGO_NOTIFY_EMAIL_THROTTLE_RATE`).
     """
 
     scope = "notify_email"

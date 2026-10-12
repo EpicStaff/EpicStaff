@@ -92,16 +92,11 @@ class FlowAssistantService:
             if sn.subgraph
         ]
 
-        # ConditionalEdge is an edge, not a node (NodeTypeSpec.is_edge) — kept out
-        # of both the node counts and the "Nodes in this flow" list below, same
-        # as get_flow_overview.
-        node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
-
         # Build "Nodes in this flow" list — up to 30 entries, sorted by (type, id).
         # One query per node table; node_counts below is derived from these same
         # rows instead of a second query per related manager.
         node_tuples: list[tuple[str, int, str]] = []
-        for spec in node_specs:
+        for spec in FLOW_ASSISTANT_NODE_TYPES:
             for node in spec.model.objects.filter(graph_id=graph.pk).only(*spec.only_fields()):
                 node_tuples.append((spec.label, node.pk, spec.display_name(node)))
         node_tuples.sort(key=lambda t: (t[0], t[1]))
@@ -109,7 +104,7 @@ class FlowAssistantService:
         counts_by_label = Counter(label for label, _, _ in node_tuples)
         node_counts = {
             spec.label: counts_by_label[spec.label]
-            for spec in node_specs
+            for spec in FLOW_ASSISTANT_NODE_TYPES
             if counts_by_label[spec.label]
         }
 
@@ -349,12 +344,14 @@ class FlowAssistantService:
                 current_tool_calls: list[dict] = []
                 is_final_turn = True  # assume final until we see tool calls
                 cancel_inner: bool = False  # set when cancel detected mid-stream
+                iteration_finish_reason: str | None = None
 
                 payload = _messages_for_llm(working_messages)
                 async for event in client.stream_completion(payload, TOOL_SPECS):
                     if isinstance(event, DoneEvent):
                         if event.reasoning_observed:
                             reasoning_observed_this_turn = True
+                        iteration_finish_reason = event.finish_reason
                         break
                     elif isinstance(event, ToolCallEvent):
                         is_final_turn = False
@@ -498,13 +495,28 @@ class FlowAssistantService:
             else:
                 # Fallback: treat accumulated raw content as plain text.
                 if json_buffer:
+                    truncation_note = (
+                        " Output was truncated by the token limit (finish_reason=length)."
+                        if iteration_finish_reason == "length"
+                        else ""
+                    )
                     logger.warning(
                         "FlowAssistantService: could not parse LLM JSON buffer as "
                         "structured output; falling back to raw text. "
-                        "Buffer length: {} chars.",
+                        "Buffer length: {} chars.{}",
                         len(json_buffer),
+                        truncation_note,
                     )
-                final_text = "".join(assistant_content_parts).strip()
+                    # Preview stays at DEBUG: the buffer can contain flow data.
+                    logger.debug(
+                        "FlowAssistantService: unparsed LLM JSON buffer preview: {!r}",
+                        json_buffer[:200],
+                    )
+                final_text = (
+                    _partial_json.extract_message_field(json_buffer).strip()
+                    or json_buffer.strip()
+                    or "".join(assistant_content_parts).strip()
+                )
                 ef_tables = []
                 action_message = []
                 # Mirror the structured branch: emit one terminal event so the

@@ -9,6 +9,7 @@ export interface AppConfig {
     apiUrl: string;
     type: string;
     realtimeApiUrl?: string;
+    auditorUrl?: string;
     isEpicChatEnabled?: boolean;
 }
 
@@ -23,6 +24,7 @@ export class ConfigService {
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
+                auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
             };
             return;
@@ -38,6 +40,7 @@ export class ConfigService {
                             apiUrl: environment.apiUrl,
 
                             realtimeApiUrl: environment.realtimeApiUrl,
+                            auditorUrl: environment.auditorUrl,
                             isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
                         } as AppConfig);
                     })
@@ -51,6 +54,7 @@ export class ConfigService {
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
+                auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: false,
             };
         }
@@ -74,6 +78,14 @@ export class ConfigService {
             return environment.realtimeApiUrl || '';
         }
         return this.config.realtimeApiUrl;
+    }
+
+    get auditorUrl(): string {
+        if (!this.config || !this.config.auditorUrl) {
+            console.warn('Auditor URL not available, using fallback');
+            return environment.auditorUrl || '';
+        }
+        return this.config.auditorUrl;
     }
 
     get isEpicChatEnabled(): boolean {

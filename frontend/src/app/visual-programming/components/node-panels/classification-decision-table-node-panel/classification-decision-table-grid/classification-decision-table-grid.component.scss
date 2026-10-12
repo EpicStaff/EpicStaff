@@ -1,6 +1,6 @@
 $grid-header-height: 40px;
 $grid-header-gap: 1rem;
-$grid-above-btns-height: 44px;
+$grid-above-btns-height: 24px;
 
 :host {
     display: flex;
@@ -135,8 +135,8 @@ $grid-above-btns-height: 44px;
     color: var(--white);
     border: none;
     border-radius: 6px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
@@ -277,9 +277,7 @@ $grid-above-btns-height: 44px;
     position: relative;
     width: 100%;
     overflow: visible;
-    padding-left: 28px;
-    padding-top: $grid-header-gap;
-    padding-bottom: $grid-header-gap;
+    padding: $grid-header-gap 24px $grid-header-gap 28px;
     flex: 1;
     min-height: 0;
 
@@ -488,7 +486,6 @@ $group-gutter-width: 28px;
 
 .hidden-col-badge {
     position: absolute;
-    width: 20px;
     height: 20px;
     border-radius: 5px;
     background: var(--graphite-800);
@@ -498,9 +495,10 @@ $group-gutter-width: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 2px;
     font-size: 0.7rem;
-    z-index: 25;
-    padding: 0;
+    z-index: 30;
+    padding: 0 4px;
     box-sizing: border-box;
     transition:
         background 0.15s ease,
@@ -518,6 +516,11 @@ $group-gutter-width: 28px;
         font-size: 0.7rem;
         line-height: 1;
     }
+
+    .hidden-col-count {
+        font-size: 0.625rem;
+        line-height: 1;
+    }
 }
 
 .col-above-add-btn {
@@ -533,8 +536,8 @@ $group-gutter-width: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.65rem;
-    z-index: 20;
+    font-size: 0.625rem;
+    z-index: 30;
     padding: 0;
     box-sizing: border-box;
     transform: translateX(-50%);
@@ -550,7 +553,7 @@ $group-gutter-width: 28px;
     }
 
     i {
-        font-size: 0.85rem;
+        font-size: 0.875rem;
         line-height: 1;
     }
 }
@@ -776,6 +779,10 @@ $group-gutter-width: 28px;
     }
 }
 
+:host ::ng-deep .ag-cell.ag-cell-value {
+    font-size: 0.75rem !important;
+}
+
 // Flex-center content in spanned (merged) expression/field cells so that
 // row-spanning cells render their content vertically centered.
 :host ::ng-deep .ag-cell.ag-cell-value[col-id='expression'],
@@ -796,6 +803,10 @@ $group-gutter-width: 28px;
 
 :host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag:active {
     cursor: grabbing;
+}
+
+:host ::ng-deep .ag-header-cell > .ag-header-cell-comp-wrapper {
+    justify-content: center;
 }
 
 :host ::ng-deep .ag-header-cell-moving,

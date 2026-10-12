@@ -52,6 +52,7 @@ TABLES_RESOURCE_NAMES: dict[str, str] = {
     "agents.Surface": "surfaces",
     "tables.RealtimeChannel": "realtime_channels",
     "tables.KeyValueTable": "key_value_tables",
+    "tables.AuditFilterPreset": "audit_filter_presets",
     # org cascade -- swept (deprecated, SET_NULL-only reachable, removed by
     # TablesOrganizationDeletion.sweep, not the Collector)
     "tables.Task": "tasks",
@@ -83,7 +84,6 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.TaskNode",
         "tables.AgentNode",
         "tables.Edge",
-        "tables.ConditionalEdge",
         "tables.GraphOrganization",
         "tables.GraphOrganizationUser",
         "tables.GraphNote",

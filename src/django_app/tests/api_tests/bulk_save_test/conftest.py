@@ -61,7 +61,7 @@ def other_org(db) -> Organization:
 @pytest.fixture
 def shared_surface(bulk_save_org) -> Surface:
     return Surface.objects.create(
-        organization=bulk_save_org,
+        org=bulk_save_org,
         name="bulk-save-shared-surface",
         owner_agent=None,
     )
@@ -70,7 +70,7 @@ def shared_surface(bulk_save_org) -> Surface:
 @pytest.fixture
 def other_org_surface(other_org) -> Surface:
     return Surface.objects.create(
-        organization=other_org,
+        org=other_org,
         name="bulk-save-other-org-surface",
         owner_agent=None,
     )
@@ -79,16 +79,16 @@ def other_org_surface(other_org) -> Surface:
 @pytest.fixture
 def agent_definition(bulk_save_org) -> AgentDefinition:
     return AgentDefinition.objects.create(
-        organization=bulk_save_org,
+        org=bulk_save_org,
         name="bulk-save-agent",
-        instructions="do things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
 @pytest.fixture
 def agent_owned_surface(bulk_save_org, agent_definition) -> Surface:
     return Surface.objects.create(
-        organization=bulk_save_org,
+        org=bulk_save_org,
         name="bulk-save-agent-owned-surface",
         owner_agent=agent_definition,
     )

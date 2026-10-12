@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("tables", "0171_merge_tools_configuration"),
         ("tables", "0174_merge_20260429_1147"),
-        ("tables", "0175_merge_20260427_1053"),
+        ("tables", "0166_storagefile_graphstoragefile_and_more_squashed_0175_merge_20260427_1053"),
     ]
 
     operations = []

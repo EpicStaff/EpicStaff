@@ -1,10 +1,9 @@
-import { CustomPythonCode, GetLlmConfigRequest, NodeType, WebhookTriggerWrite } from '@shared/models';
+import { CustomPythonCode, NodeType } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { AgentNodeData } from './agent-node.model';
 import { ClassificationDecisionTableData } from './classification-decision-table.model';
-import { CustomConditionalEdgeModelForNode } from './conditional-edge.model';
 import { DecisionTableNode } from './decision-table.model';
 import { KeyValueNodeData } from './key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from './knowledge-retriever-node.model';
@@ -42,7 +41,6 @@ export interface StartNodeModel extends BaseNodeModel {
 }
 export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
-    python_code_id: number | null;
     data: CustomPythonCode;
     test_input: Record<string, string | number | boolean>;
 }
@@ -59,15 +57,6 @@ export interface AgentNodeModel extends BaseNodeModel {
 export interface ToolNodeModel extends BaseNodeModel {
     type: NodeType.TOOL;
     data: ToolConfig;
-}
-export interface LLMNodeModel extends BaseNodeModel {
-    type: NodeType.LLM;
-    data: GetLlmConfigRequest;
-}
-
-export interface EdgeNodeModel extends BaseNodeModel {
-    type: NodeType.EDGE;
-    data: CustomConditionalEdgeModelForNode;
 }
 
 export interface DecisionTableNodeModel extends BaseNodeModel {
@@ -99,8 +88,10 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger: WebhookTriggerWrite | null;
+        /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
+        webhook_trigger: number | null;
         python_code: CustomPythonCode;
+        test_payload: Record<string, unknown>;
     };
 }
 
@@ -108,8 +99,10 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
         telegram_bot_api_key_secret_id: number | null;
-        webhook_trigger: WebhookTriggerWrite | null;
+        /** Id of an existing webhook trigger (the panel's trigger select only ever yields an id). */
+        webhook_trigger: number | null;
         fields: TelegramTriggerNodeField[];
+        test_payload: Record<string, unknown>;
     };
 }
 
@@ -154,9 +147,7 @@ export type NodeModel =
     | AgentNodeModel
     | TaskNodeModel
     | ToolNodeModel
-    | LLMNodeModel
     | PythonNodeModel
-    | EdgeNodeModel
     | StartNodeModel
     | DecisionTableNodeModel
     | GraphNoteModel

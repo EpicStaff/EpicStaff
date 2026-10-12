@@ -1,6 +1,6 @@
 import { NodeType } from '@shared/models';
 
-import { DecisionTableNodeModel, LLMNodeModel, NodeModel, SubGraphNodeModel } from '../models/node.model';
+import { DecisionTableNodeModel, NodeModel, SubGraphNodeModel } from '../models/node.model';
 
 /** Strips any auto-generated counter suffix, e.g. "Python-Node (#2)" or "Python-Node #2" → "Python-Node" */
 function stripCounter(name: string | null | undefined): string {
@@ -40,8 +40,6 @@ export function getNodeTitle(node: NodeModel): string {
         // Entity-name types — display the referenced entity name with the badge number.
         case NodeType.TABLE:
             return withNumber(stripCounter((node as DecisionTableNodeModel).data.name), node);
-        case NodeType.LLM:
-            return withNumber(stripCounter((node as LLMNodeModel).data.custom_name), node);
 
         // Fixed-name types
         case NodeType.START:

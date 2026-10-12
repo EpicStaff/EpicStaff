@@ -1,8 +1,12 @@
 from agents.models.agent_models import AgentDefinition
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
+from django.core.validators import RegexValidator
+from rbac.authorship import (
+    OMIT_AUTHORSHIP_CONTEXT_KEY,
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
 )
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.realtime_models import (
     ConversationRecording,
@@ -31,13 +35,22 @@ from tables.services.secrets import secret_resolver
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     # Org isolation: only configs/agent definitions from the caller's active
     # org may be referenced.
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
-        queryset=AgentDefinition.objects.all()
-    )
+    agent_definition = OrgScopedPrimaryKeyRelatedField(queryset=AgentDefinition.objects.all())
     # ElevenLabs uses a free-form voice id the frontend clears to '' when the
     # user hasn't entered one yet -- must accept blank, same as
     # RealtimeAgentWriteSerializer's identical override below.
-    voice = serializers.CharField(allow_blank=True, default="alloy")
+    voice = serializers.CharField(allow_blank=True, max_length=100, default="alloy")
+    language = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        validators=[
+            RegexValidator(
+                r"^[a-z]{2}$",
+                message="Language must be a lowercase ISO-639-1 code, e.g. 'en'.",
+            )
+        ],
+    )
     openai_config = OrgScopedPrimaryKeyRelatedField(
         queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )
@@ -53,6 +66,9 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeAgentDefinition
         fields = "__all__"
+
+    def validate_language(self, value):
+        return value or None
 
     def validate(self, attrs):
         if self.instance is not None and "agent_definition" in attrs:
@@ -91,7 +107,7 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class RealtimeSessionItemSerializer(serializers.ModelSerializer):
+class RealtimeSessionItemSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = RealtimeSessionItem
         fields = "__all__"
@@ -104,7 +120,11 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class OpenAIRealtimeConfigSerializer(
-    OpenAIRealtimeModelNameValidationMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    OpenAIRealtimeModelNameValidationMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
@@ -134,11 +154,17 @@ class OpenAIRealtimeConfigSerializer(
             "voice_recognition_prompt",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
-class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class ElevenLabsRealtimeConfigSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -158,11 +184,17 @@ class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.
             "language",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
-class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class GeminiRealtimeConfigSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
@@ -182,8 +214,9 @@ class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.Mode
             "voice_recognition_prompt",
             "org",
             "created_by",
+            "created_at",
         ]
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
 
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
@@ -256,7 +289,9 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
         ]
 
 
-class RealtimeChannelSerializer(serializers.ModelSerializer):
+class RealtimeChannelSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     twilio = _TwilioChannelReadSerializer(read_only=True)
     # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).
     # Kept read-only, never writable: the only supported destination going
@@ -267,7 +302,7 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
     realtime_agent = serializers.PrimaryKeyRelatedField(read_only=True)
     realtime_agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=RealtimeAgentDefinition.objects.all(),
-        org_lookup="agent_definition__organization_id",
+        org_lookup="agent_definition__org_id",
         required=False,
         allow_null=True,
     )
@@ -275,7 +310,7 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeChannel
         fields = "__all__"
-        read_only_fields = ["org", "created_by"]
+        read_only_fields = ["org", "created_by", "created_at"]
 
     def validate(self, attrs):
         # `realtime_agent` is read-only, so a caller can no longer set both
@@ -290,11 +325,24 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class _WebhookTriggerInternalSerializer(WebhookTriggerNestedSerializer):
+    """`WebhookTriggerNestedSerializer` without its author, for `lookup_by_token`.
+
+    Rendered without authorship, `created_by` would still be the author's plain id;
+    the realtime service is sent no user ids, so the field is left out.
+    """
+
+    class Meta(WebhookTriggerNestedSerializer.Meta):
+        fields = [
+            field for field in WebhookTriggerNestedSerializer.Meta.fields if field != "created_by"
+        ]
+
+
 class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     """Internal-only variant of `_TwilioChannelReadSerializer` that includes `auth_token`.
 
     Used exclusively by `RealtimeChannelViewSet.lookup_by_token`, which is gated by
-    `IsSystemApiKeyAuthenticated` (the trusted `realtime`/`voice_app` services only,
+    `IsSystemApiKeyAuthenticated` (the trusted `realtime` service only,
     never a logged-in user AND never a self-issued `key_type=USER` API key). That
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing
@@ -306,6 +354,7 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     model no longer has that attribute.
     """
 
+    webhook_trigger = _WebhookTriggerInternalSerializer(read_only=True)
     auth_token = serializers.SerializerMethodField()
 
     class Meta(_TwilioChannelReadSerializer.Meta):
@@ -326,10 +375,20 @@ class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
 
     Nests `_TwilioChannelInternalSerializer` so the response includes `twilio.auth_token`.
     Only ever instantiated behind `IsSystemApiKeyAuthenticated` — see
-    `RealtimeChannelViewSet.lookup_by_token`.
+    `RealtimeChannelViewSet.lookup_by_token`. Rendered without authorship, nested rows
+    included: the realtime service never reads it, so no user ids, names or avatars are
+    sent there and rendering queries no user or last edit.
     """
 
     twilio = _TwilioChannelInternalSerializer(read_only=True)
+
+    class Meta(RealtimeChannelSerializer.Meta):
+        fields = None
+        exclude = ["created_by"]
+
+    def __init__(self, *args, **kwargs):
+        kwargs["context"] = {**kwargs.get("context", {}), OMIT_AUTHORSHIP_CONTEXT_KEY: True}
+        super().__init__(*args, **kwargs)
 
 
 class ConversationRecordingSerializer(serializers.ModelSerializer):
@@ -362,7 +421,7 @@ class RealtimeAgentReadSerializer(serializers.ModelSerializer):
 
 
 class RealtimeAgentWriteSerializer(serializers.ModelSerializer):
-    voice = serializers.CharField(allow_blank=True, default="alloy")
+    voice = serializers.CharField(allow_blank=True, max_length=100, default="alloy")
     openai_config = OrgScopedPrimaryKeyRelatedField(
         queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )

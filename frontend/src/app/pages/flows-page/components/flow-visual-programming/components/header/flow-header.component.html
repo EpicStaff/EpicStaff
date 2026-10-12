@@ -46,6 +46,9 @@
                         <span class="unsaved-text">Unsaved changes</span>
                     </span>
                 }
+                @if (runStatus(); as status) {
+                    <app-status-badge [sessionStatus]="status" />
+                }
             </div>
         </h2>
     </div>

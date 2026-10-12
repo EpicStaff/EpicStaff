@@ -10,9 +10,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL("DROP TABLE IF EXISTS silk_request CASCADE;"),
-        migrations.RunSQL("DROP TABLE IF EXISTS silk_response CASCADE;"),
-        migrations.RunSQL("DROP TABLE IF EXISTS silk_profile CASCADE;"),
-        migrations.RunSQL("DROP TABLE IF EXISTS silk_profile_queries CASCADE;"),
-        migrations.RunSQL("DROP TABLE IF EXISTS silk_sqlquery CASCADE;"),
+        migrations.RunSQL("DROP TABLE IF EXISTS silk_request CASCADE;", elidable=True),
+        migrations.RunSQL("DROP TABLE IF EXISTS silk_response CASCADE;", elidable=True),
+        migrations.RunSQL("DROP TABLE IF EXISTS silk_profile CASCADE;", elidable=True),
+        migrations.RunSQL("DROP TABLE IF EXISTS silk_profile_queries CASCADE;", elidable=True),
+        migrations.RunSQL("DROP TABLE IF EXISTS silk_sqlquery CASCADE;", elidable=True),
     ]

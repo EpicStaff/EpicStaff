@@ -332,7 +332,6 @@ export function buildBulkSavePayload(
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
-        llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
@@ -402,14 +401,6 @@ export function buildBulkSavePayload(
             tasks: buildAgentTasksPayload(n.data.tasks ?? []),
             metadata: toNodeMetadata(n),
         })),
-        llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
-            node_name: n.node_name,
-            graph: graphId,
-            llm_config: n.data.id,
-            input_map: n.input_map || {},
-            output_variable_path: n.output_variable_path || null,
-            metadata: toNodeMetadata(n),
-        })),
         file_extractor_node_list: nodeItems(nodeDiff.fileExtractorNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
@@ -445,6 +436,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
@@ -453,6 +445,7 @@ export function buildBulkSavePayload(
             telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
+            test_payload: n.data.test_payload ?? {},
             metadata: toNodeMetadata(n),
         })),
         schedule_trigger_node_list: nodeItems(nodeDiff.scheduleNodes, (n) => ({

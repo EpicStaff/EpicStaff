@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_realtimeagent_data, reverse_realtimeagent_data),
+        migrations.RunPython(delete_realtimeagent_data, reverse_realtimeagent_data, elidable=True),
 
         migrations.RemoveField(
             model_name='realtimeagent',

@@ -43,8 +43,8 @@ from tables.views.model_view_sets import (
     AgentNodeTaskViewSet,
     AgentNodeViewSet,
     AudioTranscriptionNodeViewSet,
+    AuditFilterPresetViewSet,
     ClassificationDecisionTableNodeModelViewSet,
-    ConditionalEdgeViewSet,
     ConversationRecordingViewSet,
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
@@ -111,6 +111,7 @@ from tables.views.views import (
     QuickstartView,
     RunPythonCodeAPIView,
     RunSession,
+    SessionTestRunView,
     SessionViewSet,
     StopSession,
     TelegramTriggerNodeAvailableFieldsView,
@@ -145,7 +146,6 @@ router.register(r"agentnodes", AgentNodeViewSet)
 router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 
 router.register(r"edges", EdgeViewSet)
-router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
@@ -181,6 +181,7 @@ router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"audit-filter-presets", AuditFilterPresetViewSet)
 router.register(r"tool-labels", ToolLabelViewSet, basename="tool-label")
 router.register(r"secrets", SecretViewSet)
 router.register(r"key-value-tables", KeyValueTableViewSet, basename="key-value-tables")
@@ -197,6 +198,7 @@ urlpatterns = [
     ),
     path("", include(router.urls)),
     path("run-session/", RunSession.as_view(), name="run-session"),
+    path("run-session/test/", SessionTestRunView.as_view(), name="run-session-test"),
     path(
         "sessions/<int:session_id>/get-updates/",
         GetUpdates.as_view(),

@@ -98,7 +98,6 @@ FLOW_EXPORT = {
                     "node_type": "DecisionTableNode",
                 },
             ],
-            "conditional_edge_list": [],
         }
     ],
     "main_entity": "Flow",
@@ -129,14 +128,13 @@ FLOW_WITH_CLASSIFICATION_NODE_EXPORT = {
                     "node_type": "ClassificationDecisionTableNode",
                 },
             ],
-            "conditional_edge_list": [],
         }
     ],
     "main_entity": "Flow",
     "version": 2,
 }
 
-FLOW_WITH_CONDITIONAL_EDGE_EXPORT = {
+LEGACY_FLOW_WITH_CONDITIONAL_EDGE_EXPORT = {
     "Flow": [
         {
             "id": 4,
@@ -177,7 +175,6 @@ FLOW_WITH_NESTED_PYTHON_TOOL_EXPORT = {
                     "node_type": "PythonNode",
                 }
             ],
-            "conditional_edge_list": [],
         }
     ],
     "PythonCodeTool": [
@@ -292,16 +289,11 @@ class TestInspectServiceClassificationNode:
         assert item["post_python_code"]["code"] == "def post(): return {}"
 
 
-class TestInspectServiceConditionalEdge:
-    def test_conditional_edge_surfaced(self):
-        result = InspectService().inspect(FLOW_WITH_CONDITIONAL_EDGE_EXPORT)
-        assert len(result["review_items"]) == 1
-        item = result["review_items"][0]
-        assert item["kind"] == "flow_node"
-        assert item["node_type"] == "ConditionalEdge"
-        assert item["node_name"] is None
-        assert item["flow_name"] == "conditional_flow"
-        assert "python_code" in item
+class TestInspectServiceLegacyConditionalEdge:
+    def test_conditional_edge_code_is_not_surfaced(self):
+        """Import discards conditional edges, so their code never runs and is not reviewed."""
+        result = InspectService().inspect(LEGACY_FLOW_WITH_CONDITIONAL_EDGE_EXPORT)
+        assert result["review_items"] == []
 
 
 class TestInspectServiceNestedEntities:
@@ -324,7 +316,7 @@ class TestInspectServiceNestedEntities:
 class TestInspectServiceEdgeCases:
     def test_empty_flow_returns_empty_list(self):
         data = {
-            "Flow": [{"id": 1, "name": "empty", "nodes": [], "conditional_edge_list": []}],
+            "Flow": [{"id": 1, "name": "empty", "nodes": []}],
             "main_entity": "Flow",
             "version": 2,
         }

@@ -1,11 +1,17 @@
 from agents.models import AgentDefinition
+from agents.serializers.agent_definition_serializers import InstructionListField
 from rest_framework import serializers
 
 
 class AgentDefinitionImportSerializer(serializers.ModelSerializer):
+    instruction_list = InstructionListField(required=False)
+
     class Meta:
         model = AgentDefinition
-        exclude = ["organization", "default_surface_list"]
+        # created_at is instance-local: auto_now_add makes it read-only here, so an
+        # import would discard it. Reuse matching (COMPARED_FIELDS in the strategy)
+        # ignores it, so excluding it only keeps the export free of a dead value.
+        exclude = ["org", "created_by", "created_at", "default_surface_list"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

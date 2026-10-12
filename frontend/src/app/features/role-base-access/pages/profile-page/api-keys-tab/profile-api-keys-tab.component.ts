@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
@@ -14,7 +14,7 @@ import {
     StopButtonComponent,
     TableRow,
 } from '@shared/components';
-import { ApiKeyStatus, GetMyApiKeyResponse } from '@shared/models';
+import { ApiKeyStatus } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -23,6 +23,7 @@ import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
 import { CreateApiKeyDialogComponent } from '../../../components/create-api-key-dialog/create-api-key-dialog.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
+import { ProfileApiKeysStorageService } from '../../../services/profile-api-keys-storage.service';
 import {
     API_KEY_STATUS_ORDER,
     apiKeyExpiresLabel,
@@ -52,30 +53,13 @@ import {
 })
 export class ProfileApiKeysTabComponent implements OnInit {
     private currentUserService = inject(ProfileService);
+    private apiKeysStorage = inject(ProfileApiKeysStorageService);
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
 
-    protected readonly MAX_PERSONAL_KEYS = 5;
-
-    protected readonly columns: AppTableColumnDef[] = [
-        { key: 'name', label: 'NAME', width: 'minmax(140px, 2fr)' },
-        { key: 'key', label: 'KEY', width: 'minmax(120px, 1.2fr)' },
-        { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
-        { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
-        { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
-        { key: 'status', label: 'STATUS', width: '110px', align: 'center' },
-        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
-    ];
-
-    /** Revoke is offered only for active keys. */
-    canRevokeRow(row: TableRow): boolean {
-        return row['status'] === ApiKeyStatus.ACTIVE;
-    }
-
-    private readonly keys = signal<GetMyApiKeyResponse[]>([]);
-
+    private readonly keys = this.apiKeysStorage.keys;
     protected readonly activeCount = computed(() => this.keys().filter((k) => k.status === ApiKeyStatus.ACTIVE).length);
 
     protected readonly tableData = computed<TableRow[]>(() => {
@@ -96,8 +80,25 @@ export class ProfileApiKeysTabComponent implements OnInit {
 
     protected readonly maxCountReached = computed(() => this.activeCount() >= this.MAX_PERSONAL_KEYS);
 
+    protected readonly MAX_PERSONAL_KEYS = 5;
+
+    protected readonly columns: AppTableColumnDef[] = [
+        { key: 'name', label: 'NAME', width: 'minmax(140px, 2fr)' },
+        { key: 'key', label: 'KEY', width: 'minmax(120px, 1.2fr)' },
+        { key: 'created', label: 'CREATED', width: 'minmax(110px, 1fr)' },
+        { key: 'expires', label: 'EXPIRES', width: 'minmax(100px, 1fr)' },
+        { key: 'lastUsed', label: 'LAST USED', width: 'minmax(100px, 1fr)' },
+        { key: 'status', label: 'STATUS', width: '110px', align: 'center' },
+        { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
+    ];
+
     ngOnInit() {
         this.fetchApiKeys();
+    }
+
+    /** Revoke is offered only for active keys. */
+    canRevokeRow(row: TableRow): boolean {
+        return row['status'] === ApiKeyStatus.ACTIVE;
     }
 
     onCreateKey(): void {
@@ -147,11 +148,10 @@ export class ProfileApiKeysTabComponent implements OnInit {
     }
 
     private fetchApiKeys(): void {
-        this.currentUserService
-            .getMyApiKeys()
+        this.apiKeysStorage
+            .refresh()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (keys) => this.keys.set(keys),
                 error: (err) => this.toast.error(err.error.message),
             });
     }

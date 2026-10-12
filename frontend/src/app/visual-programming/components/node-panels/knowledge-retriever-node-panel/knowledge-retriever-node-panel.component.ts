@@ -32,6 +32,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
+import { buildGraphSearchConfig } from './knowledge-retriever-search-configs.util';
 
 type RagKind = 'naive' | 'graph';
 
@@ -191,7 +192,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         if (kind === 'naive' && rawConfigs) {
             searchConfigs = { naive: rawConfigs };
         } else if (kind === 'graph' && rawConfigs) {
-            searchConfigs = { graph: rawConfigs };
+            searchConfigs = { graph: buildGraphSearchConfig(rawConfigs, node.data.search_configs?.graph) };
             graphMethod = rawConfigs.search_method ?? null;
         }
 

@@ -1,59 +1,18 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
+from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import AbstractDefaultFillableModel
+from tables.validators.finite_number_validator import validate_finite_number
 
 
 class DefaultAgentDefinitionConfig(models.Model):
     """Singleton holding default values for AgentDefinition nullable fields."""
 
-    max_iter = models.IntegerField(
-        default=25,
-        null=True,
-        help_text="Default max reasoning iterations for an AgentDefinition when its own value is null.",
-    )
-    max_rpm = models.IntegerField(
-        default=10,
-        null=True,
-        help_text="Default max LLM requests per minute when AgentDefinition.max_rpm is null.",
-    )
-    max_execution_time = models.IntegerField(
-        default=60,
-        null=True,
-        help_text="Default per-run wall-clock budget in seconds when AgentDefinition.max_execution_time is null.",
-    )
-    cache = models.BooleanField(
-        default=False,
-        null=True,
-        help_text="Default for whether tool-result caching is enabled when AgentDefinition.cache is null.",
-    )
-    max_retry_limit = models.IntegerField(
-        default=3,
-        null=True,
-        help_text="Default max retries on transient failures when AgentDefinition.max_retry_limit is null.",
-    )
     default_temperature = models.FloatField(
         default=0.7,
         null=True,
         help_text="Default sampling temperature applied when neither the AgentDefinition nor its LLMConfig specify one.",
-    )
-    max_tool_calls = models.IntegerField(
-        default=15,
-        null=True,
-        help_text="Default max tool calls executed per agent run when AgentDefinition.max_tool_calls is null. Null = unlimited.",
-    )
-    tool_timeout = models.IntegerField(
-        default=300,
-        null=True,
-        help_text="Default per-tool-call timeout in seconds when AgentDefinition.tool_timeout is null. Null = no timeout.",
-    )
-    max_consecutive_failures = models.IntegerField(
-        default=3,
-        null=True,
-        help_text="Default consecutive tool-failure limit when AgentDefinition.max_consecutive_failures is null. Null = disabled.",
-    )
-    schema_max_retries = models.IntegerField(
-        default=2,
-        null=True,
-        help_text="Default max schema-enforcement retries when AgentDefinition.schema_max_retries is null.",
     )
 
     @classmethod
@@ -65,14 +24,8 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel):
+class AgentDefinition(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     # Identity
-    organization = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="agent_definitions",
-        help_text="Organization this agent belongs to.",
-    )
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier (slug-like) unique within an organization. Used to reference this agent from flows, code, and the UI.",
@@ -82,10 +35,10 @@ class AgentDefinition(AbstractDefaultFillableModel):
         default="",
         help_text="Human-readable description of this agent — its purpose, persona, or capabilities. E.g. 'Senior Researcher focused on market analysis'.",
     )
-    instructions = models.TextField(
+    instruction_list = models.JSONField(
+        default=list,
         blank=True,
-        default="",
-        help_text="Free-form prompt for the agent. Put behavior, goals, tone, and constraints here.",
+        help_text='Ordered list of named prompt instructions, each {"name": str, "content": str}. Applied to the agent in list order; put behavior, goals, tone, and constraints here.',
     )
     metadata = models.JSONField(
         default=dict,
@@ -113,54 +66,54 @@ class AgentDefinition(AbstractDefaultFillableModel):
 
     # Execution config
     max_iter = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Max reasoning iterations per task before forcing a final answer. Null falls back to DefaultAgentDefinitionConfig.",
+        default=15,
+        validators=[MinValueValidator(1), MaxValueValidator(90)],
+        help_text="Max reasoning iterations per task before forcing a final answer.",
     )
     max_rpm = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="LLM request rate cap (requests per minute). Null falls back to DefaultAgentDefinitionConfig; no cap if both are null.",
+        default=30,
+        validators=[MinValueValidator(1), MaxValueValidator(240)],
+        help_text="LLM request rate cap (requests per minute).",
     )
     max_execution_time = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Wall-clock budget in seconds for a single agent run. Null falls back to DefaultAgentDefinitionConfig.",
+        default=600,
+        validators=[MinValueValidator(60), MaxValueValidator(1800)],
+        help_text="Wall-clock budget in seconds for a single agent run.",
     )
     cache = models.BooleanField(
-        default=None,
-        null=True,
-        help_text="Enable tool-result caching for this agent. Null falls back to DefaultAgentDefinitionConfig.",
+        default=False,
+        help_text="Enable tool-result caching for this agent.",
     )
     max_retry_limit = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Max retries on transient LLM/tool failures. Null falls back to DefaultAgentDefinitionConfig.",
+        default=3,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+        help_text="Max retries on transient LLM/tool failures.",
     )
     default_temperature = models.FloatField(
         default=None,
         null=True,
+        validators=[validate_finite_number, MinValueValidator(0.0), MaxValueValidator(2.0)],
         help_text="Sampling temperature applied when the LLMConfig leaves it unset. Null falls back to DefaultAgentDefinitionConfig.",
     )
     max_tool_calls = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Max tool calls executed per agent run. Null falls back to DefaultAgentDefinitionConfig.",
+        default=15,
+        validators=[MinValueValidator(1), MaxValueValidator(300)],
+        help_text="Max tool calls executed per agent run.",
     )
     tool_timeout = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Per-tool-call timeout in seconds. Null falls back to DefaultAgentDefinitionConfig.",
+        default=300,
+        validators=[MinValueValidator(10), MaxValueValidator(1800)],
+        help_text="Per-tool-call timeout in seconds.",
     )
     max_consecutive_failures = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Consecutive failed tool calls before graceful stop. Null falls back to DefaultAgentDefinitionConfig.",
+        default=3,
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
+        help_text="Consecutive failed tool calls before graceful stop.",
     )
     schema_max_retries = models.IntegerField(
-        default=None,
-        null=True,
-        help_text="Max retries when enforcing structured-output schema validation. Null falls back to DefaultAgentDefinitionConfig.",
+        default=2,
+        validators=[MinValueValidator(0), MaxValueValidator(20)],
+        help_text="Max retries when enforcing structured-output schema validation.",
     )
 
     # Surface linkage (through AgentDefaultSurface)
@@ -172,16 +125,33 @@ class AgentDefinition(AbstractDefaultFillableModel):
         help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
     )
 
+    # Nullable because agents created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        help_text="When this agent definition was created. Null for agents created before creation times were recorded.",
+    )
+
+    @property
+    def instructions(self) -> str:
+        """Return the non-blank instruction contents joined in application order."""
+        return "\n\n".join(
+            instruction["content"]
+            for instruction in self.instruction_list
+            if instruction["content"].strip()
+        )
+
     def get_default_model(self):
         return DefaultAgentDefinitionConfig.load()
 
     def __repr__(self) -> str:
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "name"],
+                fields=["org", "name"],
                 name="unique_agent_definition_name_per_organization",
             )
         ]

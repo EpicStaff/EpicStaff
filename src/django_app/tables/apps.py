@@ -11,6 +11,7 @@ class TablesConfig(AppConfig):
 
     def ready(self):
         # ruff: noqa: F401
+        from rbac.governance.authorship import register_snapshot_scrubber
         from rbac.governance.organization_deletion import register_participant
 
         import tables.import_export.version_conversions.convertions
@@ -23,9 +24,11 @@ class TablesConfig(AppConfig):
         import tables.signals.session_signals
         import tables.signals.telegram_signals
         import tables.signals.webhook_signals
+        from tables.graph_versioning.snapshot_authorship import VersionSnapshotAuthorshipScrubber
         from tables.import_export.registry import entity_registry
         from tables.import_export.strategies import (
             agent_definition,
+            audit_filter_preset,
             configs,
             graph,
             label,
@@ -102,6 +105,7 @@ class TablesConfig(AppConfig):
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
         register_participant(TablesOrganizationDeletion())
+        register_snapshot_scrubber(VersionSnapshotAuthorshipScrubber())
 
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())
@@ -122,6 +126,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
         entity_registry.register(label.LabelStrategy())
+        entity_registry.register(audit_filter_preset.AuditFilterPresetStrategy())
         entity_registry.register(webhook.WebhookTriggerStrategy())
         entity_registry.register(tags.AgentTagStrategy())
         entity_registry.register(tags.GraphTagStrategy())

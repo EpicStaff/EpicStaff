@@ -1,0 +1,24 @@
+<div class="authorship-details">
+    @for (column of columns(); track column.label) {
+        <section class="authorship-details__column">
+            <span class="authorship-details__label">{{ column.label }}</span>
+            <div class="authorship-details__user">
+                @if (column.showAvatar) {
+                    <app-user-avatar
+                        [name]="column.avatarName"
+                        [avatarUrl]="column.avatarUrl"
+                    />
+                }
+                <span class="authorship-details__name">{{ column.userName }}</span>
+            </div>
+            <span class="authorship-details__timestamp">
+                @if (column.timestamp; as timestamp) {
+                    <span class="authorship-details__date">{{ timestamp.date }}</span
+                    >, {{ timestamp.time }}
+                } @else {
+                    {{ emptyValue }}
+                }
+            </span>
+        </section>
+    }
+</div>

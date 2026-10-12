@@ -117,11 +117,10 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 height: 100%;
                 cursor: default;
                 gap: 4px;
-                padding: 0 4px;
             }
 
             .chm-label {
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 flex: 1;
@@ -172,8 +171,6 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 18px;
-                height: 18px;
                 padding: 0;
                 border: none;
                 background: transparent;
@@ -197,7 +194,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .drag-grip-btn {
-                display: inline-flex;
+                display: none;
                 align-items: center;
                 justify-content: center;
                 width: 24px;
@@ -207,6 +204,9 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 cursor: grab;
                 color: var(--color-ks-transparent-text-60);
                 transition: background 0.15s ease;
+            }
+            :host-context(.ag-header-cell-moving) .drag-grip-btn {
+                display: inline-flex;
             }
             .drag-grip-btn:hover {
                 background: var(--color-ghost-btn-hover);

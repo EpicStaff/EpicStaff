@@ -48,7 +48,7 @@ def set_refresh_cookie(response: Response, refresh_token: str, *, remember_me: b
 def read_remember_me_claim(refresh_token: str | None) -> bool:
     """Return the ``remember_me`` claim from an incoming refresh token,
     or ``False`` if missing/unreadable. Does not authenticate the token —
-    pair with ``TokenRefreshSerializer`` for the 401.
+    pair with ``PasswordBoundTokenRefreshSerializer`` for the 401.
     """
     if not refresh_token:
         return False

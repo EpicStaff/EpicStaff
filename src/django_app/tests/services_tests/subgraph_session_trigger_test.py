@@ -1,11 +1,12 @@
 from uuid import uuid4
 
+import fakeredis
 import pytest
 from django.utils import timezone
 
 from tables.models.graph_models import Graph, GraphSessionMessage
 from tables.models.session_models import Session, SessionPrincipal, SessionTrigger
-from tables.services.redis_pubsub import RedisPubSub
+from tables.services.graph_message_store import GraphMessageStore
 
 
 def _create_subgraph_message(session, message_type, subgraph_execution_id, **extra):
@@ -49,7 +50,7 @@ def test_create_subgraph_sessions_creates_parent_flow_trigger_rows(
         root_session, "subgraph_finish", "exec-1", output={"result": "ok"}
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session.id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session.id)
 
     child_session = Session.objects.get(parent_session=root_session)
 
@@ -93,7 +94,7 @@ def test_create_subgraph_sessions_creates_one_trigger_row_per_child(
     )
     _create_subgraph_message(root_session, "subgraph_finish", "exec-b", output={})
 
-    RedisPubSub()._create_subgraph_sessions(root_session.id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session.id)
 
     child_sessions = Session.objects.filter(parent_session=root_session)
 
@@ -139,7 +140,7 @@ def test_create_subgraph_sessions_copies_root_principal_for_user_run(
         root_session, "subgraph_finish", "exec-principal", output={"result": "ok"}
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session.id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session.id)
 
     child_session = Session.objects.get(parent_session=root_session)
     principal = child_session.principal
@@ -175,7 +176,7 @@ def test_create_subgraph_sessions_copies_root_principal_for_trigger_run(default_
         root_session, "subgraph_finish", "exec-trigger", output={"result": "ok"}
     )
 
-    RedisPubSub()._create_subgraph_sessions(root_session.id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session.id)
 
     child_session = Session.objects.get(parent_session=root_session)
     principal = child_session.principal
@@ -222,7 +223,7 @@ def test_create_subgraph_sessions_copies_root_principal_to_every_child(
     )
     _create_subgraph_message(root_session, "subgraph_finish", "exec-multi-b", output={})
 
-    RedisPubSub()._create_subgraph_sessions(root_session.id)
+    GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root_session.id)
 
     child_sessions = Session.objects.filter(parent_session=root_session)
 

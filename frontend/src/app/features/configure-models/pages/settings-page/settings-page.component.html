@@ -1,0 +1,19 @@
+<div class="settings-page">
+    <div class="settings-page__header">
+        <div class="settings-page__title-row">
+            <h1 class="settings-page__title">
+                Settings
+                <span class="settings-page__subtitle"
+                    >Configure LLMs, webhooks, voice, and secrets for your organization.</span
+                >
+            </h1>
+        </div>
+        <app-route-tabs
+            class="settings-page__tabs"
+            [tabs]="tabs"
+        />
+    </div>
+    <div class="settings-page__content">
+        <router-outlet></router-outlet>
+    </div>
+</div>

@@ -1,3 +1,5 @@
+@use '../../../../../../../../styles/row-more-menu';
+
 :host {
     display: block;
 }
@@ -137,21 +139,7 @@
     }
 
     &__hover-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
-        border-radius: 4px;
-
-        &:hover {
-            color: var(--color-text-primary);
-        }
+        @include row-more-menu.trigger-button;
     }
 }
 

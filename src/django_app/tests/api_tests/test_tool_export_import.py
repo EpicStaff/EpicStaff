@@ -656,3 +656,23 @@ def test_builtin_role_can_import_mcp_tool(builtin_role_client, mcp_tool_a, clien
         format="multipart",
     )
     assert resp.status_code == 200, resp.data
+
+
+@pytest.mark.django_db
+def test_mcptool_import_rejects_non_http_transport(client_a, mcp_tool_a, org_a):
+    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
+    assert export_resp.status_code == 200
+    payload = export_resp.json()
+    payload["MCPTool"][0]["transport"] = "/tmp/a.py"
+    tool_count_before_import = McpTool.objects.filter(org=org_a).count()
+
+    file = _as_upload(json.dumps(payload).encode(), "mcp_tool.json")
+    resp = client_a.post(
+        "/api/mcp-tools/import/",
+        {"file": file, "import_labels": "false"},
+        format="multipart",
+    )
+
+    assert resp.status_code == 400, resp.data
+    assert "transport" in resp.data["message"]
+    assert McpTool.objects.filter(org=org_a).count() == tool_count_before_import

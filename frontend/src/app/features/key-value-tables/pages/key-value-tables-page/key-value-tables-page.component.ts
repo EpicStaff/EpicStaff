@@ -3,7 +3,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
+import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
+import { ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SidebarWidthService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap } from 'rxjs';
 
@@ -21,14 +24,14 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
 
 @Component({
     selector: 'app-key-value-tables-page',
-    imports: [KeyValueTableListComponent, KeyValueEntriesGridComponent],
+    imports: [KeyValueTableListComponent, KeyValueEntriesGridComponent, ResizableSidebarDirective],
     templateUrl: './key-value-tables-page.component.html',
     styleUrls: ['./key-value-tables-page.component.scss'],
 })
 export class KeyValueTablesPageComponent {
     readonly selectedTableId = signal<number | null>(null);
     // A delete is on its way (usage, confirmation, delete): a second request for any table is ignored until it ends,
-    // so a double click or a held Enter cannot open two dialogs or send two deletes. The trash buttons stay enabled:
+    // so a held Enter or a reopened menu cannot open two dialogs or send two deletes. The Delete items stay enabled:
     // disabling the focused one would drop keyboard focus to <body>, where the dialog would then return it.
     readonly deletePending = signal(false);
     readonly selectedTable = computed(
@@ -38,6 +41,9 @@ export class KeyValueTablesPageComponent {
     readonly canCreate = computed(() => this.permissions.can(ResourceCode.KeyValueTables, ActionCode.Create));
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.KeyValueTables, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.KeyValueTables, ActionCode.Delete));
+
+    protected readonly sidebarStorageKey = STORAGE_SIDEBAR_WIDTH_KEY;
+    protected readonly sidebarWidth = inject(SidebarWidthService).getWidth(STORAGE_SIDEBAR_WIDTH_KEY);
 
     // Reloads rather than joining a load already in flight: on opening the page, so the page starts
     // from a fresh list, and on every refresh, which follows a change to the tables (create, rename,

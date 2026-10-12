@@ -84,7 +84,7 @@ def test_superadmin_create_agent_definition_nonexistent_org_returns_404_not_500(
 ):
     response = superadmin_client_bad_org.post(
         "/api/agent-definitions/",
-        {"name": "ghost-org-agent", "instructions": "do things"},
+        {"name": "ghost-org-agent", "instruction_list": [{"name": "Instruction_1.md", "content": "do things"}]},
         format="json",
     )
 

@@ -270,7 +270,7 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 | Service | Image | Purpose |
 |---------|-------|---------|
 | `storage` | `rustfs/rustfs:1.0.0` (pinned by digest) | S3-compatible object storage (RustFS), volume `rustfs_data` |
-| `storage-init` | `rustfs/rustfs:1.0.0` | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
+| `storage-init` | `curlimages/curl:8.22.0` (pinned by digest) | One-shot container that creates the bucket on startup (SigV4-signed `curl`) |
 
 `django_app` and `knowledge_new` depend on `storage` being healthy before starting.
 

@@ -116,7 +116,7 @@
                                         [style.padding-left.px]="32 + node.level * 20"
                                         (click)="selectFolder(node.path)"
                                     >
-                                        @if (node.hasChildren) {
+                                        @if (node.hasChildren && !searchQuery().trim()) {
                                             <button
                                                 class="create-folder-dialog__chevron-btn"
                                                 [class.create-folder-dialog__chevron-btn--open]="node.isExpanded"
@@ -137,9 +137,6 @@
                                             size="12px"
                                         ></app-svg-icon>
                                         <span class="create-folder-dialog__node-name">{{ node.name }}</span>
-                                        @if (node.isLoading) {
-                                            <span class="create-folder-dialog__node-spinner">...</span>
-                                        }
                                         @if (node.isEmpty) {
                                             <span class="create-folder-dialog__empty-badge">Empty</span>
                                         }

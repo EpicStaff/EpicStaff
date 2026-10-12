@@ -14,12 +14,19 @@ import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util'
 export interface ExplorerTreeMenuEvent {
     node: BranchTreeNode;
     action: string;
+    /**
+     * The row's ⋮ button that opened the menu — where a dialog opened from the menu returns focus.
+     * It only takes focus while visible: `.row__hover-actions` is `visibility: hidden` once the row
+     * loses hover, so today focus falls back to <body> when the dialog closes.
+     */
+    trigger: HTMLElement;
 }
 
 export interface ExplorerTreeMenuOpenEvent {
     node: BranchTreeNode;
     items: ExplorerMenuItem[];
     position: ExplorerMenuPosition;
+    trigger: HTMLElement;
 }
 
 export interface ExplorerTreeAttachSurfaceEvent {
@@ -70,14 +77,14 @@ export class TreeNodeComponent implements OnInit {
             );
         }
         if (n.kind === 'agent') {
-            return sel.kind === 'agent' && sel.id === n.agentId;
+            return sel.kind === 'agent' && sel.id === n.agentId && sel.focus === 'all';
         }
         if (n.kind === 'agent-doc') {
-            return sel.kind === 'agent-doc' && sel.id === n.agentId && sel.docType === n.docType;
+            return sel.kind === 'agent-doc' && sel.id === n.agentId && sel.instructionIndex === n.instructionIndex;
         }
         if (n.kind === 'group') {
-            const match = /^agent:(\d+):surfaces$/.exec(n.id);
-            return match != null && sel.kind === 'agent-surfaces' && sel.id === Number(match[1]);
+            const match = /^agent:(\d+):(instructions|surfaces)$/.exec(n.id);
+            return match != null && sel.kind === 'agent' && sel.id === Number(match[1]) && sel.focus === match[2];
         }
         return false;
     });
@@ -89,8 +96,8 @@ export class TreeNodeComponent implements OnInit {
 
     /**
      * True when the current selection is a DESCENDANT of this node (not the node
-     * itself). Used to force this node open so the selected descendant — e.g. a
-     * Boot_Instructions.md doc just created from an extracted file — is revealed.
+     * itself). Used to force this node open so the selected descendant — e.g. an
+     * instruction doc opened from the agent's Instructions list — is revealed.
      */
     readonly containsSelection = computed(() => {
         const n = this.node();
@@ -109,7 +116,11 @@ export class TreeNodeComponent implements OnInit {
             case 'group':
                 return this.hasSelectedDescendant(node, sel);
             case 'agent-doc':
-                return sel.kind === 'agent-doc' && sel.id === node.agentId && sel.docType === node.docType;
+                return (
+                    sel.kind === 'agent-doc' &&
+                    sel.id === node.agentId &&
+                    sel.instructionIndex === node.instructionIndex
+                );
             case 'surface':
                 return (
                     sel.kind === 'surface' &&
@@ -250,6 +261,11 @@ export class TreeNodeComponent implements OnInit {
         event.stopPropagation();
         const items = this.hoverMenuItems();
         if (!items.length) return;
-        this.menuOpen.emit({ node: this.node(), items, position: menuPositionFromClick(event) });
+        this.menuOpen.emit({
+            node: this.node(),
+            items,
+            position: menuPositionFromClick(event),
+            trigger: event.currentTarget as HTMLElement,
+        });
     }
 }

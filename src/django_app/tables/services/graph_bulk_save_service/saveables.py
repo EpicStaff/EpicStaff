@@ -539,34 +539,3 @@ class _EdgeSaveable:
             s.create(validated)
         else:
             s.update(self._instance, validated)
-
-
-class _ConditionalEdgeSaveable:
-    """
-    Wraps a validated ConditionalEdgeBulkSerializer and the parsed source ref.
-
-    If source_temp_id was provided, it is resolved from temp_id_map at write time.
-    """
-
-    def __init__(self, serializer, source_ref: NodeRef, instance=None):
-        self._s = serializer
-        self._source_ref = source_ref
-        self._instance = instance
-
-    def resolve_and_save(self, temp_id_map: dict):
-        s = self._s
-        validated = dict(s.validated_data)
-
-        _clean_for_write(validated)
-        validated.pop("source_temp_id", None)
-
-        validated["source_node_id"] = (
-            temp_id_map[str(self._source_ref.value)]
-            if self._source_ref.is_temp
-            else self._source_ref.value
-        )
-
-        if self._instance is None:
-            s.create(validated)
-        else:
-            s.update(self._instance, validated)

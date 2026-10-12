@@ -73,21 +73,22 @@
             </div>
 
             <div class="summary-slider">
-                <button
-                    type="button"
-                    class="slider-nav-btn slider-nav-btn--left"
-                    (click)="scrollSummary(-1)"
-                    [class.hidden]="!canScrollLeft()"
-                    aria-label="Scroll left"
-                    matTooltip="Scroll left"
-                    matTooltipPosition="above"
-                >
-                    <app-icon
-                        icon="ui/chevron-up"
-                        size="1rem"
-                        class="scroll-btn-icon"
-                    ></app-icon>
-                </button>
+                @if (canScrollLeft()) {
+                    <button
+                        type="button"
+                        class="slider-nav-btn slider-nav-btn--left"
+                        (click)="scrollSummary(-1)"
+                        aria-label="Scroll left"
+                        matTooltip="Scroll left"
+                        matTooltipPosition="above"
+                    >
+                        <app-icon
+                            icon="ui/chevron-up"
+                            size="1rem"
+                            class="scroll-btn-icon"
+                        ></app-icon>
+                    </button>
+                }
 
                 <div
                     class="summary-list"
@@ -124,21 +125,22 @@
                     }
                 </div>
 
-                <button
-                    type="button"
-                    class="slider-nav-btn slider-nav-btn--right"
-                    (click)="scrollSummary(1)"
-                    [class.hidden]="!canScrollRight()"
-                    aria-label="Scroll right"
-                    matTooltip="Scroll right"
-                    matTooltipPosition="above"
-                >
-                    <app-icon
-                        icon="ui/chevron-down"
-                        size="1rem"
-                        class="scroll-btn-icon"
-                    ></app-icon>
-                </button>
+                @if (canScrollRight()) {
+                    <button
+                        type="button"
+                        class="slider-nav-btn slider-nav-btn--right"
+                        (click)="scrollSummary(1)"
+                        aria-label="Scroll right"
+                        matTooltip="Scroll right"
+                        matTooltipPosition="above"
+                    >
+                        <app-icon
+                            icon="ui/chevron-down"
+                            size="1rem"
+                            class="scroll-btn-icon"
+                        ></app-icon>
+                    </button>
+                }
             </div>
         </div>
 

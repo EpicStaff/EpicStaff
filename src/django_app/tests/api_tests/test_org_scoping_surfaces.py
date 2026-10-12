@@ -99,7 +99,7 @@ def test_tasknode_update_rejects_cross_org_reparent(client_a, org_a, org_b):
     gb = Graph.objects.create(name="B", org=org_b)
     node = TaskNode.objects.create(graph=ga, node_name="ta")
     resp = client_a.patch(f"/api/tasknodes/{node.id}/", {"graph": gb.id}, format="json")
-    # `graph` is now an OrganizationScopedPrimaryKeyRelatedField, so a cross-org
+    # `graph` is an OrgScopedPrimaryKeyRelatedField, so a cross-org
     # pk is rejected at field validation (400) before the reparent guard runs.
     assert resp.status_code == 400
     assert "does not exist" in str(resp.data)
@@ -123,7 +123,7 @@ def test_agentnode_update_rejects_cross_org_reparent(client_a, org_a, org_b):
     resp = client_a.patch(
         f"/api/agentnodes/{node.id}/", {"graph": gb.id}, format="json"
     )
-    # `graph` is now an OrganizationScopedPrimaryKeyRelatedField, so a cross-org
+    # `graph` is an OrgScopedPrimaryKeyRelatedField, so a cross-org
     # pk is rejected at field validation (400) before the reparent guard runs.
     assert resp.status_code == 400
     assert "does not exist" in str(resp.data)
@@ -148,13 +148,13 @@ def test_agentnodetask_update_rejects_cross_org_reparent(client_a, org_a, org_b)
 def test_surface_create_lands_in_active_org(client_a, org_a):
     resp = client_a.post("/api/surfaces/", {"name": "s1"}, format="json")
     assert resp.status_code == 201
-    assert Surface.objects.get(id=resp.data["id"]).organization_id == org_a.id
+    assert Surface.objects.get(id=resp.data["id"]).org_id == org_a.id
 
 
 @pytest.mark.django_db
 def test_surface_list_only_active_org(client_a, org_a, org_b):
-    Surface.objects.create(name="sa", organization=org_a)
-    Surface.objects.create(name="sb", organization=org_b)
+    Surface.objects.create(name="sa", org=org_a)
+    Surface.objects.create(name="sb", org=org_b)
     resp = client_a.get("/api/surfaces/")
     assert resp.status_code == 200
     body = resp.data
@@ -165,15 +165,15 @@ def test_surface_list_only_active_org(client_a, org_a, org_b):
 
 @pytest.mark.django_db
 def test_surface_cross_org_detail_404(client_a, org_b):
-    other = Surface.objects.create(name="sb", organization=org_b)
+    other = Surface.objects.create(name="sb", org=org_b)
     resp = client_a.get(f"/api/surfaces/{other.id}/")
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db
 def test_surface_combine_excludes_other_org(client_a, org_a, org_b):
-    sa = Surface.objects.create(name="sa", organization=org_a)
-    sb = Surface.objects.create(name="sb", organization=org_b)
+    sa = Surface.objects.create(name="sa", org=org_a)
+    sb = Surface.objects.create(name="sb", org=org_b)
     resp = client_a.post(
         "/api/surfaces/combine/", {"surface_ids": [sa.id, sb.id]}, format="json"
     )
@@ -185,12 +185,12 @@ def test_surface_combine_excludes_other_org(client_a, org_a, org_b):
 def test_agentdef_create_lands_in_active_org(client_a, org_a):
     resp = client_a.post("/api/agent-definitions/", {"name": "ad"}, format="json")
     assert resp.status_code == 201
-    assert AgentDefinition.objects.get(id=resp.data["id"]).organization_id == org_a.id
+    assert AgentDefinition.objects.get(id=resp.data["id"]).org_id == org_a.id
 
 
 @pytest.mark.django_db
 def test_agentdef_cross_org_detail_404(client_a, org_b):
-    other = AgentDefinition.objects.create(name="adb", organization=org_b)
+    other = AgentDefinition.objects.create(name="adb", org=org_b)
     resp = client_a.get(f"/api/agent-definitions/{other.id}/")
     assert resp.status_code == 404
 
@@ -221,7 +221,7 @@ def test_agentdef_fcm_llm_config_cross_org_rejected(client_a, org_b):
 
 @pytest.mark.django_db
 def test_agentdef_default_surfaces_cross_org_surface_rejected(client_a, org_b):
-    other_surface = Surface.objects.create(name="sb", organization=org_b)
+    other_surface = Surface.objects.create(name="sb", org=org_b)
     resp = client_a.post(
         "/api/agent-definitions/",
         {
@@ -239,7 +239,7 @@ def test_agentdef_default_surfaces_cross_org_surface_rejected(client_a, org_b):
 @pytest.mark.django_db
 def test_surface_owner_agent_cross_org_rejected(client_a, org_b):
     other_agent_definition = AgentDefinition.objects.create(
-        name="adb", organization=org_b
+        name="adb", org=org_b
     )
     resp = client_a.post(
         "/api/surfaces/",
@@ -331,7 +331,7 @@ def elevenlabs_config_factory():
 def test_realtime_agent_definition_create_rejects_cross_org_openai_config(
     client_a, org_a, org_b, openai_config_factory
 ):
-    agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
+    agent_definition = AgentDefinition.objects.create(name="ad", org=org_a)
     other_config = openai_config_factory(org_b)
     resp = client_a.post(
         "/api/realtime-agent-definitions/",
@@ -346,7 +346,7 @@ def test_realtime_agent_definition_create_rejects_cross_org_openai_config(
 def test_realtime_agent_definition_create_rejects_cross_org_elevenlabs_config(
     client_a, org_a, org_b, elevenlabs_config_factory
 ):
-    agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
+    agent_definition = AgentDefinition.objects.create(name="ad", org=org_a)
     other_config = elevenlabs_config_factory(org_b)
     resp = client_a.post(
         "/api/realtime-agent-definitions/",
@@ -365,7 +365,7 @@ def test_realtime_agent_definition_create_rejects_cross_org_agent_definition(
     client_a, org_b
 ):
     other_agent_definition = AgentDefinition.objects.create(
-        name="adb", organization=org_b
+        name="adb", org=org_b
     )
     resp = client_a.post(
         "/api/realtime-agent-definitions/",
@@ -379,7 +379,7 @@ def test_realtime_agent_definition_create_rejects_cross_org_agent_definition(
 @pytest.mark.django_db
 def test_realtime_agent_definition_viewset_cross_org_detail_404(client_a, org_b):
     other_agent_definition = AgentDefinition.objects.create(
-        name="adb", organization=org_b
+        name="adb", org=org_b
     )
     other_rt_agent_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=other_agent_definition
@@ -392,8 +392,8 @@ def test_realtime_agent_definition_viewset_cross_org_detail_404(client_a, org_b)
 
 @pytest.mark.django_db
 def test_realtime_agent_definition_viewset_list_only_active_org(client_a, org_a, org_b):
-    agent_definition_a = AgentDefinition.objects.create(name="ada", organization=org_a)
-    agent_definition_b = AgentDefinition.objects.create(name="adb", organization=org_b)
+    agent_definition_a = AgentDefinition.objects.create(name="ada", org=org_a)
+    agent_definition_b = AgentDefinition.objects.create(name="adb", org=org_b)
     RealtimeAgentDefinition.objects.create(agent_definition=agent_definition_a)
     RealtimeAgentDefinition.objects.create(agent_definition=agent_definition_b)
 

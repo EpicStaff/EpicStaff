@@ -37,7 +37,7 @@
 }
 
 .sessions-table-wrapper.has-flow-name table {
-    min-width: 1165px;
+    min-width: 1265px;
 
     .col-flow {
         width: auto;
@@ -52,7 +52,7 @@
 
 table {
     width: 100%;
-    min-width: 990px;
+    min-width: 1090px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -76,6 +76,21 @@ table {
     td.col-id {
         width: 70px;
         min-width: 70px;
+    }
+
+    th.col-type,
+    td.col-type {
+        width: 100px;
+        min-width: 100px;
+    }
+
+    td.col-type {
+        color: var(--color-text-secondary);
+    }
+
+    td.col-type--live {
+        color: var(--color-text-primary);
+        font-weight: 600;
     }
 
     th.col-status,
@@ -126,9 +141,9 @@ table {
         text-align: left;
     }
 
-    td[colspan='6'],
     td[colspan='7'],
-    td[colspan='8'] {
+    td[colspan='8'],
+    td[colspan='9'] {
         border-bottom: none;
     }
 
@@ -165,9 +180,9 @@ table {
         display: table-row;
     }
 
-    td[colspan='6'],
     td[colspan='7'],
-    td[colspan='8'] {
+    td[colspan='8'],
+    td[colspan='9'] {
         padding: 40px;
         vertical-align: middle;
     }
@@ -252,7 +267,10 @@ table {
     }
 }
 
-.view-btn,
+.view-btn {
+    width: 63px;
+}
+
 .delete-btn {
     border: none;
     outline: none;
@@ -269,19 +287,6 @@ table {
     flex-shrink: 0;
     min-width: 70px;
     max-width: 80px;
-}
-
-.view-btn {
-    background: var(--accent-color);
-    color: var(--white);
-    width: 88px;
-    min-width: 88px;
-    max-width: 88px;
-    margin-right: 0;
-    text-align: center;
-}
-.view-btn:hover {
-    background: var(--accent-color-hover);
 }
 
 .delete-btn {
@@ -372,9 +377,4 @@ tr.preview-row td.preview-cell {
     border-top: 1px solid var(--graphite-785);
     background: var(--black-alpha-32);
     padding: 5px;
-}
-
-.view-btn--active {
-    background-color: transparent;
-    border: 1px solid var(--accent-color);
 }

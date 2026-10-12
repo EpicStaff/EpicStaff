@@ -12,7 +12,9 @@ class SmtpConfigService:
     AUTH, so we must not conflate "has credentials" with "is configured".
 
     Callers use this to decide whether to advertise email delivery to
-    the end user. They must not inspect `EMAIL_BACKEND` directly.
+    the end user, and whether a message carrying a secret (a reset link)
+    may be sent at all: without SMTP the console backend would write it
+    to the application log. They must not inspect `EMAIL_BACKEND` directly.
     """
 
     def is_configured(self) -> bool:

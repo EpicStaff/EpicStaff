@@ -1,5 +1,3 @@
-import { NodeType } from '@shared/models';
-
 import { ConnectionModel } from '../../../core/models/connection.model';
 import { GetDecisionTableNodeRequest } from '../../../core/models/decision-table-node.model';
 import { DecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
@@ -9,7 +7,6 @@ import { getInputPortRole } from '../../node-port-roles';
 
 /**
  * Maps DT output ports (condition groups, default, error) to canvas connections.
- * EDGE node targets are skipped — those wires come from mapConditionalEdgesToConnections.
  */
 export function mapDecisionTableToConnections(
     decisionTableNodes: DecisionTableNodeModel[],
@@ -37,7 +34,7 @@ export function mapDecisionTableToConnections(
                 continue;
             }
             const targetNode = nodeByBackendId.get(group.next_node_id);
-            if (targetNode && targetNode.type !== NodeType.EDGE) {
+            if (targetNode) {
                 const normalizedName = group.group_name.toLowerCase().replace(/\s+/g, '-');
                 connections.push(
                     createFlowConnection(
@@ -54,7 +51,7 @@ export function mapDecisionTableToConnections(
             const targetUuid = backendIdToUuid.get(backendDt.default_next_node_id);
             if (targetUuid) {
                 const targetNode = nodeByBackendId.get(backendDt.default_next_node_id);
-                if (targetNode && targetNode.type !== NodeType.EDGE) {
+                if (targetNode) {
                     connections.push(
                         createFlowConnection(
                             dtNode.id,
@@ -73,7 +70,7 @@ export function mapDecisionTableToConnections(
             const targetUuid = backendIdToUuid.get(backendDt.next_error_node_id);
             if (targetUuid) {
                 const targetNode = nodeByBackendId.get(backendDt.next_error_node_id);
-                if (targetNode && targetNode.type !== NodeType.EDGE) {
+                if (targetNode) {
                     connections.push(
                         createFlowConnection(
                             dtNode.id,

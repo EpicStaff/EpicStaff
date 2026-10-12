@@ -81,7 +81,6 @@ Tools: `get_flow_overview`, `get_edges_from`, `get_edges_to`, `get_node`.
 
 - `__start__` has at least one outgoing edge (verify with `get_edges_from`).
 - Every non-trigger, non-end node is reachable from `__start__`. A node referenced by `decision_table` / `classification_decision_table` routing counts as reachable too.
-- `conditional_edge` routing is invisible to `get_edges_from` / `get_edges_to` — `ConditionalEdge` rows live in a separate table from `Edge` and are not returned by either tool. A node with zero outgoing `Edge` rows may still be routed to from a `conditional_edge` node whose `source_node_id` points at it. Before flagging such a node as a dead end, check whether any `conditional_edge` node has that node as its source, then read that conditional_edge's `python_code_summary.code` to recover the string targets it can return. If you can't resolve the targets this way, report the reachability check as unverifiable for that node rather than as a blocker — don't invent a pass result, and don't invent a fail result either.
 - Every execution path reaches the end node (or a decision-table error branch that reaches end).
 - Trigger nodes (`webhook_trigger`, `telegram_trigger`, `schedule_trigger`) have zero incoming edges (verify with `get_edges_to`).
 - When a trigger exists, `__start__` is also wired into the first real node (dual entry).
@@ -118,7 +117,6 @@ For each node type, verify the per-type invariants.
 - **telegram_trigger** / **schedule_trigger**: has zero incoming edges (see check 1); downstream node consumes whatever payload shape the trigger produces.
 - **task**: has an `agent_definition` set (a `task` node with no agent will fail at runtime); `instructions` non-empty; `output_schema`, if set, is valid JSON schema; `output_variable_path` set if the result is consumed downstream.
 - **agent**: has an `agent_definition` set; its internal sub-tasks each have a unique `name`, a contiguous `order`, and any `context_task_ids` reference an earlier sub-task by `id` (forward references are invalid); `output_variable_path` set if the result is consumed downstream.
-- **conditional_edge**: `python_code_summary.code` returns a string (assert in code), and that string is always a live node's name.
 - **decision_table**: node-level `default_next_node_id` and `next_error_node_id` are both set (unset is a blocker — an unrouted default/error case falls back to END silently); every rule has a unique `rule_name`; `rule_type` is `simple` or `complex`; `simple` rules have non-empty `conditions[]` whose `expression` reads as a Python boolean expression; `complex` rules have a non-null top-level `expression` joining the conditions; every rule's `routes_to_node_id` resolves to a real node (null is only valid if the rule is deliberately left unwired — flag it if so).
 - **classification_decision_table**: node-level `default_next_node_id` and `next_error_node_id` are both set; each rule's `route_code` (if used) is unique within the node; `field_expressions` meaningfully describes what the LLM should extract or classify; `continue_to_next_rule` correctly reflects whether a rule is meant to fall through to the next one; `prompt_id`, if set, references a real prompt; `routes_to_node_id` resolves to a real node.
 - **subgraph**: referenced subgraph exists; circular references absent.
@@ -133,11 +131,10 @@ For each node type, verify the per-type invariants.
 
 ### 5. Side-effect placement
 
-Side effects (external API writes, file writes, emails, messages) belong in clearly named nodes, not buried inside a `conditional_edge` or a decision-table `manipulation`. A reader of the graph should be able to see where side effects happen just from node names and types.
+Side effects (external API writes, file writes, emails, messages) belong in clearly named nodes, not buried inside a decision-table `manipulation` or a routing node's code. A reader of the graph should be able to see where side effects happen just from node names and types.
 
 Flag as a **warning** any:
 - Decision-table `manipulation` that calls `requests` / sends messages / writes files.
-- `conditional_edge` code with side effects (it should only compute a target string).
 - `python` node that both transforms data AND sends outbound messages — split responsibilities.
 
 ### 6. Naming and domain hygiene

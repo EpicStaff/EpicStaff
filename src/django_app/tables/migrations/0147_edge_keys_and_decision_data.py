@@ -153,7 +153,7 @@ class Migration(migrations.Migration):
             name='then',
         ),
 
-        migrations.RunPython(migrate_edges_data, reverse_migration),
+        migrations.RunPython(migrate_edges_data, reverse_migration, elidable=True),
 
         migrations.AlterField(
             model_name='edge',

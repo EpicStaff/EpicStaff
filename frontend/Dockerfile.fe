@@ -12,7 +12,8 @@ WORKDIR /app
 # production bundle builds byte-identical with scripts disabled.
 # HUSKY=0 is kept because `prepare` also runs outside install (e.g. local runs).
 ENV HUSKY=0
-
+# Angular CLI usage analytics: never phone home from a customer build host.
+ENV NG_CLI_ANALYTICS=false
 COPY package*.json ./
 COPY patches ./patches
 RUN npm ci --ignore-scripts && npm cache clean --force

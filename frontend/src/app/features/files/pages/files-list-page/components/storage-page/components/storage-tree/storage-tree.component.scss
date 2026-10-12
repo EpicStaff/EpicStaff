@@ -1,3 +1,12 @@
+// Row indent grows with the nesting level the template sets in --tree-level.
+$row-indent: calc(0.75rem + var(--tree-level, 0) * 1.25rem);
+// Row parts besides the name: chevron 24px + icon 12px + hover actions 64px (two 20px buttons, 8px gap, 8px padding each side).
+$row-controls-width: 100px;
+// Below this a name stops shrinking and the list scrolls sideways instead (deeply nested rows).
+$name-min-width: 120px;
+// Room left for the name in a row, capped against the list width.
+$name-available-width: max($name-min-width, calc(100cqi - #{$row-indent} - #{$row-controls-width}));
+
 .storage-tree {
     display: flex;
     flex-direction: column;
@@ -81,6 +90,8 @@
         flex: 1;
         overflow-y: auto;
         overflow-x: auto;
+        // Names are capped against this width (cqi), so they grow when the sidebar is resized.
+        container-type: inline-size;
 
         &--drop-target-root {
             background-color: var(--purple-alpha-5);
@@ -98,8 +109,7 @@
         display: flex;
         align-items: center;
         gap: 0;
-        padding: 0 0.75rem;
-        padding-right: 0;
+        padding: 0 0 0 $row-indent;
         min-width: 100%;
         width: max-content;
         box-sizing: border-box;
@@ -211,13 +221,15 @@
         padding: 4px 12px 4px 8px;
         box-sizing: border-box;
         min-width: 0;
+        max-width: $name-available-width;
         overflow: hidden;
     }
 
     &__name {
         flex: 1 1 auto;
         min-width: 0;
-        max-width: 120px;
+        // The 8px is this name's own left margin.
+        max-width: calc(#{$name-available-width} - 8px);
         margin-left: 8px;
         font-size: var(--text-body-size);
         font-weight: var(--text-body-weight);
@@ -227,9 +239,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
 
+        // Capped by .storage-tree__folder-meta instead, which also holds the Empty badge.
         &--folder-meta {
             flex: 0 1 auto;
             min-width: 0;
+            max-width: none;
             margin-left: 0;
         }
     }

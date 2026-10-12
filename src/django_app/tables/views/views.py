@@ -31,7 +31,7 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import SessionNotFoundError
+from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
 from tables.filters import SessionFilter
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -71,6 +71,7 @@ from tables.serializers.serializers import (
     RunPythonCodeSerializer,
     RunSessionSerializer,
     SessionExportAllSerializer,
+    SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.services.converter_service import ConverterService
@@ -89,6 +90,8 @@ from tables.services.session_access import (
 )
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.services.trigger_test_run.service import SessionTestRunService
 from tables.swagger_schemas.default_config_schemas import (
     QUICKSTART_APPLY_POST,
     QUICKSTART_GET,
@@ -106,6 +109,7 @@ from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
     GET_UPDATES_GET,
     RUN_SESSION_POST,
+    RUN_SESSION_TEST_POST,
     SESSION_BULK_DELETE_POST,
     SESSION_DESTROY_DELETE,
     SESSION_LIST_GET,
@@ -130,6 +134,7 @@ redis_service = RedisService()
 # TODO: fix. Do we need init converter_service here? Instance is not used.
 converter_service = ConverterService()
 session_manager_service = SessionManagerService()
+session_test_run_service = SessionTestRunService(session_manager_service=session_manager_service)
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
@@ -477,6 +482,46 @@ class RunSession(APIView):
         }
 
 
+class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
+    """Test-run a flow from one of its trigger nodes with a designer-written payload."""
+
+    _NODE_ORG_PATH = "graph__org_id"
+
+    @extend_schema(**RUN_SESSION_TEST_POST)
+    def post(self, request):
+        # Running a flow executes its stored code, a contributor-level action
+        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
+        # body validation and the node lookup, so a caller without it always
+        # gets the same 403 — whatever the body and whether or not the node
+        # exists — and never costs the payload size check.
+        assert_org_permission(
+            user=request.user,
+            org_id=self.get_active_org_id(),
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        serializer = SessionTestRunSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        strategy = TEST_RUN_STRATEGIES[validated_data["node_type"]]
+
+        node = self.get_in_active_org_or_404(
+            strategy.node_model,
+            validated_data["node_id"],
+            org_path=self._NODE_ORG_PATH,
+            graph_id=validated_data["graph_id"],
+        )
+
+        session_id = session_test_run_service.run(
+            strategy=strategy,
+            node=node,
+            payload=validated_data["payload"],
+            user=request.user,
+            api_key=request.auth if isinstance(request.auth, ApiKey) else None,
+        )
+        return Response(data={"session_id": session_id}, status=status.HTTP_201_CREATED)
+
+
 class GetUpdates(APIView):
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
@@ -555,7 +600,6 @@ class RunPythonCodeAPIView(APIView):
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        python_code = serializer.validated_data["python_code"]
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
@@ -569,6 +613,23 @@ class RunPythonCodeAPIView(APIView):
             resource_type=ResourceType.FLOWS,
             action=Permission.UPDATE,
         )
+        if "target" in serializer.validated_data:
+            target = serializer.validated_data["target"]
+            try:
+                execution_id = run_python_code_service.run_target(
+                    target_type=target["type"],
+                    target_id=target["id"],
+                    variables=variables,
+                    organization_id=org_id,
+                    user=request.user,
+                )
+            except CodeRunTargetNotFoundError as error:
+                raise ValidationError(
+                    {"target": [f'Invalid pk "{error.target_id}" - object does not exist.']}
+                ) from error
+            return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
+
+        python_code = serializer.validated_data["python_code"]
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
         ).exists():
@@ -587,14 +648,13 @@ class RunPythonCodeAPIView(APIView):
     @staticmethod
     def _python_code_visible_q(org_id: int) -> Q:
         """A PythonCode is visible to an org if it is referenced by an org-owned
-        tool (built-in tools are global) or by a node/edge in one of the org's
+        tool (built-in tools are global) or by a node in one of the org's
         graphs. Used to scope run-python-code so a caller cannot execute another
         org's stored code by id."""
         return (
             Q(pythoncodetool__built_in=True)
             | Q(pythoncodetool__org_id=org_id)
             | Q(pythonnode__graph__org_id=org_id)
-            | Q(conditionaledge__graph__org_id=org_id)
             | Q(webhooktriggernode__graph__org_id=org_id)
             | Q(cdt_pre_nodes__graph__org_id=org_id)
             | Q(cdt_post_nodes__graph__org_id=org_id)
@@ -637,11 +697,10 @@ class InitRealtimeAPIView(APIView):
             # X-Organization-Id to send. It already resolved the agent definition
             # server-side (via RealtimeChannelViewSet.lookup_by_token, itself
             # scoped by the channel's own org), so org is derived here from the
-            # definition's own `organization` FK instead of requiring a header —
+            # definition's own `org` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
-            # API-key-authenticated requests (see IsApiKeyAuthenticated /
-            # ApiKeyAuthentication).
+            # API-key-authenticated requests (see ApiKeyAuthentication).
             #
             # Restricted to key_type=SYSTEM:
             # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
@@ -658,7 +717,7 @@ class InitRealtimeAPIView(APIView):
                         "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                     }
                 )
-            org_id = agent_definition.organization_id
+            org_id = agent_definition.org_id
             # Twilio's MediaStream bridge has no end-user session (see comment
             # above) — created_by/user_id stays None for these sessions.
             user_id = None
@@ -681,9 +740,7 @@ class InitRealtimeAPIView(APIView):
             # resulting RealtimeSessionItem rows to them via created_by.
             user_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
 
-        if not AgentDefinition.objects.filter(
-            pk=agent_definition_id, organization_id=org_id
-        ).exists():
+        if not AgentDefinition.objects.filter(pk=agent_definition_id, org_id=org_id).exists():
             raise ValidationError(
                 {
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
@@ -708,17 +765,28 @@ class InitRealtimeAPIView(APIView):
 
 class QuickstartView(APIView):
     """
-    API endpoint for managing quickstart configurations
+    API endpoint for managing quickstart configurations.
+
+    Reading the status requires LLM config read permission in the active organization
+    (it renders the last quickstart LLM and embedding configs); running a quickstart
+    requires LLM config create permission. Each handler asserts its own action: a plain
+    APIView has no DRF action for HasOrgPermission to map.
     """
 
     permission_classes = [IsAuthenticated]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_required_action = Permission.CREATE
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Outside the try below: its broad except would turn the 403 into a 500.
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=Permission.READ,
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
@@ -731,7 +799,8 @@ class QuickstartView(APIView):
                     "supported_providers": supported_providers,
                     "last_config": last_config,
                     "is_synced": is_synced,
-                }
+                },
+                context={"request": request},
             ).data
             return Response(data, status=status.HTTP_200_OK)
 
@@ -757,7 +826,7 @@ class QuickstartView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=self.rbac_resource_type,
-            action=self.rbac_required_action,
+            action=Permission.CREATE,
         )
 
         result = quickstart_service.quickstart(
@@ -765,6 +834,7 @@ class QuickstartView(APIView):
             api_key=api_key,
             secret=secret,
             org_id=org_id,
+            user=request.user,
         )
 
         if not result.get("success", False):
@@ -779,7 +849,8 @@ class QuickstartView(APIView):
                 "config_name": config_name,
                 "llm_config": result["llm_config"],
                 "embedding_config": result["embedding_config"],
-            }
+            },
+            context={"request": request},
         ).data
         return Response(
             data={

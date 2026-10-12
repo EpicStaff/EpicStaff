@@ -1,6 +1,7 @@
+import { AuthorshipFields } from '../authorship.model';
 import { Tag } from '../tag.model';
 
-export interface GetLlmConfigRequest {
+export interface GetLlmConfigRequest extends AuthorshipFields {
     id: number;
     custom_name: string;
     model: number;
@@ -17,6 +18,8 @@ export interface GetLlmConfigRequest {
     is_visible: boolean;
     extra_headers?: Record<string, string>;
     tags: Tag[];
+    /** Read-only ISO 8601 creation time; null for configs created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateLLMConfigRequest {
