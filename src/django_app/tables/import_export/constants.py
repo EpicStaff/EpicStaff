@@ -5,6 +5,16 @@ IMPORT_VERSION = 3
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"
 
+# Most rows a reuse lookup loads per file entry: the exact name first, then
+# renamed copies newest first. Bounds what rows seeded under one name can cost.
+# A match past the bound is missed and the import creates one copy; being the
+# newest, that copy is inside the window on the next import. Never a wrong reuse.
+MAX_REUSE_CANDIDATES = 50
+
+# Import-time only, never written to a file: the Surface entries an
+# AgentDefinition entry owns, attached by nest_owned_surface_entries.
+OWNED_SURFACE_ENTRIES_KEY = "owned_surface_entries"
+
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (
     EntityType.LABEL,

@@ -1,8 +1,11 @@
 import json
+from datetime import timedelta
 
 import fakeredis
 import pytest
 from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from tables.models import SessionStorageFile, StorageFile
 from tables.models.graph_models import Graph, GraphOrganization, StartNode
@@ -286,3 +289,90 @@ def test_end_status_is_committed_when_linking_storage_files_hits_a_database_erro
     assert running_session.finished_at is not None
     assert running_session.status_data["variables"] == {"final_result": "done"}
     assert not SessionStorageFile.objects.filter(session=running_session).exists()
+
+
+@pytest.mark.django_db
+def test_status_handler_locks_the_session_without_reading_its_large_json_fields(
+    pubsub_with_redis, running_session
+):
+    pubsub, _redis_client = pubsub_with_redis
+
+    with CaptureQueriesContext(connection) as captured:
+        pubsub.session_status_handler(
+            _status_message(running_session.id, Session.SessionStatus.WAIT_FOR_USER)
+        )
+
+    [locking_query] = [
+        query["sql"] for query in captured.captured_queries if "FOR NO KEY UPDATE" in query["sql"]
+    ]
+    for large_field in ("graph_schema", "variables", "status_data"):
+        assert f'"tables_session"."{large_field}"' not in locking_query
+    running_session.refresh_from_db()
+    assert running_session.status == Session.SessionStatus.WAIT_FOR_USER
+
+
+def _set_status_updated_at(session, moment):
+    Session.objects.filter(pk=session.pk).update(status_updated_at=moment)
+
+
+@pytest.mark.django_db
+def test_status_change_restarts_the_time_to_live_clock(pubsub_with_redis, running_session):
+    pubsub, _redis_client = pubsub_with_redis
+    an_hour_ago = timezone.now() - timedelta(hours=1)
+    _set_status_updated_at(running_session, an_hour_ago)
+
+    pubsub.session_status_handler(
+        _status_message(running_session.id, Session.SessionStatus.WAIT_FOR_USER)
+    )
+
+    running_session.refresh_from_db()
+    assert running_session.status_updated_at > an_hour_ago + timedelta(minutes=59)
+
+
+@pytest.mark.django_db
+def test_repeated_status_does_not_restart_the_time_to_live_clock(
+    pubsub_with_redis, running_session
+):
+    pubsub, _redis_client = pubsub_with_redis
+    an_hour_ago = timezone.now() - timedelta(hours=1)
+    _set_status_updated_at(running_session, an_hour_ago)
+
+    pubsub.session_status_handler(_status_message(running_session.id, Session.SessionStatus.RUN))
+
+    running_session.refresh_from_db()
+    assert running_session.status_updated_at == an_hour_ago
+
+
+
+@pytest.mark.django_db
+def test_end_status_links_every_written_file_with_one_lookup(
+    default_org, pubsub_with_redis, running_session
+):
+    pubsub, redis_client = pubsub_with_redis
+    written_files = [
+        StorageFile.objects.create(org=default_org, path=path, name=path.rsplit("/", 1)[-1])
+        for path in ("report.txt", "data/table.csv", "data/chart.png")
+    ]
+    redis_client.sadd(
+        f"session:{running_session.id}:storage_mutations",
+        *(f"{default_org.id}:{storage_file.path}" for storage_file in written_files),
+        f"{default_org.id}:deleted-before-the-end.txt",
+        "not-an-entry",
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        pubsub.session_status_handler(
+            _status_message(running_session.id, Session.SessionStatus.END)
+        )
+
+    storage_file_reads = [
+        query["sql"]
+        for query in captured.captured_queries
+        if query["sql"].startswith('SELECT "tables_storagefile"')
+    ]
+    assert len(storage_file_reads) == 1
+    assert set(
+        SessionStorageFile.objects.filter(session=running_session).values_list(
+            "storage_file_id", flat=True
+        )
+    ) == {storage_file.id for storage_file in written_files}

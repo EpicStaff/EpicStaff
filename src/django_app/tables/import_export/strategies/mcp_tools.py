@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from django.db.models import Q
 from rbac.authorship import resolve_author
 
@@ -9,10 +7,19 @@ from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import (
     attach_tool_labels,
+    compared_values,
     create_filters,
     ensure_unique_identifier,
+    filter_by_name_or_renamed_copy,
+    import_values,
 )
 from tables.models import McpTool
+
+# Scalar fields compared for reuse, next to the rename-aware name match. An
+# explicit allowlist, not create_filters over the whole exported dict: legacy
+# files carry created_at/updated_at (and the source org), which a re-created
+# tool never matches.
+COMPARED_FIELDS = ("transport", "tool_name", "timeout", "init_timeout")
 
 
 class McpToolStrategy(EntityImportExportStrategy):
@@ -73,14 +80,12 @@ class McpToolStrategy(EntityImportExportStrategy):
         return mcp_tool
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None) -> McpTool:
-        data_copy = deepcopy(data)
-        data_copy.pop("id", None)
-        data_copy.pop("labels", None)
-
-        filters, null_filters = create_filters(data_copy)
-        existing = (
-            McpTool.objects.filter(**filters, **null_filters)
-            .filter(self.get_org_scope_q(org_id))
-            .first()
+        # Every compared value is a stored column, so SQL decides and at most one
+        # row is loaded.
+        filters, null_filters = create_filters(
+            compared_values(McpTool, self.serializer_class, data, COMPARED_FIELDS)
         )
-        return existing
+        return filter_by_name_or_renamed_copy(
+            McpTool.objects.filter(**filters, **null_filters).filter(self.get_org_scope_q(org_id)),
+            import_values(self.serializer_class, data, ("name",)).get("name"),
+        ).first()

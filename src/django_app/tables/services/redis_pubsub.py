@@ -2,6 +2,7 @@ import contextlib
 import json
 import os
 import time
+from collections import defaultdict
 
 import redis
 from django.conf import settings
@@ -29,6 +30,14 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.utils.memory_trim import start_periodic_malloc_trim
 from utils.logger import logger
+
+# How long one read waits for a message. get_message() returns as soon as one arrives, so
+# this only bounds an idle wait; a shorter one turns the loop into a busy poll.
+READ_TIMEOUT_SECONDS = 1.0
+
+# The listener handles one message at a time: a handler this slow holds back every
+# message behind it, session statuses included, so it is logged as a warning.
+SLOW_HANDLER_SECONDS = 1.0
 
 
 class RedisPubSub:
@@ -66,9 +75,11 @@ class RedisPubSub:
         if self.pattern_handlers:
             self.pubsub.psubscribe(**self.pattern_handlers)
 
-    def set_handler(self, message_channel: str, handler: callable):
+    def set_handler(
+        self, message_channel: str, handler: callable, *, log_every_duration: bool = False
+    ):
         if message_channel:
-            self.handlers[message_channel] = handler
+            self.handlers[message_channel] = _timed(message_channel, handler, log_every_duration)
             logger.success(f"Set handler for {message_channel}")
 
     def set_pattern_handler(self, channel_pattern: str, handler: callable):
@@ -78,7 +89,7 @@ class RedisPubSub:
         Redis would deliver a message on it twice, once as ``message`` and once
         as ``pmessage``.
         """
-        self.pattern_handlers[channel_pattern] = handler
+        self.pattern_handlers[channel_pattern] = _timed(channel_pattern, handler)
         logger.success("Set handler for pattern {}", channel_pattern)
 
     def session_status_handler(self, message: dict):
@@ -90,7 +101,13 @@ class RedisPubSub:
                 # Locked so the token total read below cannot interleave with
                 # GraphMessageStore storing it: whichever runs second stores the full one.
                 # NO KEY UPDATE: it does not wait for the KEY SHARE locks of message inserts.
-                session = Session.objects.select_for_update(no_key=True).get(id=data["session_id"])
+                # Only the fields used here and after the commit: graph_schema, variables
+                # and status_data are large JSON this handler never reads.
+                session = (
+                    Session.objects.select_for_update(no_key=True)
+                    .only("id", "status", "finished_at", "graph_id")
+                    .get(id=data["session_id"])
+                )
                 if data["status"] == Session.SessionStatus.EXPIRED and session.status in [
                     Session.SessionStatus.END,
                     Session.SessionStatus.ERROR,
@@ -109,8 +126,16 @@ class RedisPubSub:
                 status_data["total_token_usage"] = SessionTokenUsageCounter(self.redis_client).read(
                     data["session_id"]
                 )
+                # .update() skips Session.save(), which sets status_updated_at the same
+                # way; the manager counts time_to_live from it.
+                status_change_fields = (
+                    {"status_updated_at": timezone.now()}
+                    if data["status"] != session.status
+                    else {}
+                )
                 updated_rows = Session.objects.filter(pk=session.pk).update(
                     status=data["status"],
+                    **status_change_fields,
                     status_data=status_data,
                     token_usage=status_data["total_token_usage"],
                     finished_at=session.finished_at
@@ -275,6 +300,7 @@ class RedisPubSub:
             return
 
         path = data.path.rstrip("/")
+        close_old_connections()
 
         try:
             WebhookTriggerService().handle_webhook_trigger(
@@ -297,6 +323,7 @@ class RedisPubSub:
     def request_webhook_update_handler(self, message: dict):
         try:
             logger.debug("Received request to update webhook")
+            close_old_connections()
             registered = WebhookTriggerService().register_webhooks()
             if not registered:
                 raise ValueError("0 services listened for registration")
@@ -311,22 +338,21 @@ class RedisPubSub:
             if not members:
                 return
 
-            file_refs = []
-
+            paths_by_org = defaultdict(set)
             for member in members:
                 try:
                     member_str = member.decode() if isinstance(member, bytes) else member
                     org_id_str, path = member_str.split(":", 1)
-                    org_id = int(org_id_str)
-                    storage_file = StorageFile.objects.filter(org_id=org_id, path=path).first()
-
-                    if storage_file:
-                        file_refs.append(
-                            SessionStorageFile(session=session, storage_file=storage_file)
-                        )
-
-                except Exception as e:
+                    paths_by_org[int(org_id_str)].add(path)
+                except ValueError as e:
                     logger.warning(f"Skipping malformed session storage entry '{member}': {e}")
+
+            # One query per org, not one per file; a path with no row is skipped.
+            file_refs = [
+                SessionStorageFile(session=session, storage_file=storage_file)
+                for org_id, paths in paths_by_org.items()
+                for storage_file in StorageFile.objects.filter(org_id=org_id, path__in=paths)
+            ]
 
             if file_refs:
                 SessionStorageFile.objects.bulk_create(file_refs, ignore_conflicts=True)
@@ -351,7 +377,9 @@ class RedisPubSub:
         try:
             # Calls the handler registered for the message's channel or pattern, and
             # then returns None.
-            message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.001)
+            message = self.pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=READ_TIMEOUT_SECONDS
+            )
         except (redis.ConnectionError, redis.TimeoutError) as e:
             logger.error(f"Error while listening for Redis messages: {e}")
             raise
@@ -384,11 +412,17 @@ class RedisPubSub:
         start_periodic_malloc_trim()
         self.set_pattern_handler(SESSION_STATUS_CHANNEL_PATTERN, self.session_status_handler)
         self.set_handler(settings.CODE_RESULT_CHANNEL, self.code_results_handler)
-        self.set_handler(settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
+        # The trigger handlers start sessions inside this loop; their duration on every
+        # call shows how long the messages behind them wait.
+        self.set_handler(
+            settings.WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler, log_every_duration=True
+        )
         self.set_handler(
             settings.REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
         )
-        self.set_handler(settings.SCHEDULE_CHANNEL, self.schedule_channel_handler)
+        self.set_handler(
+            settings.SCHEDULE_CHANNEL, self.schedule_channel_handler, log_every_duration=True
+        )
         self.set_handler(settings.STORAGE_MUTATION_CHANNEL, self.storage_mutations_handler)
 
         def inner_loop():
@@ -464,3 +498,25 @@ class RedisPubSub:
             ScheduleTriggerService().deactivate_node(node_id)
         except Exception as e:
             logger.error(f"[SchedulePubSub] Error deactivating node {node_id}: {e}")
+
+
+def _timed(label: str, handler: callable, log_every_duration: bool = False) -> callable:
+    """Wrap a handler to log how long it ran: always at INFO when ``log_every_duration``,
+    and as a warning whenever it ran ``SLOW_HANDLER_SECONDS`` or longer."""
+
+    def timed_handler(message: dict):
+        started_at = time.monotonic()
+        try:
+            return handler(message)
+        finally:
+            duration_seconds = time.monotonic() - started_at
+            if duration_seconds >= SLOW_HANDLER_SECONDS:
+                logger.warning(
+                    "Handler for {} took {:.0f} ms; the messages behind it waited",
+                    label,
+                    duration_seconds * 1000,
+                )
+            elif log_every_duration:
+                logger.info("Handler for {} took {:.0f} ms", label, duration_seconds * 1000)
+
+    return timed_handler

@@ -239,7 +239,9 @@ export class LeftSidebarComponent implements AfterViewInit {
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () => this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () =>
+                    this.configService.isAuditTrailEnabled &&
+                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
             },
         ];

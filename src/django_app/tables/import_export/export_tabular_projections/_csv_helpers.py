@@ -1,4 +1,7 @@
-from tables.models.base_models import BaseGlobalNode
+from collections.abc import Iterable
+
+from utils.graph_utils import resolve_node_names
+
 from tables.models.llm_models import LLMConfig
 
 # Leading characters a spreadsheet reads as a formula (OWASP CSV injection list).
@@ -31,10 +34,21 @@ def _llm_config_label(config: LLMConfig | None) -> str:
     return config.custom_name
 
 
-def _node_label(node_id: int | None, cache: dict[int, str]) -> str:
+def _node_labels(node_ids: Iterable[int | None], graph_id: int) -> dict[int, str]:
+    """Label each referenced node by its plain name, in one batched lookup.
+
+    Only nodes of ``graph_id`` resolve. Any other id, including a reference stored
+    before same-graph validation that points into another organization, prints
+    as ``node #id`` so the foreign node's name never reaches the export.
+    """
+    labels: dict[int, str] = {}
+    for node_id, formatted in resolve_node_names(node_ids, graph_ids=[graph_id]).items():
+        name = "" if formatted == f"unknown node #{node_id}" else formatted
+        labels[node_id] = name.removesuffix(f" #{node_id}") or f"node #{node_id}"
+    return labels
+
+
+def _node_label(node_id: int | None, labels: dict[int, str]) -> str:
     if not node_id:
         return ""
-    if node_id not in cache:
-        target = BaseGlobalNode.find_globally(node_id)
-        cache[node_id] = getattr(target, "node_name", "") or f"node #{node_id}"
-    return cache[node_id]
+    return labels[node_id]

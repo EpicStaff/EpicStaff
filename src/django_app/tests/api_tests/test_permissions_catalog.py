@@ -78,7 +78,7 @@ def test_catalog_secrets_no_longer_claims_api_keys(client_as, admin_acme):
 
     assert secrets["label"] == "Secrets"
     assert "API" not in secrets["description"]
-    assert secrets["applicable_actions"] == ["create", "read", "update", "delete"]
+    assert secrets["applicable_actions"] == ["create", "read", "delete", "use"]
 
 
 @pytest.mark.django_db

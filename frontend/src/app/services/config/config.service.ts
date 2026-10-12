@@ -11,6 +11,7 @@ export interface AppConfig {
     realtimeApiUrl?: string;
     auditorUrl?: string;
     isEpicChatEnabled?: boolean;
+    isAuditTrailEnabled?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -26,6 +27,7 @@ export class ConfigService {
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
             };
             return;
         }
@@ -42,6 +44,7 @@ export class ConfigService {
                             realtimeApiUrl: environment.realtimeApiUrl,
                             auditorUrl: environment.auditorUrl,
                             isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                            isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
                         } as AppConfig);
                     })
                 )
@@ -56,6 +59,7 @@ export class ConfigService {
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: false,
+                isAuditTrailEnabled: false,
             };
         }
     }
@@ -90,5 +94,9 @@ export class ConfigService {
 
     get isEpicChatEnabled(): boolean {
         return this.config?.isEpicChatEnabled ?? false;
+    }
+
+    get isAuditTrailEnabled(): boolean {
+        return this.config?.isAuditTrailEnabled ?? false;
     }
 }

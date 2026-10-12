@@ -28,6 +28,7 @@ from src.shared.models import (
 )
 import asyncio
 import json
+import uuid
 
 
 class FakePythonCodeExecutorService:
@@ -49,16 +50,23 @@ class FakePythonCodeExecutorService:
         namespace: dict = {"DotDict": DotDict}
         namespace.update(python_code_data.global_kwargs or {})
         namespace.update(additional_global_kwargs or {})
+        execution_id = str(uuid.uuid4())
         try:
             exec(python_code_data.code, namespace)
             result = namespace[python_code_data.entrypoint](**DotDict(inputs or {}))
             return {
+                "execution_id": execution_id,
                 "returncode": 0,
                 "stderr": "",
                 "result_data": json.dumps(result),
             }
         except Exception as e:
-            return {"returncode": 1, "stderr": str(e), "result_data": "null"}
+            return {
+                "execution_id": execution_id,
+                "returncode": 1,
+                "stderr": str(e),
+                "result_data": "null",
+            }
 
 
 @pytest.fixture

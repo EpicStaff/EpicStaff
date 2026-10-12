@@ -15,6 +15,7 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -276,7 +277,7 @@ export const routes: Routes = [
                             import('./features/audit/audit-sessions-browser.component').then(
                                 (m) => m.AuditSessionsBrowserComponent
                             ),
-                        canActivate: [permissionGuard],
+                        canActivate: [auditTrailEnabledGuard, permissionGuard],
                         data: { permission: [ResourceCode.Audit, ActionCode.Read] },
                     },
                     {

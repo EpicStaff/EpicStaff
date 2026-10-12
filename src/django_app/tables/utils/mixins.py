@@ -4,10 +4,12 @@ import json
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
+from dataclasses import dataclass
 from functools import partial
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import connection
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from rbac.identity.tickets import sse_ticket_service
@@ -30,6 +32,21 @@ def _log_sse_state(action: str, view_name: str) -> None:
         f"SSE {action} | view={view_name} active={_active_sse_count} "
         f"rss={rss_mb:.1f}MB redis_used={redis_used} redis_avail={redis_avail}"
     )
+
+
+@dataclass(frozen=True)
+class SerializedEvent:
+    """An event whose data is already JSON, sent as it is instead of encoded again."""
+
+    event: str
+    data: str
+
+
+def _close_database_connection() -> None:
+    # Looked up here, in the thread the stream's queries run in: Django keeps one
+    # connection per thread, so `sync_to_async(connection.close)` would bind the event
+    # loop thread's connection and fail when called from this one.
+    connection.close()
 
 
 class SSEMixin(View, ABC):
@@ -136,7 +153,11 @@ class SSEMixin(View, ABC):
 
                 logger.debug("_data_generator item: {}", item)
                 last_sent = time.monotonic()
-                if isinstance(item, dict):
+                if isinstance(item, SerializedEvent):
+                    yield f"event: {item.event}\n"
+                    # A line break would end the data field early; each line gets its own.
+                    yield "".join(f"data: {line}\n" for line in item.data.split("\n")) + "\n"
+                elif isinstance(item, dict):
                     if "event" in item:
                         yield f"event: {item['event']}\n"
 
@@ -175,6 +196,7 @@ class SSEMixin(View, ABC):
                     yield data
                     if pubsub is not None:
                         await self._hold_published_messages(pubsub)
+            await self.release_database_connection()
 
             if test_mode:
                 for i in range(3):
@@ -206,6 +228,15 @@ class SSEMixin(View, ABC):
 
             _active_sse_count -= 1
             _log_sse_state("CLOSE", view_name)
+
+    async def release_database_connection(self) -> None:
+        """Close this stream's database connection; the next query opens a new one.
+
+        Django closes it only when the request finishes, which for a stream is when
+        the client leaves, so every waiting stream would hold one of the few
+        connections Postgres allows. Call it before waiting for live updates.
+        """
+        await sync_to_async(_close_database_connection)()
 
     async def _hold_published_messages(self, pubsub) -> None:
         # Read what was published meanwhile rather than leaving it in Redis: past

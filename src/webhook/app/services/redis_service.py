@@ -8,6 +8,14 @@ from src.shared.models import WebhookEventData
 from app.core.settings import settings
 
 
+class NoWebhookSubscriberError(Exception):
+    """Raised when a webhook event was published but no listener received it."""
+
+    def __init__(self, channel: str):
+        self.channel = channel
+        super().__init__(f"No subscriber on Redis channel '{channel}'; webhook event was dropped.")
+
+
 class RedisService:
     """
     Handles all communication with the Redis server.
@@ -24,9 +32,15 @@ class RedisService:
         path: str,
         payload: dict[str, Any],
         config_id: str | None = None,
-    ):
-        """
-        Modifies the data and publishes it to a Redis channel.
+    ) -> None:
+        """Publish a webhook event to the channel Django's `listen_redis` worker reads.
+
+        Redis pub/sub does not keep messages: one published while no listener is
+        subscribed (Django restarting, listener process down) is gone. Raising lets the
+        caller reject the request so the sender retries instead of the event vanishing.
+
+        Raises:
+            NoWebhookSubscriberError: The publish reached no subscriber.
         """
         message_data = WebhookEventData(
             path=path,
@@ -35,7 +49,11 @@ class RedisService:
         )
 
         logger.debug(f"Publishing to Redis channel '{self.webhook_channel}'")
-        await self.client.publish(self.webhook_channel, message_data.model_dump_json())
+        receiver_count = await self.client.publish(
+            self.webhook_channel, message_data.model_dump_json()
+        )
+        if receiver_count == 0:
+            raise NoWebhookSubscriberError(self.webhook_channel)
 
     async def set_tunnel_url(self, unique_id: str, url: str) -> None:
         await self.client.hset(settings.TUNNEL_URLS_HASH_KEY, unique_id, url)
