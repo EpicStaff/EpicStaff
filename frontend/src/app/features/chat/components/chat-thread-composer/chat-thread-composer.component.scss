@@ -1,0 +1,70 @@
+.composer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-divider-regular);
+
+    &__roles {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__caption {
+        color: var(--color-text-secondary);
+    }
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__input {
+        flex: 1;
+    }
+
+    &__extra {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    &__extra-toggle {
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--accent-color);
+        cursor: pointer;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+        }
+    }
+
+    &__extra-field {
+        width: 100%;
+    }
+
+    &__extra-editor--invalid {
+        outline: 1px solid var(--color-error);
+        border-radius: 8px;
+    }
+
+    &__extra-hint {
+        margin: 4px 0 0;
+        color: var(--color-text-secondary);
+    }
+
+    &__extra-error {
+        margin: 0;
+        color: var(--color-error);
+    }
+
+    // Always rendered, so screen readers announce what appears in it; empty, it takes no room.
+    &__notice:empty {
+        margin-top: -8px;
+    }
+}

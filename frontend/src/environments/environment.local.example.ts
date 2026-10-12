@@ -32,4 +32,6 @@ export const environment = {
     // Leave PROXY_TARGET unset to use the local docker backend at http://localhost.
 
     isEpicChatEnabled: true,
+    isChatEnabled: true,
+    chatApiUrl: '/chat/',
 };

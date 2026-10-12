@@ -13,7 +13,9 @@ else
   "apiUrl": "${API_URL}",
   "realtimeApiUrl": "${REALTIME_API_URL}",
   "auditorUrl": "${AUDITOR_API_URL}",
-  "isEpicChatEnabled": ${EPIC_CHAT_ENABLED:-true}
+  "isEpicChatEnabled": ${EPIC_CHAT_ENABLED:-true},
+  "isChatEnabled": ${CHAT_ENABLED:-false},
+  "chatApiUrl": "${CHAT_API_URL:-/chat/}"
 }
 EOF
   echo "Config generated:"

@@ -1,0 +1,112 @@
+<div class="composer">
+    @if (isTest()) {
+        <div
+            class="composer__roles"
+            role="group"
+            aria-label="Write as"
+        >
+            @for (item of roles; track item.id) {
+                <app-tab-button
+                    mod="sm"
+                    [active]="role() === item.id"
+                    [disabled]="item.id === 'visitor' && !canWriteAsVisitor()"
+                    [describedBy]="item.id === 'visitor' && visitorUnavailableReason() ? visitorUnavailableId : null"
+                    (action)="role.set(item.id)"
+                >
+                    {{ item.label }}
+                </app-tab-button>
+            }
+            @if (!canWriteAsVisitor() && visitorUnavailableReason(); as reason) {
+                <span
+                    class="composer__caption text-body-small"
+                    [id]="visitorUnavailableId"
+                    >{{ reason }}</span
+                >
+            }
+        </div>
+    }
+    <div class="composer__row">
+        <app-custom-input
+            class="composer__input"
+            [ariaLabel]="isVisitor() ? 'Message as the visitor' : 'Reply as operator'"
+            [formControl]="message"
+            [placeholder]="placeholder()"
+            (keydown.enter)="send()"
+        />
+        <!-- An operator replies once they hold the conversation; claiming it is offered here, where they write. -->
+        @if (!isVisitor() && !isClaimedByMe()) {
+            <app-button
+                type="primary-white"
+                [disabled]="isActionPending()"
+                (click)="claimRequested.emit()"
+            >
+                {{ conversation().mode === 'human' ? 'Take over' : 'Claim to reply' }}
+            </app-button>
+        } @else {
+            <app-button
+                type="primary-white"
+                leftIcon="send"
+                [disabled]="!canSubmit() || message.invalid"
+                (click)="send()"
+            >
+                Send
+            </app-button>
+        }
+    </div>
+    @if (isVisitor()) {
+        <div class="composer__extra">
+            <button
+                type="button"
+                class="composer__extra-toggle text-body-small"
+                [attr.aria-expanded]="isExtraDataOpen()"
+                [attr.aria-controls]="extraDataId"
+                (click)="isExtraDataOpen.set(!isExtraDataOpen())"
+            >
+                Extra data (JSON)
+            </button>
+            <div
+                class="composer__extra-field"
+                [id]="extraDataId"
+                (focusout)="isExtraDataTouched.set(true)"
+            >
+                <!-- Rendered while open only (Monaco is heavy); the text lives in extraDataText meanwhile and is still sent. -->
+                @if (isExtraDataOpen()) {
+                    <app-json-editor
+                        class="composer__extra-editor"
+                        [class.composer__extra-editor--invalid]="!!extraDataError()"
+                        [jsonData]="extraDataText()"
+                        [allowEmpty]="true"
+                        [resizable]="false"
+                        [showHeader]="false"
+                        [editorHeight]="96"
+                        [editorOptions]="extraDataEditorOptions"
+                        (jsonChange)="extraDataText.set($event)"
+                    />
+                    <p class="composer__extra-hint text-body-small">
+                        Leave empty to keep the last value; send {{ '{}' }} to clear.
+                    </p>
+                }
+            </div>
+            @if (extraDataError(); as error) {
+                <p
+                    class="composer__extra-error text-body-small"
+                    role="alert"
+                >
+                    {{ error }}
+                </p>
+            }
+        </div>
+    }
+    <div
+        class="composer__notice"
+        role="status"
+        aria-live="polite"
+    >
+        @if (isProcessing()) {
+            <app-hint-message>Bot is replying…</app-hint-message>
+        }
+        @if (notice(); as text) {
+            <app-hint-message>{{ text }}</app-hint-message>
+        }
+    </div>
+</div>

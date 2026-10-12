@@ -1,0 +1,15 @@
+@use '../../../../../styles/status-chip';
+
+// The flow sessions' status chip: live is green, paused neutral, broken red.
+.binding-status {
+    @include status-chip.chip;
+    @include status-chip.completed;
+
+    &--paused {
+        @include status-chip.pending;
+    }
+
+    &--broken {
+        @include status-chip.error;
+    }
+}

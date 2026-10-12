@@ -7,9 +7,11 @@ import {
     computed,
     CUSTOM_ELEMENTS_SCHEMA,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     signal,
+    untracked,
     ViewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -19,6 +21,7 @@ import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
+import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
@@ -43,6 +46,12 @@ interface NavItem {
     /** Function (not boolean) so signal reads inside happen at template-eval time.
      *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
     isPermitted: () => boolean;
+    /** Live counter rendered as a pill on the icon; read at template-eval time like `isPermitted`. */
+    badge?: () => number;
+    /** Where the badge itself leads, as its own link next to the item's; without it the badge is only a label. */
+    badgeLink?: string;
+    /** The badge link's accessible name for a count. */
+    badgeLabel?: (count: number) => string;
     action?: () => void;
     customClass?: string;
 }
@@ -161,6 +170,14 @@ export class LeftSidebarComponent implements AfterViewInit {
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
     });
 
+    /** The inbox stream follows the active org and the `chats:read` permission; it stops with the layout (logout). */
+    private readonly chatStreamEffect = effect(() => {
+        const orgId = this.activeOrgService.activeOrgId();
+        const permitted =
+            this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read);
+        untracked(() => (permitted && orgId ? this.chatInboxStream.start(orgId) : this.chatInboxStream.stop()));
+    });
+
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
@@ -175,6 +192,7 @@ export class LeftSidebarComponent implements AfterViewInit {
     private readonly configService = inject(ConfigService);
     private readonly authService = inject(AuthService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly chatInboxStream = inject(ChatInboxStreamService);
 
     constructor() {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
@@ -187,6 +205,7 @@ export class LeftSidebarComponent implements AfterViewInit {
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = this.configService.apiUrl;
+        this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
         this.topNavItems = [
             {
                 id: 'agents',
@@ -231,6 +250,19 @@ export class LeftSidebarComponent implements AfterViewInit {
                 icon: 'chats',
                 isPermitted: () => true,
                 label: 'Chats',
+                showTooltip: false,
+            },
+            {
+                id: 'chat',
+                routeLink: 'chat-bindings',
+                activePaths: ['/chat-bindings'],
+                icon: 'message-circle',
+                label: 'Chat',
+                isPermitted: () =>
+                    this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read),
+                badge: () => this.chatInboxStream.awaitingCount(),
+                badgeLink: '/chat-bindings/all',
+                badgeLabel: (count) => `Chat inbox: ${count} waiting for a human`,
                 showTooltip: false,
             },
             {
@@ -306,6 +338,10 @@ export class LeftSidebarComponent implements AfterViewInit {
     public isItemActive(item: NavItem): boolean {
         const path = this.currentPath();
         return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+    }
+
+    public badgeCount(item: NavItem): number {
+        return item.badge?.() ?? 0;
     }
 
     public resolveRouteLink(item: NavItem): string | null {

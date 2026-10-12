@@ -430,6 +430,8 @@ services:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_API_URL: ${CHAT_API_URL:?}
     networks:
       - frontend-network
 

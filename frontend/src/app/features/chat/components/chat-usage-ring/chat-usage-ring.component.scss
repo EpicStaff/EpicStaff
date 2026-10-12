@@ -1,0 +1,51 @@
+:host {
+    display: inline-flex;
+}
+
+.usage-ring {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    // Accent while there is room, the warning status near the limit, the failed status at it.
+    --ring-color: var(--accent-color);
+
+    &--warning {
+        --ring-color: var(--color-ks-status-warning);
+    }
+
+    &--full {
+        --ring-color: var(--color-ks-status-failed);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    &__icon {
+        flex-shrink: 0;
+    }
+
+    &__svg {
+        flex-shrink: 0;
+        // The arc starts at the top and runs clockwise.
+        transform: rotate(-90deg);
+    }
+
+    &__track,
+    &__value {
+        fill: none;
+        stroke-width: 3;
+    }
+
+    &__track {
+        stroke: var(--color-input-background);
+    }
+
+    &__value {
+        stroke: var(--ring-color);
+        stroke-linecap: butt;
+    }
+}

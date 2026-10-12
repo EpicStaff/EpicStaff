@@ -1,0 +1,82 @@
+<div class="chat-bindings-page">
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Chat
+                    <span class="subtitle-inline"> Your flows embedded as chats, with human handoff. </span>
+                </h1>
+            </div>
+            <div class="header-actions">
+                <app-search
+                    class="header-actions__search"
+                    placeholder="Search by name or flow..."
+                    [(searchTerm)]="searchTerm"
+                />
+                <app-button
+                    *appHasPermission="[ResourceCode.Chats, ActionCode.Create]"
+                    type="primary"
+                    leftIcon="plus"
+                    (click)="createBinding()"
+                >
+                    Create binding
+                </app-button>
+            </div>
+        </header>
+    </div>
+
+    <section class="body">
+        @if (loadFailed()) {
+            <app-fetch-error-state
+                title="Couldn't load chat bindings"
+                (retry)="retryLoad()"
+            />
+        } @else if (!isLoaded()) {
+            <app-loading-spinner
+                size="md"
+                message="Loading bindings..."
+            />
+        } @else if (!bindings().length) {
+            <div class="empty-state">
+                <p class="empty-state__title text-body-medium">No chat bindings yet</p>
+                <p class="empty-state__description text-body-small">A flow becomes a chat once it has one.</p>
+                <app-button
+                    *appHasPermission="[ResourceCode.Chats, ActionCode.Create]"
+                    type="primary"
+                    leftIcon="plus"
+                    (click)="createBinding()"
+                >
+                    Create binding
+                </app-button>
+            </div>
+        } @else {
+            <div class="bindings-grid">
+                <a
+                    class="inbox-card"
+                    routerLink="/chat-bindings/all"
+                >
+                    <span class="inbox-card__name text-body-medium">Inbox · all bindings</span>
+                    <span
+                        class="inbox-card__waiting text-body-small"
+                        [class.inbox-card__waiting--some]="totalWaiting() > 0"
+                    >
+                        {{ totalWaiting() ? totalWaiting() + ' waiting for a human' : 'Nothing waiting' }}
+                    </span>
+                </a>
+                @for (binding of visibleBindings(); track binding.id) {
+                    <app-chat-binding-card
+                        [binding]="binding"
+                        [flowName]="flowNames().get(binding.graph_id) ?? null"
+                        [waiting]="waitingByBinding()[binding.id] ?? 0"
+                        (action)="onCardAction(binding, $event)"
+                    />
+                } @empty {
+                    <p class="bindings-grid__no-match text-body">No bindings match your search.</p>
+                }
+            </div>
+        }
+    </section>
+</div>

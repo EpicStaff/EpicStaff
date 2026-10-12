@@ -11,6 +11,8 @@ export interface AppConfig {
     realtimeApiUrl?: string;
     auditorUrl?: string;
     isEpicChatEnabled?: boolean;
+    isChatEnabled?: boolean;
+    chatApiUrl?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -26,6 +28,8 @@ export class ConfigService {
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                isChatEnabled: environment.isChatEnabled ?? false,
+                chatApiUrl: environment.chatApiUrl,
             };
             return;
         }
@@ -42,6 +46,8 @@ export class ConfigService {
                             realtimeApiUrl: environment.realtimeApiUrl,
                             auditorUrl: environment.auditorUrl,
                             isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                            isChatEnabled: environment.isChatEnabled ?? false,
+                            chatApiUrl: environment.chatApiUrl,
                         } as AppConfig);
                     })
                 )
@@ -56,6 +62,7 @@ export class ConfigService {
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
                 isEpicChatEnabled: false,
+                isChatEnabled: false,
             };
         }
     }
@@ -90,5 +97,17 @@ export class ConfigService {
 
     get isEpicChatEnabled(): boolean {
         return this.config?.isEpicChatEnabled ?? false;
+    }
+
+    get isChatEnabled(): boolean {
+        return this.config?.isChatEnabled ?? false;
+    }
+
+    get chatApiUrl(): string {
+        if (!this.config?.chatApiUrl) {
+            console.warn('Chat API URL not available, using fallback');
+            return environment.chatApiUrl || '/chat/';
+        }
+        return this.config.chatApiUrl;
     }
 }

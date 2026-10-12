@@ -1,0 +1,220 @@
+<div
+    class="bindings-dialog"
+    [class.bindings-dialog--editing]="!revealedSecret()"
+>
+    <header class="bindings-dialog__header">
+        <span class="bindings-dialog__title">{{ formTitle() }}</span>
+        <button
+            type="button"
+            class="bindings-dialog__icon-btn"
+            aria-label="Close dialog"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    @if (revealedSecret(); as secret) {
+        <div class="bindings-dialog__secret">
+            <app-copy-field
+                label="Identity secret (shown once)"
+                [value]="secret"
+                [hidden]="true"
+                info="Store it now; it is never shown again. Editing identity back to signed issues a new one."
+            />
+        </div>
+        <div class="bindings-dialog__actions">
+            <app-button
+                type="primary-white"
+                (click)="close()"
+                >Done</app-button
+            >
+        </div>
+    } @else {
+        <div class="bindings-dialog__tabs">
+            @for (tab of tabs; track tab.id) {
+                <app-tab-button
+                    mod="sm"
+                    [active]="tab.id === activeTab()"
+                    (action)="activeTab.set(tab.id)"
+                >
+                    {{ tab.label }}
+                </app-tab-button>
+                @if (!$last) {
+                    <div
+                        class="bindings-dialog__tab-divider"
+                        aria-hidden="true"
+                    >
+                        /
+                    </div>
+                }
+            }
+        </div>
+        <form
+            class="bindings-dialog__form"
+            [formGroup]="form"
+            (ngSubmit)="submit()"
+        >
+            @if (errorMessage()) {
+                <div class="bindings-dialog__error-message">{{ errorMessage() }}</div>
+            }
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'general'"
+            >
+                <app-custom-input
+                    label="Name"
+                    formControlName="name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('name')"
+                    placeholder="e.g. Support bot"
+                />
+                <app-custom-input
+                    label="Displayed bot name"
+                    formControlName="bot_display_name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('bot_display_name')"
+                    tooltipText="Shown to visitors in the chat widget."
+                />
+                <app-select
+                    label="Flow"
+                    formControlName="graph_id"
+                    [items]="flowItems()"
+                    [required]="true"
+                    [showSearch]="true"
+                    placeholder="Select a flow"
+                    tooltipText="The start node must declare chat_history and user_message; the end node must return reply."
+                />
+                @for (contractError of contractErrors(); track contractError) {
+                    <div class="bindings-dialog__contract-error">{{ contractError }}</div>
+                }
+                <app-chips-input
+                    label="Allowed origins"
+                    formControlName="allowed_origins"
+                    inputPlaceholder="https://www.example.com"
+                    tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
+                />
+                <app-select
+                    label="Identity"
+                    formControlName="identity_mode"
+                    [items]="identityItems"
+                    tooltipText="Signed: your backend issues an HS256 token with the identity secret shown once after saving."
+                />
+            </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'limits'"
+            >
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="History window"
+                        formControlName="history_window"
+                        [min]="0"
+                        [max]="200"
+                        tooltipText="Messages passed to the flow as history."
+                    />
+                    <app-input-number
+                        label="Max message length"
+                        formControlName="max_message_length"
+                        [min]="1"
+                    />
+                </div>
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="Max turns per UTC day"
+                        formControlName="max_turns"
+                        [min]="0"
+                        tooltipText="Per conversation per UTC day. 0 blocks every message."
+                    />
+                    <app-input-number
+                        label="Messages per minute"
+                        formControlName="messages_per_minute"
+                        [min]="0"
+                        [max]="1000"
+                        tooltipText="Per conversation. 0 blocks every message."
+                    />
+                </div>
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="Daily tokens per conversation"
+                        formControlName="token_budget_per_conversation"
+                        [required]="true"
+                        [min]="1"
+                        [stepSize]="1000"
+                        [max]="budgetCaps().token_budget_per_conversation"
+                        [invalid]="!!budgetCapMessage('token_budget_per_conversation')"
+                        [errorMessage]="budgetCapMessage('token_budget_per_conversation')"
+                        [tooltipText]="budgetTooltips().token_budget_per_conversation"
+                    />
+                    <app-input-number
+                        label="Daily tokens per binding"
+                        formControlName="daily_token_budget"
+                        [required]="true"
+                        [min]="1"
+                        [stepSize]="1000"
+                        [max]="budgetCaps().daily_token_budget"
+                        [invalid]="!!budgetCapMessage('daily_token_budget')"
+                        [errorMessage]="budgetCapMessage('daily_token_budget')"
+                        [tooltipText]="budgetTooltips().daily_token_budget"
+                    />
+                </div>
+                <app-select
+                    label="When the budget is exhausted"
+                    formControlName="on_budget_exhausted"
+                    [items]="onExhaustedItems"
+                />
+                @if (form.controls.on_budget_exhausted.value === 'reply') {
+                    <app-textarea
+                        label="Budget exhausted message"
+                        formControlName="budget_exhausted_message"
+                        [rows]="2"
+                    />
+                }
+            </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'handoff'"
+            >
+                <app-toggle-switch
+                    label="Human handoff enabled"
+                    formControlName="handoff_enabled"
+                    tooltipText="The flow, a budget or an error can hand the conversation to an operator."
+                />
+                <app-custom-input
+                    label="Displayed operator name"
+                    formControlName="operator_display_name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('operator_display_name')"
+                    tooltipText="Shown to visitors in the chat widget."
+                />
+            </div>
+        </form>
+
+        <div class="bindings-dialog__actions">
+            @if (!isCreating() && canUpdate()) {
+                <app-button
+                    class="bindings-dialog__rotate"
+                    type="ghost"
+                    leftIcon="refresh"
+                    (click)="rotateKey()"
+                    >Rotate key</app-button
+                >
+            }
+            <app-button
+                type="outline-primary"
+                (click)="close()"
+                >Cancel</app-button
+            >
+            <app-button
+                type="primary-white"
+                [disabled]="isSubmitting()"
+                (click)="submit()"
+            >
+                {{ isSubmitting() ? 'Saving...' : 'Save' }}
+            </app-button>
+        </div>
+    }
+</div>

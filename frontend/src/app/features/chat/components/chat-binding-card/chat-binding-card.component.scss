@@ -1,0 +1,98 @@
+@use '../../../../../styles/row-more-menu';
+
+:host {
+    display: block;
+}
+
+// Same surface as the tool cards; the name link stretches over the card so the whole card opens the binding.
+.binding-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 112px;
+    padding: 8px 12px 12px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    background-color: var(--color-flow-card-bg);
+
+    &:has(.binding-card__link:focus-visible) {
+        outline: 1px solid var(--accent-color);
+    }
+
+    &__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 28px;
+    }
+
+    &__menu-btn {
+        @include row-more-menu.trigger-button;
+        // Above the stretched link, so the menu opens instead of the binding.
+        position: relative;
+        z-index: 1;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+        }
+    }
+
+    &__link {
+        color: var(--color-text-primary);
+        text-decoration: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+        }
+
+        &:focus-visible {
+            outline: none;
+        }
+    }
+
+    &:hover {
+        background-color: var(--color-ks-hover-row);
+    }
+
+    &__flow {
+        color: var(--color-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    // Above the stretched link so it can be selected; clamped, with the full reason still in the text.
+    &__reason {
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        color: var(--color-ks-status-failed);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+
+    &__footer {
+        display: flex;
+        align-items: center;
+        margin-top: auto;
+    }
+
+    &__waiting {
+        color: var(--color-ks-status-warning);
+    }
+}
+
+.binding-card-menu {
+    @include row-more-menu.panel;
+}

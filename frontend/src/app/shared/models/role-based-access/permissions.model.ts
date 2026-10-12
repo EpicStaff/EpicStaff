@@ -4,7 +4,7 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Use = 'use', // for 'secrets' management only
+    Use = 'use', // secrets management, and chat operator actions (claim, release, reply, test conversation)
     List = 'list', // unused for now
 }
 
@@ -25,6 +25,7 @@ export enum ResourceCode {
     Voice = 'voice',
     Webhooks = 'webhooks',
     KeyValueTables = 'key_value_tables',
+    Chats = 'chats',
 }
 
 export interface ActivePermissions {

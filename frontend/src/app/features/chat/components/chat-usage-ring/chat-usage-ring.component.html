@@ -1,0 +1,43 @@
+<span
+    class="usage-ring"
+    tabindex="0"
+    role="img"
+    [class]="'usage-ring--' + level()"
+    [attr.aria-label]="accessibleName()"
+    [matTooltip]="tooltip()"
+    matTooltipPosition="below"
+>
+    <app-svg-icon
+        class="usage-ring__icon"
+        aria-hidden="true"
+        [icon]="icon()"
+        size="14px"
+    />
+    <svg
+        class="usage-ring__svg"
+        width="20"
+        height="20"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+    >
+        <circle
+            class="usage-ring__track"
+            cx="10"
+            cy="10"
+            [attr.r]="radius"
+        />
+        <circle
+            class="usage-ring__value"
+            cx="10"
+            cy="10"
+            [attr.r]="radius"
+            [attr.stroke-dasharray]="circumference"
+            [attr.stroke-dashoffset]="dashOffset()"
+        />
+    </svg>
+    <span
+        class="usage-ring__text text-body-small"
+        aria-hidden="true"
+        >{{ text() }}</span
+    >
+</span>

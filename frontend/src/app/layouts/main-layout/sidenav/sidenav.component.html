@@ -94,8 +94,20 @@
                                         size="1.4rem"
                                     />
                                 }
+                                @if (!item.badgeLink && badgeCount(item); as count) {
+                                    <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
+                                }
                             </div>
                         </a>
+                        @if (item.badgeLink && badgeCount(item); as count) {
+                            <a
+                                class="sidenav-badge-link"
+                                [routerLink]="item.badgeLink"
+                                [attr.aria-label]="item.badgeLabel?.(count) ?? null"
+                            >
+                                <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
+                            </a>
+                        }
                         <app-tooltip
                             [text]="item.label"
                             [visible]="item.showTooltip"

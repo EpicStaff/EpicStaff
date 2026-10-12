@@ -1,0 +1,446 @@
+@use '../../../../../styles/status-chip';
+@use '../../../../../styles/row-more-menu';
+@use '../../../../../styles/header-action-buttons';
+@use '../../../../../styles/header-layout' as header;
+
+.chat-page {
+    @include header.headerLayout();
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: var(--color-text-primary);
+
+    // Same as the flows list page header; flex-shrink keeps it in this page's column layout.
+    .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        width: 100%;
+        box-sizing: border-box;
+        background-color: var(--color-background-body);
+        border-bottom: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.75rem 3.75rem 1rem 2.5rem;
+            height: 80px;
+            border-bottom: 1px solid var(--color-divider-subtle);
+
+            // A row, unlike the flows header: the binding status sits beside the title.
+            .header-titles {
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+
+                .title {
+                    font-size: var(--text-h1-size);
+                    font-weight: var(--text-h1-weight);
+                    color: var(--color-text-primary);
+                }
+
+                .subtitle-inline {
+                    margin-left: 0.7rem;
+                    font-size: var(--text-body-medium-size);
+                    font-weight: var(--text-body-medium-weight);
+                    color: var(--text-secondary-60);
+                    display: inline-block;
+                    white-space: normal;
+                }
+            }
+
+            .header-actions {
+                display: flex;
+                align-items: center;
+                margin-left: auto;
+                gap: 0.75rem;
+            }
+
+            @media (max-width: 1100px) {
+                .header-actions {
+                    @include header-action-buttons.narrow-actions;
+                }
+            }
+
+            .header-action {
+                @include header-action-buttons.button;
+
+                &--ghost {
+                    @include header-action-buttons.ghost;
+                }
+
+                &--outline {
+                    @include header-action-buttons.outline;
+                }
+
+                &--primary {
+                    @include header-action-buttons.primary;
+                }
+            }
+
+            .title__crumb {
+                color: var(--color-text-secondary);
+                text-decoration: none;
+
+                &:hover,
+                &:focus-visible {
+                    color: var(--color-text-primary);
+                }
+            }
+
+            .title__separator {
+                margin: 0 0.5rem;
+                color: var(--color-text-secondary);
+            }
+
+            .title__status {
+                flex-shrink: 0;
+            }
+        }
+    }
+}
+
+:host {
+    display: block;
+    height: 100%;
+}
+
+.inbox {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+    color: var(--color-text-primary);
+
+    &__sidebar {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-right: 1px solid var(--color-divider-regular);
+    }
+
+    // Laid out like the agents explorer: the first header stays at the top, the lowest expanded section fills
+    // the leftover height and scrolls its own body, and collapsed Bot and Tests rest at the bottom.
+    &__sections {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    &__section {
+        display: flex;
+        flex-direction: column;
+        flex: 0 1 auto;
+        min-height: 0;
+
+        app-section-header {
+            flex-shrink: 0;
+        }
+    }
+
+    // Grows into the leftover height; the floor keeps it usable when the section above has many rows.
+    &__section--fill {
+        flex: 1 1 0;
+        min-height: 40%;
+    }
+
+    &__section--bottom-anchor {
+        flex-shrink: 0;
+        margin-top: auto;
+    }
+
+    &__section-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    // The section body scrolls, so a list grows with its rows instead of scrolling inside it.
+    &__list {
+        height: auto;
+    }
+
+    &__loading {
+        margin: 24px auto;
+    }
+
+    &__more {
+        display: flex;
+        justify-content: center;
+        padding: 8px;
+    }
+
+    &__thread {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+    }
+
+    &__empty,
+    &__placeholder {
+        padding: 24px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-secondary);
+        text-align: center;
+    }
+
+    &__placeholder {
+        margin: auto;
+    }
+}
+
+.conversation {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ks-hover-row);
+    }
+
+    // The one state an operator must act on: it is ordered first by the API and stands out here.
+    &--awaiting {
+        border-left-color: var(--color-ks-status-warning);
+        background-color: color-mix(in srgb, var(--color-ks-status-warning) 8%, transparent);
+    }
+
+    // After awaiting so a selected awaiting row shows the selection and keeps the warning border.
+    &--selected {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    &__top,
+    &__meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    &__id {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__preview {
+        color: var(--color-ks-transparent-text-80);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__meta {
+        color: var(--color-text-secondary);
+    }
+}
+
+// A test conversation, in its inbox row and in the thread header.
+// The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
+// Bot = pending, Awaiting human = waiting, Human = running.
+.test-chip {
+    @include status-chip.chip;
+    @include status-chip.expired;
+    margin-left: 6px;
+}
+
+.mode-badge {
+    @include status-chip.chip;
+    @include status-chip.pending;
+    flex-shrink: 0;
+
+    &--awaiting_human {
+        @include status-chip.waiting;
+    }
+
+    &--human {
+        @include status-chip.running;
+    }
+}
+
+// One compact row: mode pill, title, Test chip, today's usage rings and the operator's actions; the handoff
+// reason, when there is one, on a muted second line.
+.thread-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    padding: 6px 16px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-divider-regular);
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+
+    &__usage {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-left: auto;
+        flex-shrink: 0;
+    }
+
+    &__menu-btn {
+        @include row-more-menu.trigger-button;
+        flex-shrink: 0;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+        }
+    }
+
+    &__reason {
+        color: var(--color-text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .mode-badge:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.thread-menu {
+    @include row-more-menu.panel;
+}
+
+// column-reverse anchors the scroll at the bottom, so new messages stay in view as the stream appends.
+.thread {
+    flex: 1;
+    display: flex;
+    flex-direction: column-reverse;
+    overflow-y: auto;
+    padding: 16px;
+
+    &__messages {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    &__older {
+        align-self: center;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+}
+
+.message {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 70%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    &__author {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+        text-transform: capitalize;
+        color: var(--color-text-secondary);
+    }
+
+    &__content {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    &__actions {
+        margin: 4px 0 0;
+        padding-left: 16px;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-ks-transparent-text-80);
+    }
+
+    &__session {
+        color: var(--accent-color);
+    }
+
+    // The widget's action reply on a user message.
+    &__action {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-ks-transparent-text-80);
+        word-break: break-word;
+    }
+
+    &__time {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    &--user {
+        align-self: flex-start;
+        background-color: var(--color-input-background);
+    }
+
+    &--assistant {
+        align-self: flex-end;
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    &--operator {
+        align-self: flex-end;
+        background-color: color-mix(in srgb, var(--color-ks-status-new) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-ks-status-new) 50%, transparent);
+
+        .message__author {
+            color: var(--color-ks-status-new);
+            text-transform: none;
+        }
+    }
+
+    &--system {
+        align-self: center;
+        max-width: 90%;
+        padding: 4px 8px;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        text-align: center;
+        color: var(--color-text-secondary);
+        border: 1px dashed var(--color-divider-regular);
+    }
+}

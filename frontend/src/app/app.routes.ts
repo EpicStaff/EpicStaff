@@ -15,6 +15,7 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -261,6 +262,38 @@ export const routes: Routes = [
                         loadComponent: () =>
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
+                    {
+                        // Not under `/chat`: nginx sends every `/chat/<anything>` to the chat service.
+                        path: 'chat-bindings',
+                        canActivate: [chatEnabledGuard, permissionGuard],
+                        data: { permission: [ResourceCode.Chats, ActionCode.Read] },
+                        children: [
+                            {
+                                path: '',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-bindings-page/chat-bindings-page.component').then(
+                                        (m) => m.ChatBindingsPageComponent
+                                    ),
+                            },
+                            {
+                                // The inbox across every binding: the workspace without a binding.
+                                path: 'all',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                            {
+                                path: ':bindingId',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                        ],
+                    },
+                    // The page lived here before the bindings list; `/chat` itself still reaches the SPA.
+                    { path: 'chat', redirectTo: 'chat-bindings', pathMatch: 'full' },
                     {
                         path: 'sessions',
                         loadComponent: () =>

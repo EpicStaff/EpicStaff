@@ -2,7 +2,8 @@ const target = process.env.PROXY_TARGET || 'http://localhost';
 
 module.exports = [
   {
-    context: ['/api', '/auditor', '/webhooks', '/static', '/media'],
+    // '/chat/' with the slash: the SPA route '/chat' and the EpicChat route '/chats' stay with the dev server.
+    context: ['/api', '/auditor', '/webhooks', '/static', '/media', '/chat/'],
     target,
     changeOrigin: true,
     secure: false,

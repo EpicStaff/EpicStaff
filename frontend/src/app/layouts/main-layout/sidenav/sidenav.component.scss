@@ -131,6 +131,49 @@
             display: flex;
             justify-content: center;
 
+            .sidenav-badge {
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                min-width: 16px;
+                height: 16px;
+                padding: 0 4px;
+                border-radius: 8px;
+                background-color: var(--color-ks-status-warning);
+                color: var(--color-background-body);
+                font-size: var(--text-caption-size);
+                font-weight: var(--text-caption-weight);
+                line-height: var(--text-caption-line-height);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-sizing: border-box;
+            }
+
+            // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
+            // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
+            .sidenav-badge-link {
+                position: absolute;
+                top: -4px;
+                right: calc(50% - 1.25rem - 6px);
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 24px;
+                height: 24px;
+                text-decoration: none;
+                border-radius: 12px;
+
+                .sidenav-badge {
+                    position: static;
+                }
+
+                &:focus-visible {
+                    outline: 1px solid var(--accent-color);
+                }
+            }
+
             .sidenav-nav-link {
                 display: flex;
                 align-items: center;

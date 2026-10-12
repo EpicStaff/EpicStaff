@@ -1,0 +1,99 @@
+<article class="binding-card">
+    <div class="binding-card__top">
+        <app-chat-binding-status [binding]="binding()" />
+        <button
+            #menuTrigger="cdkOverlayOrigin"
+            cdkOverlayOrigin
+            type="button"
+            class="binding-card__menu-btn"
+            [attr.aria-expanded]="isMenuOpen()"
+            [attr.aria-label]="'Actions for ' + binding().name"
+            matTooltip="Options"
+            matTooltipPosition="above"
+            (click)="toggleMenu()"
+        >
+            <app-svg-icon
+                icon="dots-vertical"
+                size="1rem"
+            />
+        </button>
+        <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="menuTrigger"
+            [cdkConnectedOverlayOpen]="isMenuOpen()"
+            [cdkConnectedOverlayOffsetX]="6"
+            [cdkConnectedOverlayPositions]="[
+                { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top' },
+                { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top' },
+            ]"
+            (overlayOutsideClick)="closeMenu()"
+            (overlayKeydown)="$event.key === 'Escape' && closeMenu()"
+            (detach)="closeMenu()"
+        >
+            <div
+                class="binding-card-menu"
+                cdkTrapFocus
+                [cdkTrapFocusAutoCapture]="true"
+            >
+                <button
+                    *appHasPermission="[ResourceCode.Chats, ActionCode.Update]"
+                    type="button"
+                    class="binding-card-menu__item"
+                    (click)="choose('settings')"
+                >
+                    Edit settings
+                </button>
+                <ng-container *appHasPermission="[ResourceCode.Chats, ActionCode.Update]">
+                    @if (binding().is_active) {
+                        <button
+                            type="button"
+                            class="binding-card-menu__item"
+                            (click)="choose('pause')"
+                        >
+                            Pause
+                        </button>
+                    } @else {
+                        <button
+                            type="button"
+                            class="binding-card-menu__item"
+                            (click)="choose('resume')"
+                        >
+                            Resume
+                        </button>
+                    }
+                </ng-container>
+                <button
+                    type="button"
+                    class="binding-card-menu__item"
+                    (click)="choose('snippet')"
+                >
+                    Copy snippet
+                </button>
+                <button
+                    *appHasPermission="[ResourceCode.Chats, ActionCode.Delete]"
+                    type="button"
+                    class="binding-card-menu__item"
+                    (click)="choose('delete')"
+                >
+                    Delete
+                </button>
+            </div>
+        </ng-template>
+    </div>
+
+    <a
+        class="binding-card__link text-body-medium"
+        [routerLink]="['/chat-bindings', binding().id]"
+        >{{ binding().name }}</a
+    >
+    <div class="binding-card__flow text-body-small">{{ flowName() ?? 'Flow #' + binding().graph_id }}</div>
+    @if (binding().broken_reason; as reason) {
+        <p class="binding-card__reason text-body-small">{{ reason }}</p>
+    }
+
+    <div class="binding-card__footer">
+        @if (waiting(); as count) {
+            <span class="binding-card__waiting text-body-small">{{ count }} waiting for a human</span>
+        }
+    </div>
+</article>
