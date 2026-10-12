@@ -19,6 +19,7 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
+from tables.validators.llm_base_url_validator import validate_llm_base_url
 
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
@@ -106,6 +107,10 @@ class LLMConfigSerializer(SecretReferenceGuardMixin, TagHandlingMixin, serialize
     model = OrgVisiblePrimaryKeyRelatedField(
         queryset=LLMModel.objects.all(), required=False, allow_null=True
     )
+    # SSRF guard: reject only cloud-metadata hosts; LAN base_urls stay allowed.
+    base_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, validators=[validate_llm_base_url]
+    )
     custom_name = serializers.CharField(
         validators=[
             OrgScopedUniqueValidator(
@@ -124,6 +129,10 @@ class LLMConfigSerializer(SecretReferenceGuardMixin, TagHandlingMixin, serialize
 class LLMModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
+    # SSRF guard: reject only cloud-metadata hosts; LAN base_urls stay allowed.
+    base_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, validators=[validate_llm_base_url]
+    )
 
     class Meta:
         model = LLMModel

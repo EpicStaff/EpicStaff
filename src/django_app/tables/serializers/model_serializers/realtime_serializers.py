@@ -27,6 +27,7 @@ from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidation
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_resolver
+from tables.validators.llm_base_url_validator import validate_llm_base_url
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -134,6 +135,10 @@ class OpenAIRealtimeConfigSerializer(
         source="transcription_api_key_secret",
         required=False,
         allow_null=True,
+    )
+    # SSRF guard: reject only cloud-metadata hosts; LAN base_urls stay allowed.
+    base_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, validators=[validate_llm_base_url]
     )
 
     class Meta:

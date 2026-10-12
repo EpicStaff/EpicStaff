@@ -17,11 +17,16 @@ from tables.serializers.model_serializers.tag_serializers import (
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.validators.llm_base_url_validator import validate_llm_base_url
 
 
 class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
+    # SSRF guard: reject only cloud-metadata hosts; LAN base_urls stay allowed.
+    base_url = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, validators=[validate_llm_base_url]
+    )
 
     class Meta:
         model = EmbeddingModel
