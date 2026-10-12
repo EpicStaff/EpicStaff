@@ -1,0 +1,121 @@
+<div class="venv-dialog">
+    <header class="venv-dialog__header">
+        <span class="venv-dialog__title">{{ title() }}</span>
+        <app-svg-icon
+            class="venv-dialog__close-btn"
+            icon="close"
+            size="16px"
+            matTooltip="Close"
+            matTooltipPosition="above"
+            (click)="cancel()"
+        />
+    </header>
+
+    <form
+        class="venv-dialog__form"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+    >
+        @if (errorMessage()) {
+            <div class="venv-dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
+
+        <div>
+            <app-custom-input
+                label="Name"
+                formControlName="name"
+                [required]="true"
+                placeholder="e.g. data-science"
+            />
+            <app-validation-errors [control]="form.controls.name" />
+        </div>
+
+        <div class="venv-dialog__libs">
+            <div class="venv-dialog__libs-header">
+                <span class="venv-dialog__libs-title">Libraries</span>
+            </div>
+
+            @if (libs.length === 0) {
+                <p class="venv-dialog__libs-empty">No libraries pinned yet.</p>
+            }
+
+            <div
+                class="venv-dialog__libs-rows"
+                formArrayName="libs"
+            >
+                @for (row of libs.controls; track row; let index = $index) {
+                    <div
+                        class="venv-dialog__lib-row"
+                        [formGroupName]="index"
+                    >
+                        <div class="venv-dialog__lib-name">
+                            <app-custom-input
+                                label="Library"
+                                formControlName="name"
+                                [required]="true"
+                                placeholder="e.g. requests"
+                            />
+                        </div>
+                        <div class="venv-dialog__lib-operator">
+                            <app-select
+                                label="Operator"
+                                mod="small"
+                                [items]="operatorItems"
+                                formControlName="operator"
+                            />
+                        </div>
+                        <div class="venv-dialog__lib-version">
+                            <app-custom-input
+                                label="Version"
+                                formControlName="version"
+                                placeholder="e.g. 2.31.0"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            class="venv-dialog__lib-remove"
+                            matTooltip="Remove library"
+                            matTooltipPosition="above"
+                            (click)="removeLibrary(index)"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="16px"
+                            />
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <button
+                type="button"
+                class="venv-dialog__add-lib"
+                (click)="addLibrary()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="14px"
+                />
+                Add library
+            </button>
+        </div>
+    </form>
+
+    <div class="venv-dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="cancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary-white"
+            [disabled]="form.invalid || isSubmitting()"
+            (click)="submit()"
+        >
+            {{ isSubmitting() ? 'Saving...' : 'Save' }}
+        </app-button>
+    </div>
+</div>

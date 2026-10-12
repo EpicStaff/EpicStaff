@@ -1,0 +1,31 @@
+.venv-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: var(--text-caption-size);
+    font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.venv-status--processing {
+    color: var(--color-ks-status-processing);
+    background-color: color-mix(in srgb, var(--color-ks-status-processing) 15%, transparent);
+}
+
+.venv-status--completed {
+    color: var(--color-ks-status-new);
+    background-color: color-mix(in srgb, var(--color-ks-status-new) 15%, transparent);
+}
+
+.venv-status--failed {
+    color: var(--color-ks-status-failed);
+    background-color: color-mix(in srgb, var(--color-ks-status-failed) 15%, transparent);
+    cursor: help;
+}
+
+.venv-status--declared {
+    color: var(--color-ks-transparent-text-60);
+    background-color: var(--color-divider-subtle);
+}

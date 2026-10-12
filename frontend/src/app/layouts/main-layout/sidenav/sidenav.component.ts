@@ -210,6 +210,15 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
+                id: 'venvs',
+                routeLink: 'venvs',
+                activePaths: ['/venvs'],
+                icon: 'brand-python',
+                label: 'Virtual Environments',
+                isPermitted: () => this.permissionService.can(ResourceCode.Venvs, ActionCode.Read),
+                showTooltip: false,
+            },
+            {
                 id: 'files',
                 routeLink: () => this.permissionService.resolveStorageTab(),
                 activePaths: ['/storage'],

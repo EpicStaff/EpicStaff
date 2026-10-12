@@ -1,0 +1,57 @@
+<div class="venvs-page">
+    <header class="venvs-page__header">
+        <div class="venvs-page__titles">
+            <h1 class="venvs-page__title">Virtual Environments</h1>
+            <p class="venvs-page__subtitle">
+                Isolated Python environments with pinned libraries, reusable across flows, tools and agents.
+            </p>
+        </div>
+        <app-button
+            *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
+            type="primary"
+            leftIcon="plus"
+            (click)="onCreate()"
+        >
+            Create venv
+        </app-button>
+    </header>
+
+    <div class="venvs-page__toolbar">
+        <app-search
+            class="venvs-page__search"
+            mod="small"
+            placeholder="Search by name..."
+            [(searchTerm)]="searchTerm"
+        />
+    </div>
+
+    <section class="venvs-page__body">
+        @if (isLoading()) {
+            <div class="venvs-page__list">
+                @for (placeholder of [0, 1, 2, 3]; track placeholder) {
+                    <div class="venvs-page__skeleton"></div>
+                }
+            </div>
+        } @else if (filteredVenvs().length === 0) {
+            <div class="venvs-page__empty">
+                @if (searchTerm().trim()) {
+                    <p>No venvs match "{{ searchTerm() }}".</p>
+                } @else {
+                    <p>No venvs found. Create your first venv to get started.</p>
+                }
+            </div>
+        } @else {
+            <div class="venvs-page__list">
+                @for (venv of filteredVenvs(); track venv.id) {
+                    <app-venv-card
+                        [venv]="venv"
+                        [canEdit]="canUpdate()"
+                        [canDelete]="canDelete()"
+                        (editRequested)="onEdit(venv)"
+                        (deleteRequested)="onDelete(venv)"
+                    />
+                }
+            </div>
+        }
+    </section>
+</div>
