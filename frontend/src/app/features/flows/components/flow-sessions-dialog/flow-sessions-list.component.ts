@@ -148,12 +148,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                 nodes: this.extractNodeNames(this.flow?.python_node_list),
             },
             {
-                label: 'LLM Node',
-                icon: 'ti ti-brain',
-                color: '#a78bfa',
-                nodes: this.extractNodeNames(this.flow?.llm_node_list),
-            },
-            {
                 label: 'File Extractor',
                 icon: 'ti ti-file-search',
                 color: '#38bdf8',

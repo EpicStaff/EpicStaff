@@ -10,7 +10,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     EndNode,
@@ -23,10 +22,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.utils.mixins import (
-    NestedPythonCodeMixin,
-    assert_node_ref_in_graph,
-)
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -38,26 +34,6 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
-
-
-class ConditionalEdgeSerializer(
-    AuthorStampingSerializerMixin,
-    ContentHashWritableMixin,
-    NestedPythonCodeMixin,
-    serializers.ModelSerializer,
-):
-    python_code = PythonCodeSerializer()
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta(BaseGraphEntityMixin.Meta):
-        model = ConditionalEdge
-        fields = "__all__"
-
-    def validate(self, attrs):
-        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
-        source_node_id = attrs.get("source_node_id", getattr(self.instance, "source_node_id", None))
-        assert_node_ref_in_graph(source_node_id, graph, "source_node_id")
-        return attrs
 
 
 class StartNodeSerializer(

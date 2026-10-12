@@ -1,5 +1,5 @@
 """Bulk save must reject a real (non-temp) node reference that does not belong
-to the graph being saved: edge endpoints, conditional edge sources and decision
+to the graph being saved: edge endpoints and decision
 table / classification decision table routing (default, error and each condition
 group's next node). A node in another
 organization's graph, a node in a sibling graph of the same organization, a
@@ -21,7 +21,6 @@ from rest_framework import status
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -30,12 +29,6 @@ from tables.models.graph_models import (
 )
 
 from tests.fixtures import *  # noqa: F401,F403
-
-_PYTHON_CODE_DATA = {
-    "code": "def main(): return 42",
-    "entrypoint": "main",
-    "libraries": [],
-}
 
 _EDGE_REF_ERROR = "Edge references node IDs not found in this graph"
 _ROUTING_REF_ERROR = "Decision table routing references node IDs not found in this graph"
@@ -241,46 +234,6 @@ def test_edge_end_node_soft_deleted_rejected(auth_client, graph, python_node, so
     assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{soft_deleted_node.id}]"]
     assert not Edge.objects.filter(graph=graph).exists()
     _assert_save_version_unchanged(graph)
-
-
-@pytest.mark.django_db
-def test_conditional_edge_source_node_in_other_org_graph_rejected(
-    auth_client, graph, other_org_node
-):
-    response = _post_save(
-        auth_client,
-        graph,
-        conditional_edge_list=[
-            {
-                "graph": graph.id,
-                "source_node_id": other_org_node.id,
-                "python_code": _PYTHON_CODE_DATA,
-            }
-        ],
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{other_org_node.id}]"]
-    assert not ConditionalEdge.objects.filter(graph=graph).exists()
-    _assert_save_version_unchanged(graph)
-
-
-@pytest.mark.django_db
-def test_conditional_edge_source_node_in_same_graph_saved(auth_client, graph, start_node):
-    response = _post_save(
-        auth_client,
-        graph,
-        conditional_edge_list=[
-            {
-                "graph": graph.id,
-                "source_node_id": start_node.id,
-                "python_code": _PYTHON_CODE_DATA,
-            }
-        ],
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert ConditionalEdge.objects.filter(graph=graph, source_node_id=start_node.id).exists()
 
 
 @pytest.mark.django_db

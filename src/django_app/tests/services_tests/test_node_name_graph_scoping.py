@@ -10,18 +10,14 @@ import pytest
 
 from tables.models import Edge, StartNode
 from tables.models.graph_models import (
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Graph,
     PythonNode,
 )
 from tables.models.python_models import PythonCode
-from tables.services.secrets import secret_service
-from tables.services.secrets.usage_service import secret_usage_service
 from tables.services.session_manager_service import SessionManagerService
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
-from rbac.access.effective import EffectivePermissions
 from utils.graph_utils import NodeNameResolver, resolve_node_names
 
 FOREIGN_NAME = "foreign-org-private-name"
@@ -78,11 +74,6 @@ def test_session_graph_data_does_not_expose_foreign_node_names(graph, local_node
         order=0,
         next_node_id=foreign_node.id,
     )
-    ConditionalEdge.objects.create(
-        graph=graph,
-        source_node_id=foreign_node.id,
-        python_code=PythonCode.objects.create(code="def main(): return True"),
-    )
 
     graph_data = SessionManagerService()._build_graph_data(graph, None, None)
 
@@ -92,28 +83,6 @@ def test_session_graph_data_does_not_expose_foreign_node_names(graph, local_node
     assert decision_table_data.default_next_node == unknown
     assert decision_table_data.conditional_group_list[0].next_node == unknown
     assert unknown in {edge.end_key for edge in graph_data.edge_list}
-    assert [edge.source for edge in graph_data.conditional_edge_list] == [unknown]
-
-
-@pytest.mark.django_db
-def test_secret_usage_does_not_expose_foreign_conditional_edge_source(
-    default_org, graph, local_node, foreign_node
-):
-    secret = secret_service.create(text="sk-scope", org=default_org, name="SCOPE_KEY")
-    for source in (local_node, foreign_node):
-        edge_code = PythonCode.objects.create(
-            code='def main(**kwargs):\n    return get_secret("SCOPE_KEY")\n'
-        )
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(graph=graph, source_node_id=source.id, python_code=edge_code)
-
-    summary = secret_usage_service.summary(
-        secret=secret,
-        effective=EffectivePermissions(is_superadmin=True, role=None, by_resource={}),
-    )
-
-    assert "local" in str(summary)
-    assert FOREIGN_NAME not in str(summary)
 
 
 @pytest.mark.django_db

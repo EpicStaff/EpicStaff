@@ -10,7 +10,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     CrewNode,
     DecisionTableNode,
     Edge,
@@ -111,7 +110,7 @@ def test_graph_authored_models_reach_org_through_graph():
         assert model.author_org_lookup == "graph__org_id", model.__name__
 
 
-@pytest.mark.parametrize("model", [Edge, ConditionalEdge, CrewNode])
+@pytest.mark.parametrize("model", [Edge, CrewNode])
 def test_edges_and_crew_node_are_not_authored(model):
     assert not issubclass(model, AuthorModel)
 
