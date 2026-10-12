@@ -3,10 +3,12 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. psycopg2 publishes no Linux wheel, so
-# it is the one audited exception in this repo, carved out via
-# UV_NO_BINARY_PACKAGE below -- a service that gains another dependency with no
-# Linux wheel will fail the build rather than silently regain source execution.
+# never executes arbitrary Python code. psycopg2 publishes no Linux wheel, and
+# foundation is a first-party local path dependency with no wheel of its own,
+# so they are the two audited exceptions here, carved out via `no-binary-package`
+# in django_app's pyproject.toml [tool.uv] -- a service that gains another
+# dependency with no Linux wheel will fail the build rather than silently regain
+# source execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -14,7 +16,6 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 RUN pip install --no-cache-dir uv==0.11.21
 
 ENV UV_NO_BUILD=1 \
-    UV_NO_BINARY_PACKAGE=psycopg2 \
     UV_PROJECT_ENVIRONMENT=/app/src/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -31,8 +32,12 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only dependency descriptors first (better layer caching)
+# Copy only dependency descriptors first (better layer caching).
+# foundation is a local path dependency ("../foundation" from the flattened
+# pyproject at /app/src -> /app/foundation), so its source must exist before
+# `uv sync` runs -- copied here, ahead of the sync.
 COPY ./django_app/pyproject.toml ./django_app/uv.lock ./
+COPY ./foundation /app/foundation
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is
