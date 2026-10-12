@@ -9,9 +9,7 @@ export const DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
-            'llm-out-left',
             'file-extractor-in',
             'subgraph-in',
             'audio-to-text-in',

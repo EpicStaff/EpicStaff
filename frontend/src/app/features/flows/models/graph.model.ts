@@ -3,7 +3,6 @@ import { AuthorshipFields, UserSummary } from '@shared/models';
 import { AgentNode } from '../../../visual-programming/core/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../visual-programming/core/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../visual-programming/core/models/classification-decision-table-node.model';
-import { ConditionalEdge } from '../../../visual-programming/core/models/conditional-edge.model';
 import { GetDecisionTableNodeRequest } from '../../../visual-programming/core/models/decision-table-node.model';
 import { Edge } from '../../../visual-programming/core/models/edge.model';
 import { EndNode } from '../../../visual-programming/core/models/end-node.model';
@@ -12,7 +11,6 @@ import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 import { GraphNote } from '../../../visual-programming/core/models/graph-note.model';
 import { GetKeyValueNodeRequest } from '../../../visual-programming/core/models/key-value-node.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../visual-programming/core/models/knowledge-retriever-node.model';
-import { GetLLMNodeRequest } from '../../../visual-programming/core/models/llm-node.model';
 import { PythonNode } from '../../../visual-programming/core/models/python-node.model';
 import {
     CreateScheduleTriggerNodeRequest,
@@ -65,8 +63,6 @@ export interface GraphDto extends GetGraphLightRequest {
     task_node_list: TaskNode[];
     agent_node_list?: AgentNode[];
     edge_list: Edge[];
-    conditional_edge_list: ConditionalEdge[];
-    llm_node_list: GetLLMNodeRequest[];
     file_extractor_node_list: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list: GetTelegramTriggerNodeRequest[];
@@ -91,8 +87,6 @@ export interface CreateGraphDtoRequest {
     start_node_list?: StartNode[];
     python_node_list?: PythonNode[];
     edge_list?: Edge[];
-    conditional_edge_list?: ConditionalEdge[];
-    llm_node_list?: GetLLMNodeRequest[];
     file_extractor_node_list?: GetFileExtractorNodeRequest[];
     webhook_trigger_node_list?: GetWebhookTriggerNodeRequest[];
     telegram_trigger_node_list?: GetTelegramTriggerNodeRequest[];
