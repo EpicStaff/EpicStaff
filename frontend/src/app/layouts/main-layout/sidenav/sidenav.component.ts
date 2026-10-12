@@ -9,6 +9,7 @@ import {
     DestroyRef,
     ElementRef,
     inject,
+    input,
     signal,
     ViewChild,
 } from '@angular/core';
@@ -29,7 +30,11 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
+import { isMainSidenavExpanded } from '../main-sidenav-width';
 import { TooltipComponent } from './tooltip/tooltip.component';
+
+/** Gap between the sidebar edge and the floating (undocked) EpicChat window. */
+const FLOATING_EPIC_CHAT_GAP_PX = 8;
 
 interface NavItem {
     id: string;
@@ -67,6 +72,12 @@ interface NavItem {
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class LeftSidebarComponent implements AfterViewInit {
+    /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
+    public readonly width = input.required<number>();
+
+    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
+
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
@@ -77,6 +88,8 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
     protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
+    /** Shown next to the logo when expanded and as the logo tooltip when collapsed. */
+    protected readonly productName = 'EpicStaff.ai';
     public showLogoTooltip = false;
     public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
@@ -159,6 +172,23 @@ export class LeftSidebarComponent implements AfterViewInit {
         if (!user) return null;
         const orgId = this.activeOrgService.activeOrgId();
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
+    });
+
+    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
+    protected readonly orgSwitcherLabel = computed(() =>
+        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
+    );
+
+    /** Same fallback as the user menu header: the display name, or the email when there is none. */
+    protected readonly accountLabel = computed(() => {
+        const user = this.user();
+        return user ? user.display_name || user.email : '';
+    });
+
+    /** The docked chat starts at the sidebar edge; the floating one opens just beside it. */
+    protected readonly epicChatLeft = computed(() => {
+        const gap = this.epicChatService.isDocked() ? 0 : FLOATING_EPIC_CHAT_GAP_PX;
+        return `${this.width() + gap}px`;
     });
 
     @ViewChild('epicChat', { static: false })

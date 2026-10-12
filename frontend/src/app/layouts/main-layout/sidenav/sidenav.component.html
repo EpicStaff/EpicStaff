@@ -1,4 +1,7 @@
-<nav class="sidenav">
+<nav
+    class="sidenav"
+    [class.expanded]="isExpanded()"
+>
     <div class="logo-container">
         <a
             class="app-logo"
@@ -6,26 +9,32 @@
             (mouseenter)="showLogoTooltip = true"
             (mouseleave)="showLogoTooltip = false"
         >
-            <img
-                src="assets/icons/llm-providers-logos/logo.svg"
-                alt="AI"
-                class="logo-svg static-logo"
-            />
+            <span class="logo-mark">
+                <!-- The visible product name names the logo when expanded; otherwise the image does. -->
+                <img
+                    src="assets/icons/llm-providers-logos/logo.svg"
+                    [alt]="isExpanded() ? '' : productName"
+                    class="logo-svg static-logo"
+                />
 
-            <video
-                class="logo-svg gif-logo"
-                src="assets/gifs/logo.webm"
-                autoplay
-                muted
-                loop
-                playsinline
-                disablepictureinpicture
-                preload="auto"
-                aria-hidden="true"
-            ></video>
+                <video
+                    class="logo-svg gif-logo"
+                    src="assets/gifs/logo.webm"
+                    autoplay
+                    muted
+                    loop
+                    playsinline
+                    disablepictureinpicture
+                    preload="auto"
+                    aria-hidden="true"
+                ></video>
+            </span>
+            @if (isExpanded()) {
+                <span class="app-logo-name text-h4">{{ productName }}</span>
+            }
             <app-tooltip
-                text="EpicStaff.ai"
-                [visible]="showLogoTooltip"
+                [text]="productName"
+                [visible]="showLogoTooltip && !isExpanded()"
             ></app-tooltip>
         </a>
     </div>
@@ -47,19 +56,28 @@
                             [class.active]="isWorkspaceRoute()"
                             (click)="toggleOrgMenu($event)"
                         >
-                            @if (isWorkspaceRoute()) {
-                                <app-svg-icon
-                                    size="16px"
-                                    icon="workspace"
-                                    class="workspace-icon"
-                                />
-                            } @else {
-                                <app-org-avatar [name]="activeMembership.organization.name" />
+                            <span class="sidenav-row-leading">
+                                @if (isWorkspaceRoute()) {
+                                    <app-svg-icon
+                                        size="16px"
+                                        icon="workspace"
+                                        class="workspace-icon"
+                                    />
+                                } @else {
+                                    <app-org-avatar [name]="activeMembership.organization.name" />
+                                }
+                            </span>
+                            @if (isExpanded()) {
+                                <span
+                                    class="sidenav-row-label text-body-medium"
+                                    [attr.title]="orgSwitcherLabel()"
+                                    >{{ orgSwitcherLabel() }}</span
+                                >
                             }
                         </div>
                         <app-tooltip
                             text="Organizations"
-                            [visible]="showOrgTooltip && !isOrgMenuOpen()"
+                            [visible]="showOrgTooltip && !isOrgMenuOpen() && !isExpanded()"
                         ></app-tooltip>
                         @if (isOrgMenuOpen()) {
                             <app-organizations-menu
@@ -86,6 +104,7 @@
                             [class.active]="isItemActive(item)"
                             (click)="item.action ? handleItemClick(item, $event) : null"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
+                            [attr.aria-label]="isExpanded() ? null : item.label"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -95,10 +114,13 @@
                                     />
                                 }
                             </div>
+                            @if (isExpanded()) {
+                                <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                            }
                         </a>
                         <app-tooltip
                             [text]="item.label"
-                            [visible]="item.showTooltip"
+                            [visible]="item.showTooltip && !isExpanded()"
                         ></app-tooltip>
                     </div>
                 </li>
@@ -127,7 +149,7 @@
                             [canReadFlows]="canReadFlows()"
                             [syncAgentsFromApi]="false"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-                            [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
+                            [attr.chat-left]="epicChatLeft()"
                             [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
                             [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
                             [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
@@ -158,6 +180,7 @@
                             [class.active]="isItemActive(item)"
                             (click)="handleItemClick(item, $event)"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
+                            [attr.aria-label]="isExpanded() ? null : item.label"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -167,10 +190,13 @@
                                     />
                                 }
                             </div>
+                            @if (isExpanded()) {
+                                <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                            }
                         </a>
                         <app-tooltip
                             [text]="item.label"
-                            [visible]="item.showTooltip"
+                            [visible]="item.showTooltip && !isExpanded()"
                             [class]="item.customClass || ''"
                         ></app-tooltip>
                     </div>
@@ -196,10 +222,17 @@
                             [name]="user.display_name || user.email"
                             [avatarUrl]="user.avatar_url"
                         />
+                        @if (isExpanded()) {
+                            <span
+                                class="sidenav-row-label text-body-medium"
+                                [attr.title]="accountLabel()"
+                                >{{ accountLabel() }}</span
+                            >
+                        }
                     </div>
                     <app-tooltip
                         text="Account"
-                        [visible]="showAccountTooltip && !isUserMenuOpen()"
+                        [visible]="showAccountTooltip && !isUserMenuOpen() && !isExpanded()"
                     ></app-tooltip>
                     @if (isUserMenuOpen()) {
                         <app-user-menu
@@ -209,7 +242,7 @@
                     }
                     <app-tooltip
                         text="Profile"
-                        [visible]="showProfileTooltip && !isUserMenuOpen()"
+                        [visible]="showProfileTooltip && !isUserMenuOpen() && !isExpanded()"
                     ></app-tooltip>
                 </div>
             </li>

@@ -1,6 +1,11 @@
-import { Directive, ElementRef, inject, input, NgZone, OnDestroy, OnInit, Renderer2 } from '@angular/core';
+import { computed, Directive, ElementRef, inject, input, NgZone, OnDestroy, OnInit, Renderer2 } from '@angular/core';
 
-import { SidebarWidthService } from '../services/sidebar-width.service';
+import { SidebarCollapseOptions, SidebarWidthOptions, SidebarWidthService } from '../services/sidebar-width.service';
+
+/** Width change per ArrowLeft / ArrowRight press. */
+export const SIDEBAR_KEYBOARD_STEP_PX = 16;
+/** Width change per Shift + ArrowLeft / ArrowRight press. */
+export const SIDEBAR_KEYBOARD_LARGE_STEP_PX = 64;
 
 @Directive({
     selector: '[appResizableSidebar]',
@@ -8,7 +13,11 @@ import { SidebarWidthService } from '../services/sidebar-width.service';
         role: 'separator',
         'aria-orientation': 'vertical',
         '[attr.aria-label]': 'sidebarAriaLabel()',
+        '[attr.aria-valuenow]': 'currentWidth()',
+        '[attr.aria-valuemin]': 'smallestWidth()',
+        '[attr.aria-valuemax]': 'sidebarMaxWidth()',
         tabindex: '0',
+        '(keydown)': 'onKeydown($event)',
     },
 })
 export class ResizableSidebarDirective implements OnInit, OnDestroy {
@@ -16,7 +25,20 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
     sidebarTarget = input.required<HTMLElement>();
     sidebarMinWidth = input(220);
     sidebarMaxWidth = input(600);
+    /** When set, dragging below the collapse threshold snaps the sidebar to its collapsed width. */
+    sidebarCollapse = input<SidebarCollapseOptions | null>(null);
     sidebarAriaLabel = input('Resize sidebar');
+
+    protected readonly currentWidth = computed(() =>
+        this.sidebarWidthService.getWidth(this.storageKey(), this.widthOptions())()
+    );
+    /** The narrowest reachable width: the collapsed width when the sidebar can collapse. */
+    protected readonly smallestWidth = computed(() => this.sidebarCollapse()?.collapsedWidth ?? this.sidebarMinWidth());
+    private readonly widthOptions = computed<SidebarWidthOptions>(() => ({
+        minWidth: this.sidebarMinWidth(),
+        maxWidth: this.sidebarMaxWidth(),
+        collapse: this.sidebarCollapse(),
+    }));
 
     private isResizing = false;
     private startX = 0;
@@ -39,6 +61,61 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
                 this.onResizeStart(event)
             );
         });
+    }
+
+    ngOnDestroy(): void {
+        if (this.frameId !== null) {
+            cancelAnimationFrame(this.frameId);
+        }
+        if (this.isResizing) {
+            this.isResizing = false;
+            this.releasePointerCapture();
+            this.resetBodyStyles();
+        }
+        this.unlistenPointerMove?.();
+        this.unlistenPointerUp?.();
+        this.unlistenPointerCancel?.();
+    }
+
+    /** Window-splitter keyboard support: arrows step, Home/End jump to the ends, Enter toggles collapse. */
+    protected onKeydown(event: KeyboardEvent): void {
+        const targetWidth = this.keyboardTargetWidth(event);
+        if (targetWidth === null) {
+            return;
+        }
+        event.preventDefault();
+        this.sidebarWidthService.setWidth(this.storageKey(), targetWidth, this.widthOptions());
+        this.sidebarWidthService.commitWidth(this.storageKey());
+    }
+
+    private keyboardTargetWidth(event: KeyboardEvent): number | null {
+        const width = this.currentWidth();
+        const minWidth = this.sidebarMinWidth();
+        const collapse = this.sidebarCollapse();
+        const isCollapsed = collapse !== null && width <= collapse.collapsedWidth;
+        const step = event.shiftKey ? SIDEBAR_KEYBOARD_LARGE_STEP_PX : SIDEBAR_KEYBOARD_STEP_PX;
+
+        switch (event.key) {
+            case 'ArrowRight':
+                return isCollapsed ? minWidth : width + step;
+            case 'ArrowLeft':
+                // Stop at the minimum width first; only the next press collapses, so no step skips it.
+                if (collapse !== null && width <= minWidth) {
+                    return collapse.collapsedWidth;
+                }
+                return Math.max(minWidth, width - step);
+            case 'Home':
+                return this.smallestWidth();
+            case 'End':
+                return this.sidebarMaxWidth();
+            case 'Enter':
+                if (collapse === null) {
+                    return null;
+                }
+                return isCollapsed ? minWidth : collapse.collapsedWidth;
+            default:
+                return null;
+        }
     }
 
     private onResizeStart(event: PointerEvent): void {
@@ -71,12 +148,7 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
         this.frameId = requestAnimationFrame(() => {
             this.frameId = null;
             this.ngZone.run(() => {
-                this.sidebarWidthService.setWidth(
-                    this.storageKey(),
-                    this.pendingWidth,
-                    this.sidebarMinWidth(),
-                    this.sidebarMaxWidth()
-                );
+                this.sidebarWidthService.setWidth(this.storageKey(), this.pendingWidth, this.widthOptions());
             });
         });
     }
@@ -110,19 +182,5 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
 
     private get document(): Document {
         return this.el.nativeElement.ownerDocument;
-    }
-
-    ngOnDestroy(): void {
-        if (this.frameId !== null) {
-            cancelAnimationFrame(this.frameId);
-        }
-        if (this.isResizing) {
-            this.isResizing = false;
-            this.releasePointerCapture();
-            this.resetBodyStyles();
-        }
-        this.unlistenPointerMove?.();
-        this.unlistenPointerUp?.();
-        this.unlistenPointerCancel?.();
     }
 }

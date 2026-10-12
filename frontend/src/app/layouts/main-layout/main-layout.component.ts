@@ -1,10 +1,13 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 import { filter } from 'rxjs/operators';
 
 import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
+import { MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS } from './main-sidenav-width';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
 
 const TABBED_ROUTES: Record<string, string[]> = {
@@ -15,7 +18,7 @@ const TABBED_ROUTES: Record<string, string[]> = {
 
 @Component({
     selector: 'app-main-layout',
-    imports: [LeftSidebarComponent, RouterOutlet],
+    imports: [LeftSidebarComponent, RouterOutlet, ResizableSidebarDirective],
     styles: [
         `
             :host {
@@ -26,8 +29,9 @@ const TABBED_ROUTES: Record<string, string[]> = {
                 max-height: 100vh;
             }
 
+            /* Width follows the pointer while dragging, so it is never animated. */
             .sidebar-wrapper {
-                width: 3.7rem;
+                position: relative;
                 flex-shrink: 0;
             }
 
@@ -59,8 +63,21 @@ const TABBED_ROUTES: Record<string, string[]> = {
     ],
     changeDetection: ChangeDetectionStrategy.Eager,
     template: `
-        <div class="sidebar-wrapper">
-            <app-left-sidebar></app-left-sidebar>
+        <div
+            #sidebarWrapper
+            class="sidebar-wrapper"
+            [style.width.px]="sidenavWidth()"
+        >
+            <app-left-sidebar [width]="sidenavWidth()"></app-left-sidebar>
+            <div
+                class="resizable-sidebar-handle"
+                [appResizableSidebar]="sidenavWidthKey"
+                [sidebarTarget]="sidebarWrapper"
+                [sidebarMinWidth]="sidenavWidthOptions.minWidth"
+                [sidebarMaxWidth]="sidenavWidthOptions.maxWidth"
+                [sidebarCollapse]="sidenavWidthOptions.collapse"
+                sidebarAriaLabel="Resize navigation sidebar"
+            ></div>
         </div>
 
         @if (epicChatService.isDocked() && epicChatService.isChatOpen()) {
@@ -81,6 +98,15 @@ const TABBED_ROUTES: Record<string, string[]> = {
     `,
 })
 export class MainLayoutComponent implements OnInit {
+    /** Single source of truth for the sidebar state: collapsed and expanded are derived from it. */
+    protected readonly sidenavWidth = inject(SidebarWidthService).getWidth(
+        MAIN_SIDENAV_WIDTH_KEY,
+        MAIN_SIDENAV_WIDTH_OPTIONS
+    );
+
+    protected readonly sidenavWidthKey = MAIN_SIDENAV_WIDTH_KEY;
+    protected readonly sidenavWidthOptions = MAIN_SIDENAV_WIDTH_OPTIONS;
+
     private isDockResizing = false;
     private dockResizeStartX = 0;
     private dockResizeStartWidth = 0;

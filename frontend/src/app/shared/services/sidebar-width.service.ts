@@ -5,24 +5,36 @@ const DEFAULT_WIDTH = 360;
 const DEFAULT_MIN_WIDTH = 220;
 const DEFAULT_MAX_WIDTH = 600;
 
+/** Lets a sidebar collapse to a fixed narrow width instead of stopping at its minimum width. */
+export interface SidebarCollapseOptions {
+    /** Width of the collapsed sidebar. */
+    collapsedWidth: number;
+    /** A requested width below this collapses the sidebar; at or above it the sidebar is at least `minWidth`. */
+    collapseThreshold: number;
+}
+
+export interface SidebarWidthOptions {
+    defaultWidth?: number;
+    minWidth?: number;
+    maxWidth?: number;
+    /** Without it the width is only clamped to `minWidth`..`maxWidth`. */
+    collapse?: SidebarCollapseOptions | null;
+}
+
 @Injectable({
     providedIn: 'root',
 })
 export class SidebarWidthService {
     private readonly widthSignals = new Map<string, WritableSignal<number>>();
 
-    public getWidth(
-        key: string,
-        defaultPx = DEFAULT_WIDTH,
-        min = DEFAULT_MIN_WIDTH,
-        max = DEFAULT_MAX_WIDTH
-    ): Signal<number> {
-        return this.getOrCreateSignal(key, defaultPx, min, max).asReadonly();
+    public getWidth(key: string, options: SidebarWidthOptions = {}): Signal<number> {
+        return this.getOrCreateSignal(key, options).asReadonly();
     }
 
-    public setWidth(key: string, px: number, min: number, max: number): void {
-        const clamped = this.clamp(px, min, max);
-        this.getOrCreateSignal(key, clamped, min, max).set(clamped);
+    /** Sets the width, snapped to the allowed widths: the collapsed width or a width within the bounds. */
+    public setWidth(key: string, width: number, options: SidebarWidthOptions = {}): void {
+        const normalizedWidth = this.normalizeWidth(width, options);
+        this.getOrCreateSignal(key, options).set(normalizedWidth);
     }
 
     public commitWidth(key: string): void {
@@ -37,30 +49,37 @@ export class SidebarWidthService {
         }
     }
 
-    private getOrCreateSignal(key: string, defaultPx: number, min: number, max: number): WritableSignal<number> {
+    private getOrCreateSignal(key: string, options: SidebarWidthOptions): WritableSignal<number> {
         let existing = this.widthSignals.get(key);
         if (!existing) {
-            existing = signal(this.readStoredWidth(key, defaultPx, min, max));
+            existing = signal(this.readStoredWidth(key, options));
             this.widthSignals.set(key, existing);
         }
         return existing;
     }
 
-    private readStoredWidth(key: string, defaultPx: number, min: number, max: number): number {
+    private readStoredWidth(key: string, options: SidebarWidthOptions): number {
+        const defaultWidth = options.defaultWidth ?? DEFAULT_WIDTH;
         let raw: string | null = null;
         try {
             raw = localStorage.getItem(STORAGE_PREFIX + key);
         } catch {
-            return defaultPx;
+            return defaultWidth;
         }
         if (raw == null) {
-            return defaultPx;
+            return defaultWidth;
         }
         const parsed = Number(raw);
-        return Number.isFinite(parsed) ? this.clamp(parsed, min, max) : defaultPx;
+        return Number.isFinite(parsed) ? this.normalizeWidth(parsed, options) : defaultWidth;
     }
 
-    private clamp(px: number, min: number, max: number): number {
-        return Math.min(max, Math.max(min, Math.round(px)));
+    private normalizeWidth(width: number, options: SidebarWidthOptions): number {
+        const roundedWidth = Math.round(width);
+        if (options.collapse && roundedWidth < options.collapse.collapseThreshold) {
+            return options.collapse.collapsedWidth;
+        }
+        const minWidth = options.minWidth ?? DEFAULT_MIN_WIDTH;
+        const maxWidth = options.maxWidth ?? DEFAULT_MAX_WIDTH;
+        return Math.min(maxWidth, Math.max(minWidth, roundedWidth));
     }
 }

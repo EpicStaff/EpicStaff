@@ -1,3 +1,12 @@
+// Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar; expanded, it stretches
+// but keeps the same left edge ($row-inset) and inner padding, so icons stay put when the sidebar expands.
+$row-size: 2.5rem;
+$row-inset: 0.625rem; // (60px collapsed sidebar - 40px row) / 2
+$nav-icon-size: 1.4rem;
+$nav-icon-padding: ($row-size - $nav-icon-size) * 0.5;
+$avatar-size: 1.5rem; // app-org-avatar and app-user-avatar are 24px
+$avatar-padding: ($row-size - $avatar-size) * 0.5;
+
 :host {
     display: block;
     height: 100%;
@@ -34,6 +43,26 @@
         margin: 0 auto;
         text-decoration: none;
         background-color: var(--color-sidenav-background);
+
+        // Fixed box: the hover swap to the smaller, scaled video changes neither the logo's place nor the name's.
+        .logo-mark {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: $row-size;
+            height: $row-size;
+        }
+
+        // Margin rather than a flex gap, so the zero-width tooltip anchor adds no space when collapsed.
+        .app-logo-name {
+            min-width: 0;
+            margin-left: var(--space-sm);
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            color: var(--color-text-primary);
+        }
 
         .logo-svg {
             width: 2.5rem;
@@ -99,8 +128,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 2.5rem;
-            height: 2.5rem;
+            gap: var(--space-sm);
+            width: $row-size;
+            height: $row-size;
+            padding: 0 $avatar-padding;
             border-radius: 0.5rem;
             cursor: pointer;
             transition: background-color 0.2s ease-out;
@@ -112,6 +143,9 @@
             &:hover {
                 background-color: var(--white-alpha-5);
             }
+            &:hover .sidenav-row-label {
+                color: var(--gray-200);
+            }
 
             &.opened {
                 background-color: var(--graphite-750);
@@ -119,6 +153,9 @@
 
             &.active {
                 background-color: var(--purple-alpha-15);
+            }
+            &.active .sidenav-row-label {
+                color: var(--accent-color);
             }
         }
     }
@@ -135,13 +172,16 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                gap: var(--space-sm);
                 text-decoration: none;
                 color: var(--white);
                 cursor: pointer;
-                width: 2.5rem;
-                height: 2.5rem;
+                width: $row-size;
+                height: $row-size;
+                padding: 0 $nav-icon-padding;
                 border-radius: 0.5rem;
-                transition: all 0.2s ease-out;
+                // Only colours animate: the row geometry changes with the sidebar width and must follow the pointer.
+                transition: background-color 0.2s ease-out;
                 margin: 0 auto;
                 position: relative;
 
@@ -156,24 +196,47 @@
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 1.4rem;
-                    height: 1.4rem;
+                    flex-shrink: 0;
+                    width: $nav-icon-size;
+                    height: $nav-icon-size;
                     color: var(--gray-400);
                     transition: color 0.2s ease-in-out;
                 }
-                &:hover .sidenav-link-icon {
+                &:hover .sidenav-link-icon,
+                &:hover .sidenav-row-label {
                     color: var(--gray-200);
                 }
-                &.active .sidenav-link-icon {
+                &.active .sidenav-link-icon,
+                &.active .sidenav-row-label {
                     color: var(--accent-color);
                 }
 
                 &.epic-chat-slot {
                     overflow: visible;
+                    padding: 0;
                 }
             }
         }
     }
+}
+
+.sidenav-row-leading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: $avatar-size;
+    height: $avatar-size;
+}
+
+// Same colours as the row icons, so a label always matches its icon's hover/active state.
+.sidenav-row-label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--gray-400);
+    transition: color 0.2s ease-in-out;
 }
 
 .user-avatar-wrapper {
@@ -186,8 +249,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    gap: var(--space-sm);
+    width: $row-size;
+    height: $row-size;
+    padding: 0 $avatar-padding;
     border-radius: 0.5rem;
     margin: 0 auto;
     cursor: pointer;
@@ -195,6 +260,9 @@
 
     &:hover {
         background-color: var(--white-alpha-5);
+    }
+    &:hover .sidenav-row-label {
+        color: var(--gray-200);
     }
 
     &.opened {
@@ -204,4 +272,36 @@
 
 .epic-chat-host {
     display: contents;
+}
+
+// Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.
+// The org and user menus are positioned against their full-width wrappers, so they open beside the sidebar edge.
+.sidenav.expanded {
+    .logo-container .app-logo {
+        justify-content: flex-start;
+        padding-inline: $row-inset;
+    }
+
+    .org-menu-container .org-menu-wrapper {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .org-menu-container .org-menu-btn,
+    .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link,
+    .user-avatar-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+        margin: 0 $row-inset;
+        justify-content: flex-start;
+    }
+
+    // The EpicChat widget renders its own launcher button: keep it icon-only, aligned with the row icons.
+    .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link.epic-chat-slot {
+        flex: 0 0 auto;
+        width: $row-size;
+        margin: 0 auto 0 $row-inset;
+        justify-content: center;
+    }
 }
