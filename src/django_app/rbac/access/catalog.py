@@ -170,6 +170,14 @@ RESOURCE_TYPE_METADATA = [
         "applicable_actions": ["create", "read", "update", "delete"],
         "platform_actions": [],
     },
+    {
+        "code": ResourceType.VENVS.value,
+        "label": "Venvs",
+        "group": "workspace",
+        "description": "Python virtual environments that back code nodes and python tools",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
 ]
 
 
