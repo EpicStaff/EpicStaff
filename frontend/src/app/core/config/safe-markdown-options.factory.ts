@@ -40,7 +40,15 @@ export function safeMarkdownOptionsFactory(): MarkedOptions {
     // Raw HTML tokens (e.g. <img>, <video>) bypass the image/link overrides above.
     // Angular's DomSanitizer allows <img src="https://..."> through, so we must escape
     // all raw HTML to prevent no-click data exfiltration.
-    renderer.html = ({ text }: { text: string }) => escapeHtml(text);
+    // Allow <br>, <hr>, and HTML comments through — they have no src/href and are
+    // harmless. LLMs frequently emit <br> inside table cells.
+    renderer.html = ({ text }: { text: string }) => {
+        const trimmed = text.trim();
+        if (/^<br\s*\/?>$/i.test(trimmed)) return '<br>';
+        if (/^<hr\s*\/?>$/i.test(trimmed)) return '<hr>';
+        if (/^<!--[\s\S]*?-->$/.test(trimmed)) return '';
+        return escapeHtml(text);
+    };
 
     return { renderer, gfm: true };
 }

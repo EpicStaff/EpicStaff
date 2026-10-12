@@ -67,6 +67,37 @@ describe('safeMarkdownOptionsFactory', () => {
         });
     });
 
+    describe('safe HTML passthrough', () => {
+        it('should pass <br> through in table cells', () => {
+            const result = renderMarkdown('| a<br>b |\n|---|\n| c |');
+            expect(result).toContain('<br>');
+            expect(result).not.toContain('&lt;br');
+        });
+
+        it('should pass <br/> and <br /> through', () => {
+            const result = renderMarkdown('hello<br/>world');
+            expect(result).toContain('<br>');
+            expect(result).not.toContain('&lt;br');
+        });
+
+        it('should pass <hr> through', () => {
+            const result = renderMarkdown('above\n\n<hr>\n\nbelow');
+            expect(result).toContain('<hr>');
+            expect(result).not.toContain('&lt;hr');
+        });
+
+        it('should strip HTML comments', () => {
+            const result = renderMarkdown('visible <!-- hidden --> text');
+            expect(result).not.toContain('<!--');
+            expect(result).not.toContain('hidden');
+        });
+
+        it('should still escape <br> with attributes', () => {
+            const result = renderMarkdown('<br onclick="alert(1)">');
+            expect(result).toContain('&lt;br');
+        });
+    });
+
     describe('nested image inside link', () => {
         it('should not produce <img> for image nested inside a link', () => {
             const result = renderMarkdown('[![alt](https://evil.com)](https://ok.com)');
