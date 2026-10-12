@@ -488,6 +488,8 @@ services:
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
       AUDITOR_HOST: ${AUDITOR_HOST:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/certs:/etc/nginx/certs:ro

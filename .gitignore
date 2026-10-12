@@ -263,6 +263,9 @@ src/django_app/staticfiles/*
 #knowledge
 src/knowledge/graph_data/
 
+# chat-service checkout used in drop-in mode (its own repository)
+src/chat
+
 # Knowledge migration backup
 **/knowledge_migration_backup/
 *.pem

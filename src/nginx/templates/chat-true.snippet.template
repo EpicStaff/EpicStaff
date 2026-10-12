@@ -1,0 +1,47 @@
+# CHAT_ENABLED=true. The chat service is a separate project (chat-service 1.x) that may run
+# in this compose project or elsewhere, so it is proxied through a variable (resolved per
+# request, like /auditor/) rather than a static upstream that would stop nginx when absent.
+# The EpicStaff UI's chat page lives at exactly /chat; everything under /chat/ is the service.
+location = /chat {
+    proxy_pass http://frontend_server;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /chat/internal/ {
+    # Django's signed callbacks come over the compose network, never through nginx.
+    return 404;
+}
+
+location /chat/ {
+    set $chat_upstream ${CHAT_UPSTREAM_URL};
+    proxy_pass $chat_upstream;
+    # An https upstream gets SNI and a verified certificate (nginx checks none by default; this hop
+    # carries operator JWTs and visitor tokens). Ignored for http. Host stays nginx's default (the
+    # upstream's own), so a chat service behind its own ingress is routed; the service ignores Host.
+    proxy_ssl_server_name on;
+    proxy_ssl_verify on;
+    proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+    proxy_ssl_verify_depth 3;
+    include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    # The service's largest legitimate bodies (a 100,000-character message or operator reply,
+    # fully escaped) are about 600 KB; the public API refuses over 1 MiB itself too.
+    client_max_body_size 1m;
+    proxy_http_version 1.1;
+    # SSE: no buffering, long reads (same settings as /api/run-session/subscribe/).
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection '';
+    proxy_read_timeout 1h;
+    chunked_transfer_encoding on;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
