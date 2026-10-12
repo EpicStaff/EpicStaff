@@ -219,6 +219,38 @@ def test_build_model_config_no_double_prefix():
     assert config["model"] == "openai/gpt-4o"
 
 
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_store"),
+    [
+        ("openai", "gpt-5.6-luna", False),
+        ("azure", "my-deployment", False),
+        ("openrouter", "openai/gpt-5.6-luna", False),
+        ("anthropic", "claude-sonnet-4-5", None),
+        ("openai", "anthropic/claude-sonnet-4-5", None),
+    ],
+)
+def test_build_model_config_opts_out_of_provider_storage_for_openai_and_azure(
+    provider, model, expected_store
+):
+    """OpenAI/Azure calls send store=False; other providers never get the key.
+
+    The decision follows the provider litellm routes to — the model string's prefix —
+    not the configured provider name.
+    """
+    from app.loop.agent_loop import _build_model_config
+
+    agent = AgentSpec(
+        id=1,
+        name="a",
+        instructions="i",
+        llm=LLMData(provider=provider, config=LLMConfigData(model=model)),
+    )
+    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
+    config = _build_model_config(context)
+    assert config.get("store") == expected_store
+    assert ("store" in config) is (expected_store is not None)
+
+
 # ---------------------------------------------------------------------------
 # Tests: loop behaviour
 # ---------------------------------------------------------------------------

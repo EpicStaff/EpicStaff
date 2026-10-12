@@ -117,6 +117,14 @@ class LiteLLMClient(BaseLLMClient):
             "drop_params": True,
         }
 
+        # litellm sends OpenAI/Azure gpt-5.4+ calls that carry function tools to the
+        # Responses API, which stores every response at the provider by default (Chat
+        # Completions does not). Nothing here reuses stored responses, so opt out.
+        # A bare model name is OpenAI (see _model_string).
+        routed_provider = self._model.split("/", 1)[0] if "/" in self._model else "openai"
+        if routed_provider in ("openai", "azure"):
+            kwargs["store"] = False
+
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if model and model.base_url:
