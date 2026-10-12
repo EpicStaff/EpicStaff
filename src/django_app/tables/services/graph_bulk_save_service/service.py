@@ -115,8 +115,8 @@ class GraphBulkSaveService:
             edge_saveables.extend(edge_result.saveables)
             edge_refs_to_validate |= edge_result.real_node_ids
 
-        # Batch-validate that every real (non-temp) node ref across edge types and
-        # decision table routing fields belongs to this graph. The message is the
+        # Batch-validate that every real (non-temp) edge endpoint and decision table
+        # routing ref belongs to this graph. The message is the
         # same for a nonexistent and a foreign id, so existence never leaks.
         all_real_refs = edge_refs_to_validate | routing_refs_to_validate
         if all_real_refs:
