@@ -1,13 +1,40 @@
+# The only .dockerignore Docker reads for the Python services: every one of them
+# builds with `context: .` (this directory) in docker-compose.yaml, and Docker
+# applies the file at the context root, never one beside the Dockerfile. Patterns
+# are rooted here, so anything excluded at any depth needs the `**/` prefix.
+# crewdb and frontend use their own context and keep their own file.
+
+# Secrets and local environment
+**/.env
+
+# Virtual environments
 ENV
 */.venv
 **/venv
 **/*venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-executions
+**/*venvs
+
+# Python build and tool caches
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.mypy_cache
+
+# Editor state
+**/.vscode
+**/.idea
+
+# Tests
 **/tests
 **/conftest.py
 **/pytest.ini
-**/.pytest_cache
+
+# Local runtime artifacts (all gitignored)
+**/executions
+**/demo_stands
+**/*_stand
+**/staticfiles
+**/media
+**/graph_data
