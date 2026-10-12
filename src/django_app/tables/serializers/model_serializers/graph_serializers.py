@@ -33,7 +33,6 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
 )
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     DecisionTableNodeSerializer,
     EndNodeSerializer,
     StartNodeSerializer,
@@ -204,7 +203,6 @@ class GraphSerializer(
     key_value_node_list = KeyValueNodeSerializer(many=True, read_only=True)
     audio_transcription_node_list = AudioTranscriptionNodeSerializer(many=True, read_only=True)
     edge_list = EdgeSerializer(many=True, read_only=True)
-    conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
     webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
     start_node_list = StartNodeSerializer(many=True, read_only=True)
     decision_table_node_list = DecisionTableNodeSerializer(many=True, read_only=True)
@@ -248,7 +246,6 @@ class GraphSerializer(
             "key_value_node_list",
             "audio_transcription_node_list",
             "edge_list",
-            "conditional_edge_list",
             "webhook_trigger_node_list",
             "decision_table_node_list",
             "classification_decision_table_node_list",

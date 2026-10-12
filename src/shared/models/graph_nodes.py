@@ -209,15 +209,6 @@ class EdgeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ConditionalEdgeData(BaseModel):
-    source: str
-    python_code: PythonCodeData
-    then: str | None = None
-    input_map: dict[str, Any]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class WebhookTriggerNodeData(BaseModel):
     node_name: str
     python_code: PythonCodeData
@@ -276,7 +267,6 @@ class GraphData(BaseModel):
     task_node_list: list[TaskNodeData] = []
     agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []
-    conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []
     classification_decision_table_node_list: list[ClassificationDecisionTableNodeData] = []
     entrypoint: str

@@ -746,7 +746,7 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
 
 def published_messages(redis_service: MagicMock) -> list[dict]:
     return [
-        added.args[0]["message_data"]
+        json.loads(added.args[1])["message_data"]
         for added in redis_service.add_graph_message.call_args_list
     ]
 

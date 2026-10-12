@@ -163,7 +163,6 @@ function buildCreatedNodeIdMap(
     );
     mapByNewIds(nodeDiff.taskNodes.toCreate, responseGraph.task_node_list ?? [], existingIdsByType(NodeType.TASK));
     mapByNewIds(nodeDiff.agentNodes.toCreate, responseGraph.agent_node_list ?? [], existingIdsByType(NodeType.AGENT));
-    mapByNewIds(nodeDiff.llmNodes.toCreate, responseGraph.llm_node_list ?? [], existingIdsByType(NodeType.LLM));
     mapByNewIds(
         nodeDiff.fileExtractorNodes.toCreate,
         responseGraph.file_extractor_node_list ?? [],

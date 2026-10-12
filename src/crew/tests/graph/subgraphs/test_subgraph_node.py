@@ -6,9 +6,11 @@ import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
 
+from models.graph_models import FinishMessageData, GraphMessage
 from models.state import State
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.shared.models.graph_nodes import SubGraphNodeData
+from tests.graph.rebuild_counting_dict import RebuildCountingDict
 
 
 def _make_subgraph_node(output_variable_path: str) -> SubGraphNode:
@@ -219,3 +221,40 @@ def test_state_history_is_detached_from_returned_variables(output_path):
     assert "records" in history["variables"]
     assert history["variables"]["a"] is not updated["variables"].a
     assert history["variables"]["records"] is not updated["variables"].records
+
+
+
+class FakeCompiledSubgraph:
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    async def astream(self, state, config, stream_mode):
+        for chunk in self._chunks:
+            yield chunk
+
+
+@pytest.mark.asyncio
+async def test_inner_messages_are_tagged_with_the_subgraph_run_without_being_rebuilt():
+    node = _make_subgraph_node(output_variable_path="variables.result")
+    output = RebuildCountingDict(answer=RebuildCountingDict(text="ok"))
+    message_data = FinishMessageData(output=output, state={})
+    inner_message = GraphMessage(
+        session_id=1, name="inner", execution_order=0, message_data=message_data
+    )
+    final_values = {"variables": DotDict({"done": True})}
+    written = []
+    RebuildCountingDict.constructions = 0
+
+    result = await node._execute_subgraph(
+        FakeCompiledSubgraph([("custom", inner_message), ("values", final_values)]),
+        subgraph_state={},
+        writer=written.append,
+        subgraph_execution_id="run-2",
+    )
+
+    assert result is final_values
+    [forwarded] = written
+    assert forwarded.message_data["subgraph_execution_ids"] == ["run-2"]
+    assert forwarded.message_data["output"] is output
+    assert RebuildCountingDict.constructions == 0
+    assert not hasattr(message_data, "subgraph_execution_ids")

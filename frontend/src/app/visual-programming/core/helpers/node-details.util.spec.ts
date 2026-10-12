@@ -30,9 +30,9 @@ describe('node details opt-in', () => {
         }
     });
 
-    it('leaves LLM and conditional-edge nodes off (and tool, which has no graph node list)', () => {
+    it('leaves tool off, which has no graph node list', () => {
         const typesWithout = Object.values(NodeType).filter((type) => !hasNodeDetails(type));
 
-        expect(typesWithout.sort()).toEqual([NodeType.EDGE, NodeType.LLM, NodeType.TOOL].sort());
+        expect(typesWithout).toEqual([NodeType.TOOL]);
     });
 });

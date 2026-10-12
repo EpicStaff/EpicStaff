@@ -16,8 +16,8 @@ function extractPersistedWaypoints(metadata: Record<string, unknown>): IPoint[] 
 
 /**
  * Maps plain edges (edge_list) to canvas connections.
- * Skips edges where the source is a TABLE or EDGE node — those are
- * handled by their own mappers.
+ * Skips edges where the source is a TABLE node — those are
+ * handled by the decision-table mapper.
  */
 export function mapEdgesToConnections(
     edges: Edge[],
@@ -53,10 +53,7 @@ export function mapEdgesToConnections(
             continue;
         }
 
-        if (sourceNode.type === NodeType.TABLE || sourceNode.type === NodeType.EDGE) {
-            continue;
-        }
-        if (targetNode.type === NodeType.EDGE) {
+        if (sourceNode.type === NodeType.TABLE) {
             continue;
         }
 

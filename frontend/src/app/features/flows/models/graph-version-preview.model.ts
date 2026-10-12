@@ -211,25 +211,11 @@ export type SnapshotNode =
 
 export type SnapshotEdge = Omit<Edge, ExcludedExportFields>;
 
-export interface SnapshotConditionalEdge {
-    id: number;
-    source_node_id: number;
-    python_code: SnapshotPythonCode;
-    input_map: Record<string, unknown>;
-    metadata: Record<string, unknown>;
-}
-
 /** Secret names declared per node, keyed by the snapshot node id, then by the python-code field name. */
 export type SnapshotNodeSecretDeclarations = Record<string, Record<string, string[]>>;
 
-export interface SnapshotConditionalEdgeSecretDeclaration {
-    source_node_id: number;
-    names: string[];
-}
-
 export interface SnapshotSecretDeclarations {
     nodes?: SnapshotNodeSecretDeclarations;
-    conditional_edges?: SnapshotConditionalEdgeSecretDeclaration[];
     /** Telegram bot API key secret name, keyed by the snapshot node id. */
     telegram?: Record<string, string>;
 }
@@ -237,7 +223,6 @@ export interface SnapshotSecretDeclarations {
 export interface GraphVersionSnapshot {
     nodes: SnapshotNode[];
     edge_list?: SnapshotEdge[];
-    conditional_edge_list?: SnapshotConditionalEdge[];
     metadata?: Record<string, unknown>;
     secret_declarations?: SnapshotSecretDeclarations;
 }
