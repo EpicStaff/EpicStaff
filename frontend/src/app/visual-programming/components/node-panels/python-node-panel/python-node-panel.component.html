@@ -74,6 +74,18 @@
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
 
+                    <div class="form-group">
+                        <app-select
+                            label="Venv"
+                            tooltipText="The virtual environment this Python code runs in. Leave empty to use the default environment."
+                            placeholder="Select venv"
+                            formControlName="venv"
+                            [items]="venvItems()"
+                            [loading]="loadingVenvs()"
+                            [readonly]="isReadOnly()"
+                        />
+                    </div>
+
                     <app-node-storage-section
                         [readonly]="isReadOnly()"
                         [useStorage]="useStorage()"

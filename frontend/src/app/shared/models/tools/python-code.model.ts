@@ -42,4 +42,5 @@ export interface CustomPythonCode {
     use_storage?: boolean;
     secret_ids?: number[];
     secret_names?: string[];
+    venv_id?: number | null;
 }

@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode } from '@shared/models';
@@ -12,6 +14,8 @@ import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
@@ -42,6 +46,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        SelectComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -70,6 +75,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
             : (this.node().data.secret_names ?? [])
     );
+    public readonly venvs = signal<Venv[]>([]);
+    public readonly loadingVenvs = signal<boolean>(false);
+    public readonly venvItems = computed<SelectItem[]>(() => [
+        { name: 'No venv', value: null },
+        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+    ]);
+
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
         if (!this.form) return [];
@@ -87,6 +99,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
+    private readonly venvsApiService = inject(VenvsApiService);
     private readonly pythonCodeChange$ = new Subject<string>();
     private readonly formDirtyTick = signal(0);
     public readonly testInputDirty = computed(() => {
@@ -134,6 +147,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             this.wasSaving = saving;
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
+
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed())
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
     }
 
     private resetDirtyAfterSave(): void {
@@ -228,6 +253,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [this.node().data.libraries?.join(', ') || ''],
+            venv: [this.node().data.venv_id ?? null],
             test_input: this.fb.array([]),
         });
 
@@ -279,6 +305,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 code: this.pythonCode,
                 entrypoint: 'main',
                 libraries: librariesArray,
+                venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
                 secret_names: this.secretNames(),
