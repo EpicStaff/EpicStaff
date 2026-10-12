@@ -72,20 +72,26 @@ def _sync_nested_dict(original, current, path=""):
 
 # TODO refactor to use user_variable for persistent variables
 @receiver(post_save, sender=GraphOrganization)
-def update_organization_objects(sender, instance, created, **kwargs):
+def update_organization_objects(sender, instance, created, update_fields, **kwargs):
     """
     Propagate updates to GraphOrganization.user_variables into every existing
     GraphOrganizationUser row for the same (graph, org): added keys seed in,
     removed keys strip out, existing user values are preserved.
+
+    Skipped for a save limited to other fields: persisting a session's org
+    variables at its end saves only persistent_variables, under a row lock, and
+    must not walk every user of the flow.
     """
     if created:
+        return
+    if update_fields is not None and "user_variables" not in update_fields:
         return
 
     current_variables = instance.user_variables
     graph_users = GraphOrganizationUser.objects.filter(
         graph=instance.graph,
         organization_user__org_id=instance.graph.org_id,
-    )
+    ).select_related("organization_user__user")
 
     for graph_user in graph_users:
         sync_variables(
