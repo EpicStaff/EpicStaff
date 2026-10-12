@@ -890,11 +890,11 @@ class TestBinDetails:
         details = _details(_bin(admin_client, AGENTS_URL)[0])
 
         assert details["Description"] == ("Answers support questions", "text")
-        # Trimmed, with its own line breaks (the table shows them).
+        # One document reads as plain instructions: its text, trimmed, line breaks kept.
         assert details["Instructions"] == ("Be   brief.\nUse the FAQ.", "text")
         assert details["LLM"] == (f"MyGPT-4o · {llm_config.model.name}", "text")
 
-    def test_an_agent_shows_its_instructions_in_order_without_blank_ones(self, admin_client, acme):
+    def test_an_agent_lists_its_instruction_files_in_order(self, admin_client, acme):
         agent = AgentDefinition.objects.create(
             organization=acme,
             name="Layered",
@@ -908,10 +908,12 @@ class TestBinDetails:
 
         details = _details(_bin(admin_client, AGENTS_URL)[0])
 
-        assert details["Instructions"] == ("Be kind.\n\nClose tickets.", "text")
+        # Several documents are listed by name, a blank one too: their text can't be read in a row.
+        assert details["Instruction files"] == ("Tone.md, Empty.md, Goals.md", "text")
+        assert "Instructions" not in details
 
-    def test_empty_fields_are_sent_as_null_and_long_instructions_whole(self, admin_client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="Terse", instruction_list=[{"name": "Instruction_1.md", "content": "x" * 500}])
+    def test_empty_fields_are_sent_as_null(self, admin_client, acme):
+        agent = AgentDefinition.objects.create(organization=acme, name="Terse", instruction_list=[])
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
         details = _details(_bin(admin_client, AGENTS_URL)[0])
@@ -919,7 +921,7 @@ class TestBinDetails:
         assert list(details) == ["Description", "Instructions", "LLM"]
         assert details["Description"] == (None, "text")
         assert details["LLM"] == (None, "text")
-        assert details["Instructions"] == ("x" * 500, "text")
+        assert details["Instructions"] == (None, "text")
 
     def test_a_description_is_sent_whole(self, admin_client, acme):
         description = "word_" * 100  # 500 characters

@@ -106,24 +106,36 @@ def _detail_text(text) -> str | None:
     return str(text).strip() or None
 
 
-def _agent_instructions(instruction_list) -> str:
-    """An agent's instructions as it applies them, from its stored named list."""
-    from agents.models import AgentDefinition
+def _instructions_text(instruction_list) -> str | None:
+    """One instruction document reads as plain instructions; several are listed by name, in order.
 
-    return AgentDefinition(instruction_list=instruction_list).instructions
+    The text of several documents can't be read in a row, and their names say what they are.
+    """
+    if len(instruction_list) > 1:
+        return ", ".join(instruction["name"] for instruction in instruction_list)
+    return instruction_list[0]["content"] if instruction_list else None
+
+
+def _instructions_label(instruction_list) -> str:
+    return "Instruction files" if len(instruction_list) > 1 else "Instructions"
 
 
 @dataclass(frozen=True)
 class DetailField:
     """A detail line: `paths` are values() lookups, joined with " · " when there are several.
 
-    `to_text` turns a stored value into its text first, for a field that isn't plain text.
+    `to_text` turns a stored value into its text first, for a field that isn't plain text;
+    `label_for` names the line from that stored value, when one label doesn't fit every row.
     """
 
     label: str
     paths: tuple[str, ...]
     format: str = "text"
     to_text: Callable[[object], object] | None = None
+    label_for: Callable[[object], str] | None = None
+
+    def label_of(self, row: dict) -> str:
+        return self.label if self.label_for is None else self.label_for(row[self.paths[0]])
 
     def render(self, row: dict):
         if self.format != "text":
@@ -184,7 +196,12 @@ _DETAIL_FIELDS: dict[str, list[DetailField]] = {
     ],
     "agent": [
         DetailField("Description", ("description",)),
-        DetailField("Instructions", ("instruction_list",), to_text=_agent_instructions),
+        DetailField(
+            "Instructions",
+            ("instruction_list",),
+            to_text=_instructions_text,
+            label_for=_instructions_label,
+        ),
         DetailField("LLM", ("llm_config__custom_name", "llm_config__model__name")),
     ],
     "surface": [
@@ -527,7 +544,7 @@ class BinContentsService:
             for detail_field in fields:
                 lines.append(
                     BinDetail(
-                        label=detail_field.label,
+                        label=detail_field.label_of(row),
                         value=detail_field.render(row),
                         format=detail_field.format,
                     )

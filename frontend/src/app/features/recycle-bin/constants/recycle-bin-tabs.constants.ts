@@ -46,6 +46,7 @@ export const RECYCLE_BIN_TAB_BY_KEY: Record<RecycleBinTabKey, RecycleBinTabDefin
         resource: ResourceCode.KnowledgeSources,
         sources: ['collection'],
         pluralNoun: 'collections',
+        countColumn: { label: 'Documents' },
     },
     'key-value-tables': {
         key: 'key-value-tables',
