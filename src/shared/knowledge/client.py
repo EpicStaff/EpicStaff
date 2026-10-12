@@ -64,6 +64,8 @@ class KnowledgeClient:
                 "search_config": _to_search_config(target.search_config),
                 "embedding_api_key": target.embedder_api_key,
                 "llm_api_key": target.llm_api_key,
+                "embedding_extra_headers": target.embedder_extra_headers or {},
+                "llm_extra_headers": target.llm_extra_headers or {},
             },
             timeout=timeout,
         )

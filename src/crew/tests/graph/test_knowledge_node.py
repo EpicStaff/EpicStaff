@@ -120,3 +120,35 @@ def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer)
         "answer": answer,
         "token_usage": {},
     }
+
+
+def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
+    received = {}
+
+    class CapturingKnowledgeClient(FakeKnowledgeClient):
+        def search(self, **kwargs):
+            received.update(kwargs)
+            return []
+
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
+    )
+    node = KnowledgeNode(
+        session_id=1,
+        node_name="knowledge_1",
+        stop_event=StopEvent(),
+        input_map={},
+        output_variable_path=None,
+        collection_id=5,
+        rag_type_id="graph:7",
+        query="hello world",
+        rag_search_config=GraphRagSearchConfig(search_params=GraphRagBasicSearchParams()),
+        knowledge_search_service=KnowledgeSearchService(redis_service=MagicMock()),
+        embedder_extra_headers={"X-Emb": "emb-resolved"},
+        llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+
+    asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
+
+    assert received["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert received["llm_extra_headers"] == {"X-Llm": "llm-resolved"}

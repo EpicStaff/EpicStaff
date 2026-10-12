@@ -21,6 +21,9 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=command.rag_id)
 
+        embedding_config = embedding_config.model_copy(
+            update={"extra_headers": command.embedding_extra_headers}
+        )
         embedder = build_embedder(
             embedding_config.provider, command.embedding_api_key, embedding_config
         )

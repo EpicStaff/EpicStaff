@@ -36,6 +36,8 @@ class KnowledgeClient:
         timeout: float,
         embedding_api_key: str,
         llm_api_key: str | None,
+        embedding_extra_headers: dict[str, str] | None = None,
+        llm_extra_headers: dict[str, str] | None = None,
     ) -> list[FoundChunk] | str:
         response = self._request(
             method="post",
@@ -45,6 +47,8 @@ class KnowledgeClient:
                 "search_config": search_config.model_dump(mode="json"),
                 "embedding_api_key": embedding_api_key,
                 "llm_api_key": llm_api_key,
+                "embedding_extra_headers": embedding_extra_headers or {},
+                "llm_extra_headers": llm_extra_headers or {},
             },
             timeout=timeout,
         )

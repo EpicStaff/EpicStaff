@@ -953,6 +953,17 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         else:
             llm_api_key = None
 
+        embedding_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["embedder_extra_headers"],
+            org_id=org_id,
+            context="EmbeddingConfig.extra_headers",
+        )
+        llm_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["llm_extra_headers"],
+            org_id=org_id,
+            context="LLMConfig.extra_headers",
+        )
+
         try:
             with KnowledgeClient() as client:
                 client.index(
@@ -961,6 +972,8 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                     document_ids=frozenset(document_config_ids),
                     embedding_api_key=embedding_api_key,
                     llm_api_key=llm_api_key,
+                    embedding_extra_headers=embedding_extra_headers,
+                    llm_extra_headers=llm_extra_headers,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)

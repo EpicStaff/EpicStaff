@@ -146,3 +146,41 @@ async def test_stop_closes_client():
     await client.stop()
 
     assert client._client is None
+
+
+async def test_search_sends_target_extra_headers():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": "answer"})
+
+    target = _graph_target().model_copy(
+        update={
+            "embedder_extra_headers": {"X-Emb": "emb-resolved"},
+            "llm_extra_headers": {"X-Llm": "llm-resolved"},
+        }
+    )
+    client = _client_with_handler(handler)
+    await client.search(target, "why", timeout=2.0)
+
+    assert captured["body"]["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert captured["body"]["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+    await client.stop()
+
+
+async def test_search_without_extra_headers_sends_empty_objects():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": []})
+
+    client = _client_with_handler(handler)
+    await client.search(_naive_target(), "hello", timeout=2.0)
+
+    assert captured["body"]["embedding_extra_headers"] == {}
+    assert captured["body"]["llm_extra_headers"] == {}
+
+    await client.stop()

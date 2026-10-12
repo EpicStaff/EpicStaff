@@ -451,6 +451,17 @@
                     <app-validation-errors [control]="embeddingForm.controls.custom_name" />
                 </div>
             </section>
+
+            <section class="section">
+                <h3 class="section-title">API CONFIGURATION</h3>
+                <app-key-value-list
+                    formControlName="extra_headers"
+                    label="Header Configuration"
+                    tooltipText="Custom HTTP headers sent with every API request"
+                    namePlaceholder="Header name"
+                    valuePlaceholder="Header value"
+                />
+            </section>
         </form>
     }
 

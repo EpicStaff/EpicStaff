@@ -23,6 +23,9 @@ class RunIndex(Command):
     document_ids: frozenset[int]
     embedding_api_key: str
     llm_api_key: str | None = field(default=None)
+    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,9 @@ class RunSearch(Command):
     search_config: SearchConfig
     embedding_api_key: str
     llm_api_key: str | None = field(default=None)
+    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)

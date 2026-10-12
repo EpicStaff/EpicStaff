@@ -36,6 +36,8 @@ class KnowledgeClient:
         document_ids: frozenset[int],
         embedding_api_key: str,
         llm_api_key: str | None = None,
+        embedding_extra_headers: dict[str, str] | None = None,
+        llm_extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._request(
             method="post",
@@ -44,6 +46,8 @@ class KnowledgeClient:
                 "document_ids": list(document_ids),
                 "embedding_api_key": embedding_api_key,
                 "llm_api_key": llm_api_key,
+                "embedding_extra_headers": embedding_extra_headers or {},
+                "llm_extra_headers": llm_extra_headers or {},
             },
         )
 

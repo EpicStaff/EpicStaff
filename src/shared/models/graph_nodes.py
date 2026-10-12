@@ -31,6 +31,10 @@ class KnowledgeNodeData(BaseModel):
     embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
     llm_api_key: str | None = None
     llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    # Raw `epicstaff_secret(<name>)` markers until SecretResolver fills the
+    # published copy; the persisted graph_schema keeps the markers.
+    embedder_extra_headers: dict[str, str] | None = None
+    llm_extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

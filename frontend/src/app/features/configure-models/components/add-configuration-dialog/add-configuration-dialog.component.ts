@@ -119,6 +119,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         model: [null as number | null, Validators.required],
         api_key_secret_id: [null as number | null, Validators.required],
         custom_name: ['', Validators.required],
+        extra_headers: this.fb.nonNullable.control<Record<string, string>>({}),
     });
 
     protected readonly ModelTypes = ModelTypes;
@@ -243,7 +244,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     }
 
     private submitEmbedding(): void {
-        const { model, api_key_secret_id, custom_name } = this.embeddingForm.getRawValue();
+        const { model, api_key_secret_id, custom_name, extra_headers } = this.embeddingForm.getRawValue();
         if (this.embeddingForm.invalid || model === null || this.isSubmitting()) {
             this.embeddingForm.markAllAsTouched();
             return;
@@ -259,7 +260,12 @@ export class AddConfigurationDialogComponent implements OnInit {
             return;
         }
 
-        const request: CreateEmbeddingConfigRequest = { model, api_key_secret_id, custom_name: trimmedName };
+        const request: CreateEmbeddingConfigRequest = {
+            model,
+            api_key_secret_id,
+            custom_name: trimmedName,
+            extra_headers,
+        };
         this.isSubmitting.set(true);
         this.embeddingConfigStorage
             .createConfig(request)

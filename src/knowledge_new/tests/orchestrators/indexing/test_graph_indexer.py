@@ -653,3 +653,36 @@ async def test_normal_index_no_slot_ops_no_keyerror(monkeypatch):
     await GraphIndexOrchestrator(uow).execute(_make_request(frozenset({5})))
     assert rag.slot is None
     assert not any(s.clear_called for s in storages_created)
+
+
+async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
+    config = _make_config()
+    config.embedding_models["default_embedding_model"].call_args = {}
+    config.completion_models["default_completion_model"].call_args = {"temperature": 0.1}
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=config, documents=[_text_document(7)])
+    captured: dict = {}
+
+    async def fake_build_index(**kwargs):
+        captured.update(kwargs)
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    request = RunIndex(
+        rag_id=1,
+        document_ids=frozenset({7}),
+        embedding_api_key="sk-test",
+        llm_api_key="sk-llm",
+        embedding_extra_headers={"X-Emb": "emb-resolved"},
+        llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    sent = captured["config"]
+    assert sent.embedding_models["default_embedding_model"].call_args == {
+        "extra_headers": {"X-Emb": "emb-resolved"}
+    }
+    assert sent.completion_models["default_completion_model"].call_args == {
+        "temperature": 0.1,
+        "extra_headers": {"X-Llm": "llm-resolved"},
+    }

@@ -54,6 +54,8 @@ class RagController(Controller):
             document_ids=data.document_ids,
             embedding_api_key=data.embedding_api_key,
             llm_api_key=data.llm_api_key,
+            embedding_extra_headers=data.embedding_extra_headers,
+            llm_extra_headers=data.llm_extra_headers,
         )
         orchestrator = build_indexer(strategy, uow)
         task = asyncio.create_task(orchestrator.execute(command))
@@ -78,6 +80,8 @@ class RagController(Controller):
             search_config=data.search_config,
             embedding_api_key=data.embedding_api_key,
             llm_api_key=data.llm_api_key,
+            embedding_extra_headers=data.embedding_extra_headers,
+            llm_extra_headers=data.llm_extra_headers,
         )
         orchestrator = build_search(strategy, uow)
         result = await orchestrator.execute(command)

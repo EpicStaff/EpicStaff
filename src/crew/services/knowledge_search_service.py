@@ -101,6 +101,8 @@ class KnowledgeSearchService:
         timeout: int | None = None,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
+        rag_embedder_extra_headers: dict[str, str] | None = None,
+        rag_llm_extra_headers: dict[str, str] | None = None,
         writer: Optional["StreamWriter"] = None,
         session_id: int | None = None,
         node_name: str | None = None,
@@ -151,6 +153,8 @@ class KnowledgeSearchService:
                     timeout=timeout,
                     embedding_api_key=resolved_embedder_key,
                     llm_api_key=resolved_llm_key,
+                    embedding_extra_headers=rag_embedder_extra_headers,
+                    llm_extra_headers=rag_llm_extra_headers,
                 )
         except ClientTimeoutError as e:
             raise TimeoutError(

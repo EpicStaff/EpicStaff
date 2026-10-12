@@ -139,3 +139,164 @@ async def test_endpoint_overrides_apply_to_every_provider(monkeypatch):
     assert mock.await_args.kwargs["api_base"] == "http://gateway:8080/v1"
     assert mock.await_args.kwargs["extra_headers"] == {"apikey": "KONG_KEY"}
     assert mock.await_args.kwargs["input_type"] == "search_query"
+
+
+def _config_with(**overrides):
+    return make_config(EmbedderProviderEnum.OPENAI).model_copy(update=overrides)
+
+
+async def test_config_headers_sent_without_env_headers(monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test", _config_with(extra_headers={"X-Config": "from-config"})
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["extra_headers"] == {"X-Config": "from-config"}
+
+
+async def test_config_headers_merge_with_env_headers_and_win_on_collision(monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(
+        litellm_embedder.settings,
+        "EMBEDDING_HEADERS",
+        {"apikey": "ENV_KEY", "X-Env-Only": "env"},
+    )
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test",
+            _config_with(extra_headers={"apikey": "CONFIG_KEY", "X-Config": "config"}),
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["extra_headers"] == {
+        "apikey": "CONFIG_KEY",
+        "X-Env-Only": "env",
+        "X-Config": "config",
+    }
+
+
+async def test_config_base_url_wins_over_env_base_url(monkeypatch):
+    monkeypatch.setattr(
+        litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", "http://env-gateway:8080/v1"
+    )
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test", _config_with(base_url="http://config-gateway:9090/v1")
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["api_base"] == "http://config-gateway:9090/v1"
+
+
+async def test_env_base_url_used_when_config_has_none(monkeypatch):
+    monkeypatch.setattr(
+        litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", "http://env-gateway:8080/v1"
+    )
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder("sk-test", _config_with(base_url=None)).embed("hi")
+
+    assert mock.await_args.kwargs["api_base"] == "http://env-gateway:8080/v1"
+
+
+async def test_config_base_url_sent_without_env_settings(monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test", _config_with(base_url="http://config-gateway:9090/v1")
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["api_base"] == "http://config-gateway:9090/v1"
+    assert "extra_headers" not in mock.await_args.kwargs
+
+
+async def test_cohere_embedder_keeps_input_type_with_config_overrides(monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    config = make_config(EmbedderProviderEnum.COHERE).model_copy(
+        update={"base_url": "http://cohere-gateway/v1", "extra_headers": {"X-Config": "c"}}
+    )
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await CohereLiteLLMEmbedder("sk-test", config).embed("hi")
+
+    assert mock.await_args.kwargs["api_base"] == "http://cohere-gateway/v1"
+    assert mock.await_args.kwargs["extra_headers"] == {"X-Config": "c"}
+    assert mock.await_args.kwargs["input_type"] == "search_query"
+
+
+async def test_config_header_replaces_env_header_differing_only_in_case(monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(
+        litellm_embedder.settings,
+        "EMBEDDING_HEADERS",
+        {"apikey": "ENV_KEY", "X-Env-Only": "env"},
+    )
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test", _config_with(extra_headers={"ApiKey": "CONFIG_KEY"})
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["extra_headers"] == {
+        "X-Env-Only": "env",
+        "ApiKey": "CONFIG_KEY",
+    }
+
+
+async def test_env_headers_are_not_sent_to_a_config_base_url(monkeypatch):
+    monkeypatch.setattr(
+        litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", "http://env-gateway:8080/v1"
+    )
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", {"apikey": "KONG_KEY"})
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test",
+            _config_with(
+                base_url="https://attacker.example/v1", extra_headers={"X-Config": "c"}
+            ),
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["api_base"] == "https://attacker.example/v1"
+    assert mock.await_args.kwargs["extra_headers"] == {"X-Config": "c"}
+
+
+async def test_env_headers_are_not_sent_to_a_config_base_url_without_env_base_url(
+    monkeypatch,
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", {"apikey": "KONG_KEY"})
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test", _config_with(base_url="https://attacker.example/v1")
+        ).embed("hi")
+
+    assert "extra_headers" not in mock.await_args.kwargs
+
+
+async def test_env_headers_merge_when_config_base_url_is_the_env_url(monkeypatch):
+    monkeypatch.setattr(
+        litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", "http://env-gateway:8080/v1"
+    )
+    monkeypatch.setattr(
+        litellm_embedder.settings, "EMBEDDING_HEADERS", {"apikey": "KONG_KEY", "X-Env": "e"}
+    )
+    mock = AsyncMock(return_value=_response([[0.1]]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        await LiteLLMEmbedder(
+            "sk-test",
+            _config_with(
+                base_url="http://env-gateway:8080/v1/", extra_headers={"ApiKey": "CONFIG_KEY"}
+            ),
+        ).embed("hi")
+
+    assert mock.await_args.kwargs["extra_headers"] == {"X-Env": "e", "ApiKey": "CONFIG_KEY"}

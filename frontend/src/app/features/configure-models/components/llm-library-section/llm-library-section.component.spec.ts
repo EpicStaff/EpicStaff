@@ -65,6 +65,7 @@ const EMBEDDING_CONFIG: EmbeddingConfig = {
     task_type: 'retrieval_document',
     api_key_secret_id: null,
     is_visible: true,
+    extra_headers: {},
     created_at: '2026-04-01T08:00:00Z',
     created_by: EMBEDDING_OWNER,
     last_edited_by: EMBEDDING_OWNER,

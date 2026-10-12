@@ -1,11 +1,14 @@
 from domain.models import ChunkingConfig, FoundChunk, SearchConfig
 from presentation.rest.schemas.base import BaseSchema
+from pydantic import Field
 
 
 class IndexInputSchema(BaseSchema):
     document_ids: frozenset[int]
     embedding_api_key: str
     llm_api_key: str | None = None
+    embedding_extra_headers: dict[str, str] = Field(default_factory=dict)
+    llm_extra_headers: dict[str, str] = Field(default_factory=dict)
 
 
 class PrechunkInputSchema(BaseSchema):
@@ -24,6 +27,8 @@ class SearchInputSchema(BaseSchema):
     search_config: SearchConfig
     embedding_api_key: str
     llm_api_key: str | None = None
+    embedding_extra_headers: dict[str, str] = Field(default_factory=dict)
+    llm_extra_headers: dict[str, str] = Field(default_factory=dict)
 
 
 class SearchOutputSchema(BaseSchema):

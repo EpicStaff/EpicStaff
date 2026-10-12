@@ -410,3 +410,43 @@ def test_compile_without_key_value_client_raises(mock_services, mock_session_dat
     )
     with pytest.raises(RuntimeError, match="key_value_client"):
         builder.compile_from_schema(mock_session_data)
+
+
+def test_compile_passes_knowledge_node_extra_headers(
+    mock_services, mock_session_data, monkeypatch
+):
+    from services.graph import graph_builder
+    from src.shared.models import KnowledgeNodeData
+
+    created_nodes = []
+
+    class RecordingKnowledgeNode(graph_builder.KnowledgeNode):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            created_nodes.append(self)
+
+    monkeypatch.setattr(graph_builder, "KnowledgeNode", RecordingKnowledgeNode)
+    mock_session_data.graph.knowledge_node_list = [
+        KnowledgeNodeData(
+            node_name="knowledge_1",
+            collection_id=5,
+            rag_type_id="naive:2",
+            query="q",
+            input_map={},
+            embedder_extra_headers={"X-Emb": "emb-resolved"},
+            llm_extra_headers={"X-Llm": "llm-resolved"},
+        )
+    ]
+    builder = SessionGraphBuilder(
+        session_id=mock_session_data.id,
+        redis_service=mock_services["redis_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+    )
+
+    builder.compile_from_schema(mock_session_data)
+
+    assert len(created_nodes) == 1
+    assert created_nodes[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert created_nodes[0].llm_extra_headers == {"X-Llm": "llm-resolved"}

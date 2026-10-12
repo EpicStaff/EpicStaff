@@ -149,7 +149,7 @@ async def test_embedding_api_key_forwarded_to_build_embedder(monkeypatch):
     provider, api_key, config = received[0]
     assert api_key == "sk-forwarded"
     assert provider == EmbedderProviderEnum.OPENAI
-    assert config is _EMBEDDING_CONFIG
+    assert config == _EMBEDDING_CONFIG
 
 
 async def test_empty_embedding_api_key_is_forwarded(monkeypatch):
@@ -168,3 +168,41 @@ async def test_empty_embedding_api_key_is_forwarded(monkeypatch):
     await NaiveSearchOrchestrator(uow).execute(command)
 
     assert received_keys == [""]
+
+
+async def test_embedding_extra_headers_reach_the_embedder_config(monkeypatch):
+    received_configs: list[EmbeddingConfig] = []
+
+    def capturing_build_embedder(provider, api_key, config):
+        received_configs.append(config)
+        return FakeEmbedder(vector=[0.1])
+
+    monkeypatch.setattr(naive_search, "build_embedder", capturing_build_embedder)
+
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+    command = RunSearch(
+        rag_id=1,
+        query="q",
+        search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
+        embedding_api_key="sk-test",
+        embedding_extra_headers={"X-Gateway-Key": "resolved-value"},
+    )
+
+    await NaiveSearchOrchestrator(FakeUoW(repo)).execute(command)
+
+    assert received_configs[0].extra_headers == {"X-Gateway-Key": "resolved-value"}
+    assert received_configs[0].model == _EMBEDDING_CONFIG.model
+
+
+def test_resolved_headers_are_kept_out_of_the_command_repr():
+    command = RunSearch(
+        rag_id=1,
+        query="q",
+        search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
+        embedding_api_key="sk-test",
+        embedding_extra_headers={"X-Gateway-Key": "resolved-secret"},
+        llm_extra_headers={"X-Llm-Key": "resolved-llm-secret"},
+    )
+
+    assert "resolved-secret" not in repr(command)
+    assert "resolved-llm-secret" not in repr(command)

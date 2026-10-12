@@ -479,6 +479,8 @@ async def test_unsupported_method_raises_unsupported_error(uow, monkeypatch):
         search_config = FakeSearchConfig()
         embedding_api_key = "sk-test"
         llm_api_key = None
+        embedding_extra_headers = {}
+        llm_extra_headers = {}
 
     with pytest.raises(UnsupportedError):
         await GraphSearchOrchestrator(uow).on_execute(FakeRequest())
@@ -681,3 +683,75 @@ async def test_none_llm_api_key_sets_none_on_completion_model(uow, monkeypatch):
 
     config = received_configs[0]
     assert config.completion_models["default_completion_model"].api_key is None
+
+
+async def test_extra_headers_injected_into_both_graphrag_models(uow, monkeypatch):
+    received_configs: list[GraphRagConfig] = []
+
+    async def capture_searcher(**kwargs):
+        received_configs.append(kwargs["config"])
+        return ("result", None)
+
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP,
+        GraphSearchMethodEnum.BASIC,
+        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
+    )
+
+    async def fake_resolve_files(config, required_files, optional_files=None):
+        return {n: pandas.DataFrame() for n in required_files}
+
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
+
+    request = RunSearch(
+        rag_id=1,
+        query="q",
+        search_config=GraphBasicSearchConfig(),
+        embedding_api_key="sk-emb",
+        llm_api_key="sk-llm",
+        embedding_extra_headers={"X-Emb": "emb-resolved"},
+        llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+    await GraphSearchOrchestrator(uow).on_execute(request)
+
+    config = received_configs[0]
+    assert config.embedding_models["default_embedding_model"].call_args[
+        "extra_headers"
+    ] == {"X-Emb": "emb-resolved"}
+    assert config.completion_models["default_completion_model"].call_args[
+        "extra_headers"
+    ] == {"X-Llm": "llm-resolved"}
+
+
+async def test_no_extra_headers_leaves_call_args_without_headers(uow, monkeypatch):
+    received_configs: list[GraphRagConfig] = []
+
+    async def capture_searcher(**kwargs):
+        received_configs.append(kwargs["config"])
+        return ("result", None)
+
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP,
+        GraphSearchMethodEnum.BASIC,
+        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
+    )
+
+    async def fake_resolve_files(config, required_files, optional_files=None):
+        return {n: pandas.DataFrame() for n in required_files}
+
+    monkeypatch.setattr(
+        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
+    )
+
+    request = RunSearch(
+        rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk"
+    )
+    await GraphSearchOrchestrator(uow).on_execute(request)
+
+    config = received_configs[0]
+    assert "extra_headers" not in config.embedding_models["default_embedding_model"].call_args
+    assert (
+        "extra_headers" not in config.completion_models["default_completion_model"].call_args
+    )

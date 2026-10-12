@@ -2,6 +2,7 @@ from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import serializers
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from utils.logger import logger
 
 _DENIED = (
@@ -33,6 +34,39 @@ class SecretReferenceGuard:
             if incoming == current:
                 continue
             self._assert_may_use(serializer=serializer, field_name=field_name)
+
+    def assert_no_new_markers_or_permitted(self, *, serializer, attrs, fields) -> None:
+        """Raise ValidationError when a guarded header field gains a secret marker without USE.
+
+        A `epicstaff_secret(<name>)` marker makes a run send that secret's plaintext,
+        so adding one is a secret reference like `api_key_secret_id`. Markers the
+        persisted value already has, or removing markers, need no permission, so a
+        caller without USE can still edit the rest of the resource.
+        """
+        for field_name in fields:
+            field = serializer.fields.get(field_name)
+            if field is None or field.read_only:
+                continue
+            source = field.source
+            if source not in attrs:
+                continue
+            incoming = extract_secret_marker_names(attrs[source])
+            current = extract_secret_marker_names(
+                self._current_value(serializer=serializer, source=source)
+            )
+            if incoming - current:
+                self._assert_may_use(serializer=serializer, field_name=field_name)
+
+    def assert_may_use(self, *, user, org_id: int | None, field_name: str) -> None:
+        """Raise ValidationError unless `user` holds secrets:USE in `org_id`.
+
+        For paths with no request to read the active org from, such as import.
+        """
+        if user is None:
+            raise serializers.ValidationError({field_name: _DENIED})
+        effective = self._resolver.resolve(user=user, org_id=org_id)
+        if not effective.can(ResourceType.SECRETS.value, Permission.USE):
+            raise serializers.ValidationError({field_name: _DENIED})
 
     @staticmethod
     def _current_value(*, serializer, source):
@@ -73,9 +107,9 @@ class SecretReferenceGuard:
                 type(serializer).__name__,
             )
             raise serializers.ValidationError({field_name: _DENIED})
-        effective = self._resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
-        if not effective.can(ResourceType.SECRETS.value, Permission.USE):
-            raise serializers.ValidationError({field_name: _DENIED})
+        self.assert_may_use(
+            user=request.user, org_id=resolve_active_org_id(request), field_name=field_name
+        )
 
 
 secret_reference_guard = SecretReferenceGuard()

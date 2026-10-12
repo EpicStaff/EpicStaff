@@ -32,6 +32,7 @@ class EmbedderConfigData(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     api_key_secret_id: int | None = Field(default=None, exclude=True)
+    extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

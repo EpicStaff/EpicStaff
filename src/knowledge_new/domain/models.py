@@ -134,4 +134,6 @@ class EmbeddingConfig(ValueObject):
 
     provider: EmbedderProviderEnum
     model: str
+    base_url: str | None = None
+    extra_headers: dict[str, str] = Field(default_factory=dict, repr=False)
     extra: dict = Field(default_factory=dict)

@@ -818,3 +818,29 @@ async def test_outdated_reasons_preserved_when_outdated_document_remains(monkeyp
 
     assert rag.outdated_reasons == {"doc_1": "source_changed"}
     assert repo.rag_status_log[-1] == IndexStatusEnum.OUTDATED
+
+
+async def test_embedding_extra_headers_reach_the_embedder_config(monkeypatch):
+    received_configs: list[EmbeddingConfig] = []
+    embedder = FakeEmbedder(vector=[0.1, 0.2])
+
+    def capturing_build_embedder(provider, api_key, config):
+        received_configs.append(config)
+        return embedder
+
+    monkeypatch.setattr(naive_indexer, "build_embedder", capturing_build_embedder)
+
+    document = _static_document(DocumentStatusEnum.NEW, doc_id=7)
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=_new_rag()
+    )
+    request = RunIndex(
+        rag_id=1,
+        document_ids=frozenset({7}),
+        embedding_api_key="sk-test",
+        embedding_extra_headers={"X-Gateway-Key": "resolved-value"},
+    )
+
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    assert received_configs[0].extra_headers == {"X-Gateway-Key": "resolved-value"}

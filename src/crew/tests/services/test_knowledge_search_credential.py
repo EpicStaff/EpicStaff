@@ -54,3 +54,21 @@ def test_an_explicit_credential_wins_over_the_instance_one():
 def test_no_credential_sends_none():
     service = KnowledgeSearchService(redis_service=MagicMock())
     assert _search_call_kwargs(service)["embedding_api_key"] is None
+
+
+def test_extra_headers_reach_the_client():
+    service = KnowledgeSearchService(redis_service=MagicMock())
+    kwargs = _search_call_kwargs(
+        service,
+        rag_embedder_extra_headers={"X-Emb": "emb-resolved"},
+        rag_llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+    assert kwargs["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert kwargs["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+
+def test_no_extra_headers_sends_none():
+    service = KnowledgeSearchService(redis_service=MagicMock())
+    kwargs = _search_call_kwargs(service)
+    assert kwargs["embedding_extra_headers"] is None
+    assert kwargs["llm_extra_headers"] is None

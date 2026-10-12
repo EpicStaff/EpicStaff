@@ -10,6 +10,7 @@ from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
+from infrastructure.graphrag.model_headers import set_extra_headers
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
 from loguru import logger
@@ -36,6 +37,12 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
 
         config = await self._get_config_under_uow(
             rag.id, target_slot, command.embedding_api_key, command.llm_api_key
+        )
+        set_extra_headers(
+            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+        )
+        set_extra_headers(
+            config.completion_models["default_completion_model"], command.llm_extra_headers
         )
 
         rag.mark_as_processing(command.document_ids)

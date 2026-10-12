@@ -11,6 +11,7 @@ import { ValidationErrorsComponent } from '../../app-validation-errors/validatio
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
+import { KeyValueListComponent } from '../../key-value-list/key-value-list.component';
 import { SelectComponent, SelectItem } from '../../select/select.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
@@ -23,6 +24,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         ButtonComponent,
         CustomInputComponent,
         IconButtonComponent,
+        KeyValueListComponent,
         LlmModelSelectorComponent,
         ReactiveFormsModule,
         ValidationErrorsComponent,
@@ -62,6 +64,7 @@ export class EmbeddingModelConfigDialogComponent {
             custom_name: ['', [Validators.required]],
             api_key_secret_id: [null, [Validators.required]],
             model: [null, [Validators.required]],
+            extra_headers: [{}],
         });
 
         if (this.data?.configId) {

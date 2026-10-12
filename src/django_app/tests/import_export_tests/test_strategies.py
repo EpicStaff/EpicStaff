@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
+from rbac.models.enums import Permission, ResourceType
 from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
@@ -21,6 +22,7 @@ from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.registry import entity_registry
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
@@ -775,6 +777,222 @@ class TestEmbeddingConfigCreatedAt:
 
         assert found is not None
         assert found.id == embedding_config.id
+
+
+
+@pytest.mark.django_db
+class TestEmbeddingConfigExtraHeaders:
+    HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
+
+    def test_export_entity_carries_the_header_markers(self, embedding_config):
+        embedding_config.extra_headers = self.HEADERS
+        embedding_config.save(update_fields=["extra_headers"])
+
+        data = _get_strategy(EntityType.EMBEDDING_CONFIG).export_entity(embedding_config)
+
+        assert data["extra_headers"] == self.HEADERS
+
+    def test_import_keeps_the_header_markers(
+        self, embedding_config, export_service, default_org, secrets_use_user
+    ):
+        embedding_config.extra_headers = self.HEADERS
+        embedding_config.save(update_fields=["extra_headers"])
+        export_data = export_service.export_entities(
+            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+
+        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
+            config_data,
+            _build_identity_mapper(export_data),
+            org_id=default_org.id,
+            user=secrets_use_user,
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.pk != embedding_config.pk
+        assert new_config.extra_headers == self.HEADERS
+
+    def test_import_of_pre_extra_headers_export_gets_empty_headers(
+        self, embedding_config, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+        config_data.pop("extra_headers")
+
+        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.extra_headers == {}
+
+    @pytest.mark.parametrize("drop_field", [False, True], ids=["current", "pre-extra-headers"])
+    def test_reimport_finds_the_existing_config(
+        self, embedding_config, export_service, default_org, drop_field
+    ):
+        embedding_config.extra_headers = self.HEADERS
+        embedding_config.save(update_fields=["extra_headers"])
+        export_data = export_service.export_entities(
+            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+        if drop_field:
+            config_data.pop("extra_headers")
+
+        found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == embedding_config.id
+
+    def test_reimport_with_different_headers_does_not_match(
+        self, embedding_config, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
+        )
+        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+        config_data["extra_headers"] = self.HEADERS
+
+        found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is None
+
+
+
+LLM_CONFIGS_CRUD = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
+
+
+@pytest.fixture
+def secrets_use_user(custom_role_user, default_org):
+    return custom_role_user(
+        default_org,
+        "import-marker-use@example.com",
+        {
+            ResourceType.SECRETS: Permission.READ | Permission.USE,
+            ResourceType.LLM_CONFIGS: LLM_CONFIGS_CRUD,
+        },
+    )
+
+
+@pytest.fixture
+def no_secrets_use_user(custom_role_user, default_org):
+    return custom_role_user(
+        default_org,
+        "import-marker-nouse@example.com",
+        {ResourceType.SECRETS: Permission.READ, ResourceType.LLM_CONFIGS: LLM_CONFIGS_CRUD},
+    )
+
+
+def _exported_config(export_service, entity_type, config) -> tuple[dict, dict]:
+    export_data = export_service.export_entities(entity_type, [config.id])
+    return export_data, deepcopy(export_data[entity_type][0])
+
+
+@pytest.fixture
+def llm_config_to_export(gpt_4o_llm, default_org):
+    return LLMConfig.objects.create(custom_name="ImportLLM", model=gpt_4o_llm, org=default_org)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "entity_type, config_fixture",
+    [
+        (EntityType.EMBEDDING_CONFIG, "embedding_config"),
+        (EntityType.LLM_CONFIG, "llm_config_to_export"),
+    ],
+)
+class TestConfigImportExtraHeaders:
+    MARKERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
+
+    def _create(self, request, export_service, entity_type, config_fixture, headers, **kwargs):
+        config = request.getfixturevalue(config_fixture)
+        export_data, config_data = _exported_config(export_service, entity_type, config)
+        if headers is None:
+            config_data.pop("extra_headers")
+        else:
+            config_data["extra_headers"] = headers
+        return _get_strategy(entity_type).create_entity(
+            config_data, _build_identity_mapper(export_data), **kwargs
+        )
+
+    def test_markers_without_secrets_use_are_rejected(
+        self, request, export_service, default_org, no_secrets_use_user, entity_type, config_fixture
+    ):
+        model = type(request.getfixturevalue(config_fixture))
+        count_before = model.objects.count()
+
+        with pytest.raises(ValidationError) as error:
+            self._create(
+                request, export_service, entity_type, config_fixture, self.MARKERS,
+                org_id=default_org.id, user=no_secrets_use_user,
+            )
+
+        assert "extra_headers" in error.value.detail
+        assert model.objects.count() == count_before
+
+    def test_markers_without_a_user_are_rejected(
+        self, request, export_service, default_org, entity_type, config_fixture
+    ):
+        with pytest.raises(ValidationError):
+            self._create(
+                request, export_service, entity_type, config_fixture, self.MARKERS,
+                org_id=default_org.id,
+            )
+
+    def test_markers_with_secrets_use_are_imported(
+        self, request, export_service, default_org, secrets_use_user, entity_type, config_fixture
+    ):
+        new_config = self._create(
+            request, export_service, entity_type, config_fixture, self.MARKERS,
+            org_id=default_org.id, user=secrets_use_user,
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.extra_headers == self.MARKERS
+
+    def test_plain_headers_without_secrets_use_are_imported(
+        self, request, export_service, default_org, no_secrets_use_user, entity_type, config_fixture
+    ):
+        new_config = self._create(
+            request, export_service, entity_type, config_fixture, {"X-Trace": "t"},
+            org_id=default_org.id, user=no_secrets_use_user,
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.extra_headers == {"X-Trace": "t"}
+
+    def test_file_without_extra_headers_still_imports(
+        self, request, export_service, default_org, no_secrets_use_user, entity_type, config_fixture
+    ):
+        new_config = self._create(
+            request, export_service, entity_type, config_fixture, None,
+            org_id=default_org.id, user=no_secrets_use_user,
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.extra_headers == {}
+
+    @pytest.mark.parametrize(
+        "bad_headers", [{"X-Key": 1}, ["X-Key"]], ids=["non-string-value", "not-an-object"]
+    )
+    def test_malformed_headers_are_rejected_with_a_clear_error(
+        self, request, export_service, default_org, secrets_use_user, entity_type,
+        config_fixture, bad_headers,
+    ):
+        with pytest.raises(ValidationError) as error:
+            self._create(
+                request, export_service, entity_type, config_fixture, bad_headers,
+                org_id=default_org.id, user=secrets_use_user,
+            )
+
+        assert "extra_headers" in error.value.detail
 
 
 @pytest.mark.django_db

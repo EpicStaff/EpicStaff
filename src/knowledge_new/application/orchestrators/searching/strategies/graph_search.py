@@ -17,6 +17,7 @@ from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
+from infrastructure.graphrag.model_headers import set_extra_headers
 from infrastructure.grounding_guard import apply_grounding_guard
 from infrastructure.prompt_patching import patch_graphrag_prompts
 from pydantic import BaseModel as PydanticModel
@@ -113,6 +114,12 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
 
         config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
         config.completion_models["default_completion_model"].api_key = command.llm_api_key
+        set_extra_headers(
+            config.embedding_models["default_embedding_model"], command.embedding_extra_headers
+        )
+        set_extra_headers(
+            config.completion_models["default_completion_model"], command.llm_extra_headers
+        )
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
