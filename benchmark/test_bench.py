@@ -220,6 +220,27 @@ class EnvOverrideTest(unittest.TestCase):
         self.assertFalse((folder / ".env.bench-backup").exists())
 
 
+class ComposeUpTest(unittest.TestCase):
+    def run_up(self, build: bool) -> list[list[str]]:
+        compose = stack.Compose(Path("src"), Path("src/.env"), "src")
+        commands = []
+        with (
+            mock.patch.object(stack, "run", side_effect=lambda args, **_: commands.append(args)),
+            mock.patch.object(stack.Compose, "wait_healthy") as wait_healthy,
+        ):
+            compose.up(build=build)
+        wait_healthy.assert_called_once()
+        return [command[command.index("--env-file") + 2 :] for command in commands]
+
+    def test_up_restarts_nginx_so_it_resolves_recreated_containers_again(self):
+        self.assertEqual(self.run_up(build=False), [["up", "-d"], ["restart", stack.PROXY_SERVICE]])
+
+    def test_build_is_passed_before_the_nginx_restart(self):
+        self.assertEqual(
+            self.run_up(build=True), [["up", "-d", "--build"], ["restart", stack.PROXY_SERVICE]]
+        )
+
+
 class ComposeParseTest(unittest.TestCase):
     def test_parse_ps_accepts_array_and_json_lines(self):
         row = {"Service": "crew", "State": "running", "Health": ""}
@@ -237,6 +258,104 @@ class ComposeParseTest(unittest.TestCase):
             stack.read_env_file(folder / ".env"),
             {"A": "2", "B": "3", "PASSWORD": "ab#cd", "C": "1", "Q": "x # y"},
         )
+
+
+class ChildEnvTest(unittest.TestCase):
+    """compose prefers a shell variable over --env-file, so a child must not inherit names that
+    src/.env defines: an org key exported as DJANGO_API_KEY once became Django's system key."""
+
+    SHELL = {
+        "DJANGO_API_KEY": "org-key",
+        "CREW_LOG_LEVEL": "INFO",
+        "BENCH_API_KEY": "org-key",
+        "BENCH_ORG_ID": "1",
+        "BENCH_API": "http://server",
+        "BENCH_RESULTS_REPO": "/srv/results",
+        "COMMENTED": "keep",
+        "UNRELATED": "keep",
+        "DOCKER_HOST": "unix:///var/run/docker.sock",
+    }
+    STRIPPED = (
+        "DJANGO_API_KEY",
+        "CREW_LOG_LEVEL",
+        "BENCH_API_KEY",
+        "BENCH_ORG_ID",
+        "BENCH_API",
+        "BENCH_RESULTS_REPO",
+    )
+
+    def setUp(self):
+        self.env_file = Path(tempfile.mkdtemp()) / ".env"
+        self.env_file.write_text(
+            "DJANGO_API_KEY=system-key\nCREW_LOG_LEVEL=BENCH\n# COMMENTED=1\n", encoding="utf-8"
+        )
+        patches = [
+            mock.patch.dict(stack.os.environ, self.SHELL),
+            mock.patch.object(stack, "ENV_FILE", self.env_file),
+            mock.patch.object(
+                stack.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="[]")
+            ),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def child_env(self) -> dict:
+        return stack.subprocess.run.call_args.kwargs["env"]
+
+    def assert_stripped(self, env: dict) -> None:
+        self.assertFalse(set(self.STRIPPED) & set(env), sorted(set(self.STRIPPED) & set(env)))
+        for name in ("COMMENTED", "UNRELATED", "DOCKER_HOST"):
+            self.assertEqual(env[name], self.SHELL[name])
+        if "PATH" in stack.os.environ:
+            self.assertEqual(env["PATH"], stack.os.environ["PATH"])
+
+    def test_compose_child_env_lacks_the_env_file_names_and_the_bench_names(self):
+        compose = stack.Compose(self.env_file.parent, self.env_file, "src")
+        compose.ps()
+        self.assert_stripped(self.child_env())
+
+    def test_compose_uses_its_own_env_file(self):
+        other_env_file = self.env_file.with_name("other.env")
+        other_env_file.write_text("UNRELATED=1\n", encoding="utf-8")
+        stack.Compose(self.env_file.parent, other_env_file, "src").ps()
+        env = self.child_env()
+        self.assertNotIn("UNRELATED", env)
+        self.assertEqual(env["DJANGO_API_KEY"], "org-key")
+        self.assertFalse({"BENCH_API_KEY", "BENCH_ORG_ID"} & set(env))
+
+    def test_compose_reads_the_env_file_names_when_the_command_runs(self):
+        compose = stack.Compose(self.env_file.parent, self.env_file, "src")
+        compose.ps()
+        with (
+            stack.EnvOverride(self.env_file, {"AGENT_LOG_LEVEL": "BENCH"}),
+            mock.patch.dict(stack.os.environ, {"AGENT_LOG_LEVEL": "INFO"}),
+        ):
+            compose.ps()
+        self.assertNotIn("AGENT_LOG_LEVEL", self.child_env())
+
+    def test_plain_docker_commands_use_the_default_env_file(self):
+        stack.inspect(["crew"])
+        self.assert_stripped(self.child_env())
+
+    def test_an_env_from_the_caller_is_filtered_too(self):
+        stack.run(["docker", "exec"], env={"REDISCLI_AUTH": "pw", "DJANGO_API_KEY": "org-key"})
+        self.assertEqual(self.child_env(), {"REDISCLI_AUTH": "pw"})
+
+    def test_missing_env_file_strips_only_the_bench_names(self):
+        self.env_file.unlink()
+        stack.inspect(["crew"])
+        env = self.child_env()
+        self.assertEqual(env["DJANGO_API_KEY"], "org-key")
+        self.assertFalse({"BENCH_API_KEY", "BENCH_ORG_ID"} & set(env))
+
+    def test_log_follower_child_env_is_filtered(self):
+        with mock.patch.object(
+            stack.subprocess, "Popen", return_value=mock.Mock(stdout=[])
+        ) as popen:
+            follower = stack.LogFollower("crew", 0)
+            follower._thread.join(timeout=5)
+        self.assert_stripped(popen.call_args.kwargs["env"])
 
 
 class SampleParseTest(unittest.TestCase):
@@ -1601,7 +1720,14 @@ class RunVariantSaveTest(unittest.TestCase):
         results = repo / "results"
         case = config.load_case(write_case())
         options = runner.Options(
-            "http://x", "key", "1", build=False, smoke=False, results_dir=results, repo=repo
+            "http://x",
+            "key",
+            "3",
+            org_source="default",
+            build=False,
+            smoke=False,
+            results_dir=results,
+            repo=repo,
         )
         folders_when_reapplied = []
 
@@ -1643,6 +1769,7 @@ class RunVariantSaveTest(unittest.TestCase):
         self.assertEqual(folders_when_reapplied, [[run_dir.name]])
         meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
         self.assertIn("interrupted", meta["labels"])
+        self.assertEqual((meta["org_id"], meta["org_source"]), ("3", "default"))
 
 
 class WorktreeCleanupTest(unittest.TestCase):
@@ -1796,6 +1923,40 @@ class MultipartTest(unittest.TestCase):
         self.assertEqual(request.get_header("X-api-key"), "secret-key")
         self.assertEqual(request.get_header("X-organization-id"), "3")
         self.assertTrue(request.get_header("Content-type").startswith("multipart/form-data"))
+
+
+class ApiForbiddenTest(unittest.TestCase):
+    def send(self, default_org: bool) -> str:
+        forbidden = api.urllib.error.HTTPError(
+            "http://host/api/graphs/1/",
+            403,
+            "Forbidden",
+            {},
+            io.BytesIO(b'{"detail": "You are not a member of the specified organization."}'),
+        )
+        client = api.Api("http://host", "key", "3", default_org=default_org)
+        with (
+            mock.patch.object(api.urllib.request, "urlopen", side_effect=forbidden),
+            self.assertRaises(api.ApiError) as raised,
+        ):
+            client.get_graph(1)
+        self.assertEqual(raised.exception.status, 403)
+        return str(raised.exception)
+
+    def test_403_with_the_default_organization_says_to_set_bench_org_id(self):
+        message = self.send(default_org=True)
+        self.assertIn(
+            "the API key's owner is not a member of the default organization 3; "
+            "set BENCH_ORG_ID to your organization",
+            message,
+        )
+        self.assertIn("not a member of the specified organization", message)
+
+    def test_403_with_an_explicit_organization_keeps_the_server_message(self):
+        self.assertEqual(
+            self.send(default_org=False),
+            'HTTP 403: {"detail": "You are not a member of the specified organization."}',
+        )
 
 
 class FakeFlowApi:
@@ -2112,9 +2273,10 @@ class BenchCliTest(unittest.TestCase):
         self.export = Path(tempfile.mkdtemp()) / "payload.json"
         self.export.write_text("{}", encoding="utf-8")
         patches = [
-            mock.patch.dict(bench.os.environ, {"DJANGO_API_KEY": "key"}),
+            mock.patch.dict(bench.os.environ, {"BENCH_API_KEY": "key", "BENCH_ORG_ID": "1"}),
             # never read the developer's real ~/.epicstaff-bench.env from a test
             mock.patch.object(bench, "load_bench_env"),
+            mock.patch.object(bench, "BENCH_ENV_FILE", self.export.with_name("absent.env")),
             mock.patch.object(bench, "PAYLOAD_EXPORT", self.export),
             mock.patch.object(
                 bench.flows,
@@ -2124,8 +2286,22 @@ class BenchCliTest(unittest.TestCase):
             mock.patch.object(bench.flows, "ensure_flow"),
         ]
         for patch in patches:
-            patch.start()
-            self.addCleanup(patch.stop)
+            self.start(patch)
+        # every docker call a command makes; the default organization lookup is the only one
+        self.stack_run = self.start(mock.patch.object(bench.stack, "run"))
+        env_file = self.export.with_name(".env")
+        env_file.write_text("DB_USER=bench\nDB_NAME=db\n", encoding="utf-8")
+        self.start(mock.patch.object(bench.stack, "ENV_FILE", env_file))
+
+    def start(self, patch):
+        started = patch.start()
+        self.addCleanup(patch.stop)
+        return started
+
+    def without_org_id(self, default_org: str = "3\n"):
+        """No BENCH_ORG_ID; Postgres answers the default organization query with `default_org`."""
+        del bench.os.environ["BENCH_ORG_ID"]  # mock.patch.dict restores it
+        self.stack_run.return_value = mock.Mock(returncode=0, stdout=default_org, stderr="")
 
     def run_main(self, *argv: str) -> tuple[int, str, str]:
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -2204,13 +2380,150 @@ class BenchCliTest(unittest.TestCase):
         self.assertEqual((code, stdout), (2, ""))
         self.assertIn("HTTP 500: boom", stderr)
 
+    def test_push_scans_with_bench_api_key(self):
+        with mock.patch.object(bench.push, "push") as push_runs:
+            self.assertEqual(self.run_main("push", "run-a")[0], 0)
+        self.assertEqual(push_runs.call_args.args[3], "key")
+
+    def test_push_with_only_django_api_key_exits_before_pushing(self):
+        with (
+            mock.patch.dict(bench.os.environ, {"DJANGO_API_KEY": "org-key"}),
+            mock.patch.object(bench.push, "push") as push_runs,
+            self.assertRaises(SystemExit) as raised,
+        ):
+            del bench.os.environ["BENCH_API_KEY"]
+            self.run_main("push", "run-a")
+        self.assertIn("set BENCH_API_KEY to your org API key", str(raised.exception.code))
+        push_runs.assert_not_called()
+
+    def test_plan_compare_and_push_never_query_the_default_organization(self):
+        self.without_org_id()
+        with (
+            mock.patch.object(bench.compare, "compare_runs", return_value="table"),
+            mock.patch.object(bench.push, "push"),
+        ):
+            self.assertEqual(self.run_main("plan", str(write_case(self.DEV_CASE)))[0], 0)
+            self.assertEqual(self.run_main("compare", "run-a", "run-b")[0], 0)
+            self.assertEqual(self.run_main("push", "run-a")[0], 0)
+        self.stack_run.assert_not_called()
+
+    def test_explicit_org_id_is_used_without_a_query(self):
+        code, _, stderr, run_dev = self.run_dev()
+        run_options = run_dev.call_args.args[1]
+        self.assertEqual((code, run_options.org_id, run_options.org_source), (0, "1", "env"))
+        self.assertFalse(run_options.api().default_org)
+        self.assertEqual(stderr, "")
+        self.stack_run.assert_not_called()
+
+    def test_without_org_id_dev_uses_the_default_organization(self):
+        self.without_org_id()
+        code, _, stderr, run_dev = self.run_dev()
+        run_options = run_dev.call_args.args[1]
+        self.assertEqual((code, run_options.org_id, run_options.org_source), (0, "3", "default"))
+        self.assertTrue(run_options.api().default_org)
+        self.assertEqual(stderr, "organization: id 3 (default)\n")
+
+    def test_without_org_id_flow_import_quiet_still_prints_only_the_id(self):
+        self.without_org_id()
+        self.assertEqual(
+            self.run_main("flow", "import", "--quiet"),
+            (0, "42\n", "organization: id 3 (default)\n"),
+        )
+        self.assertEqual(bench.flows.import_flow.call_args.args[0].org_id, "3")
+
+    def test_no_default_organization_exits_2_before_running(self):
+        self.without_org_id(default_org="")
+        code, _, stderr, run_dev = self.run_dev()
+        self.assertEqual(code, 2)
+        self.assertIn("no default organization: run `docker compose exec django_app", stderr)
+        self.assertIn("or set BENCH_ORG_ID", stderr)
+        run_dev.assert_not_called()
+
+
+class OrganizationTest(unittest.TestCase):
+    DB_USER = "bench_db_owner"
+    PSQL_FAILED = "could not read the default organization from Postgres"
+
+    def setUp(self):
+        self.env_file = Path(tempfile.mkdtemp()) / ".env"
+        self.env_file.write_text(
+            f"DB_USER={self.DB_USER}\nDB_NAME=epicstaff_db\n", encoding="utf-8"
+        )
+
+    def organization(self, environ: dict, **psql) -> tuple[tuple[str, str], str, mock.Mock]:
+        answer = {"returncode": 0, "stdout": "", "stderr": "", **psql}
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(bench.stack, "run", return_value=mock.Mock(**answer)) as run,
+            contextlib.redirect_stderr(stderr),
+        ):
+            result = bench.organization(environ, self.env_file)
+        return result, stderr.getvalue(), run
+
+    def error(self, **psql) -> str:
+        with self.assertRaises(bench.OrganizationError) as raised:
+            self.organization({}, **psql)
+        message = str(raised.exception)
+        self.assertNotIn(self.DB_USER, message)
+        return message
+
+    def test_explicit_org_id_wins_without_a_query(self):
+        result, printed, run = self.organization({"BENCH_ORG_ID": "5"}, stdout="3\n")
+        self.assertEqual((result, printed), (("5", "env"), ""))
+        run.assert_not_called()
+
+    def test_default_organization_is_read_through_stack_run(self):
+        result, printed, run = self.organization({}, stdout="3\n")
+        self.assertEqual(result, ("3", "default"))
+        self.assertEqual(printed, "organization: id 3 (default)\n")
+        args = run.call_args.args[0]
+        self.assertEqual(args[:4], ["docker", "exec", "crewdb", "psql"])
+        self.assertEqual(args[args.index("-U") + 1], self.DB_USER)
+        self.assertEqual(args[args.index("-d") + 1], "epicstaff_db")
+        self.assertEqual(args[-1], bench.DEFAULT_ORG_QUERY)
+
+    def test_no_row_names_create_superadmin(self):
+        self.assertEqual(
+            self.error(stdout="\n"),
+            "no default organization: run `docker compose exec django_app python manage.py "
+            "create_superadmin` or set BENCH_ORG_ID",
+        )
+
+    def test_psql_failure_gives_its_reason_without_the_db_user(self):
+        message = self.error(
+            returncode=2, stderr=f'psql: error: FATAL:  role "{self.DB_USER}" does not exist\n'
+        )
+        self.assertTrue(message.startswith(self.PSQL_FAILED), message)
+        self.assertIn("does not exist", message)
+        self.assertTrue(message.endswith("; set BENCH_ORG_ID"), message)
+
+    def test_docker_failure_gives_its_reason(self):
+        failure = stack.StackError("docker exec crewdb: [Errno 2] No such file or directory")
+        with (
+            mock.patch.object(bench.stack, "run", side_effect=failure),
+            self.assertRaises(bench.OrganizationError) as raised,
+        ):
+            bench.organization({}, self.env_file)
+        self.assertEqual(
+            str(raised.exception),
+            f"{self.PSQL_FAILED} (docker exec crewdb: [Errno 2] No such file or directory); "
+            "set BENCH_ORG_ID",
+        )
+
+    def test_unexpected_answer_is_a_failure(self):
+        self.assertIn(self.PSQL_FAILED, self.error(stdout="id\n3\n"))
+
+    def test_env_file_without_db_settings_is_a_failure(self):
+        self.env_file.write_text("OTHER=1\n", encoding="utf-8")
+        self.assertIn("DB_USER", self.error(stdout="3\n"))
+
 
 class BenchEnvFileTest(unittest.TestCase):
     def setUp(self):
         self.path = Path(tempfile.mkdtemp()) / ".epicstaff-bench.env"
         self.path.write_text(
             "# benchmark settings\n"
-            "export DJANGO_API_KEY='file-key'\n"
+            "export BENCH_API_KEY='file-key'\n"
             'BENCH_ORG_ID="7"\n'
             "export BENCH_API=http://server\n"
             "BENCH_RESULTS_REPO=/srv/results\n"
@@ -2230,7 +2543,7 @@ class BenchEnvFileTest(unittest.TestCase):
         self.assertEqual(
             environ,
             {
-                "DJANGO_API_KEY": "file-key",
+                "BENCH_API_KEY": "file-key",
                 "BENCH_ORG_ID": "7",
                 "BENCH_API": "http://server",
                 "BENCH_RESULTS_REPO": "/srv/results",
@@ -2239,11 +2552,11 @@ class BenchEnvFileTest(unittest.TestCase):
 
     def test_environment_values_win(self):
         environ, _ = self.load({"BENCH_ORG_ID": "1"})
-        self.assertEqual((environ["BENCH_ORG_ID"], environ["DJANGO_API_KEY"]), ("1", "file-key"))
+        self.assertEqual((environ["BENCH_ORG_ID"], environ["BENCH_API_KEY"]), ("1", "file-key"))
 
     def test_exported_key_wins_and_the_other_names_still_load(self):
-        environ, _ = self.load({"DJANGO_API_KEY": "shell-key"})
-        self.assertEqual(environ["DJANGO_API_KEY"], "shell-key")
+        environ, _ = self.load({"BENCH_API_KEY": "shell-key"})
+        self.assertEqual(environ["BENCH_API_KEY"], "shell-key")
         self.assertEqual(environ["BENCH_ORG_ID"], "7")
 
     def test_missing_file_changes_nothing(self):
@@ -2264,6 +2577,41 @@ class BenchEnvFileTest(unittest.TestCase):
     def test_private_file_does_not_warn(self):
         _, warning = self.load({})
         self.assertEqual(warning, "")
+
+    def test_django_api_key_in_the_file_is_not_loaded(self):
+        self.path.write_text("DJANGO_API_KEY=org-key\n", encoding="utf-8")
+        environ, _ = self.load({})
+        self.assertEqual(environ, {})
+
+
+class ApiKeyTest(unittest.TestCase):
+    RENAMED = "DJANGO_API_KEY is Django's system key and is not read"
+
+    def setUp(self):
+        self.path = Path(tempfile.mkdtemp()) / ".epicstaff-bench.env"
+
+    def exit_message(self, environ: dict) -> str:
+        with self.assertRaises(SystemExit) as raised:
+            bench.api_key(environ, self.path)
+        return str(raised.exception.code)
+
+    def test_returns_bench_api_key_even_when_django_api_key_is_set(self):
+        environ = {"BENCH_API_KEY": "org-key", "DJANGO_API_KEY": "system-key"}
+        self.assertEqual(bench.api_key(environ, self.path), "org-key")
+
+    def test_django_api_key_in_the_shell_asks_for_the_rename(self):
+        message = self.exit_message({"DJANGO_API_KEY": "org-key"})
+        self.assertIn(self.RENAMED, message)
+        self.assertIn("DJANGO_API_KEY is Django's system key and is not read", message)
+
+    def test_django_api_key_in_the_bench_env_file_asks_for_the_rename(self):
+        self.path.write_text("export DJANGO_API_KEY=org-key\n", encoding="utf-8")
+        self.assertIn(self.RENAMED, self.exit_message({}))
+
+    def test_no_key_says_how_to_set_bench_api_key(self):
+        message = self.exit_message({})
+        self.assertIn("BENCH_API_KEY is not set", message)
+        self.assertNotIn("DJANGO_API_KEY", message)
 
 
 if __name__ == "__main__":

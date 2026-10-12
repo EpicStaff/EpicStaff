@@ -51,7 +51,8 @@
  ENV FILE AND BENCHMARK
 ----------------------------------------------------------------
  These run on the host Python 3.11+ (PYTHON=<interpreter> to
- override), not on a service venv.
+ override), not on a service venv. bench-* need the org API key
+ in BENCH_API_KEY (exported or in ~/.epicstaff-bench.env).
 
  make env-update [DEV=1]
    Append the variables src/.env lacks (from src/env.yaml);

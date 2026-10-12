@@ -20,10 +20,19 @@ class ApiError(Exception):
 
 
 class Api:
-    def __init__(self, base_url: str, api_key: str, org_id: str, timeout_s: float = 30):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        org_id: str,
+        timeout_s: float = 30,
+        default_org: bool = False,
+    ):
+        """`default_org`: `org_id` is the auto-detected default organization, not BENCH_ORG_ID."""
         self.base_url = base_url.rstrip("/")
         self.org_id = str(org_id)
         self.timeout_s = timeout_s
+        self.default_org = default_org
         self._headers = {
             "X-Api-Key": api_key,
             "X-Organization-Id": str(org_id),
@@ -47,7 +56,13 @@ class Api:
                 raw = response.read()
                 return response.status, (json.loads(raw) if raw else None)
         except urllib.error.HTTPError as error:
-            raise ApiError(error.code, error.read(300).decode("utf-8", "replace")) from error
+            message = error.read(300).decode("utf-8", "replace")
+            if error.code == 403 and self.default_org:
+                message = (
+                    "the API key's owner is not a member of the default organization "
+                    f"{self.org_id}; set BENCH_ORG_ID to your organization ({message})"
+                )
+            raise ApiError(error.code, message) from error
         except (urllib.error.URLError, OSError) as error:
             raise ApiError(None, f"{type(error).__name__}: {error}") from error
 

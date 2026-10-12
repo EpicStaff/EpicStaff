@@ -12,22 +12,62 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 INSTRUMENTED = ("django_app", "crew", "agent", "sandbox")
 RESTARTED = (*INSTRUMENTED, "knowledge_new")
+# nginx resolves its upstreams (django, frontend, realtime, webhook) once, at start. A container
+# that `up` recreates can come back on a new IP, and nginx would keep proxying to the old one
+# (502), so every `up` restarts nginx.
+PROXY_SERVICE = "epicstaff-nginx"
 BACKUP_SUFFIX = ".bench-backup"
+# the main checkout's src/.env, which is also every Compose's env_file
+ENV_FILE = Path(__file__).resolve().parent.parent / "src" / ".env"
+# The benchmark's own settings: the only names read from ~/.epicstaff-bench.env, and never
+# passed on to a child started through `run` or LogFollower.
+BENCH_ENV_NAMES = ("BENCH_API_KEY", "BENCH_ORG_ID", "BENCH_API", "BENCH_RESULTS_REPO")
 
 
 class StackError(RuntimeError):
     pass
 
 
-def run(args: list[str], timeout: float = 600, env: dict | None = None, check: bool = True):
+def child_env(env_file: Path, base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return `base` (default: this process's environment) without every name `env_file`
+    defines and without the benchmark's own settings.
+
+    docker compose takes a shell variable over the same name in --env-file, so an inherited
+    name would silently replace the value of src/.env and the case overrides in the containers
+    (an org key exported as DJANGO_API_KEY once became Django's system key). The file is read
+    on every call because the case overrides add names to it while a run is active.
+    """
+    names = {*BENCH_ENV_NAMES, *(read_env_file(env_file) if env_file.is_file() else ())}
+    return {
+        name: value
+        for name, value in (os.environ if base is None else base).items()
+        if name not in names
+    }
+
+
+def run(
+    args: list[str],
+    timeout: float = 600,
+    env: dict | None = None,
+    check: bool = True,
+    env_file: Path | None = None,
+):
+    """Run `args` with `env` (default: this process's environment) filtered by `child_env`
+    against `env_file` (default ENV_FILE)."""
     try:
         result = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout, env=env, check=False
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=child_env(env_file or ENV_FILE, env),
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise StackError(f"{' '.join(args[:3])}: {error}") from error
@@ -36,6 +76,18 @@ def run(args: list[str], timeout: float = 600, env: dict | None = None, check: b
             f"{' '.join(args[:4])} failed ({result.returncode}): {result.stderr.strip()[-500:]}"
         )
     return result
+
+
+def psql(db_user: str, database: str, query: str, timeout: float = 10):
+    """`query` through psql in the crewdb container (local socket, no password), rows only.
+
+    A psql error does not raise: the caller reads returncode, stdout and stderr.
+    """
+    return run(
+        ["docker", "exec", "crewdb", "psql", "-U", db_user, "-d", database, "-tAc", query],
+        check=False,
+        timeout=timeout,
+    )
 
 
 def apply_env_overrides(text: str, overrides: dict[str, str]) -> str:
@@ -134,15 +186,22 @@ class Compose:
         ]
 
     def up(self, build: bool) -> None:
-        run(self.cmd("up", "-d", *(["--build"] if build else [])), timeout=3600)
+        run(
+            self.cmd("up", "-d", *(["--build"] if build else [])),
+            timeout=3600,
+            env_file=self.env_file,
+        )
+        run(self.cmd("restart", PROXY_SERVICE), timeout=600, env_file=self.env_file)
         self.wait_healthy()
 
     def restart(self, services: tuple[str, ...] = RESTARTED) -> None:
-        run(self.cmd("restart", *services), timeout=600)
+        run(self.cmd("restart", *services), timeout=600, env_file=self.env_file)
         self.wait_healthy()
 
     def ps(self) -> list[dict]:
-        return parse_ps(run(self.cmd("ps", "-a", "--format", "json")).stdout)
+        return parse_ps(
+            run(self.cmd("ps", "-a", "--format", "json"), env_file=self.env_file).stdout
+        )
 
     def wait_healthy(self, timeout_s: float = 300) -> None:
         deadline = time.monotonic() + timeout_s
@@ -273,6 +332,7 @@ class LogFollower:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=child_env(ENV_FILE),
         )
         self._thread = threading.Thread(target=self._read, daemon=True)
         self._thread.start()

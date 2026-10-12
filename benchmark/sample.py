@@ -262,22 +262,7 @@ class Sampler:
         if self.db_user:
             try:
                 query = "select count(*), current_setting('max_connections') from pg_stat_activity"
-                pg = stack.run(
-                    [
-                        "docker",
-                        "exec",
-                        "crewdb",
-                        "psql",
-                        "-U",
-                        self.db_user,
-                        "-d",
-                        "postgres",
-                        "-tAc",
-                        query,
-                    ],
-                    check=False,
-                    timeout=10,
-                )
+                pg = stack.psql(self.db_user, "postgres", query)
                 if pg.returncode == 0 and "|" in pg.stdout:
                     count, maximum = pg.stdout.strip().split("|")
                     result.update(pg_connections=int(count), pg_max_connections=int(maximum))

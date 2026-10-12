@@ -7,11 +7,13 @@ One tool that runs real sessions against a running EpicStaff stack, writes flat 
 Developer check on a laptop, from the repository root, with the stack running.
 
 1. **`src/.env`**, once and after pulling new variables: `make env-update DEV=1`. It appends only the variables your `.env` lacks and never changes existing lines. No `src/.env` yet: `python scripts/envtool.py --dev`. The dev profile is fine on a laptop; pre-flight warns that the numbers include debug overhead.
+
+   Use your stack exactly as you started it: put the four BENCH log levels (and other case `[env]` values) into `src/.env` yourself; the run's overrides then change nothing and compose recreates no container.
 2. **API key**, once: create an API key for your organization in the UI and put it in `~/.epicstaff-bench.env`, then `chmod 600 ~/.epicstaff-bench.env`:
    ```bash
-   export DJANGO_API_KEY=<org API key>
-   export BENCH_ORG_ID=1
+   export BENCH_API_KEY=<org API key>
    ```
+   The benchmark runs in the stack's default organization; add `export BENCH_ORG_ID=<org id>` only when your key belongs to another one.
 3. **Payload flow**, once: build it in the UI (5 Python nodes, no LLM, no RAG), give it the `benchmark` label, export it and save the file as `benchmark/flows/payload.json`. Commit it, so everyone measures the same flow. `dev` imports it by itself on the first run and reuses that flow afterwards; see **Graph ids** below.
 4. **Measure**, then compare:
    ```bash
@@ -46,9 +48,13 @@ The make targets run the host Python (`python3`, `python` on Windows; override w
 
 **Graph ids** come from the case file or `--graph <phase>=<id>`, for example `--graph payload=17 --graph complex=18`; `--graph` wins. When the `payload` phase has neither and `benchmark/flows/payload.json` exists, `dev`, `run`, `smoke` and `preflight` use the flow imported from that file: `preflight` after its host and `.env` checks, a run once the stack is up. It is imported only when this server and organization do not have it yet, when the file changed, or when the flow was deleted; otherwise the earlier import is reused (printed as `existing`). Re-importing an unchanged file would recreate its nodes with new ids and change the graph hash, so two runs of the same flow would look like different workloads. Which import belongs to which server, organization and file content is kept in `benchmark/.flow-cache.json` (gitignored; deleting it only costs one re-import). Every other phase still needs an id.
 
-**Settings** come from the environment: `DJANGO_API_KEY` (required by every command that talks to the stack, and by `push`), `BENCH_ORG_ID` (default 1), `BENCH_API` (default `http://localhost`), `BENCH_RESULTS_REPO` (for `push`). Any of these four that the environment does not set is read from `~/.epicstaff-bench.env` (`NAME=VALUE` or `export NAME=VALUE` lines; every other name in the file is ignored). An exported value always wins, so an exported `DJANGO_API_KEY` is used while `BENCH_ORG_ID` can still come from the file. On Linux and macOS the tool warns when that file is readable by other users.
+**Settings** come from the environment: `BENCH_API_KEY` (the organization API key; required by every command that talks to the stack, and by `push`), `BENCH_ORG_ID` (optional, see below), `BENCH_API` (default `http://localhost`), `BENCH_RESULTS_REPO` (for `push`). Any of these four that the environment does not set is read from `~/.epicstaff-bench.env` (`NAME=VALUE` or `export NAME=VALUE` lines; every other name in the file is ignored). An exported value always wins, so an exported `BENCH_API_KEY` is used while `BENCH_ORG_ID` can still come from the file. On Linux and macOS the tool warns when that file is readable by other users. The key is not read from `DJANGO_API_KEY`: that is Django's system key in `src/.env`, and a command that finds only `DJANGO_API_KEY` (exported or in the file) stops and asks you to set `BENCH_API_KEY` to your organization key.
 
-Exit codes: 0 ok, 2 case error, flow import error or pre-flight error, 3 smoke failed, 130 Ctrl+C, other non-zero on a crash.
+**Organization**: without `BENCH_ORG_ID`, the commands that talk to the stack (`dev`, `run`, `smoke`, `preflight`, `flow import`) use the stack's default organization, read with `psql` in the `crewdb` container as the `DB_USER` of `src/.env`, and print `organization: id <N> (default)` on stderr; `plan`, `compare` and `push` never ask. No default organization (a fresh database) or a failed query stops the command with exit 2 and says what to run or set. If the API answers 403 for the default organization, the key's owner is not a member of it: set `BENCH_ORG_ID` to your organization. `meta.json` records `org_id` and `org_source` (`env` or `default`).
+
+Every `docker` and `docker compose` command the tool starts gets its environment without the names `src/.env` defines (after the case overrides) and without the four settings above. Compose prefers a shell variable over `--env-file`, so this keeps `src/.env` authoritative whatever your shell exports.
+
+Exit codes: 0 ok, 2 case error, organization error, flow import error or pre-flight error, 3 smoke failed, 130 Ctrl+C, other non-zero on a crash.
 
 ## 1. What it measures
 
@@ -95,10 +101,10 @@ Done once, on the machine that runs the benchmark and pushes results.
 5. `src/.env` with production defaults: `python3 scripts/envtool.py` on a new server, `make env-update` after pulling new variables. Pre-flight warns when `.env` looks like the dev profile, whose debug overhead makes the numbers incomparable.
 6. API key and settings: create an API key in the EpicStaff UI for the benchmark organization, write it to `~/.epicstaff-bench.env` and `chmod 600 ~/.epicstaff-bench.env`. The tool reads the file by itself (exported values win), so no `source` is needed:
    ```bash
-   export DJANGO_API_KEY=<org API key>
-   export BENCH_ORG_ID=<org id>
+   export BENCH_API_KEY=<org API key>
    export BENCH_RESULTS_REPO=~/epicstaff-benchmarks
    ```
+   Add `export BENCH_ORG_ID=<org id>` when the benchmark organization is not the server's default organization.
 7. Flows: the payload flow is imported from `benchmark/flows/payload.json` (by itself on the first `preflight` or `run`, then reused; `make bench-flow` re-imports it by hand). Build the `complex` flow in the UI: this is the operator's job, on every server, with its LLM config and key, and its RAG collection. Put its graph id into `benchmark/cases/server.toml` (or pass `--graph complex=<id>`). The smoke run proves each flow completes.
 8. Run: `python3 benchmark/bench.py preflight server`, then `plan`, then `run --note "..."`, then `push`.
 
@@ -250,7 +256,7 @@ Each run is one flat folder in `benchmark/results/`, named `<YYYY-MM-DD_HHMM>_<h
 
 | File | One row per | Contents |
 |---|---|---|
-| `meta.json` | run | `schema_version`, `tool_version`, `run_id`, `created_at`, `note`, `kind`, `case` (name, hash, variant, overrides), `git` (ref, sha, dirty, built), `images`, `host` (hostname, vcpu, ram_mb, kernel, docker, virtualization), `container_limits`, `env` (allowlist only), `labels`, `smoke`, `phases` (per phase: graph id, name and hash, variables hash, verdict, provider health, capacity estimate, cold session). |
+| `meta.json` | run | `schema_version`, `tool_version`, `run_id`, `created_at`, `note`, `kind`, `org_id`, `org_source` (`env`: BENCH_ORG_ID, `default`: the default organization), `case` (name, hash, variant, overrides), `git` (ref, sha, dirty, built), `images`, `host` (hostname, vcpu, ram_mb, kernel, docker, virtualization), `container_limits`, `env` (allowlist only), `labels`, `smoke`, `phases` (per phase: graph id, name and hash, variables hash, verdict, provider health, capacity estimate, cold session). |
 | `case.toml` | - | The exact case file used, unless an `[env]` or variant `env` value is outside the allowlist: then the parsed case written back as TOML with those values replaced by `<redacted>` (comments and layout are not kept). `meta.json` `case.hash` is always the hash of the original file, so re-hashing a redacted copy gives a different value. |
 | `sessions.csv.gz` | session | `phase, segment, level, kind` (ladder, bisect, dev, cold, smoke, or `finish`: sent during a level's finish step, not measured), `cold, session_id`, send timing (`intended_ts, sent_ts, gen_lag_ms, api_ms, http_status`), checkpoint times (`arrival_ts, received_ts, slot_ts, end_ts`), `status` (crew's status, or the runner's `http_error`, `timeout`, `interrupted`), `censored` (true for an `interrupted` session: its durations are lower bounds), `error_reason`, durations (`e2e_s, dispatch_s, queue_wait_s, run_s, llm_s, agent_queue_s, python_s, other_s, platform_overhead_s`), `llm_calls, tokens, cost_usd`. |
 | `steps.csv` | phase x level | `phase, segment, level, kind` (ladder, bisect, dev), `target, inflight_mean, running_mean, steady_s, sent, completed, failed, interrupted, throughput_per_min, error_rate` (failed / sent; `interrupted` is not failed), `p50/p90/p95/p99/max/mean` of `e2e_s, queue_wait_s, run_s, llm_s, platform_overhead_s`, `cpu_s_per_session, mb_per_concurrent, gen_lag_p99_ms, verdict` (pass, fail, invalid), `live_verdict, fail_reasons, bottleneck`. |
@@ -281,7 +287,7 @@ Resource sampling is every 2 s: CPU and memory from the host's cgroup v2 counter
 
 The benchmark relies on **BENCH checkpoints** in the product code: loguru records at custom level `BENCH` (15, between DEBUG and INFO), registered in `src/shared/bench_log.py`. Each is written as one compact JSON line on stdout, `{"bench":1,"ts":<epoch>,"checkpoint":"...", ...}`; the runner follows `docker logs -f` of the four instrumented containers and reads these lines.
 
-Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox`, `agent` and `django_app` (`CREW_LOG_LEVEL`, `SANDBOX_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `DJANGO_LOG_LEVEL`). `DEBUG` and `TRACE` also show them. The case files set BENCH through their `[env]` and the runner applies and restores `src/.env`, so you normally never edit it by hand. The other services do not accept `BENCH`: webhook passes its level to uvicorn, which has no such level, and realtime and knowledge_new are not instrumented.
+Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox`, `agent` and `django_app` (`CREW_LOG_LEVEL`, `SANDBOX_LOG_LEVEL`, `AGENT_LOG_LEVEL`, `DJANGO_LOG_LEVEL`). `DEBUG` and `TRACE` also show them. The case files set BENCH through their `[env]` and the runner applies and restores `src/.env`; a value that differs from `src/.env` makes compose recreate that container for the run and again afterwards, so put the levels into `src/.env` yourself to keep the stack as you started it (Quick start). The other services do not accept `BENCH`: webhook passes its level to uvicorn, which has no such level, and realtime and knowledge_new are not instrumented.
 
 **At the default `INFO` level the checkpoints are not printed and not evaluated: INFO hides everything**, so production behaviour is unchanged. At BENCH the normal log lines are unchanged and the checkpoints are not duplicated into them.
 
@@ -316,6 +322,6 @@ python -m unittest scripts/test_envtool.py -v     # envtool --update; needs PyYA
 
 ## Security notes
 
-- The API key is read from `DJANGO_API_KEY`, or from `~/.epicstaff-bench.env` when that is not exported; never from `src/.env`. It is never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file in the folder and its subfolders except `events_full.csv.gz`, the same set it copies), so it needs the key. It also needs `BENCH_RESULTS_REPO`. The scan looks for that one key only; other secrets are kept out by the allowlists below.
+- The API key is read from `BENCH_API_KEY`, or from `~/.epicstaff-bench.env` when that is not exported; never from `src/.env`, and never from `DJANGO_API_KEY` (Django's system key). No `docker` or `docker compose` child process inherits it, so it cannot reach a container. It is never written to a result file. `bench push` refuses a run folder that contains the key string (it scans every file in the folder and its subfolders except `events_full.csv.gz`, the same set it copies), so it needs the key. It also needs `BENCH_RESULTS_REPO`. The scan looks for that one key only; other secrets are kept out by the allowlists below.
 - `bench push` requires a clean results clone, runs `git pull --ff-only`, prints the exact `git add`, `git commit`, `git push` commands, and runs them only after you answer `y` (or pass `--yes`). It copies each run folder without `events_full.csv.gz` and rebuilds `benchmarks/index.json` (existing run numbers are kept, new runs get the next number).
 - `meta.json` keeps environment values only for the allowlist; the stored `case.toml` replaces `[env]` and variant `env` values outside it with `<redacted>`; error reasons are truncated to 300 characters.

@@ -26,22 +26,26 @@ import flows
 import push
 import runner
 import stack
-from api import Api
 from config import CaseError, load_case, parse_assignments, select_variants
 
 HERE = Path(__file__).resolve().parent
 PAYLOAD_PHASE = "payload"
 PAYLOAD_EXPORT = flows.PAYLOAD_EXPORT
-BENCH_ENV_FILE_NAME = ".epicstaff-bench.env"
-# Only these are taken from the bench env file; anything else in it is ignored.
-BENCH_ENV_NAMES = ("DJANGO_API_KEY", "BENCH_ORG_ID", "BENCH_API", "BENCH_RESULTS_REPO")
+BENCH_ENV_FILE = Path.home() / ".epicstaff-bench.env"
+# rbac_organization allows a single row with is_default (rbac_organization_single_default)
+DEFAULT_ORG_QUERY = "select id from rbac_organization where is_default and is_active"
+
+
+class OrganizationError(Exception):
+    """BENCH_ORG_ID is not set and the default organization could not be read; the message
+    says what to do."""
 
 
 def load_bench_env(path: Path, environ) -> None:
     """Fill the benchmark settings missing from `environ` from the private env file at `path`.
 
-    Each of BENCH_ENV_NAMES is taken from the file only when the environment does not set it,
-    so an exported value (an exported DJANGO_API_KEY, say) always wins while the file still
+    Each of stack.BENCH_ENV_NAMES is taken from the file only when the environment does not set
+    it, so an exported value (an exported BENCH_API_KEY, say) always wins while the file still
     supplies the others. Never src/.env: that holds the stack's secrets, not the benchmark's.
     """
     if not path.is_file():
@@ -49,9 +53,31 @@ def load_bench_env(path: Path, environ) -> None:
     if os.name == "posix" and path.stat().st_mode & 0o077:
         print(f"warning: {path} is readable by other users: chmod 600 {path}", file=sys.stderr)
     values = stack.read_env_file(path)
-    for name in BENCH_ENV_NAMES:
+    for name in stack.BENCH_ENV_NAMES:
         if values.get(name) and not environ.get(name):
             environ[name] = values[name]
+
+
+def api_key(environ, bench_env_file: Path) -> str:
+    """Return the org API key from BENCH_API_KEY, or exit naming what to set.
+
+    The key used to be read from DJANGO_API_KEY, which is Django's system key in src/.env; a
+    leftover of that name gets the rename message instead of being used.
+    """
+    key = environ.get("BENCH_API_KEY")
+    if key:
+        return key
+    if environ.get("DJANGO_API_KEY") or (
+        bench_env_file.is_file() and stack.read_env_file(bench_env_file).get("DJANGO_API_KEY")
+    ):
+        sys.exit(
+            "set BENCH_API_KEY to your org API key (in ~/.epicstaff-bench.env or your shell); "
+            "DJANGO_API_KEY is Django's system key and is not read"
+        )
+    sys.exit(
+        "BENCH_API_KEY is not set: export BENCH_API_KEY='<org API key>' "
+        "or put it in ~/.epicstaff-bench.env"
+    )
 
 
 def flow_exports() -> dict[str, Path]:
@@ -69,14 +95,54 @@ def case_path(value: str) -> Path:
     )
 
 
+def organization(environ, env_file: Path) -> tuple[str, str]:
+    """Return (org id, source): BENCH_ORG_ID with "env", or else the stack's default
+    organization, read from Postgres with the DB_USER and DB_NAME of `env_file`, with "default".
+
+    Raises:
+        OrganizationError: The query failed or found no default organization.
+    """
+    if environ.get("BENCH_ORG_ID"):
+        return environ["BENCH_ORG_ID"], "env"
+    env = stack.read_env_file(env_file) if env_file.is_file() else {}
+    db_user, database = env.get("DB_USER"), env.get("DB_NAME")
+    if not (db_user and database):
+        reason = f"{env_file} sets no DB_USER and DB_NAME"
+    else:
+        try:
+            result = stack.psql(db_user, database, DEFAULT_ORG_QUERY)
+        except stack.StackError as error:
+            reason = str(error)
+        else:
+            org_id = result.stdout.strip()
+            if result.returncode != 0:
+                stderr_lines = result.stderr.strip().splitlines()
+                reason = stderr_lines[-1] if stderr_lines else f"psql exit {result.returncode}"
+            elif not org_id:
+                raise OrganizationError(
+                    "no default organization: run `docker compose exec django_app python "
+                    "manage.py create_superadmin` or set BENCH_ORG_ID"
+                )
+            elif org_id.isdigit():
+                print(f"organization: id {org_id} (default)", file=sys.stderr)
+                return org_id, "default"
+            else:
+                reason = f"unexpected answer {org_id[:80]!r}"
+        # the role name is a DB credential: keep it out of the message
+        reason = reason.replace(db_user, "<DB_USER>")
+    raise OrganizationError(
+        f"could not read the default organization from Postgres ({reason}); set BENCH_ORG_ID"
+    )
+
+
 def options(args) -> runner.Options:
-    api_key = os.environ.get("DJANGO_API_KEY")
-    if not api_key:
-        sys.exit("DJANGO_API_KEY is not set: export DJANGO_API_KEY='<org API key>'")
+    key = api_key(os.environ, BENCH_ENV_FILE)  # a missing key stops before docker is asked
+    org_id, org_source = organization(os.environ, stack.ENV_FILE)
     return runner.Options(
         api_base=os.environ.get("BENCH_API", "http://localhost"),
-        api_key=api_key,
-        org_id=os.environ.get("BENCH_ORG_ID", "1"),
+        api_key=key,
+        org_id=org_id,
+        org_source=org_source,
         note=getattr(args, "note", ""),
         build=not getattr(args, "no_build", False),
         smoke=not getattr(args, "no_smoke", False),
@@ -85,15 +151,11 @@ def options(args) -> runner.Options:
     )
 
 
-def api_of(run_options: runner.Options) -> Api:
-    return Api(run_options.api_base, run_options.api_key, run_options.org_id)
-
-
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
-    load_bench_env(Path.home() / BENCH_ENV_FILE_NAME, os.environ)
+    load_bench_env(BENCH_ENV_FILE, os.environ)
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -131,22 +193,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "flow":
             # the explicit import always imports, so it also refreshes the flow cache
-            flow = flows.import_flow(api_of(options(args)), PAYLOAD_EXPORT)
+            flow = flows.import_flow(options(args).api(), PAYLOAD_EXPORT)
             print(flow.id if args.quiet else flows.describe(PAYLOAD_PHASE, flow))
             return 0
         if args.command == "compare":
             print(compare.compare_runs(args.runs))
             return 0
         if args.command == "push":
-            if not os.environ.get("DJANGO_API_KEY"):
-                sys.exit(
-                    "DJANGO_API_KEY is not set: the secret scan needs it. export DJANGO_API_KEY='<org API key>'"
-                )
+            # the secret scan looks for the key in every file it copies
             push.push(
                 args.runs,
                 os.environ.get("BENCH_RESULTS_REPO"),
                 HERE / "viewer.html",
-                os.environ.get("DJANGO_API_KEY"),
+                api_key(os.environ, BENCH_ENV_FILE),
                 args.yes,
             )
             return 0
@@ -185,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except flows.FlowImportError as error:
         print(f"flow import error: {error}", file=sys.stderr)
+        return 2
+    except OrganizationError as error:
+        print(error, file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         print("interrupted — remaining variants skipped", file=sys.stderr)

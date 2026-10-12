@@ -56,6 +56,7 @@ class Options:
     api_base: str
     api_key: str
     org_id: str
+    org_source: str = "env"  # "env": BENCH_ORG_ID; "default": the stack's default organization
     note: str = ""
     build: bool = True
     smoke: bool = True
@@ -64,6 +65,11 @@ class Options:
     repo: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
     # flow export per phase name, for phases the case leaves without a graph id
     flow_exports: dict[str, Path] = field(default_factory=dict)
+
+    def api(self) -> Api:
+        return Api(
+            self.api_base, self.api_key, self.org_id, default_org=self.org_source == "default"
+        )
 
 
 def evaluate_host(facts: dict) -> list[tuple[str, str]]:
@@ -531,7 +537,7 @@ class PhaseRunner:
 
 
 def run_variant(case: Case, variant: Variant, options: Options) -> Path:
-    api = Api(options.api_base, options.api_key, options.org_id)
+    api = options.api()
     env_path = options.repo / "src" / ".env"
     host_findings = evaluate_host(_host_facts(options.repo))
     _report(host_findings)
@@ -569,6 +575,8 @@ def run_variant(case: Case, variant: Variant, options: Options) -> Path:
             "created_at": created.isoformat(timespec="seconds"),
             "note": options.note,
             "kind": case.kind,
+            "org_id": options.org_id,
+            "org_source": options.org_source,
             "case": {
                 "name": case.name,
                 "hash": case.case_hash,
@@ -933,7 +941,7 @@ def preflight_only(case: Case, options: Options) -> int:
     if _report(findings, fatal=False):
         # a host error (e.g. docker down) or an unusable .env makes the stack checks meaningless
         return 2
-    api = Api(options.api_base, options.api_key, options.org_id)
+    api = options.api()
     compose = stack.Compose(options.repo / "src", env_path, stack.detect_project())
     case = _import_flows(case, api, options.flow_exports)
     graphs = _resolve_graphs(api, case)
