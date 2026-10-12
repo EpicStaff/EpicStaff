@@ -26,9 +26,9 @@ session_repository = SessionRepository(AsyncSessionLocal)
 
 session_timeout_service = SessionTimeoutService(
     redis_service=redis_service,
-    session_schema_channel=settings.SESSION_SCHEMA_CHANNEL,
     session_timeout_channel=settings.SESSION_TIMEOUT_CHANNEL,
     session_repository=session_repository,
+    sweep_interval_seconds=settings.SESSION_TIMEOUT_SWEEP_INTERVAL_SECONDS,
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
@@ -65,9 +65,7 @@ async def test_database_connection():
 
 
 async def main():
-    """
-    Starts redis subscribtion, starts SessionTimeoutService, connects to DB
-    """
+    """Connect to the DB and Redis, then start the schedule, session-timeout and export-cleanup services."""
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
@@ -82,14 +80,11 @@ async def main():
         await redis_service.init_redis()
         logger.info("Redis subscription initialized successfully.")
 
-        await session_timeout_service.start()
-        logger.info("SessionTimeoutService started successfully.")
-
-        await session_timeout_service.initial_check_all_sessions_for_timeout()
-        logger.info("Start SessionTimeoutService initial timeout check.")
-
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
+
+        await session_timeout_service.start()
+        logger.info("SessionTimeoutService started successfully.")
 
         await export_cleanup_service.start()
         logger.info("ExportCleanupService started successfully.")

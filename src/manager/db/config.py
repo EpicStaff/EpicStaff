@@ -8,8 +8,8 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,  # Set to True only for debugging
     # Every service shares Postgres's max_connections (default 100), and the
-    # manager only runs short single-row SELECTs, so 10 connections is ample
-    # even when many session-timeout checks wake at once.
+    # manager only runs a periodic timeout sweep plus schedule syncs, so 10
+    # connections is ample.
     pool_size=5,
     max_overflow=5,
     pool_pre_ping=True,
