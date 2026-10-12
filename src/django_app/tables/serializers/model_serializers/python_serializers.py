@@ -1,4 +1,5 @@
 from django.db import transaction
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -86,6 +87,19 @@ class PythonCodeSerializer(
         """The persisted secrets for this field, resolved through the parent when nested."""
         python_code = self._current_python_code()
         return getattr(python_code, source, None) if python_code is not None else None
+
+    def validate_venv_id(self, value):
+        """Reject a venv the active org does not own."""
+        if value is None:
+            return value
+        request = self.context.get("request")
+        if request is None:
+            return value
+        org_id = resolve_active_org_id(request)
+        owned = SandboxVenvBinding.objects.filter(resource_id=str(value), org_id=org_id).exists()
+        if not owned:
+            raise serializers.ValidationError(f'Invalid pk "{value}" - object does not exist.')
+        return value
 
     def validate(self, attrs):
         """Reject code that reads a secret this PythonCode did not declare."""
