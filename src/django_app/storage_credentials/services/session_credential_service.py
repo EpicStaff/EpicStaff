@@ -271,7 +271,7 @@ class SessionCredentialService:
         """
         self._revoke_and_delete(
             owner_filter={"realtime_agent_chat_id": realtime_agent_chat_id},
-            org_id_path="realtime_agent_chat__rt_agent_definition__agent_definition__organization_id",
+            org_id_path="realtime_agent_chat__rt_agent_definition__agent_definition__org_id",
             owner_label=f"realtime chat {realtime_agent_chat_id}",
         )
 

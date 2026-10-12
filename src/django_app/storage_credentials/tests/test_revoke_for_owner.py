@@ -66,7 +66,7 @@ def error_logs():
 def realtime_chat(org, db):
     agent_definition = AgentDefinition.objects.create(
         name="Revoke Agent",
-        organization_id=org.id,
+        org_id=org.id,
         description="agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "be helpful"}],
     )

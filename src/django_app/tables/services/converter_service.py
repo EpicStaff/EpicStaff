@@ -368,7 +368,7 @@ class ConverterService(metaclass=SingletonMeta):
                     session_credential_service.issue_for_realtime_chat(
                         realtime_agent_chat=rt_agent_chat,
                         storage_allowed_paths=list(union_allowed_paths),
-                        org_id=ad.organization_id,
+                        org_id=ad.org_id,
                     )
                 )
         except (TemporaryCredentialIssueError, CredentialScopeValidationError):

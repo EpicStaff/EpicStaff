@@ -36,7 +36,7 @@ def org(db):
 def agent_definition(org):
     return AgentDefinition.objects.create(
         name="Test Agent",
-        organization_id=org.id,
+        org_id=org.id,
         description="Test agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "You are a helpful assistant"}],
     )
