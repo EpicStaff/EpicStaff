@@ -4,10 +4,9 @@ from dotdict import DotDict
 
 
 class StateHistoryItem(TypedDict):
-    type: Literal["CREW", "PYTHON", "FILE_EXTRACTOR", "LLM", "END"]
+    type: Literal["CREW", "PYTHON", "FILE_EXTRACTOR", "LLM", "END", "SUBGRAPH"]
     name: str
     additional_data: dict
-    variables: dict  # for output
     input: Any
     output: Any
 
