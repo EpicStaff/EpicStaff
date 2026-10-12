@@ -532,6 +532,7 @@ def main(**kwargs) -> dict:
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
             "api_key": llm_config.api_key,
+            "extra_headers": llm_config.extra_headers,
             "stream": False,
         }
         resp = await litellm.acompletion(**{**params, "messages": messages})
