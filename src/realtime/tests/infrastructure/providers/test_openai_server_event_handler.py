@@ -133,12 +133,13 @@ async def test_function_call_done_also_forwards_to_client(mock_db, handler, clie
 
 
 # ---------------------------------------------------------------------------
-# conversation_item_created_handler — skips "dont_show_it" id
+# conversation_item_created_handler — skips items with HIDDEN_ITEM_ID_PREFIX
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 @patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_conversation_item_skips_dont_show_it(mock_db, handler, client):
+async def test_conversation_item_skips_legacy_dont_show_it(mock_db, handler, client):
+    """Legacy id format should still be filtered."""
     data = {
         "type": "conversation.item.created",
         "item": {"id": "dont_show_it"},
@@ -149,10 +150,71 @@ async def test_conversation_item_skips_dont_show_it(mock_db, handler, client):
 
 @pytest.mark.asyncio
 @patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_conversation_item_skips_prefixed_hidden_id(mock_db, handler, client):
+    """Prefixed id format (with unique suffix) should be filtered."""
+    data = {
+        "type": "conversation.item.created",
+        "item": {"id": "dont_show_it_abcdef1234567890abcdef1234567890"},
+    }
+    await handler.handle_event(data)
+    client.send_client.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
 async def test_conversation_item_forwards_normal_item(mock_db, handler, client):
+    """Normal items with real-world id formats should be forwarded."""
     data = {
         "type": "conversation.item.created",
         "item": {"id": "msg_abc", "type": "message"},
+    }
+    await handler.handle_event(data)
+    client.send_client.assert_awaited_once_with(data)
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_conversation_item_forwards_item_with_item_prefix(mock_db, handler, client):
+    """Real-world format: item_ prefix."""
+    data = {
+        "type": "conversation.item.created",
+        "item": {"id": "item_ABC123", "type": "message"},
+    }
+    await handler.handle_event(data)
+    client.send_client.assert_awaited_once_with(data)
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_conversation_item_forwards_fc_prefix(mock_db, handler, client):
+    """Real-world format: fc_ prefix (function call)."""
+    data = {
+        "type": "conversation.item.created",
+        "item": {"id": "fc_xyz789", "type": "message"},
+    }
+    await handler.handle_event(data)
+    client.send_client.assert_awaited_once_with(data)
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_conversation_item_handles_malformed_payload(mock_db, handler, client):
+    """Malformed payloads (missing item or id) should not crash."""
+    data = {
+        "type": "conversation.item.created",
+        "item": {},
+    }
+    await handler.handle_event(data)
+    client.send_client.assert_awaited_once_with(data)
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_conversation_item_handles_null_id(mock_db, handler, client):
+    """A present but null id (not just a missing key) should not crash."""
+    data = {
+        "type": "conversation.item.created",
+        "item": {"id": None, "type": "message"},
     }
     await handler.handle_event(data)
     client.send_client.assert_awaited_once_with(data)
