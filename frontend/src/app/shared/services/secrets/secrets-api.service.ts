@@ -1,6 +1,6 @@
 import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { CreateSecretRequest, Secret, SecretUsageResponse } from '@shared/models';
+import { BinnedSecret, CreateSecretRequest, Secret, SecretUsageResponse } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
 import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
@@ -30,6 +30,14 @@ export class SecretsApiService {
         return this.http
             .get<ApiGetResponse<Secret>>(this.apiUrl, { context })
             .pipe(map((response) => response.results));
+    }
+
+    /** The org's secrets in the recycle bin; same Secrets READ as the list, so the same 403 rule. */
+    getBinnedSecrets(): Observable<BinnedSecret[]> {
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
+        return this.http
+            .get<BinnedSecret[]>(this.apiUrl + 'recycle-bin/', { context })
+            .pipe(map((entries) => entries.map(({ id, name }) => ({ id, name }))));
     }
 
     getSecretById(id: number): Observable<Secret> {

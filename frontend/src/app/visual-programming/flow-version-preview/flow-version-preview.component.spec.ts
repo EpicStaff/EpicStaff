@@ -88,7 +88,10 @@ describe('FlowVersionPreviewComponent', () => {
                         },
                     },
                 },
-                { provide: SecretsStorageService, useValue: { getSecrets: () => of([]) } },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { getSecrets: () => of([]), selectItems: () => [], isBinned: () => false },
+                },
                 { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
                 // A user who may edit flows: any read-only below comes from the preview itself.
                 { provide: PermissionsService, useValue: { can: () => true } },

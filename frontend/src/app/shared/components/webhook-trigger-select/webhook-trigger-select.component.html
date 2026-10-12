@@ -48,6 +48,15 @@
             {{ disallowedProviderMessage() }}
         </div>
     }
+
+    @if (selectedIsBinned()) {
+        <div class="wts__note">
+            This trigger is in the recycle bin, so it gets no requests.
+            @if (!isReadonlyView()) {
+                Restore it from the Recycle Bin, or pick another one.
+            }
+        </div>
+    }
 </div>
 
 <ng-template #dropdownTemplate>

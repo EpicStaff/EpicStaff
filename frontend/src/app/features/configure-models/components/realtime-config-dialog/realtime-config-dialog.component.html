@@ -54,10 +54,11 @@
                     variant="boxed"
                     tooltipText="OpenAI API key (leave blank to use default)"
                     placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [items]="openaiApiKeyItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="openaiForm.get('api_key_secret_id')?.value" />
                 @if (!openaiForm.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
@@ -96,10 +97,11 @@
                     variant="boxed"
                     tooltipText="Separate API key for transcription (optional)"
                     placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [items]="openaiTranscriptionKeyItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="openaiForm.get('transcription_api_key_secret_id')?.value" />
                 @if (!openaiForm.get('transcription_api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
@@ -143,10 +145,11 @@
                     variant="boxed"
                     tooltipText="ElevenLabs API key"
                     placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [items]="elevenLabsKeyItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="elevenLabsForm.get('api_key_secret_id')?.value" />
                 @if (!elevenLabsForm.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
@@ -199,10 +202,11 @@
                     variant="boxed"
                     tooltipText="Google Gemini API key"
                     placeholder="Select a secret"
-                    [items]="secretItems()"
+                    [items]="geminiKeyItems()"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="geminiForm.get('api_key_secret_id')?.value" />
                 @if (!geminiForm.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.

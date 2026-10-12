@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateSecretRequest, Secret } from '@shared/models';
-import { catchError, finalize, Observable, of, shareReplay, tap, throwError } from 'rxjs';
+import { BinnedSecret, CreateSecretRequest, Secret, SecretSelectItem } from '@shared/models';
+import { catchError, finalize, forkJoin, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { StorageService } from '../app-storage.service';
 import { SecretsApiService } from './secrets-api.service';
@@ -15,6 +15,9 @@ export class SecretsStorageService implements StorageService {
     private secretsSignal = signal<Secret[]>([]);
     public readonly secrets = this.secretsSignal.asReadonly();
     public secretsLoaded = signal<boolean>(false);
+    private binnedSignal = signal<BinnedSecret[]>([]);
+    /** Secrets in the recycle bin: a resource can still link to one until it's purged. */
+    public readonly binnedSecrets = this.binnedSignal.asReadonly();
     // Every node-secrets-field and config dialog independently calls getSecrets() on their own
     // mount/build — without sharing the in-flight request, opening e.g. a CDT panel (pre + post
     // secrets fields mounting at once) fires one duplicate GET /secrets/ per concurrent caller
@@ -27,12 +30,18 @@ export class SecretsStorageService implements StorageService {
         }
 
         if (!this.pendingRequest$) {
-            this.pendingRequest$ = this.secretsApiService.getSecrets().pipe(
+            const live$ = this.secretsApiService.getSecrets().pipe(
                 // A member/viewer has no access to this endpoint at all — that's a permanent,
                 // by-design restriction (see SKIP_FORBIDDEN_RELOAD on this request), not a
                 // failure worth surfacing as an error toast to every secrets consumer.
                 // Cache it as "loaded, zero secrets" instead of rethrowing.
-                catchError((err: HttpErrorResponse) => (err.status === 403 ? of([]) : throwError(() => err))),
+                catchError((err: HttpErrorResponse) => (err.status === 403 ? of([]) : throwError(() => err)))
+            );
+            // Only names a binned secret a picker still holds: a failure must never break the live list.
+            const binned$ = this.secretsApiService.getBinnedSecrets().pipe(catchError(() => of([])));
+            this.pendingRequest$ = forkJoin([live$, binned$]).pipe(
+                tap(([, binned]) => this.binnedSignal.set(binned)),
+                map(([secrets]) => secrets),
                 tap((secrets) => this.createSecretsInCache(secrets)),
                 finalize(() => (this.pendingRequest$ = null)),
                 shareReplay({ bufferSize: 1, refCount: false })
@@ -46,7 +55,29 @@ export class SecretsStorageService implements StorageService {
     }
 
     deleteSecret(id: number): Observable<void> {
-        return this.secretsApiService.deleteSecret(id).pipe(tap(() => this.deleteSecretFromCache(id)));
+        return this.secretsApiService.deleteSecret(id).pipe(tap(() => this.moveSecretToBin(id)));
+    }
+
+    /**
+     * A secret picker's options: the live secrets, plus each selected secret that's in the recycle
+     * bin, so the field shows it instead of looking empty. A binned secret is never offered otherwise:
+     * a new link to one is refused.
+     */
+    selectItems(selected: number | number[] | null | undefined): SecretSelectItem[] {
+        const selectedIds = new Set(Array.isArray(selected) ? selected : selected == null ? [] : [selected]);
+        const live = this.secretsSignal().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.maskTail(secret.tail),
+        }));
+        const binned = this.binnedSignal()
+            .filter((secret) => selectedIds.has(secret.id))
+            .map((secret) => ({ name: `${secret.name} (in the recycle bin)`, value: secret.id }));
+        return [...live, ...binned];
+    }
+
+    isBinned(id: number): boolean {
+        return this.binnedSignal().some((secret) => secret.id === id);
     }
 
     /**
@@ -86,14 +117,18 @@ export class SecretsStorageService implements StorageService {
         this.secretsLoaded.set(true);
     }
 
-    private deleteSecretFromCache(id: number): void {
-        const current = this.secretsSignal();
-        const updated = current.filter((s) => s.id !== id);
-        this.secretsSignal.set(updated);
+    /** A deleted secret goes to the recycle bin: pickers that still hold it name it as binned. */
+    private moveSecretToBin(id: number): void {
+        const deleted = this.secretsSignal().find((secret) => secret.id === id);
+        this.secretsSignal.set(this.secretsSignal().filter((secret) => secret.id !== id));
+        if (deleted) {
+            this.binnedSignal.update((binned) => [...binned, { id: deleted.id, name: deleted.name }]);
+        }
     }
 
     clear(): void {
         this.secretsSignal.set([]);
+        this.binnedSignal.set([]);
         this.secretsLoaded.set(false);
     }
 }

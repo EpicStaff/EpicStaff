@@ -6,11 +6,12 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { ModelTypes } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
@@ -29,6 +30,7 @@ interface DialogData {
     templateUrl: './llm-model-config-dialog.component.html',
     styleUrls: ['./llm-model-config-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         IconButtonComponent,
         ButtonComponent,
         ReactiveFormsModule,
@@ -62,13 +64,9 @@ export class LlmModelConfigDialogComponent implements OnInit {
     title = computed(() => (this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add LLM'));
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     form!: FormGroup;
 
@@ -89,6 +87,7 @@ export class LlmModelConfigDialogComponent implements OnInit {
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
         });
+        trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);

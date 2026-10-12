@@ -44,6 +44,7 @@ import {
     INSERT_EXAMPLE_PAYLOAD_LABEL,
     TelegramTriggerNodePanelComponent,
 } from './telegram-trigger-node-panel.component';
+import { WebhookStatus } from './webhook-status.model';
 
 function registrationNode(
     overrides: Partial<TelegramTriggerNodeModel['data']> = {},
@@ -90,7 +91,13 @@ function configure({ isPreview = false }: { isPreview?: boolean } = {}): void {
             { provide: FlowsApiService, useValue: { getTelegramTriggerWebhookInfo: vi.fn() } },
             {
                 provide: SecretsStorageService,
-                useValue: { getSecrets: () => of([]), secrets: () => [], maskTail: (tail: string) => tail },
+                useValue: {
+                    getSecrets: () => of([]),
+                    selectItems: () => [],
+                    isBinned: () => false,
+                    secrets: () => [],
+                    maskTail: (tail: string) => tail,
+                },
             },
         ],
     });
@@ -161,6 +168,52 @@ describe('TelegramTriggerNodePanelComponent', () => {
         panel.form.get('node_name')!.setValue('Renamed trigger');
 
         expect(hasUnsavedConnectionChanges()).toBe(false);
+    });
+
+    it('shows the tunnel status only for a resolved trigger, never for a missing or binned one', () => {
+        const { panel } = openSaved(registrationNode());
+
+        panel.onTriggerResolved(null);
+        expect(panel.webhookStatusDisplay()).toBeNull();
+
+        panel.onTriggerResolved({
+            id: 3,
+            path: 'bot',
+            provider_type: 'ngrok',
+            ngrok_config: null,
+            localhost_config: null,
+            live_url: 'https://bot.ngrok.app',
+        });
+        expect(panel.webhookStatusDisplay()).toBe(WebhookStatus.SUCCESS);
+
+        panel.onTriggerResolved({
+            id: 3,
+            path: 'bot',
+            provider_type: 'ngrok',
+            ngrok_config: null,
+            localhost_config: null,
+            live_url: null,
+        });
+        expect(panel.webhookStatusDisplay()).toBe(WebhookStatus.FAIL);
+    });
+
+    it('keeps offering the bot key when its secret is in the recycle bin', () => {
+        configure();
+        TestBed.overrideProvider(SecretsStorageService, {
+            useValue: {
+                getSecrets: () => of([]),
+                secrets: () => [],
+                maskTail: (tail: string) => tail,
+                isBinned: (id: number) => id === 5,
+                selectItems: (selected: number[]) =>
+                    selected.includes(5) ? [{ name: 'Old bot key (in the recycle bin)', value: 5 }] : [],
+            },
+        });
+        const node = registrationNode({ telegram_bot_api_key_secret_id: 5 });
+        markSaved(node);
+        const { panel } = open(node);
+
+        expect(panel.secretItems()).toEqual([{ name: 'Old bot key (in the recycle bin)', value: 5 }]);
     });
 
     it('passes the saved backendId and bot key to the registration check', () => {
@@ -251,7 +304,13 @@ describe('TelegramTriggerNodePanelComponent template', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { getSecrets: () => of([]), secrets: () => [], maskTail: (tail: string) => tail },
+                    useValue: {
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                        secrets: () => [],
+                        maskTail: (tail: string) => tail,
+                    },
                 },
             ],
         });
@@ -354,7 +413,13 @@ describe('TelegramTriggerNodePanelComponent test payload', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), maskTail: () => '', getSecrets: () => of([]) },
+                    useValue: {
+                        secrets: signal([]),
+                        maskTail: () => '',
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: Dialog, useValue: { open: () => ({ closed: of(dialogResult) }) } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
@@ -709,7 +774,13 @@ describe('TelegramTriggerNodePanelComponent field models info', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), maskTail: () => '', getSecrets: () => of([]) },
+                    useValue: {
+                        secrets: signal([]),
+                        maskTail: () => '',
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: Dialog, useValue: { open: () => ({ closed: of(undefined) }) } },
             ],

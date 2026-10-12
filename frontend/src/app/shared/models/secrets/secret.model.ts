@@ -15,6 +15,19 @@ export interface Secret {
     usage_count: SecretUsageCount;
 }
 
+/** A secret in the recycle bin, as its bin list names it. Its links stay until it's purged. */
+export interface BinnedSecret {
+    id: number;
+    name: string;
+}
+
+/** A secret picker option; fits the shared selects' `SelectItem`. */
+export interface SecretSelectItem {
+    name: string;
+    value: number;
+    tip?: string;
+}
+
 export interface CreateSecretRequest {
     name: string;
     value: string;

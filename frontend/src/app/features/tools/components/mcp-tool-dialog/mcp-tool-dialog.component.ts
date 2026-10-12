@@ -9,6 +9,7 @@ import {
     Inject,
     inject,
     OnInit,
+    signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -22,6 +23,7 @@ import {
 } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
     HintMessageComponent,
@@ -35,7 +37,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { httpUrlValidator, notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CreateMcpToolRequest, GetMcpToolRequest, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 
@@ -50,6 +52,7 @@ interface DialogData {
 @Component({
     selector: 'app-mcp-tool-dialog',
     imports: [
+        BinnedSecretNoteComponent,
         ReactiveFormsModule,
         DialogModule,
         AppSvgIconComponent,
@@ -69,13 +72,11 @@ interface DialogData {
 export class McpToolDialogComponent implements OnInit {
     public readonly canUseSecrets = computed(() => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use));
 
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
     public readonly secretItems = computed<SelectItem[]>(() => [
         { name: 'No secret', value: null },
-        ...this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        })),
+        ...this.secretsStorageService.selectItems(this.pickedSecretIds()),
     ]);
 
     form!: FormGroup;
@@ -171,6 +172,7 @@ export class McpToolDialogComponent implements OnInit {
                 Validators.max(120),
             ]),
         });
+        trackPickedSecrets(this.form, ['auth_secret_id'], this.pickedSecretIds, this.destroyRef);
     }
 
     public onCancel(): void {

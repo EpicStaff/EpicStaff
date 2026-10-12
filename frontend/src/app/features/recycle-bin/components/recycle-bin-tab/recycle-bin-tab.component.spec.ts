@@ -195,6 +195,25 @@ describe('RecycleBinTabComponent', () => {
             httpTesting.expectOne(FLOWS_LIST).flush([]);
         });
 
+        it('refreshes the secret pickers after a secret is restored, so it stops reading as binned', () => {
+            grant(ResourceCode.Secrets, ActionCode.Create);
+            const secretsBin = `${API_URL}secrets/recycle-bin/`;
+            const element = open('secrets');
+            httpTesting.expectOne(secretsBin).flush([entry(3, 'API key')]);
+            fixture.detectChanges();
+
+            click(element, ROW_RESTORE);
+            httpTesting
+                .expectOne({ method: 'POST', url: `${secretsBin}restore/` })
+                .flush({ restored: [{ id: 3, name: 'API key', renamed_from: null }], failed: [] });
+
+            // The tab's own reload, and the pickers' cache: the live list and the bin list.
+            httpTesting.expectOne(`${API_URL}secrets/`).flush({ results: [] });
+            const binReads = httpTesting.match(secretsBin);
+            expect(binReads.length).toBe(2);
+            binReads.forEach((request) => request.flush([]));
+        });
+
         it('restores without asking', () => {
             grant(ResourceCode.Flows, ActionCode.Create);
             const element = openFlowsWith([entry(5, 'Report')]);

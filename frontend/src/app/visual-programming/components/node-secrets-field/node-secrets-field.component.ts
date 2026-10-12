@@ -12,7 +12,13 @@ import {
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent, SelectItem } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    BinnedSecretNoteComponent,
+    HelpTooltipComponent,
+    MultiSelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../services/notifications';
@@ -22,7 +28,7 @@ import { ToastService } from '../../../services/notifications';
  *  Telegram node panels instead of duplicating the trigger+dropdown wiring in each one. */
 @Component({
     selector: 'app-node-secrets-field',
-    imports: [AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent],
+    imports: [AppSvgIconComponent, BinnedSecretNoteComponent, HelpTooltipComponent, MultiSelectComponent],
     templateUrl: './node-secrets-field.component.html',
     styleUrls: ['./node-secrets-field.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,13 +52,8 @@ export class NodeSecretsFieldComponent {
     private readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
     public readonly multiSelectRef = viewChild<MultiSelectComponent>('multiSelect');
 
-    public readonly secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** The live secrets, plus a picked one in the recycle bin: it stays checked, so saving keeps it. */
+    public readonly secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.value()));
 
     public readonly readonlyItems = computed<SelectItem[]>(() => this.names().map((name) => ({ name, value: name })));
 
@@ -61,10 +62,10 @@ export class NodeSecretsFieldComponent {
             const count = this.names().length;
             return count > 0 ? `${count} selected` : 'No secrets assigned';
         }
-        // Count only ids that still resolve to an existing secret — a since-deleted secret's id
-        // can still be sitting in value() (nothing prunes it), and counting it here would show a
-        // number the dropdown's checked rows can't match.
-        const existingIds = new Set(this.secretsStorageService.secrets().map((secret) => secret.id));
+        // Count only ids the dropdown can show checked: live secrets and binned ones. An id of a
+        // secret deleted for good can still sit in value() (nothing prunes it), and counting it
+        // would show a number the checked rows can't match.
+        const existingIds = new Set(this.secretItems().map((item) => item.value));
         const count = this.value().filter((id) => existingIds.has(id)).length;
         return count > 0 ? `${count} selected` : 'Select a secret';
     });

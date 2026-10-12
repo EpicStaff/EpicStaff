@@ -47,6 +47,7 @@
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="form.get('api_key_secret_id')?.value" />
                 @if (!form.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.

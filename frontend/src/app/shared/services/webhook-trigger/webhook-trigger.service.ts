@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { WebhookTriggerModel } from '@shared/models';
+import { BinnedWebhookTrigger, WebhookTriggerModel } from '@shared/models';
 import { map, Observable, Subject, tap } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
@@ -30,6 +30,13 @@ export class WebhookTriggerService {
 
     getById(id: number): Observable<WebhookTriggerModel> {
         return this.http.get<WebhookTriggerModel>(`${this.apiUrl}${id}/`, { headers: this.headers });
+    }
+
+    /** The org's triggers in the recycle bin: a node may still link to one until it's purged. */
+    listInRecycleBin(): Observable<BinnedWebhookTrigger[]> {
+        return this.http
+            .get<BinnedWebhookTrigger[]>(`${this.apiUrl}recycle-bin/`, { headers: this.headers })
+            .pipe(map((entries) => entries.map(({ id, name }) => ({ id, name }))));
     }
 
     create(body: WebhookTriggerModel): Observable<WebhookTriggerModel> {

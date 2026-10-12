@@ -58,6 +58,10 @@
                                     <strong>Secrets tab</strong>.
                                 </app-hint-message>
                             }
+                            <app-binned-secret-note
+                                [selected]="form.get('telegram_bot_api_key_secret_id')?.value"
+                                [readonly]="isReadOnly()"
+                            />
                             <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
                         </div>
                     </div>
@@ -72,31 +76,36 @@
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
 
-                        <div class="webhook-status__container">
-                            @switch (webhookStatusDisplay()) {
-                                @case (WebhookStatus.FAIL) {
-                                    <div class="webhook-status__main">
-                                        <app-svg-icon
-                                            class="webhook-status__icon--failed"
-                                            icon="x"
-                                            size="1rem"
-                                        />
-                                        <span>Tunnel not connected</span>
-                                    </div>
-                                    <span class="webhook-status__error-message"> Webhook service is not running </span>
+                        <!-- No box without a live trigger: an empty status would still show its padding. -->
+                        @if (webhookStatusDisplay()) {
+                            <div class="webhook-status__container">
+                                @switch (webhookStatusDisplay()) {
+                                    @case (WebhookStatus.FAIL) {
+                                        <div class="webhook-status__main">
+                                            <app-svg-icon
+                                                class="webhook-status__icon--failed"
+                                                icon="x"
+                                                size="1rem"
+                                            />
+                                            <span>Tunnel not connected</span>
+                                        </div>
+                                        <span class="webhook-status__error-message">
+                                            Webhook service is not running
+                                        </span>
+                                    }
+                                    @case (WebhookStatus.SUCCESS) {
+                                        <div class="webhook-status__main">
+                                            <app-svg-icon
+                                                class="webhook-status__icon--success"
+                                                icon="check"
+                                                size="1rem"
+                                            />
+                                            <span>Tunnel connected</span>
+                                        </div>
+                                    }
                                 }
-                                @case (WebhookStatus.SUCCESS) {
-                                    <div class="webhook-status__main">
-                                        <app-svg-icon
-                                            class="webhook-status__icon--success"
-                                            icon="check"
-                                            size="1rem"
-                                        />
-                                        <span>Tunnel connected</span>
-                                    </div>
-                                }
-                            }
-                        </div>
+                            </div>
+                        }
 
                         @if (showsWebhookRegistration) {
                             <app-telegram-webhook-registration

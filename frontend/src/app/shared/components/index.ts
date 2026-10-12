@@ -5,6 +5,7 @@ export * from './app-input-number/input-number.component';
 export * from './app-svg-icon/app-svg-icon.component';
 export * from './app-validation-errors/validation-errors.component';
 export * from './avatar-upload/avatar-upload.component';
+export * from './binned-secret-note/binned-secret-note.component';
 export * from './blob-preview/blob-preview.component';
 export * from './button-round/button-round.component';
 export * from './buttons';

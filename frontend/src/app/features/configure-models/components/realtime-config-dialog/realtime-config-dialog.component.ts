@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+    BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
     HelpTooltipComponent,
@@ -13,6 +14,7 @@ import {
 } from '@shared/components';
 import { ElevenLabsRealtimeConfig, GeminiRealtimeConfig, OpenAIRealtimeConfig } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
+import { trackPickedSecrets } from '@shared/utils';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -32,6 +34,7 @@ export interface RealtimeConfigDialogData {
     templateUrl: './realtime-config-dialog.component.html',
     styleUrls: ['./realtime-config-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         ReactiveFormsModule,
         CustomInputComponent,
         SelectComponent,
@@ -62,13 +65,20 @@ export class RealtimeConfigDialogComponent implements OnInit {
         { key: 'gemini', label: 'Gemini' },
     ];
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
+    /**
+     * Each secret select's picked id, and its own items: a picked secret in the recycle bin keeps
+     * its option in that select only, never offered as a new choice in another.
+     */
+    private readonly openaiApiKeyId = signal<number[]>([]);
+    private readonly openaiTranscriptionKeyId = signal<number[]>([]);
+    private readonly elevenLabsKeyId = signal<number[]>([]);
+    private readonly geminiKeyId = signal<number[]>([]);
+    openaiApiKeyItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.openaiApiKeyId()));
+    openaiTranscriptionKeyItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.selectItems(this.openaiTranscriptionKeyId())
     );
+    elevenLabsKeyItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.elevenLabsKeyId()));
+    geminiKeyItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.geminiKeyId()));
 
     openaiForm = this.fb.nonNullable.group({
         custom_name: [
@@ -158,6 +168,15 @@ export class RealtimeConfigDialogComponent implements OnInit {
         });
 
     ngOnInit(): void {
+        trackPickedSecrets(this.openaiForm, ['api_key_secret_id'], this.openaiApiKeyId, this.destroyRef);
+        trackPickedSecrets(
+            this.openaiForm,
+            ['transcription_api_key_secret_id'],
+            this.openaiTranscriptionKeyId,
+            this.destroyRef
+        );
+        trackPickedSecrets(this.elevenLabsForm, ['api_key_secret_id'], this.elevenLabsKeyId, this.destroyRef);
+        trackPickedSecrets(this.geminiForm, ['api_key_secret_id'], this.geminiKeyId, this.destroyRef);
         this.secretsStorageService
             .getSecrets()
             .pipe(takeUntilDestroyed(this.destroyRef))

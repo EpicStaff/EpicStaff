@@ -21,6 +21,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import {
     ActionCode,
+    BinnedWebhookTrigger,
     ResourceCode,
     WebhookProviderType,
     WebhookTriggerAuthKind,
@@ -75,6 +76,8 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     triggers = signal<WebhookTriggerModel[]>([]);
     private triggersLoaded = signal<boolean>(false);
     selectedId = signal<number | null>(null);
+    /** The selected trigger when it's in the recycle bin: kept, named, and never offered in the list. */
+    readonly binnedTrigger = signal<BinnedWebhookTrigger | null>(null);
     searchTerm = signal<string>('');
     open = signal<boolean>(false);
     controlDisabled = signal<boolean>(false);
@@ -116,11 +119,20 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         return list.filter((t) => this.triggerName(t).toLowerCase().includes(term));
     });
 
+    readonly selectedIsBinned = computed(() => {
+        const binned = this.binnedTrigger();
+        // A restored trigger is back in the live list: that wins over an older bin answer.
+        return binned != null && binned.id === this.selectedId() && this.selectedTrigger() == null;
+    });
+
     readonly triggerText = computed(() => {
         const trigger = this.selectedTrigger();
         if (trigger) return this.displayLabel(trigger);
+        const binned = this.binnedTrigger();
+        if (binned != null && this.selectedIsBinned()) return `${binned.name} (in the recycle bin)`;
+        // Not listable, still being looked up, or the lookup failed: the field still holds this id.
         const id = this.selectedId();
-        return id != null && !this.canListTriggers() ? `Webhook trigger #${id}` : this.placeholder();
+        return id != null ? `Webhook trigger #${id}` : this.placeholder();
     });
 
     private triggerName(t: WebhookTriggerModel): string {
@@ -156,12 +168,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
                 next: (triggers) => {
                     this.triggers.set(triggers);
                     this.triggersLoaded.set(true);
-                    // Only clear when we started with a bare id (no embedded snapshot) and it's not in the list.
-                    const id = this.selectedId();
-                    if (id != null && !triggers.some((t) => t.id === id)) {
-                        this.selectedId.set(null);
-                        this.onChange(null);
-                    }
+                    this.resolveMissingSelection();
                     this.triggerResolved.emit(this.selectedTrigger());
                 },
             });
@@ -253,12 +260,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         } else {
             this.selectedId.set(value);
         }
-        if (this.triggersLoaded()) {
-            const id = this.selectedId();
-            if (id != null && !this.triggers().some((t) => t.id === id)) {
-                this.selectedId.set(null);
-            }
-        }
+        if (this.triggersLoaded()) this.resolveMissingSelection();
         this.triggerResolved.emit(this.selectedTrigger());
     }
 
@@ -272,5 +274,31 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
 
     setDisabledState(isDisabled: boolean): void {
         this.controlDisabled.set(isDisabled);
+    }
+
+    /**
+     * A selected id that isn't a live trigger is either in the recycle bin, where the node keeps
+     * its link until a purge, so it's kept and shown as binned; or gone for good, so it's cleared.
+     */
+    private resolveMissingSelection(): void {
+        const id = this.selectedId();
+        if (id == null || this.triggers().some((trigger) => trigger.id === id)) return;
+        this.service
+            .listInRecycleBin()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (binned) => {
+                    // A trigger picked meanwhile wins over this late answer.
+                    if (this.selectedId() !== id) return;
+                    const match = binned.find((trigger) => trigger.id === id) ?? null;
+                    this.binnedTrigger.set(match);
+                    if (match == null) {
+                        this.selectedId.set(null);
+                        this.onChange(null);
+                    }
+                },
+                // A failed lookup keeps the id: unlinking the node on a network error would lose data.
+                error: () => undefined,
+            });
     }
 }

@@ -195,6 +195,23 @@
         color: var(--color-error, #e5484d);
     }
 
+    // Kept but not working (a trigger in the recycle bin): the system warning bar, like the
+    // validation errors' bar in warning colours. It may wrap, so it has no fixed height.
+    &__note {
+        display: flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0.25rem 0.5rem;
+        border-left: 2px solid var(--color-warning);
+        border-radius: var(--radius-sm);
+        background: var(--amber-alpha-8);
+        color: var(--color-warning);
+        font-family: var(--font-family);
+        font-weight: var(--text-body-small-weight);
+        font-size: var(--text-body-small-size);
+        line-height: var(--text-body-small-line-height);
+    }
+
     &__empty {
         padding: 0.75rem;
         color: var(--color-input-text-placeholder);

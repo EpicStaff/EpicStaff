@@ -35,3 +35,9 @@ export interface WebhookTriggerModel {
 
 // Write payload accepted by the node serializers: int PK or nested object.
 export type WebhookTriggerWrite = number | WebhookTriggerModel;
+
+/** A webhook trigger in the recycle bin, as its bin list names it (`name` is the trigger's path). */
+export interface BinnedWebhookTrigger {
+    id: number;
+    name: string;
+}

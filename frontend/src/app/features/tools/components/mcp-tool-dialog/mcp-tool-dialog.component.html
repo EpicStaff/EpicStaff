@@ -85,6 +85,10 @@
                     [readonly]="!canUseSecrets()"
                     readonlyEmptyPlaceholder="No secret"
                 />
+                <app-binned-secret-note
+                    [selected]="form.get('auth_secret_id')?.value"
+                    [readonly]="!canUseSecrets()"
+                />
                 @if (!canUseSecrets()) {
                     <app-hint-message>
                         Changing the auth secret requires the <strong>Use</strong> permission on Secrets.

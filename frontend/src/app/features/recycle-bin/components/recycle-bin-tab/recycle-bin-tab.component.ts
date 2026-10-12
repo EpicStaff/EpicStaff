@@ -8,6 +8,7 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { ActionCode } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 import {
     debounceTime,
     defer,
@@ -156,6 +157,7 @@ export class RecycleBinTabComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly secretsStorage = inject(SecretsStorageService);
     private readonly serverSearches = new Subject<string>();
     private loadSubscription: Subscription | null = null;
 
@@ -167,7 +169,10 @@ export class RecycleBinTabComponent implements OnInit {
             // The first value is the current count; only later requests (the page's "Empty recycle bin") reload.
             toObservable(this.reloadRequests.requests)
                 .pipe(skip(1), takeUntilDestroyed())
-                .subscribe(() => this.reload());
+                .subscribe(() => {
+                    this.reload();
+                    this.refreshSecretPickers();
+                });
         }
     }
 
@@ -328,6 +333,7 @@ export class RecycleBinTabComponent implements OnInit {
         const failure = failedItemsMessage('restore', result.failed);
         if (failure !== null) this.toastService.error(failure);
         this.reload();
+        if (this.tab().sources.includes('secret')) this.refreshSecretPickers();
     }
 
     private onPurged(result: RecycleBinPurgeResult, itemName: string | undefined): void {
@@ -336,6 +342,15 @@ export class RecycleBinTabComponent implements OnInit {
         const failure = failedItemsMessage('delete', result.failed);
         if (failure !== null) this.toastService.error(failure);
         this.reload();
+        if (this.tab().sources.includes('secret')) this.refreshSecretPickers();
+    }
+
+    /** Secret pickers name binned secrets from a cached list; a restore or purge here changes it. */
+    private refreshSecretPickers(): void {
+        this.secretsStorage
+            .getSecrets(true)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => undefined });
     }
 
     private onActionError(error: HttpErrorResponse, action: RecycleBinAction, item: RecycleBinItem): void {

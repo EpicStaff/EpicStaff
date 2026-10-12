@@ -56,6 +56,7 @@
                 [showSearch]="true"
                 searchPlaceholder="Search a secret..."
             />
+            <app-binned-secret-note [selected]="form.get('auth_token_secret_id')?.value" />
         </div>
 
         <app-select

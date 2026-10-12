@@ -60,6 +60,7 @@
                 [showSearch]="true"
                 searchPlaceholder="Search a secret..."
             />
+            <app-binned-secret-note [selected]="form.get('ngrok_auth_token_secret_id')?.value" />
             <app-custom-input
                 label="Custom Domain"
                 formControlName="ngrok_domain"
@@ -110,6 +111,7 @@
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="form.get('auth_secret_id')?.value" />
                 @if (existingAuth()) {
                     <p class="wt-hint">
                         @if (existingSecretMask(); as mask) {
