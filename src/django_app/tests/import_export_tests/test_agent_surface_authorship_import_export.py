@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
@@ -5,10 +7,12 @@ from rest_framework import status
 
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
+from rbac.authorship import record_last_edit
 from rbac.models import OrganizationUser, ResourceLastEdit
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
+from tables.import_export.services.import_service import ImportService
 from tables.models import Graph
 from tables.models.graph_models import AgentNode
 from tests.helpers import data_to_json_file
@@ -16,6 +20,7 @@ from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 AUTHOR_KEY = "created_by"
 ORG_KEYS = ("org", "organization")
+PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -70,6 +75,12 @@ def _keys_named(value, key: str) -> list[str]:
 
     walk(value, "$")
     return found
+
+
+def _last_edit_of(instance) -> ResourceLastEdit | None:
+    return ResourceLastEdit.objects.filter(
+        content_type=ContentType.objects.get_for_model(instance), object_id=instance.pk
+    ).first()
 
 
 def _import_flow(client, org, export_data):
@@ -136,7 +147,33 @@ def test_import_records_importer_as_last_editor_of_agent_definition_and_surfaces
     owned_surface = Surface.objects.get(org=beta, owner_agent__isnull=False)
     shared_surface = Surface.objects.get(org=beta, owner_agent__isnull=True)
     for resource in (AgentDefinition.objects.get(org=beta), owned_surface, shared_surface):
-        last_edit = ResourceLastEdit.objects.get(
-            content_type=ContentType.objects.get_for_model(resource), object_id=resource.pk
-        )
-        assert last_edit.edited_by_id == admin_beta.id, resource
+        assert _last_edit_of(resource).edited_by_id == admin_beta.id, resource
+
+
+@pytest.mark.django_db
+def test_reimport_into_source_org_keeps_last_edit_of_reused_agent_definition_and_surfaces(
+    acme, admin_acme, member_only, source_flow
+):
+    agent_definition = AgentDefinition.objects.get(org=acme)
+    owned_surface = Surface.objects.get(org=acme, owner_agent=agent_definition)
+    shared_surface = Surface.objects.get(org=acme, owner_agent__isnull=True)
+    reused = (agent_definition, owned_surface, shared_surface)
+    for resource in reused:
+        record_last_edit(resource, member_only, edited_at=PREVIOUS_EDIT_AT)
+
+    id_mapper, _ = ImportService(entity_registry).import_data(
+        _export(source_flow), main_entity=EntityType.GRAPH, org_id=acme.id, user=admin_acme
+    )
+
+    assert id_mapper.get_reused_ids(EntityType.AGENT_DEFINITION) == [agent_definition.id]
+    assert id_mapper.get_created_ids(EntityType.SURFACE) == []
+    assert set(id_mapper.get_reused_ids(EntityType.SURFACE)) == {
+        owned_surface.id,
+        shared_surface.id,
+    }
+    assert AgentDefinition.objects.filter(org=acme).count() == 1
+    assert Surface.objects.filter(org=acme).count() == 2
+    for resource in reused:
+        last_edit = _last_edit_of(resource)
+        assert last_edit.edited_by_id == member_only.id, resource
+        assert last_edit.edited_at == PREVIOUS_EDIT_AT, resource
