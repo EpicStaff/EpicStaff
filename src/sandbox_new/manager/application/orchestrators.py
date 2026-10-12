@@ -34,9 +34,15 @@ class VenvCRUDOrchestrator:
         async with self.uow:
             return await self.uow.venv_repo.retrieve_default()
 
-    async def list(self) -> list[Venv]:
+    async def list(
+        self,
+        *,
+        ids: List[int] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> tuple[list[Venv], int]:
         async with self.uow:
-            return await self.uow.venv_repo.list()
+            return await self.uow.venv_repo.list(ids=ids, limit=limit, offset=offset)
 
     async def retrieve(self, id: int) -> Venv:
         async with self.uow:
@@ -107,7 +113,7 @@ class VenvBuildOrchestrator:
             await self._rmtree(staging_path)
         await self.uv_provider.init_venv(staging_path)
 
-        libs = [f"{library.name}{library.rule}" for library in venv.libs]
+        libs = [f"{library.name}{library.specification}" for library in venv.libs]
         await self.uv_provider.apply(staging_path, *libs)
 
         lock_file = self.uv_provider.get_lock_file(staging_path)

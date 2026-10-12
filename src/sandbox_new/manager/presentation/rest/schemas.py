@@ -1,6 +1,7 @@
 from typing import Any
 
 from foundation.base import Schema
+from pydantic import Field
 
 from manager.domain.enums import JobStatus, VenvStatus
 from manager.domain.models import Library
@@ -21,7 +22,12 @@ class VenvCreateSchema(Schema):
 
 
 class VenvListSchema(Schema):
-    objects: list["VenvRetrieveSchema"]
+    count: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    next: str | None = None
+    previous: str | None = None
+    result: list["VenvRetrieveSchema"]
 
 
 class VenvRetrieveSchema(Schema):

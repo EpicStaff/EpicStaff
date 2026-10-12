@@ -9,8 +9,6 @@ from manager.domain.enums import JobStatus, VenvStatus
 
 __all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "Venv"]
 
-# The venv every job falls back to when its submission names none. One row carries
-# this name; the build task and the default-venv bootstrap both key off it.
 DEFAULT_VENV_NAME = "default"
 
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$"
@@ -18,16 +16,16 @@ VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)
 
 class Library(ValueObject):
     name: str = Field(min_length=1)
-    rule: str = ""
+    specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
 
-    @field_validator("rule")
+    @field_validator("specification")
     @classmethod
-    def validate_version_rule(cls, value: str) -> str:
+    def validate_version_specification(cls, value: str) -> str:
         try:
             SpecifierSet(value)
-        except InvalidSpecifier as error:
-            raise ValueError(f"Invalid version rule: '{value}'") from error
+        except InvalidSpecifier as e:
+            raise ValueError(f"Invalid version specification: '{value}'") from e
         return value
 
 

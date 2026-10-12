@@ -10,11 +10,20 @@ class VenvController(Controller):
     path: str = "/venvs"
 
     @get()
-    async def list(self, uow: AbstractUnitOfWork) -> schemas.VenvListSchema:
+    async def list(
+        self,
+        uow: AbstractUnitOfWork,
+        ids: list[int] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> schemas.VenvListSchema:
         orchestrator = VenvCRUDOrchestrator(uow)
-        objs = await orchestrator.list()
+        objs, count = await orchestrator.list(ids=ids, limit=limit, offset=offset)
         return schemas.VenvListSchema(
-            objects=[schemas.VenvRetrieveSchema.model_validate(o) for o in objs]
+            count=count,
+            limit=limit or 0,
+            offset=offset or 0,
+            result=[schemas.VenvRetrieveSchema.model_validate(o) for o in objs],
         )
 
     @get(path="/{id:int}")

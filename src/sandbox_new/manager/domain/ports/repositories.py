@@ -9,8 +9,20 @@ from manager.domain.models import Venv
 
 class AbstractVenvRepository(abc.ABC):
     @abc.abstractmethod
-    async def list(self) -> builtins.list[Venv]:
-        pass
+    async def list(
+        self,
+        *,
+        ids: builtins.list[int] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> tuple[builtins.list[Venv], int]:
+        """Return a page of venvs and the total matching the filter.
+
+        `ids` restricts the result to those venv ids -- the gateway passes the
+        caller organization's ids so one org never sees another's venvs; `None`
+        lists all. `limit`/`offset` page the rows; the returned count is the
+        total before paging.
+        """
 
     @abc.abstractmethod
     async def list_by_status(self, status: VenvStatus) -> builtins.list[Venv]:
