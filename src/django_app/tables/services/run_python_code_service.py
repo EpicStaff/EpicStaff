@@ -14,6 +14,10 @@ from tables.services.secrets import (
     parse_secret_names,
     secret_resolver,
 )
+from tables.services.secrets.declaration_validator import (
+    binned_secret_names,
+    describe_unreadable_secrets,
+)
 from utils.singleton_meta import SingletonMeta
 
 MAX_STORED_RESULTS = 200
@@ -53,7 +57,10 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         # real run agree about what this code may read.
         declared = set(python_code.secrets.values_list("name", flat=True))
         self._assert_secrets_declared(
-            python_code_id=python_code_id, code=python_code.code, declared=declared
+            python_code_id=python_code_id,
+            code=python_code.code,
+            declared=declared,
+            binned=binned_secret_names(python_code),
         )
         secrets = secret_resolver.resolve_named(
             names=sorted(declared),
@@ -155,18 +162,20 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         return execution_id
 
     @staticmethod
-    def _assert_secrets_declared(*, python_code_id: int, code: str, declared: set[str]) -> None:
-        """Raise if `code` reads a secret outside `declared`."""
+    def _assert_secrets_declared(
+        *, python_code_id: int, code: str, declared: set[str], binned: set[str]
+    ) -> None:
+        """Raise if `code` reads a secret outside `declared` (binned ones are named as such)."""
         undeclared = parse_secret_names(code=code) - declared
         if undeclared:
             raise UndeclaredSecretError(
-                f"PythonCode(id={python_code_id}) calls "
-                + ", ".join(f'get_secret("{name}")' for name in sorted(undeclared))
-                + ", which "
-                + ("are" if len(undeclared) > 1 else "is")
-                + " not declared for it. Declared: "
-                + (", ".join(sorted(declared)) or "none")
-                + "."
+                describe_unreadable_secrets(
+                    subject=f"PythonCode(id={python_code_id})",
+                    owner="it",
+                    undeclared=undeclared,
+                    binned=binned,
+                    declared=declared,
+                )
             )
 
     def _record_and_publish(

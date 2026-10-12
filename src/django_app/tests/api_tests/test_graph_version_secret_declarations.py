@@ -58,6 +58,7 @@ def test_restore_reports_a_dropped_declaration_in_the_response_warnings(
     graph, secret = graph_with_declared_secret
     version_id = save_version(client=client, graph=graph)
     secret.delete()
+    type(secret).all_objects.get(pk=secret.pk).purge()
 
     response = _restore(client=client, graph=graph, version_id=version_id)
 

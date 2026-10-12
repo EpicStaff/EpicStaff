@@ -27,6 +27,12 @@ from tables.services.secrets.declaration_validator import SecretDeclarationValid
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
 from tests.fixtures import *  # noqa: F401,F403
 
+
+def _purge(secret):
+    """Gone for good: deleting only moves a secret to the recycle bin, where links are kept."""
+    secret.delete()
+    Secret.all_objects.get(pk=secret.pk).purge()
+
 CODE = 'def main(**kwargs):\n    return get_secret("{name}")\n'
 
 
@@ -342,7 +348,7 @@ class TestRestoreFailsClosed:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         result = _restore(version=version, graph=graph)
 
@@ -356,7 +362,7 @@ class TestRestoreFailsClosed:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         result = _restore(version=version, graph=graph)
 
@@ -378,7 +384,7 @@ class TestRestoreFailsClosed:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         _restore(version=version, graph=graph)
 
@@ -394,7 +400,7 @@ class TestRestoreFailsClosed:
         secret = _secret(org=default_org, name="SHARED_NAME")
         _python_node(graph=graph, name="SHARED_NAME", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
         _secret(org=other_org, name="SHARED_NAME")
 
         result = _restore(version=version, graph=graph)
@@ -534,7 +540,7 @@ class TestCreateGraphFromVersion:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         result = service.create_graph_from_version(version)
 
@@ -585,3 +591,35 @@ class TestRestoreDoesNotRequireSecretsUse:
 
         assert response.status_code == 200, response.json()
         assert _declared_names(graph=graph) == ["STRIPE_KEY"]
+
+
+@pytest.mark.django_db
+class TestRestoreWithASecretInTheRecycleBin:
+    """A binned secret keeps its links until it's purged, so a restore links it again
+    and says why the code can't read it yet."""
+
+    def test_it_is_linked_again_with_a_recycle_bin_warning(self, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        secret.delete()
+
+        result = _restore(version=version, graph=graph)
+
+        node = PythonNode.objects.filter(graph=graph).select_related("python_code").get()
+        linked = node.python_code.secrets(manager="all_objects").values_list("id", flat=True)
+        assert list(linked) == [secret.pk]
+        assert [w["type"] for w in result["warnings"]] == ["secret_in_recycle_bin"]
+        assert "recycle bin" in result["warnings"][0]["reason"]
+
+    def test_the_session_check_names_it_as_binned_not_undeclared(self, graph, default_org):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        secret.delete()
+
+        (violation,) = SecretDeclarationValidator().violations(graph_id=graph.pk)
+
+        assert violation.binned == ["STRIPE_KEY"]
+        assert "in the recycle bin" in violation.describe()
+        assert "not declared" not in violation.describe()
+
