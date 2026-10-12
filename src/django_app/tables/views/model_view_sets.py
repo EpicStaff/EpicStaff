@@ -146,7 +146,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeToolConfig
+from tables.models.python_models import PythonCodeToolConfig, linked_secrets_prefetch
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -542,7 +542,7 @@ class PythonCodeToolViewSet(
     queryset = (
         PythonCodeTool.objects.all()
         .select_related("python_code")
-        .prefetch_related("python_code__secrets")
+        .prefetch_related(linked_secrets_prefetch("python_code"))
     )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
@@ -734,7 +734,7 @@ class GraphViewSet(
                 Prefetch(
                     "python_node_list",
                     queryset=PythonNode.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
+                        linked_secrets_prefetch("python_code")
                     ),
                 ),
                 Prefetch("file_extractor_node_list", queryset=FileExtractorNode.objects.all()),
@@ -747,21 +747,24 @@ class GraphViewSet(
                 Prefetch(
                     "conditional_edge_list",
                     queryset=ConditionalEdge.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
+                        linked_secrets_prefetch("python_code")
                     ),
                 ),
                 Prefetch(
                     "webhook_trigger_node_list",
                     queryset=WebhookTriggerNode.objects.select_related(
                         "python_code"
-                    ).prefetch_related("python_code__secrets"),
+                    ).prefetch_related(linked_secrets_prefetch("python_code")),
                 ),
                 Prefetch("decision_table_node_list", queryset=DecisionTableNode.objects.all()),
                 Prefetch(
                     "classification_decision_table_node_list",
                     queryset=ClassificationDecisionTableNode.objects.select_related(
                         "pre_python_code", "post_python_code"
-                    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets"),
+                    ).prefetch_related(
+                        linked_secrets_prefetch("pre_python_code"),
+                        linked_secrets_prefetch("post_python_code"),
+                    ),
                 ),
                 Prefetch(
                     "subgraph_node_list",
@@ -2049,7 +2052,9 @@ class ClassificationDecisionTableNodeModelViewSet(
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.select_related(
         "pre_python_code", "post_python_code"
-    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets")
+    ).prefetch_related(
+        linked_secrets_prefetch("pre_python_code"), linked_secrets_prefetch("post_python_code")
+    )
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]

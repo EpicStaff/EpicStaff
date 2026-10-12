@@ -12,7 +12,10 @@ from tables.serializers.utils.org_scoped_labels import (
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 
 
 class McpToolSerializer(
@@ -20,8 +23,8 @@ class McpToolSerializer(
 ):
     secret_reference_fields = ("auth_secret_id",)
 
-    auth_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="auth_secret",
         required=False,
         allow_null=True,

@@ -140,7 +140,9 @@ def apply_python_code_fields(*, python_code: PythonCode, python_code_data: dict)
         setattr(python_code, attr, value)
     python_code.save()
     if declared is not _UNSET:
-        python_code.secrets.set(declared)
+        # Through all_objects: removing a binned secret from the list must unlink it too.
+        python_code.secrets(manager="all_objects").set(declared)
+        python_code.forget_linked_secrets()
 
 
 def copy_python_code(python_code: PythonCode) -> PythonCode:
@@ -152,8 +154,9 @@ def copy_python_code(python_code: PythonCode) -> PythonCode:
         global_kwargs=python_code.global_kwargs,
     )
     # Copy stays inside one org, so the ids remain valid and the duplicate must be
-    # runnable. Dropping the declaration would leave a copy that fails validation.
-    duplicate.secrets.set(python_code.secrets.all())
+    # runnable. Dropping the declaration would leave a copy that fails validation. A
+    # secret in the recycle bin is copied too: its links stay until it's purged.
+    duplicate.secrets.set(python_code.linked_secrets())
     return duplicate
 
 

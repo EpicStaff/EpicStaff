@@ -27,6 +27,7 @@ from tables.models.webhook_models import (
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.secrets import secret_resolver
 
 
@@ -124,14 +125,14 @@ class OpenAIRealtimeConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
     )
-    transcription_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    transcription_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="transcription_api_key_secret",
         required=False,
         allow_null=True,
@@ -157,8 +158,8 @@ class OpenAIRealtimeConfigSerializer(
 class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -181,8 +182,8 @@ class ElevenLabsRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.
 class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -205,11 +206,11 @@ class GeminiRealtimeConfigSerializer(SecretReferenceGuardMixin, serializers.Mode
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("auth_token_secret_id",)
 
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
-    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_token_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="auth_token_secret",
         required=True,
         allow_null=False,
