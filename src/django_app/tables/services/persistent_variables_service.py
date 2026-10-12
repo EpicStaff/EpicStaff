@@ -102,7 +102,13 @@ class PersistentVariablesService:
         return RunVariablesResult(variables=merged, graph_user=graph_user)
 
     def persist_session_results(self, session, final_variables) -> None:
-        """Write tracked org values back at session END. Log-and-continue on error."""
+        """Write tracked org values back at session END. Log-and-continue on error.
+
+        Sessions of one flow ending together are serialized by the row lock, but each
+        writes its final value of every tracked path, not only of the paths its run
+        changed: the session that ends last overwrites what sessions ending before it
+        stored, even on a path it never touched.
+        """
         graph = session.graph
         if not graph.enable_persistent_variables:
             return

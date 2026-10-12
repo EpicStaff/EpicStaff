@@ -49,9 +49,9 @@ class AsyncPubSubGroup:
                     self._pubsub = self._redis.pubsub()
                     await self._pubsub.subscribe(self._channel)
 
-                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=0.01)
+                # Subscribe confirmations and health-check replies come back as None.
+                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=None)
                 if msg is None:
-                    await asyncio.sleep(0.01)
                     continue
 
                 for sub in self._subscribers:

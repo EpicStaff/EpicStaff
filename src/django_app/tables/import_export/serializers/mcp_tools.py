@@ -16,4 +16,4 @@ class McpToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSer
 
     class Meta:
         model = McpTool
-        exclude = ["labels", "created_by", "auth_secret"]
+        exclude = ["labels", "created_by", "auth_secret", "created_at", "updated_at"]

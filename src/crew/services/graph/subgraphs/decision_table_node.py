@@ -118,7 +118,11 @@ def main(**kwargs) -> bool:
             stop_event=self.stop_event,
         )
 
-        logger.info(f"Python code execution data: {python_code_execution_data}")
+        logger.debug(
+            "Manipulation finished: execution_id={} returncode={}",
+            python_code_execution_data["execution_id"],
+            python_code_execution_data["returncode"],
+        )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
                 f"Manipulation execution failed with error: {python_code_execution_data['stderr']}"

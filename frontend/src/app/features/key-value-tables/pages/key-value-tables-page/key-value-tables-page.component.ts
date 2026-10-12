@@ -135,7 +135,7 @@ export class KeyValueTablesPageComponent {
         if (usage?.node_count === 0) {
             return this.confirmationDialogService.confirmMoveToRecycleBin(table.name, retentionDays);
         }
-        const name = escapeHtml(table.name);
+        const name = table.name;
         const usageNote = usage
             ? describeUsage(usage)
             : 'If Key-Value nodes use this table, deleting it removes the table from them, and they will need a new ' +
@@ -143,7 +143,7 @@ export class KeyValueTablesPageComponent {
         return this.confirmationDialogService.confirm({
             title: 'Confirm Deletion',
             message:
-                `Are you sure you want to delete <strong>${name}</strong>? <br> ${usageNote} <br> ` +
+                `Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? <br> ${usageNote} <br> ` +
                 `${recycleBinNotice(retentionDays)} Restoring it won't add it back to those nodes.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
