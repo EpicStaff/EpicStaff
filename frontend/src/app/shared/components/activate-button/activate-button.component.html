@@ -2,6 +2,7 @@
     type="button"
     class="activate-btn"
     [disabled]="disabled()"
+    [attr.aria-label]="tooltip()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"
 >

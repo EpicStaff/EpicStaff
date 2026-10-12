@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-section-header',

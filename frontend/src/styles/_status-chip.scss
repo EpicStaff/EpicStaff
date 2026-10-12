@@ -1,0 +1,60 @@
+// The status chip of the flow sessions tables: a small tinted pill. Shared so other status chips (chat binding
+// status, conversation mode, test marker) look the same; each state picks the closest of these looks.
+
+@mixin chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    // rem, not em: the same size wherever it sits (a heading, a 14px row). The sessions table sits at the 16px root.
+    font-size: 0.85rem;
+    // Pinned to the body's 1.5 (what the sessions table inherits) so a chip inside a styled text span keeps the same height.
+    line-height: 1.5;
+    font-weight: 400;
+    color: var(--white);
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    transition: background 0.18s;
+}
+
+// Blue: in progress.
+@mixin running {
+    background: var(--blue-alpha-18);
+    color: var(--blue-400);
+}
+
+// Red: failed.
+@mixin error {
+    background: var(--red-580-alpha-18);
+    color: var(--red-580);
+}
+
+// Green: done, or fine.
+@mixin completed {
+    background: var(--mint-500-alpha-18);
+    color: var(--green-460);
+}
+
+// Gold: needs someone.
+@mixin waiting {
+    background: var(--gold-460-alpha-18);
+    color: var(--gold-460);
+}
+
+// Slate: neutral.
+@mixin pending {
+    background: var(--slate-400-alpha-18);
+    color: var(--slate-400);
+}
+
+// Grey: inactive.
+@mixin expired {
+    background: var(--gray-540-alpha-18);
+    color: var(--gray-540);
+}
+
+@mixin unknown {
+    background: var(--slate-700-alpha-18);
+    color: var(--slate-400);
+}

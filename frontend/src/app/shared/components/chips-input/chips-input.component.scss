@@ -10,10 +10,10 @@
             height: 40px;
             width: 40px;
             align-self: center;
-            border-radius: 50%;
-            border: 1px solid var(--accent-color);
-            background: transparent;
-            color: var(--accent-color);
+            // Same square filled add button as app-listbox.
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            color: var(--white);
             cursor: pointer;
 
             &.disabled {
@@ -21,8 +21,8 @@
                 cursor: not-allowed;
             }
 
-            &:hover {
-                background: var(--purple-alpha-15);
+            &:hover:not(.disabled) {
+                background-color: var(--accent-color-hover);
             }
         }
     }

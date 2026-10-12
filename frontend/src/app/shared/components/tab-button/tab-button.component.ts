@@ -1,5 +1,5 @@
 import { NgClass } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, input, Output } from '@angular/core';
 
 @Component({
     selector: 'app-tab-button',
@@ -12,6 +12,7 @@ export class TabButtonComponent {
     @Input() mod: 'sm' | 'md' = 'md';
     @Input() active: boolean = false;
     @Input() disabled: boolean = false;
+    readonly describedBy = input<string | null>(null);
     @Output() action = new EventEmitter<Event>();
 
     onAction(event: Event) {

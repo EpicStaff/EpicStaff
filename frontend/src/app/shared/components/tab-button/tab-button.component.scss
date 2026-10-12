@@ -26,6 +26,11 @@
         color: var(--white);
     }
 
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
     &.active {
         color: var(--color-text-primary);
         border-bottom: 2px solid var(--text);

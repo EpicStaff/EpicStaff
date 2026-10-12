@@ -1,19 +1,23 @@
-<div
-    class="header"
-    (click)="onToggle()"
->
-    <app-svg-icon
-        class="header__chevron"
-        [class.header__chevron--rotated]="!expanded()"
-        icon="chevron-down-filled"
-        size="8px"
-    />
-    <app-svg-icon
-        class="header__icon"
-        [icon]="icon()"
-        size="0.95rem"
-    />
-    <span class="header__label">{{ label() }}</span>
+<div class="header">
+    <button
+        type="button"
+        class="header__toggle"
+        [attr.aria-expanded]="expanded()"
+        (click)="onToggle()"
+    >
+        <app-svg-icon
+            class="header__chevron"
+            [class.header__chevron--rotated]="!expanded()"
+            icon="chevron-down-filled"
+            size="8px"
+        />
+        <app-svg-icon
+            class="header__icon"
+            [icon]="icon()"
+            size="0.95rem"
+        />
+        <span class="header__label">{{ label() }}</span>
+    </button>
     <span class="header__actions">
         @if (showAdd()) {
             <button

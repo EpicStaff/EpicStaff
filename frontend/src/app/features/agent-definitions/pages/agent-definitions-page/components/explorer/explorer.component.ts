@@ -10,7 +10,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, SectionHeaderComponent } from '@shared/components';
 import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SectionHeightService, SidebarWidthService } from '@shared/services';
@@ -25,7 +25,6 @@ import { AgentsSectionComponent } from './agents-section/agents-section.componen
 import { BranchesFilterComponent } from './branches-filter/branches-filter.component';
 import { ExplorerContextMenuComponent } from './explorer-context-menu/explorer-context-menu.component';
 import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/explorer-menu.model';
-import { SectionHeaderComponent } from './section-header/section-header.component';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 

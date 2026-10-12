@@ -1,5 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+// Type-only: brings in the HttpErrorResponse.validationErrors augmentation this util reads.
+import type {} from '../../core/interceptors/validation-errors.interceptor';
+
 /**
  * Extracts a human-readable message from an HttpErrorResponse
  */

@@ -1,6 +1,7 @@
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { generateUuid } from '@shared/utils';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
@@ -64,6 +65,14 @@ export class InputNumberComponent implements ControlValueAccessor {
         if (this.isInvalid()) return false;
         return true;
     });
+
+    /** The error, else the warning, shown under the input; the input points at it via aria-describedby. */
+    protected message = computed(() => {
+        if (this.isInvalid() && this.errorMessage()) return this.errorMessage();
+        if (this.isAboveWarning() && this.warningMessage()) return this.warningMessage();
+        return '';
+    });
+    protected readonly messageId = `input-number-message-${generateUuid()}`;
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};

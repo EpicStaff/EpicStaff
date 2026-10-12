@@ -1,0 +1,123 @@
+// The action buttons of a page header, as the flow editor header draws them: 36px tall, a label that
+// collapses to the icon (with the shared collapse-on-overflow directive), and three looks.
+// Shared so other page headers (the chat binding workspace) use the very same buttons.
+
+@mixin button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0 0.75rem;
+    height: 36px;
+    border-radius: 6px;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+    overflow: hidden;
+
+    .btn-label {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    &.btn--icon-only {
+        padding: 0 0.5rem;
+
+        .btn-label {
+            display: none;
+        }
+    }
+
+    i.ti-spin {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+}
+
+// Disabled buttons get no mouse events, so the tooltip lives on this wrapper and
+// the disabled button lets the pointer through to it.
+@mixin tooltip-host {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+
+    &:has(> button:disabled) {
+        cursor: not-allowed;
+    }
+
+    > button:disabled {
+        pointer-events: none;
+    }
+}
+
+// Text-only accent button (Sessions).
+@mixin ghost {
+    background-color: transparent;
+    color: var(--accent-color);
+    border: none;
+
+    &:hover {
+        background-color: var(--mauve-alpha-10);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+    }
+}
+
+// Accent outline (Get cURL, Open chat).
+@mixin outline {
+    background-color: transparent;
+    color: var(--accent-color);
+    border: 1px solid var(--accent-color);
+
+    &:hover {
+        background-color: var(--mauve-alpha-10);
+    }
+}
+
+// Filled accent (Run).
+@mixin primary {
+    background-color: var(--accent-color);
+    color: var(--white);
+    border: 1px solid var(--accent-color);
+
+    &:active {
+        background-color: var(--accent-color);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+    }
+}
+
+// Include in the actions container inside `@media (max-width: 1100px)`: tighter gap and button padding.
+@mixin narrow-actions {
+    gap: 8px;
+
+    button {
+        padding: 0 0.5rem;
+    }
+}

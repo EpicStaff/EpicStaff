@@ -1,3 +1,5 @@
+@use '../../../../../../../styles/header-action-buttons';
+
 .header {
     display: flex;
     align-items: center;
@@ -100,99 +102,21 @@
         max-width: 100%;
 
         button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0 0.75rem;
-            height: 36px;
-            border-radius: 6px;
-            font-size: var(--text-body-size);
-            font-weight: var(--text-body-weight);
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-            min-width: 0;
-            max-width: 100%;
-            flex: 0 1 auto;
-            overflow: hidden;
-
-            .btn-label {
-                min-width: 0;
-                max-width: 100%;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            &:disabled {
-                cursor: not-allowed;
-                opacity: 0.7;
-            }
-
-            &.btn--icon-only {
-                padding: 0 0.5rem;
-
-                .btn-label {
-                    display: none;
-                }
-            }
-
-            i.ti-spin {
-                animation: spin 1s linear infinite;
-            }
-
-            @keyframes spin {
-                0% {
-                    transform: rotate(0deg);
-                }
-                100% {
-                    transform: rotate(360deg);
-                }
-            }
+            @include header-action-buttons.button;
         }
 
-        // Disabled buttons get no mouse events, so the tooltip lives on this wrapper and
-        // the disabled button lets the pointer through to it.
         .tooltip-host {
-            display: inline-flex;
-            align-items: stretch;
-            min-width: 0;
-            max-width: 100%;
-            flex: 0 1 auto;
-
-            &:has(> button:disabled) {
-                cursor: not-allowed;
-            }
-
-            > button:disabled {
-                pointer-events: none;
-            }
+            @include header-action-buttons.tooltip-host;
         }
 
         .sessions-button {
-            background-color: transparent;
-            color: var(--accent-color);
-            border: none;
-
-            &:hover {
-                background-color: var(--mauve-alpha-10);
-            }
-
-            &:disabled {
-                opacity: 0.4;
-            }
+            @include header-action-buttons.ghost;
         }
 
         .open-chat-button,
         .connect-chat-button,
         .get-curl-button {
-            background-color: transparent;
-            color: var(--accent-color);
-            border: 1px solid var(--accent-color);
-
-            &:hover {
-                background-color: var(--mauve-alpha-10);
-            }
+            @include header-action-buttons.outline;
         }
 
         .get-curl-button:disabled {
@@ -276,17 +200,7 @@
         }
 
         .run-button {
-            background-color: var(--accent-color);
-            color: var(--white);
-            border: 1px solid var(--accent-color);
-
-            &:active {
-                background-color: var(--accent-color);
-            }
-
-            &:disabled {
-                opacity: 0.6;
-            }
+            @include header-action-buttons.primary;
         }
     }
 }
@@ -294,11 +208,7 @@
 @media (max-width: 1100px) {
     .header {
         .header-actions {
-            gap: 8px;
-
-            button {
-                padding: 0 0.5rem;
-            }
+            @include header-action-buttons.narrow-actions;
         }
     }
 }

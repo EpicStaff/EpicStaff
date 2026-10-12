@@ -32,10 +32,13 @@
         [ngClass]="'input--mod-' + mod()"
         [placeholder]="placeholder()"
         [ngModel]="value()"
+        [ngModelOptions]="{ standalone: true }"
         (ngModelChange)="onInputChange($event)"
         (blur)="onTouched()"
         (keydown)="onKeyDown($event)"
         [disabled]="isDisabled()"
+        [attr.aria-invalid]="isInvalid()"
+        [attr.aria-describedby]="message() ? messageId : null"
     />
 
     @if (hovered() || alwaysShowSteps()) {
@@ -50,8 +53,12 @@
     }
 </div>
 
-@if (isInvalid() && errorMessage()) {
-    <small class="input__message input__message--error">{{ errorMessage() }}</small>
-} @else if (isAboveWarning() && warningMessage()) {
-    <small class="input__message input__message--warning">{{ warningMessage() }}</small>
+@if (message()) {
+    <small
+        class="input__message"
+        [class.input__message--error]="isInvalid()"
+        [class.input__message--warning]="!isInvalid()"
+        [id]="messageId"
+        >{{ message() }}</small
+    >
 }
