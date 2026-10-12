@@ -222,6 +222,9 @@
 
     // Long text (a description, instructions) stops at 3 lines with "…".
     &__text {
+        // As wide as its text, not the whole column: the tooltip centres on this box.
+        width: fit-content;
+        max-width: 100%;
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 3;
