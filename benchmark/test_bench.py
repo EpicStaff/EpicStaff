@@ -2047,7 +2047,7 @@ class FlowImportTest(unittest.TestCase):
             self.import_flow(FakeFlowApi(), self.export.with_name("absent.json"))
         message = str(raised.exception)
         self.assertIn("absent.json not found", message)
-        self.assertIn("5 Python nodes, no LLM", message)
+        self.assertIn("Python nodes only, no LLM", message)
         self.assertIn("`benchmark` label", message)
 
     def test_http_error_reports_status_and_body(self):

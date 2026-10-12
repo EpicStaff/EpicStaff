@@ -69,7 +69,7 @@ def import_flow(api: Api, path: Path, cache_file: Path = CACHE_FILE) -> Imported
     """
     if not path.is_file():
         raise FlowImportError(
-            f"{display_path(path)} not found: export your payload flow (5 Python nodes, no LLM) "
+            f"{display_path(path)} not found: export your payload flow (Python nodes only, no LLM) "
             "from the UI with the `benchmark` label and save it there"
         )
     try:
