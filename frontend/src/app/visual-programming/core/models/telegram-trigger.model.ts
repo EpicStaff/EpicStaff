@@ -63,7 +63,9 @@ export interface TelegramWebhookInfo {
  * never appears here: a missing bot key is answered with a 400 `telegram_bot_key_not_configured`.
  */
 export type TelegramRegistrationBlockerCode =
+    | 'bot_key_in_recycle_bin'
     | 'no_webhook_trigger'
+    | 'webhook_trigger_in_recycle_bin'
     | 'no_tunnel_provider'
     | 'localhost_provider'
     | 'auth_kind_conflict'

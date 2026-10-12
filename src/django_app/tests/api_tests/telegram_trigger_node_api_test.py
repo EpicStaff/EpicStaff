@@ -634,6 +634,39 @@ class TestTelegramTriggerNodeWebhookInfo:
         assert response.json()["registration_blocker"]["message"]
         assert telegram_api.call_count == 1
 
+    def test_a_trigger_in_the_recycle_bin_is_reported_as_binned_not_missing(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = _make_node(default_org)
+        node.webhook_trigger.delete()
+        telegram_api.return_value = _telegram_response(
+            "https://api.telegram.org", body=_webhook_info_body("")
+        )
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["registration_blocker"] == {
+            "code": "webhook_trigger_in_recycle_bin",
+            "message": "This node's webhook trigger is in the recycle bin.",
+        }
+
+    def test_a_bot_key_in_the_recycle_bin_is_reported_without_asking_telegram(
+        self, auth_client, default_org, tunnel_url, telegram_api
+    ):
+        node = _make_node(default_org)
+        node.telegram_bot_api_key_secret.delete()
+
+        response = auth_client.get(_webhook_info_url(node.id))
+
+        assert response.status_code == 200, response.content
+        assert response.json()["registration_blocker"] == {
+            "code": "bot_key_in_recycle_bin",
+            "message": "This node's bot key secret is in the recycle bin.",
+        }
+        assert response.json()["registered_url"] is None
+        assert telegram_api.call_count == 0
+
     def test_trigger_auth_of_another_kind_is_reported_as_a_conflict(
         self, auth_client, default_org, tunnel_url, telegram_api
     ):

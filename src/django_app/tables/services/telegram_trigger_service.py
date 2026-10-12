@@ -66,7 +66,9 @@ def _is_same_callback_url(registered_url: str, expected_url: str) -> bool:
 _SILENT_REGISTRATION_BLOCKERS = frozenset(
     {
         TelegramRegistrationBlockerCode.NO_BOT_KEY,
+        TelegramRegistrationBlockerCode.BOT_KEY_IN_RECYCLE_BIN,
         TelegramRegistrationBlockerCode.NO_WEBHOOK_TRIGGER,
+        TelegramRegistrationBlockerCode.WEBHOOK_TRIGGER_IN_RECYCLE_BIN,
         TelegramRegistrationBlockerCode.NO_TUNNEL_PROVIDER,
     }
 )
@@ -122,13 +124,25 @@ def _resolve_registration_secret_or_blocker(
             TelegramRegistrationBlockerCode.NO_BOT_KEY,
             "This Telegram trigger node has no bot key configured.",
         ), None
+    # A forward FK reads binned rows too; a binned secret can't be read, so it can't register.
+    if not telegram_trigger_node.telegram_bot_api_key_secret.active:
+        return TelegramRegistrationBlocker(
+            TelegramRegistrationBlockerCode.BOT_KEY_IN_RECYCLE_BIN,
+            "This node's bot key secret is in the recycle bin.",
+        ), None
 
     webhook_trigger: WebhookTrigger | None = telegram_trigger_node.webhook_trigger
-    # A forward FK reads binned rows too: a trigger in the recycle bin counts as none.
-    if webhook_trigger is None or not webhook_trigger.active:
+    if webhook_trigger is None:
         return TelegramRegistrationBlocker(
             TelegramRegistrationBlockerCode.NO_WEBHOOK_TRIGGER,
             "This Telegram trigger node has no webhook trigger configured.",
+        ), None
+    # A forward FK reads binned rows too. The node keeps its link while the trigger is in the
+    # recycle bin, so it is named as binned rather than missing: a restore fixes it.
+    if not webhook_trigger.active:
+        return TelegramRegistrationBlocker(
+            TelegramRegistrationBlockerCode.WEBHOOK_TRIGGER_IN_RECYCLE_BIN,
+            "This node's webhook trigger is in the recycle bin.",
         ), None
     if webhook_trigger.provider_type is None:
         return TelegramRegistrationBlocker(
@@ -359,8 +373,9 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         Raises:
             TelegramRegistrationPreconditionError: A configuration blocker
-                other than a missing bot key, webhook trigger or tunnel
-                provider (400). Its message is safe to log.
+                other than a missing bot key, a missing or binned webhook
+                trigger, or a missing tunnel provider (400). Its message is
+                safe to log.
             SecretResolutionError: The bot key secret cannot be read.
             RegisterTelegramTriggerError: The tunnel URL is unavailable (503),
                 or `setWebhook` failed. A failed `setWebhook`'s detail can
@@ -555,6 +570,20 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             raise TelegramBotKeyNotConfiguredError()
 
         registration_blocker = _get_registration_blocker(telegram_trigger_node)
+        if (
+            registration_blocker is not None
+            and registration_blocker.code == TelegramRegistrationBlockerCode.BOT_KEY_IN_RECYCLE_BIN
+        ):
+            # Telegram can't be asked without the key: report the blocker alone.
+            return TelegramWebhookStatus(
+                registered_url=None,
+                expected_url=None,
+                is_match=None,
+                pending_update_count=None,
+                last_error_message=None,
+                last_error_date=None,
+                registration_blocker=registration_blocker,
+            )
         bot_api_key = secret_resolver.resolve(
             secret_id=telegram_trigger_node.telegram_bot_api_key_secret_id,
             org_id=telegram_trigger_node.graph.org_id,
