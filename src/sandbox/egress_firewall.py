@@ -20,6 +20,12 @@ Applied once at startup via `iptables-restore`. Needs the iptables binary
 (Dockerfile.sandbox), CAP_NET_ADMIN, and a kernel with the xt_owner match.
 `ExecuteCodeHandler` refuses to execute when the firewall is required but
 `is_active()` is False.
+
+Deployment requirement: Docker's default address pools (daemon.json
+`default-address-pools`) and any compose `ipam` subnet must stay within the
+private/reserved ranges in `BLOCKED_IPV4_RANGES`. If sandbox-network is placed
+on a public-looking subnet, the firewall cannot classify it as private and
+in-network hosts (Redis included) become reachable from user code again.
 """
 
 import ipaddress

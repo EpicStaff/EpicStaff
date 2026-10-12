@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 
+import capabilities
 import egress_firewall
 import isolation
 import landlock
@@ -178,6 +179,18 @@ async def init():
             egress_firewall.apply(SANDBOX_UID)
         except egress_firewall.EgressFirewallUnavailableError as error:
             logger.error("Could not install the private-network egress firewall: {}", error)
+        else:
+            # The firewall is installed; CAP_NET_ADMIN is only needed for that.
+            # Drop it so nothing running later -- root pip's install-time build
+            # code included -- can flush iptables and undo the firewall.
+            try:
+                capabilities.drop_net_admin()
+                logger.info("Dropped CAP_NET_ADMIN after installing the egress firewall.")
+            except OSError as error:
+                logger.error(
+                    "Could not drop CAP_NET_ADMIN after installing the egress firewall: {}",
+                    error,
+                )
     log_isolation_state()
     await redis_service.connect()
 
