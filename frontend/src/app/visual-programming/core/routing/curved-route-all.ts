@@ -45,7 +45,9 @@ export function routeAllCurved(nodes: NodeModel[], connections: ConnectionModel[
 
         if (backward) {
             throughPoints = routeBackward(source, target, sourceRect, targetRect, obstaclesById, connection);
-        } else if (stacked) {
+        } else if (stacked && target.x < source.x) {
+            // Only use stacked loop when target port is left of source port.
+            // When target is to the right, a forward S-curve is cleaner.
             throughPoints = routeStacked(source, target, sourceRect, targetRect);
         } else {
             throughPoints = routeForward(source, target, obstaclesById, connection);
@@ -99,26 +101,28 @@ function routeBackward(
     const minStubOffset = Math.max(EXIT_STUB_MINIMUM, WIRE_CLEARANCE * BACKWARD_STUB_CLEARANCE_MULTIPLIER);
     const swingClearance = WIRE_CLEARANCE * DETOUR_CLEARANCE_MULTIPLIER;
 
-    // Ensure stubs extend past BOTH node bodies so the Catmull-Rom curve
-    // doesn't swing through a node at the vertical rise/drop turns.
-    const exitStubX = Math.max(
-        source.x + minStubOffset,
-        sourceRect.right + swingClearance,
-        targetRect.right + swingClearance
-    );
-    const entryStubX = Math.min(
-        target.x - minStubOffset,
-        sourceRect.left - swingClearance,
-        targetRect.left - swingClearance
-    );
+    // Each stub clears its own node. Push past the other node only when the
+    // stub X is actually inside that node's rect (the descent would clip it).
+    // Use raw rect bounds — MAX_TANGENT keeps the curve close to through-points.
+    let exitStubX = Math.max(source.x + minStubOffset, sourceRect.right + swingClearance);
+    if (exitStubX >= targetRect.left && exitStubX <= targetRect.right && targetRect.top < source.y) {
+        exitStubX = Math.max(exitStubX, targetRect.right + swingClearance);
+    }
 
-    // Also push stubs past any other obstacle node in the vertical column
+    let entryStubX = Math.min(target.x - minStubOffset, targetRect.left - swingClearance);
+    if (entryStubX >= sourceRect.left && entryStubX <= sourceRect.right && sourceRect.top < target.y) {
+        entryStubX = Math.min(entryStubX, sourceRect.left - swingClearance);
+    }
+
+    // Push stubs past third-party obstacles in the descent path. Use tight
+    // clearance (WIRE_CLEARANCE) and only consider obstacles above the port Y
+    // (those actually in the vertical descent from loopY to the port).
     const exitStub = {
-        x: pushStubPastObstacles(exitStubX, 'right', obstaclesById, connection, swingClearance),
+        x: pushStubPastObstacles(exitStubX, 'right', obstaclesById, connection, WIRE_CLEARANCE, source.y),
         y: source.y,
     };
     const entryStub = {
-        x: pushStubPastObstacles(entryStubX, 'left', obstaclesById, connection, swingClearance),
+        x: pushStubPastObstacles(entryStubX, 'left', obstaclesById, connection, WIRE_CLEARANCE, target.y),
         y: target.y,
     };
 
@@ -169,17 +173,16 @@ function routeStacked(source: IPoint, target: IPoint, sourceRect: Rect, targetRe
     const swingClearance = WIRE_CLEARANCE * DETOUR_CLEARANCE_MULTIPLIER;
     const minStubOffset = Math.max(EXIT_STUB_MINIMUM, WIRE_CLEARANCE * BACKWARD_STUB_CLEARANCE_MULTIPLIER);
 
-    // Ensure stubs extend past both node bodies
-    const exitStubX = Math.max(
-        source.x + minStubOffset,
-        sourceRect.right + swingClearance,
-        targetRect.right + swingClearance
-    );
-    const entryStubX = Math.min(
-        target.x - minStubOffset,
-        sourceRect.left - swingClearance,
-        targetRect.left - swingClearance
-    );
+    // Same stub logic as routeBackward.
+    let exitStubX = Math.max(source.x + minStubOffset, sourceRect.right + swingClearance);
+    if (exitStubX >= targetRect.left && exitStubX <= targetRect.right && targetRect.top < source.y) {
+        exitStubX = Math.max(exitStubX, targetRect.right + swingClearance);
+    }
+
+    let entryStubX = Math.min(target.x - minStubOffset, targetRect.left - swingClearance);
+    if (entryStubX >= sourceRect.left && entryStubX <= sourceRect.right && sourceRect.top < target.y) {
+        entryStubX = Math.min(entryStubX, sourceRect.left - swingClearance);
+    }
 
     const STUB_Y_BLEND = 0.15;
 
@@ -267,11 +270,15 @@ function pushStubPastObstacles(
     direction: 'left' | 'right',
     obstaclesById: Map<string, Rect>,
     connection: ConnectionModel,
-    clearance: number
+    clearance: number,
+    portY: number
 ): number {
     let result = stubX;
     for (const [nodeId, rect] of obstaclesById) {
         if (nodeId === connection.sourceNodeId || nodeId === connection.targetNodeId) continue;
+        // Skip obstacles whose top is at or below the port — they are not in the
+        // vertical descent path from loopY down to the port.
+        if (rect.top >= portY) continue;
         if (direction === 'right' && result >= rect.left - clearance && result <= rect.right + clearance) {
             result = rect.right + clearance;
         } else if (direction === 'left' && result >= rect.left - clearance && result <= rect.right + clearance) {
