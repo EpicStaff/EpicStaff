@@ -6,6 +6,12 @@ from loguru import logger
 
 from infrastructure.persistence.database import save_realtime_session_item_to_db
 
+# Items with this prefix are the client's own echo of a wake-word handover —
+# hidden from the UI. The id must be unique per session: OpenAI rejects a second
+# `conversation.item.create` reusing an id already seen in that session.
+HIDDEN_ITEM_ID_PREFIX = "dont_show_it"
+HIDDEN_ITEM_ID_SUFFIX_LENGTH = 16
+
 
 class ServerEventHandler:
     """Handles mapping of WebSocket events to their corresponding methods."""
@@ -135,7 +141,7 @@ class ServerEventHandler:
         await self.default_handler(data)
 
     async def conversation_item_created_handler(self, data: dict):
-        if data["item"]["id"] == "dont_show_it":
+        if ((data.get("item") or {}).get("id") or "").startswith(HIDDEN_ITEM_ID_PREFIX):
             return
 
         await self.default_handler(data)
