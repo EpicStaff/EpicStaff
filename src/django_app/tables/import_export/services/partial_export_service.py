@@ -108,6 +108,7 @@ class GraphPartialExportService:
                 entity_type=entity_type,
                 entity_id=instance.id,
                 collected=collected,
+                org_id=org_id,
                 exclude_graphs=True,
             )
 
@@ -121,7 +122,7 @@ class GraphPartialExportService:
                 collected["edge_list"] = {e.id: e for e in edges}
 
         # Pass 4: serialize everything
-        result.data = self._serialize(collected)
+        result.data = self._serialize(collected, org_id)
         return result
 
     def _collect(
@@ -129,6 +130,7 @@ class GraphPartialExportService:
         entity_type: str,
         entity_id: int,
         collected: dict,
+        org_id: int,
         exclude_graphs: bool = False,
     ) -> None:
         """Recursively collect entity and its dependencies."""
@@ -142,7 +144,7 @@ class GraphPartialExportService:
 
         collected[entity_type][entity_id] = instance
 
-        dependencies = strategy.extract_dependencies_from_instance(instance)
+        dependencies = self._extract_dependencies(strategy, instance, org_id)
 
         for dep_type, dep_ids in dependencies.items():
             if exclude_graphs and dep_type == EntityType.GRAPH:
@@ -154,10 +156,28 @@ class GraphPartialExportService:
                     entity_type=dep_type,
                     entity_id=dep_id,
                     collected=collected,
+                    org_id=org_id,
                     exclude_graphs=exclude_graphs,
                 )
 
-    def _serialize(self, collected: dict) -> dict:
+    # Dependencies reached from an org-owned node can be shared rows (built-in
+    # tools) that carry other organisations' data, so strategies with an
+    # org-scoped variant get the caller's org, as in DependencyCollector.
+    @staticmethod
+    def _extract_dependencies(strategy, instance, org_id: int) -> dict[str, list[int]]:
+        extractor = getattr(strategy, "extract_org_scoped_dependencies", None)
+        if extractor is not None:
+            return extractor(instance, org_id)
+        return strategy.extract_dependencies_from_instance(instance)
+
+    @staticmethod
+    def _export_entity(strategy, instance, org_id: int) -> dict:
+        exporter = getattr(strategy, "export_entity_org_scoped", None)
+        if exporter is not None:
+            return exporter(instance, org_id)
+        return strategy.export_entity(instance)
+
+    def _serialize(self, collected: dict, org_id: int) -> dict:
         """Serialize all collected instances to exportable dicts."""
         result = {}
 
@@ -169,7 +189,7 @@ class GraphPartialExportService:
 
             strategy = self.registry.get_strategy(entity_type)
             result[entity_type] = [
-                strategy.export_entity(instance) for instance in instances.values()
+                self._export_entity(strategy, instance, org_id) for instance in instances.values()
             ]
 
         return result

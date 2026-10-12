@@ -43,12 +43,13 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         }
 
     def export_entity(self, instance: PythonCodeTool) -> dict:
+        """Export the tool without configs: with no org known, none can be attributed to the caller."""
         data = self.serializer_class(instance).data
         data["labels"] = list(instance.labels.values_list("id", flat=True))
         return data
 
     def export_entity_org_scoped(self, instance: PythonCodeTool, org_id: int) -> dict:
-        data = self.serializer_class(instance).data
+        data = self.serializer_class(instance, context={"org_id": org_id}).data
         data["labels"] = list(instance.labels.filter(org_id=org_id).values_list("id", flat=True))
         return data
 
