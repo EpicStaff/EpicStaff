@@ -124,6 +124,8 @@ describe('computeBackwardControlPoints', () => {
     const source: IPoint = { x: 500, y: 100 };
     const target: IPoint = { x: 100, y: 200 };
 
+    // Shape: [exitStub, topRight, topLeft, entryStub]
+
     it('returns exactly 4 points', () => {
         const result = computeBackwardControlPoints(source, target, null, null);
 
@@ -131,28 +133,44 @@ describe('computeBackwardControlPoints', () => {
     });
 
     it('exit stub x > source.x and entry stub x < target.x', () => {
-        const [exitStub, , , entryStub] = computeBackwardControlPoints(source, target, null, null);
+        const result = computeBackwardControlPoints(source, target, null, null);
+        const exitStub = result[0];
+        const entryStub = result[3];
 
         expect(exitStub.x).toBeGreaterThan(source.x);
         expect(entryStub.x).toBeLessThan(target.x);
     });
 
     it('loop goes above both points when obstacles are null', () => {
-        const [, topRight, topLeft] = computeBackwardControlPoints(source, target, null, null);
+        const result = computeBackwardControlPoints(source, target, null, null);
+        const topRight = result[1];
+        const topLeft = result[2];
 
-        // DEFAULT_VERTICAL_CLEARANCE = WIRE_CLEARANCE * 4 = 40
-        // sourceTop = source.y - 40 = 60, targetTop = target.y - 40 = 160
-        // clearanceY = min(60, 160) - 40 = 20
         expect(topRight.y).toBeLessThan(source.y);
         expect(topLeft.y).toBeLessThan(target.y);
         expect(topRight.y).toBe(topLeft.y);
+    });
+
+    it('stub Y is blended toward loop top to prevent knee artifacts', () => {
+        const result = computeBackwardControlPoints(source, target, null, null);
+        const exitStub = result[0];
+        const entryStub = result[3];
+        const topRight = result[1];
+
+        // Stubs should be between source/target Y and loop Y
+        expect(exitStub.y).toBeLessThan(source.y);
+        expect(exitStub.y).toBeGreaterThan(topRight.y);
+        expect(entryStub.y).toBeLessThan(target.y);
+        expect(entryStub.y).toBeGreaterThan(topRight.y);
     });
 
     it('loop clears the obstacle rects when provided', () => {
         const sourceObstacle: Rect = { left: 480, top: 50, right: 620, bottom: 150 };
         const targetObstacle: Rect = { left: 80, top: 80, right: 220, bottom: 250 };
 
-        const [, topRight, topLeft] = computeBackwardControlPoints(source, target, sourceObstacle, targetObstacle);
+        const result = computeBackwardControlPoints(source, target, sourceObstacle, targetObstacle);
+        const topRight = result[1];
+        const topLeft = result[2];
 
         expect(topRight.y).toBeLessThan(sourceObstacle.top);
         expect(topLeft.y).toBeLessThan(targetObstacle.top);
@@ -160,10 +178,9 @@ describe('computeBackwardControlPoints', () => {
 
     it('uses fallback clearance from port positions when obstacles are null', () => {
         const defaultVerticalClearance = WIRE_CLEARANCE * 4;
-        const [, topRight] = computeBackwardControlPoints(source, target, null, null);
+        const result = computeBackwardControlPoints(source, target, null, null);
+        const topRight = result[1];
 
-        // Without obstacles: sourceTop = source.y - defaultVerticalClearance
-        // clearanceY = min(sourceTop, targetTop) - defaultVerticalClearance
         const expectedSourceTop = source.y - defaultVerticalClearance;
         const expectedTargetTop = target.y - defaultVerticalClearance;
         const expectedClearanceY = Math.min(expectedSourceTop, expectedTargetTop) - defaultVerticalClearance;

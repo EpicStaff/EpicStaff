@@ -22,6 +22,11 @@ import { Rect, WIRE_CLEARANCE } from './obstacles';
  * The path uses only M and C commands — no L commands (which create visible
  * kinks at joins).
  */
+// Maximum distance a Bezier control point can sit from its anchor.
+// Prevents overshooting arcs when Catmull-Rom tangent vectors are very long
+// (e.g., backward loops where the top horizontal span is large).
+const MAX_TANGENT = 50;
+
 export function buildCatmullRomPath(points: IPoint[]): string {
     if (points.length < 2) {
         return '';
@@ -40,14 +45,33 @@ export function buildCatmullRomPath(points: IPoint[]): string {
         const next = points[index + 1];
         const afterNext = index + 2 < points.length ? points[index + 2] : points[points.length - 1];
 
+        let tangent1X = (next.x - previous.x) / 6;
+        let tangent1Y = (next.y - previous.y) / 6;
+        let tangent2X = (afterNext.x - current.x) / 6;
+        let tangent2Y = (afterNext.y - current.y) / 6;
+
+        const length1 = Math.sqrt(tangent1X * tangent1X + tangent1Y * tangent1Y);
+        if (length1 > MAX_TANGENT) {
+            const scale = MAX_TANGENT / length1;
+            tangent1X *= scale;
+            tangent1Y *= scale;
+        }
+
+        const length2 = Math.sqrt(tangent2X * tangent2X + tangent2Y * tangent2Y);
+        if (length2 > MAX_TANGENT) {
+            const scale = MAX_TANGENT / length2;
+            tangent2X *= scale;
+            tangent2Y *= scale;
+        }
+
         const controlPoint1: IPoint = {
-            x: current.x + (next.x - previous.x) / 6,
-            y: current.y + (next.y - previous.y) / 6,
+            x: current.x + tangent1X,
+            y: current.y + tangent1Y,
         };
 
         const controlPoint2: IPoint = {
-            x: next.x - (afterNext.x - current.x) / 6,
-            y: next.y - (afterNext.y - current.y) / 6,
+            x: next.x - tangent2X,
+            y: next.y - tangent2Y,
         };
 
         path += ` C ${controlPoint1.x} ${controlPoint1.y}, ${controlPoint2.x} ${controlPoint2.y}, ${next.x} ${next.y}`;
@@ -104,18 +128,41 @@ export function computeBackwardControlPoints(
     const STUB_LENGTH = 40;
     const DEFAULT_VERTICAL_CLEARANCE = WIRE_CLEARANCE * 4;
 
-    const exitStub: IPoint = { x: source.x + STUB_LENGTH, y: source.y };
-    const entryStub: IPoint = { x: target.x - STUB_LENGTH, y: target.y };
+    // Stubs must clear both node bodies to prevent Catmull-Rom swing-through
+    const exitStubX =
+        sourceObstacle && targetObstacle
+            ? Math.max(
+                  source.x + STUB_LENGTH,
+                  sourceObstacle.right + WIRE_CLEARANCE,
+                  targetObstacle.right + WIRE_CLEARANCE
+              )
+            : source.x + STUB_LENGTH;
+    const entryStubX =
+        sourceObstacle && targetObstacle
+            ? Math.min(
+                  target.x - STUB_LENGTH,
+                  sourceObstacle.left - WIRE_CLEARANCE,
+                  targetObstacle.left - WIRE_CLEARANCE
+              )
+            : target.x - STUB_LENGTH;
 
-    // Determine the top edge to clear — prefer going above
+    // Always loop above — matches orthogonal router behaviour.
     const sourceTop = sourceObstacle ? sourceObstacle.top : source.y - DEFAULT_VERTICAL_CLEARANCE;
     const targetTop = targetObstacle ? targetObstacle.top : target.y - DEFAULT_VERTICAL_CLEARANCE;
     const clearanceY = Math.min(sourceTop, targetTop) - DEFAULT_VERTICAL_CLEARANCE;
 
-    const topRight: IPoint = { x: exitStub.x, y: clearanceY };
-    const topLeft: IPoint = { x: entryStub.x, y: clearanceY };
+    // Offset stub Y slightly toward clearanceY so the Catmull-Rom tangent
+    // at the stub already points toward the loop, preventing "knee" dips.
+    const STUB_Y_BLEND = 0.15;
+    const exitStubY = source.y + (clearanceY - source.y) * STUB_Y_BLEND;
+    const entryStubY = target.y + (clearanceY - target.y) * STUB_Y_BLEND;
 
-    return [exitStub, topRight, topLeft, entryStub];
+    return [
+        { x: exitStubX, y: exitStubY },
+        { x: exitStubX, y: clearanceY },
+        { x: entryStubX, y: clearanceY },
+        { x: entryStubX, y: entryStubY },
+    ];
 }
 
 // --- Internal helpers ---

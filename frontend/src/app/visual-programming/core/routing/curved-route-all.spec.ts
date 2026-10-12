@@ -34,9 +34,9 @@ describe('routeAllCurved', () => {
 
         expect(routes.has('w')).toBe(true);
         const points = routes.get('w')!;
-        // Backward connections produce 4 through-points (exit stub, top right, top left, entry stub)
+        // Backward connections produce 4 through-points (stubs + loop top)
         expect(points.length).toBe(4);
-        // The middle two points should be above both nodes (y < node top)
+        // The loop top points should be above both nodes (y < node top)
         expect(points[1].y).toBeLessThan(0);
         expect(points[2].y).toBeLessThan(0);
     });
