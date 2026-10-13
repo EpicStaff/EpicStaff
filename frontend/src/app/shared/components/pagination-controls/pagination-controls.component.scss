@@ -22,6 +22,9 @@
 }
 
 .page-btn {
+    box-sizing: border-box;
+    // min-width, not width: a single digit renders 33px wide, multi-digit pages must still grow
+    min-width: 33px;
     height: 40px;
     padding: 0 12px;
     display: inline-flex;
@@ -30,8 +33,7 @@
     // Unselected pages sit on the dark page surface with accent digits; the selected one is filled (see .active).
     background: var(--color-background-body);
     color: var(--accent-color);
-    // no semantic token holds the design's line colour, so the theme-aware primitive is used
-    border: 1px solid var(--graphite-750);
+    border: 1px solid var(--accent-color);
     border-radius: 4px;
     font-size: 0.9rem;
     cursor: pointer;
