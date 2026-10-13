@@ -21,11 +21,77 @@ const EXIT_STUB_MINIMUM = 40;
 const BACKWARD_LOOP_CLEARANCE_MULTIPLIER = 4;
 const BACKWARD_STUB_CLEARANCE_MULTIPLIER = 3;
 const DETOUR_CLEARANCE_MULTIPLIER = 2;
+const LANE_SPACING = 10;
+
+interface LaneInfo {
+    index: number; // 0-based position among siblings
+    count: number; // total siblings sharing the port
+}
+
+/**
+ * Groups forward connections that share a source or target port and assigns
+ * each a lane index. Wires are sorted by the Y of their other end so that
+ * the topmost target gets lane 0, producing a fan that doesn't cross.
+ */
+function computeForwardLanes(connections: ConnectionModel[], nodesById: Map<string, NodeModel>): Map<string, LaneInfo> {
+    const result = new Map<string, LaneInfo>();
+
+    // Group connections by shared source port.
+    const bySourcePort = new Map<string, { connectionId: string; targetY: number }[]>();
+    // Group connections by shared target port.
+    const byTargetPort = new Map<string, { connectionId: string; sourceY: number }[]>();
+
+    for (const connection of connections) {
+        if (connection.userAdjustedWaypoints) continue;
+        const ends = resolveWireEnds(connection, nodesById);
+        if (!ends) continue;
+        const source = getPortPosition(ends.sourceNode, ends.sourcePort);
+        const target = getPortPosition(ends.targetNode, ends.targetPort);
+        if (target.x < source.x) continue; // skip backward/stacked
+
+        const sourceKey = `${connection.sourceNodeId}@${connection.sourcePortId}`;
+        const targetKey = `${connection.targetNodeId}@${connection.targetPortId}`;
+
+        if (!bySourcePort.has(sourceKey)) bySourcePort.set(sourceKey, []);
+        bySourcePort.get(sourceKey)!.push({ connectionId: connection.id, targetY: target.y });
+
+        if (!byTargetPort.has(targetKey)) byTargetPort.set(targetKey, []);
+        byTargetPort.get(targetKey)!.push({ connectionId: connection.id, sourceY: source.y });
+    }
+
+    // Assign lanes for connections sharing a source port (fan out).
+    for (const siblings of bySourcePort.values()) {
+        if (siblings.length < 2) continue;
+        siblings.sort((a, b) => a.targetY - b.targetY);
+        for (let i = 0; i < siblings.length; i++) {
+            result.set(siblings[i].connectionId, { index: i, count: siblings.length });
+        }
+    }
+
+    // Assign lanes for connections sharing a target port (fan in).
+    // Only override if not already assigned from source grouping.
+    for (const siblings of byTargetPort.values()) {
+        if (siblings.length < 2) continue;
+        siblings.sort((a, b) => a.sourceY - b.sourceY);
+        for (let i = 0; i < siblings.length; i++) {
+            if (!result.has(siblings[i].connectionId)) {
+                result.set(siblings[i].connectionId, { index: i, count: siblings.length });
+            }
+        }
+    }
+
+    return result;
+}
 
 export function routeAllCurved(nodes: NodeModel[], connections: ConnectionModel[]): Map<string, IPoint[]> {
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
     const obstaclesById = routingObstacles(nodes);
     const routes = new Map<string, IPoint[]>();
+
+    // First pass: compute lane indices for forward connections that share a
+    // source or target port. Wires from the same port get different Y offsets
+    // so they don't draw on top of each other (like orthogonal nudging).
+    const laneMap = computeForwardLanes(connections, nodesById);
 
     for (const connection of connections) {
         const ends = resolveWireEnds(connection, nodesById);
@@ -46,11 +112,10 @@ export function routeAllCurved(nodes: NodeModel[], connections: ConnectionModel[
         if (backward) {
             throughPoints = routeBackward(source, target, sourceRect, targetRect, obstaclesById, connection);
         } else if (stacked && target.x < source.x) {
-            // Only use stacked loop when target port is left of source port.
-            // When target is to the right, a forward S-curve is cleaner.
             throughPoints = routeStacked(source, target, sourceRect, targetRect);
         } else {
-            throughPoints = routeForward(source, target, obstaclesById, connection);
+            const lane = laneMap.get(connection.id);
+            throughPoints = routeForward(source, target, obstaclesById, connection, lane);
         }
 
         routes.set(connection.id, throughPoints);
@@ -67,9 +132,22 @@ function routeForward(
     source: IPoint,
     target: IPoint,
     obstaclesById: Map<string, Rect>,
-    connection: ConnectionModel
+    connection: ConnectionModel,
+    lane?: LaneInfo
 ): IPoint[] {
     const initialPoints = computeForwardControlPoints(source, target);
+
+    // Separate overlapping wires by varying exit/entry stub lengths (X),
+    // mirroring how the orthogonal router spaces risers at different X.
+    // Lane 0 (topmost target) gets a shorter exit stub and longer entry stub;
+    // higher lanes get progressively longer exit stubs and shorter entry stubs.
+    if (lane && lane.count > 1) {
+        const step = LANE_SPACING;
+        const exitShift = (lane.index - (lane.count - 1) / 2) * step;
+        const entryShift = -exitShift; // opposite: longer exit ↔ shorter entry
+        initialPoints[0].x += exitShift;
+        initialPoints[initialPoints.length - 1].x += entryShift;
+    }
 
     const blockingObstacles = findObstaclesBetween(
         source,

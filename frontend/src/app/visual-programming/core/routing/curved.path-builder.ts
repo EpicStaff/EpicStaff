@@ -36,9 +36,10 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         const path = buildCatmullRomPath(allPoints);
 
         // secondPoint and penultimatePoint control arrow marker rotation.
-        // They must be close to source/target for correct orientation.
-        const secondPoint = allPoints.length > 1 ? allPoints[1] : target;
-        const penultimatePoint = allPoints.length > 1 ? allPoints[allPoints.length - 2] : source;
+        // Use points 1px along the horizontal exit/entry direction so arrows
+        // always face the correct way regardless of through-point placement.
+        const secondPoint = { x: source.x + 1, y: source.y };
+        const penultimatePoint = { x: target.x - 1, y: target.y };
 
         return {
             path,

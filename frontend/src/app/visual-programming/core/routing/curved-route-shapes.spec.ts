@@ -101,22 +101,21 @@ describe('computeForwardControlPoints', () => {
 
         const [first, second] = computeForwardControlPoints(source, target);
 
-        // offset = min(10 * 0.4, 10 / 2, 200) = 4
+        // offset = min(10 * 0.4, 10 / 2) = 4
         expect(first.x).toBe(source.x + 4);
         expect(second.x).toBe(target.x - 4);
-        // Through-points never cross
         expect(first.x).toBeLessThanOrEqual(second.x);
     });
 
-    it('clamps offset for very far apart points (maximum 200)', () => {
+    it('scales offset with distance for far apart points', () => {
         const source: IPoint = { x: 0, y: 0 };
         const target: IPoint = { x: 2000, y: 0 };
 
         const [first, second] = computeForwardControlPoints(source, target);
 
-        // offset = clamp(2000 * 0.4, 50, 200) = 200
-        expect(first.x).toBe(source.x + 200);
-        expect(second.x).toBe(target.x - 200);
+        // offset = min(2000 * 0.4, 2000 / 2) = 800
+        expect(first.x).toBe(source.x + 800);
+        expect(second.x).toBe(target.x - 800);
     });
 });
 

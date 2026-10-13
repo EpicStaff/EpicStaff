@@ -22,10 +22,11 @@ import { Rect, WIRE_CLEARANCE } from './obstacles';
  * The path uses only M and C commands — no L commands (which create visible
  * kinks at joins).
  */
-// Maximum distance a Bezier control point can sit from its anchor.
-// Prevents overshooting arcs when Catmull-Rom tangent vectors are very long
-// (e.g., backward loops where the top horizontal span is large).
-const MAX_TANGENT = 50;
+// Tangent cap as a fraction of the segment length. Prevents overshooting arcs
+// on short/dense segments (backward loops) while allowing smooth curvature on
+// long segments (forward connections spanning hundreds of pixels).
+const MAX_TANGENT_RATIO = 0.35;
+const MIN_TANGENT_CAP = 50;
 
 export function buildCatmullRomPath(points: IPoint[]): string {
     if (points.length < 2) {
@@ -45,21 +46,26 @@ export function buildCatmullRomPath(points: IPoint[]): string {
         const next = points[index + 1];
         const afterNext = index + 2 < points.length ? points[index + 2] : points[points.length - 1];
 
+        // Segment length drives the tangent cap — long segments get longer
+        // tangents for smooth curves; short segments stay capped to avoid overshoot.
+        const segmentLength = Math.sqrt((next.x - current.x) ** 2 + (next.y - current.y) ** 2);
+        const maxTangent = Math.max(MIN_TANGENT_CAP, segmentLength * MAX_TANGENT_RATIO);
+
         let tangent1X = (next.x - previous.x) / 6;
         let tangent1Y = (next.y - previous.y) / 6;
         let tangent2X = (afterNext.x - current.x) / 6;
         let tangent2Y = (afterNext.y - current.y) / 6;
 
         const length1 = Math.sqrt(tangent1X * tangent1X + tangent1Y * tangent1Y);
-        if (length1 > MAX_TANGENT) {
-            const scale = MAX_TANGENT / length1;
+        if (length1 > maxTangent) {
+            const scale = maxTangent / length1;
             tangent1X *= scale;
             tangent1Y *= scale;
         }
 
         const length2 = Math.sqrt(tangent2X * tangent2X + tangent2Y * tangent2Y);
-        if (length2 > MAX_TANGENT) {
-            const scale = MAX_TANGENT / length2;
+        if (length2 > maxTangent) {
+            const scale = maxTangent / length2;
             tangent2X *= scale;
             tangent2Y *= scale;
         }
@@ -86,25 +92,39 @@ export function buildCatmullRomPath(points: IPoint[]): string {
  * target heading west.
  */
 export function computeForwardControlPoints(source: IPoint, target: IPoint): IPoint[] {
-    const MAX_OFFSET = 200;
+    const VERTICAL_ARC_OFFSET = 40;
     const OFFSET_RATIO = 0.4;
 
-    const horizontalDistance = Math.abs(target.x - source.x);
-    // Cap offset to 40% of the distance, but never more than half the distance
-    // (prevents through-points from crossing on short connections).
-    const offset = Math.min(horizontalDistance * OFFSET_RATIO, horizontalDistance / 2, MAX_OFFSET);
-
-    // Blend Y values so Catmull-Rom through-points guide the curve directly
-    // toward the target instead of staying flat at source/target Y (which
-    // causes overshoot S-loops when there is a vertical difference).
     const deltaY = target.y - source.y;
+    const verticalDistance = Math.abs(deltaY);
+    const horizontalDistance = Math.abs(target.x - source.x);
 
     // When the path is nearly horizontal (deltaY ≈ 0), the SVG bounding box
     // has zero height which breaks objectBoundingBox gradient rendering in
     // Foblex. Add a subtle vertical arc (1px) to prevent this.
     const MINIMUM_VERTICAL_OFFSET = 1;
-    const verticalArc = Math.abs(deltaY) < MINIMUM_VERTICAL_OFFSET * 2 ? MINIMUM_VERTICAL_OFFSET : 0;
+    const verticalArc = verticalDistance < MINIMUM_VERTICAL_OFFSET * 2 ? MINIMUM_VERTICAL_OFFSET : 0;
 
+    // Strongly vertical: through-points with fixed horizontal offset.
+    // Only when Y distance is large enough that a scaled offset would
+    // collapse the curve. Short diagonals use the horizontal branch below.
+    const MIN_VERTICAL_FOR_ARC = VERTICAL_ARC_OFFSET * 3;
+    if (verticalDistance > horizontalDistance && verticalDistance > MIN_VERTICAL_FOR_ARC) {
+        // Cap nudge so the two through-points never meet in the middle
+        // (each gets at most 30% of the vertical gap, leaving 40% between them).
+        const nudge = Math.min(30, verticalDistance * 0.3);
+        const yDirection = deltaY > 0 ? 1 : -1;
+        return [
+            { x: source.x + VERTICAL_ARC_OFFSET, y: source.y + yDirection * nudge - verticalArc },
+            { x: target.x - VERTICAL_ARC_OFFSET, y: target.y - yDirection * nudge + verticalArc },
+        ];
+    }
+
+    // Scale offset with distance for a proper S-curve on horizontal connections.
+    // horizontalDistance / 2 prevents through-points from crossing.
+    const offset = Math.min(horizontalDistance * OFFSET_RATIO, horizontalDistance / 2);
+
+    // Blend Y values so through-points guide the curve toward the target.
     return [
         { x: source.x + offset, y: source.y + deltaY * 0.25 - verticalArc },
         { x: target.x - offset, y: source.y + deltaY * 0.75 + verticalArc },

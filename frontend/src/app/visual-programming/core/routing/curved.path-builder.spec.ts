@@ -40,21 +40,23 @@ describe('CurvedPathBuilder', () => {
             expect(response.candidates).toEqual([]);
         });
 
-        it('secondPoint is the first waypoint', () => {
-            const waypoint = { x: 100, y: 20 };
-            const response = builder.handle(request({ x: 0, y: 0 }, { x: 300, y: 100 }, [waypoint]));
+        it('secondPoint is 1px east of source for horizontal arrow rotation', () => {
+            const source = { x: 0, y: 0 };
+            const response = builder.handle(request(source, { x: 300, y: 100 }, [{ x: 100, y: 20 }]));
 
-            expect(response.secondPoint).toEqual(waypoint);
+            expect(response.secondPoint).toEqual({ x: source.x + 1, y: source.y });
         });
 
-        it('penultimatePoint is the last waypoint', () => {
-            const waypoints = [
-                { x: 100, y: 20 },
-                { x: 200, y: 80 },
-            ];
-            const response = builder.handle(request({ x: 0, y: 0 }, { x: 300, y: 100 }, waypoints));
+        it('penultimatePoint is 1px west of target for horizontal arrow rotation', () => {
+            const target = { x: 300, y: 100 };
+            const response = builder.handle(
+                request({ x: 0, y: 0 }, target, [
+                    { x: 100, y: 20 },
+                    { x: 200, y: 80 },
+                ])
+            );
 
-            expect(response.penultimatePoint).toEqual(waypoints[1]);
+            expect(response.penultimatePoint).toEqual({ x: target.x - 1, y: target.y });
         });
 
         it('points includes source, waypoints, and target', () => {
