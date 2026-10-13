@@ -28,14 +28,14 @@ START → enter (pre-computation) → evaluate (rows + post-computation) → END
 ```python
 class ClassificationDecisionTableNodeData(BaseModel):
     node_name: str
-    pre_python_code: PythonCodeData | None = None    # sandboxed code w/ main()
-    pre_input_map: dict[str, str] = {}               # "local_name": "variables.path"
-    pre_output_variable_path: str | None = None      # where to store main() return
-    post_python_code: PythonCodeData | None = None   # same pattern as pre
+    pre_python_code: PythonCodeData | None = None  # sandboxed code w/ main()
+    pre_input_map: dict[str, str] = {}  # "local_name": "variables.path"
+    pre_output_variable_path: str | None = None  # where to store main() return
+    post_python_code: PythonCodeData | None = None  # same pattern as pre
     post_input_map: dict[str, str] = {}
     post_output_variable_path: str | None = None
     condition_groups: list[ClassificationConditionGroupData] = []
-    prompts: dict[str, PromptConfigData] = {}         # prompt library keyed by id
+    prompts: dict[str, PromptConfigData] = {}  # prompt library keyed by id
     default_next_node: str | None = None
     next_error_node: str | None = None
 ```
@@ -49,15 +49,15 @@ class ClassificationDecisionTableNodeData(BaseModel):
 ```python
 class ClassificationConditionGroupData(BaseModel):
     group_name: str
-    expression: str | None = None                 # main Python expression (optional)
-    prompt_id: str | None = None                  # reference into node `prompts`
-    manipulation: str | None = None               # main Python manipulation code
-    continue_flag: bool = False                   # after a MATCH: True=continue, False=stop
-    next_node: str | None = None                  # routing target (resolved node name)
-    dock_visible: bool = True                     # enabled flag (see below)
-    order: int = 0                                # evaluation order
-    field_expressions: dict[str, str] = {}        # column → expression fragment
-    field_manipulations: dict[str, str] = {}      # column → assignment expression
+    expression: str | None = None  # main Python expression (optional)
+    prompt_id: str | None = None  # reference into node `prompts`
+    manipulation: str | None = None  # main Python manipulation code
+    continue_flag: bool = False  # after a MATCH: True=continue, False=stop
+    next_node: str | None = None  # routing target (resolved node name)
+    dock_visible: bool = True  # enabled flag (see below)
+    order: int = 0  # evaluation order
+    field_expressions: dict[str, str] = {}  # column → expression fragment
+    field_manipulations: dict[str, str] = {}  # column → assignment expression
 ```
 
 ### Field Expression Formats
@@ -126,12 +126,12 @@ Prompts live in the `prompts` dict on the node, keyed by id:
 
 ```python
 class PromptConfigData(BaseModel):
-    prompt_text: str                       # template with {var_name} interpolation
+    prompt_text: str  # template with {var_name} interpolation
     llm_id: int | None = None
-    output_schema: dict | str = {}         # JSON Schema for structured output
-    result_variable: str = "prompt_result" # state variable to store the result
-    variable_mappings: dict[str, str] = {} # extract fields: state_var → result_field
-    llm_data: LLMData | None = None         # resolved at runtime
+    output_schema: dict | str = {}  # JSON Schema for structured output
+    result_variable: str = "prompt_result"  # state variable to store the result
+    variable_mappings: dict[str, str] = {}  # extract fields: state_var → result_field
+    llm_data: LLMData | None = None  # resolved at runtime
 ```
 
 The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.

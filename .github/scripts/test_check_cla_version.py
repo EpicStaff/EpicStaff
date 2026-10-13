@@ -31,8 +31,7 @@ Effective as of the date of acceptance by the Contributor.
 
 def heading(version: str) -> str:
     return (
-        f'# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA") - VERSION {version}, '
-        "10 June 2026\n"
+        f'# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA") - VERSION {version}, 10 June 2026\n'
     )
 
 
@@ -43,6 +42,7 @@ def git(repo: Path, *args: str) -> str:
         cwd=repo,
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed: {result.stderr}")
@@ -125,6 +125,7 @@ def run_scenario(
             env=env,
             capture_output=True,
             text=True,
+            check=False,
         )
 
         return ScenarioResult(result.returncode, result.stdout, result.stderr)

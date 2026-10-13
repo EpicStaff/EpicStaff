@@ -105,8 +105,9 @@ def test_graph_delete(auth_client, graph):
 
 
 @pytest.mark.django_db
-def test_graph_delete_soft_delete_default_leaves_row_in_all_objects(auth_client, graph):
-    """SOFT_DELETE=True (default): DELETE hides the graph from `objects` but
+@override_settings(SOFT_DELETE=True)
+def test_graph_delete_leaves_row_in_all_objects_when_soft_delete_enabled(auth_client, graph):
+    """SOFT_DELETE=True: DELETE hides the graph from `objects` but
     keeps it in `all_objects` with `is_soft_deleted=True` and `soft_deleted_at` set."""
     graph_id = graph.id
     url = reverse("graphs-detail", args=[graph_id])

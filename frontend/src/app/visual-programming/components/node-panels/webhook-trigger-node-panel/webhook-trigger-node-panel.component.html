@@ -141,6 +141,14 @@
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
 
+                    <app-node-storage-section
+                        [readonly]="isReadOnly()"
+                        [useStorage]="useStorage()"
+                        (onToggleChange)="onStorageToggle($event)"
+                        (onInsertCode)="insertStorageCode($event)"
+                        (onRemoveCode)="removeStorageCode($event)"
+                    ></app-node-storage-section>
+
                     <!-- Expanded: the editor not shown in the big pane sits at the bottom of this column. -->
                     @if (isExpanded()) {
                         @if (expandedPane() === 'payload') {

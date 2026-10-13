@@ -15,6 +15,7 @@ from src.shared.models import (
     DecisionTableNodeData,
     PythonCodeData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class DecisionTableNodeDataError(Exception):
@@ -33,6 +34,7 @@ class DecisionTableNodeSubgraph:
         run_code_execution_service: RunPythonCodeService,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.decision_table_node_data = decision_table_node_data
         self._graph_builder = graph_builder
@@ -46,6 +48,7 @@ class DecisionTableNodeSubgraph:
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.run_code_execution_service = run_code_execution_service
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis and dispatch it to the
@@ -116,6 +119,7 @@ def main(**kwargs) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         logger.debug(
@@ -154,6 +158,7 @@ def main(variables: dict) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(

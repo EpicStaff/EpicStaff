@@ -221,6 +221,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
         test_payload: node.data.test_payload ?? {},
+        use_storage: node.data.use_storage ?? false,
         metadata: toNodeMetadata(node),
     };
 }
