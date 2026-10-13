@@ -6,6 +6,8 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from loguru import logger
 
+from rbac.exceptions import OrganizationNameConflictError
+from rbac.governance.organizations import OrganizationManagementService
 from rbac.models import Organization, OrganizationConfig, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -27,7 +29,7 @@ class SuperadminBootstrap:
     """Provisions a superadmin + default-org membership.
 
     Used by both FirstSetupService (initial bootstrap) and ResetUserService
-    (destructive reset, Bug 1 fix). The caller is responsible for the
+    (destructive reset). The caller is responsible for the
     surrounding `transaction.atomic()` and any pre-checks ("no users exist
     yet" for first-setup; the wipe for reset-user).
 
@@ -41,8 +43,9 @@ class SuperadminBootstrap:
       3. Otherwise create the row with the resolved name (the `org_name`
          argument if given, else the configured name), flagged.
       - Race-safety: the create runs in a nested savepoint; if it races a
-        parallel insert and IntegrityError fires (name or single-default
-        constraint), refetch and use the winner.
+        parallel insert, IntegrityError fires for the single-default
+        constraint and OrganizationNameConflictError fires for the name
+        collision — both trigger the same refetch/use-the-winner recovery.
     """
 
     SUPERADMIN_ROLE_NAME = BuiltInRole.SUPERADMIN
@@ -115,15 +118,21 @@ class SuperadminBootstrap:
             return org, False
 
         # 3. Truly empty system: create it with the resolved name, flagged.
-        #    The nested savepoint keeps a failed insert from poisoning the
-        #    caller's outer atomic block, so the refetch below is actually
-        #    reachable on a lost race.
+        #    Delegated to OrganizationManagementService.create_organization()
+        #    so the default org gets the same MinIO storage provisioning as
+        #    any other organization — a bare Organization.objects.create()
+        #    here would leave it without storage credentials. The nested
+        #    savepoint keeps a failed insert from poisoning the caller's
+        #    outer atomic block, so the refetch below is actually reachable
+        #    on a lost race.
         try:
             with transaction.atomic():
-                org = Organization.objects.create(name=resolved_name, is_default=True)
+                org = OrganizationManagementService().create_organization(name=resolved_name)
+                org.is_default = True
+                org.save(update_fields=["is_default"])
                 OrganizationConfig.objects.create(org=org)
                 return org, True
-        except IntegrityError:
+        except (OrganizationNameConflictError, IntegrityError):
             # Race lost — another transaction created the row between our
             # filter and create. The DB-level constraints are ground truth;
             # refetch and use the winner.

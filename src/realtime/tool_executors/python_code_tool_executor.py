@@ -2,6 +2,7 @@ from domain.models.realtime_tool import RealtimeTool, ToolParameters
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from src.shared.models import (
     PythonCodeToolData,
+    StorageCredentials,
 )
 
 from .base_tool_executor import BaseToolExecutor
@@ -12,16 +13,20 @@ class PythonCodeToolExecutor(BaseToolExecutor):
         self,
         python_code_tool_data: PythonCodeToolData,
         python_code_executor_service: IPythonCodeExecutorService,
+        storage_credentials: StorageCredentials | None = None,
     ):
         name = python_code_tool_data.name.replace(" ", "_")
         super().__init__(tool_name=name)
         self.python_code_tool_data = python_code_tool_data
         self.python_code_executor_service = python_code_executor_service
+        self.storage_credentials = storage_credentials
         self._realtime_model = self._gen_python_realtime_tool_model(self.python_code_tool_data)
 
     async def execute(self, **kwargs):
         return await self.python_code_executor_service.run_code(
-            python_code_data=self.python_code_tool_data.python_code, inputs=kwargs
+            python_code_data=self.python_code_tool_data.python_code,
+            inputs=kwargs,
+            storage_credentials=self.storage_credentials,
         )
 
     def _gen_python_realtime_tool_model(

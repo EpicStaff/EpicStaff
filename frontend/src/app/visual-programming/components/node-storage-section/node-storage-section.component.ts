@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, OnInit, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, linkedSignal, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ToggleSwitchComponent } from '@shared/components';
 
@@ -36,7 +36,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
     styleUrl: './node-storage-section.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NodeStorageSectionComponent implements OnInit {
+export class NodeStorageSectionComponent {
     readonly useStorage = input.required<boolean>();
     readonly readonly = input<boolean>(false);
 
@@ -44,11 +44,8 @@ export class NodeStorageSectionComponent implements OnInit {
     readonly onRemoveCode = output<string>();
     readonly onToggleChange = output<boolean>();
 
-    readonly enabled = signal<boolean>(false);
-
-    ngOnInit(): void {
-        this.enabled.set(this.useStorage());
-    }
+    /** Follows `useStorage`, so a panel reused for another node shows that node's flag. */
+    readonly enabled = linkedSignal(() => this.useStorage());
 
     onToggle(value: boolean): void {
         this.enabled.set(value);

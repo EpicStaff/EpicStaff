@@ -4,10 +4,23 @@ from typing import Any
 
 import settings
 from loguru import logger
+from models.state import State
+from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.models.storage_scope import StorageCredentials
 from utils.singleton_meta import SingletonMeta
+
+
+def build_state_globals(state: State) -> dict[str, Any]:
+    """Build the `state` global that user Python code can read in the sandbox."""
+    return {
+        "state": {
+            "variables": state["variables"].model_dump(),
+            "state_history": state["state_history"],
+        }
+    }
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -20,6 +33,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         inputs: dict[str, Any],
         additional_global_kwargs: dict[str, Any] | None = None,
         stop_event: StopEvent | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict[str, Any]:
         additional_global_kwargs = additional_global_kwargs or {}
         venv_name = python_code_data.venv_name
@@ -37,21 +51,37 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             merged_global_kwargs["org_id"] = python_code_data.org_id
 
         unique_task_id = str(uuid.uuid4())
-        code_task_data = CodeTaskData(
-            venv_name=venv_name,
-            libraries=libraries,
-            code=code,
-            execution_id=unique_task_id,
-            entrypoint=entrypoint,
-            func_kwargs=inputs,
-            global_kwargs=merged_global_kwargs,
-            use_storage=python_code_data.use_storage,
-            storage_allowed_paths=python_code_data.storage_allowed_paths,
-            storage_org_prefix=python_code_data.storage_org_prefix,
-            session_id=python_code_data.session_id,
-            secrets=python_code_data.secrets,
-            org_id=python_code_data.org_id,
-        )
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=venv_name,
+                libraries=libraries,
+                code=code,
+                execution_id=unique_task_id,
+                entrypoint=entrypoint,
+                func_kwargs=inputs,
+                global_kwargs=merged_global_kwargs,
+                use_storage=python_code_data.use_storage,
+                storage_allowed_paths=python_code_data.storage_allowed_paths,
+                storage_org_prefix=python_code_data.storage_org_prefix,
+                session_id=python_code_data.session_id,
+                secrets=python_code_data.secrets,
+                org_id=python_code_data.org_id,
+                storage_credentials=storage_credentials,
+            )
+        except ValidationError:
+            # Never log or return `error` itself: ValidationError's repr embeds the
+            # constructor input, including `secrets` and `storage_credentials`.
+            logger.error(
+                "Invalid storage scope for code execution (execution_id={})", unique_task_id
+            )
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr="Invalid storage scope for code execution.",
+                stdout="",
+                returncode=1,
+            ).model_dump()
+
+        code_task_message = code_task_data.model_dump_json()
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
@@ -60,7 +90,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         total_len = 0
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
-        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
+
+        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_message)
         logger.info("Waiting for code_results")
 
         while True:

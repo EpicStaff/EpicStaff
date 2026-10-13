@@ -59,7 +59,7 @@ def test_run_merges_org_variables_into_session(org_client, default_org, monkeypa
         lambda session, token_budget=None, run_type="": _FakeSessionData(),
     )
     monkeypatch.setattr(
-        svc.redis_service, "publish_session_data", lambda session_data, org_id: 2
+        svc.redis_service, "publish_session_data", lambda **kwargs: 2
     )
 
     resp = org_client.post(
