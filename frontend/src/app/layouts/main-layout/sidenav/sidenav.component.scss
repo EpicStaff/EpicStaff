@@ -6,6 +6,8 @@ $nav-icon-size: 1.4rem;
 $nav-icon-padding: ($row-size - $nav-icon-size) * 0.5;
 $avatar-size: 1.5rem; // app-org-avatar and app-user-avatar are 24px
 $avatar-padding: ($row-size - $avatar-size) * 0.5;
+// Must match chat-icon-size on <epic-chat> in sidenav.component.html.
+$chat-launcher-size: 2rem;
 
 :host {
     display: block;
@@ -54,7 +56,6 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
             height: $row-size;
         }
 
-        // Margin rather than a flex gap, so the zero-width tooltip anchor adds no space when collapsed.
         .app-logo-name {
             min-width: 0;
             margin-left: var(--space-sm);
@@ -87,6 +88,36 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         &:hover .gif-logo {
             display: block;
             transform: scale(1.25);
+        }
+    }
+}
+
+// Collapsed, the toggle is hidden over the logo mark and replaces it on hover or keyboard focus
+// (not after a mouse click, which would leave it shown). Expanded, it always shows at the end of the row.
+.sidenav:not(.expanded) .logo-container {
+    .logo-mark {
+        transition: opacity 0.15s ease;
+    }
+
+    .logo-sidebar-toggle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+
+    &:hover,
+    &:has(:focus-visible) {
+        .logo-mark {
+            opacity: 0;
+        }
+
+        .logo-sidebar-toggle {
+            opacity: 1;
+            pointer-events: auto;
         }
     }
 }
@@ -211,9 +242,17 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
                     color: var(--accent-color);
                 }
 
+                // The launcher is wider than the row icons: centre it in the 40px row with equal padding.
                 &.epic-chat-slot {
                     overflow: visible;
-                    padding: 0;
+                    padding: 0 ($row-size - $chat-launcher-size) * 0.5;
+                }
+
+                // Fills the rest of the row, so the whole row past the launcher opens and closes the chat.
+                .epic-chat-label {
+                    flex: 1 1 auto;
+                    align-self: stretch;
+                    line-height: $row-size;
                 }
             }
         }
@@ -270,16 +309,29 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
     }
 }
 
+// The widget's shadow root forces its host to display: block and width: 100%, and stretches the launcher to that
+// width, so the host is sized here to exactly the launcher: the row layout then never depends on widget internals.
 .epic-chat-host {
-    display: contents;
+    display: block;
+    flex: 0 0 $chat-launcher-size;
+    width: $chat-launcher-size;
+    min-width: $chat-launcher-size;
 }
 
 // Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.
 // The org and user menus are positioned against their full-width wrappers, so they open beside the sidebar edge.
 .sidenav.expanded {
+    // The toggle takes its own place in the row, so the name never runs under it.
     .logo-container .app-logo {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
         justify-content: flex-start;
-        padding-inline: $row-inset;
+        padding-inline: $row-inset var(--space-sm);
+    }
+
+    .logo-container .logo-sidebar-toggle {
+        margin-right: $row-inset;
     }
 
     .org-menu-container .org-menu-wrapper {
@@ -295,13 +347,5 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         width: auto;
         margin: 0 $row-inset;
         justify-content: flex-start;
-    }
-
-    // The EpicChat widget renders its own launcher button: keep it icon-only, aligned with the row icons.
-    .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link.epic-chat-slot {
-        flex: 0 0 auto;
-        width: $row-size;
-        margin: 0 auto 0 $row-inset;
-        justify-content: center;
     }
 }

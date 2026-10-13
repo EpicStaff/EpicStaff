@@ -7,16 +7,18 @@ export const MAIN_SIDENAV_WIDTH_KEY = 'main-sidenav';
 export const MAIN_SIDENAV_COLLAPSED_WIDTH = 60;
 
 /**
- * Collapsed, or expanded between 180 and 320px. 180px fits the longest page label next to its icon;
- * dragging below 120px (halfway between the two states) collapses the sidebar, at or above it expands it.
+ * Collapsed, or expanded between 210 and 320px. The logo row is the widest fixed content: 10px inset + 40px
+ * logo mark + 8px gap + ~85px "EpicStaff" (text-h4) + 8px gap + 28px close button + 10px inset + 1px border
+ * = ~190px, plus ~20px slack for font rendering. Dragging below 135px (halfway between the two states)
+ * collapses the sidebar, at or above it expands it.
  */
 export const MAIN_SIDENAV_WIDTH_OPTIONS = {
     defaultWidth: MAIN_SIDENAV_COLLAPSED_WIDTH,
-    minWidth: 180,
+    minWidth: 210,
     maxWidth: 320,
     collapse: {
         collapsedWidth: MAIN_SIDENAV_COLLAPSED_WIDTH,
-        collapseThreshold: 120,
+        collapseThreshold: 135,
     },
 } as const satisfies SidebarWidthOptions;
 

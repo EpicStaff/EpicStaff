@@ -6,8 +6,6 @@
         <a
             class="app-logo"
             (click)="onLogoClick()"
-            (mouseenter)="showLogoTooltip = true"
-            (mouseleave)="showLogoTooltip = false"
         >
             <span class="logo-mark">
                 <!-- The visible product name names the logo when expanded; otherwise the image does. -->
@@ -32,11 +30,15 @@
             @if (isExpanded()) {
                 <span class="app-logo-name text-h4">{{ productName }}</span>
             }
-            <app-tooltip
-                [text]="productName"
-                [visible]="showLogoTooltip && !isExpanded()"
-            ></app-tooltip>
         </a>
+        <!-- Expanded it always shows; collapsed it is always rendered but only faded in over the logo on hover or
+             keyboard focus, so it stays in the tab order. -->
+        <app-sidebar-toggle-button
+            class="logo-sidebar-toggle"
+            [active]="isExpanded()"
+            [label]="sidebarToggleLabel()"
+            (toggled)="expandedToggle.emit()"
+        />
     </div>
 
     <ul class="sidenav-nav main-nav">
@@ -130,12 +132,17 @@
 
     <ul class="sidenav-nav bottom-nav">
         @if (isEpicChatEnabled) {
-            <li class="sidenav-nav-item">
+            <li
+                class="sidenav-nav-item"
+                (mouseenter)="showEpicChatTooltip.set(true)"
+                (mouseleave)="showEpicChatTooltip.set(false)"
+            >
                 <div class="tooltip-wrapper">
                     <div
                         class="sidenav-nav-link epic-chat-slot"
                         [class.active]="epicChatService.isChatOpen()"
                     >
+                        <!-- chat-icon-size must match $chat-launcher-size in sidenav.component.scss. -->
                         <epic-chat
                             #epicChat
                             class="epic-chat-host"
@@ -161,7 +168,19 @@
                             (epChatCommandResult)="onEpChatCommandResult($event)"
                             (epChatEvent)="onEpChatEvent($event)"
                         ></epic-chat>
+                        @if (isExpanded()) {
+                            <!-- The widget's own launcher is the keyboard control; the label widens the click target. -->
+                            <span
+                                class="sidenav-row-label epic-chat-label text-body-medium"
+                                (click)="toggleEpicChat()"
+                                >{{ epicChatLabel }}</span
+                            >
+                        }
                     </div>
+                    <app-tooltip
+                        [text]="epicChatLabel"
+                        [visible]="showEpicChatTooltip() && !isExpanded()"
+                    ></app-tooltip>
                 </div>
             </li>
         }

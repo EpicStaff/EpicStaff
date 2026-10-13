@@ -37,4 +37,16 @@ describe('main sidenav width', () => {
             expect(isCollapsed || isWithinExpandedRange).toBe(true);
         }
     });
+
+    it('opens a collapsed sidebar at its minimum width and collapses an expanded one', () => {
+        const service = new SidebarWidthService();
+        const width = service.getWidth(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
+
+        service.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
+        expect(width()).toBe(minWidth);
+
+        service.setWidth(MAIN_SIDENAV_WIDTH_KEY, maxWidth, MAIN_SIDENAV_WIDTH_OPTIONS);
+        service.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
+        expect(width()).toBe(MAIN_SIDENAV_COLLAPSED_WIDTH);
+    });
 });

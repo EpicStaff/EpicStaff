@@ -6,6 +6,8 @@ import { SidebarCollapseOptions, SidebarWidthOptions, SidebarWidthService } from
 export const SIDEBAR_KEYBOARD_STEP_PX = 16;
 /** Width change per Shift + ArrowLeft / ArrowRight press. */
 export const SIDEBAR_KEYBOARD_LARGE_STEP_PX = 64;
+/** Pointer travel below which a press on the handle counts as a click rather than a drag. */
+export const SIDEBAR_CLICK_TOLERANCE_PX = 3;
 
 @Directive({
     selector: '[appResizableSidebar]',
@@ -43,6 +45,7 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
     private isResizing = false;
     private startX = 0;
     private startWidth = 0;
+    private hasDragged = false;
     private pendingWidth = 0;
     private frameId: number | null = null;
     private pointerId: number | null = null;
@@ -79,6 +82,13 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
 
     /** Window-splitter keyboard support: arrows step, Home/End jump to the ends, Enter toggles collapse. */
     protected onKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Enter') {
+            if (this.sidebarCollapse() !== null) {
+                event.preventDefault();
+                this.toggleCollapsed();
+            }
+            return;
+        }
         const targetWidth = this.keyboardTargetWidth(event);
         if (targetWidth === null) {
             return;
@@ -108,11 +118,6 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
                 return this.smallestWidth();
             case 'End':
                 return this.sidebarMaxWidth();
-            case 'Enter':
-                if (collapse === null) {
-                    return null;
-                }
-                return isCollapsed ? minWidth : collapse.collapsedWidth;
             default:
                 return null;
         }
@@ -122,6 +127,7 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
         this.isResizing = true;
         this.startX = event.clientX;
         this.startWidth = this.sidebarTarget().getBoundingClientRect().width;
+        this.hasDragged = false;
         this.pointerId = event.pointerId;
         this.el.nativeElement.setPointerCapture(event.pointerId);
         this.document.body.style.cursor = 'col-resize';
@@ -141,7 +147,12 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
         if (!this.isResizing) {
             return;
         }
-        this.pendingWidth = this.startWidth + (event.clientX - this.startX);
+        const travel = event.clientX - this.startX;
+        if (!this.hasDragged && Math.abs(travel) < SIDEBAR_CLICK_TOLERANCE_PX) {
+            return;
+        }
+        this.hasDragged = true;
+        this.pendingWidth = this.startWidth + travel;
         if (this.frameId !== null) {
             return;
         }
@@ -161,11 +172,22 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
         this.releasePointerCapture();
         this.resetBodyStyles();
         if (commit) {
-            this.ngZone.run(() => this.sidebarWidthService.commitWidth(this.storageKey()));
+            this.ngZone.run(() => {
+                if (this.hasDragged) {
+                    this.sidebarWidthService.commitWidth(this.storageKey());
+                } else {
+                    this.toggleCollapsed();
+                }
+            });
         }
         this.unlistenPointerMove?.();
         this.unlistenPointerUp?.();
         this.unlistenPointerCancel?.();
+    }
+
+    /** Enter, or a click (press without drag) on the handle, opens or closes a collapsible sidebar. */
+    private toggleCollapsed(): void {
+        this.sidebarWidthService.toggleCollapsed(this.storageKey(), this.widthOptions());
     }
 
     private releasePointerCapture(): void {

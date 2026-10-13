@@ -37,6 +37,21 @@ export class SidebarWidthService {
         this.getOrCreateSignal(key, options).set(normalizedWidth);
     }
 
+    /**
+     * Opens a collapsed sidebar at its minimum width or collapses an expanded one, and persists the result.
+     * Does nothing for a sidebar without collapse options.
+     */
+    public toggleCollapsed(key: string, options: SidebarWidthOptions): void {
+        const collapse = options.collapse;
+        if (!collapse) {
+            return;
+        }
+        const isCollapsed = this.getOrCreateSignal(key, options)() <= collapse.collapsedWidth;
+        const targetWidth = isCollapsed ? (options.minWidth ?? DEFAULT_MIN_WIDTH) : collapse.collapsedWidth;
+        this.setWidth(key, targetWidth, options);
+        this.commitWidth(key);
+    }
+
     public commitWidth(key: string): void {
         const value = this.widthSignals.get(key)?.();
         if (value == null) {

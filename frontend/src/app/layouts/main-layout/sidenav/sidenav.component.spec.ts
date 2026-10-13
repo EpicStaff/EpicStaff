@@ -30,11 +30,13 @@ describe('LeftSidebarComponent', () => {
     let fixture: ComponentFixture<LeftSidebarComponent>;
     let element: HTMLElement;
     const isDocked = signal(false);
+    const toggleChat = vi.fn();
 
     beforeEach(() => {
         // The component reconnects EpicChat agents on a 2s timer after rendering.
         vi.useFakeTimers({ toFake: ['setTimeout'] });
         isDocked.set(false);
+        toggleChat.mockReset();
 
         TestBed.configureTestingModule({
             providers: [
@@ -62,6 +64,7 @@ describe('LeftSidebarComponent', () => {
                         dockWidth: signal(420),
                         epChatCommand: signal(null),
                         reconnectAgents: vi.fn(),
+                        toggleChat,
                     },
                 },
             ],
@@ -117,21 +120,45 @@ describe('LeftSidebarComponent', () => {
         return element.querySelector('.app-logo img')!.getAttribute('alt');
     }
 
-    function hoverLogo(): void {
-        element.querySelector('.app-logo')!.dispatchEvent(new MouseEvent('mouseenter'));
+    function sidebarToggle(): HTMLButtonElement {
+        return element.querySelector<HTMLButtonElement>('.logo-container app-sidebar-toggle-button button')!;
+    }
+
+    function emittedToggles(): number {
+        let count = 0;
+        fixture.componentInstance.expandedToggle.subscribe(() => count++);
+        sidebarToggle().click();
+        return count;
+    }
+
+    function epicChatLabel(): HTMLElement | null {
+        return element.querySelector('.epic-chat-slot .sidenav-row-label');
+    }
+
+    function hoverEpicChat(): void {
+        element.querySelector('.epic-chat-slot')!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
         fixture.detectChanges();
     }
 
     describe('collapsed', () => {
         beforeEach(() => render(COLLAPSED_WIDTH));
 
-        it('shows only the logo, named by its image, with the product name as a hover tooltip', () => {
+        it('shows only the logo, named by its image', () => {
             expect(logoName()).toBeNull();
-            expect(logoImageAlt()).toBe('EpicStaff.ai');
+            expect(logoImageAlt()).toBe('EpicStaff');
+        });
 
-            hoverLogo();
+        it('offers an "Open sidebar" control that asks the owner of the width to expand', () => {
+            expect(sidebarToggle().getAttribute('aria-label')).toBe('Open sidebar');
+            expect(emittedToggles()).toBe(1);
+        });
 
-            expect(visibleTooltipTexts()).toContain('EpicStaff.ai');
+        it('names the EpicChat launcher with a hover tooltip instead of a label', () => {
+            expect(epicChatLabel()).toBeNull();
+
+            hoverEpicChat();
+
+            expect(visibleTooltipTexts()).toContain('EpicStaff chat');
         });
 
         it('renders icons only and names each link with an aria-label', () => {
@@ -150,13 +177,29 @@ describe('LeftSidebarComponent', () => {
     describe('expanded', () => {
         beforeEach(() => render(EXPANDED_WIDTH));
 
-        it('shows the product name next to the logo, read once, without a tooltip', () => {
-            expect(logoName()!.textContent!.trim()).toBe('EpicStaff.ai');
+        it('shows the product name next to the logo, read once', () => {
+            expect(logoName()!.textContent!.trim()).toBe('EpicStaff');
             expect(logoImageAlt()).toBe('');
+        });
 
-            hoverLogo();
+        it('offers an active "Close sidebar" control that asks the owner of the width to collapse', () => {
+            expect(sidebarToggle().getAttribute('aria-label')).toBe('Close sidebar');
+            expect(sidebarToggle().classList).toContain('active');
+            expect(emittedToggles()).toBe(1);
+        });
 
-            expect(visibleTooltipTexts()).not.toContain('EpicStaff.ai');
+        it('labels the EpicChat row, and the label opens and closes the chat like the launcher', () => {
+            expect(epicChatLabel()!.textContent!.trim()).toBe('EpicStaff chat');
+
+            epicChatLabel()!.click();
+
+            expect(toggleChat).toHaveBeenCalledWith(element.querySelector('epic-chat'));
+        });
+
+        it('suppresses the EpicChat tooltip', () => {
+            hoverEpicChat();
+
+            expect(visibleTooltipTexts()).not.toContain('EpicStaff chat');
         });
 
         it('shows the labels as text and drops the aria-label so they are not announced twice', () => {

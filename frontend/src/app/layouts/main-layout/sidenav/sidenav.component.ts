@@ -10,12 +10,13 @@ import {
     ElementRef,
     inject,
     input,
+    output,
     signal,
     ViewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
+import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
@@ -65,6 +66,7 @@ interface NavItem {
         UserAvatarComponent,
         OrgAvatarComponent,
         ClickOutsideDirective,
+        SidebarToggleButtonComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -74,9 +76,13 @@ interface NavItem {
 export class LeftSidebarComponent implements AfterViewInit {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
     public readonly width = input.required<number>();
+    /** The open/close control was used; the owner of the width decides the new one. */
+    public readonly expandedToggle = output<void>();
 
     /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
+    protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
+    protected readonly showEpicChatTooltip = signal(false);
 
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
@@ -88,9 +94,9 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
     protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
-    /** Shown next to the logo when expanded and as the logo tooltip when collapsed. */
-    protected readonly productName = 'EpicStaff.ai';
-    public showLogoTooltip = false;
+    /** Shown next to the logo when expanded; names the logo image when collapsed. */
+    protected readonly productName = 'EpicStaff';
+    protected readonly epicChatLabel = 'EpicStaff chat';
     public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {

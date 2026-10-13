@@ -68,7 +68,10 @@ const TABBED_ROUTES: Record<string, string[]> = {
             class="sidebar-wrapper"
             [style.width.px]="sidenavWidth()"
         >
-            <app-left-sidebar [width]="sidenavWidth()"></app-left-sidebar>
+            <app-left-sidebar
+                [width]="sidenavWidth()"
+                (expandedToggle)="toggleSidenav()"
+            ></app-left-sidebar>
             <div
                 class="resizable-sidebar-handle"
                 [appResizableSidebar]="sidenavWidthKey"
@@ -98,8 +101,11 @@ const TABBED_ROUTES: Record<string, string[]> = {
     `,
 })
 export class MainLayoutComponent implements OnInit {
+    // Declared ahead of the state because the sidenavWidth initializer below reads it.
+    private readonly sidebarWidthService = inject(SidebarWidthService);
+
     /** Single source of truth for the sidebar state: collapsed and expanded are derived from it. */
-    protected readonly sidenavWidth = inject(SidebarWidthService).getWidth(
+    protected readonly sidenavWidth = this.sidebarWidthService.getWidth(
         MAIN_SIDENAV_WIDTH_KEY,
         MAIN_SIDENAV_WIDTH_OPTIONS
     );
@@ -132,6 +138,11 @@ export class MainLayoutComponent implements OnInit {
                     }
                 }
             });
+    }
+
+    /** The sidenav's open/close control: the layout owns the width, so it applies and persists the change. */
+    protected toggleSidenav(): void {
+        this.sidebarWidthService.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
     }
 
     public onDockResizeStart(event: MouseEvent): void {
