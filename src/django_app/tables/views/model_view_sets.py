@@ -1800,6 +1800,11 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        try:
+            TwilioService().validate_account_sid(sid)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+
         # The id is client input: validate it against the active org first, so a
         # foreign or unknown id is a 400 rather than a failed stored-reference
         # resolution (500).
@@ -1814,7 +1819,6 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             )
 
         try:
-            TwilioService().validate_account_sid(sid)
             auth_token = secret_resolver.resolve(
                 secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
                 org_id=resolve_active_org_id(request),
