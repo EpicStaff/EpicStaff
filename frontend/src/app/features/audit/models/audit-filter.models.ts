@@ -25,6 +25,9 @@ export interface AuditEnumOption {
     value: string;
     label: string;
     icon?: string;
+    // Tabler font icon (e.g. "ti ti-robot"), used for node types so they match the flow editor
+    iconClass?: string;
+    iconColor?: string;
 }
 
 export interface AuditNumberFilter {

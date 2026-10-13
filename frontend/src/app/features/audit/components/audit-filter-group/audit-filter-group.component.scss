@@ -10,18 +10,19 @@ $padding-x: 10px;
 
 .filter-group {
     padding: 4px 0;
+    border: 1px solid transparent;
     border-radius: 6px;
     background-color: var(--color-flow-card-bg);
     box-shadow: var(--shadow-card-subtle);
 }
 
 .filter-group--expanded {
+    border-color: var(--color-ks-line);
     background-color: var(--color-background-body);
+}
 
-    .filter-group__header {
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--color-divider-regular);
-    }
+.filter-group--disabled {
+    box-shadow: none;
 }
 
 .filter-group__header {
@@ -60,7 +61,7 @@ $padding-x: 10px;
 
 .filter-group__title {
     flex: none;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     font-size: 12px;
     font-weight: 500;
     line-height: 20px;

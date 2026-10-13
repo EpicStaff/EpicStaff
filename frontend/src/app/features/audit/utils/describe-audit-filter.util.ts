@@ -21,11 +21,43 @@ import {
     TOKEN_OPERATOR_LABELS,
 } from '../models/audit-filter-options';
 import { formatAuditDay } from './format-audit-day.util';
+import { highlightQuery } from './highlight-query.util';
+
+export interface AuditFilterChipPart {
+    text: string;
+    isKeyword: boolean;
+}
 
 export interface AuditFilterChip {
     key: string;
     label: string;
     value: string;
+    // set when the value has operators or joins worth highlighting; `value` is the same text, flattened
+    parts?: AuditFilterChipPart[];
+}
+
+const plain = (text: string): AuditFilterChipPart => ({ text, isKeyword: false });
+const keyword = (text: string): AuditFilterChipPart => ({ text, isKeyword: true });
+const SPACE = plain(' ');
+
+function parenthesize(parts: AuditFilterChipPart[]): AuditFilterChipPart[] {
+    return [plain('('), ...parts, plain(')')];
+}
+
+function joinParts(
+    left: AuditFilterChipPart[],
+    join: AuditConditionJoin,
+    right: AuditFilterChipPart[]
+): AuditFilterChipPart[] {
+    return [...left, SPACE, keyword(join.toUpperCase()), SPACE, ...right];
+}
+
+function createPartsChip(key: string, label: string, parts: AuditFilterChipPart[]): AuditFilterChip {
+    return { key, label, value: parts.map((part) => part.text).join(''), parts };
+}
+
+function operatorChip(key: string, label: string, operator: string, values: string): AuditFilterChip {
+    return createPartsChip(key, label, [keyword(operator), plain(` ${values}`)]);
 }
 
 function labelsFor(values: string[], options: AuditEnumOption[]): string {
@@ -61,50 +93,57 @@ function describeId(id: AuditIdFilter): string | null {
     return id.mode === 'equals' ? id.value : `${idModeLabel(id.mode)} ${id.value}`;
 }
 
-function describeCondition(condition: AuditCondition): string {
-    const operator = OPERATOR_LABELS[condition.op] ?? condition.op;
-    return [condition.key, operator, condition.value].filter((part) => part !== '').join(' ');
+function describeCondition(condition: AuditCondition): AuditFilterChipPart[] {
+    const operator = keyword(OPERATOR_LABELS[condition.op] ?? condition.op);
+    const key = condition.key === '' ? [] : [plain(condition.key), SPACE];
+    const value = condition.value === '' ? [] : [SPACE, plain(condition.value)];
+    return [...key, operator, ...value];
 }
 
-function describeConditions(conditions: AuditCondition[]): string | null {
+function describeConditions(conditions: AuditCondition[]): AuditFilterChipPart[] | null {
     const usable = conditions.filter(isUsableCondition);
 
     if (usable.length === 0) {
         return null;
     }
 
-    let text = describeCondition(usable[0]);
+    let parts = describeCondition(usable[0]);
     for (let index = 1; index < usable.length; index++) {
-        text += ` ${usable[index].join.toUpperCase()} ${describeCondition(usable[index])}`;
+        parts = joinParts(parts, usable[index].join, describeCondition(usable[index]));
     }
 
-    return text;
+    return parts;
 }
 
-function describeConditionGroups(groups: AuditConditionGroup[]): string | null {
-    const described: { join: AuditConditionJoin; text: string; isCompound: boolean }[] = [];
+function describeConditionGroups(groups: AuditConditionGroup[]): AuditFilterChipPart[] | null {
+    const described: { join: AuditConditionJoin; parts: AuditFilterChipPart[]; isCompound: boolean }[] = [];
     for (const group of groups) {
-        const text = describeConditions(group.conditions);
-        if (text !== null) {
+        const parts = describeConditions(group.conditions);
+        if (parts !== null) {
             described.push({
                 join: group.join,
-                text,
+                parts,
                 isCompound: group.conditions.filter(isUsableCondition).length > 1,
             });
         }
     }
     if (described.length <= 1) {
-        return described[0]?.text ?? null;
+        return described[0]?.parts ?? null;
     }
 
-    return described.reduce((combined, part, index) => {
-        const text = part.isCompound ? `(${part.text})` : part.text;
+    return described.reduce<AuditFilterChipPart[]>((combined, part, index) => {
+        const parts = part.isCompound ? parenthesize(part.parts) : part.parts;
         if (index === 0) {
-            return text;
+            return parts;
         }
-        const left = index > 1 ? `(${combined})` : combined;
-        return `${left} ${part.join.toUpperCase()} ${text}`;
-    }, '');
+        const left = index > 1 ? parenthesize(combined) : combined;
+        return joinParts(left, part.join, parts);
+    }, []);
+}
+
+function conditionChip(key: string, label: string, groups: AuditConditionGroup[]): AuditFilterChip | null {
+    const parts = describeConditionGroups(groups);
+    return parts === null ? null : createPartsChip(key, label, parts);
 }
 
 function describeDate(from: string | null, to: string | null): string | null {
@@ -120,15 +159,15 @@ function describeDate(from: string | null, to: string | null): string | null {
     return null;
 }
 
-function describeTokens(tokens: AuditNumberFilter): string | null {
+function describeTokens(tokens: AuditNumberFilter): AuditFilterChip | null {
     if (tokens.op === 'is_empty') {
-        return 'is empty';
+        return createPartsChip('tokens', 'Tokens', [keyword('is empty')]);
     }
     if (tokens.value === '') {
         return null;
     }
     const operator = TOKEN_OPERATOR_LABELS[tokens.op] ?? OPERATOR_LABELS[tokens.op] ?? tokens.op;
-    return `${operator} ${tokens.value}`;
+    return operatorChip('tokens', 'Tokens', operator, tokens.value);
 }
 
 function describeMatchScope(scope: AuditMatchScopeState): string | null {
@@ -166,7 +205,7 @@ export function describeAuditFilter(
     if (state.mode === 'query') {
         const query = state.query.trim();
         if (query !== '') {
-            chips.push({ key: 'query', label: 'Query', value: query });
+            chips.push(createPartsChip('query', 'Query', highlightQuery(query)));
         }
         return chips;
     }
@@ -176,11 +215,7 @@ export function describeAuditFilter(
     }
 
     if (state.flow.values.length > 0) {
-        chips.push({
-            key: 'flow',
-            label: 'Flow',
-            value: `${OPERATOR_LABELS[state.flow.op]} ${state.flow.values.join(', ')}`,
-        });
+        chips.push(operatorChip('flow', 'Flow', OPERATOR_LABELS[state.flow.op], state.flow.values.join(', ')));
     }
 
     const idValue = describeId(state.id);
@@ -197,64 +232,35 @@ export function describeAuditFilter(
     }
 
     if (state.agent.values.length > 0) {
-        chips.push({
-            key: 'agent',
-            label: 'Agent',
-            value: `${OPERATOR_LABELS[state.agent.op]} ${labelsFor(state.agent.values, vocabularies.agents ?? [])}`,
-        });
+        const agents = labelsFor(state.agent.values, vocabularies.agents ?? []);
+        chips.push(operatorChip('agent', 'Agent', OPERATOR_LABELS[state.agent.op], agents));
     }
 
     if (state.tool.values.length > 0) {
-        chips.push({
-            key: 'tool',
-            label: 'Tool',
-            value: `${OPERATOR_LABELS[state.tool.op]} ${labelsFor(state.tool.values, vocabularies.tools ?? [])}`,
-        });
+        const tools = labelsFor(state.tool.values, vocabularies.tools ?? []);
+        chips.push(operatorChip('tool', 'Tool', OPERATOR_LABELS[state.tool.op], tools));
     }
 
-    const inputText = describeConditionGroups(state.input);
-    if (inputText !== null) {
-        chips.push({ key: 'input', label: 'Input', value: inputText });
-    }
-
-    const outputText = describeConditionGroups(state.output);
-    if (outputText !== null) {
-        chips.push({ key: 'output', label: 'Output', value: outputText });
-    }
-
-    const errorText = describeConditionGroups(state.error);
-    if (errorText !== null) {
-        chips.push({ key: 'error', label: 'Error', value: errorText });
-    }
-
-    const detailsText = describeConditionGroups(state.details);
-    if (detailsText !== null) {
-        chips.push({ key: 'details', label: 'Details', value: detailsText });
-    }
+    const leadingConditionChips = [
+        conditionChip('input', 'Input', state.input),
+        conditionChip('output', 'Output', state.output),
+        conditionChip('error', 'Error', state.error),
+        conditionChip('details', 'Details', state.details),
+    ];
+    chips.push(...leadingConditionChips.filter((chip) => chip !== null));
 
     const dateValue = describeDate(state.dateFrom, state.dateTo);
     if (dateValue !== null) {
         chips.push({ key: 'date', label: 'Date', value: dateValue });
     }
-    const taskText = describeConditionGroups(state.task);
-    if (taskText !== null) {
-        chips.push({ key: 'task', label: 'Task', value: taskText });
-    }
 
-    const promptText = describeConditionGroups(state.prompt);
-    if (promptText !== null) {
-        chips.push({ key: 'prompt', label: 'Prompt', value: promptText });
-    }
-
-    const messageTextText = describeConditionGroups(state.messageText);
-    if (messageTextText !== null) {
-        chips.push({ key: 'messageText', label: 'Message text', value: messageTextText });
-    }
-
-    const tokensValue = describeTokens(state.tokens);
-    if (tokensValue !== null) {
-        chips.push({ key: 'tokens', label: 'Tokens', value: tokensValue });
-    }
+    const trailingChips = [
+        conditionChip('task', 'Task', state.task),
+        conditionChip('prompt', 'Prompt', state.prompt),
+        conditionChip('messageText', 'Message text', state.messageText),
+        describeTokens(state.tokens),
+    ];
+    chips.push(...trailingChips.filter((chip) => chip !== null));
 
     return chips;
 }

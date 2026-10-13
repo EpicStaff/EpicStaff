@@ -12,7 +12,13 @@ import {
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionDropdownButtonComponent, ActionDropdownItem, AppSvgIconComponent } from '@shared/components';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+    AppSvgIconComponent,
+    normalizeIana,
+    NumberStepperComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { downloadBlob } from '@shared/utils';
@@ -60,11 +66,42 @@ import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
 import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const MIN_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+const PAGE_SIZE_STEP = 10;
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
 const EXPORT_POLL_INTERVAL_MS = 1_000;
 const EXPORT_TIMEOUT_MS = 5 * 60_000;
+// narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
+const COLUMN_MIN_WIDTH = 48;
+
+interface AuditTableColumn {
+    label: string;
+    className: string;
+    defaultWidth: number;
+}
+
+const AUDIT_TABLE_COLUMNS: AuditTableColumn[] = [
+    { label: '', className: 'audit-table__gutter', defaultWidth: 36 },
+    { label: 'Kind', className: 'audit-table__kind', defaultWidth: 80 },
+    { label: 'Session ID', className: '', defaultWidth: 100 },
+    { label: 'Name', className: '', defaultWidth: 182 },
+    { label: 'Flow', className: '', defaultWidth: 140 },
+    { label: 'Node Type', className: '', defaultWidth: 120 },
+    { label: 'Status', className: '', defaultWidth: 111 },
+    { label: 'Date', className: '', defaultWidth: 150 },
+    { label: 'Input', className: '', defaultWidth: 110 },
+    { label: 'Output', className: '', defaultWidth: 110 },
+    { label: 'Error', className: '', defaultWidth: 110 },
+    { label: 'Details', className: '', defaultWidth: 96 },
+];
+
+interface ColumnResize {
+    index: number;
+    startX: number;
+    startWidth: number;
+}
 
 interface ViewedValue {
     rowId: string;
@@ -80,6 +117,7 @@ interface ViewedValue {
     imports: [
         CommonModule,
         AppSvgIconComponent,
+        NumberStepperComponent,
         AuditFiltersPanelComponent,
         AuditFilterChipsComponent,
         AuditHighlightComponent,
@@ -115,6 +153,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public isPartial = signal<boolean>(false);
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
+    protected readonly columns = AUDIT_TABLE_COLUMNS;
+    protected readonly columnWidths = signal<number[]>(AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth));
+    // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
+    protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
     public isFiltersPanelOpen = signal<boolean>(false);
     protected viewedValue = signal<ViewedValue | null>(null);
     private valueViewerTrigger: HTMLElement | null = null;
@@ -149,6 +191,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     ];
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly minPageSize = MIN_PAGE_SIZE;
+    protected readonly maxPageSize = MAX_PAGE_SIZE;
+    protected readonly pageSizeStep = PAGE_SIZE_STEP;
+    private columnResize: ColumnResize | null = null;
 
     public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
     public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
@@ -206,11 +252,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
         });
     }
 
-    public canDecreasePageSize = computed(() => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) > 0);
-    public canIncreasePageSize = computed(
-        () => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) < PAGE_SIZE_OPTIONS.length - 1
-    );
-
     public ngOnInit(): void {
         this.loadSessions();
         this.loadFlowNames();
@@ -235,12 +276,12 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.loadSessions();
     }
 
-    public stepPageSize(delta: number): void {
-        const next = PAGE_SIZE_OPTIONS[PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) + delta];
-        if (next === undefined) {
+    // the stepper emits on every keystroke, so a half-typed or out-of-range number is ignored until it is valid
+    public setPageSize(size: number | null): void {
+        if (size === null || size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE || size === this.pageSize()) {
             return;
         }
-        this.pageSize.set(next);
+        this.pageSize.set(size);
         this.cursorStack.set([null]);
         this.loadSessions();
     }
@@ -272,6 +313,34 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public setColumnsExpanded(expanded: boolean): void {
         this.areColumnsExpanded.set(expanded);
+    }
+
+    protected startColumnResize(event: PointerEvent, index: number): void {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        const handle = event.currentTarget as HTMLElement;
+        // capture keeps the drag alive when the pointer leaves the narrow handle
+        handle.setPointerCapture(event.pointerId);
+        // start from where the column actually is on screen, so the drag never jumps
+        const startWidth = handle.parentElement?.getBoundingClientRect().width ?? this.columnWidths()[index];
+        this.columnResize = { index, startX: event.clientX, startWidth };
+    }
+
+    protected resizeColumn(event: PointerEvent): void {
+        const resize = this.columnResize;
+        if (resize === null) {
+            return;
+        }
+        const width = Math.max(COLUMN_MIN_WIDTH, Math.round(resize.startWidth + event.clientX - resize.startX));
+        this.columnWidths.update((widths) =>
+            widths.map((current, index) => (index === resize.index ? width : current))
+        );
+    }
+
+    protected stopColumnResize(): void {
+        this.columnResize = null;
     }
 
     public toggleFiltersPanel(): void {
@@ -485,7 +554,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
 }
 
 function buildTimeZoneLabel(): string {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // some browsers still report the legacy 'Europe/Kiev' name
+    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
     const offsetMinutes = -new Date().getTimezoneOffset();
     const sign = offsetMinutes < 0 ? '-' : '+';
     const absolute = Math.abs(offsetMinutes);

@@ -33,6 +33,11 @@ export function auditEventLabel(event: AuditSessionEvent): string | null {
     return EVENT_TYPE_LABELS.get(type) ?? humanize(type);
 }
 
+// FILE_EXTRACTOR → "File extractor"
+export function auditNodeTypeLabel(nodeType: string): string {
+    return humanize(nodeType.toLowerCase());
+}
+
 export function auditNameLabel(event: AuditSessionEvent): string | null {
     const label = auditEventLabel(event);
     if (label === null || event.name.toLowerCase().includes(label.toLowerCase())) {

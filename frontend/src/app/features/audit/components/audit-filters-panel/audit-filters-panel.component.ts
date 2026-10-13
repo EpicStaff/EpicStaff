@@ -105,7 +105,7 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public readonly queryOperators = QUERY_OPERATORS;
 
-    public activeTab = signal<AuditFilterTab>('builder');
+    public activeTab = signal<AuditFilterTab>('mine');
     public isCreatingPreset = signal(false);
     public readonly isQueryEmpty = computed(() => !this.filter().query.trim());
     public readonly isPresetsTab = computed(() => this.activeTab() === 'mine' || this.activeTab() === 'shared');
@@ -117,7 +117,6 @@ export class AuditFiltersPanelComponent implements OnInit {
     private readonly presetsStorage = inject(AuditPresetsStorageService);
 
     public ngOnInit(): void {
-        this.activeTab.set(this.filter().mode);
         this.presetsStorage.load();
     }
 

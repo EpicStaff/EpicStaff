@@ -1,9 +1,10 @@
 import { AuditSessionEvent, AuditSessionRowStatus } from '../models/audit-session.models';
-import { auditNameLabel } from './audit-event-label.util';
+import { auditNameLabel, auditNodeTypeLabel } from './audit-event-label.util';
 
 export interface AuditRow {
     event: AuditSessionEvent;
     nameLabel: string | null;
+    nodeTypeLabel: string;
     depth: number;
     sessionStatus: AuditSessionRowStatus | null;
     hasChildren: boolean;
@@ -51,6 +52,7 @@ export function buildAuditRows(events: AuditSessionEvent[]): AuditRow[] {
         rows.push({
             event,
             nameLabel: auditNameLabel(event),
+            nodeTypeLabel: auditNodeTypeLabel(event.node_type),
             depth,
             sessionStatus: resolveSessionStatus(event),
             hasChildren: children !== undefined,
