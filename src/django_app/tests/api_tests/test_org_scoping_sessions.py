@@ -186,13 +186,16 @@ def test_bulk_delete_excludes_other_org_sessions(admin_client_a, org_a, org_b):
 
 
 @pytest.mark.django_db
-def test_bulk_delete_fires_pre_delete_signal_per_session(admin_client_a, org_a):
+def test_bulk_delete_fires_pre_delete_signal_per_session(
+    admin_client_a, org_a, django_capture_on_commit_callbacks
+):
     s1 = _make_session(org_a, "flow 1")
     s2 = _make_session(org_a, "flow 2")
 
+    # The signal stops each session only after the delete commits.
     with patch(
         "tables.signals.session_signals.SessionManagerService.stop_session"
-    ) as mock_stop_session:
+    ) as mock_stop_session, django_capture_on_commit_callbacks(execute=True):
         resp = admin_client_a.post(
             "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
         )
