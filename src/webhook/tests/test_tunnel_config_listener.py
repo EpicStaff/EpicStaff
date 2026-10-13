@@ -1,23 +1,15 @@
-"""Tests for `listen_redis`, the tunnel-config channel consumer in `app.main`.
-
-The original version of this file hand-published a message to a real Redis
-instance and asserted nothing -- it exercised no webhook code and could only
-ever fail on connection/auth. This replaces it with tests of the actual
-consumer: `listen_redis` reads messages off the pubsub, parses them into
-`WebhookConfigData`, and forwards them to `TunnelRegistry.register_many`.
-"""
+"""Tests for `listen_redis`, the consumer of the tunnel-config channel Django publishes to."""
 
 import json
 
-from unittest.mock import AsyncMock
+from src.shared.models import LocalhostConfigData
 
+from app.core.settings import settings
 from app.main import listen_redis
-from src.shared.models import WebhookConfigData
 
 
 class _FakePubSub:
-    """Minimal stand-in for `redis.client.PubSub`: yields pre-built messages
-    from `.listen()`, then stops (mirroring an async generator exhausting)."""
+    """Stand-in for the channel subscription: yields the given messages, then ends."""
 
     def __init__(self, messages):
         self._messages = messages
@@ -27,52 +19,44 @@ class _FakePubSub:
             yield message
 
 
-async def test_listen_redis_parses_config_and_registers_tunnels():
-    payload = {
-        "ngrok_configs": [
-            {"name": "test", "org_id": 1, "auth_token": "token", "region": "eu"}
-        ]
-    }
-    message = {"type": "message", "data": json.dumps(payload)}
+def _config_message(*configs: LocalhostConfigData) -> dict:
+    payload = {"localhost_configs": [config.model_dump(mode="json") for config in configs]}
+    return {"type": "message", "data": json.dumps(payload)}
 
-    redis_service = AsyncMock()
-    redis_service.async_subscribe.return_value = _FakePubSub([message])
 
-    tunnel_registry = AsyncMock()
+async def _listen(redis_service, tunnel_registry, messages):
+    async def subscribe(channel):
+        assert channel == settings.REDIS_TUNNEL_CONFIG_CHANNEL
+        return _FakePubSub(messages)
 
+    redis_service.async_subscribe = subscribe
     await listen_redis(redis_service, tunnel_registry)
 
-    redis_service.async_subscribe.assert_awaited_once()
-    tunnel_registry.register_many.assert_awaited_once()
 
-    registered_config = tunnel_registry.register_many.call_args.kwargs[
-        "webhook_config_data"
+async def _published_tunnel_ids(redis_service) -> set[str]:
+    return set(await redis_service.client.hgetall(settings.TUNNEL_URLS_HASH_KEY))
+
+
+async def test_config_message_registers_its_tunnels(redis_service, tunnel_registry):
+    config = LocalhostConfigData(name="hook", org_id=1)
+
+    await _listen(redis_service, tunnel_registry, [_config_message(config)])
+
+    assert await _published_tunnel_ids(redis_service) == {config.unique_id}
+
+
+async def test_non_message_events_and_malformed_payloads_are_skipped(
+    redis_service, tunnel_registry
+):
+    config = LocalhostConfigData(name="hook", org_id=1)
+    messages = [
+        {"type": "subscribe", "data": 1},
+        {"type": "message", "data": "not-json"},
+        {"type": "message", "data": json.dumps({"localhost_configs": [{"org_id": 1}]})},
+        _config_message(config),
     ]
-    assert registered_config == WebhookConfigData(**payload)
 
+    await _listen(redis_service, tunnel_registry, messages)
 
-async def test_listen_redis_ignores_non_message_events():
-    subscribe_confirmation = {"type": "subscribe", "data": 1}
-
-    redis_service = AsyncMock()
-    redis_service.async_subscribe.return_value = _FakePubSub([subscribe_confirmation])
-
-    tunnel_registry = AsyncMock()
-
-    await listen_redis(redis_service, tunnel_registry)
-
-    tunnel_registry.register_many.assert_not_awaited()
-
-
-async def test_listen_redis_swallows_malformed_payload_without_registering():
-    malformed_message = {"type": "message", "data": "not-json"}
-
-    redis_service = AsyncMock()
-    redis_service.async_subscribe.return_value = _FakePubSub([malformed_message])
-
-    tunnel_registry = AsyncMock()
-
-    # Must not raise -- `listen_redis` logs and continues on bad messages.
-    await listen_redis(redis_service, tunnel_registry)
-
-    tunnel_registry.register_many.assert_not_awaited()
+    # A bad message neither stops the listener nor registers anything itself.
+    assert await _published_tunnel_ids(redis_service) == {config.unique_id}
