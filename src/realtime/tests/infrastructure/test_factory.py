@@ -1,10 +1,23 @@
+"""RealtimeAgentClientFactory picks the provider adapter and configures it.
+
+The real adapters are built (constructing one does not connect); only Gemini's
+SDK client, an external API, is patched.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from src.shared.models import RealtimeAgentChatData
-from infrastructure.providers.factory import RealtimeAgentClientFactory
+
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
+from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import (
+    ElevenLabsRealtimeAgentClient,
+)
+from infrastructure.providers.factory import RealtimeAgentClientFactory
+from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
+from infrastructure.providers.openai.openai_realtime_agent_client import OpenaiRealtimeAgentClient
+from src.shared.models import RealtimeAgentChatData
 
 
 def _make_config(**overrides) -> RealtimeAgentChatData:
@@ -34,311 +47,69 @@ def _make_config(**overrides) -> RealtimeAgentChatData:
     return RealtimeAgentChatData(**defaults)
 
 
-@pytest.fixture
-def provisioner():
-    return MagicMock(spec=ElevenLabsAgentProvisioner)
+@pytest.fixture(autouse=True)
+def gemini_sdk():
+    with patch("infrastructure.providers.gemini.gemini_realtime_agent_client.genai"):
+        yield
 
 
-@pytest.fixture
-def factory(provisioner):
-    return RealtimeAgentClientFactory(elevenlabs_agent_provisioner=provisioner)
-
-
-@pytest.fixture
-def on_server_event():
-    return AsyncMock()
-
-
-@pytest.fixture
-def rt_tools():
-    return []
-
-
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_create_openai_by_default(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai")
-    factory.create(
+def _create(config: RealtimeAgentChatData, is_twilio: bool = False):
+    factory = RealtimeAgentClientFactory(elevenlabs_agent_provisioner=MagicMock(spec=ElevenLabsAgentProvisioner))
+    return factory.create(
         config=config,
-        rt_tools=rt_tools,
+        rt_tools=[],
         instructions="hi",
         tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
+        on_server_event=AsyncMock(),
+        is_twilio=is_twilio,
     )
-    MockOpenai.assert_called_once()
 
 
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_create_openai_when_unknown_provider(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="unknown_provider")
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    MockOpenai.assert_called_once()
+@pytest.mark.parametrize(
+    ("provider", "expected_class"),
+    [
+        ("openai", OpenaiRealtimeAgentClient),
+        ("unknown_provider", OpenaiRealtimeAgentClient),
+        ("elevenlabs", ElevenLabsRealtimeAgentClient),
+        ("gemini", GeminiRealtimeAgentClient),
+    ],
+)
+@pytest.mark.parametrize("is_twilio", [True, False], ids=["twilio", "browser"])
+def test_provider_selects_the_adapter_and_carries_caller_identity(provider, expected_class, is_twilio):
+    client = _create(_make_config(rt_provider=provider, org_id=7, user_id=101), is_twilio=is_twilio)
+
+    assert type(client) is expected_class
+    # Tools run org-scoped calls on behalf of this caller.
+    assert (client.org_id, client.user_id) == (7, 101)
+    assert client.is_twilio is is_twilio
 
 
-@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
-def test_create_elevenlabs_when_provider_elevenlabs(
-    MockElevenLabs, factory, rt_tools, on_server_event
-):
-    config = _make_config(rt_provider="elevenlabs", rt_agent_definition_id=17)
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    MockElevenLabs.assert_called_once()
-    assert MockElevenLabs.call_args.kwargs["rt_agent_definition_id"] == 17
-    assert MockElevenLabs.call_args.kwargs["org_id"] == 1
+@pytest.mark.parametrize(
+    ("is_twilio", "expected_format"), [(True, "g711_ulaw"), (False, "pcm16")], ids=["twilio", "browser"]
+)
+def test_openai_audio_format_is_forced_to_mulaw_for_twilio(is_twilio, expected_format):
+    client = _create(_make_config(input_audio_format="pcm16", output_audio_format="pcm16"), is_twilio=is_twilio)
+
+    assert (client.input_audio_format, client.output_audio_format) == (expected_format, expected_format)
 
 
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_twilio_forces_g711_ulaw(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai", input_audio_format="pcm16", output_audio_format="pcm16")
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=True,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("input_audio_format") == "g711_ulaw"
-    assert kwargs.get("output_audio_format") == "g711_ulaw"
+@pytest.mark.parametrize(
+    ("rt_base_url", "expected_ws_url"),
+    [("https://my-proxy.internal", "wss://my-proxy.internal/v1/realtime"), (None, "wss://api.openai.com/v1/realtime")],
+    ids=["proxy", "default"],
+)
+def test_openai_connects_to_the_configured_base_url(rt_base_url, expected_ws_url):
+    assert _create(_make_config(rt_base_url=rt_base_url)).base_url == expected_ws_url
 
 
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_passes_org_id(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai", org_id=7)
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("org_id") == 7
+def test_elevenlabs_gets_its_agent_definition_and_default_llm():
+    client = _create(_make_config(rt_provider="elevenlabs", rt_agent_definition_id=17))
+
+    assert client.rt_agent_definition_id == 17
+    assert client.llm_model == "gemini-2.5-flash"
 
 
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_passes_rt_base_url(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai", rt_base_url="https://my-proxy.internal")
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("base_url") == "https://my-proxy.internal"
+def test_gemini_gets_the_configured_model():
+    client = _create(_make_config(rt_provider="gemini", rt_model_name="gemini-3.1-flash-live-preview"))
 
-
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_passes_none_rt_base_url_by_default(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai")
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("base_url") is None
-
-
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_passes_user_id(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="openai", user_id=101)
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("user_id") == 101
-
-
-@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
-def test_openai_non_twilio_uses_config_format(MockOpenai, factory, rt_tools, on_server_event):
-    config = _make_config(input_audio_format="pcm16", output_audio_format="pcm16")
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=False,
-    )
-    _, kwargs = MockOpenai.call_args
-    assert kwargs.get("input_audio_format") == "pcm16"
-    assert kwargs.get("output_audio_format") == "pcm16"
-
-
-@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
-def test_elevenlabs_passes_org_id(MockElevenLabs, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="elevenlabs", org_id=9)
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockElevenLabs.call_args
-    assert kwargs.get("org_id") == 9
-
-
-@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
-def test_elevenlabs_passes_user_id(MockElevenLabs, factory, rt_tools, on_server_event):
-    config = _make_config(rt_provider="elevenlabs", user_id=102)
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    _, kwargs = MockElevenLabs.call_args
-    assert kwargs.get("user_id") == 102
-
-
-@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
-def test_elevenlabs_twilio_sets_is_twilio_flag(
-    MockElevenLabs, factory, rt_tools, on_server_event
-):
-    config = _make_config(rt_provider="elevenlabs")
-    client_mock = MagicMock()
-    MockElevenLabs.return_value = client_mock
-
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=True,
-    )
-    assert client_mock.is_twilio is True
-
-
-@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
-def test_elevenlabs_non_twilio_is_twilio_false(
-    MockElevenLabs, factory, rt_tools, on_server_event
-):
-    config = _make_config(rt_provider="elevenlabs")
-    client_mock = MagicMock()
-    MockElevenLabs.return_value = client_mock
-
-    factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=False,
-    )
-    assert client_mock.is_twilio is False
-
-
-# ---------------------------------------------------------------------------
-# Gemini provider
-# ---------------------------------------------------------------------------
-
-_GEMINI_GENAI = "infrastructure.providers.gemini.gemini_realtime_agent_client.genai"
-
-
-@patch(_GEMINI_GENAI)
-def test_create_gemini_when_provider_gemini(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini", rt_model_name="gemini-2.0-flash-live-001")
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    assert type(result).__name__ == "GeminiRealtimeAgentClient"
-
-
-@patch(_GEMINI_GENAI)
-def test_gemini_twilio_sets_is_twilio_flag(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini")
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=True,
-    )
-    assert result.is_twilio is True
-
-
-@patch(_GEMINI_GENAI)
-def test_gemini_non_twilio_is_twilio_false(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini")
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-        is_twilio=False,
-    )
-    assert result.is_twilio is False
-
-
-@patch(_GEMINI_GENAI)
-def test_gemini_passes_org_id(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini", org_id=13)
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    assert result.org_id == 13
-
-
-@patch(_GEMINI_GENAI)
-def test_gemini_passes_user_id(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini", user_id=103)
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    assert result.user_id == 103
-
-
-@patch(_GEMINI_GENAI)
-def test_gemini_passes_model_name(mock_genai, factory, rt_tools, on_server_event):
-    mock_genai.Client.return_value = MagicMock()
-    config = _make_config(rt_provider="gemini", rt_model_name="gemini-3.1-flash-live-preview")
-    result = factory.create(
-        config=config,
-        rt_tools=rt_tools,
-        instructions="hi",
-        tool_manager_service=MagicMock(),
-        on_server_event=on_server_event,
-    )
-    assert result.model == "gemini-3.1-flash-live-preview"
+    assert client.model == "gemini-3.1-flash-live-preview"
