@@ -2,14 +2,17 @@
 with the payload a real run would send — storage scope, org_id and secrets —
 while the legacy `python_code_id` path keeps running the bare code.
 
-Real view, service, converter and secret resolver; only the Redis client is
-mocked (`redis_client_mock`), so the published sandbox message is what is
-asserted."""
+Real view, service, converter and secret resolver. The Redis client is mocked
+(`redis_client_mock`), so the published sandbox message is what is asserted, and
+so is minting storage credentials (`minted_credentials`), which would otherwise
+need the organization's storage admin account in the object store."""
 
 import json
 
 import pytest
 from django.utils import timezone
+from src.shared.models.storage_scope import StorageCredentials
+from storage_credentials.services.session_credential_service import session_credential_service
 
 from rbac.models import OrganizationUser
 from tables.models import Graph, PythonCode, PythonCodeResult, PythonNode
@@ -19,6 +22,19 @@ from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 URL = "/api/run-python-code/"
 PLAINTEXT = "sk-target-run-abc123"
+
+
+@pytest.fixture
+def minted_credentials(monkeypatch):
+    """Stand in for minting a test run's storage credentials; records each scope asked for."""
+    requested_scopes = []
+
+    def issue_for_test_run(*, python_code_result, storage_allowed_paths, org_id):
+        requested_scopes.append({"storage_allowed_paths": storage_allowed_paths, "org_id": org_id})
+        return StorageCredentials(access_key="test-access-key", secret_key="test-secret-key")
+
+    monkeypatch.setattr(session_credential_service, "issue_for_test_run", issue_for_test_run)
+    return requested_scopes
 
 
 def _published_tasks(redis_client_mock):
@@ -65,7 +81,14 @@ def _run_target(client, target_type, target_id, variables=None):
 @pytest.mark.django_db
 class TestPythonNodeTarget:
     def test_storage_node_gets_attached_files_and_its_test_run_folder(
-        self, acme_client, acme, acme_graph, attached_file, member_only, redis_client_mock
+        self,
+        acme_client,
+        acme,
+        acme_graph,
+        attached_file,
+        member_only,
+        redis_client_mock,
+        minted_credentials,
     ):
         node = _python_node(acme_graph, use_storage=True)
 
@@ -79,6 +102,10 @@ class TestPythonNodeTarget:
             f"test-runs/python_node-{node.id}/",
         ]
         assert task["storage_org_prefix"] == f"org_{acme.id}"
+        assert task["storage_credentials"]["access_key"] == "test-access-key"
+        assert minted_credentials == [
+            {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
+        ]
         assert task["org_id"] == acme.id
         assert task["global_kwargs"]["org_id"] == acme.id
         assert task["session_id"] is None
@@ -91,7 +118,7 @@ class TestPythonNodeTarget:
         assert result.status == PythonCodeResult.Status.PENDING
 
     def test_storage_node_without_attached_files_still_gets_its_folder(
-        self, acme_client, acme_graph, redis_client_mock
+        self, acme_client, acme_graph, redis_client_mock, minted_credentials
     ):
         node = _python_node(acme_graph, use_storage=True)
 
@@ -157,7 +184,7 @@ def _webhook_trigger_node(graph, *, use_storage):
 @pytest.mark.django_db
 class TestWebhookTriggerNodeTarget:
     def test_storage_node_gets_attached_files_and_its_test_run_folder(
-        self, acme_client, acme, acme_graph, attached_file, redis_client_mock
+        self, acme_client, acme, acme_graph, attached_file, redis_client_mock, minted_credentials
     ):
         node = _webhook_trigger_node(acme_graph, use_storage=True)
 
@@ -171,6 +198,10 @@ class TestWebhookTriggerNodeTarget:
             f"test-runs/webhook_trigger_node-{node.id}/",
         ]
         assert task["storage_org_prefix"] == f"org_{acme.id}"
+        assert task["storage_credentials"]["access_key"] == "test-access-key"
+        assert minted_credentials == [
+            {"storage_allowed_paths": task["storage_allowed_paths"], "org_id": acme.id}
+        ]
         assert task["org_id"] == acme.id
         assert task["session_id"] is None
         assert PythonCodeResult.objects.get(
