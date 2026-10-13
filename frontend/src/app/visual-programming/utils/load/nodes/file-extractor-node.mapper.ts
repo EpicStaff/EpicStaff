@@ -14,6 +14,7 @@ export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): Fil
         node_name: n.node_name,
         nodeNumber: ui.nodeNumber,
         data: undefined,
+        execution_timeout: n.execution_timeout ?? null,
         position: ui.position,
         ports: null,
         color: ui.color,

@@ -111,6 +111,8 @@ export interface SnapshotPythonNode extends SnapshotNodeBase<'PythonNode'> {
     output_variable_path: string | null;
     test_input: Record<string, string | number | boolean>;
     use_storage?: boolean;
+    /** Minutes; absent in versions saved before nodes had an execution timeout. */
+    execution_timeout?: number;
     python_code: SnapshotPythonCode;
 }
 
@@ -124,6 +126,8 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     test_payload?: Record<string, unknown>;
     /** Absent in versions saved before webhook trigger code could use storage. */
     use_storage?: boolean;
+    /** Minutes; absent in versions saved before nodes had an execution timeout. */
+    execution_timeout?: number;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {

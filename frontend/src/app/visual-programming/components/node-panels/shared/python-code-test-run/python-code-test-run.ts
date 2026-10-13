@@ -61,9 +61,10 @@ export class PythonCodeTestRun {
 
     /**
      * Runs the code the backend stores for node `request.target` with `request.variables` as its arguments;
-     * ignored while a run is in flight.
+     * ignored while a run is in flight. `executionTimeoutMinutes` is the node's stored execution timeout: the
+     * wait for the result ends a grace period after it.
      */
-    public run(request: RunPythonCodeRequest): void {
+    public run(request: RunPythonCodeRequest, executionTimeoutMinutes: number): void {
         if (this.isRunning()) return;
         this.isRunningSignal.set(true);
         this.resultSignal.set(null);
@@ -76,7 +77,9 @@ export class PythonCodeTestRun {
         this.currentRun = this.pythonCodeRunService
             .runPythonCode(request)
             .pipe(
-                switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
+                switchMap(({ execution_id }) =>
+                    this.pythonCodeRunService.pollResultWithEvents(execution_id, executionTimeoutMinutes)
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({

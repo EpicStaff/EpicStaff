@@ -10,12 +10,14 @@ import {
 } from '@shared/components';
 import { NodeType } from '@shared/models';
 
+import { defaultExecutionTimeoutMinutes } from '../../../core/constants/execution-timeout';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
+import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
@@ -43,6 +45,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     private confirmationDialogService = inject(ConfirmationDialogService);
     private undoRedoService = inject(UndoRedoService);
     private cdr = inject(ChangeDetectorRef);
+    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
 
@@ -185,7 +188,13 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 // so uncommitted edits — e.g. a condition just added in the open panel — are included
                 // in the conversion. Otherwise converting without closing/saving first drops them.
                 const dtNode = this.createUpdatedNode();
-                const { node: cdtNode, portIdMap } = convertDecisionTableToCdt(dtNode);
+                const { node: cdtNode, portIdMap } = convertDecisionTableToCdt(
+                    dtNode,
+                    defaultExecutionTimeoutMinutes(
+                        NodeType.CLASSIFICATION_TABLE,
+                        this.sandboxLimits.maxExecutionTimeoutMinutes()
+                    )
+                );
 
                 // Strategy (a): clear selection first so the DT panel unmounts and
                 // captureCurrentNodeState() cannot write a stale DT node back into

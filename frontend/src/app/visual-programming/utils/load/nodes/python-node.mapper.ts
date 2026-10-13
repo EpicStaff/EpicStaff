@@ -12,6 +12,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         backendId: pn.id,
         type: NodeType.PYTHON,
         test_input: pn.test_input ?? {},
+        execution_timeout: pn.execution_timeout ?? null,
         node_name: pn.node_name,
         nodeNumber: ui.nodeNumber,
         data: {

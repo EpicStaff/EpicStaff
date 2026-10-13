@@ -23,8 +23,12 @@ import { getClassificationTableVisualHeight } from './node-size.util';
  *   already set) so per-row CDT route ports are created correctly.
  * - portIdMap maps each DT per-rule output port id to the corresponding CDT
  *   route port id, allowing the caller to remap outgoing edges precisely.
+ * - execution_timeout is `executionTimeoutMinutes`, the default of a new CDT (a DT runs no sandbox code).
  */
-export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
+export function convertDecisionTableToCdt(
+    dtNode: DecisionTableNodeModel,
+    executionTimeoutMinutes: number
+): {
     node: ClassificationDecisionTableNodeModel;
     portIdMap: Record<string, string>;
 } {
@@ -127,6 +131,7 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
             name: dtNode.node_name,
             table: tableData,
         },
+        execution_timeout: executionTimeoutMinutes,
     };
 
     return { node, portIdMap };

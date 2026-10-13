@@ -1,17 +1,29 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import {
+    createExecutionTimeoutField,
+    ExecutionTimeoutFormField,
+} from '../shared/execution-timeout-field/execution-timeout-control';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
 interface InputMapPair {
     key: string;
     value: string;
 }
 @Component({
     selector: 'app-audio-to-text-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, ValidationErrorsComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        InputMapComponent,
+        ValidationErrorsComponent,
+        ExecutionTimeoutFieldComponent,
+    ],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -49,6 +61,8 @@ interface InputMapPair {
                         [activeColor]="activeColor"
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
+
+                    <app-execution-timeout-field [field]="executionTimeout" />
                 </form>
             </div>
         </div>
@@ -99,6 +113,10 @@ interface InputMapPair {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNodeModel> {
+    protected executionTimeout!: ExecutionTimeoutFormField;
+
+    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
+
     constructor() {
         super();
     }
@@ -112,10 +130,15 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
     }
 
     protected initializeForm(): FormGroup {
+        this.executionTimeout = createExecutionTimeoutField(
+            this.node().execution_timeout,
+            this.sandboxLimits.maxExecutionTimeoutMinutes()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            execution_timeout: this.executionTimeout.control,
         });
 
         this.initializeInputMap(form);
@@ -132,6 +155,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            execution_timeout: this.executionTimeout.control.value,
         };
     }
 

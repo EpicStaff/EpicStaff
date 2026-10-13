@@ -29,12 +29,18 @@ import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { FlowService } from '../../../services/flow.service';
+import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { parseCommaSeparatedList } from '../node-panel-form.utils';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
+import {
+    createExecutionTimeoutField,
+    ExecutionTimeoutFormField,
+} from '../shared/execution-timeout-field/execution-timeout-control';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -71,6 +77,7 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         RunTestPayloadButtonComponent,
         PythonTerminalComponent,
         NgTemplateOutlet,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -82,6 +89,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly permissionsService = inject(PermissionsService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly flowService = inject(FlowService);
+    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -159,6 +167,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    protected executionTimeout!: ExecutionTimeoutFormField;
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
         () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
@@ -249,10 +258,15 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         if (this.runCodeBlocker() !== null || payload === null || backendId == null) return;
         this.isCodeTerminalShown.set(true);
         // The backend runs the code it stores for the node; the blocker ensures the panel's code matches it.
-        this.codeTestRun.run({
-            target: { type: 'webhook_trigger_node', id: backendId },
-            variables: { trigger_payload: payload },
-        });
+        // A stored node without a timeout gets the ceiling.
+        const executionTimeout = this.savedNode()?.execution_timeout ?? this.executionTimeout.maxMinutes;
+        this.codeTestRun.run(
+            {
+                target: { type: 'webhook_trigger_node', id: backendId },
+                variables: { trigger_payload: payload },
+            },
+            executionTimeout
+        );
     }
 
     protected onTestPayloadTextChange(text: string): void {
@@ -272,10 +286,15 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     }
 
     initializeForm(): FormGroup {
+        this.executionTimeout = createExecutionTimeoutField(
+            this.node().execution_timeout,
+            this.sandboxLimits.maxExecutionTimeoutMinutes()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
+            execution_timeout: this.executionTimeout.control,
         });
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
@@ -309,6 +328,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                 test_payload: this.testPayload.payloadToSave(this.node().data.test_payload),
                 use_storage: this.useStorage(),
             },
+            execution_timeout: this.executionTimeout.control.value,
         };
     }
 
@@ -358,7 +378,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.copied.set(true);
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend has stored. */
+    /** The code, libraries, secrets, storage flag or execution timeout in the panel are not the ones the backend has stored. */
     private differsFromSaved(savedNode: GetWebhookTriggerNodeRequest): boolean {
         this.dirtyCheckTick();
         if (!this.form) return true;
@@ -366,7 +386,8 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
         return (
             saved !== pythonCodeSignature(this.pythonCode, this.libraries(), this.selectedSecretIds()) ||
-            (savedNode.use_storage ?? false) !== this.useStorage()
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            (savedNode.execution_timeout ?? this.executionTimeout.maxMinutes) !== this.executionTimeout.control.value
         );
     }
 

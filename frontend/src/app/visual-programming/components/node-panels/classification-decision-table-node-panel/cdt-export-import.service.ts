@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 
+import { MIN_EXECUTION_TIMEOUT_MINUTES } from '../../../core/constants/execution-timeout';
 import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -49,6 +50,8 @@ export interface CdtExportData {
     post_output_variable_path: string | null;
     post_use_storage: boolean;
     default_llm_config: number | null;
+    /** Minutes; null when the source has none (exported before nodes had an execution timeout). */
+    execution_timeout: number | null;
     condition_groups: CdtExportConditionGroup[];
     prompt_configs: CdtExportPromptConfig[];
     sections: CdtExportSection[];
@@ -102,6 +105,7 @@ export class CdtExportImportService {
             this.csvRow(['post_python_code_libraries', JSON.stringify(data.post_python_code?.libraries ?? [])]),
             this.csvRow(['post_use_storage', String(data.post_use_storage ?? false)]),
             this.csvRow(['default_llm_config', data.default_llm_config == null ? '' : String(data.default_llm_config)]),
+            this.csvRow(['execution_timeout', data.execution_timeout == null ? '' : String(data.execution_timeout)]),
         ].join('\n');
 
         const conditionGroups = [
@@ -239,6 +243,7 @@ export class CdtExportImportService {
                 post_output_variable_path: this.asNullableString(obj['post_output_variable_path']),
                 post_use_storage: this.asBoolean(obj['post_use_storage']),
                 default_llm_config: this.asNullableNumber(obj['default_llm_config']),
+                execution_timeout: this.asExecutionTimeout(obj['execution_timeout']),
                 condition_groups: conditionGroups,
                 prompt_configs: promptConfigs,
                 sections,
@@ -260,6 +265,7 @@ export class CdtExportImportService {
                 post_output_variable_path: null,
                 post_use_storage: false,
                 default_llm_config: null,
+                execution_timeout: null,
                 condition_groups: [],
                 prompt_configs: [],
                 sections: [],
@@ -333,6 +339,7 @@ export class CdtExportImportService {
             post_output_variable_path: this.asNullableString(node['post_output_variable_path']),
             post_use_storage: this.asBoolean(node['post_use_storage']),
             default_llm_config: this.asNullableNumber(node['default_llm_config']),
+            execution_timeout: this.asExecutionTimeout(node['execution_timeout']),
             condition_groups: conditionGroups,
             prompt_configs: promptConfigs,
             sections,
@@ -352,6 +359,7 @@ export class CdtExportImportService {
         postOutputVariablePath: string | null;
         postUseStorage: boolean;
         defaultLlmConfig: number | null;
+        executionTimeout: number | null;
         conditionGroups: ConditionGroup[];
         prompts: Record<string, PromptConfig>;
         sections?: CdtSection[];
@@ -367,6 +375,7 @@ export class CdtExportImportService {
             post_output_variable_path: input.postOutputVariablePath ?? null,
             post_use_storage: input.postUseStorage ?? false,
             default_llm_config: input.defaultLlmConfig ?? null,
+            execution_timeout: input.executionTimeout ?? null,
             condition_groups: (input.conditionGroups ?? []).map((group, index) => ({
                 group_name: group.group_name ?? '',
                 order: group.order ?? index + 1,
@@ -511,6 +520,14 @@ export class CdtExportImportService {
             return Number.isFinite(parsed) ? parsed : null;
         }
         return null;
+    }
+
+    /** A whole number of minutes, at least 1; anything else counts as no timeout in the file. */
+    private asExecutionTimeout(value: unknown): number | null {
+        const minutes = this.asNullableNumber(value);
+        return minutes != null && Number.isInteger(minutes) && minutes >= MIN_EXECUTION_TIMEOUT_MINUTES
+            ? minutes
+            : null;
     }
 
     private asStringArray(value: unknown): string[] {

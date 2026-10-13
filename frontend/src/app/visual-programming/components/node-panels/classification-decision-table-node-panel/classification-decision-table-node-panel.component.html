@@ -52,6 +52,11 @@
                             [readonly]="isReadOnly()"
                             [transparent]="true"
                         />
+
+                        <app-execution-timeout-field
+                            [field]="executionTimeout"
+                            [perExecutionNote]="executionTimeoutNote"
+                        />
                     </div>
 
                     <!-- Tabs row -->

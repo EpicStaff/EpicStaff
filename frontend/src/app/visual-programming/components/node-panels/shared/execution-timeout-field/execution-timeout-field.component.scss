@@ -1,0 +1,7 @@
+@use '../../../../styles/node-panel-mixins.scss' as mixins;
+
+:host {
+    display: block;
+}
+
+@include mixins.field-isolated-spacing;

@@ -38,6 +38,7 @@ import { SidePanelService } from '../../../../visual-programming/services/side-p
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
 import { livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
+import { provideLoadedSandboxLimits } from '../../../../visual-programming/utils/testing/sandbox-limits.testing';
 import {
     FlowVisualProgrammingComponent,
     REMOTE_SAVE_RELOAD_FAILED_MESSAGE,
@@ -210,6 +211,7 @@ describe('FlowVisualProgrammingComponent', () => {
         TestBed.configureTestingModule({
             imports: [FlowVisualProgrammingComponent],
             providers: [
+                provideLoadedSandboxLimits(),
                 {
                     provide: ActivatedRoute,
                     useValue: {
@@ -549,6 +551,7 @@ describe('FlowVisualProgrammingComponent', () => {
             webhook_trigger: null,
             test_payload: {},
             use_storage: false,
+            execution_timeout: 3,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,

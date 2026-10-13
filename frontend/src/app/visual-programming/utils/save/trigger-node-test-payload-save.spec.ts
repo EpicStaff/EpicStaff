@@ -19,6 +19,7 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
     webhook_trigger: 3,
     test_payload: { id: '104', text: 'hello' },
     use_storage: false,
+    execution_timeout: 3,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,

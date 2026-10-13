@@ -8,7 +8,12 @@ import { ConfigService } from '../../services/config';
 /** Poll cadence and limits for python-code-result. */
 const POLL_INITIAL_DELAY_MS = 1000;
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 60000;
+/**
+ * How long past the node's execution timeout the panel keeps waiting for a result: the sandbox stops the code
+ * at the timeout, but queueing, installing the libraries (not limited by the timeout) and publishing the
+ * result come on top of it.
+ */
+const POLL_DEADLINE_GRACE_MS = 60_000;
 
 const MAX_NOT_FOUND_RETRIES = 3;
 
@@ -70,7 +75,11 @@ export class PythonCodeRunService {
         );
     }
 
-    pollResultWithEvents(executionId: string): Observable<PollEvent> {
+    /**
+     * Polls the result of run `executionId` of code whose node allows `executionTimeoutMinutes` per execution,
+     * giving up a grace period after that timeout.
+     */
+    pollResultWithEvents(executionId: string, executionTimeoutMinutes: number): Observable<PollEvent> {
         let attempt = 0;
         let notFoundRetries = 0;
 
@@ -114,11 +123,13 @@ export class PythonCodeRunService {
             )
         );
 
-        const deadline$: Observable<PollEvent> = timer(POLL_TIMEOUT_MS).pipe(
+        const deadline$: Observable<PollEvent> = timer(executionTimeoutMinutes * 60_000 + POLL_DEADLINE_GRACE_MS).pipe(
             switchMap(() =>
                 throwError(
                     () =>
-                        new Error('Execution timed out after 60 seconds. The code may still be running on the server.')
+                        new Error(
+                            `No result within ${executionTimeoutMinutes} min (the node's execution timeout) and a grace period. The code may still be running on the server.`
+                        )
                 )
             )
         );

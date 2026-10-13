@@ -13,6 +13,7 @@ import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
+import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -48,6 +49,7 @@ const pythonNode = {
 function create(isPreview: boolean): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedSandboxLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
@@ -106,6 +108,7 @@ describe('PythonNodePanelComponent test run', () => {
         };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedSandboxLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 { provide: PythonCodeRunService, useValue: runService },

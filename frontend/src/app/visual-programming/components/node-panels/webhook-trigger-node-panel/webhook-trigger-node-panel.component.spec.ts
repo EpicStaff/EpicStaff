@@ -20,6 +20,7 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -71,6 +72,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedSandboxLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: toast },
@@ -256,6 +258,7 @@ describe('WebhookTriggerNodePanelComponent storage', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedSandboxLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
@@ -358,6 +361,7 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedSandboxLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: {} },
@@ -441,6 +445,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         runService = { runPythonCode: vi.fn(() => start$), pollResultWithEvents: vi.fn(() => poll$) };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedSandboxLimits(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
                 {
                     provide: PermissionsService,

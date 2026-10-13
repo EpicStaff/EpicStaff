@@ -41,7 +41,8 @@
 // Header fields row
 .panel-node-header {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    // The execution timeout holds a few digits, so it takes a narrow last column.
+    grid-template-columns: 1fr 1fr 1fr minmax(0, 0.5fr);
     min-width: 0; /* prevent overflow */
     gap: 1rem;
     padding: 20px 16px;

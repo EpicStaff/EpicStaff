@@ -18,6 +18,7 @@ import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { FlowService } from '../../../services/flow.service';
+import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
@@ -28,6 +29,11 @@ import {
     initializeInputMap,
     parseCommaSeparatedList,
 } from '../node-panel-form.utils';
+import {
+    createExecutionTimeoutField,
+    ExecutionTimeoutFormField,
+} from '../shared/execution-timeout-field/execution-timeout-control';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     NODE_SAVING_MESSAGE,
@@ -53,6 +59,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -95,6 +102,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    protected executionTimeout!: ExecutionTimeoutFormField;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
@@ -161,6 +169,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
+    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
 
     constructor() {
         super();
@@ -277,11 +286,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
+        this.executionTimeout = createExecutionTimeoutField(
+            this.node().execution_timeout,
+            this.sandboxLimits.maxExecutionTimeoutMinutes()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [this.node().data.libraries?.join(', ') || ''],
+            execution_timeout: this.executionTimeout.control,
             test_input: this.fb.array([]),
         });
 
@@ -340,6 +354,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 secret_names: this.secretNames(),
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
+            execution_timeout: this.executionTimeout.control.value,
         };
     }
 
@@ -389,13 +404,19 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     onRunTest(variables: Record<string, string>): void {
         const backendId = this.node().backendId;
         if (this.runTestBlocker() !== null || backendId == null) return;
-        this.codeTestRun.run({
-            target: { type: 'python_node', id: backendId },
-            variables: parseTestInputValues(variables),
-        });
+        // The blocker ensures the stored node matches the panel; a stored node without a timeout gets the ceiling.
+        const executionTimeout =
+            this.flowService.savedPythonNode(backendId)?.execution_timeout ?? this.executionTimeout.maxMinutes;
+        this.codeTestRun.run(
+            {
+                target: { type: 'python_node', id: backendId },
+                variables: parseTestInputValues(variables),
+            },
+            executionTimeout
+        );
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend stores. */
+    /** The code, libraries, secrets, storage flag or execution timeout in the panel are not the ones the backend stores. */
     private differsFromSaved(savedNode: PythonNode): boolean {
         this.formDirtyTick();
         if (!this.form) return true;
@@ -406,6 +427,10 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             parseCommaSeparatedList(this.form.value.libraries),
             this.selectedSecretIds()
         );
-        return saved !== current || (savedNode.use_storage ?? false) !== this.useStorage();
+        return (
+            saved !== current ||
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            (savedNode.execution_timeout ?? this.executionTimeout.maxMinutes) !== this.executionTimeout.control.value
+        );
     }
 }

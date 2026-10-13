@@ -96,6 +96,7 @@ export function mapClassificationDecisionTableNodeToModel(
                 ),
             },
         },
+        execution_timeout: n.execution_timeout ?? null,
         position: ui.position,
         ports: null,
         color: ui.color,

@@ -10,6 +10,7 @@ import {
 } from '../../../../services/python-code-run.service';
 import { parseTestInputValues, PythonCodeTestRun } from './python-code-test-run';
 
+const EXECUTION_TIMEOUT_MINUTES = 3;
 const REQUEST: RunPythonCodeRequest = {
     target: { type: 'webhook_trigger_node', id: 21 },
     variables: { trigger_payload: { order: 1 } },
@@ -49,7 +50,7 @@ describe('PythonCodeTestRun', () => {
     }
 
     function startAndPoll(): void {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
         start$.next({ execution_id: 'exec-1' });
     }
 
@@ -61,7 +62,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('sends the request as is and logs its parameters', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
 
         expect(service.runPythonCode).toHaveBeenCalledWith({
             target: { type: 'webhook_trigger_node', id: 21 },
@@ -79,7 +80,7 @@ describe('PythonCodeTestRun', () => {
         poll$.next({ type: 'polling', attempt: 1 });
         poll$.next({ type: 'polling', attempt: 2 });
 
-        expect(service.pollResultWithEvents).toHaveBeenCalledWith('exec-1');
+        expect(service.pollResultWithEvents).toHaveBeenCalledWith('exec-1', EXECUTION_TIMEOUT_MINUTES);
         expect(messages().slice(2)).toEqual(['polling: Processing...']);
         expect(codeRun.isRunning()).toBe(true);
     });
@@ -109,7 +110,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('logs an HTTP error of the run request', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
         const httpError = new HttpErrorResponse({ status: 400, url: '/run-python-code/' });
         start$.error(httpError);
 
@@ -120,8 +121,8 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('ignores a run while one is in flight', () => {
-        codeRun.run(REQUEST);
-        codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} });
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
+        codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} }, EXECUTION_TIMEOUT_MINUTES);
 
         expect(service.runPythonCode).toHaveBeenCalledTimes(1);
     });
@@ -140,7 +141,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('reset stops a run in flight and returns to idle with an empty terminal', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
 
         codeRun.reset();
         start$.next({ execution_id: 'exec-1' });
@@ -150,12 +151,12 @@ describe('PythonCodeTestRun', () => {
         expect(codeRun.logs()).toEqual([]);
         expect(codeRun.status()).toBe('idle');
 
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
         expect(service.runPythonCode).toHaveBeenCalledTimes(2);
     });
 
     it('reset clears the result and error of a finished run', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
         start$.error(new Error('boom'));
         expect(codeRun.status()).toBe('error');
 
@@ -167,7 +168,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('clears the logs and keeps a resized terminal height', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_MINUTES);
         codeRun.clearLogs();
         codeRun.setTerminalHeight(320);
 

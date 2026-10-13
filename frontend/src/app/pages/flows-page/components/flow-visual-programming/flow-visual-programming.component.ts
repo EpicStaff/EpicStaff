@@ -129,6 +129,7 @@ import {
     toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
+import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
@@ -797,6 +798,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 ...this.getInvalidClassificationTableMessages(flowState),
                 // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
                 ...invalidKeyValueNodeMessages(flowState.nodes),
+                // As for key-value nodes: a panel commits an invalid timeout to the flow for the save to stop it here.
+                ...invalidExecutionTimeoutMessages(flowState.nodes),
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);

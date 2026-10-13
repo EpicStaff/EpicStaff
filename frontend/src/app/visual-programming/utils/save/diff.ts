@@ -126,6 +126,7 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         test_input: node.test_input ?? {},
+        execution_timeout: node.execution_timeout,
         metadata: toNodeMetadata(node),
     };
 }
@@ -179,6 +180,7 @@ function toFileExtractorComparable(node: FileExtractorNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        execution_timeout: node.execution_timeout,
         metadata: toNodeMetadata(node),
     };
 }
@@ -188,6 +190,7 @@ function toAudioToTextComparable(node: AudioToTextNodeModel): unknown {
         node_name: node.node_name,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        execution_timeout: node.execution_timeout,
         metadata: toNodeMetadata(node),
     };
 }
@@ -222,6 +225,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         webhook_trigger: node.data.webhook_trigger,
         test_payload: node.data.test_payload ?? {},
         use_storage: node.data.use_storage ?? false,
+        execution_timeout: node.execution_timeout,
         metadata: toNodeMetadata(node),
     };
 }
@@ -372,6 +376,7 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
                 name: s.name,
                 color: normalizeCdtSectionColor(s.metadata?.color),
             })),
+        execution_timeout: node.execution_timeout,
         metadata: toNodeMetadata(node),
     };
 }

@@ -52,6 +52,7 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
+import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import {
     isValidOutputSchema,
@@ -61,6 +62,11 @@ import {
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import {
+    createExecutionTimeoutField,
+    ExecutionTimeoutFormField,
+} from '../shared/execution-timeout-field/execution-timeout-control';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
 import { CDT_HEADER_COLLAPSE_AT, CDT_HEADER_COLLAPSE_MIN_SCROLLABLE, CDT_HEADER_EXPAND_AT } from './cdt.constants';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
@@ -87,6 +93,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         JsonEditorComponent,
         HasPermissionDirective,
         IfFlowEditableDirective,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -136,6 +143,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    protected executionTimeout!: ExecutionTimeoutFormField;
+    protected readonly executionTimeoutNote =
+        'The limit applies to each code step separately: the pre-computation, every row expression and manipulation, the post-computation.';
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -177,6 +187,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
@@ -345,6 +356,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
+        this.executionTimeout = createExecutionTimeoutField(
+            node.execution_timeout,
+            this.sandboxLimits.maxExecutionTimeoutMinutes()
+        );
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             pre_computation_code: [this.preCode],
@@ -358,6 +373,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
+            execution_timeout: this.executionTimeout.control,
         });
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
@@ -477,6 +493,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 name: this.form.value.node_name || 'Classification Decision Table',
                 table: tableData,
             },
+            execution_timeout: this.executionTimeout.control.value,
         };
     }
 
@@ -787,6 +804,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             postUseStorage: this.postUseStorage(),
             defaultLlmConfig: this.form.value.default_llm_config || null,
+            executionTimeout: this.executionTimeout.control.value,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
             sections: this.sections(),

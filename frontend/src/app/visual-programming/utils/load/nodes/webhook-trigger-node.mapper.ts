@@ -26,6 +26,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
             test_payload: wn.test_payload ?? {},
             use_storage: wn.use_storage ?? false,
         },
+        execution_timeout: wn.execution_timeout ?? null,
         position: ui.position,
         ports: null,
         color: ui.color,
