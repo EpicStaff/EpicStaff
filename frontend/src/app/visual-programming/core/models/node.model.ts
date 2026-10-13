@@ -92,6 +92,8 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
         webhook_trigger: number | null;
         python_code: CustomPythonCode;
         test_payload: Record<string, unknown>;
+        /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
+        use_storage: boolean;
     };
 }
 

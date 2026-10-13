@@ -548,6 +548,7 @@ describe('FlowVisualProgrammingComponent', () => {
             metadata: {},
             webhook_trigger: null,
             test_payload: {},
+            use_storage: false,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,
@@ -747,6 +748,7 @@ describe('FlowVisualProgrammingComponent', () => {
                                 metadata: {},
                                 webhook_trigger: null,
                                 test_payload: {},
+                                use_storage: false,
                                 created_at: '2026-01-01T00:00:00Z',
                                 created_by: null,
                                 last_edited_by: null,
@@ -773,12 +775,12 @@ describe('FlowVisualProgrammingComponent', () => {
         it('gives the editor the stored webhook code and its id of the loaded flow, until the page goes away', () => {
             loadFlowWithWebhookNode(2);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
 
             fixture.destroy();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
         });
 
         it('drops it when another user saves a flow with unsaved edits, until the graph is loaded again', () => {
@@ -790,11 +792,11 @@ describe('FlowVisualProgrammingComponent', () => {
             fixture.detectChanges();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
 
             loadFlowWithWebhookNode(3);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
         });
     });
 

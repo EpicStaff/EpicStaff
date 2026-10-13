@@ -20,6 +20,7 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -48,6 +49,7 @@ const DTO: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: SAVED_PAYLOAD,
+    use_storage: false,
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
@@ -243,6 +245,110 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
             expect(savedNode!.data.test_payload).toEqual(EDITED_PAYLOAD);
             expect(panel.isDirty()).toBe(false);
         });
+    });
+});
+
+describe('WebhookTriggerNodePanelComponent storage', () => {
+    const STORAGE_HEADER = 'from epicstaff_storage import storage';
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let panel: WebhookTriggerNodePanelComponent;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: { warning: vi.fn() } },
+                {
+                    provide: PermissionsService,
+                    useValue: { can: () => true, canAny: () => true, canEditSecrets: () => true },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template with the real storage section; the other controls render as unknown elements.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, NodeStorageSectionComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        panel = fixture.componentInstance;
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.detectChanges();
+    });
+
+    function storageSection(): NodeStorageSectionComponent {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+            .componentInstance as NodeStorageSectionComponent;
+    }
+
+    it('shows the node storage flag in the storage section', () => {
+        expect(panel.useStorage()).toBe(false);
+        expect(storageSection().enabled()).toBe(false);
+    });
+
+    it('saves a toggled storage flag, and saves it again once it is toggled back', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.useStorage()).toBe(true);
+        expect(panel.isDirty()).toBe(true);
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(true);
+        expect(panel.isDirty()).toBe(false);
+
+        storageSection().onToggle(false);
+
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(false);
+    });
+
+    it('puts the storage header on top of the code once, and takes it out again when storage is turned off', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode.startsWith(STORAGE_HEADER)).toBe(true);
+        expect(panel.pythonCode.endsWith(DTO.python_code.code)).toBe(true);
+        const codeWithHeader = panel.pythonCode;
+        panel.insertStorageCode(STORAGE_HEADER);
+        expect(panel.pythonCode).toBe(codeWithHeader);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode).toBe(DTO.python_code.code);
+        expect(panel.isDirty()).toBe(false);
+    });
+
+    it('leaves the header in code that no longer starts with it when storage is turned off', () => {
+        storageSection().onToggle(true);
+        panel.onPythonCodeChange('# edited\n' + panel.pythonCode);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode.includes(STORAGE_HEADER)).toBe(true);
+        expect(panel.useStorage()).toBe(false);
+    });
+
+    it('does not add the header to code that already uses storage', () => {
+        const code = 'from epicstaff_storage import storage\n\ndef main(trigger_payload): pass';
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({ ...DTO, id: 22, python_code: { ...DTO.python_code, code } })
+        );
+        fixture.detectChanges();
+
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode).toBe(code);
+    });
+
+    it('shows the flag of another webhook node selected in the same panel', () => {
+        const otherNode = { ...mapWebhookTriggerNodeToModel({ ...DTO, use_storage: true }), id: 'other-node' };
+
+        fixture.componentRef.setInput('node', otherNode);
+        fixture.detectChanges();
+
+        expect(panel.useStorage()).toBe(true);
+        expect(storageSection().enabled()).toBe(true);
+        expect(panel.isDirty()).toBe(false);
     });
 });
 
@@ -479,6 +585,16 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             panel().form.patchValue({ libraries: '' });
             panel().onSecretsChange([7]);
             expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+        });
+
+        it('asks to save after a storage toggle, and clears once the saved graph has the flag', () => {
+            const runPanel = open();
+
+            panel().onStorageToggle(true);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            bindStoredGraph(asStored({ ...DTO, use_storage: true }));
+            expect(runPanel.runCodeBlocker()).toBeNull();
         });
 
         it('keeps asking after the panel is closed and reopened before the graph is saved', () => {
