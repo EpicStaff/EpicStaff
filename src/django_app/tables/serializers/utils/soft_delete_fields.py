@@ -1,7 +1,7 @@
 from django.db.models import Q
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
-from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, without_internal_rows
 from tables.services.secrets.reference_guard import secret_reference_guard
 
 
@@ -36,7 +36,8 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
     link to a binned row is still "Invalid pk", like a missing one. Whatever manager the
     given queryset comes from, the field starts from the model's `all_objects` and narrows
     it to live rows plus the kept ones, so passing `objects` can't quietly undo that. Any
-    other filter on the given queryset is dropped too.
+    other filter on the given queryset is dropped too, but the model's `internal_rows`
+    (Secret's system rows) are always left out, kept or not.
 
     "What the row links to now" comes from the secret reference guard's lookup, so a nested
     serializer resolves through the same hooks (`parent_attribute`,
@@ -45,7 +46,7 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
 
     def __init__(self, *args, queryset=None, **kwargs):
         if queryset is not None:
-            queryset = queryset.model.all_objects.all()
+            queryset = without_internal_rows(queryset.model.all_objects.all())
         super().__init__(*args, queryset=queryset, **kwargs)
 
     def get_queryset(self):

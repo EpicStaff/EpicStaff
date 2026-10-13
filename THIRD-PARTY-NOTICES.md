@@ -12,8 +12,8 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Mon, 05 Oct 2026 16:24:17 GMT -->
-<!-- commit: 360b38e5f5baa2015e1f6a5d665135c2c3ed0642 -->
+<!-- generated: Tue, 13 Oct 2026 10:23:20 GMT -->
+<!-- commit: d746428497ad39c03f233042abc12f9d55cdd209 -->
 <!-- package-lock.json sha256: 63bbfa2440bac456 -->
 
 ## Frontend license summary
@@ -4049,9 +4049,9 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-12T14:21:13Z UTC -->
-<!-- commit: 92044f9342eb79adc10b02f06ad497508ce2feaa -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, crew:eb515289157f26b4, django_app:8b820f23ca12a3f3, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:8a9a40fc0b39d589, webhook:74291d202daa2b3f -->
+<!-- generated: 2026-10-13T10:23:21Z UTC -->
+<!-- commit: d746428497ad39c03f233042abc12f9d55cdd209 -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, crew:eb515289157f26b4, django_app:ca3e2d5fc4ec624d, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:6db6900f51e81e02, webhook:74291d202daa2b3f -->
 
 ## Backend (Python)
 

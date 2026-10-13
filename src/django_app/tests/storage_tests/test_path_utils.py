@@ -44,8 +44,8 @@ class TestSanitizeStoragePath:
 
 
 def test_every_copy_of_the_trash_folder_name_matches():
-    # The sandbox and the shared storage library can't import django_app, so
-    # each keeps its own copy; a renamed folder must change all three.
+    # The shared storage library can't import django_app, so it keeps its own
+    # copy; a renamed folder must change both.
     import re
     from pathlib import Path
 
@@ -54,7 +54,6 @@ def test_every_copy_of_the_trash_folder_name_matches():
     repository_root = Path(__file__).resolve().parents[4]
     copies = {
         "src/shared/epicstaff_storage/storage.py": r'^RESERVED_DIRECTORY = "([^"]+)"',
-        "src/sandbox/services/storage_credential_manager.py": r'^_RESERVED_DIRECTORY = "([^"]+)"',
     }
     for relative_path, pattern in copies.items():
         source = (repository_root / relative_path).read_text(encoding="utf-8")

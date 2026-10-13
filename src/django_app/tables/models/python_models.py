@@ -10,6 +10,7 @@ from tables.models.base_models import (
     SoftDeleteMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
+    without_internal_rows,
 )
 
 #: Where `linked_secrets_prefetch()` puts a PythonCode's secrets, binned ones included.
@@ -21,7 +22,7 @@ def linked_secrets_prefetch(python_code_path: str) -> Prefetch:
     secret_model = PythonCode.secrets.field.related_model
     return Prefetch(
         f"{python_code_path}__secrets",
-        queryset=secret_model.all_objects.all(),
+        queryset=without_internal_rows(secret_model.all_objects.all()),
         to_attr=LINKED_SECRETS_ATTR,
     )
 
@@ -43,7 +44,7 @@ class PythonCode(ContentHashMixin, models.Model):
         prefetched = getattr(self, LINKED_SECRETS_ATTR, None)
         if prefetched is not None:
             return prefetched
-        return list(self.secrets.model.all_objects.filter(python_codes=self))
+        return list(without_internal_rows(self.secrets.model.all_objects.filter(python_codes=self)))
 
     def forget_linked_secrets(self) -> None:
         """Drop the prefetched list after the links change: a plain attribute, so nothing else does."""

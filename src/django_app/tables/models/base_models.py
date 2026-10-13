@@ -140,21 +140,27 @@ class CrewSessionMessage(BaseSessionMessage):
         abstract = True
 
 
+def without_internal_rows(queryset):
+    """`queryset` minus the model's `internal_rows`, the rows no user-facing code may reach."""
+    internal_rows = queryset.model.internal_rows
+    return queryset if internal_rows is None else queryset.exclude(internal_rows)
+
+
 class ActiveManager(models.Manager):
     """
     `objects` on every SoftDeleteFields model: the rows not in the
-    recycle bin.
+    recycle bin, minus the model's `internal_rows`.
     """
 
     def get_queryset(self):
-        return super().get_queryset().filter(active=True)
+        return without_internal_rows(super().get_queryset().filter(active=True))
 
 
 class DeletedManager(models.Manager):
-    """`deleted_objects` on every SoftDeleteFields model: the rows in the recycle bin."""
+    """`deleted_objects` on every SoftDeleteFields model: the rows in the recycle bin, minus `internal_rows`."""
 
     def get_queryset(self):
-        return super().get_queryset().filter(active=False)
+        return without_internal_rows(super().get_queryset().filter(active=False))
 
 
 class EnabledToggleManager(models.Manager):
@@ -231,7 +237,8 @@ class SoftDeleteFields(models.Model):
     performs a normal, unconditional Django hard delete.
 
     Managers: `objects` (the default) returns the rows not in the recycle
-    bin, `deleted_objects` the binned ones, and `all_objects` every row.
+    bin, `deleted_objects` the binned ones (both without `internal_rows`), and
+    `all_objects` every row.
     `all_objects` is also the base manager, so Django's Collector and
     forward FK access still reach binned rows.
     """
@@ -248,6 +255,10 @@ class SoftDeleteFields(models.Model):
     # never re-links it. Plain link models may set it too. See
     # _DeleteContext._is_reference_relation.
     soft_delete_reference_fields: tuple[str, ...] = ()
+    # Rows only infrastructure code may reach (through `all_objects`): `objects`,
+    # `deleted_objects` and KeptLinkPrimaryKeyRelatedField leave them out. Secret's
+    # system rows are the case.
+    internal_rows: ClassVar[models.Q | None] = None
 
     objects = ActiveManager()
     deleted_objects = DeletedManager()

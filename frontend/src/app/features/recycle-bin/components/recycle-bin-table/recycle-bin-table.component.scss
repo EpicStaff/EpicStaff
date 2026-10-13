@@ -26,6 +26,11 @@
     min-height: 2.25rem;
     background: var(--color-background-body);
     border-bottom: 1px solid var(--color-divider-subtle);
+    // Never scrolls: overflow is only non-visible so scrollbar-gutter can reserve the same
+    // inline-end gutter as .table-body, so the columns stay over theirs when an opened row
+    // makes the rows scroll.
+    overflow: hidden;
+    scrollbar-gutter: stable;
 }
 
 .col-label {
@@ -41,6 +46,9 @@
     flex-direction: column;
     min-height: 0;
     overflow-y: auto;
+    // The scrollbar's room is kept even when nothing scrolls, so opening a row never narrows
+    // the rows and shifts their columns left of the header's.
+    scrollbar-gutter: stable;
 }
 
 // The divider sits on the wrapper, so an opened row's info and contents stay inside its row's block.

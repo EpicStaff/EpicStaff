@@ -72,6 +72,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
     CONDITION_INPUT_FIELDS,
@@ -1682,6 +1683,9 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         chat.duration_seconds = request.data.get("duration_seconds")
         chat.end_reason = request.data.get("end_reason", "completed")
         chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+
+        session_credential_service.revoke_for_realtime_chat(chat.id)
+
         return Response({"detail": "Updated"})
 
 
@@ -2629,7 +2633,11 @@ class SecretViewSet(
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
     recycle_bin_resource_key = "secret"
-    queryset = Secret.objects.prefetch_related(*authorship_prefetches(last_edit=False))
+    # system=True rows (e.g. org-level MinIO credentials) are internal to
+    # storage_credentials and must never be visible through this API — not
+    # even their existence. `Secret.objects` and `Secret.deleted_objects` (the
+    # recycle bin) already exclude them by construction (Secret.internal_rows).
+    queryset = Secret.objects.all().prefetch_related(*authorship_prefetches(last_edit=False))
     serializer_class = SecretSerializer
 
     @extend_schema(**SECRET_USAGE_GET)

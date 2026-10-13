@@ -4,10 +4,16 @@ from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
+from loguru import logger
+from pydantic import ValidationError
 from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
+from src.shared.models.storage_scope import StorageCredentials
+from storage_credentials.exceptions import StorageCredentialError
+from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import CodeRunTargetNotFoundError
-from tables.models import PythonCode, PythonCodeResult
+from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.code_run_targets import CODE_RUN_TARGETS, storage_path_for_test_run
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
@@ -25,6 +31,13 @@ MAX_STORED_RESULTS = 200
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
+    _INVALID_REQUEST_LOG = "Invalid code execution request (execution_id={})"
+    _INVALID_REQUEST_STDERR = "Invalid code execution request."
+    _CREDENTIAL_ISSUE_LOG = (
+        "Failed to issue storage credentials for code execution (execution_id={})"
+    )
+    _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
+
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
         self.code_exec_task_channel: str = settings.CODE_EXEC_CHANNEL
@@ -70,22 +83,67 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
 
         execution_id = self.gen_execution_id()
-        code_task_data = CodeTaskData(
-            venv_name=f"venv_{python_code_id}",
-            libraries=python_code.get_libraries_list(),
-            code=python_code.code,
-            entrypoint=python_code.entrypoint,
-            func_kwargs=varaibles,
+
+        # A bare "Test run" has no graph/session context to resolve
+        # storage_allowed_paths from (unlike converter_service's node/tool
+        # conversions). use_storage is derived from whether this PythonCode
+        # is used by at least one storage-enabled PythonCodeTool belonging
+        # to *this* organization -- an org-scoped filter, since a different
+        # tenant's tool marked use_storage=True must never be able to flip
+        # storage on for this org's Test run.
+        #
+        # CredentialScopeValidator fails closed on an empty/missing
+        # storage_allowed_paths (no more "whole org prefix" default), so an
+        # explicit, narrow path scoped to this one execution is passed here
+        # rather than relying on any default.
+        use_storage = PythonCodeTool.objects.filter(
+            python_code=python_code, use_storage=True, org_id=organization_id
+        ).exists()
+        storage_org_prefix = org_storage_prefix(organization_id) if use_storage else None
+        storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
+
+        python_code_result = self._create_pending_result(
             execution_id=execution_id,
-            global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
-            secrets=secrets,
-        )
-        self._record_and_publish(
-            code_task_data=code_task_data,
-            python_code=python_code,
             organization_id=organization_id,
             user=user,
+            python_code=python_code,
         )
+
+        storage_credentials, ok = self._mint_storage_credentials(
+            execution_id=execution_id,
+            use_storage=use_storage,
+            python_code_result=python_code_result,
+            storage_allowed_paths=storage_allowed_paths,
+            org_id=organization_id,
+        )
+        if not ok:
+            return execution_id
+
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=f"venv_{python_code_id}",
+                libraries=python_code.get_libraries_list(),
+                code=python_code.code,
+                entrypoint=python_code.entrypoint,
+                func_kwargs=varaibles,
+                execution_id=execution_id,
+                global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
+                use_storage=use_storage,
+                storage_org_prefix=storage_org_prefix,
+                storage_allowed_paths=storage_allowed_paths,
+                org_id=organization_id if use_storage else None,
+                secrets=secrets,
+                storage_credentials=storage_credentials,
+            )
+        except ValidationError:
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._INVALID_REQUEST_LOG,
+                stderr=self._INVALID_REQUEST_STDERR,
+            )
+
+        self._publish(code_task_data)
         return execution_id
 
     def run_target(
@@ -140,27 +198,94 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             global_kwargs["org_id"] = resolved.org_id
 
         execution_id = self.gen_execution_id()
-        code_task_data = CodeTaskData(
-            venv_name=resolved.venv_name,
-            libraries=resolved.libraries,
-            code=resolved.code,
-            entrypoint=resolved.entrypoint,
-            func_kwargs=variables,
+
+        python_code_result = self._create_pending_result(
             execution_id=execution_id,
-            global_kwargs=global_kwargs,
-            use_storage=resolved.use_storage,
-            storage_allowed_paths=resolved.storage_allowed_paths,
-            storage_org_prefix=resolved.storage_org_prefix,
-            session_id=resolved.session_id,
-            org_id=resolved.org_id,
-            secrets=resolved.secrets,
-        )
-        self._record_and_publish(
-            code_task_data=code_task_data,
-            python_code=python_code,
             organization_id=organization_id,
             user=user,
+            python_code=python_code,
         )
+
+        storage_credentials, ok = self._mint_storage_credentials(
+            execution_id=execution_id,
+            use_storage=resolved.use_storage,
+            python_code_result=python_code_result,
+            storage_allowed_paths=resolved.storage_allowed_paths,
+            org_id=resolved.org_id,
+        )
+        if not ok:
+            return execution_id
+
+        try:
+            code_task_data = CodeTaskData(
+                venv_name=resolved.venv_name,
+                libraries=resolved.libraries,
+                code=resolved.code,
+                entrypoint=resolved.entrypoint,
+                func_kwargs=variables,
+                execution_id=execution_id,
+                global_kwargs=global_kwargs,
+                use_storage=resolved.use_storage,
+                storage_allowed_paths=resolved.storage_allowed_paths,
+                storage_org_prefix=resolved.storage_org_prefix,
+                session_id=resolved.session_id,
+                org_id=resolved.org_id,
+                secrets=resolved.secrets,
+                storage_credentials=storage_credentials,
+            )
+        except ValidationError:
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=resolved.use_storage,
+                log_message=self._INVALID_REQUEST_LOG,
+                stderr=self._INVALID_REQUEST_STDERR,
+            )
+
+        self._publish(code_task_data)
+        return execution_id
+
+    def _mint_storage_credentials(
+        self,
+        *,
+        execution_id: str,
+        use_storage: bool,
+        python_code_result: PythonCodeResult,
+        storage_allowed_paths: list[str] | None,
+        org_id: int,
+    ) -> tuple[StorageCredentials | None, bool]:
+        """Mint storage credentials if needed. Returns (credentials, ok);
+        ok=False means the execution already failed (ERROR, best-effort revoke)
+        and the caller should return `execution_id` without building anything.
+        """
+        try:
+            return (
+                self._issue_storage_credentials_if_needed(
+                    use_storage=use_storage,
+                    python_code_result=python_code_result,
+                    storage_allowed_paths=storage_allowed_paths,
+                    org_id=org_id,
+                ),
+                True,
+            )
+        except StorageCredentialError:
+            self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._CREDENTIAL_ISSUE_LOG,
+                stderr=self._CREDENTIAL_ISSUE_STDERR,
+            )
+            return None, False
+
+    def _fail_execution(
+        self, *, execution_id: str, use_storage: bool, log_message: str, stderr: str
+    ) -> str:
+        logger.error(log_message, execution_id)
+        PythonCodeResult.objects.filter(execution_id=execution_id).update(
+            status=PythonCodeResult.Status.ERROR,
+            stderr=stderr,
+            finished_at=timezone.now(),
+        )
+        self._revoke_storage_credentials_safely(use_storage=use_storage, execution_id=execution_id)
         return execution_id
 
     @staticmethod
@@ -180,24 +305,50 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 )
             )
 
-    def _record_and_publish(
-        self,
-        *,
-        code_task_data: CodeTaskData,
-        python_code: PythonCode,
-        organization_id: int,
-        user,
-    ) -> None:
-        PythonCodeResult.objects.create(
-            execution_id=code_task_data.execution_id,
+    def _create_pending_result(
+        self, *, execution_id: str, organization_id: int, user, python_code: PythonCode
+    ) -> PythonCodeResult:
+        python_code_result = PythonCodeResult.objects.create(
+            execution_id=execution_id,
             org_id=organization_id,
             created_by=resolve_author(user),
             python_code=python_code,
         )
         self._evict_oldest_results(organization_id)
+        return python_code_result
+
+    def _issue_storage_credentials_if_needed(
+        self,
+        *,
+        use_storage: bool,
+        python_code_result: PythonCodeResult,
+        storage_allowed_paths: list[str] | None,
+        org_id: int,
+    ):
+        if not use_storage:
+            return None
+        return session_credential_service.issue_for_test_run(
+            python_code_result=python_code_result,
+            storage_allowed_paths=storage_allowed_paths,
+            org_id=org_id,
+        )
+
+    def _revoke_storage_credentials_safely(self, *, use_storage: bool, execution_id: str) -> None:
+        # Best-effort by contract: the underlying call swallows its own errors
+        # and is a no-op when nothing was minted.
+        if use_storage:
+            session_credential_service.revoke_for_test_run(execution_id=execution_id)
+
+    def _publish(self, code_task_data: CodeTaskData) -> None:
         self.redis_service.redis_client.publish(
             self.code_exec_task_channel, code_task_data.model_dump_json()
         )
+
+    def gen_execution_id(self):
+        now = datetime.now(UTC)
+        short_uuid = str(uuid.uuid4())[:4]
+        formatted_time = now.strftime(f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}")
+        return f"{formatted_time}@{short_uuid}"
 
     def save_execution_result(self, result: CodeResultData) -> bool:
         updated = PythonCodeResult.objects.filter(
@@ -225,9 +376,3 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
         if stale_ids:
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
-
-    def gen_execution_id(self):
-        now = datetime.now(UTC)
-        short_uuid = str(uuid.uuid4())[:4]
-        formatted_time = now.strftime(f"%d-%m-%Y_%H-%M-%S-{now.microsecond // 1000:03d}")
-        return f"{formatted_time}@{short_uuid}"

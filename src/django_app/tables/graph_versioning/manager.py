@@ -36,6 +36,7 @@ from tables.models import (
     Secret,
     WebhookTrigger,
 )
+from tables.models.base_models import without_internal_rows
 from tables.models.graph_models import StartNode, TelegramTriggerNode
 from tables.models.python_models import linked_secrets_prefetch
 from tables.services.copy_services.helpers import next_copy_name
@@ -135,12 +136,9 @@ class GraphVersioningManager:
         is linked again (and warned about, see `_binned`).
         """
         # Live rows last, so they win: a rotated secret is a binned copy plus a live one.
-        rows = {
-            secret.name: secret
-            for secret in Secret.all_objects.filter(org_id=org_id, name__in=names).order_by(
-                "active"
-            )
-        }
+        # Never a system secret, even one that shares a recorded name.
+        candidates = without_internal_rows(Secret.all_objects.filter(org_id=org_id, name__in=names))
+        rows = {secret.name: secret for secret in candidates.order_by("active")}
         resolved = [rows[name] for name in names if name in rows]
         missing = [name for name in names if name not in rows]
         return resolved, missing
