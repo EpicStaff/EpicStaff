@@ -107,13 +107,16 @@ def _sync_condition_group_sections(node, sections_data):
     referenced by a condition group in the same payload can be resolved
     before it's ever been queried from the DB. ``id`` collisions across
     nodes are surfaced as ``SectionIdConflictError`` rather than a raw
-    ``IntegrityError``.
+    ``IntegrityError``. The lookup includes soft-deleted rows: their ids still
+    occupy the primary key.
     """
     incoming_ids = {s["id"] for s in sections_data}
     node.sections.exclude(id__in=incoming_ids).delete()
     sections_by_id = {}
     for section_data in sections_data:
-        existing = ClassificationConditionGroupSection.objects.filter(id=section_data["id"]).first()
+        existing = ClassificationConditionGroupSection.all_objects.filter(
+            id=section_data["id"]
+        ).first()
         if existing is not None and existing.classification_decision_table_node_id != node.id:
             raise SectionIdConflictError(section_data["id"])
 

@@ -1,5 +1,8 @@
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
-    validate_classification_condition_group_names,
+    ClassificationConditionGroupSerializer,
+)
+from tables.services.classification_decision_table_node_children import (
+    CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef, ParsedNodeRef
 from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
@@ -20,7 +23,7 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
         condition_groups_data = data.pop("condition_groups", None)
         sections_data = data.pop("sections", None)
 
-        preprocess_errors: list[str] = []
+        preprocess_errors: list = []
         node_routing_refs: dict[str, NodeRef | None] = {}
 
         for id_field, temp_field in self._NODE_ROUTING_PAIRS:
@@ -34,13 +37,31 @@ class ClassificationDecisionTableNodeSaveableFactory(NodeSaveableFactory):
                 elif parsed.ref is None:
                     data.setdefault(id_field, None)
 
-        preprocess_errors.extend(
-            validate_classification_condition_group_names(condition_groups_data)
-        )
+        # Validate the groups with the single-node field definitions, then write the
+        # validated (coerced, trimmed) column values back into each group dict: the
+        # saveable builds rows from these dicts, and a value DRF accepts but the model
+        # field rejects ("yes" for a boolean, "3.0" for an integer) must not reach the DB.
+        # Only keys the client sent are replaced, since a missing key keeps the stored
+        # value on update. Unknown keys (next_node_temp_id) are ignored here and handled
+        # below; prompt, prompt_key and section stay raw, they resolve node-locally.
+        groups_valid = True
+        if condition_groups_data is not None:
+            groups_serializer = ClassificationConditionGroupSerializer(
+                data=condition_groups_data, many=True
+            )
+            groups_valid = groups_serializer.is_valid()
+            if groups_valid:
+                for group_data, validated_group in zip(
+                    condition_groups_data, groups_serializer.validated_data, strict=True
+                ):
+                    for column in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS & group_data.keys():
+                        group_data[column] = validated_group[column]
+            else:
+                preprocess_errors.append({"condition_groups": groups_serializer.errors})
 
         group_routing_refs: list[NodeRef | None] = []
 
-        if condition_groups_data:
+        if condition_groups_data and groups_valid:
             id_field, temp_field = self._GROUP_ROUTING_PAIR
             for group_idx, group_data in enumerate(condition_groups_data):
                 parsed = self._parse_optional_routing_ref(

@@ -140,7 +140,9 @@ def test_group_next_node_outside_graph_rejected(request, auth_client, graph, tab
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_ROUTING_REF_ERROR}: [{target.id}]"]
+    assert response.data["errors"] == {
+        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{target.id}]"]}]
+    }
     assert not node_model.objects.filter(graph=graph).exists()
     assert not group_model.objects.filter(next_node_id=target.id).exists()
     _assert_save_version_unchanged(graph)
@@ -169,6 +171,36 @@ def test_node_routing_outside_graph_rejected(
     assert field in str(response.data["errors"][list_key])
     assert not node_model.objects.filter(graph=graph).exists()
     assert not node_model.all_objects.filter(**{field: target.id}).exists()
+    _assert_save_version_unchanged(graph)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("table", list(_ROUTING_TABLES))
+def test_group_next_node_outside_graph_reported_on_the_referencing_item(
+    auth_client, graph, other_org_node, table
+):
+    list_key, _, _, group_extra = _ROUTING_TABLES[table]
+    local_target = StartNode.objects.create(graph=graph, variables={})
+
+    def table_item(node_name: str, next_node_id: int) -> dict:
+        group = {"group_name": "group", "order": 0, "next_node_id": next_node_id, **group_extra}
+        return {"graph": graph.id, "node_name": node_name, "condition_groups": [group]}
+
+    response = _post_save(
+        auth_client,
+        graph,
+        **{
+            list_key: [
+                table_item("local_route", local_target.id),
+                table_item("foreign_route", other_org_node.id),
+            ]
+        },
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["errors"] == {
+        list_key: [{"index": 1, "errors": [f"{_ROUTING_REF_ERROR}: [{other_org_node.id}]"]}]
+    }
     _assert_save_version_unchanged(graph)
 
 
@@ -348,7 +380,9 @@ def test_group_next_node_deleted_in_same_request_rejected(auth_client, graph, st
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_ROUTING_REF_ERROR}: [{start_node.id}]"]
+    assert response.data["errors"] == {
+        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{start_node.id}]"]}]
+    }
     assert StartNode.objects.filter(pk=start_node.pk).exists()
     assert not node_model.objects.filter(graph=graph).exists()
     assert not group_model.objects.filter(next_node_id=start_node.id).exists()

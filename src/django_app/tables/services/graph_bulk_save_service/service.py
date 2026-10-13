@@ -86,7 +86,9 @@ class GraphBulkSaveService:
             all_errors["deleted"] = deletion_errors
 
         # Pass 1: validate nodes (driven by registry — no hardcoded lists)
-        routing_refs_to_validate: set[int] = set()
+        # {list_key: {item index: real routing target ids}}, so a bad routing ref is
+        # reported on the decision table item that holds it.
+        routing_refs_by_item: dict[str, dict[int, set[int]]] = {}
         for config in NODE_TYPE_REGISTRY:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
@@ -98,7 +100,8 @@ class GraphBulkSaveService:
             else:
                 node_saveables.extend(result.node_saveables)
                 edge_saveables.extend(result.deferred_saveables)
-                routing_refs_to_validate |= result.real_routing_node_ids
+                if result.real_routing_node_ids_by_index:
+                    routing_refs_by_item[config.list_key] = result.real_routing_node_ids_by_index
 
         # Pass 1: validate edges
         existing_node_ref_errors = []
@@ -122,25 +125,33 @@ class GraphBulkSaveService:
         # same for a nonexistent and a foreign id, so existence never leaks.
         # A node deleted by this request still exists now but not after Pass 2,
         # so a reference to it counts as outside the graph too.
-        all_real_refs = edge_refs_to_validate | routing_refs_to_validate
+        all_real_refs = edge_refs_to_validate.union(
+            *(
+                refs
+                for refs_by_index in routing_refs_by_item.values()
+                for refs in refs_by_index.values()
+            )
+        )
         if all_real_refs:
             invalid_ids = self._find_node_ids_outside_graph(all_real_refs, graph.id) | (
                 all_real_refs & self._collect_deleted_node_ids(deleted_data)
             )
-            if invalid_ids:
-                # Partition errors by source for clearer attribution.
-                invalid_edge_refs = invalid_ids & edge_refs_to_validate
-                invalid_routing_refs = invalid_ids & routing_refs_to_validate
-                if invalid_edge_refs:
-                    existing_node_ref_errors.append(
-                        f"Edge references node IDs not found in this graph: "
-                        f"{sorted(invalid_edge_refs)}"
-                    )
-                if invalid_routing_refs:
-                    existing_node_ref_errors.append(
-                        f"Decision table routing references node IDs not found in this graph: "
-                        f"{sorted(invalid_routing_refs)}"
-                    )
+            invalid_edge_refs = invalid_ids & edge_refs_to_validate
+            if invalid_edge_refs:
+                existing_node_ref_errors.append(
+                    f"Edge references node IDs not found in this graph: {sorted(invalid_edge_refs)}"
+                )
+            for list_key, refs_by_index in routing_refs_by_item.items():
+                for index, refs in refs_by_index.items():
+                    invalid_routing_refs = invalid_ids & refs
+                    if invalid_routing_refs:
+                        message = (
+                            "Decision table routing references node IDs not found in this graph: "
+                            f"{sorted(invalid_routing_refs)}"
+                        )
+                        all_errors.setdefault(list_key, []).append(
+                            {"index": index, "errors": [message]}
+                        )
         if existing_node_ref_errors:
             all_errors.setdefault("edge_list", []).extend(existing_node_ref_errors)
 
@@ -203,9 +214,9 @@ class GraphBulkSaveService:
                 )
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
-                    result.real_routing_node_ids |= self._collect_real_routing_refs(
-                        build.deferred_saveable
-                    )
+                    routing_refs = self._collect_real_routing_refs(build.deferred_saveable)
+                    if routing_refs:
+                        result.real_routing_node_ids_by_index[index] = routing_refs
 
         return result
 

@@ -313,7 +313,8 @@ class ClassificationDecisionTableNodeSaveable:
             incoming_section_ids = {s["id"] for s in self._sections_data}
             node.sections.exclude(id__in=incoming_section_ids).delete()
             for section_data in self._sections_data:
-                existing_section = ClassificationConditionGroupSection.objects.filter(
+                # all_objects: a soft-deleted section's id still occupies the primary key.
+                existing_section = ClassificationConditionGroupSection.all_objects.filter(
                     id=section_data["id"]
                 ).first()
                 if (
