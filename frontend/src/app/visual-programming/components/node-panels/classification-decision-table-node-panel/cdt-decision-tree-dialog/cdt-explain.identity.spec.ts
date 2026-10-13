@@ -1,7 +1,12 @@
 import { PromptConfig } from '../../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { CdtDecisionTreeInput } from './cdt-decision-tree.model';
-import { buildExplainStepKeys, explainStepFingerprint } from './cdt-explain.identity';
+import {
+    buildExplainStepKeys,
+    buildRetainedExplainStepKeys,
+    explainKeyMovesForRuleEdit,
+    explainStepFingerprint,
+} from './cdt-explain.identity';
 import { buildCdtExplainBlocks } from './cdt-explain.payload';
 
 function row(overrides: Partial<ConditionGroup>): ConditionGroup {
@@ -174,6 +179,154 @@ describe('buildExplainStepKeys', () => {
         for (const id of buildCdtExplainBlocks(source).keys()) {
             expect(keys.has(id), id).toBe(true);
         }
+    });
+});
+
+describe('explainKeyMovesForRuleEdit', () => {
+    /** The rows with `rows[index]` changed — what the grid hands over as the rows after. */
+    function edited(rows: ConditionGroup[], index: number, change: Partial<ConditionGroup>): ConditionGroup[] {
+        return rows.map((candidate, at) => (at === index ? { ...candidate, ...change } : candidate));
+    }
+
+    /** The three moves of one rule, from one key base to another. */
+    function movesBetween(from: string, to: string): { from: string; to: string }[] {
+        return ['decision', 'prompt', 'manipulation'].map((step) => ({ from: `${from}:${step}`, to: `${to}:${step}` }));
+    }
+
+    /** The key base the dialog files `rows`' drawn rule `drawnIndex` under. */
+    function baseOf(rows: ConditionGroup[], drawnIndex: number): string {
+        return keysOf(rows)
+            .get(`row-${drawnIndex}:decision`)!
+            .replace(/:decision$/, '');
+    }
+
+    const table = (): ConditionGroup[] => [
+        row({ group_name: 'Approve', route_code: 'approve', expression: 'score > 0.8', order: 1 }),
+        row({ group_name: 'Reject', route_code: 'reject', expression: 'score < 0.2', order: 2 }),
+    ];
+
+    it('moves every step of a rule whose route code changed to the new code', () => {
+        const before = table();
+        const after = edited(before, 0, { route_code: 'Approved' });
+
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(
+            movesBetween('rule:route:approve', 'rule:route:approved')
+        );
+    });
+
+    it('moves to the name when the route code is cleared', () => {
+        const before = table();
+        const after = edited(before, 0, { route_code: '' });
+
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(
+            movesBetween('rule:route:approve', 'rule:name:Approve')
+        );
+    });
+
+    it('moves from the name to the route code once a rule without one is given one', () => {
+        const before = edited(table(), 0, { route_code: null });
+        const after = edited(before, 0, { route_code: 'approve' });
+
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(
+            movesBetween('rule:name:Approve', 'rule:route:approve')
+        );
+    });
+
+    it('moves from the old name to the new one for a rule without a route code', () => {
+        const before = edited(table(), 0, { route_code: '' });
+        const after = edited(before, 0, { group_name: 'Accept' });
+
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(
+            movesBetween('rule:name:Approve', 'rule:name:Accept')
+        );
+    });
+
+    it('moves nothing when the key holds: a rename under a route code, or a change of spacing only', () => {
+        const before = table();
+
+        expect(explainKeyMovesForRuleEdit(before, edited(before, 0, { group_name: 'Accept' }), 0)).toEqual([]);
+        expect(explainKeyMovesForRuleEdit(before, edited(before, 0, { route_code: ' approve ' }), 0)).toEqual([]);
+    });
+
+    it('moves to and from content keys, matching the keys the dialog files the rule under', () => {
+        // Both rules share the name; Approve's own code is what keeps it off a content key.
+        const before = [
+            row({ group_name: 'Same', route_code: 'a', expression: 'x > 1', order: 1 }),
+            row({ group_name: 'Same', route_code: 'b', expression: 'x > 2', order: 2 }),
+        ];
+        const shared = edited(before, 0, { route_code: 'b' });
+
+        const toContent = explainKeyMovesForRuleEdit(before, shared, 0);
+        const fromContent = explainKeyMovesForRuleEdit(shared, before, 0);
+
+        expect(baseOf(shared, 0)).toMatch(/^rule:content:/);
+        expect(toContent).toEqual(movesBetween('rule:route:a', baseOf(shared, 0)));
+        expect(fromContent).toEqual(movesBetween(baseOf(shared, 0), 'rule:route:a'));
+    });
+
+    it('moves only the edited rule, though the edit changes another rule’s key too', () => {
+        const before = [
+            row({ group_name: 'First', route_code: 'x', order: 1 }),
+            row({ group_name: 'Second', route_code: 'x', order: 2 }),
+        ];
+        const after = edited(before, 0, { route_code: 'y' });
+
+        // Second's code is now unique, so its key moves to it as well — and is left there.
+        expect(baseOf(after, 1)).toBe('rule:route:x');
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(movesBetween('rule:name:First', 'rule:route:y'));
+    });
+
+    it('works a hidden rule’s keys out as if it alone were shown, among the keys the store keeps for it', () => {
+        const before = [
+            row({ group_name: 'Spam', expression: 'a', dock_visible: false, order: 1 }),
+            row({ group_name: 'Spam', expression: 'b', order: 2 }),
+        ];
+        const after = edited(before, 0, { group_name: 'Ham' });
+
+        const moves = explainKeyMovesForRuleEdit(before, after, 0);
+
+        // Shown beside the drawn Spam, the hidden one falls back to its content.
+        expect(moves[0].from).toMatch(/^rule:content:.+:decision$/);
+        expect(moves[0].to).toBe('rule:name:Ham:decision');
+        expect(buildRetainedExplainStepKeys(input({ rows: before })).has(moves[0].from)).toBe(true);
+        expect(buildRetainedExplainStepKeys(input({ rows: after })).has(moves[0].to)).toBe(true);
+    });
+
+    it('leaves a shared explanation with the identical rules still drawn with it', () => {
+        const duplicate = (): ConditionGroup =>
+            row({ group_name: 'Dup', route_code: 'x', expression: 'a > 1', order: 1 });
+        const before = [duplicate(), duplicate(), duplicate()];
+        const after = edited(before, 0, { route_code: 'y' });
+
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual([]);
+    });
+
+    it('takes a content key once no other drawn rule resolves to it', () => {
+        const duplicate = (): ConditionGroup =>
+            row({ group_name: 'Dup', route_code: 'x', expression: 'a > 1', order: 1 });
+        const before = [duplicate(), duplicate()];
+        const after = edited(before, 0, { route_code: 'y' });
+
+        // The other duplicate's code is now unique, so it no longer files under the shared key.
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual(movesBetween(baseOf(before, 0), 'rule:route:y'));
+    });
+
+    it('does not write over the explanation of the identical rules it now duplicates', () => {
+        const duplicate = (): ConditionGroup =>
+            row({ group_name: 'Dup', route_code: 'x', expression: 'a > 1', order: 2 });
+        const before = [
+            row({ group_name: 'Dup', route_code: 'a', expression: 'a > 1', order: 1 }),
+            duplicate(),
+            duplicate(),
+        ];
+        const after = edited(before, 0, { route_code: 'x' });
+
+        expect(baseOf(after, 0)).toBe(baseOf(after, 1));
+        expect(explainKeyMovesForRuleEdit(before, after, 0)).toEqual([]);
+    });
+
+    it('moves nothing for a row that is not there', () => {
+        expect(explainKeyMovesForRuleEdit(table(), table(), 5)).toEqual([]);
     });
 });
 

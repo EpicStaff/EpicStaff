@@ -56,6 +56,7 @@ import {
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
@@ -76,9 +77,11 @@ import {
 import { routePortIdsWithTarget } from './cdt-decision-tree-dialog/cdt-decision-tree.builder';
 import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
+import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
 import { CdtExportImportService } from './cdt-export-import.service';
 import {
     CdtEnableContinueRequest,
+    CdtRuleIdentityEdit,
     ClassificationDecisionTableGridComponent,
 } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -158,6 +161,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             }),
         { equal: (previous, next) => previous.size === next.size && [...next].every((portId) => previous.has(portId)) }
     );
+    /**
+     * This node as the canvas holds it right now. `node()` is the same node, but it
+     * reaches the panel through the shell's bindings one change detection after the
+     * canvas changes — and the shell runs its autosave earlier in that same pass. So
+     * what another writer has just put on the canvas node is read here, not off
+     * `node()`; see `createUpdatedNode`.
+     */
+    private readonly canvasNode = computed(() => {
+        const nodeId = this.node().id;
+        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        return node?.type === NodeType.CLASSIFICATION_TABLE ? node : null;
+    });
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
@@ -212,6 +227,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly explanationStore = inject(CdtExplanationStoreService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -502,6 +518,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         return {
             ...currentNode,
+            // The canvas node's, never a copy off `node()`: this panel does not edit
+            // explanations — the decision tree writes them, and a route code or name edit
+            // moves them (`onRuleIdentityEdit`) — and the autosave carrying that edit runs
+            // before `node()` has caught up with the move, so its copy would put the
+            // explanations back under the keys they were just moved from.
+            explanations: this.canvasNode()?.explanations ?? currentNode.explanations,
             node_name: this.form.value.node_name,
             size: updatedSize,
             ports: updatedPorts,
@@ -549,6 +571,32 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(this.cloneConditionGroups(groups));
         this.cdr.markForCheck();
         this.sidePanelService.triggerAutosave();
+    }
+
+    /**
+     * A rule's route code or name was edited, which can change the key its
+     * explanations are filed under. Moves them to the new key on the canvas node
+     * now, so the decision tree shows them — outdated — rather than nothing. The
+     * edited rows follow in the grid's next `conditionGroupsChange`, and the autosave
+     * that pushes them carries the moved explanations along (`createUpdatedNode`).
+     *
+     * An accepted trade-off: the move lands before the rows do. While the form is
+     * invalid the autosave pushes nothing, and fixing the form — the common path —
+     * pushes the edit to match. Leaving the panel instead discards the edit but not
+     * the move — closing it says the changes were not saved, selecting another node
+     * discards them silently. The text then sits under the new key while the row keeps
+     * its old code, and the next explanation written drops it. The cache softens that only for
+     * text generated in this browser — it holds what `set` and `move` wrote here, and
+     * a move writes only the new key — and not at all for text loaded from the server.
+     */
+    public onRuleIdentityEdit(edit: CdtRuleIdentityEdit): void {
+        if (this.isReadOnly()) return;
+
+        const node = this.node();
+        this.explanationStore.move(
+            { nodeId: node.id, backendId: node.backendId },
+            explainKeyMovesForRuleEdit(edit.rowsBefore, edit.rowsAfter, edit.rowIndex)
+        );
     }
 
     /**

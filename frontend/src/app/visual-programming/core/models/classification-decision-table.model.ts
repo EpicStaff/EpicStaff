@@ -75,3 +75,12 @@ export interface CdtExplanation {
 
 /** Keyed by step identity — see `buildExplainStepKeys` for why the key is what it is. */
 export type CdtExplanations = Readonly<Record<string, CdtExplanation>>;
+
+/**
+ * One step's explanation re-filed after an edit changed the key its rule is filed
+ * under — see `explainKeyMovesForRuleEdit`.
+ */
+export interface CdtExplanationKeyMove {
+    readonly from: string;
+    readonly to: string;
+}

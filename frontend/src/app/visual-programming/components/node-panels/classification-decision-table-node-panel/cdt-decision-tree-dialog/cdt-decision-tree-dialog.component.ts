@@ -266,11 +266,18 @@ export class CdtDecisionTreeDialogComponent {
     private readonly explainMenuCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
 
     /**
-     * Every explainable step, keyed by block id. Built once from the same snapshot
-     * as `layout`. Not every clickable block is here — a prompt block whose config
-     * is missing has nothing to explain.
+     * Every step Explain can be asked about, keyed by block id: the explain blocks
+     * whose block on the canvas can be opened. Built once from the same snapshot as
+     * `layout`, and the only answer to "can this step be explained" — Explain All,
+     * Explain Step, the progress count and the canvas markers all read it.
+     *
+     * Narrower than `buildCdtExplainBlocks`, which has a block for every rule: a rule
+     * with no condition is drawn as "always matches" and cannot be opened, so an
+     * explanation of it is text nobody can read — not worth paying for. What is
+     * already stored for such a rule stays on the node (the store keeps every key the
+     * table's rules resolve to), ready for when it gets a condition again.
      */
-    private readonly explainBlocks = buildCdtExplainBlocks(this.data);
+    private readonly explainBlocks = this.openableExplainBlocks();
     private readonly explainTable = buildCdtExplainTable(this.data);
 
     /**
@@ -773,9 +780,23 @@ export class CdtDecisionTreeDialogComponent {
         return { backendId, llmConfig };
     }
 
+    /**
+     * Null for a block Explain cannot be asked about, whatever is filed under its
+     * key: an "always matches" rule can have text stored from when it had a
+     * condition, and with no fingerprint of its own to compare against, that text
+     * would put the outdated marker on a block nobody can open.
+     */
     private explanationOf(blockId: string | null): CdtExplanationState | null {
-        const stepKey = blockId ? this.explainStepKeys.get(blockId) : undefined;
+        if (!blockId || !this.explainBlocks.has(blockId)) return null;
+
+        const stepKey = this.explainStepKeys.get(blockId);
         return stepKey ? (this.explanations().get(stepKey) ?? null) : null;
+    }
+
+    /** See `explainBlocks`. */
+    private openableExplainBlocks(): ReadonlyMap<string, CdtExplainBlock> {
+        const openable = new Set(this.layout.blocks.filter((block) => block.clickable).map((block) => block.id));
+        return new Map([...buildCdtExplainBlocks(this.data)].filter(([blockId]) => openable.has(blockId)));
     }
 
     private finishExplainAll(): void {

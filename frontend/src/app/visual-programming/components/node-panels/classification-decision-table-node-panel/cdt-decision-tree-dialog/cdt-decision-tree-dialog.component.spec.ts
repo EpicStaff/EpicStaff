@@ -702,6 +702,68 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
         });
     });
 
+    // A rule with no condition is drawn as "always matches" and cannot be opened, so
+    // Explain must not pay for text about it that nobody can read.
+    describe('a rule that always matches', () => {
+        /** Spam has a condition; Catch-all has none. */
+        function withCatchAll(): CdtDecisionTreeInput {
+            const rows = [
+                rule({ group_name: 'Spam', route_code: 'spam', expression: 'score > 0.9', order: 1 }),
+                rule({ group_name: 'Catch-all', route_code: 'other', expression: null, order: 2 }),
+            ];
+            return input({ rows, canvasRows: rows });
+        }
+
+        it('is left out of Explain All and its progress count', () => {
+            mount(withCatchAll());
+            explainApi.explain.mockReturnValue(new Subject());
+
+            clickExplainAll();
+
+            expect(explainApi.explain).toHaveBeenCalledTimes(1);
+            expect(sentBlockIds()).toEqual(['row-0:decision']);
+            expect(host.querySelector('.cdt-tree__explain-all-label')?.textContent?.trim()).toBe(
+                CDT_TREE_COPY.explainAllBusy(0, 1)
+            );
+            expect(isMarkedLoading('Catch-all')).toBe(false);
+        });
+
+        it('leaves nothing to do once every rule that can be opened is explained', () => {
+            const data = withCatchAll();
+            const spam = decisionStep(data, 'Spam');
+            mount(data, { [spam.key]: stored('Bins spam', spam.fingerprint) });
+
+            clickExplainAll();
+
+            expect(explainApi.explain).not.toHaveBeenCalled();
+            expect(notice()).toBe(CDT_TREE_COPY.explainAllNothing);
+        });
+
+        it('shows no outdated marker for text stored from when it had a condition, and keeps that text', () => {
+            const data = withCatchAll();
+            const catchAllKey = buildExplainStepKeys(data).get('row-1:decision')!;
+            mount(data, { [catchAllKey]: stored('Catches the rest', 'from-when-it-had-a-condition') });
+            explainApi.explain.mockReturnValue(
+                of({ explanations: [explained('row-0:decision', 'Bins spam')], failures: [] })
+            );
+
+            expect(isMarkedOutdated('Catch-all')).toBe(false);
+
+            // A write elsewhere on the table keeps it: the rule may get a condition back.
+            openBlock('Spam');
+            clickExplainStep();
+            expect(nodeExplanations()[catchAllKey]?.text).toBe('Catches the rest');
+        });
+
+        it('cannot be opened, so offers no Explain Step', () => {
+            mount(withCatchAll());
+
+            openBlock('Catch-all');
+
+            expect(detail()).toBeNull();
+        });
+    });
+
     // The developer's rule: an explanation keeps the fingerprint of the content it
     // explained. Generated against edits that never get saved, or against content
     // that changes later, it must read as outdated against what is there now.

@@ -6,6 +6,7 @@ import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { CDT_ROUTE_CONTINUE_COPY } from '../cdt.constants';
 import {
     CdtEnableContinueRequest,
+    CdtRuleIdentityEdit,
     ClassificationDecisionTableGridComponent,
 } from './classification-decision-table-grid.component';
 
@@ -63,6 +64,9 @@ describe(
         let host: HTMLElement;
         let enableRequests: CdtEnableContinueRequest[];
         let rowChanges: ConditionGroup[][];
+        let identityEdits: CdtRuleIdentityEdit[];
+        /** Which output fired, in order. */
+        let emitted: string[];
 
         beforeAll(() => {
             // ag-grid sizes itself with a ResizeObserver; jsdom has none and lays nothing out anyway.
@@ -100,8 +104,17 @@ describe(
             host = fixture.nativeElement;
             enableRequests = [];
             rowChanges = [];
+            identityEdits = [];
+            emitted = [];
             fixture.componentInstance.enableContinueRequest.subscribe((request) => enableRequests.push(request));
-            fixture.componentInstance.conditionGroupsChange.subscribe((groups) => rowChanges.push(groups));
+            fixture.componentInstance.conditionGroupsChange.subscribe((groups) => {
+                rowChanges.push(groups);
+                emitted.push('rows');
+            });
+            fixture.componentInstance.ruleIdentityEdit.subscribe((edit) => {
+                identityEdits.push(edit);
+                emitted.push('identity');
+            });
             fixture.componentRef.setInput('currentNodeId', NODE_ID);
             fixture.componentRef.setInput('conditionGroups', options.groups ?? rows());
             fixture.componentRef.setInput(
@@ -142,18 +155,22 @@ describe(
             await settle();
         }
 
-        /** Edits the Route Code the way a keyboard user does: focus the cell, Enter, type, Enter. */
-        async function typeRouteCode(rowIndex: number, text: string): Promise<void> {
-            const routeCell = cell(rowIndex, 'route_code');
-            routeCell.focus();
-            routeCell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        /** Edits a text cell the way a keyboard user does: focus the cell, Enter, type, Enter. */
+        async function typeInCell(rowIndex: number, colId: string, text: string): Promise<void> {
+            const target = cell(rowIndex, colId);
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await settle();
-            const input = cell(rowIndex, 'route_code').querySelector<HTMLInputElement>('input');
-            if (!input) throw new Error('no route code editor');
+            const input = cell(rowIndex, colId).querySelector<HTMLInputElement>('input');
+            if (!input) throw new Error(`no ${colId} editor`);
             input.value = text;
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             await settle();
+        }
+
+        async function typeRouteCode(rowIndex: number, text: string): Promise<void> {
+            await typeInCell(rowIndex, 'route_code', text);
         }
 
         describe('ticking Continue on a wired route code', () => {
@@ -265,6 +282,53 @@ describe(
                 const emitted = rowChanges.at(-1)!;
                 expect(emitted[ROW.reject]).toEqual(expect.objectContaining({ route_code: '', continue_flag: true }));
                 expect(continueBox(ROW.reject).checked).toBe(true);
+            });
+        });
+
+        describe('editing what a rule is told apart by', () => {
+            beforeEach(() => render());
+
+            /** Every row but the edited one, which the two sides must agree on. */
+            function othersThan(rowIndex: number, rowsOnOneSide: ConditionGroup[]): ConditionGroup[] {
+                return rowsOnOneSide.filter((_, index) => index !== rowIndex);
+            }
+
+            it('reports a new route code with the rows either side of it, just before the rows', async () => {
+                await typeRouteCode(ROW.reject, 'refused');
+
+                expect(identityEdits).toHaveLength(1);
+                const [edit] = identityEdits;
+                expect(edit.rowIndex).toBe(ROW.reject);
+                expect(edit.rowsBefore[ROW.reject].route_code).toBe('reject');
+                expect(edit.rowsAfter[ROW.reject].route_code).toBe('refused');
+                expect(othersThan(ROW.reject, edit.rowsBefore)).toEqual(othersThan(ROW.reject, edit.rowsAfter));
+                expect(edit.rowsAfter).toEqual(rowChanges.at(-1));
+                expect(emitted).toEqual(['identity', 'rows']);
+            });
+
+            it('reports a renamed rule', async () => {
+                await typeInCell(ROW.nowhere, 'group_name', 'Somewhere');
+
+                expect(identityEdits).toHaveLength(1);
+                const [edit] = identityEdits;
+                expect(edit.rowIndex).toBe(ROW.nowhere);
+                expect(edit.rowsBefore[ROW.nowhere].group_name).toBe('Nowhere');
+                expect(edit.rowsAfter[ROW.nowhere].group_name).toBe('Somewhere');
+                expect(othersThan(ROW.nowhere, edit.rowsBefore)).toEqual(othersThan(ROW.nowhere, edit.rowsAfter));
+            });
+
+            it('reports nothing when the value is typed again unchanged', async () => {
+                await typeRouteCode(ROW.reject, 'reject');
+                await typeInCell(ROW.reject, 'group_name', 'Reject');
+
+                expect(identityEdits).toEqual([]);
+            });
+
+            it('reports nothing for an edit to any other column', async () => {
+                await clickContinue(ROW.reject);
+
+                expect(rowChanges).toHaveLength(1);
+                expect(identityEdits).toEqual([]);
             });
         });
 

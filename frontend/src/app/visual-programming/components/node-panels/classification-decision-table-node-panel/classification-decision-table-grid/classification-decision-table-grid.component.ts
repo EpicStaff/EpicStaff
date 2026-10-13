@@ -120,6 +120,16 @@ export interface CdtEnableContinueRequest {
     readonly rows: ConditionGroup[];
 }
 
+/** Emitted when a rule's route code or name was edited; see `ruleIdentityEdit`. */
+export interface CdtRuleIdentityEdit {
+    /** All rows as they were before the edit. */
+    readonly rowsBefore: ConditionGroup[];
+    /** All rows after it — the rows `conditionGroupsChange` emits next. */
+    readonly rowsAfter: ConditionGroup[];
+    /** The edited row, at the same index in both. */
+    readonly rowIndex: number;
+}
+
 interface GroupOverlayMember {
     sectionId: string;
     name: string;
@@ -179,6 +189,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
      * connection on `portId` and, only if that worked, adopts `rows`.
      */
     public enableContinueRequest = output<CdtEnableContinueRequest>();
+    /**
+     * A rule's route code or name changed in a cell — whatever wrote the cell, since
+     * every cell write reports through `onCellValueChanged`. Those two are what a rule
+     * is told apart by (bulk save matches rows by them), so the parent may hold state
+     * keyed by them that has to follow. Emitted just before the rows.
+     */
+    public ruleIdentityEdit = output<CdtRuleIdentityEdit>();
     public promptChange = output<{
         promptId: string;
         field: keyof PromptConfig;
@@ -2647,7 +2664,34 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
 
         const updatedRows = this.getUpdatedRows();
+        if ((colId === 'route_code' || colId === 'group_name') && event.oldValue !== event.newValue) {
+            this.emitRuleIdentityEdit(updatedRows, rowData, colId, event.oldValue);
+        }
         this.emitChanges(updatedRows);
+    }
+
+    /**
+     * ag-grid reports the edit once the cell is written, so the row as it was is
+     * rebuilt from the old value. Only that field is put back: a route-code edit
+     * also flips Continue, which no consumer tells rules apart by.
+     */
+    private emitRuleIdentityEdit(
+        rowsAfter: ConditionGroup[],
+        editedRow: ConditionGroup,
+        field: 'route_code' | 'group_name',
+        oldValue: unknown
+    ): void {
+        const rowIndex = this.rowData().indexOf(editedRow);
+        if (rowIndex === -1) return;
+
+        const previous = typeof oldValue === 'string' ? oldValue : null;
+        const rowBefore: ConditionGroup =
+            field === 'route_code'
+                ? { ...rowsAfter[rowIndex], route_code: previous }
+                : { ...rowsAfter[rowIndex], group_name: previous ?? '' };
+        const rowsBefore = rowsAfter.map((row, index) => (index === rowIndex ? rowBefore : row));
+
+        this.ruleIdentityEdit.emit({ rowsBefore, rowsAfter, rowIndex });
     }
 
     private createNewRow(index: number): ConditionGroup {

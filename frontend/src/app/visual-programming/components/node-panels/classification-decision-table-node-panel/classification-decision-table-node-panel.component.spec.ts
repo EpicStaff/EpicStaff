@@ -1,8 +1,10 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component, input, output, signal } from '@angular/core';
+import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
@@ -10,15 +12,21 @@ import { of } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../../../core/helpers/helpers';
+import { CdtExplanation, CdtExplanations } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
+import { CdtExplainApiService } from '../../../services/cdt-explain-api.service';
 import { FlowService } from '../../../services/flow.service';
+import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
+import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
+import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import {
     CdtEnableContinueRequest,
+    CdtRuleIdentityEdit,
     ClassificationDecisionTableGridComponent,
 } from './classification-decision-table-grid/classification-decision-table-grid.component';
 import { ClassificationDecisionTableNodePanelComponent } from './classification-decision-table-node-panel.component';
@@ -51,6 +59,7 @@ class GridStubComponent {
     readonly conditionGroupsChange = output<ConditionGroup[]>();
     readonly sectionsChange = output<unknown>();
     readonly enableContinueRequest = output<CdtEnableContinueRequest>();
+    readonly ruleIdentityEdit = output<CdtRuleIdentityEdit>();
     readonly promptChange = output<unknown>();
     readonly promptAdd = output<unknown>();
     readonly openPromptLibrary = output<unknown>();
@@ -283,5 +292,244 @@ describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on
             expect(portIds()).not.toBe(before);
             expect(portIds().size).toBe(0);
         });
+    });
+});
+
+/**
+ * Explanations follow a rule whose route code changes: the grid reports the edit,
+ * the panel has the store move them, and the shell's autosave pushes the edited
+ * rows without putting the old keys back. The decision tree is the real dialog,
+ * opened by the panel through the CDK the way the button opens it; Foblex is
+ * stripped from it as in its own spec.
+ */
+describe('ClassificationDecisionTableNodePanelComponent — explanations of a rule whose route code changes', () => {
+    const MODEL = 7;
+    const OLD_KEY = 'rule:route:approve:decision';
+    const NEW_KEY = 'rule:route:approved:decision';
+    const EXPLAINED: CdtExplanation = { text: 'Approves confident scores', fingerprint: 'f', generatedBy: 'model' };
+
+    const EXPLAINABLE_ROWS = [
+        rule({ group_name: 'Approve', route_code: 'approve', expression: 'score > 0.8', order: 1 }),
+        rule({ group_name: 'Reject', route_code: 'reject', expression: 'score < 0.2', order: 2 }),
+    ];
+
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    let panel: ClassificationDecisionTableNodePanelComponent;
+    let flowService: FlowService;
+    let explainApi: { explain: ReturnType<typeof vi.fn> };
+    let persistRequests: string[];
+
+    beforeAll(() => {
+        // The detail window measures its code block with a ResizeObserver; jsdom has none.
+        const scope = globalThis as unknown as { ResizeObserver?: unknown };
+        scope.ResizeObserver ??= class {
+            observe(): void {}
+            unobserve(): void {}
+            disconnect(): void {}
+        };
+    });
+
+    afterEach(() => {
+        TestBed.inject(Dialog).closeAll();
+        document.querySelectorAll('.cdk-overlay-container').forEach((element) => (element.innerHTML = ''));
+        localStorage.clear();
+    });
+
+    function create(explanations: CdtExplanations, isPreview = false): void {
+        localStorage.clear();
+        explainApi = { explain: vi.fn() };
+        TestBed.configureTestingModule({
+            errorOnUnknownProperties: true,
+            errorOnUnknownElements: true,
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                {
+                    provide: FullLLMConfigService,
+                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
+                },
+                { provide: CdtExplainApiService, useValue: explainApi },
+            ],
+        });
+        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+            remove: { imports: [ClassificationDecisionTableGridComponent] },
+            add: { imports: [GridStubComponent] },
+        });
+        TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
+            remove: { imports: [FFlowModule, FZoomDirective] },
+            add: { schemas: [NO_ERRORS_SCHEMA] },
+        });
+        TestBed.overrideComponent(CdtDecisionTreeBlockComponent, {
+            remove: { imports: [FFlowModule] },
+            add: { schemas: [NO_ERRORS_SCHEMA] },
+        });
+
+        flowService = TestBed.inject(FlowService);
+        flowService.setFlow({
+            nodes: [
+                {
+                    ...tableNode(),
+                    data: {
+                        name: 'Triage',
+                        table: { condition_groups: EXPLAINABLE_ROWS, prompts: {}, default_llm_config: MODEL },
+                    },
+                    ports: generatePortsForClassificationDecisionTableNode(NODE_ID, EXPLAINABLE_ROWS),
+                    explanations,
+                } as unknown as ClassificationDecisionTableNodeModel,
+            ],
+            connections: [],
+        });
+        persistRequests = [];
+        TestBed.inject(SidePanelService).cdtExplanationsSaveRequest$.subscribe((nodeId) =>
+            persistRequests.push(nodeId)
+        );
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        feedLiveNode();
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+    }
+
+    function grid(): GridStubComponent {
+        return fixture.debugElement.query(By.directive(GridStubComponent)).componentInstance as GridStubComponent;
+    }
+
+    /** What the shell does once change detection reaches it: feeds the panel the live node. */
+    function feedLiveNode(): void {
+        fixture.componentRef.setInput(
+            'node',
+            flowService.nodes().find((node) => node.id === NODE_ID)
+        );
+    }
+
+    function canvasExplanations(): CdtExplanations {
+        const node = flowService.nodes().find((candidate) => candidate.id === NODE_ID);
+        return (node as ClassificationDecisionTableNodeModel).explanations ?? {};
+    }
+
+    /** What the grid emits for a typed route code: the edit, then the rows. */
+    function editRouteCodeInGrid(rowIndex: number, routeCode: string): void {
+        const rowsBefore = panel.conditionGroups();
+        const rowsAfter = rowsBefore.map((row, index) =>
+            index === rowIndex ? { ...row, route_code: routeCode } : { ...row }
+        );
+        grid().ruleIdentityEdit.emit({ rowsBefore, rowsAfter, rowIndex });
+        grid().conditionGroupsChange.emit(rowsAfter);
+    }
+
+    /**
+     * The shell's autosave: it runs in the change detection pass that will hand the
+     * panel the updated canvas node, but before it does — so the panel still holds the
+     * node from before the move. Then pushed to the canvas as `onNodePanelAutosaved` does.
+     */
+    function autosaveAsTheShellDoes(): ClassificationDecisionTableNodeModel {
+        const pushed = panel.onSave();
+        if (!pushed) throw new Error('the panel saved nothing');
+        flowService.updateNode(pushed);
+        feedLiveNode();
+        fixture.detectChanges();
+        return pushed;
+    }
+
+    // -- the decision tree, in the CDK overlay ---------------------------------
+
+    function renderOverlay(): void {
+        TestBed.inject(ApplicationRef).tick();
+    }
+
+    function openTree(): void {
+        panel.openDecisionTree();
+        renderOverlay();
+    }
+
+    function closeTree(): void {
+        TestBed.inject(Dialog).closeAll();
+        renderOverlay();
+    }
+
+    function treeBlock(title: string): HTMLElement {
+        const block = [...document.querySelectorAll<HTMLElement>('app-cdt-decision-tree-block')].find(
+            (candidate) => candidate.querySelector('.cdt-tree-block__title')?.textContent?.trim() === title
+        );
+        if (!block) throw new Error(`no block titled ${title}`);
+        return block;
+    }
+
+    function openTreeBlock(title: string): void {
+        treeBlock(title).querySelector<HTMLElement>('.cdt-tree-block__body')!.click();
+        renderOverlay();
+    }
+
+    function treeDetail(): HTMLElement {
+        const detail = document.querySelector<HTMLElement>('app-cdt-decision-tree-detail');
+        if (!detail) throw new Error('no detail window');
+        return detail;
+    }
+
+    it('moves the explanations to the new key on the canvas node, and asks for no persist', () => {
+        create({ [OLD_KEY]: EXPLAINED });
+
+        editRouteCodeInGrid(0, 'approved');
+
+        expect(canvasExplanations()).toEqual({ [NEW_KEY]: EXPLAINED });
+        expect(persistRequests).toEqual([]);
+    });
+
+    it('keeps the moved explanations in the autosave that runs before the canvas node reaches the panel', () => {
+        create({ [OLD_KEY]: EXPLAINED });
+
+        editRouteCodeInGrid(0, 'approved');
+        const pushed = autosaveAsTheShellDoes();
+
+        expect(pushed.explanations).toEqual({ [NEW_KEY]: EXPLAINED });
+        expect(pushed.data.table.condition_groups[0].route_code).toBe('approved');
+        expect(canvasExplanations()).toEqual({ [NEW_KEY]: EXPLAINED });
+        // Saved with what it pushed, so the panel reads clean once the node arrives.
+        expect(panel.isDirty()).toBe(false);
+    });
+
+    it('moves nothing in a read-only editor', () => {
+        create({ [OLD_KEY]: EXPLAINED }, true);
+
+        editRouteCodeInGrid(0, 'approved');
+
+        expect(canvasExplanations()).toEqual({ [OLD_KEY]: EXPLAINED });
+    });
+
+    it('shows a generated explanation as outdated in the decision tree after the route code changes', () => {
+        create({});
+        explainApi.explain.mockReturnValue(
+            of({
+                explanations: [{ id: 'row-0:decision', text: 'Approves confident scores', generated_by: 'model' }],
+                failures: [],
+            })
+        );
+
+        openTree();
+        openTreeBlock('Approve');
+        treeDetail().querySelector<HTMLButtonElement>('.cdt-tree-detail__explain')!.click();
+        renderOverlay();
+        expect(Object.keys(canvasExplanations())).toEqual([OLD_KEY]);
+        expect(treeBlock('Approve').querySelector('.cdt-tree-block__outdated')).toBeNull();
+        closeTree();
+
+        editRouteCodeInGrid(0, 'approved');
+        autosaveAsTheShellDoes();
+        // On the node, which is what a save sends — the cache alone would show it
+        // in this browser and lose it everywhere else.
+        expect(Object.keys(canvasExplanations())).toEqual([NEW_KEY]);
+
+        openTree();
+        expect(treeBlock('Approve').querySelector('.cdt-tree-block__outdated')).not.toBeNull();
+        expect(treeBlock('Reject').querySelector('.cdt-tree-block__outdated')).toBeNull();
+        openTreeBlock('Approve');
+        expect(treeDetail().querySelector('.cdt-tree-detail__explanation')?.textContent?.trim()).toBe(
+            'Approves confident scores'
+        );
+        expect(treeDetail().querySelector('.cdt-tree-detail__outdated')).not.toBeNull();
+        // Only the generation asked for a persist; the move rides with the table edit.
+        expect(persistRequests).toEqual([NODE_ID]);
     });
 });

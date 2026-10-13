@@ -116,4 +116,99 @@ describe('CdtExplanationStoreService', () => {
         expect(scope.get('cached')).toBeNull();
         expect(cache.get).not.toHaveBeenCalled();
     });
+
+    describe('move', () => {
+        const TABLE = { nodeId: 'node-1', backendId: 42 };
+        const OLD_PROMPT: CdtExplanation = { text: 'Old prompt', fingerprint: 'old-prompt', generatedBy: 'model' };
+        const ORPHAN: CdtExplanation = { text: 'Left by a deleted rule', fingerprint: 'orphan', generatedBy: 'model' };
+
+        function withExplanations(flowService: ReturnType<typeof setUp>['flowService'], explanations: object): void {
+            flowService.nodes.set([{ ...tableNode(), explanations } as NodeModel]);
+        }
+
+        function storeService(): CdtExplanationStoreService {
+            return TestBed.inject(CdtExplanationStoreService);
+        }
+
+        it('re-files what is under each old key under the new one, over whatever was there, and leaves the rest', () => {
+            const { flowService } = setUp({ isReadOnly: false, isPreview: false });
+            withExplanations(flowService, {
+                'rule:route:a:decision': STORED,
+                'rule:route:a:prompt': OLD_PROMPT,
+                'rule:route:b:decision': ORPHAN,
+                'rule:route:c:decision': GENERATED,
+            });
+
+            storeService().move(TABLE, [
+                { from: 'rule:route:a:decision', to: 'rule:route:b:decision' },
+                { from: 'rule:route:a:prompt', to: 'rule:route:b:prompt' },
+                { from: 'rule:route:a:manipulation', to: 'rule:route:b:manipulation' },
+            ]);
+
+            expect(flowService.updateNode).toHaveBeenCalledTimes(1);
+            const [updated, options] = flowService.updateNode.mock.calls[0];
+            expect(updated.explanations).toEqual({
+                'rule:route:b:decision': STORED,
+                'rule:route:b:prompt': OLD_PROMPT,
+                'rule:route:c:decision': GENERATED,
+            });
+            // Sorted, as `set` writes them, so the canvas and the saved copy stringify alike.
+            expect(Object.keys(updated.explanations)).toEqual([
+                'rule:route:b:decision',
+                'rule:route:b:prompt',
+                'rule:route:c:decision',
+            ]);
+            expect(options).toEqual({ skipDecisionTableReset: true });
+        });
+
+        it('writes the new keys through to the cache, and asks for no persist', () => {
+            const { flowService, sidePanelService, cache } = setUp({ isReadOnly: false, isPreview: false });
+            withExplanations(flowService, { 'rule:route:a:decision': STORED });
+
+            storeService().move(TABLE, [
+                { from: 'rule:route:a:decision', to: 'rule:route:b:decision' },
+                { from: 'rule:route:a:prompt', to: 'rule:route:b:prompt' },
+            ]);
+
+            expect(cache.set).toHaveBeenCalledExactlyOnceWith('42|rule:route:b:decision', STORED);
+            expect(sidePanelService.requestCdtExplanationsSave).not.toHaveBeenCalled();
+        });
+
+        it('changes nothing when no old key has an entry', () => {
+            const { flowService, cache } = setUp({ isReadOnly: false, isPreview: false });
+
+            storeService().move(TABLE, [{ from: 'rule:route:a:decision', to: 'stored' }]);
+
+            expect(flowService.updateNode).not.toHaveBeenCalled();
+            expect(cache.set).not.toHaveBeenCalled();
+        });
+
+        it('writes nothing — node, persist or cache — in a read-only editor', () => {
+            const { flowService, sidePanelService, cache } = setUp({ isReadOnly: true, isPreview: false });
+
+            storeService().move(TABLE, [{ from: 'stored', to: 'rule:route:b:decision' }]);
+
+            expect(flowService.updateNode).not.toHaveBeenCalled();
+            expect(sidePanelService.requestCdtExplanationsSave).not.toHaveBeenCalled();
+            expect(cache.set).not.toHaveBeenCalled();
+        });
+
+        it('refuses a move whose longer key would push an explanation already kept out of the stored map', () => {
+            const { flowService, cache } = setUp({ isReadOnly: false, isPreview: false });
+            const big = { ...GENERATED, text: 't'.repeat(CDT_EXPLANATION_LIMITS.maxTextLength) };
+            const crowded: Record<string, CdtExplanation> = Object.fromEntries(
+                Array.from({ length: 52 }, (_, index) => [`stored-${String(index).padStart(2, '0')}`, big])
+            );
+            // Filled to five bytes short of the limit, with the entry that sorts last.
+            const bytes = (map: object): number => new TextEncoder().encode(JSON.stringify(map)).length;
+            const withEmptyFiller = { ...crowded, 'zzz-filler': { ...GENERATED, text: '' } };
+            const fillerText = 'f'.repeat(CDT_EXPLANATION_LIMITS.maxTotalBytes - 5 - bytes(withEmptyFiller));
+            withExplanations(flowService, { ...crowded, 'zzz-filler': { ...GENERATED, text: fillerText } });
+
+            storeService().move(TABLE, [{ from: 'stored-00', to: 'stored-00-under-a-much-longer-key' }]);
+
+            expect(flowService.updateNode).not.toHaveBeenCalled();
+            expect(cache.set).not.toHaveBeenCalled();
+        });
+    });
 });
