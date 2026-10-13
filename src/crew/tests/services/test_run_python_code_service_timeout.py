@@ -1,12 +1,3 @@
-"""The sandbox result arrives over Redis pub/sub, which has no delivery guarantee: a lost
-message used to hang run_code() forever. It now gives up after settings.CODE_RESULT_TIMEOUT
-and returns the same returncode=124 shape the sandbox uses for its own timeout.
-
-The subscription also leaked -- unsubscribe() only ran on the success path, so a
-StopSession raised by stop_event.check_stop() left the subscriber registered for the
-lifetime of the process.
-"""
-
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
@@ -16,7 +7,7 @@ import pytest
 import settings
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import TIMEOUT_STDERR_MESSAGE, RunPythonCodeService
 from src.shared.models import CodeResultData, PythonCodeData
 
 
@@ -98,7 +89,7 @@ async def test_run_code_returns_timeout_result_when_no_result_arrives(short_time
     assert result["returncode"] == 124
     assert result["result_data"] is None
     assert result["execution_id"] == fake_redis.published["execution_id"]
-    assert fake_redis.published["execution_id"] in result["stderr"]
+    assert result["stderr"] == TIMEOUT_STDERR_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -137,7 +128,7 @@ async def test_run_code_unsubscribes_when_stop_event_aborts_the_wait(short_timeo
 
 
 @pytest.mark.asyncio
-async def test_run_code_returns_the_sandbox_result_and_unsubscribes_once(short_timeout):
+async def test_run_code_returns_the_sandbox_result_and_unsubscribes_once():
     fake_redis = FakeRedisService()
     service = RunPythonCodeService(redis_service=fake_redis)
 

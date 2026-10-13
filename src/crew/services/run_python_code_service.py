@@ -14,6 +14,7 @@ from utils.singleton_meta import SingletonMeta
 
 # Matches the sandbox's own timeout exit code, so callers need no new branch.
 TIMEOUT_RETURNCODE = 124
+TIMEOUT_STDERR_MESSAGE = "Timed out waiting for the result"
 
 
 def build_state_globals(state: State) -> dict[str, Any]:
@@ -38,6 +39,15 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         stop_event: StopEvent | None = None,
         storage_credentials: StorageCredentials | None = None,
     ) -> dict[str, Any]:
+        """Publish the code to the sandbox and wait for its result on the code-results channel.
+
+        The result arrives over Redis pub/sub, which has no delivery guarantee. If none
+        arrives within settings.CODE_RESULT_TIMEOUT, this returns a synthesized
+        CodeResultData(returncode=TIMEOUT_RETURNCODE, result_data=None) instead of
+        blocking forever -- the sandbox itself never produced this result, so callers
+        must branch on returncode like they already do for every other non-zero outcome.
+        CODE_RESULT_TIMEOUT is None means wait indefinitely.
+        """
         additional_global_kwargs = additional_global_kwargs or {}
         venv_name = python_code_data.venv_name
         code = python_code_data.code
@@ -113,10 +123,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                         execution_id=unique_task_id,
                         returncode=TIMEOUT_RETURNCODE,
                         stdout="",
-                        stderr=(
-                            f"Timed out after {timeout} seconds waiting for the sandbox result "
-                            f"of execution {unique_task_id}."
-                        ),
+                        stderr=TIMEOUT_STDERR_MESSAGE,
                         result_data=None,
                     ).model_dump()
                 await asyncio.sleep(0.001)
