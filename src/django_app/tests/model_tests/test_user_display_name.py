@@ -1,6 +1,6 @@
 import pytest
 
-from tables.models.user import DISPLAY_NAME_MAX_LENGTH, display_name_from_email
+from tables.models.user import DISPLAY_NAME_MAX_LENGTH, User, display_name_from_email
 
 
 @pytest.mark.parametrize(
@@ -146,3 +146,16 @@ def test_display_name_truncation_strips_trailing_space():
     display_name = display_name_from_email(email)
 
     assert display_name == "Ab" + "ab" * 126
+
+
+def test_effective_display_name_is_the_stored_name():
+    user = User(email="jane.operator@acme.com", display_name="Jane O.")
+
+    assert user.effective_display_name == "Jane O."
+
+
+@pytest.mark.parametrize("stored_display_name", [None, "", "   "])
+def test_effective_display_name_derives_from_email_when_none_is_stored(stored_display_name):
+    user = User(email="jane.operator@acme.com", display_name=stored_display_name)
+
+    assert user.effective_display_name == "Jane Operator"
