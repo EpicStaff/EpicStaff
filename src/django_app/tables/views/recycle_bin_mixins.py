@@ -1,12 +1,13 @@
 """Recycle-bin actions for every viewset whose items can be restored."""
 
 from drf_spectacular.utils import extend_schema
-from rbac.access.gates import DenyApiKeyAuth
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.serializers.recycle_bin_serializers import (
     RecycleBinBulkPurgeResponseSerializer,
@@ -29,18 +30,19 @@ from tables.services.recycle_bin.registry import BinResource, bin_resources
 from tables.services.recycle_bin.restore_service import RestoreService
 from tables.services.recycle_bin.sources import RecycleBinSource
 
-# Seeing the bin is a read, restoring brings an item back (a create), and
-# purging finishes a delete. One bit per action, so the any-bit can() is exact.
+# Seeing the bin is a read and restoring brings an item back (a create). One bit
+# per action, so the any-bit can() is exact. The purges are left out on purpose:
+# they are superadmin-only (purge_permissions), and an unmapped action is denied,
+# so a purge stays closed if a view ever loses that gate.
 RECYCLE_BIN_ACTION_MAP = {
     "recycle_bin": Permission.READ,
     "recycle_bin_contents": Permission.READ,
     "restore": Permission.CREATE,
-    "purge": Permission.DELETE,
     "bulk_restore": Permission.CREATE,
-    "bulk_purge": Permission.DELETE,
 }
-# Purging is the one bin action that can't be undone, so only a user session may do it.
-API_KEY_REFUSED_ACTIONS = frozenset({"purge", "bulk_purge"})
+# Purging is the one bin action that can't be undone, so only a superadmin may do
+# it, and only from a user session.
+PURGE_ACTIONS = frozenset({"purge", "bulk_purge"})
 
 
 class RecycleBinActionsMixin:
@@ -54,9 +56,10 @@ class RecycleBinActionsMixin:
     starts from RecycleBinService.binned(), so a row of another org, a live
     row, or a row the list hides is a 404.
 
-    Both purges refuse API keys (403), as emptying the whole bin does: a purge
-    can't be undone, so a leaked key must not wipe the bin type by type. Listing
-    and restoring stay open to API keys.
+    Both purges are superadmin-only and refuse API keys (403), as emptying the
+    whole bin does: a purge can't be undone, so neither an org admin nor a leaked
+    key may wipe the bin type by type. Listing and restoring follow the viewset's
+    permission bits and stay open to API keys.
 
     `perform_destroy` bins the row and records the request user as who deleted it.
     A viewset that overrides it, or deletes outside it (a bulk delete), calls
@@ -68,9 +71,8 @@ class RecycleBinActionsMixin:
 
     def get_permissions(self):
         permissions = super().get_permissions()
-        # After the viewset's own classes: DenyApiKeyAuth expects IsAuthenticated first.
-        if self.action in API_KEY_REFUSED_ACTIONS:
-            permissions.append(DenyApiKeyAuth())
+        if self.action in PURGE_ACTIONS:
+            return purge_permissions(permissions)
         return permissions
 
     def perform_destroy(self, instance):
@@ -185,6 +187,16 @@ class RecycleBinActionsMixin:
         serializer = RecycleBinBulkRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return None if serializer.validated_data["all"] else serializer.validated_data["ids"]
+
+
+def purge_permissions(view_permissions: list) -> list:
+    """The gates of a purge: superadmin only, never an API key, then the view's own.
+
+    Ahead of the view's gates, so a non-superadmin gets IsSuperadmin's 403 before any
+    verb check or object lookup: the answer is the same for an id of another org.
+    DenyApiKeyAuth goes first, so every API key, a superadmin's too, is told to use a session.
+    """
+    return [IsAuthenticated(), DenyApiKeyAuth(), IsSuperadmin(), *view_permissions]
 
 
 def request_actor(request) -> str:

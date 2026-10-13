@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import DenyApiKeyAuth, HasOrgPermission
+from rbac.access.gates import HasOrgPermission
 from rbac.authorship import (
     authorship_prefetches,
     record_last_edit,
@@ -70,7 +70,12 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_LIMITS_SWAGGER,
 )
-from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, request_actor
+from tables.views.recycle_bin_mixins import (
+    PURGE_ACTIONS,
+    RECYCLE_BIN_ACTION_MAP,
+    purge_permissions,
+    request_actor,
+)
 
 _USER_ID_KEYS = ("created_by", "last_edited_by")
 
@@ -565,9 +570,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
     def get_permissions(self):
         permissions = super().get_permissions()
-        # Purging can't be undone, so API keys can't (as with the other bins' purges).
-        if self.action == "purge":
-            permissions.append(DenyApiKeyAuth())
+        if self.action in PURGE_ACTIONS:
+            return purge_permissions(permissions)
         return permissions
 
     @extend_schema(
@@ -575,7 +579,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     )
     @action(detail=False, methods=["post"], url_path="recycle-bin/purge")
     def purge(self, request):
-        """Delete the selected ids for good, or empty the bin with `all: true`. API keys get 403."""
+        """Delete the selected ids for good, or empty the bin with `all: true`. Superadmin only, never an API key."""
         result = StorageRecycleBinService(self.manager).purge_many(
             self.get_active_org_id(), self._bulk_ids(request), actor=request_actor(request)
         )

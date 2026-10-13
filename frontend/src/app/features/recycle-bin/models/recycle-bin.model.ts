@@ -208,7 +208,7 @@ export interface RecycleBinBulkFailureResponse {
     message: string;
 }
 
-/** POST recycle-bin/empty/: one slice of every bin the user may delete in; call again while `remaining`. */
+/** POST recycle-bin/empty/ (superadmin only): one slice of every bin; call again while `remaining`. */
 export interface RecycleBinEmptyResponse {
     purged_count: number;
     /** Items still in those bins: left for the next call, or ones that failed. */

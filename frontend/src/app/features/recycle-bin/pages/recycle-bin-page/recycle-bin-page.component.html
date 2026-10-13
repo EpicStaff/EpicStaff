@@ -10,7 +10,7 @@
                     <span class="subtitle-inline">{{ subtitle() }}</span>
                 </h1>
             </div>
-            @if (purgeableTabs().length > 0) {
+            @if (canEmpty()) {
                 <div class="header-actions">
                     <app-button
                         class="empty-bin-btn"

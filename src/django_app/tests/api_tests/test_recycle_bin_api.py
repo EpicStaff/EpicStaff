@@ -1,5 +1,5 @@
 """Recycle-bin endpoints: list, restore and purge. Scoped to the active org.
-READ lists, CREATE restores, DELETE purges."""
+READ lists, CREATE restores; only a superadmin purges, whatever bits a role holds."""
 
 import uuid
 from collections.abc import Callable
@@ -26,7 +26,7 @@ from agents.models import (
 )
 from agents.views.agent_definition_views import AgentDefinitionViewSet
 from agents.views.surface_views import SurfaceViewSet
-from rbac.access.gates import DenyApiKeyAuth
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import ApiKey, Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
@@ -75,6 +75,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerViewSet,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin, request_actor
+from tables.views.storage_views import StorageAPIView
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from utils.logger import logger
 
@@ -97,6 +98,11 @@ def admin_client(client_as, admin_acme, acme):
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
     return client
+
+
+def _assert_superadmin_required(response):
+    assert response.status_code == 403, response.content
+    assert response.json()["message"] == IsSuperadmin.message
 
 
 @pytest.fixture
@@ -198,12 +204,12 @@ class TestFlowRecycleBin:
             "links_restored": False,
         }
 
-    def test_purge_removes_the_flow_for_good(self, admin_client, acme):
+    def test_purge_removes_the_flow_for_good(self, admin_client, superadmin_in_acme, acme):
         graph = Graph.objects.create(org=acme, name="Gone")
         TaskNode.objects.create(graph=graph, node_name="task")
         graph.delete()
 
-        response = admin_client.delete(f"{FLOWS_URL}{graph.pk}/purge/")
+        response = superadmin_in_acme.delete(f"{FLOWS_URL}{graph.pk}/purge/")
 
         assert response.status_code == 204, response.content
         assert not Graph.all_objects.filter(pk=graph.pk).exists()
@@ -227,50 +233,51 @@ class TestFlowRecycleBin:
         assert registered.pk == node.pk
         assert registered.active is True
 
-    def test_other_orgs_flows_are_hidden_and_404(self, admin_client, beta):
+    def test_other_orgs_flows_are_hidden_and_404(self, admin_client, superadmin_in_acme, beta):
         foreign = Graph.objects.create(org=beta, name="Foreign")
         foreign.delete()
 
         assert _bin(admin_client, FLOWS_URL) == []
         assert admin_client.post(f"{FLOWS_URL}{foreign.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{FLOWS_URL}{foreign.pk}/purge/").status_code == 404
+        # A superadmin purges within the active org too: Beta's flow isn't in Acme's bin.
+        assert superadmin_in_acme.delete(f"{FLOWS_URL}{foreign.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=foreign.pk).exists()
 
-    def test_live_flow_is_404_on_restore_and_purge(self, admin_client, acme):
+    def test_live_flow_is_404_on_restore_and_purge(self, admin_client, superadmin_in_acme, acme):
         graph = Graph.objects.create(org=acme, name="Alive")
 
         assert admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 404
         assert Graph.objects.filter(pk=graph.pk).exists()
 
-    def test_flow_binned_before_batches_existed_is_hidden_and_404(self, admin_client, acme):
+    def test_flow_binned_before_batches_existed_is_hidden_and_404(self, admin_client, superadmin_in_acme, acme):
         legacy = Graph.objects.create(org=acme, name="Legacy")
         legacy.delete()
         Graph.all_objects.filter(pk=legacy.pk).update(soft_delete_batch=None)
 
         assert _bin(admin_client, FLOWS_URL) == []
         assert admin_client.post(f"{FLOWS_URL}{legacy.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{FLOWS_URL}{legacy.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{FLOWS_URL}{legacy.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=legacy.pk).exists()
 
-    def test_purge_is_logged_with_the_acting_user_and_ids_only(self, admin_client, admin_acme, acme):
+    def test_purge_is_logged_with_the_acting_user_and_ids_only(self, superadmin_in_acme, superadmin, acme):
         graph = Graph.objects.create(org=acme, name="Secret plan")
         graph.delete()
         batch = Graph.all_objects.get(pk=graph.pk).soft_delete_batch
         messages: list[str] = []
         sink_id = logger.add(messages.append, level="INFO", format="{message}")
         try:
-            assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 204
+            assert superadmin_in_acme.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 204
         finally:
             logger.remove(sink_id)
 
         purge_lines = [message for message in messages if message.startswith("Purged ")]
-        assert purge_lines == [f"Purged Graph {graph.pk} of org {acme.id} (batch {batch}) by user {admin_acme.pk}\n"]
+        assert purge_lines == [f"Purged Graph {graph.pk} of org {acme.id} (batch {batch}) by user {superadmin.pk}\n"]
         assert "Secret plan" not in "".join(messages)
 
-    def test_non_numeric_id_is_404(self, admin_client):
+    def test_non_numeric_id_is_404(self, admin_client, superadmin_in_acme):
         assert admin_client.post(f"{FLOWS_URL}not-a-number/restore/").status_code == 404
-        assert admin_client.delete(f"{FLOWS_URL}not-a-number/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{FLOWS_URL}not-a-number/purge/").status_code == 404
 
 
 class TestPurgeActor:
@@ -304,22 +311,22 @@ class TestFlowRecycleBinPermissions:
 
         assert [entry["id"] for entry in _bin(client, FLOWS_URL)] == [binned_flow.pk]
         assert client.post(f"{FLOWS_URL}{binned_flow.pk}/restore/").status_code == 403
-        assert client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/").status_code == 403
+        _assert_superadmin_required(client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/"))
         assert Graph.deleted_objects.filter(pk=binned_flow.pk).exists()
 
     def test_read_and_create_restores_but_cannot_purge(self, client_with_role, binned_flow):
         client = client_with_role(ResourceType.FLOWS, Permission.READ | Permission.CREATE)
 
-        assert client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/").status_code == 403
+        _assert_superadmin_required(client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/"))
         assert client.post(f"{FLOWS_URL}{binned_flow.pk}/restore/").status_code == 200
         assert Graph.objects.filter(pk=binned_flow.pk).exists()
 
-    def test_read_and_delete_purges_but_cannot_restore(self, client_with_role, binned_flow):
+    def test_read_and_delete_can_neither_restore_nor_purge(self, client_with_role, binned_flow):
         client = client_with_role(ResourceType.FLOWS, Permission.READ | Permission.DELETE)
 
         assert client.post(f"{FLOWS_URL}{binned_flow.pk}/restore/").status_code == 403
-        assert client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/").status_code == 204
-        assert not Graph.all_objects.filter(pk=binned_flow.pk).exists()
+        _assert_superadmin_required(client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/"))
+        assert Graph.deleted_objects.filter(pk=binned_flow.pk).exists()
 
     def test_list_needs_read(self, client_with_role, binned_flow):
         client = client_with_role(ResourceType.FLOWS, Permission.CREATE | Permission.DELETE)
@@ -331,9 +338,8 @@ class TestFlowRecycleBinPermissions:
         [
             (Permission.READ, None),
             (Permission.READ | Permission.CREATE, "restore"),
-            (Permission.READ | Permission.DELETE, "purge"),
         ],
-        ids=["read", "restore", "purge"],
+        ids=["read", "restore"],
     )
     def test_held_permission_still_404s_another_orgs_flow(self, client_with_role, beta, bits, action):
         foreign = Graph.objects.create(org=beta, name="Foreign")
@@ -343,20 +349,34 @@ class TestFlowRecycleBinPermissions:
         assert _bin(client, FLOWS_URL) == []
         if action == "restore":
             assert client.post(f"{FLOWS_URL}{foreign.pk}/restore/").status_code == 404
-        if action == "purge":
-            assert client.delete(f"{FLOWS_URL}{foreign.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=foreign.pk).exists()
 
     def test_member_restores_but_cannot_purge(self, client_as, member_only, acme, binned_flow):
         client = client_as(member_only)
         client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 
-        assert client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/").status_code == 403
+        _assert_superadmin_required(client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/"))
+        _assert_superadmin_required(
+            client.post(f"{FLOWS_URL}recycle-bin/purge/", {"all": True}, format="json")
+        )
         assert client.post(f"{FLOWS_URL}{binned_flow.pk}/restore/").status_code == 200
 
-    def test_viewer_lists_but_cannot_restore(self, viewer_client, binned_flow):
+    def test_viewer_lists_but_cannot_restore_or_purge(self, viewer_client, binned_flow):
         assert [entry["id"] for entry in _bin(viewer_client, FLOWS_URL)] == [binned_flow.pk]
         assert viewer_client.post(f"{FLOWS_URL}{binned_flow.pk}/restore/").status_code == 403
+        _assert_superadmin_required(viewer_client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/"))
+        _assert_superadmin_required(
+            viewer_client.post(f"{FLOWS_URL}recycle-bin/purge/", {"ids": [binned_flow.pk]}, format="json")
+        )
+        assert Graph.deleted_objects.filter(pk=binned_flow.pk).exists()
+
+    def test_anonymous_purge_is_401(self, acme, binned_flow):
+        client = APIClient()
+        client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+        assert client.delete(f"{FLOWS_URL}{binned_flow.pk}/purge/").status_code == 401
+        assert client.post(f"{FLOWS_URL}recycle-bin/purge/", {"all": True}, format="json").status_code == 401
+        assert Graph.deleted_objects.filter(pk=binned_flow.pk).exists()
 
     def test_request_without_org_header_is_400(self, client_as, admin_acme):
         response = client_as(admin_acme).get(f"{FLOWS_URL}recycle-bin/")
@@ -458,7 +478,7 @@ CASES = [
 @pytest.mark.django_db
 @pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
 class TestEveryBinResource:
-    def test_delete_list_restore_delete_purge(self, case, admin_client, acme):
+    def test_delete_list_restore_delete_purge(self, case, admin_client, superadmin_in_acme, acme):
         name = f"Lifecycle {case.key}"
         row = case.make(acme, name)
         detail_url = f"{case.url}{row.pk}/"
@@ -480,67 +500,66 @@ class TestEveryBinResource:
         assert _bin(admin_client, case.url) == []
 
         assert admin_client.delete(detail_url).status_code == case.delete_status
-        purged = admin_client.delete(f"{detail_url}purge/")
+        purged = superadmin_in_acme.delete(f"{detail_url}purge/")
         assert purged.status_code == 204, purged.content
         assert not case.model.all_objects.filter(pk=row.pk).exists()
         assert admin_client.post(f"{detail_url}restore/").status_code == 404
 
-    def test_other_orgs_rows_are_hidden_and_404(self, case, admin_client, beta):
+    def test_other_orgs_rows_are_hidden_and_404(self, case, admin_client, superadmin_in_acme, beta):
         row = case.make(beta, f"Foreign {case.key}")
         row.delete()
 
         assert _bin(admin_client, case.url) == []
         assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{case.url}{row.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
-    def test_live_row_is_404_on_restore_and_purge(self, case, admin_client, acme):
+    def test_live_row_is_404_on_restore_and_purge(self, case, admin_client, superadmin_in_acme, acme):
         row = case.make(acme, f"Alive {case.key}")
 
         assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{case.url}{row.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.objects.filter(pk=row.pk).exists()
 
-    def test_row_binned_before_batches_existed_is_hidden_and_404(self, case, admin_client, acme):
+    def test_row_binned_before_batches_existed_is_hidden_and_404(self, case, admin_client, superadmin_in_acme, acme):
         row = case.make(acme, f"Legacy {case.key}")
         row.delete()
         case.model.all_objects.filter(pk=row.pk).update(soft_delete_batch=None)
 
         assert _bin(admin_client, case.url) == []
         assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{case.url}{row.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
-    def test_split_permissions(self, case, client_with_role, acme):
+    def test_split_permissions(self, case, client_with_role, superadmin_in_acme, acme):
         row = case.make(acme, f"Guarded {case.key}")
         row.delete()
         restore_url = f"{case.url}{row.pk}/restore/"
         purge_url = f"{case.url}{row.pk}/purge/"
         reader = client_with_role(case.resource_type, Permission.READ)
         restorer = client_with_role(case.resource_type, Permission.READ | Permission.CREATE)
-        purger = client_with_role(case.resource_type, Permission.READ | Permission.DELETE)
+        deleter = client_with_role(case.resource_type, Permission.READ | Permission.DELETE)
 
         assert [entry["id"] for entry in _bin(reader, case.url)] == [row.pk]
         assert reader.post(restore_url).status_code == 403
-        assert reader.delete(purge_url).status_code == 403
-        assert restorer.delete(purge_url).status_code == 403
-        assert purger.post(restore_url).status_code == 403
+        _assert_superadmin_required(reader.delete(purge_url))
+        _assert_superadmin_required(restorer.delete(purge_url))
+        _assert_superadmin_required(deleter.delete(purge_url))
+        assert deleter.post(restore_url).status_code == 403
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
         assert restorer.post(restore_url).status_code == 200
         case.model.objects.get(pk=row.pk).delete()
-        assert purger.delete(purge_url).status_code == 204
+        assert superadmin_in_acme.delete(purge_url).status_code == 204
         assert not case.model.all_objects.filter(pk=row.pk).exists()
 
     def test_held_permission_still_404s_another_orgs_row(self, case, client_with_role, beta):
         row = case.make(beta, f"Foreign guarded {case.key}")
         row.delete()
         restorer = client_with_role(case.resource_type, Permission.READ | Permission.CREATE)
-        purger = client_with_role(case.resource_type, Permission.READ | Permission.DELETE)
 
         assert _bin(restorer, case.url) == []
         assert restorer.post(f"{case.url}{row.pk}/restore/").status_code == 404
-        assert purger.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
 
@@ -562,41 +581,92 @@ class TestBulkActions:
         assert response.json()["failed"] == []
         assert case.model.deleted_objects.filter(pk=rows[2].pk).exists()
 
-    def test_empty_the_bin(self, case, admin_client, acme, beta):
+    def test_empty_the_bin(self, case, superadmin_in_acme, acme, beta):
         ours = [case.make(acme, f"Empty {case.key} {index}") for index in range(2)]
         theirs = case.make(beta, f"Theirs {case.key}")
         for row in [*ours, theirs]:
             row.delete()
 
-        response = admin_client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+        response = superadmin_in_acme.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
 
         assert response.status_code == 200, response.content
         assert sorted(response.json()["purged"]) == sorted(row.pk for row in ours)
         assert not case.model.all_objects.filter(pk__in=[row.pk for row in ours]).exists()
         assert case.model.deleted_objects.filter(pk=theirs.pk).exists()
 
-    def test_another_orgs_id_is_404_and_nothing_changes(self, case, admin_client, acme, beta):
+    def test_another_orgs_id_is_404_and_nothing_changes(self, case, superadmin_in_acme, acme, beta):
         ours = case.make(acme, f"Ours {case.key}")
         theirs = case.make(beta, f"Theirs {case.key}")
         ours.delete()
         theirs.delete()
 
-        response = admin_client.post(
+        response = superadmin_in_acme.post(
             f"{case.url}recycle-bin/purge/", {"ids": [ours.pk, theirs.pk]}, format="json"
         )
 
         assert response.status_code == 404
         assert case.model.deleted_objects.filter(pk__in=[ours.pk, theirs.pk]).count() == 2
 
-    def test_bulk_actions_need_their_bits(self, case, client_with_role, acme):
+    def test_bulk_restore_needs_create_and_bulk_purge_a_superadmin(self, case, client_with_role, acme):
         row = case.make(acme, f"Guarded bulk {case.key}")
         row.delete()
         restorer = client_with_role(case.resource_type, Permission.READ | Permission.CREATE)
-        purger = client_with_role(case.resource_type, Permission.READ | Permission.DELETE)
+        deleter = client_with_role(case.resource_type, Permission.READ | Permission.DELETE)
 
-        assert restorer.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json").status_code == 403
-        assert purger.post(f"{case.url}recycle-bin/restore/", {"all": True}, format="json").status_code == 403
+        _assert_superadmin_required(
+            restorer.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+        )
+        _assert_superadmin_required(
+            deleter.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+        )
+        assert deleter.post(f"{case.url}recycle-bin/restore/", {"all": True}, format="json").status_code == 403
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
+
+        restored = restorer.post(f"{case.url}recycle-bin/restore/", {"ids": [row.pk]}, format="json")
+        assert restored.status_code == 200, restored.content
+        assert case.model.objects.filter(pk=row.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
+class TestPurgeIsSuperadminOnly:
+    """An org admin holds every bit, Delete included, and still can't purge: only a superadmin can."""
+
+    def test_an_org_admin_cannot_purge_or_bulk_purge(self, case, admin_client, acme):
+        row = case.make(acme, f"Admin kept {case.key}")
+        row.delete()
+
+        _assert_superadmin_required(admin_client.delete(f"{case.url}{row.pk}/purge/"))
+        _assert_superadmin_required(
+            admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+        )
+        _assert_superadmin_required(
+            admin_client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+        )
+        assert case.model.deleted_objects.filter(pk=row.pk).exists()
+
+    def test_an_org_admin_gets_the_same_403_for_another_orgs_id(self, case, admin_client, beta):
+        # The gate answers before any lookup, so the reply says nothing about the id.
+        row = case.make(beta, f"Admin foreign {case.key}")
+        row.delete()
+
+        _assert_superadmin_required(admin_client.delete(f"{case.url}{row.pk}/purge/"))
+        _assert_superadmin_required(
+            admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+        )
+        assert case.model.deleted_objects.filter(pk=row.pk).exists()
+
+    def test_a_superadmin_purges_and_bulk_purges(self, case, superadmin_in_acme, acme):
+        single, selected = (case.make(acme, f"Superadmin {case.key} {index}") for index in range(2))
+        single.delete()
+        selected.delete()
+
+        assert superadmin_in_acme.delete(f"{case.url}{single.pk}/purge/").status_code == 204
+        bulk = superadmin_in_acme.post(f"{case.url}recycle-bin/purge/", {"ids": [selected.pk]}, format="json")
+
+        assert bulk.status_code == 200, bulk.content
+        assert bulk.json() == {"purged": [selected.pk], "failed": []}
+        assert not case.model.all_objects.filter(pk__in=[single.pk, selected.pk]).exists()
 
 @pytest.fixture
 def api_key_client(issue_api_key, acme):
@@ -627,6 +697,19 @@ class TestApiKeys:
             assert response.status_code == 403
             assert response.json()["message"] == DenyApiKeyAuth.message
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
+
+    def test_a_superadmins_api_key_cannot_purge(self, api_key_client, superadmin, acme):
+        graph = Graph.objects.create(org=acme, name="Superadmin keyed")
+        graph.delete()
+        client = api_key_client(superadmin)
+
+        single = client.delete(f"{FLOWS_URL}{graph.pk}/purge/")
+        everything = client.post(f"{FLOWS_URL}recycle-bin/purge/", {"all": True}, format="json")
+
+        for response in (single, everything):
+            assert response.status_code == 403
+            assert response.json()["message"] == DenyApiKeyAuth.message
+        assert Graph.deleted_objects.filter(pk=graph.pk).exists()
 
     def test_a_system_api_key_cannot_purge(self, api_key_client, acme):
         graph = Graph.objects.create(org=acme, name="System keyed")
@@ -703,10 +786,17 @@ def test_viewset_is_wired_to_its_bin(viewset, key):
     assert viewset.rbac_resource_type == bin_resources()[key].resource_type
     for action_name, permission in RECYCLE_BIN_ACTION_MAP.items():
         assert viewset.rbac_action_map[action_name] == permission
+    # Unmapped, so HasOrgPermission denies a purge if the superadmin gate is ever lost.
+    assert "purge" not in viewset.rbac_action_map
+    assert "bulk_purge" not in viewset.rbac_action_map
+
+
+def test_storage_bin_purge_is_unmapped():
+    assert "purge" not in StorageAPIView.rbac_action_map
 
 
 @pytest.mark.django_db
-def test_built_in_tools_never_show_in_an_org_bin(admin_client):
+def test_built_in_tools_never_show_in_an_org_bin(admin_client, superadmin_in_acme):
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     built_in = PythonCodeTool.objects.create(name="Bin built-in", description="d", python_code=code, built_in=True)
     # upload_tools deletes a built-in that left the manifest the same way.
@@ -714,7 +804,7 @@ def test_built_in_tools_never_show_in_an_org_bin(admin_client):
 
     assert _bin(admin_client, PYTHON_TOOLS_URL) == []
     assert admin_client.post(f"{PYTHON_TOOLS_URL}{built_in.pk}/restore/").status_code == 404
-    assert admin_client.delete(f"{PYTHON_TOOLS_URL}{built_in.pk}/purge/").status_code == 404
+    assert superadmin_in_acme.delete(f"{PYTHON_TOOLS_URL}{built_in.pk}/purge/").status_code == 404
     assert PythonCodeTool.deleted_objects.filter(pk=built_in.pk).exists()
 
 
@@ -737,11 +827,11 @@ class TestOwnedSurfaces:
         assert Surface.objects.get(pk=surface.pk).owner_agent_id is None
         assert [entry["id"] for entry in _bin(admin_client, AGENTS_URL)] == [agent.pk]
 
-    def test_surface_binned_with_its_agent_can_be_purged_alone(self, admin_client, acme):
+    def test_surface_binned_with_its_agent_can_be_purged_alone(self, admin_client, superadmin_in_acme, acme):
         agent, surface = self._agent_with_surface(acme)
         admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        assert admin_client.delete(f"{SURFACES_URL}{surface.pk}/purge/").status_code == 204
+        assert superadmin_in_acme.delete(f"{SURFACES_URL}{surface.pk}/purge/").status_code == 204
 
         assert not Surface.all_objects.filter(pk=surface.pk).exists()
         assert AgentDefinition.deleted_objects.filter(pk=agent.pk).exists()

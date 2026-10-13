@@ -92,7 +92,12 @@ export class RecycleBinTabComponent implements OnInit {
     protected readonly showKind = computed(() => recycleBinTabShowsKind(this.tab()));
     protected readonly countLabel = computed(() => this.tab().countColumn?.label ?? null);
     protected readonly canRestore = computed(() => this.permissionsService.can(this.tab().resource, ActionCode.Create));
-    protected readonly canPurge = computed(() => this.permissionsService.can(this.tab().resource, ActionCode.Delete));
+    /**
+     * Deleting forever is superadmin-only on the server, whatever the role's DELETE grants. Superadmin is a
+     * global flag (an org switch never changes it); the getter reads a signal, so this follows the /me
+     * reload after a 403 and logout's clear().
+     */
+    protected readonly canPurge = computed(() => this.permissionsService.isSuperadmin);
     /** No checkboxes when there is nothing the user could do with a selection. */
     protected readonly selectable = computed(() => this.canRestore() || this.canPurge());
     /** The paged Files list searches and sorts on the server. */

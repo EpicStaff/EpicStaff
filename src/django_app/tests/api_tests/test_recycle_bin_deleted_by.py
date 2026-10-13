@@ -163,24 +163,28 @@ class TestEveryBinResource:
         assert response.status_code == 200, response.content
         assert _last_edit_of(row).edited_by_id == admin_acme.pk
 
-    def test_purge_removes_the_record(self, case, admin_client, acme):
+    def test_purge_removes_the_record(self, case, admin_client, superadmin_in_acme, acme):
         row = _make(case, acme)
         admin_client.delete(f"{case.url}{row.pk}/")
 
-        assert admin_client.delete(f"{case.url}{row.pk}/purge/").status_code == 204
+        assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 204
 
         assert _last_edit_of(row) is None
 
-    def test_bulk_purge_and_emptying_the_bin_remove_the_records(self, case, admin_client, acme):
+    def test_bulk_purge_and_emptying_the_bin_remove_the_records(
+        self, case, admin_client, superadmin_in_acme, acme
+    ):
         selected = _make(case, acme, suffix="-selected")
         rest = _make(case, acme, suffix="-rest")
         for row in (selected, rest):
             admin_client.delete(f"{case.url}{row.pk}/")
 
-        by_id = admin_client.post(
+        by_id = superadmin_in_acme.post(
             f"{case.url}recycle-bin/purge/", {"ids": [selected.pk]}, format="json"
         )
-        everything = admin_client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+        everything = superadmin_in_acme.post(
+            f"{case.url}recycle-bin/purge/", {"all": True}, format="json"
+        )
 
         assert (by_id.status_code, everything.status_code) == (200, 200)
         assert _last_edit_of(selected) is None
@@ -199,7 +203,7 @@ class TestEveryBinResource:
         ]
 
     def test_another_orgs_restore_or_purge_leaves_the_record(
-        self, case, client_as, django_user_model, beta, role_org_admin, admin_client
+        self, case, client_as, django_user_model, beta, role_org_admin, admin_client, superadmin_in_acme
     ):
         beta_admin = django_user_model.objects.create_user(
             email="bin-beta-admin@example.com", password="StrongPass123!"
@@ -209,7 +213,7 @@ class TestEveryBinResource:
         _client_in(client_as, beta_admin, beta).delete(f"{case.url}{row.pk}/")
 
         assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
-        assert admin_client.delete(f"{case.url}{row.pk}/purge/").status_code == 404
+        assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert _bin(admin_client, case.url) == []
         assert _deleter_id(row) == beta_admin.pk
 
@@ -225,11 +229,11 @@ def test_restore_shows_the_deleter_as_last_editor(admin_client, admin_acme, auth
     assert response.json()["last_edited_by"] == expected_user_summary(admin_acme)
 
 
-def test_emptying_every_bin_removes_the_records(admin_client, acme):
+def test_emptying_every_bin_removes_the_records(admin_client, superadmin_in_acme, acme):
     graph = Graph.objects.create(org=acme, name="Emptied")
     admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
-    response = admin_client.post("/api/recycle-bin/empty/")
+    response = superadmin_in_acme.post("/api/recycle-bin/empty/")
 
     assert response.status_code == 200, response.content
     assert _last_edit_of(graph) is None
@@ -477,7 +481,7 @@ class TestStorageBin:
         ]
 
     def test_restore_keeps_the_deleter_and_purge_removes_it(
-        self, admin_client, admin_acme, real_manager, acme
+        self, admin_client, superadmin_in_acme, admin_acme, real_manager, acme
     ):
         for path in ("keep.txt", "drop.txt"):
             seed_file(real_manager._backend, acme.id, path, b"x")
@@ -488,7 +492,9 @@ class TestStorageBin:
         dropped = StorageFile.deleted_objects.get(org=acme, path="drop.txt")
 
         restored = admin_client.post(f"{STORAGE_BIN_URL}restore/", {"ids": [kept.pk]}, format="json")
-        purged = admin_client.post(f"{STORAGE_BIN_URL}purge/", {"ids": [dropped.pk]}, format="json")
+        purged = superadmin_in_acme.post(
+            f"{STORAGE_BIN_URL}purge/", {"ids": [dropped.pk]}, format="json"
+        )
 
         assert (restored.status_code, purged.status_code) == (200, 200)
         assert _last_edit_of(kept).edited_by_id == admin_acme.pk

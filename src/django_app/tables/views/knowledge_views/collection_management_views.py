@@ -60,7 +60,7 @@ class SourceCollectionViewSet(
     - GET /source-collections/{id}/available-rags/ - Get available RAG configurations for a collection
     - GET /source-collections/recycle-bin/ - List the org's binned collections
     - POST /source-collections/{id}/restore/ - Restore a binned collection
-    - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good
+    - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good (superadmin only)
 
     """
 

@@ -38,14 +38,17 @@ def test_managers_never_return_system_secrets(acme):
     assert Secret.all_objects.filter(pk=live.pk).exists()
 
 
-def test_a_binned_system_secret_is_not_in_the_bin_and_cannot_be_restored_or_purged(admin_client, acme):
+def test_a_binned_system_secret_is_not_in_the_bin_and_cannot_be_restored_or_purged(
+    admin_client, superadmin_in_acme, acme
+):
     secret = _system_secret(acme, binned=True)
 
     listed = admin_client.get("/api/secrets/recycle-bin/")
     assert listed.status_code == 200
     assert secret.pk not in [entry["id"] for entry in listed.json()]
     assert admin_client.post(f"/api/secrets/{secret.pk}/restore/").status_code == 404
-    assert admin_client.delete(f"/api/secrets/{secret.pk}/purge/").status_code == 404
+    # Not even a superadmin, the one caller that may purge, reaches it.
+    assert superadmin_in_acme.delete(f"/api/secrets/{secret.pk}/purge/").status_code == 404
     assert admin_client.post("/api/secrets/recycle-bin/restore/", {"ids": [secret.pk]}, format="json").status_code == 404
     assert Secret.all_objects.filter(pk=secret.pk, active=False).exists()
 

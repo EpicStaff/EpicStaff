@@ -15,7 +15,8 @@ Adding a resource to the recycle bin, and the test that fails if a step is misse
    same key, even with no contents. Caught by
    test_recycle_bin_api.py::test_every_bin_resource_has_a_presentation.
 4. Viewset: RecycleBinActionsMixin, `recycle_bin_resource_key` and
-   RECYCLE_BIN_ACTION_MAP in its `rbac_action_map`. Add it to WIRED_VIEWSETS and a
+   RECYCLE_BIN_ACTION_MAP in its `rbac_action_map`. The map has no purge entries:
+   the mixin gates the purges as superadmin-only. Add it to WIRED_VIEWSETS and a
    BinCase to CASES in test_recycle_bin_api.py: test_every_bin_resource_has_a_viewset
    and test_every_bin_resource_has_a_lifecycle_case fail until you do, and the
    cases then run the restore, purge and cross-org checks (and, in

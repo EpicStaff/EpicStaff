@@ -1,9 +1,6 @@
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
-from rbac.access.gates import DenyApiKeyAuth
-from rbac.access.resolver import PermissionResolver
 from rbac.scoping.mixins import OrgScopedResolverMixin
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,7 +9,7 @@ from tables.serializers.recycle_bin_serializers import (
     RecycleBinSettingsSerializer,
 )
 from tables.services.recycle_bin.empty_service import RecycleBinEmptyService
-from tables.views.recycle_bin_mixins import request_actor
+from tables.views.recycle_bin_mixins import purge_permissions, request_actor
 
 
 class RecycleBinSettingsView(APIView):
@@ -30,26 +27,23 @@ class RecycleBinSettingsView(APIView):
 
 
 class RecycleBinEmptyView(OrgScopedResolverMixin, APIView):
-    """Empty the active organization's recycle bin: every type the caller may see and delete.
+    """Empty the active organization's recycle bin: every type, a slice per request.
 
     One request per slice instead of one per type: each call purges for a limited time and
-    says how many items remain, and the client calls again. Types the caller can't delete
-    are left alone, the same tabs the bin page offers; each item is its own transaction,
-    and a failed one is reported, not raised. The bin's most destructive call, so API keys can't make it: a
-    leaked key must not wipe a whole organization's bin.
+    says how many items remain, and the client calls again. Each item is its own
+    transaction, and a failed one is reported, not raised. The bin's most destructive
+    call, so it has the per-type purges' gates (`purge_permissions`): superadmin only,
+    never with an API key. Neither an org admin nor a leaked key may wipe a whole
+    organization's bin.
     """
 
-    permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+    def get_permissions(self):
+        return purge_permissions([])
 
     @extend_schema(request=None, responses=RecycleBinEmptyResponseSerializer)
     def post(self, request):
-        org_id = self.get_active_org_id()
-        effective = PermissionResolver().resolve(user=request.user, org_id=org_id)
-        sources = RecycleBinEmptyService.purgeable_sources(effective)
-        if not sources:
-            raise PermissionDenied("You can't delete anything in this recycle bin.")
         result = RecycleBinEmptyService.empty(
-            org_id=org_id, sources=sources, actor=request_actor(request)
+            org_id=self.get_active_org_id(), actor=request_actor(request)
         )
         failed = [
             {

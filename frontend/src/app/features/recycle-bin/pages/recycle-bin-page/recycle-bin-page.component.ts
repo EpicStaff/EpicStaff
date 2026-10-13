@@ -4,12 +4,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { ButtonComponent, ConfirmationDialogService, RouteTab, RouteTabsComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode } from '@shared/models';
 import { filter, finalize, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { RECYCLE_BIN_TABS } from '../../constants/recycle-bin-tabs.constants';
 import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
 import { RecycleBinReloadService } from '../../services/recycle-bin-reload.service';
 import {
@@ -40,10 +40,8 @@ export class RecycleBinPageComponent {
             isPermitted: () => true,
         }))
     );
-    /** The tabs "Empty recycle bin" empties: every visible tab the user may delete on. */
-    protected readonly purgeableTabs = computed(() =>
-        this.visibleTabs().filter((tab) => this.permissionsService.can(tab.resource, ActionCode.Delete))
-    );
+    /** Superadmin-only; a global flag (not per org) that follows the /me reload after a 403 and logout's clear(). */
+    protected readonly canEmpty = computed(() => this.permissionsService.isSuperadmin);
     protected readonly subtitle = computed(() => {
         const days = this.recycleBinSettings.retentionDays();
         return days === null
@@ -69,7 +67,8 @@ export class RecycleBinPageComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     protected onEmptyRecycleBin(): void {
-        const tabs = this.purgeableTabs();
+        // A superadmin empties the whole bin: every tab.
+        const tabs = RECYCLE_BIN_TABS;
         this.confirmationDialog
             .confirm(emptyRecycleBinConfirmationDialog(tabs))
             .pipe(

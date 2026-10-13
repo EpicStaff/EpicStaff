@@ -1,10 +1,8 @@
-"""Empty an organization's whole recycle bin: every type the caller may delete, a slice per request."""
+"""Empty an organization's whole recycle bin: every type, a slice per request."""
 
 import time
 from dataclasses import dataclass, field
 
-from rbac.access.effective import EffectivePermissions
-from rbac.models.enums import Permission, ResourceType
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult
 from tables.services.recycle_bin.bulk_service import RecycleBinBulkService
@@ -44,41 +42,25 @@ class SourcedFailure:
 class EmptyBinResult:
     purged_count: int = 0
     failed: list[SourcedFailure] = field(default_factory=list)
-    #: Items still in those bins: left for the next call, or failed ones.
+    #: Items still in the bins: left for the next call, or failed ones.
     remaining: int = 0
 
 
 class RecycleBinEmptyService:
     """Each item is its own transaction, so one failing item doesn't stop or undo the others."""
 
-    @staticmethod
-    def purgeable_sources(effective: EffectivePermissions) -> list[str]:
-        """The bins the caller may empty: READ and DELETE on the type, the tabs the bin page shows."""
-        resources = bin_resources()
-        sources = []
-        for source in EMPTY_ORDER:
-            resource_type = (
-                ResourceType.FILES
-                if source == RecycleBinSource.STORAGE
-                else resources[source].resource_type
-            )
-            if effective.can(resource_type.value, Permission.READ) and effective.can(
-                resource_type.value, Permission.DELETE
-            ):
-                sources.append(source)
-        return sources
-
     @classmethod
-    def empty(cls, *, org_id: int, sources: list[str], actor: str) -> EmptyBinResult:
-        """Delete for good the items of `sources` in the org's recycle bin, for up to the budget.
+    def empty(cls, *, org_id: int, actor: str) -> EmptyBinResult:
+        """Delete for good the items of every bin of the org, in EMPTY_ORDER, for up to the budget.
 
         Stops once EMPTY_TIME_BUDGET_SECONDS have passed, after at least one item, and
-        reports how many remain; calling again goes on from there.
+        reports how many remain; calling again goes on from there. Checks no permission:
+        the caller has authorized the purge and resolved `org_id` from the active org.
         """
         result = EmptyBinResult()
         resources = bin_resources()
         until = time.monotonic() + EMPTY_TIME_BUDGET_SECONDS
-        for source in sources:
+        for source in EMPTY_ORDER:
             done_something = result.purged_count or result.failed
             if done_something and time.monotonic() >= until:
                 break
@@ -90,7 +72,7 @@ class RecycleBinEmptyService:
                 )
             result.purged_count += len(purged.purged)
             result.failed.extend(SourcedFailure(source, failure) for failure in purged.failed)
-        result.remaining = cls._remaining(org_id, sources, resources)
+        result.remaining = cls._remaining(org_id, resources)
         return result
 
     @staticmethod
@@ -100,11 +82,11 @@ class RecycleBinEmptyService:
         )
 
     @staticmethod
-    def _remaining(org_id: int, sources: list[str], resources) -> int:
-        """The items still in `sources`' bins, counted as the bin lists them."""
+    def _remaining(org_id: int, resources) -> int:
+        """The items still in the org's bins, counted as the bin lists them."""
         return sum(
             StorageRecycleBinService.top_level(org_id).count()
             if source == RecycleBinSource.STORAGE
             else RecycleBinService.binned(resources[source], org_id).count()
-            for source in sources
+            for source in EMPTY_ORDER
         )

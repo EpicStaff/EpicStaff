@@ -44,7 +44,7 @@ export class RecycleBinBulkService {
     }
 
     /**
-     * Everything in every bin the user may delete in, whatever the lists show. Each request
+     * Everything in every bin (superadmin only), whatever the lists show. Each request
      * purges for a limited time, so a large bin takes several: it calls again while items remain
      * and the last call got somewhere (failed items stay, and are tried again only once). When it
      * stops with more left than the failed items, `leftCount` says how many.

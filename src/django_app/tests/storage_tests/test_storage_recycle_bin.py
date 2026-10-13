@@ -9,7 +9,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from rbac.access.gates import DenyApiKeyAuth
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
@@ -344,11 +344,11 @@ class TestStorageBinApi:
         assert _row(acme, "docs/a.txt").active is True
 
     @pytest.mark.parametrize("action", ["restore", "purge"])
-    def test_an_id_deleted_with_its_folder_is_404(self, admin_client, real_manager, acme, action):
+    def test_an_id_deleted_with_its_folder_is_404(self, superadmin_in_acme, real_manager, acme, action):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
         real_manager.delete(acme.id, "docs", user=None)
 
-        response = admin_client.post(
+        response = superadmin_in_acme.post(
             f"{BIN}{action}/", {"ids": [_row(acme, "docs/a.txt").pk]}, format="json"
         )
 
@@ -377,19 +377,22 @@ class TestStorageBinApi:
         assert response.status_code == 404
         assert response.json()["code"] == "not_in_recycle_bin"
 
-    def test_purge(self, admin_client, real_manager, acme):
+    def test_purge(self, superadmin_in_acme, real_manager, acme):
         row = _binned(real_manager, acme, "a.txt")
 
-        response = admin_client.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json")
+        response = superadmin_in_acme.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json")
 
         assert response.status_code == 200, response.content
         assert response.json() == {"purged": [row.pk], "failed": []}
         assert not StorageFile.all_objects.filter(pk=row.pk).exists()
 
     @pytest.mark.parametrize("everything", [False, True], ids=["selected", "all"])
-    def test_an_api_key_cannot_purge(self, real_manager, acme, admin_acme, issue_api_key, everything):
+    @pytest.mark.parametrize("key_owner", ["org_admin", "superadmin"])
+    def test_an_api_key_cannot_purge(
+        self, real_manager, acme, admin_acme, superadmin, issue_api_key, everything, key_owner
+    ):
         row = _binned(real_manager, acme, "a.txt")
-        raw, _ = issue_api_key(user=admin_acme)
+        raw, _ = issue_api_key(user=admin_acme if key_owner == "org_admin" else superadmin)
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw, HTTP_X_ORGANIZATION_ID=str(acme.id))
 
@@ -400,11 +403,32 @@ class TestStorageBinApi:
         assert response.json()["message"] == DenyApiKeyAuth.message
         assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
 
-    def test_all_empties_the_bin(self, admin_client, real_manager, acme, beta):
+    @pytest.mark.parametrize("everything", [False, True], ids=["selected", "all"])
+    def test_an_org_admin_cannot_purge(self, admin_client, real_manager, acme, everything):
+        row = _binned(real_manager, acme, "a.txt")
+
+        body = {"all": True} if everything else {"ids": [row.pk]}
+        response = admin_client.post(f"{BIN}purge/", body, format="json")
+
+        assert response.status_code == 403, response.content
+        assert response.json()["message"] == IsSuperadmin.message
+        assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
+
+    def test_an_org_admin_gets_the_same_403_for_another_orgs_id(self, admin_client, real_manager, beta):
+        # The gate answers before any lookup, so the reply says nothing about the id.
+        theirs = _binned(real_manager, beta, "theirs.txt")
+
+        response = admin_client.post(f"{BIN}purge/", {"ids": [theirs.pk]}, format="json")
+
+        assert response.status_code == 403, response.content
+        assert response.json()["message"] == IsSuperadmin.message
+        assert StorageFile.deleted_objects.filter(pk=theirs.pk).exists()
+
+    def test_all_empties_the_bin(self, superadmin_in_acme, real_manager, acme, beta):
         ours = [_binned(real_manager, acme, name) for name in ("a.txt", "b.txt")]
         theirs = _binned(real_manager, beta, "theirs.txt")
 
-        response = admin_client.post(f"{BIN}purge/", {"all": True}, format="json")
+        response = superadmin_in_acme.post(f"{BIN}purge/", {"all": True}, format="json")
 
         assert response.status_code == 200, response.content
         assert sorted(response.json()["purged"]) == sorted(row.pk for row in ours)
@@ -472,20 +496,24 @@ class TestStorageBinApi:
         assert [entry["name"] for entry in files] == ["loose.txt"]  # docs/a.txt goes with its folder
 
     @pytest.mark.parametrize("action", ["restore", "purge"])
-    def test_another_orgs_id_is_404_and_nothing_changes(self, admin_client, real_manager, acme, beta, action):
+    def test_another_orgs_id_is_404_and_nothing_changes(
+        self, admin_client, superadmin_in_acme, real_manager, acme, beta, action
+    ):
         ours = _binned(real_manager, acme, "ours.txt")
         theirs = _binned(real_manager, beta, "theirs.txt")
+        # Restore as an org admin; purge as a superadmin, still scoped to the active org.
+        client = superadmin_in_acme if action == "purge" else admin_client
 
         for ids in ([theirs.pk], [ours.pk, theirs.pk]):
-            response = admin_client.post(f"{BIN}{action}/", {"ids": ids}, format="json")
+            response = client.post(f"{BIN}{action}/", {"ids": ids}, format="json")
             assert response.status_code == 404, (ids, response.content)
         assert StorageFile.deleted_objects.filter(pk__in=[ours.pk, theirs.pk]).count() == 2
 
     @pytest.mark.parametrize("action", ["restore", "purge"])
-    def test_a_live_id_is_404(self, admin_client, real_manager, acme, action):
+    def test_a_live_id_is_404(self, superadmin_in_acme, real_manager, acme, action):
         seed_file(real_manager._backend, acme.id, "a.txt", b"a")
 
-        response = admin_client.post(f"{BIN}{action}/", {"ids": [_row(acme, "a.txt").pk]}, format="json")
+        response = superadmin_in_acme.post(f"{BIN}{action}/", {"ids": [_row(acme, "a.txt").pk]}, format="json")
 
         assert response.status_code == 404
 
@@ -493,28 +521,41 @@ class TestStorageBinApi:
     def test_id_count_is_bounded(self, admin_client, real_manager, ids):
         assert admin_client.post(f"{BIN}restore/", {"ids": ids}, format="json").status_code == 400
 
-    def test_split_permissions(self, client_with_files_bits, real_manager, acme):
+    def test_split_permissions(self, client_with_files_bits, superadmin_in_acme, real_manager, acme):
         row = _binned(real_manager, acme, "a.txt")
         reader = client_with_files_bits(Permission.READ)
         restorer = client_with_files_bits(Permission.READ | Permission.CREATE)
-        purger = client_with_files_bits(Permission.READ | Permission.DELETE)
+        deleter = client_with_files_bits(Permission.READ | Permission.DELETE)
         blind = client_with_files_bits(Permission.CREATE | Permission.DELETE)
 
         assert reader.get(BIN).status_code == 200
         assert blind.get(BIN).status_code == 403
         assert reader.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 403
-        assert reader.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json").status_code == 403
-        assert restorer.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json").status_code == 403
-        assert purger.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 403
+        for client in (reader, restorer, deleter):
+            response = client.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json")
+            assert response.status_code == 403
+            assert response.json()["message"] == IsSuperadmin.message
+        assert deleter.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 403
         assert restorer.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 200
         real_manager.delete(acme.id, "a.txt", user=None)
         again = StorageFile.deleted_objects.get(org=acme, path="a.txt")
-        assert purger.post(f"{BIN}purge/", {"ids": [again.pk]}, format="json").status_code == 200
+        assert superadmin_in_acme.post(f"{BIN}purge/", {"ids": [again.pk]}, format="json").status_code == 200
 
 
-@pytest.mark.parametrize("method, url", [("get", BIN), ("post", f"{BIN}restore/"), ("post", f"{BIN}purge/")])
-def test_a_request_without_the_org_header_is_400(client_as, admin_acme, real_manager, method, url):
-    response = getattr(client_as(admin_acme), method)(url, {"ids": [1]}, format="json")
+@pytest.mark.parametrize(
+    "caller, method, url",
+    [
+        ("org_admin", "get", BIN),
+        ("org_admin", "post", f"{BIN}restore/"),
+        # Only a superadmin gets past the purge gate to the org header check.
+        ("superadmin", "post", f"{BIN}purge/"),
+    ],
+)
+def test_a_request_without_the_org_header_is_400(
+    client_as, admin_acme, superadmin, real_manager, caller, method, url
+):
+    user = superadmin if caller == "superadmin" else admin_acme
+    response = getattr(client_as(user), method)(url, {"ids": [1]}, format="json")
 
     assert response.status_code == 400
     assert response.json()["code"] == "org_context_required"

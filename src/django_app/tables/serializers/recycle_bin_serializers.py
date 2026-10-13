@@ -130,7 +130,7 @@ class RecycleBinEmptyResponseSerializer(serializers.Serializer):
     failed = RecycleBinEmptyFailureSerializer(many=True)
     remaining = serializers.IntegerField(
         help_text=(
-            "Items still in those bins: call again while it goes down. One call purges for "
+            "Items still in the bins: call again while it goes down. One call purges for "
             "a limited time, so a large bin takes several."
         )
     )

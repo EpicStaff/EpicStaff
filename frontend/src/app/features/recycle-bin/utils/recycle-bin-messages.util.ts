@@ -116,7 +116,7 @@ export function purgeSelectedConfirmationDialog(names: readonly string[]): Confi
     );
 }
 
-/** Empties every tab the user may delete on; `tabs` are those tabs. */
+/** Empties every tab (a superadmin's, so all of them); `tabs` are the tabs the page shows. */
 export function emptyRecycleBinConfirmationDialog(tabs: readonly RecycleBinTabDefinition[]): ConfirmationDialogData {
     const labels = tabs.map((tab) => `<strong>${escapeHtml(tab.label)}</strong>`).join(', ');
     return dangerDialog(

@@ -9,6 +9,7 @@ import { Observable, of, Subject } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { RECYCLE_BIN_TABS } from '../../constants/recycle-bin-tabs.constants';
 import { RecycleBinEmptyResult, RecycleBinTabKey } from '../../models/recycle-bin.model';
 import { RECYCLE_BIN_ROUTES } from '../../recycle-bin.routes';
 import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
@@ -41,6 +42,7 @@ function routesWithStubTabs(): Routes {
 describe('RecycleBinPageComponent', () => {
     let readable: ResourceCode[];
     let deletable: ResourceCode[];
+    let superadmin: WritableSignal<boolean>;
     let retentionDays: WritableSignal<number | null>;
     let confirm: ReturnType<typeof vi.fn<(options: ConfirmationDialogData) => Observable<ConfirmationResult>>>;
     let emptyAll: ReturnType<
@@ -58,6 +60,7 @@ describe('RecycleBinPageComponent', () => {
     beforeEach(() => {
         readable = [];
         deletable = [];
+        superadmin = signal(false);
         retentionDays = signal<number | null>(7);
         confirm = vi.fn(() => of<ConfirmationResult>(true));
         emptyAll = vi.fn(() => of<RecycleBinEmptyResult>({ purgedCount: 3, failed: [], leftCount: 0 }));
@@ -71,9 +74,14 @@ describe('RecycleBinPageComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
+                        // Like the real service: a superadmin can do everything.
                         can: (resource: ResourceCode, action: ActionCode) =>
+                            superadmin() ||
                             (action === ActionCode.Read && readable.includes(resource)) ||
                             (action === ActionCode.Delete && deletable.includes(resource)),
+                        get isSuperadmin(): boolean {
+                            return superadmin();
+                        },
                         resolveDefaultRoute: () => '/profile',
                     },
                 },
@@ -139,15 +147,32 @@ describe('RecycleBinPageComponent', () => {
         return harness.routeNativeElement?.querySelector<HTMLElement>('.empty-bin-btn button') ?? null;
     }
 
-    it('hides "Empty recycle bin" without DELETE on any visible tab', async () => {
-        readable = [ResourceCode.Flows];
+    it('hides "Empty recycle bin" from a non-superadmin, even with DELETE on every visible tab', async () => {
+        readable = [ResourceCode.Flows, ResourceCode.Tools];
+        deletable = [ResourceCode.Flows, ResourceCode.Tools];
         const harness = await open('/recycle-bin/flows');
         expect(emptyBinButton(harness)).toBeNull();
     });
 
+    it('shows "Empty recycle bin" to a superadmin', async () => {
+        superadmin.set(true);
+        const harness = await open('/recycle-bin/flows');
+        expect(emptyBinButton(harness)).not.toBeNull();
+    });
+
+    it('shows "Empty recycle bin" once the user turns superadmin, with no reload', async () => {
+        readable = [ResourceCode.Flows];
+        const harness = await open('/recycle-bin/flows');
+        expect(emptyBinButton(harness)).toBeNull();
+
+        superadmin.set(true);
+        harness.detectChanges();
+
+        expect(emptyBinButton(harness)).not.toBeNull();
+    });
+
     it('asks for the typed phrase, then empties the bin and says how many items were deleted', async () => {
-        readable = [ResourceCode.Flows, ResourceCode.Files, ResourceCode.Tools];
-        deletable = [ResourceCode.Flows, ResourceCode.Tools, ResourceCode.Agents];
+        superadmin.set(true);
         const harness = await open('/recycle-bin/flows');
 
         emptyBinButton(harness)?.click();
@@ -156,13 +181,15 @@ describe('RecycleBinPageComponent', () => {
             type: 'danger',
             verification: { phrase: 'empty-recycle-bin' },
         });
+        for (const tab of RECYCLE_BIN_TABS) {
+            expect(confirm.mock.calls[0][0].message).toContain(`<strong>${tab.label}</strong>`);
+        }
         expect(emptyAll).toHaveBeenCalledTimes(1);
         expect(toast.success).toHaveBeenCalledWith('3 items deleted permanently.');
     });
 
     it('reports only the failure when nothing could be deleted, never "already empty"', async () => {
-        readable = [ResourceCode.Flows];
-        deletable = [ResourceCode.Flows];
+        superadmin.set(true);
         emptyAll.mockReturnValue(
             of<RecycleBinEmptyResult>({
                 purgedCount: 0,
@@ -179,8 +206,7 @@ describe('RecycleBinPageComponent', () => {
     });
 
     it('says how many items are still in the bin when emptying stopped short, never "already empty"', async () => {
-        readable = [ResourceCode.Flows];
-        deletable = [ResourceCode.Flows];
+        superadmin.set(true);
         emptyAll.mockReturnValue(of<RecycleBinEmptyResult>({ purgedCount: 0, failed: [], leftCount: 7 }));
         const harness = await open('/recycle-bin/flows');
 
@@ -191,8 +217,7 @@ describe('RecycleBinPageComponent', () => {
     });
 
     it('shows "Emptying…" from the click on, with the count left once the first answer comes', async () => {
-        readable = [ResourceCode.Flows];
-        deletable = [ResourceCode.Flows];
+        superadmin.set(true);
         const answers = new Subject<RecycleBinEmptyResult>();
         let reportLeft: (remaining: number) => void = () => undefined;
         emptyAll.mockImplementation((onRemaining) => {
@@ -218,8 +243,7 @@ describe('RecycleBinPageComponent', () => {
     });
 
     it('sends nothing when emptying the bin is cancelled', async () => {
-        readable = [ResourceCode.Flows];
-        deletable = [ResourceCode.Flows];
+        superadmin.set(true);
         confirm.mockReturnValue(of<ConfirmationResult>(false));
         const harness = await open('/recycle-bin/flows');
 

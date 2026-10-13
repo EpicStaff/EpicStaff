@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -65,11 +65,13 @@ describe('RecycleBinTabComponent', () => {
     let fixture: ComponentFixture<RecycleBinTabComponent>;
     let httpTesting: HttpTestingController;
     let grants: [ResourceCode, ActionCode][];
+    let superadmin: WritableSignal<boolean>;
     let toast: { success: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> };
     let confirm: ReturnType<typeof vi.fn<(options: ConfirmationDialogData) => Observable<ConfirmationResult>>>;
 
     beforeEach(() => {
         grants = [];
+        superadmin = signal(false);
         toast = { success: vi.fn(), error: vi.fn() };
         confirm = vi.fn(() => of<ConfirmationResult>(true));
         TestBed.configureTestingModule({
@@ -80,11 +82,16 @@ describe('RecycleBinTabComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
+                        // Like the real service: a superadmin can do everything.
                         can: (resource: ResourceCode, action: ActionCode) =>
+                            superadmin() ||
                             grants.some(
                                 ([grantedResource, grantedAction]) =>
                                     grantedResource === resource && grantedAction === action
                             ),
+                        get isSuperadmin(): boolean {
+                            return superadmin();
+                        },
                     },
                 },
                 { provide: ToastService, useValue: toast },
@@ -167,15 +174,48 @@ describe('RecycleBinTabComponent', () => {
             expect(element.querySelector(DELETE_SELECTED)).toBeNull();
         });
 
-        it('offers only the delete actions with DELETE', () => {
+        it('offers no delete-forever action with DELETE alone: that is superadmin-only', () => {
             grant(ResourceCode.Flows, ActionCode.Delete);
             const element = openFlowsWith([entry(5, 'Report')]);
-            expect(element.querySelector(ROW_RESTORE)).toBeNull();
+            expect(element.querySelector('app-delete-button')).toBeNull();
+            expect(element.querySelector('app-activate-button')).toBeNull();
+            expect(element.querySelector('app-checkbox')).toBeNull();
+        });
+
+        it('shows the delete-forever action once the user turns superadmin, with no reload', () => {
+            grant(ResourceCode.Flows, ActionCode.Create);
+            const element = openFlowsWith([entry(5, 'Report')]);
+            expect(element.querySelector(ROW_DELETE)).toBeNull();
+
+            superadmin.set(true);
+            fixture.detectChanges();
+
+            expect(element.querySelector(ROW_DELETE)).not.toBeNull();
+        });
+
+        it('offers restore but not delete forever with CREATE and DELETE', () => {
+            grant(ResourceCode.Flows, ActionCode.Create, ActionCode.Delete);
+            const element = openFlowsWith([entry(5, 'Report')]);
+            expect(element.querySelector(ROW_RESTORE)).not.toBeNull();
+            expect(element.querySelector(ROW_DELETE)).toBeNull();
+
+            checkRow(element, 0);
+
+            expect(element.querySelector(RESTORE_SELECTED)).not.toBeNull();
+            expect(element.querySelector(DELETE_SELECTED)).toBeNull();
+        });
+
+        it('offers the delete-forever actions to a superadmin', () => {
+            superadmin.set(true);
+            grant(ResourceCode.Flows);
+            const element = openFlowsWith([entry(5, 'Report')]);
+            expect(element.querySelector(ROW_DELETE)).not.toBeNull();
+            expect(element.querySelector(ROW_RESTORE)).not.toBeNull();
 
             checkRow(element, 0);
 
             expect(element.querySelector(DELETE_SELECTED)).not.toBeNull();
-            expect(element.querySelector(RESTORE_SELECTED)).toBeNull();
+            expect(element.querySelector(RESTORE_SELECTED)).not.toBeNull();
         });
     });
 
@@ -232,7 +272,8 @@ describe('RecycleBinTabComponent', () => {
         });
 
         it('asks before a permanent delete, with no phrase to type, and a cancel sends nothing', () => {
-            grant(ResourceCode.Flows, ActionCode.Delete);
+            superadmin.set(true);
+            grant(ResourceCode.Flows);
             confirm.mockReturnValue(of<ConfirmationResult>('close'));
             const element = openFlowsWith([entry(5, '<img src=x>')]);
 
@@ -245,7 +286,8 @@ describe('RecycleBinTabComponent', () => {
         });
 
         it('purges a row after the confirmation', () => {
-            grant(ResourceCode.Flows, ActionCode.Delete);
+            superadmin.set(true);
+            grant(ResourceCode.Flows);
             const element = openFlowsWith([entry(5, 'Report')]);
 
             click(element, ROW_DELETE);
@@ -283,6 +325,23 @@ describe('RecycleBinTabComponent', () => {
             httpTesting.expectNone(FLOWS_LIST);
         });
 
+        it('leaves a 403 on delete forever (stale superadmin state) to the forbidden interceptor', () => {
+            superadmin.set(true);
+            grant(ResourceCode.Flows);
+            const element = openFlowsWith([entry(5, 'Report')]);
+
+            click(element, ROW_DELETE);
+            httpTesting
+                .expectOne({ method: 'POST', url: `${FLOWS_LIST}purge/` })
+                .flush(
+                    { message: 'Superadmin privileges are required for this action.' },
+                    { status: 403, statusText: 'Forbidden' }
+                );
+
+            expect(toast.error).not.toHaveBeenCalled();
+            httpTesting.expectNone(FLOWS_LIST);
+        });
+
         it('shows the reason of an item the backend skipped (a storage restore conflict)', () => {
             grant(ResourceCode.Files, ActionCode.Create);
             const element = open('files');
@@ -301,7 +360,8 @@ describe('RecycleBinTabComponent', () => {
         });
 
         it('names a storage row by its full path in the delete dialog', () => {
-            grant(ResourceCode.Files, ActionCode.Delete);
+            superadmin.set(true);
+            grant(ResourceCode.Files);
             confirm.mockReturnValue(of<ConfirmationResult>('close'));
             const element = open('files');
             httpTesting.expectOne(FILES_LIST).flush(storagePage([storageEntry(12, 'docs/reports/a.txt')]));
@@ -314,7 +374,10 @@ describe('RecycleBinTabComponent', () => {
     });
 
     describe('selection and toolbar', () => {
-        beforeEach(() => grant(ResourceCode.Flows, ActionCode.Create, ActionCode.Delete));
+        beforeEach(() => {
+            superadmin.set(true);
+            grant(ResourceCode.Flows);
+        });
 
         it('shows the bulk buttons only while rows are selected, as outlined text buttons', () => {
             const element = openFlowsWith([entry(5, 'Report'), entry(6, 'Digest'), entry(7, 'Sync')]);
@@ -422,7 +485,7 @@ describe('RecycleBinTabComponent', () => {
         }
 
         it('filters the Tools tab by tool kind on the client, and clears the selection', () => {
-            grant(ResourceCode.Tools, ActionCode.Delete);
+            grant(ResourceCode.Tools, ActionCode.Create);
             const element = open('tools');
             httpTesting.expectOne(`${API_URL}python-code-tool/recycle-bin/`).flush([entry(1, 'Parser')]);
             httpTesting
@@ -473,7 +536,7 @@ describe('RecycleBinTabComponent', () => {
         }
 
         it('shows the node count of each flow, filters by has / has none with the search, and clears the selection', () => {
-            grant(ResourceCode.Flows, ActionCode.Delete);
+            grant(ResourceCode.Flows, ActionCode.Create);
             const element = openFlowsWith([
                 { ...entry(5, 'Report', { deleted_at: '2026-10-03T10:00:00Z' }), contents_total: 2 },
                 { ...entry(6, 'Digest', { deleted_at: '2026-10-02T10:00:00Z' }), contents_total: 9 },

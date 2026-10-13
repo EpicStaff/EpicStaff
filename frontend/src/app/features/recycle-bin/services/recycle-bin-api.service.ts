@@ -62,7 +62,7 @@ export class RecycleBinApiService {
         return this.http.post<RecycleBinBulkPurgeResponse>(`${this.binUrl(source)}purge/`, selection);
     }
 
-    /** Empties every bin the user may delete in; the server picks them by the user's permissions. */
+    /** Empties the active organization's whole bin, every type; superadmin only (anyone else gets a 403). */
     emptyAll(): Observable<RecycleBinEmptyResponse> {
         return this.http.post<RecycleBinEmptyResponse>(`${this.configService.apiUrl}recycle-bin/empty/`, {});
     }
