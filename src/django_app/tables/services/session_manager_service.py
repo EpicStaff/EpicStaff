@@ -88,6 +88,14 @@ class SessionManagerService(metaclass=SingletonMeta):
     def stop_session(self, session_id: int) -> int:
         return self.redis_service.publish_stop_session(session_id=session_id)
 
+    def stop_running_session(self, session: Session) -> None:
+        received_n = self.stop_session(session_id=session.pk)
+        if received_n == 0:
+            logger.error("Session {} was stopped, but no crew instance is listening.", session.pk)
+            self._mark_session_error(
+                session=session, reason="No crew instance received the stop session command."
+            )
+
     def get_session_status(self, session_id: int) -> Session.SessionStatus:
         session: Session = self.get_session(session_id=session_id)
         return session.status
@@ -268,12 +276,12 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_data=session_data,
                 org_id=graph.org_id,
             )
-            required_listeners = 2
-            if received_n != required_listeners:
-                logger.error("Data was sent but not received.")
+            if received_n == 0:
+                logger.error(
+                    "Session {} was published, but no crew instance is listening.", session.pk
+                )
                 self._mark_session_error(
-                    session=session,
-                    reason=f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required.",
+                    session=session, reason="No crew instance received the session."
                 )
             logger.info("Session data published in Redis for session ID: {}.", session.pk)
 

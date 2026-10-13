@@ -43,13 +43,21 @@ def _latest_session(graph: Graph) -> Session:
     return Session.objects.filter(graph=graph).latest()
 
 
+def _stub_publish(monkeypatch, session_manager: SessionManagerService, received_count: int):
+    monkeypatch.setattr(
+        session_manager.redis_service,
+        "publish_session_data",
+        lambda *, session_data, org_id: received_count,
+    )
+
+
 @pytest.mark.django_db
 def test_status_written_by_crew_during_publish_is_kept(
     graph, session_manager, monkeypatch
 ):
     def publish_and_finish_like_a_fast_crew(*, session_data, org_id):
         Session.objects.filter(graph=graph).update(status=Session.SessionStatus.END)
-        return 2
+        return 1
 
     monkeypatch.setattr(
         session_manager.redis_service,
@@ -81,12 +89,32 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
 
 @pytest.mark.django_db
 def test_graph_schema_is_stored(graph, session_manager, monkeypatch):
-    monkeypatch.setattr(
-        session_manager.redis_service,
-        "publish_session_data",
-        lambda *, session_data, org_id: 2,
-    )
+    _stub_publish(monkeypatch, session_manager, received_count=1)
 
     session_id = _run(session_manager, graph)
 
     assert Session.objects.get(pk=session_id).graph_schema == GRAPH_SCHEMA
+
+
+@pytest.mark.django_db
+def test_session_no_crew_received_is_marked_error(graph, session_manager, monkeypatch):
+    _stub_publish(monkeypatch, session_manager, received_count=0)
+
+    session_id = _run(session_manager, graph)
+
+    session = Session.objects.get(pk=session_id)
+    assert session.status == Session.SessionStatus.ERROR
+    assert "crew" in session.status_data["reason"]
+    assert session.finished_at is not None
+
+
+@pytest.mark.parametrize("received_count", [1, 3])
+@pytest.mark.django_db
+def test_session_received_by_any_subscriber_stays_pending(
+    graph, session_manager, monkeypatch, received_count
+):
+    _stub_publish(monkeypatch, session_manager, received_count=received_count)
+
+    session_id = _run(session_manager, graph)
+
+    assert Session.objects.get(pk=session_id).status == Session.SessionStatus.PENDING
