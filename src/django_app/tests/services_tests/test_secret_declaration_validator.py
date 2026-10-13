@@ -11,7 +11,6 @@ import pytest
 from tables.models import PythonCode
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     Graph,
     PythonNode,
     WebhookTriggerNode,
@@ -138,18 +137,6 @@ class TestViolations:
 
         # Two blocks, two PythonCode rows — reported once each.
         assert len(violations) == 2
-
-    def test_a_conditional_edge_is_checked(self, graph):
-        ConditionalEdge.objects.create(
-            graph=graph,
-            source_node_id=None,
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
-        )
-
-        violations = secret_declaration_validator.violations(graph_id=graph.pk)
-
-        assert len(violations) == 1
-        assert violations[0].undeclared == ["VAL_KEY"]
 
     def test_another_graphs_node_is_not_reported(self, org, graph):
         other_graph = Graph.objects.create(name="Other validator flow", org=org)

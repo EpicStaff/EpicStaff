@@ -42,7 +42,7 @@ async def test_graph_message_is_appended_to_the_stream_as_an_envelope(
     redis_service, redis_client = redis_service_with_fake_redis
     message = _message("uuid-1")
 
-    await redis_service.aadd_graph_message(message)
+    await redis_service.aadd_graph_message(message["uuid"], json.dumps(message))
 
     # The literal stream name and field names are the contract django_app reads.
     [(_entry_id, fields)] = redis_client.xrange("graph.messages")
@@ -57,9 +57,9 @@ async def test_sync_and_async_appends_keep_their_order_in_one_stream(
 ):
     redis_service, redis_client = redis_service_with_fake_redis
 
-    await redis_service.aadd_graph_message(_message("uuid-1"))
-    redis_service.add_graph_message(_message("uuid-2"))
-    await redis_service.aadd_graph_message(_message("uuid-3"))
+    await redis_service.aadd_graph_message("uuid-1", json.dumps(_message("uuid-1")))
+    redis_service.add_graph_message("uuid-2", json.dumps(_message("uuid-2")))
+    await redis_service.aadd_graph_message("uuid-3", json.dumps(_message("uuid-3")))
 
     entries = redis_client.xrange("graph.messages")
     assert [fields["correlation_id"] for _entry_id, fields in entries] == [
@@ -76,7 +76,10 @@ async def test_stream_is_capped_so_an_absent_reader_cannot_fill_redis(
     redis_service, redis_client = redis_service_with_fake_redis
 
     for index in range(GRAPH_MESSAGE_STREAM_MAXLEN + 500):
-        await redis_service.aadd_graph_message(_message(f"uuid-{index}", text=""))
+        message_uuid = f"uuid-{index}"
+        await redis_service.aadd_graph_message(
+            message_uuid, json.dumps(_message(message_uuid, text=""))
+        )
 
     # Approximate trimming removes whole nodes, so a few extra entries may remain.
     assert redis_client.xlen("graph.messages") < GRAPH_MESSAGE_STREAM_MAXLEN + 500

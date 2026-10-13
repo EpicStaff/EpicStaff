@@ -6,6 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from .agent_service import CollectionSpec, S3FileSpec
 from .ai_providers import LLMData
 from .knowledge import RagSearchConfig
+from .storage_scope import StorageScopedData
 from .surfaces import CombinedSurfaceData
 from .tools import BaseToolData, PythonCodeData
 
@@ -35,14 +36,12 @@ class KnowledgeNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class FileExtractorNodeData(BaseModel):
+class FileExtractorNodeData(StorageScopedData):
     node_name: str
     input_map: dict[str, Any]
     output_variable_path: str | None = None
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
+    use_storage: bool = True
+    """File extractor nodes always require storage access."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,14 +57,12 @@ class KeyValueNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AudioTranscriptionNodeData(BaseModel):
+class AudioTranscriptionNodeData(StorageScopedData):
     node_name: str
     input_map: dict[str, Any]
     output_variable_path: str | None = None
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
+    use_storage: bool = True
+    """Audio transcription nodes always require storage access."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -209,15 +206,6 @@ class EdgeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ConditionalEdgeData(BaseModel):
-    source: str
-    python_code: PythonCodeData
-    then: str | None = None
-    input_map: dict[str, Any]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class WebhookTriggerNodeData(BaseModel):
     node_name: str
     python_code: PythonCodeData
@@ -276,7 +264,6 @@ class GraphData(BaseModel):
     task_node_list: list[TaskNodeData] = []
     agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []
-    conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []
     classification_decision_table_node_list: list[ClassificationDecisionTableNodeData] = []
     entrypoint: str

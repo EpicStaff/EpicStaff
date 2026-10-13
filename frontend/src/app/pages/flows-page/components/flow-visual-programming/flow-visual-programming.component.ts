@@ -13,6 +13,7 @@ import {
     OnDestroy,
     OnInit,
     signal,
+    untracked,
     ViewChild,
     viewChild,
 } from '@angular/core';
@@ -34,7 +35,7 @@ import {
     ResourceCode,
 } from '@shared/models';
 import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { extractHttpErrorMessage, generateUuid } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -49,6 +50,7 @@ import {
     mergeMap,
     Observable,
     of,
+    Subject,
     switchMap,
     tap,
 } from 'rxjs';
@@ -110,6 +112,7 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
@@ -154,6 +157,7 @@ export const RUN_WHILE_SAVING_MESSAGE = 'The flow is being saved. Run again when
 export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open the node to see why';
 export const extractParentNotUpdatedMessage = (subflowName: string): string =>
     `Subflow "${subflowName}" was created, but another flow was opened before the original flow was updated — the extracted nodes are still in it`;
+export const REMOTE_SAVE_RELOAD_FAILED_MESSAGE = 'Failed to load the latest version of this flow — refresh it';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -173,6 +177,8 @@ export const extractParentNotUpdatedMessage = (subflowName: string): string =>
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    // The page's own store (not root), replaced on every graph load, including when the route switches flows.
+    providers: [NodeAuthorshipStore],
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
@@ -191,6 +197,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
 
@@ -200,16 +207,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
-    /**
-     * A `graphState` whose node lists are older than the backend's: another user saved and only the
-     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
-     */
-    private readonly outdatedGraphState = signal<GraphDto | null>(null);
-    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
-    private readonly storedGraph = computed<GraphDto | null>(() => {
+    /** The latest save another user announced; `graphState` is outdated while its save_version is lower. */
+    private readonly remoteSave = signal<{ graphId: number; saveVersion: number } | null>(null);
+    private readonly isGraphOutdated = computed(() => {
         const graph = this.graphState();
-        return graph === this.outdatedGraphState() ? null : graph;
+        const remoteSave = this.remoteSave();
+        return (
+            !!graph && !!remoteSave && graph.id === remoteSave.graphId && graph.save_version < remoteSave.saveVersion
+        );
     });
+    private readonly remoteSaveReloads = new Subject<{ graphId: number; saveVersion: number }>();
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
@@ -244,6 +253,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const status = this.runSessionSSEService.status();
         return isTerminalSessionStatus(status) ? null : status;
     });
+    /** No unsaved flow edits, no open node panel (its edits reach the flow only on commit) and no version preview. */
+    private readonly canReplaceLiveFlow = computed(
+        () => !this.hasUnsavedChangesSignal() && !this.isPreviewing() && !this.sidePanelService.selectedNodeId()
+    );
     public restoreWarnings = signal<RestoreWarning[]>([]);
     /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
     public readonly activeRestoreWarnings = computed(() => {
@@ -435,12 +448,40 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
             this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
 
-            if (!this.hasUnsavedChangesSignal()) {
-                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
-            }
-            // Either way the stored nodes changed and this graph does not have them.
-            this.outdatedGraphState.set(this.graphState());
+            this.remoteSave.set({ graphId: event.graph_id, saveVersion: event.new_save_version });
         });
+
+        // An outdated graph is reloaded only once nothing local can be lost. Until then `graphState`
+        // keeps the old save_version, so a save fails the version check instead of overwriting the
+        // other user's save.
+        effect(() => {
+            if (!this.isGraphOutdated() || !this.canReplaceLiveFlow()) return;
+            const remoteSave = this.remoteSave()!;
+            untracked(() => this.remoteSaveReloads.next(remoteSave));
+        });
+
+        this.remoteSaveReloads
+            .pipe(
+                switchMap(({ graphId, saveVersion }) =>
+                    this.flowApiService.getGraphById(graphId, true).pipe(
+                        // A read older than the announced save would leave the canvas just as outdated.
+                        map((graph): GraphDto | null => (graph.save_version >= saveVersion ? graph : null)),
+                        catchError(() => of(null))
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((graph) => {
+                if (!graph) {
+                    this.toastService.warning(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
+                    return;
+                }
+                // The canvas may have changed while the graph loaded.
+                if (graph.id !== this.graphState()?.id || !this.canReplaceLiveFlow()) return;
+                // Undo must not bring back the canvas from before the other user's save.
+                this.undoRedoService.clear();
+                this.applyLoadedGraphState(graph, this.availableFlowLights(), false);
+            });
     }
 
     public ngOnInit(): void {
@@ -481,7 +522,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 tap(({ graph, flows }) => {
                     // Update graphState so loadedFlowState() recomputes via
                     // buildFlowModelFromGraphDto (the shared post-load pipeline); also refresh availableFlowLights.
-                    this.graphState.set(graph);
+                    this.setGraphState(graph);
                     this.availableFlowLights.set(flows);
 
                     const serverFlow = this.loadedFlowState();
@@ -644,7 +685,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                                 title: 'Unpack Subflow',
                                 message:
                                     `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
-                                    `Unpack <strong>${subflowName}</strong> into the current graph?`,
+                                    `Unpack <strong>${escapeHtml(subflowName)}</strong> into the current graph?`,
                                 confirmText: 'Unpack',
                                 cancelText: 'Cancel',
                                 type: 'warning',
@@ -1094,7 +1135,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         nodeDiff: ReturnType<typeof getNodeDiff>,
         showSuccessToast: boolean
     ): void {
-        this.graphState.set(graph);
+        this.setGraphState(graph);
         this.availableFlowLights.set(flows);
 
         // What was sent becomes the saved baseline; the canvas keeps what it holds now.
@@ -1199,7 +1240,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return this.flowApiService.bulkSaveGraph(graphId, payload).pipe(
             tap((responseGraph) => {
                 if (!this.isCurrentGraph(graphId)) return;
-                this.graphState.set(responseGraph);
+                this.setGraphState(responseGraph);
 
                 // The baseline records what was *sent*, patched with what the server
                 // assigned it. Reading the node back off the canvas would bake in
@@ -1321,16 +1362,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Takes a write's own result into `graphState` when the response is not the whole graph. A
-     * graph that another user's save made outdated stays outdated: this write did not bring in the
-     * nodes they saved. A result for a graph the page no longer shows is dropped.
+     * Takes a write's own result into `graphState` when the response is not the whole graph. It
+     * does not bring in another user's save: whether the graph is outdated is still `remoteSave`
+     * against the new `save_version`, and a save announced after this write stays ahead of it. A
+     * result for a graph the page no longer shows is dropped.
      */
     private applyOwnWriteToGraphState(graphId: number, update: (graph: GraphDto) => GraphDto): void {
         const graph = this.graphState();
         if (!graph || graph.id !== graphId) return;
-        const updated = update(graph);
-        if (graph === this.outdatedGraphState()) this.outdatedGraphState.set(updated);
-        this.graphState.set(updated);
+        this.setGraphState(update(graph));
     }
 
     private saveGraphForRun(): Observable<void> {
@@ -1701,8 +1741,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.isSnakeGameActive.set(true);
     }
 
-    private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+    /**
+     * The only way to set `graphState`: every graph the API returns here is the full graph, and the node
+     * authorship store takes it in the same step, so it always mirrors `graphState`.
+     */
+    private setGraphState(graph: GraphDto): void {
         this.graphState.set(graph);
+        this.nodeAuthorshipStore.replaceFromGraph(graph);
+    }
+
+    private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
+        this.setGraphState(graph);
         this.availableFlowLights.set(flows);
         const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
@@ -1834,7 +1883,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public onFlowEdited(updatedFlow: GraphDto): void {
-        this.graphState.set(updatedFlow);
+        this.setGraphState(updatedFlow);
         this.cdr.markForCheck();
     }
 
@@ -1896,8 +1945,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // picks a restore option; Cancel leaves them in the preview.
         const hasUnsaved = this.hasUnsavedChanges();
         const message = hasUnsaved
-            ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
-            : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
+            ? `You have unsaved changes. Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`
+            : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
         this.unsavedChangesDialog
             .confirm({

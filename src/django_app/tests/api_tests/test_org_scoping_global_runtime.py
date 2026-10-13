@@ -1,5 +1,6 @@
-"""Plan 5 — global singletons (superadmin write-lockdown), the per-org
-default models, and reachable runtime models (RealtimeAgentChat)."""
+"""Plan 5 — the per-org default models and reachable runtime models
+(RealtimeAgentChat, ConversationRecording, PythonCodeResult,
+RealtimeSessionItem)."""
 
 from unittest.mock import patch
 
@@ -74,31 +75,6 @@ def client_super(db, django_user_model, org_a):
     return _client(root, org_a)
 
 
-# ---- default-* singletons: global read, superadmin write ----
-
-
-@pytest.mark.django_db
-def test_default_llm_config_read_allowed_for_member(client_member):
-    assert client_member.get("/api/default-llm-config/").status_code == 200
-
-
-@pytest.mark.django_db
-def test_default_llm_config_write_denied_for_member(client_member):
-    assert (
-        client_member.put("/api/default-llm-config/", {}, format="json").status_code
-        == 403
-    )
-
-
-@pytest.mark.django_db
-def test_default_llm_config_write_permitted_for_superadmin(client_super):
-    # passes the permission gate (not 403); the body/singleton may yield 200/400/404
-    assert (
-        client_super.put("/api/default-llm-config/", {}, format="json").status_code
-        != 403
-    )
-
-
 # ---- default-models: one row per org, member read, LLM_CONFIGS UPDATE write ----
 
 
@@ -166,7 +142,7 @@ def test_default_models_kept_separately_per_org(django_user_model, org_a, org_b)
 
 
 def _chat(org):
-    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    agent_definition = AgentDefinition.objects.create(org=org, name="a")
     rt_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition
     )
@@ -322,7 +298,18 @@ def _viewer(django_user_model, org, email):
     return user
 
 
-# ---- python-code-result: list removed, detail superadmin-only ----
+@pytest.fixture
+def client_without_permissions(db, django_user_model, org_a):
+    """A member of org_a whose custom role grants nothing (no FLOWS, no VOICE)."""
+    role = Role.objects.create(name="No permissions", org=org_a, is_built_in=False)
+    user = django_user_model.objects.create_user(
+        email="no-perms@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=role)
+    return _client(user, org_a)
+
+
+# ---- python-code-result: list removed, detail org-scoped behind FLOWS read ----
 
 
 @pytest.mark.django_db
@@ -333,30 +320,78 @@ def test_python_code_result_list_removed(client_super):
 
 
 @pytest.mark.django_db
-def test_python_code_result_detail_denied_for_member(client_member):
-    PythonCodeResult.objects.create(execution_id="exec-1", stdout="secret output")
-    assert client_member.get("/api/python-code-result/exec-1/").status_code == 403
+def test_python_code_result_detail_allowed_for_member_own_org(client_member, org_a):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="ok", org=org_a)
+    resp = client_member.get("/api/python-code-result/exec-1/")
+    assert resp.status_code == 200, resp.data
+    assert resp.data["stdout"] == "ok"
 
 
 @pytest.mark.django_db
-def test_python_code_result_detail_allowed_for_superadmin(client_super):
-    PythonCodeResult.objects.create(execution_id="exec-1", stdout="ok")
+def test_python_code_result_detail_allowed_for_superadmin(client_super, org_a):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="ok", org=org_a)
     assert client_super.get("/api/python-code-result/exec-1/").status_code == 200
 
 
-# ---- realtime-session-items: superadmin-only (holds base64 audio) ----
+@pytest.mark.django_db
+def test_python_code_result_detail_cross_org_404(client_member, org_b):
+    PythonCodeResult.objects.create(
+        execution_id="exec-1", stdout="secret output", org=org_b
+    )
+    assert client_member.get("/api/python-code-result/exec-1/").status_code == 404
 
 
 @pytest.mark.django_db
-def test_realtime_session_items_denied_for_member(client_member):
-    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
-    assert client_member.get("/api/realtime-session-items/").status_code == 403
+def test_python_code_result_detail_denied_without_flows_read(
+    client_without_permissions, org_a
+):
+    PythonCodeResult.objects.create(
+        execution_id="exec-1", stdout="secret output", org=org_a
+    )
+    assert (
+        client_without_permissions.get("/api/python-code-result/exec-1/").status_code
+        == 403
+    )
+
+
+# ---- realtime-session-items: org-scoped behind VOICE read (holds base64 audio) ----
 
 
 @pytest.mark.django_db
-def test_realtime_session_items_allowed_for_superadmin(client_super):
-    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
-    assert client_super.get("/api/realtime-session-items/").status_code == 200
+def test_realtime_session_items_allowed_for_member_own_org(client_member, org_a):
+    own = RealtimeSessionItem.objects.create(
+        connection_key="k", data={"audio": "b64"}, org=org_a
+    )
+    resp = client_member.get("/api/realtime-session-items/")
+    assert resp.status_code == 200, resp.data
+    assert {row["id"] for row in resp.data["results"]} == {own.id}
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_cross_org_hidden(client_member, org_a, org_b):
+    foreign = RealtimeSessionItem.objects.create(
+        connection_key="k", data={"audio": "b64"}, org=org_b
+    )
+    resp = client_member.get("/api/realtime-session-items/")
+    assert resp.status_code == 200, resp.data
+    assert resp.data["results"] == []
+    assert (
+        client_member.get(f"/api/realtime-session-items/{foreign.id}/").status_code
+        == 404
+    )
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_denied_without_voice_read(
+    client_without_permissions, org_a
+):
+    RealtimeSessionItem.objects.create(
+        connection_key="k", data={"audio": "b64"}, org=org_a
+    )
+    assert (
+        client_without_permissions.get("/api/realtime-session-items/").status_code
+        == 403
+    )
 
 
 # NOTE: ngrok config is reachable only through the nested WebhookTrigger

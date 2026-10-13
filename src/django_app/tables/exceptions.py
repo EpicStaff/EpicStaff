@@ -566,10 +566,20 @@ class ToolExecutionError(CustomAPIExeption):
     default_code = "flow_assistant_tool_execution_failed"
 
 
-class PromptNotFoundError(CustomAPIExeption):
-    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+class NodeChildValidationError(CustomAPIExeption):
+    """Base for a node's nested child row that is invalid but can only be detected
+    while the node's children are written.
+
+    Graph bulk save reports a subclass under the failing item's list key and index,
+    like any other item error; the single-node API returns it as a plain 400.
+    """
 
     status_code = 400
+
+
+class PromptNotFoundError(NodeChildValidationError):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
     default_code = "prompt_not_found"
 
     def __init__(self, value: int | str):
@@ -580,10 +590,9 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
-class SectionIdConflictError(CustomAPIExeption):
+class SectionIdConflictError(NodeChildValidationError):
     """Raised when a section id in the payload already belongs to a different CDT node."""
 
-    status_code = 400
     default_code = "section_id_conflict"
 
     def __init__(self, value: str):
@@ -594,10 +603,9 @@ class SectionIdConflictError(CustomAPIExeption):
         )
 
 
-class SectionNotFoundError(CustomAPIExeption):
+class SectionNotFoundError(NodeChildValidationError):
     """Raised when a condition group references a section id not present among this node's sections."""
 
-    status_code = 400
     default_code = "section_not_found"
 
     def __init__(self, value: str):

@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.key_value_node import KeyValueNodeImportSerializer
@@ -37,4 +39,4 @@ class KeyValueNodeStrategy(EntityImportExportStrategy):
             mode=serializer.validated_data.get("mode", KeyValueNode.Mode.READ),
             user=kwargs.get("user"),
         )
-        return serializer.save(key_value_table=table)
+        return serializer.save(key_value_table=table, created_by=resolve_author(kwargs.get("user")))

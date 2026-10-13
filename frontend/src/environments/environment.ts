@@ -4,4 +4,5 @@ export const environment = {
     realtimeApiUrl: '/realtime/',
     auditorUrl: '/auditor/',
     isEpicChatEnabled: true,
+    isAuditTrailEnabled: false,
 };

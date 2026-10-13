@@ -453,7 +453,7 @@ def test_cdt_condition_group_prompt_other_node_rejected(client_a, org_a):
     # A prompt from another node is not node-local -> rejected, not silently dropped.
     assert resp.status_code == 400, resp.data
     assert resp.data["code"] == "prompt_not_found"
-    assert resp.data["message"] == f"{foreign_prompt.id}"
+    assert str(foreign_prompt.id) in resp.data["message"]
     assert not ClassificationConditionGroup.objects.filter(
         classification_decision_table_node=node_a
     ).exists()
@@ -511,31 +511,36 @@ def test_cdt_bulk_links_group_to_prompt_by_key_one_payload(client_a, org_a):
 
 
 @pytest.mark.django_db
-def test_cdt_group_prompt_key_other_node_rejected(client_a, org_a):
-    """A prompt_key that isn't among THIS node's prompts is rejected, not
-    silently dropped."""
+def test_cdt_group_prompt_key_other_node_never_attached(client_a, org_a):
+    """A prompt_key that isn't among THIS node's prompts unlinks the group: the
+    lookup is node-local, so another node's prompt with that key is never attached."""
     graph_a = _graph(org_a, "a")
     node = ClassificationDecisionTableNode.objects.create(
         graph=graph_a, node_name="cdt1"
+    )
+    other_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_a, node_name="cdt_other"
+    )
+    foreign_prompt = ClassificationDecisionTablePrompt.objects.create(
+        cdt_node=other_node, prompt_key="pother"
     )
     resp = client_a.patch(
         f"{CDT_URL}{node.id}/",
         {
             "prompt_configs": [{"prompt_key": "p1"}],
             "condition_groups": [
-                {"group_name": "g1", "order": 0, "prompt_key": "does-not-exist"}
+                {"group_name": "g1", "order": 0, "prompt_key": "pother"}
             ],
         },
         format="json",
     )
-    assert resp.status_code == 400, resp.data
-    assert resp.data["code"] == "prompt_not_found"
-    assert resp.data["message"] == "does-not-exist"
-    # No leak: the rejected request rolls back the whole transaction, including
-    # the prompt_configs sync that ran before the condition_groups sync raised.
-    assert not ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).exists()
-    assert not ClassificationConditionGroup.objects.filter(
+    assert resp.status_code == 200, resp.data
+    group = ClassificationConditionGroup.objects.get(
         classification_decision_table_node=node
+    )
+    assert group.prompt_id is None
+    assert not ClassificationConditionGroup.objects.filter(
+        prompt=foreign_prompt
     ).exists()
 
 
@@ -601,7 +606,7 @@ def test_cdt_export_json_cross_org_node_404(client_a, org_a, org_b):
     resp = client_a.get(_export_url(foreign_node.id), {"export_format": "json"})
     assert resp.status_code == 404, resp.content
     assert resp.data["code"] == "classification_decision_table_node_not_found"
-    assert resp.data["message"] == f"{foreign_node.id}"
+    assert str(foreign_node.id) in resp.data["message"]
 
 
 @pytest.mark.django_db

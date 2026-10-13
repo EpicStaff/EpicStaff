@@ -1,12 +1,23 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, OnDestroy, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    inject,
+    input,
+    OnDestroy,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { getLabelColorOption, LabelDto } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
-import { ToolCardIcon, ToolCardMenuAction, ToolCardVM } from './tool-card.model';
+import { ToolCardIcon, ToolCardMenuAction, ToolCardMenuActionEvent, ToolCardVM } from './tool-card.model';
 import { ToolCardMenuComponent } from './tool-card-menu.component';
 
 @Component({
@@ -31,8 +42,12 @@ export class ToolCardComponent implements OnDestroy {
     public readonly configure = output<ToolCardVM>();
     public readonly selectedChange = output<{ tool: ToolCardVM; selected: boolean }>();
     public readonly favoriteChange = output<{ tool: ToolCardVM; favorite: boolean }>();
-    public readonly menuAction = output<{ tool: ToolCardVM; action: ToolCardMenuAction }>();
+    public readonly menuAction = output<ToolCardMenuActionEvent>();
     public readonly labelsChange = output<{ tool: ToolCardVM; labelIds: number[] }>();
+
+    private readonly menuTriggerButton = viewChild.required<string, ElementRef<HTMLButtonElement>>('menuTrigger', {
+        read: ElementRef,
+    });
 
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
@@ -146,7 +161,7 @@ export class ToolCardComponent implements OnDestroy {
 
     public onMenuAction(action: ToolCardMenuAction): void {
         this.closeMenu();
-        this.menuAction.emit({ tool: this.tool(), action });
+        this.menuAction.emit({ tool: this.tool(), action, trigger: this.menuTriggerButton().nativeElement });
     }
 
     public onMenuLabelsChanged(labelIds: number[]): void {

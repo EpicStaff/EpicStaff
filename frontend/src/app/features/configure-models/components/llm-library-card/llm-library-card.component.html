@@ -2,6 +2,7 @@
     <div class="llm-card__top">
         <span class="llm-card__model">{{ model().customName }}</span>
         <div class="llm-card__actions">
+            <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
             <button
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                 type="button"

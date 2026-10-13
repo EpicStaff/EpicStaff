@@ -9,6 +9,7 @@ same-named agent/tool-config value in additional_global_kwargs -- mirrors the
 """
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -40,8 +41,8 @@ class FakeRedisService:
         # run_code() reads this to log the current subscriber count.
         self._async_pubsub_groups = {}
 
-    async def apublish(self, channel: str, message: dict):
-        self.published = message
+    async def apublish(self, channel: str, message: str):
+        self.published = json.loads(message)
 
 
 def make_python_code_data(**overrides) -> PythonCodeData:
@@ -56,7 +57,9 @@ def make_python_code_data(**overrides) -> PythonCodeData:
     return PythonCodeData(**defaults)
 
 
-async def _run_and_capture(service: RunPythonCodeService, redis: FakeRedisService, **run_code_kwargs):
+async def _run_and_capture(
+    service: RunPythonCodeService, redis: FakeRedisService, **run_code_kwargs
+):
     """Runs run_code() and, once the task is published, injects a matching
     CodeResultData so the internal wait loop exits immediately."""
     task = asyncio.ensure_future(service.run_code(**run_code_kwargs))
@@ -73,7 +76,10 @@ async def _run_and_capture(service: RunPythonCodeService, redis: FakeRedisServic
     # message would, bypassing the actual redis round-trip. asubscribe()
     # receives an AsyncPubsubSubscriber wrapping the bound
     # RunPythonCallbackReceiver.callback method as `_callback`.
-    subscriber = redis.asubscribe.await_args.kwargs.get("subscriber") or redis.asubscribe.await_args.args[-1]
+    subscriber = (
+        redis.asubscribe.await_args.kwargs.get("subscriber")
+        or redis.asubscribe.await_args.args[-1]
+    )
     await subscriber._callback(
         {
             "data": CodeResultData(
@@ -93,9 +99,7 @@ async def test_run_code_forces_org_id_into_global_kwargs_and_wins_over_additiona
     redis = FakeRedisService()
     service = RunPythonCodeService(redis_service=redis)
 
-    python_code_data = make_python_code_data(
-        global_kwargs={"foo": "bar"}, org_id=77
-    )
+    python_code_data = make_python_code_data(global_kwargs={"foo": "bar"}, org_id=77)
 
     await _run_and_capture(
         service,

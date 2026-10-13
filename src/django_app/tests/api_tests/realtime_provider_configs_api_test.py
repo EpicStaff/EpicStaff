@@ -91,34 +91,23 @@ CONFIG_CASES = [
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename, model, payload", CONFIG_CASES)
-def test_provider_config_cross_org_404(auth_client, org_b, basename, model, payload):
-    instance = model.objects.create(org=org_b, **payload)
-    url = reverse(f"{basename}-detail", args=[instance.pk])
-    assert auth_client.get(url).status_code == 404
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload", CONFIG_CASES)
-def test_provider_config_own_org_visible(
-    auth_client, default_org, basename, model, payload
-):
-    instance = model.objects.create(org=default_org, **payload)
-    url = reverse(f"{basename}-detail", args=[instance.pk])
-    assert auth_client.get(url).status_code == 200
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload", CONFIG_CASES)
-def test_provider_config_list_excludes_other_org(
-    auth_client, default_org, org_b, basename, model, payload
+def test_provider_configs_are_visible_and_editable_only_in_their_org(
+    auth_client, client_org_b, default_org, org_b, basename, model, payload
 ):
     own = model.objects.create(org=default_org, **payload)
-    model.objects.create(org=org_b, **payload)
-    url = reverse(f"{basename}-list")
-    resp = auth_client.get(url)
-    assert resp.status_code == 200
-    returned_ids = {row["id"] for row in resp.data["results"]}
-    assert returned_ids == {own.id}
+    theirs = model.objects.create(org=org_b, **payload)
+
+    listed = auth_client.get(reverse(f"{basename}-list"))
+
+    assert listed.status_code == 200
+    assert {row["id"] for row in listed.data["results"]} == {own.id}
+    assert auth_client.get(reverse(f"{basename}-detail", args=[own.pk])).status_code == 200
+    assert auth_client.get(reverse(f"{basename}-detail", args=[theirs.pk])).status_code == 404
+    # A member of org_b cannot edit a config owned by another org.
+    patched = client_org_b.patch(reverse(f"{basename}-detail", args=[own.pk]), {"custom_name": "hacked"}, format="json")
+    assert patched.status_code == 404
+    own.refresh_from_db()
+    assert own.custom_name != "hacked"
 
 
 @pytest.mark.django_db
@@ -131,18 +120,6 @@ def test_provider_config_create_stamps_org(
     assert resp.status_code == 201, resp.data
     instance = model.objects.get(pk=resp.data["id"])
     assert instance.org_id == default_org.id
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload", CONFIG_CASES)
-def test_provider_config_update_cross_org_rejected(
-    client_org_b, org_b, default_org, basename, model, payload
-):
-    # A member of org_b must not be able to update a config owned by another org.
-    instance = model.objects.create(org=default_org, **payload)
-    url = reverse(f"{basename}-detail", args=[instance.pk])
-    resp = client_org_b.patch(url, {"custom_name": "hacked"}, format="json")
-    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

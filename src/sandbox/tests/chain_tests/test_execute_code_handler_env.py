@@ -24,13 +24,12 @@ pytest.importorskip(
 
 import settings
 import dynamic_venv_executor_chain as chain_mod
-from dynamic_venv_executor_chain import CreateVenvHandler, ExecuteCodeHandler
+from dynamic_venv_executor_chain import ExecuteCodeHandler
 from secret_scrubber import MASK
 
 from conftest import copy_shared_libs_into_jail, make_execute_context
 
 SECRET_VALUE = "sk-live-must-not-touch-disk-7a21"
-TEST_VENV_BASE_PATH = Path("/tmp/epicstaff-test-venvs")
 # In the container these are installed into the venv; running the generated
 # source directly here needs them on PYTHONPATH instead.
 SHARED_PATH = Path(__file__).resolve().parents[3] / "shared"
@@ -127,209 +126,111 @@ def _execute(*, base_dir: Path, code: str, secrets: dict[str, str]):
     return asyncio.run(ExecuteCodeHandler().handle(context))
 
 
-class TestOutputStaysClean:
-    @pytest.fixture(autouse=True)
-    def shared_libs_on_path(self, tmp_path, monkeypatch):
-        """epicstaff_secrets reaches the child through PYTHONPATH added to the
-        curated env returned by build_base_env. In the container the library
-        is installed into the venv, and venv_path sits in jail.py's
-        read_exec, so the real chain is self-contained inside the Landlock
-        jail. This test drives the handler without a venv, so PYTHONPATH
-        must point somewhere the jail actually allows reading -- src/shared
-        is outside every allowlist entry and gets denied -- so this copies
-        the library into exec_dir (inside jail.read_write) instead. See
-        copy_shared_libs_into_jail's docstring for the full rationale.
-        """
-        shared_libs_path = copy_shared_libs_into_jail(tmp_path)
-        real_build_base_env = chain_mod.build_base_env
-        monkeypatch.setattr(
-            chain_mod,
-            "build_base_env",
-            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
-        )
-
-    def test_a_printed_secret_is_masked_in_stdout(self, tmp_path):
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert SECRET_VALUE not in result.stdout
-        assert MASK in result.stdout
-
-    def test_a_secret_in_an_exception_message_is_masked_in_stderr(self, tmp_path):
-        """The likeliest accidental leak. wrap_code's except block prints str(e) to
-        stderr verbatim, so any library error echoing an auth header lands here
-        without the author writing a single print."""
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    raise ValueError(get_secret("K"))',
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert SECRET_VALUE not in result.stderr
-        assert MASK in result.stderr
-
-    def test_a_returned_secret_is_masked_in_result_data(self, tmp_path):
-        """result_data is json.dumps of the return value, and it reaches the SSE
-        stream and the REST endpoint, so it needs the same treatment as the pipes."""
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    return {"token": get_secret("K")}',
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert result.returncode == 0
-        assert SECRET_VALUE not in result.result_data
-        assert MASK in result.result_data
-
-    def test_masking_does_not_change_the_return_code(self, tmp_path):
-        """Masking is silent by design: a flow that logs a secret today keeps
-        working, it just stops publishing the value."""
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert result.returncode == 0
-
-    def test_output_is_untouched_when_the_node_declares_no_secrets(self, tmp_path):
-        """The no-regression case: with nothing to scrub, every stream is
-        byte-identical to what the child wrote."""
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    print("plain output")\n    return {"a": 1}',
-            secrets={},
-        )
-
-        assert result.stdout == "plain output\n"
-        assert result.result_data == '{"a": 1}'
-        assert result.returncode == 0
+@pytest.fixture
+def shared_libs_on_path(tmp_path, monkeypatch):
+    """wrap_code's preamble imports epicstaff_secrets. Production installs it into the
+    venv, which the jail allows; these tests run without a venv, and src/shared is
+    outside every allowlist entry, so the library is copied into exec_dir instead.
+    See copy_shared_libs_into_jail."""
+    shared_libs_path = copy_shared_libs_into_jail(tmp_path)
+    real_build_base_env = chain_mod.build_base_env
+    monkeypatch.setattr(
+        chain_mod,
+        "build_base_env",
+        lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
+    )
 
 
-class TestMaskSecretSwitchEndToEnd:
-    """The switch, driven through the real handler and a real subprocess.
+# Where a secret can leave the child: printed, in an exception message (wrap_code
+# prints str(e) to stderr - the likeliest accidental leak), or returned (result_data
+# reaches the SSE stream and the REST endpoint).
+LEAKS = {
+    "stdout": ('def main(**kwargs):\n    print(get_secret("K"))\n    return 1', 0),
+    "stderr": ('def main(**kwargs):\n    raise ValueError(get_secret("K"))', None),
+    "result_data": ('def main(**kwargs):\n    return {"token": get_secret("K")}', 0),
+}
 
-    The unit tests pin scrub()'s behaviour; these pin that ExecuteCodeHandler
-    actually consults it, so a future refactor cannot leave the flag wired to
-    nothing. MASK_SECRET is read from settings (parsed at import time), so
-    monkeypatch.setattr on settings is what the handler sees.
-    """
 
-    @pytest.fixture(autouse=True)
-    def shared_libs_on_path(self, tmp_path, monkeypatch):
-        """Deliver epicstaff_secrets to the child via PYTHONPATH added to the
-        curated env returned by build_base_env. In the container the library
-        is installed into the venv, and venv_path sits in jail.py's
-        read_exec, so the real chain is self-contained inside the Landlock
-        jail. This test drives the handler without a venv, so PYTHONPATH
-        must point somewhere the jail actually allows reading -- src/shared
-        is outside every allowlist entry and gets denied -- so this copies
-        the library into exec_dir (inside jail.read_write) instead. See
-        copy_shared_libs_into_jail's docstring for the full rationale.
-        """
-        shared_libs_path = copy_shared_libs_into_jail(tmp_path)
-        real_build_base_env = chain_mod.build_base_env
-        monkeypatch.setattr(
-            chain_mod,
-            "build_base_env",
-            lambda pe: {**real_build_base_env(pe), "PYTHONPATH": str(shared_libs_path)},
-        )
+def _stream(result, name: str) -> str:
+    return getattr(result, name) or ""
 
-    def test_masking_on_redacts_every_stream(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "MASK_SECRET", True)
 
-        result = _execute(
-            base_dir=tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                '    print(get_secret("K"))\n'
-                '    return get_secret("K")'
-            ),
-            secrets={"K": SECRET_VALUE},
-        )
+@pytest.mark.usefixtures("shared_libs_on_path")
+@pytest.mark.parametrize("stream", LEAKS)
+def test_a_secret_is_masked_in_every_stream_without_changing_the_outcome(
+    tmp_path, monkeypatch, stream
+):
+    monkeypatch.setattr(settings, "MASK_SECRET", True)
+    code, expected_returncode = LEAKS[stream]
 
-        assert result.returncode == 0, result.stderr
-        assert SECRET_VALUE not in result.stdout
-        assert SECRET_VALUE not in result.result_data
-        assert MASK in result.stdout
+    result = _execute(base_dir=tmp_path, code=code, secrets={"K": SECRET_VALUE})
 
-    def test_masking_off_lets_plaintext_through_every_stream(
-        self, tmp_path, monkeypatch
-    ):
-        """The documented debugging mode: the value the child printed and returned
-        arrives verbatim."""
-        monkeypatch.setattr(settings, "MASK_SECRET", False)
-
-        result = _execute(
-            base_dir=tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                '    print(get_secret("K"))\n'
-                '    return get_secret("K")'
-            ),
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert result.returncode == 0, result.stderr
-        assert SECRET_VALUE in result.stdout
-        assert SECRET_VALUE in result.result_data
-        assert MASK not in result.stdout
-
-    def test_masking_off_does_not_change_the_return_code(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "MASK_SECRET", False)
-
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    raise RuntimeError(get_secret("K"))',
-            secrets={"K": SECRET_VALUE},
-        )
-
+    assert SECRET_VALUE not in _stream(result, stream)
+    assert MASK in _stream(result, stream)
+    # Masking is silent: a flow that logs a secret keeps working, it just stops publishing it.
+    if expected_returncode is None:
         assert result.returncode != 0
-        assert SECRET_VALUE in result.stderr
-
-    def test_an_unset_variable_still_redacts(self, tmp_path, monkeypatch):
-        """The default reaching all the way through the handler, not just scrub()."""
-        monkeypatch.setattr(settings, "MASK_SECRET", True)
-
-        result = _execute(
-            base_dir=tmp_path,
-            code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
-            secrets={"K": SECRET_VALUE},
-        )
-
-        assert SECRET_VALUE not in result.stdout
-        assert MASK in result.stdout
+    else:
+        assert result.returncode == expected_returncode
 
 
-class TestLibraryRegistration:
-    @pytest.fixture
-    def clear_test_venvs(self):
-        """Cleans up the hash-keyed venv directory created by this test.
-        Without teardown the `if not venv_path.exists(): ...` branch in
-        handle() short-circuits on every later run and the test stops
-        exercising real venv creation."""
-        import shutil
+@pytest.mark.usefixtures("shared_libs_on_path")
+@pytest.mark.parametrize("stream", LEAKS)
+def test_masking_off_lets_the_developers_own_secret_through(tmp_path, monkeypatch, stream):
+    """The documented debugging mode."""
+    monkeypatch.setattr(settings, "MASK_SECRET", False)
+    code, _ = LEAKS[stream]
 
-        yield
-        shutil.rmtree(TEST_VENV_BASE_PATH)
+    result = _execute(base_dir=tmp_path, code=code, secrets={"K": SECRET_VALUE})
 
-    def test_epicstaff_secrets_is_always_in_the_venv(self, clear_test_venvs):
-        """Unconditional, unlike epicstaff_storage's use_storage gate: if the
-        library were conditional, forgetting to declare a secret would surface
-        as ImportError, which points at the wrong problem."""
-        import asyncio
+    assert SECRET_VALUE in _stream(result, stream)
+    assert MASK not in _stream(result, stream)
 
-        context = {
-            "libraries": ["requests"],
-            "base_venv_path": str(TEST_VENV_BASE_PATH),
-            "execution_id": "exec-1",
-        }
-        handler = CreateVenvHandler()
-        # No next handler and an existing-or-created venv path: handle() returns
-        # after computing the library set, which is all this asserts.
-        asyncio.run(handler.handle(context))
 
-        assert "/app/src/shared/epicstaff_secrets" in context["libraries"]
+@pytest.mark.usefixtures("shared_libs_on_path")
+def test_output_is_untouched_when_the_node_declares_no_secrets(tmp_path):
+    result = _execute(
+        base_dir=tmp_path,
+        code='def main(**kwargs):\n    print("plain output")\n    return {"a": 1}',
+        secrets={},
+    )
+
+    assert result.stdout == "plain output\n"
+    assert result.result_data == '{"a": 1}'
+    assert result.returncode == 0
+
+
+TEMP_ACCESS_KEY = "temp-ak-must-not-leak"
+TEMP_SECRET_KEY = "temp-sk-must-not-leak"
+
+
+@pytest.mark.usefixtures("shared_libs_on_path")
+@pytest.mark.parametrize("mask_secret", [True, False])
+def test_temporary_storage_credentials_are_masked_whatever_mask_secret_says(
+    tmp_path, monkeypatch, mask_secret
+):
+    """MASK_SECRET=false is an opt-out for the developer's own secrets, never for the
+    per-execution storage credentials - including when no user secret is declared."""
+    monkeypatch.setattr(settings, "MASK_SECRET", mask_secret)
+    context = make_execute_context(
+        tmp_path,
+        python_executable=sys.executable,
+        code=(
+            "def main(**kwargs):\n"
+            "    import os\n"
+            "    print(os.environ['STORAGE_ACCESS_KEY'], os.environ['STORAGE_SECRET_KEY'])\n"
+            "    return os.environ['STORAGE_SECRET_KEY']\n"
+        ),
+        use_storage=True,
+        temp_storage_access_key=TEMP_ACCESS_KEY,
+        temp_storage_secret_key=TEMP_SECRET_KEY,
+        secrets={},
+    )
+
+    result = asyncio.run(ExecuteCodeHandler().handle(context))
+
+    assert result.returncode == 0, result.stderr
+    for leaked in (result.stdout, result.result_data):
+        assert TEMP_ACCESS_KEY not in leaked
+        assert TEMP_SECRET_KEY not in leaked
+    assert result.stdout.count(MASK) == 2

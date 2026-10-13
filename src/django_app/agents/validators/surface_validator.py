@@ -10,7 +10,7 @@ from agents.exceptions import SurfaceValidationError
 class SurfaceValidator:
     # NOTE: cross-org rejection for every referenced pk (python_tool/mcp_tool/
     # collection/storage_file and the surface_list/default_surfaces surfaces) is
-    # enforced at the serializer layer (OrgScoped/OrganizationScoped/OrgVisible
+    # enforced at the serializer layer (OrgScoped/OrgVisible
     # PrimaryKeyRelatedField) — a cross-org pk is rejected there before it ever
     # reaches these validators, so they only enforce what the field layer cannot:
     # duplicate ids and the surface↔owner_agent ownership binding.

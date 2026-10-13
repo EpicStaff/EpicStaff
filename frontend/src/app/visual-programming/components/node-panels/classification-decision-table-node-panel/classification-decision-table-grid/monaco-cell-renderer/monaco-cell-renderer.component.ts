@@ -22,9 +22,6 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
             class="code-cell"
             #codeContainer
         >
-            @if (!value) {
-                <span class="placeholder">—</span>
-            }
             @if (value && !colorized) {
                 <span class="plain-text">{{ displayText }}</span>
             }
@@ -43,7 +40,7 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
                 overflow: hidden;
                 display: flex;
                 align-items: center;
-                padding: 0 8px;
+                padding: 0 8px 0 0;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
                 font-size: 0.75rem;
@@ -55,9 +52,6 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-            }
-            .placeholder {
-                color: rgba(255, 255, 255, 0.2);
             }
             .colorized-code {
                 white-space: nowrap;

@@ -45,7 +45,6 @@ from tables.views.model_view_sets import (
     AudioTranscriptionNodeViewSet,
     AuditFilterPresetViewSet,
     ClassificationDecisionTableNodeModelViewSet,
-    ConditionalEdgeViewSet,
     ConversationRecordingViewSet,
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
@@ -147,7 +146,6 @@ router.register(r"agentnodes", AgentNodeViewSet)
 router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 
 router.register(r"edges", EdgeViewSet)
-router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")

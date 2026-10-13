@@ -501,6 +501,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 const reviewRef = this.dialog.open<ImportReviewDialogCloseResult>(ImportReviewDialogComponent, {
                     width: 'calc(100vw - 2rem)',
                     height: 'calc(100vh - 2rem)',
+                    autoFocus: false,
                     data: {
                         importResult: buildPreviewImportResult(fileData),
                         reviewItems: inspection.review_items,
@@ -530,7 +531,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         const enriched = enrichImportResult(result, fileData);
 
         this.dialog.open(ImportResultDialogComponent, {
-            width: '80vw',
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
             data: { importResult: enriched },
         });
 

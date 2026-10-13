@@ -20,6 +20,7 @@ from tables.services.session_token_usage import (
     sum_token_usage,
 )
 from tables.services.trigger_spec import TriggerSpec
+from tables.utils.base64_preview import trim_base64_file_data_in_json
 from utils.logger import logger
 
 # Rows per INSERT statement. Building the statement for one ~300 KB message costs the
@@ -89,8 +90,9 @@ class GraphMessageStore:
         After the rows are committed, this adds the usage of every message not counted
         yet to its session's total, finishes every session that sent ``graph_end``
         (token total and subgraph sessions), refreshes the stored total of finished
-        sessions the batch carries usage for, and publishes each received string
-        unchanged on its session's messages channel.
+        sessions the batch carries usage for, and publishes each received string on its
+        session's messages channel, unchanged unless it carries base64 file data, which
+        is cut to a preview once here rather than by every SSE stream.
 
         Raises:
             django.db.OperationalError, django.db.InterfaceError, redis.RedisError:
@@ -280,7 +282,10 @@ class GraphMessageStore:
             return
         pipeline = self.redis_client.pipeline(transaction=False)
         for message in messages:
-            pipeline.publish(session_messages_channel(message.session_id), message.payload)
+            pipeline.publish(
+                session_messages_channel(message.session_id),
+                trim_base64_file_data_in_json(message.payload),
+            )
         pipeline.execute()
 
     def create_subgraph_sessions(self, root_session_id: int) -> None:
@@ -431,7 +436,7 @@ def _copy_messages_into_subgraph_sessions(
             session_id=root_session_id, parent_subgraph_execution_id__isnull=False
         )
         .order_by("id")
-        .only("created_at", "name", "execution_order", "message_data")
+        .only("created_at", "name", "execution_order", "message_data", "node_type")
         .iterator(chunk_size=COPY_READ_CHUNK_SIZE)
     )
     for message in rows:
@@ -473,6 +478,7 @@ def _to_row(message: _ReceivedMessage) -> GraphSessionMessage:
         name=data.name,
         execution_order=data.execution_order,
         message_data=data.message_data,
+        node_type=data.node_type,
         uuid=message.uuid,
         parent_subgraph_execution_id=_parent_subgraph_execution_id(data.message_data),
     )
@@ -491,6 +497,7 @@ def _copy_into_subgraph_session(
             **(message.message_data or {}),
             "subgraph_execution_ids": inner_execution_ids,
         },
+        node_type=message.node_type,
         uuid=uuid4(),
         parent_subgraph_execution_id=inner_execution_ids[0] if inner_execution_ids else None,
     )

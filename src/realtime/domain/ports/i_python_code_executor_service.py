@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from src.shared.models import PythonCodeData
+from src.shared.models import PythonCodeData, StorageCredentials
 
 
 class IPythonCodeExecutorService(ABC):
@@ -11,4 +11,5 @@ class IPythonCodeExecutorService(ABC):
         python_code_data: PythonCodeData,
         inputs: dict[str, Any],
         additional_global_kwargs: dict[str, Any] | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict: ...

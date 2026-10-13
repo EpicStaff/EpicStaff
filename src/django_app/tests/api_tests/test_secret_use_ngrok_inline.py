@@ -17,14 +17,14 @@ from tables.services.secrets import secret_service
 def _client_with(
     *, org: Organization, django_user_model, email: str, secrets_bitmask: int
 ):
-    """An APIClient for a user whose custom role holds `secrets_bitmask` on secrets and full CRUD on llm_configs."""
+    """An APIClient for a user whose custom role holds `secrets_bitmask` on secrets and full CRUD on webhooks."""
     role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
     RolePermission.objects.create(
         role=role, resource_type=ResourceType.SECRETS.value, permissions=secrets_bitmask
     )
     RolePermission.objects.create(
         role=role,
-        resource_type=ResourceType.LLM_CONFIGS.value,
+        resource_type=ResourceType.WEBHOOKS.value,
         permissions=int(
             Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
         ),

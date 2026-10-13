@@ -12,6 +12,10 @@ const FIRST: CdtExplanation = { text: 'Sends spam to the bin', fingerprint: 'f1'
 const SECOND: CdtExplanation = { text: 'Routes refunds', fingerprint: 'f2', generatedBy: 'gpt-4o-mini' };
 
 const DTO: GetClassificationDecisionTableNodeRequest = {
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
     id: 21,
     graph: 1,
     node_name: 'Triage',

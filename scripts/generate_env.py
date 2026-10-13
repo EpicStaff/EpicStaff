@@ -30,10 +30,7 @@ ENV_TARGETS: dict[str, Path] = {
 
 _MISSING = object()
 
-BANNER_LINE = (
-    "# GENERATED FROM src/env.yaml - do not edit. "
-    "Run: python scripts/generate_env.py"
-)
+BANNER_LINE = "# GENERATED FROM src/env.yaml - do not edit. Run: python scripts/generate_env.py"
 
 # Column at which inline comments are aligned in example output (0-based from
 # start of KEY=value string).

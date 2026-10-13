@@ -14,7 +14,12 @@ import {
     ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent, JsonEditorComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    AuthorshipDetailsSource,
+    AuthorshipFooterComponent,
+    JsonEditorComponent,
+} from '@shared/components';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
@@ -35,6 +40,8 @@ declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
+    /** Who created and who last edited the Start node whose variables these are. */
+    authorship: AuthorshipDetailsSource;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -49,7 +56,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
 @Component({
     selector: 'app-domain-dialog',
-    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent],
+    imports: [JsonEditorComponent, OverlayModule, AppSvgIconComponent, AuthorshipFooterComponent],
     encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
@@ -103,6 +110,14 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     ></app-json-editor>
                 </div>
             </div>
+
+            <app-authorship-footer
+                class="domain-dialog-footer"
+                [createdBy]="data.authorship.created_by"
+                [createdAt]="data.authorship.created_at"
+                [lastEditedBy]="data.authorship.last_edited_by"
+                [lastEditedAt]="data.authorship.last_edited_at"
+            />
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -246,6 +261,12 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
             .json-editor {
                 height: 100%;
+            }
+
+            .domain-dialog-footer {
+                flex-shrink: 0;
+                padding: 12px 24px;
+                border-top: 1px solid var(--color-divider-subtle);
             }
 
             .dialog-actions {

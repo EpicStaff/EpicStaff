@@ -14,8 +14,10 @@ means see [secret_usage.md](secret_usage.md).
 ```python
 class SecretViewSet(
     OrgScopedViewSetMixin,
-    mixins.ListModelMixin, mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin, mixins.DestroyModelMixin,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]

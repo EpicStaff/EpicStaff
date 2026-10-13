@@ -1,3 +1,5 @@
+import { AuthorshipFields } from '../authorship.model';
+
 export type WebhookProviderType = 'ngrok' | 'localhost';
 
 export interface NgrokConfigInline {
@@ -21,7 +23,9 @@ export interface WebhookTriggerAuth {
     secret_id: number | null;
 }
 
-export interface WebhookTriggerModel {
+// Also built client-side as the form value of webhook-trigger-field, so the read-only
+// author, creation time and last-edit fields are optional.
+export interface WebhookTriggerModel extends Partial<AuthorshipFields> {
     id?: number;
     path: string;
     provider_type: WebhookProviderType | null;
@@ -31,7 +35,17 @@ export interface WebhookTriggerModel {
     auth_kind?: WebhookTriggerAuthKind;
     auth_secret_id?: number | null;
     auth?: WebhookTriggerAuth | null;
+    /** Read-only ISO 8601 creation time; null for triggers created before it was recorded. */
+    created_at?: string | null;
 }
 
-// Write payload accepted by the node serializers: int PK or nested object.
+// Body of `POST`/`PATCH /webhook-triggers/`: only the writable fields. The read-only ones
+// (`id`, `live_url`, `auth`, the author, the creation time, the last edit) are never sent back.
+export type WebhookTriggerPayload = Pick<
+    WebhookTriggerModel,
+    'path' | 'provider_type' | 'ngrok_config' | 'localhost_config' | 'auth_kind' | 'auth_secret_id'
+>;
+
+// Form value of webhook-trigger-field: an existing trigger's PK or a trigger being edited.
+// Node serializers accept only the PK; new triggers are created via WebhookTriggerService.
 export type WebhookTriggerWrite = number | WebhookTriggerModel;

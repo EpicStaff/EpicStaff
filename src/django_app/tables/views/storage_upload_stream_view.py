@@ -71,6 +71,9 @@ async def _serve_upload(scope, receive, send) -> None:
             if is_archive_name(filename)
             else upload_service.upload_file
         )
+        # Authenticated in _check_access's sync thread and cached on the request, so reading
+        # it here does no I/O.
+        user = request.user
         # A plain file streams straight to storage; an archive is buffered first.
         result = await upload(
             org_id,
@@ -78,7 +81,8 @@ async def _serve_upload(scope, receive, send) -> None:
             filename,
             chunks,
             declared_size,
-            authorize_overwrite=_overwrite_authorizer(request.user, org_id),
+            authorize_overwrite=_overwrite_authorizer(user, org_id),
+            user=user,
         )
 
         await _send_json(send, scope, 200, {"status": "DONE", **result})

@@ -50,7 +50,7 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
     client_a, org_a
 ):
     agent_definition_with_realtime = AgentDefinition.objects.create(
-        name="ad-with-realtime", organization=org_a
+        name="ad-with-realtime", org=org_a
     )
     realtime_config = OpenAIRealtimeConfig.objects.create(
         custom_name="c", org=org_a
@@ -61,7 +61,7 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
     )
 
     agent_definition_without_realtime = AgentDefinition.objects.create(
-        name="ad-without-realtime", organization=org_a
+        name="ad-without-realtime", org=org_a
     )
 
     list_response = client_a.get("/api/agent-definitions/")
@@ -105,7 +105,7 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
 def _create_agent_definitions_with_realtime_config(org, count, name_prefix):
     for index in range(count):
         agent_definition = AgentDefinition.objects.create(
-            name=f"ad-{name_prefix}-{index}", organization=org
+            name=f"ad-{name_prefix}-{index}", org=org
         )
         realtime_config = OpenAIRealtimeConfig.objects.create(
             custom_name=f"c-{name_prefix}-{index}",

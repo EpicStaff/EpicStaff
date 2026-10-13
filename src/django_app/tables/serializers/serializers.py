@@ -118,13 +118,13 @@ class BaseToolSerializer(serializers.Serializer):
         repr = {}
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
-            repr["data"] = PythonCodeToolSerializer(instance).data
+            repr["data"] = PythonCodeToolSerializer(instance, context=self.context).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
-            repr["data"] = McpToolSerializer(instance).data
+            repr["data"] = McpToolSerializer(instance, context=self.context).data
         elif isinstance(instance, PythonCodeToolConfig):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
-            repr["data"] = PythonCodeToolConfigSerializer(instance).data
+            repr["data"] = PythonCodeToolConfigSerializer(instance, context=self.context).data
         else:
             raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
@@ -225,6 +225,14 @@ class SessionExportAllSerializer(serializers.Serializer):
     )
     node_name = serializers.CharField(required=False)
     is_error_cause = serializers.BooleanField(required=False)
+    id_search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text=(
+            "Keep sessions whose id contains this value (`12` matches 12, 112, 1203). "
+            "Blank means no filtering; a value with non-digits matches nothing."
+        ),
+    )
     created_at_after = serializers.DateTimeField(required=False)
     created_at_before = serializers.DateTimeField(required=False)
     finished_at_after = serializers.DateTimeField(required=False)

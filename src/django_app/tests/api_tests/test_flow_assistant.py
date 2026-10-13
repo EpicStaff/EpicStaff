@@ -8,7 +8,8 @@ Real: ORM, serializers, views, URL routing.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -18,6 +19,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from tables.models import Graph, LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
@@ -27,7 +29,6 @@ from tables.models.flow_assistant_models import (
 from tables.services.flow_assistant import FlowAssistantService
 from tables.services.llm_clients.base import (
     DoneEvent,
-    StructuredEvent,
     TokenEvent,
     ToolCallEvent,
 )
@@ -47,17 +48,18 @@ def gpt4_model(openai_provider):
 
 
 @pytest.fixture
-def llm_config(gpt4_model):
+def llm_config(gpt4_model, org_a):
     return LLMConfig.objects.create(
         custom_name="test-gpt4o",
         model=gpt4_model,
         temperature=0.5,
+        org=org_a,
     )
 
 
 @pytest.fixture
-def graph(db):
-    return Graph.objects.create(name="Test Flow", description="A test flow.")
+def graph(org_a):
+    return Graph.objects.create(name="Test Flow", description="A test flow.", org=org_a)
 
 
 @pytest.fixture
@@ -72,7 +74,8 @@ def org_b(db):
 
 @pytest.fixture
 def default_role(db):
-    return Role.objects.get_or_create(name="member")[0]
+    # The views assert FLOWS permissions, so members need a role that holds them.
+    return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
 
 
 @pytest.fixture
@@ -250,9 +253,9 @@ def test_send_message_returns_stream_url(conversation_a, auth_client_a, graph):
         "flow-assistant-send-message",
         kwargs={"graph_id": graph.pk, "conversation_id": conversation_a.pk},
     )
-    # Patch SseTicketService.issue to avoid real Redis
+    # Patch sse_ticket_service.issue to avoid real Redis
     with patch(
-        "tables.views.flow_assistant_views.SseTicketService.issue",
+        "tables.views.flow_assistant_views.sse_ticket_service.issue",
         return_value=("test-ticket-123", 30),
     ):
         response = auth_client_a.post(url, {"message": "Hello!"}, format="json")
@@ -269,12 +272,12 @@ def test_send_message_returns_stream_url(conversation_a, auth_client_a, graph):
 
 
 @pytest.mark.django_db
-def test_subflow_tool_overview_only(graph, db):
+def test_subflow_tool_overview_only(graph, db, org_a):
     """get_subflow returns name + description; no nodes/edges of the subgraph."""
     from tables.services.flow_assistant import get_subflow
     from tables.models.graph_models import SubGraphNode
 
-    subgraph = Graph.objects.create(name="Child Flow", description="A child subflow.")
+    subgraph = Graph.objects.create(name="Child Flow", description="A child subflow.", org=org_a)
     sn = SubGraphNode.objects.create(
         graph=graph,
         subgraph=subgraph,
@@ -336,7 +339,7 @@ def test_list_node_types_empty(graph, db):
 
 
 @pytest.mark.django_db
-def test_org_scope_user_a_in_org_b_sees_no_conversations(
+def test_org_scope_user_a_in_org_b_gets_404(
     graph,
     flow_assistant,
     conversation_a,
@@ -344,12 +347,14 @@ def test_org_scope_user_a_in_org_b_sees_no_conversations(
     org_user_a,
     org_user_a_in_org_b,
 ):
-    """UserA in OrgB has a separate membership → org-B conversations list is empty."""
+    """UserA acting in OrgB cannot reach OrgA's flow, so its conversations stay hidden.
+
+    The graph belongs to OrgA, so from OrgB it is a cross-org resource: 404, not 403
+    and not an empty list.
+    """
     url = reverse("flow-assistant-conversations", kwargs={"graph_id": graph.pk})
     response = auth_client_a_org_b.get(url)
-    assert response.status_code == status.HTTP_200_OK, response.content
-    # conversation_a belongs to org_user_a (OrgA), not org_user_a_in_org_b (OrgB)
-    assert response.data["count"] == 0
+    assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
 
 
 @pytest.mark.django_db
@@ -477,6 +482,9 @@ def test_audit_endpoint_excludes_deleted_by_default(
 # ── Title auto-derivation tests ───────────────────────────────────────────────
 
 
+LONG_FIRST_MESSAGE = "Hello what does this flow do it seems very complicated to me"
+
+
 @pytest.mark.django_db
 def test_title_derived_from_first_user_message(
     graph, flow_assistant, conversation_a, auth_client_a
@@ -487,33 +495,23 @@ def test_title_derived_from_first_user_message(
         kwargs={"graph_id": graph.pk, "conversation_id": conversation_a.pk},
     )
     with patch(
-        "tables.views.flow_assistant_views.SseTicketService.issue",
+        "tables.views.flow_assistant_views.sse_ticket_service.issue",
         return_value=("ticket-xyz", 30),
     ):
         response = auth_client_a.post(
             url,
-            {"message": "Hello, what does this flow do?"},
+            {"message": LONG_FIRST_MESSAGE},
             format="json",
         )
 
     assert response.status_code == status.HTTP_200_OK, response.content
     conversation_a.refresh_from_db()
-    assert conversation_a.title != ""
-    # Title should start with the message text (truncated)
-    assert conversation_a.title.startswith("Hello")
-
-
-@pytest.mark.django_db
-def test_title_truncated_at_word_boundary():
-    """_derive_title truncates at word boundary and appends ellipsis."""
-    from tables.services.flow_assistant import _derive_title
-
-    long_message = "Hello what does this flow do it seems very complicated"
-    title = _derive_title(long_message)
-    assert len(title) <= 52  # 50 chars + "…" is 1 char = 51 max; allow margin
-    assert title.endswith("…")
-    # No mid-word cut
-    assert not title[:-1].endswith("-")
+    # Cut at a word boundary: a whole-word prefix of the message plus an ellipsis.
+    assert conversation_a.title.endswith("…")
+    assert len(conversation_a.title) <= 51
+    prefix = conversation_a.title[:-1].rstrip()
+    assert LONG_FIRST_MESSAGE.startswith(prefix)
+    assert LONG_FIRST_MESSAGE[len(prefix)] == " "
 
 
 @pytest.mark.django_db
@@ -529,7 +527,7 @@ def test_title_not_overwritten_on_second_message(
         kwargs={"graph_id": graph.pk, "conversation_id": conversation_a.pk},
     )
     with patch(
-        "tables.views.flow_assistant_views.SseTicketService.issue",
+        "tables.views.flow_assistant_views.sse_ticket_service.issue",
         return_value=("ticket-xyz2", 30),
     ):
         auth_client_a.post(
@@ -643,7 +641,6 @@ async def test_stream_yields_tokens_and_done(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -705,7 +702,6 @@ async def test_tool_call_roundtrip(graph, llm_config, user_a, org_a, default_rol
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from tables.services.llm_clients.base import ToolCallEvent, DoneEvent, TokenEvent
     from asgiref.sync import sync_to_async
@@ -891,7 +887,6 @@ async def test_structured_output_event_emitted(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -1004,7 +999,6 @@ async def test_action_message_persisted(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -1058,247 +1052,6 @@ async def test_action_message_persisted(
     assert persisted.get("action_message") == action_items
 
 
-# ── _messages_for_llm unit tests ─────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_evicts_prior_turn_tool_results():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        {"role": "system", "content": "You are..."},
-        {"role": "user", "content": "inspect the flow"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "get_flow_overview", "arguments": "{}"},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "call_1",
-            "name": "get_flow_overview",
-            "content": '{"nodes": [{"id": 1, "name": "start"}, ...long body...]}',
-        },
-        {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
-        {"role": "user", "content": "tell me about node 1"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "call_2",
-                    "type": "function",
-                    "function": {"name": "get_node", "arguments": '{"node_id": 1}'},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "call_2",
-            "name": "get_node",
-            "content": '{"id": 1, "config": {...}}',
-        },
-    ]
-    result = _messages_for_llm(messages)
-    # Turn 1's tool result is stubbed
-    assert result[3]["content"].startswith("[tool result from an earlier turn")
-    assert "get_flow_overview" in result[3]["content"]
-    assert result[3]["tool_call_id"] == "call_1"  # other fields preserved
-    # Turn 2's tool result (current turn) untouched
-    assert result[7]["content"] == messages[7]["content"]
-    # Non-tool messages untouched
-    for i in (0, 1, 2, 4, 5, 6):
-        assert result[i] == messages[i]
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_is_idempotent():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        {"role": "system", "content": "..."},
-        {"role": "user", "content": "a"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c",
-                    "type": "function",
-                    "function": {"name": "get_flow_overview", "arguments": "{}"},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "c",
-            "name": "get_flow_overview",
-            "content": "<big>",
-        },
-        {"role": "assistant", "content": "{}"},
-        {"role": "user", "content": "b"},
-    ]
-    once = _messages_for_llm(messages)
-    twice = _messages_for_llm(once)
-    assert once == twice
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_no_user_message_returns_copy():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [{"role": "system", "content": "..."}]
-    result = _messages_for_llm(messages)
-    assert result == messages
-    assert result is not messages  # must be a copy
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_truncates_long_args():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    long_args = '{"x": "' + ("a" * 500) + '"}'
-    messages = [
-        {"role": "system", "content": "..."},
-        {"role": "user", "content": "a"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c",
-                    "type": "function",
-                    "function": {"name": "load_skill", "arguments": long_args},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "c", "name": "load_skill", "content": "<big>"},
-        {"role": "assistant", "content": "{}"},
-        {"role": "user", "content": "b"},
-    ]
-    result = _messages_for_llm(messages)
-    stub = result[3]["content"]
-    assert "…" in stub  # truncation marker present
-    assert len(stub) < 500  # stub itself stays small (longer fixed prefix, but bounded)
-
-
-# ── action_message / ef_tables strip test (Fix: strict-provider compat) ────────
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_strips_fa_internal_fields():
-    """_messages_for_llm must remove ef_tables, action_message, and interrupted
-    from every message before it is sent to the LLM.
-
-    Root cause of the Fireworks bug: the second turn loaded the persisted
-    assistant message (which had action_message set) and forwarded it verbatim.
-    Fireworks rejects unknown message fields with a 400 'Extra inputs are not
-    permitted' error. OpenAI silently ignores them, masking the bug.
-
-    The fix must:
-    - Strip action_message, ef_tables, interrupted from outgoing messages.
-    - Preserve the fields in the source dicts (no mutation of the input list).
-    - Preserve all LLM-compliant fields (role, content, tool_calls,
-      tool_call_id, name).
-    """
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    action_items = [
-        {"type": "prompt", "text": "What do you do?"},
-        {"type": "prompt", "text": "Show me recent runs"},
-    ]
-    ef_tables_data = [{"headers": ["col"], "rows": [["val"]]}]
-
-    messages = [
-        {"role": "system", "content": "You are the FA."},
-        {"role": "user", "content": "Test"},
-        # Persisted assistant message from turn 1 — has FA-internal fields.
-        {
-            "role": "assistant",
-            "content": "Got it.",
-            "ef_tables": ef_tables_data,
-            "action_message": action_items,
-            "interrupted": False,
-        },
-        # Second user turn — the one that triggers the 400 on strict providers.
-        {"role": "user", "content": "What do you do?"},
-    ]
-
-    result = _messages_for_llm(messages)
-
-    # FA-internal fields must not appear in any outgoing message.
-    _FA_ONLY_FIELDS = {"ef_tables", "action_message", "interrupted"}
-    for i, out_msg in enumerate(result):
-        for bad_field in _FA_ONLY_FIELDS:
-            assert bad_field not in out_msg, (
-                f"Field '{bad_field}' must be stripped from message[{i}] "
-                f"before sending to the LLM, but it was present: {out_msg}"
-            )
-
-    # LLM-compliant fields must be preserved.
-    assert result[0]["role"] == "system"
-    assert result[0]["content"] == "You are the FA."
-    assert result[2]["role"] == "assistant"
-    assert result[2]["content"] == "Got it."
-    assert result[3]["role"] == "user"
-    assert result[3]["content"] == "What do you do?"
-
-    # Source dicts must NOT have been mutated.
-    assert "action_message" in messages[2], "Source dict must not be mutated"
-    assert "ef_tables" in messages[2], "Source dict must not be mutated"
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_strips_fa_fields_on_all_message_roles():
-    """Stripping applies to every role, not just assistant.
-
-    If FA ever stores extra fields on system/user/tool messages those would also
-    be stripped — this test documents the whitelist covers all roles.
-    """
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        # system with a hypothetical future FA field
-        {"role": "system", "content": "sys", "ef_tables": []},
-        # user with a hypothetical FA field
-        {"role": "user", "content": "hello", "action_message": []},
-        # assistant with real FA fields
-        {
-            "role": "assistant",
-            "content": "reply",
-            "action_message": [{"type": "prompt", "text": "next"}],
-            "ef_tables": [],
-            "interrupted": False,
-        },
-        # tool role with LLM-compliant fields — must be preserved
-        {
-            "role": "tool",
-            "tool_call_id": "call_99",
-            "name": "get_flow_overview",
-            "content": '{"nodes": []}',
-        },
-        # second user turn — this is the "current" turn boundary
-        {"role": "user", "content": "second"},
-    ]
-
-    result = _messages_for_llm(messages)
-
-    _FA_ONLY_FIELDS = {"ef_tables", "action_message", "interrupted"}
-    for i, out_msg in enumerate(result):
-        for bad_field in _FA_ONLY_FIELDS:
-            assert (
-                bad_field not in out_msg
-            ), f"Field '{bad_field}' found in message[{i}]: {out_msg}"
-
-    # LLM-compliant tool fields must survive.
-    tool_msg = next(m for m in result if m["role"] == "tool")
-    assert tool_msg["tool_call_id"] == "call_99"
-    assert tool_msg["name"] == "get_flow_overview"
-    assert tool_msg["content"] == '{"nodes": []}'
-
-
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
@@ -1313,7 +1066,6 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
     """
     import fakeredis
     from asgiref.sync import sync_to_async
-    from unittest.mock import call as mock_call
 
     user_message_1 = "Test"
     user_message_2 = "What do you do?"
@@ -1390,6 +1142,68 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
                 f"This would cause a 400 'Extra inputs are not permitted' on strict providers "
                 f"such as Fireworks."
             )
+
+
+def _tool_turn(call_id, tool_name, arguments, result):
+    return [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"id": call_id, "type": "function", "function": {"name": tool_name, "arguments": arguments}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": call_id, "name": tool_name, "content": result},
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("arguments", "stub_check"),
+    [
+        ("{}", lambda stub: "get_flow_overview" in stub),
+        # Long call arguments are shortened inside the stub so it stays small.
+        ('{"x": "' + "a" * 500 + '"}', lambda stub: "…" in stub and len(stub) < 500),
+    ],
+    ids=["names-the-tool", "long-arguments-truncated"],
+)
+async def test_tool_results_from_earlier_turns_reach_the_llm_as_stubs(
+    graph, llm_config, user_a, org_a, default_role, db, arguments, stub_check
+):
+    """Earlier turns' tool output is replaced by a short stub before each LLM call, so a
+    long conversation does not resend every large tool result."""
+    from asgiref.sync import sync_to_async
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(user=user_a, org=org_a, role=default_role)
+    assistant = await sync_to_async(FlowAssistant.objects.create)(graph=graph, llm_config=llm_config)
+    history = [
+        {"role": "system", "content": "You are the FA."},
+        {"role": "user", "content": "inspect the flow"},
+        *_tool_turn("call_1", "get_flow_overview", arguments, '{"nodes": ["...long body..."]}'),
+        {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
+        {"role": "user", "content": "tell me about node 1"},
+    ]
+    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user, history)
+    sent: list[list[dict]] = []
+
+    async def fake_stream(messages, tools):
+        sent.append(list(messages))
+        yield TokenEvent(content='{"message": "ok"}')
+        yield DoneEvent()
+
+    await _collect_stream_reply_events(conversation, "tell me about node 1", fake_stream)
+
+    first_call = sent[0]
+    stub = first_call[3]
+    assert stub["tool_call_id"] == "call_1"
+    assert stub["content"].startswith("[tool result from an earlier turn")
+    assert stub_check(stub["content"])
+    # Everything else, including the current turn's user message, is sent unchanged.
+    assert [message["content"] for message in first_call if message["role"] in ("system", "user")] == [
+        "You are the FA.",
+        "inspect the flow",
+        "tell me about node 1",
+    ]
 
 
 # ── Decision-table decision_rules serialization tests ─────────────────────────
@@ -1529,12 +1343,12 @@ def test_get_node_classification_decision_table_includes_decision_rules(graph, d
 
 
 @pytest.mark.django_db
-def test_get_subflow_includes_subgraph_graph_id(graph, db):
+def test_get_subflow_includes_subgraph_graph_id(graph, db, org_a):
     """get_subflow must return subgraph_graph_id so the LLM can introspect recursively."""
     from tables.models.graph_models import SubGraphNode
     from tables.services.flow_assistant import get_subflow
 
-    subgraph = Graph.objects.create(name="Child Flow", description="Does child things.")
+    subgraph = Graph.objects.create(name="Child Flow", description="Does child things.", org=org_a)
     sn = SubGraphNode.objects.create(
         graph=graph, subgraph=subgraph, node_name="sg_node"
     )
@@ -1550,12 +1364,12 @@ def test_get_subflow_includes_subgraph_graph_id(graph, db):
 
 
 @pytest.mark.django_db
-def test_get_subflow_accepts_subgraph_node_pk(graph, db):
+def test_get_subflow_accepts_subgraph_node_pk(graph, db, org_a):
     """Strict path: passing the SubGraphNode's PK returns the correct subgraph."""
     from tables.models.graph_models import SubGraphNode
     from tables.services.flow_assistant import get_subflow
 
-    subgraph = Graph.objects.create(name="Strict Flow", description="Strict desc.")
+    subgraph = Graph.objects.create(name="Strict Flow", description="Strict desc.", org=org_a)
     sn = SubGraphNode.objects.create(
         graph=graph, subgraph=subgraph, node_name="strict_sg"
     )
@@ -1569,7 +1383,7 @@ def test_get_subflow_accepts_subgraph_node_pk(graph, db):
 
 
 @pytest.mark.django_db
-def test_get_subflow_falls_back_to_target_graph_id(db):
+def test_get_subflow_falls_back_to_target_graph_id(db, org_a):
     """Fallback path: passing the target subgraph's Graph PK still resolves correctly.
 
     This is the bug scenario from Fix 19: the LLM passes subgraph.pk (the target
@@ -1579,8 +1393,8 @@ def test_get_subflow_falls_back_to_target_graph_id(db):
     from tables.models.graph_models import SubGraphNode
     from tables.services.flow_assistant import get_subflow
 
-    graph_a = Graph.objects.create(name="Parent Flow", description="Has a subflow.")
-    graph_b = Graph.objects.create(name="Target Subflow", description="The target.")
+    graph_a = Graph.objects.create(name="Parent Flow", description="Has a subflow.", org=org_a)
+    graph_b = Graph.objects.create(name="Target Subflow", description="The target.", org=org_a)
 
     sn = SubGraphNode.objects.create(
         graph=graph_a, subgraph=graph_b, node_name="sg_fallback"
@@ -1598,15 +1412,15 @@ def test_get_subflow_falls_back_to_target_graph_id(db):
 
 
 @pytest.mark.django_db
-def test_get_subflow_error_message_lists_available_pks(db):
+def test_get_subflow_error_message_lists_available_pks(db, org_a):
     """When neither interpretation matches, the error message names available SubGraphNode PKs
     and includes the corrective nudge referencing get_flow_overview.
     """
     from tables.models.graph_models import SubGraphNode
     from tables.services.flow_assistant import get_subflow
 
-    graph_parent = Graph.objects.create(name="Parent", description="")
-    graph_child = Graph.objects.create(name="Child", description="")
+    graph_parent = Graph.objects.create(name="Parent", description="", org=org_a)
+    graph_child = Graph.objects.create(name="Child", description="", org=org_a)
 
     sn = SubGraphNode.objects.create(
         graph=graph_parent, subgraph=graph_child, node_name="real_sg"
@@ -1633,14 +1447,14 @@ def test_get_subflow_error_message_lists_available_pks(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_filters_by_graph_id(db):
+def test_get_recent_sessions_filters_by_graph_id(db, org_a):
     """get_recent_sessions must return only sessions for the requested graph."""
     from django.utils import timezone
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph_1 = Graph.objects.create(name="Flow One", description="")
-    graph_2 = Graph.objects.create(name="Flow Two", description="")
+    graph_1 = Graph.objects.create(name="Flow One", description="", org=org_a)
+    graph_2 = Graph.objects.create(name="Flow Two", description="", org=org_a)
 
     now = timezone.now()
     for i in range(2):
@@ -1666,13 +1480,13 @@ def test_get_recent_sessions_filters_by_graph_id(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_caps_limit(db):
+def test_get_recent_sessions_caps_limit(db, org_a):
     """Passing limit=100 must return at most 25 sessions."""
     from django.utils import timezone
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph_big = Graph.objects.create(name="Big Flow", description="")
+    graph_big = Graph.objects.create(name="Big Flow", description="", org=org_a)
     now = timezone.now()
     for _ in range(30):
         Session.objects.create(
@@ -1686,14 +1500,14 @@ def test_get_recent_sessions_caps_limit(db):
 
 
 @pytest.mark.django_db
-def test_get_session_detail_rejects_cross_graph_session(db):
+def test_get_session_detail_rejects_cross_graph_session(db, org_a):
     """get_session_detail must return an error when session belongs to a different graph."""
     from django.utils import timezone
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_detail
 
-    graph_a = Graph.objects.create(name="Graph A", description="")
-    graph_b = Graph.objects.create(name="Graph B", description="")
+    graph_a = Graph.objects.create(name="Graph A", description="", org=org_a)
+    graph_b = Graph.objects.create(name="Graph B", description="", org=org_a)
     now = timezone.now()
 
     session = Session.objects.create(
@@ -1711,20 +1525,17 @@ def test_get_session_detail_rejects_cross_graph_session(db):
 
 
 @pytest.mark.django_db
-def test_get_session_detail_redacts_message_bodies(db):
+def test_get_session_detail_redacts_message_bodies(db, org_a):
     """get_session_detail must not include any message body text from session messages."""
     from django.utils import timezone
-    from tables.models.session_models import (
-        Session,
-        AgentSessionMessage,
-        TaskSessionMessage,
-    )
+    from tables.models.graph_models import GraphSessionMessage
+    from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_detail
 
     SECRET_AGENT_TEXT = "SUPERSECRET_AGENT_THOUGHT_12345"
     SECRET_TASK_RAW = "SUPERSECRET_TASK_OUTPUT_99999"
 
-    graph_c = Graph.objects.create(name="Graph C", description="")
+    graph_c = Graph.objects.create(name="Graph C", description="", org=org_a)
     now = timezone.now()
     session = Session.objects.create(
         graph=graph_c,
@@ -1732,26 +1543,31 @@ def test_get_session_detail_redacts_message_bodies(db):
         status_updated_at=now,
     )
 
-    AgentSessionMessage.objects.create(
+    GraphSessionMessage.objects.create(
         session=session,
-        node_name="agent_node",
+        name="agent_node",
         execution_order=0,
-        thought=SECRET_AGENT_TEXT,
-        text="some text",
-        result="some result",
+        created_at=now,
+        uuid=uuid.uuid4(),
+        message_data={"message_type": "agent_node_stream", "data": SECRET_AGENT_TEXT},
     )
-    TaskSessionMessage.objects.create(
+    GraphSessionMessage.objects.create(
         session=session,
-        node_name="task_node",
+        name="task_node",
         execution_order=1,
-        raw=SECRET_TASK_RAW,
-        name="task",
-        description="a task",
-        expected_output="output",
+        created_at=now,
+        uuid=uuid.uuid4(),
+        message_data={"message_type": "task_node_stream", "data": SECRET_TASK_RAW},
     )
 
     result = get_session_detail(graph_c.pk, session.pk)
     result_str = str(result)
+
+    # The trace must list both nodes, or the redaction asserts below prove nothing.
+    assert [entry["node_name"] for entry in result["node_trace"]] == [
+        "agent_node",
+        "task_node",
+    ]
 
     assert (
         SECRET_AGENT_TEXT not in result_str
@@ -1773,7 +1589,7 @@ def test_get_node_knowledge_sources_metadata_only(graph, db):
 
     collection = SourceCollection.objects.create(
         collection_name="test_collection",
-        user_id="test_user",
+        org=graph.org,
     )
     DocumentMetadata.objects.create(
         file_name="secret_doc.pdf",
@@ -2073,7 +1889,7 @@ def test_get_node_classification_decision_table_includes_pre_post_python_summari
 
 
 @pytest.mark.django_db
-def test_get_session_stats_counts_by_status_and_date_range(db):
+def test_get_session_stats_counts_by_status_and_date_range(db, org_a):
     """get_session_stats returns total, by_status, and respects date range filters."""
     from datetime import timedelta
 
@@ -2082,7 +1898,7 @@ def test_get_session_stats_counts_by_status_and_date_range(db):
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_stats
 
-    graph_stats = Graph.objects.create(name="Stats Flow", description="")
+    graph_stats = Graph.objects.create(name="Stats Flow", description="", org=org_a)
     now = timezone.now()
     older = now - timedelta(days=5)
 
@@ -2139,11 +1955,11 @@ def test_get_session_stats_counts_by_status_and_date_range(db):
 
 
 @pytest.mark.django_db
-def test_get_session_stats_rejects_bad_iso(db):
+def test_get_session_stats_rejects_bad_iso(db, org_a):
     """get_session_stats returns an error dict when since is not a valid ISO 8601 timestamp."""
     from tables.services.flow_assistant.tools import get_session_stats
 
-    graph_bad = Graph.objects.create(name="Bad ISO Flow", description="")
+    graph_bad = Graph.objects.create(name="Bad ISO Flow", description="", org=org_a)
 
     result = get_session_stats(graph_bad.pk, since="yesterday")
     assert "error" in result
@@ -2156,14 +1972,14 @@ def test_get_session_stats_rejects_bad_iso(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_where_filter(db):
+def test_get_recent_sessions_where_filter(db, org_a):
     """get_recent_sessions with where={} filters by variable values."""
     from django.utils import timezone
 
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph_where = Graph.objects.create(name="Where Flow", description="")
+    graph_where = Graph.objects.create(name="Where Flow", description="", org=org_a)
     now = timezone.now()
 
     berlin_session = Session.objects.create(
@@ -2196,7 +2012,7 @@ def test_get_recent_sessions_where_filter(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_include_full_variables(db):
+def test_get_recent_sessions_include_full_variables(db, org_a):
     """include_full_variables=True reads full_variables from status_data["variables"],
     NOT from Session.variables. The two are set to different values here to ensure
     the correct (runtime) path is taken."""
@@ -2205,7 +2021,7 @@ def test_get_recent_sessions_include_full_variables(db):
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph_vars = Graph.objects.create(name="Vars Flow", description="")
+    graph_vars = Graph.objects.create(name="Vars Flow", description="", org=org_a)
     now = timezone.now()
     start_vars = {"city": "Amsterdam", "score": None}
     runtime_vars = {"city": "Amsterdam", "score": 99, "nested": {"a": 1}}
@@ -2238,7 +2054,7 @@ def test_get_recent_sessions_include_full_variables(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_full_variables_reads_status_data(db):
+def test_get_recent_sessions_full_variables_reads_status_data(db, org_a):
     """full_variables is populated from status_data["variables"] (the runtime state),
     which differs from Session.variables (the start snapshot)."""
     from django.utils import timezone
@@ -2246,7 +2062,7 @@ def test_get_recent_sessions_full_variables_reads_status_data(db):
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph = Graph.objects.create(name="Status Data Flow", description="")
+    graph = Graph.objects.create(name="Status Data Flow", description="", org=org_a)
     now = timezone.now()
 
     session = Session.objects.create(
@@ -2273,14 +2089,14 @@ def test_get_recent_sessions_full_variables_reads_status_data(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_full_variables_falls_back_to_variables(db):
+def test_get_recent_sessions_full_variables_falls_back_to_variables(db, org_a):
     """When status_data has no 'variables' key, full_variables falls back to Session.variables."""
     from django.utils import timezone
 
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph = Graph.objects.create(name="Fallback Flow", description="")
+    graph = Graph.objects.create(name="Fallback Flow", description="", org=org_a)
     now = timezone.now()
     start_vars = {"city": "Berlin", "result": "partial"}
 
@@ -2302,7 +2118,7 @@ def test_get_recent_sessions_full_variables_falls_back_to_variables(db):
     ), "full_variables must fall back to Session.variables when status_data has no 'variables' key"
 
     # Also verify the empty dict case (status_data={}, no 'variables' key at all)
-    graph2 = Graph.objects.create(name="Fallback Flow Empty", description="")
+    graph2 = Graph.objects.create(name="Fallback Flow Empty", description="", org=org_a)
     Session.objects.create(
         graph=graph2,
         status=Session.SessionStatus.ERROR,
@@ -2318,7 +2134,7 @@ def test_get_recent_sessions_full_variables_falls_back_to_variables(db):
 
 
 @pytest.mark.django_db
-def test_get_recent_sessions_date_range(db):
+def test_get_recent_sessions_date_range(db, org_a):
     """get_recent_sessions respects since/until filters."""
     from datetime import timedelta
 
@@ -2327,7 +2143,7 @@ def test_get_recent_sessions_date_range(db):
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_recent_sessions
 
-    graph_date = Graph.objects.create(name="Date Range Flow", description="")
+    graph_date = Graph.objects.create(name="Date Range Flow", description="", org=org_a)
     now = timezone.now()
     old_time = now - timedelta(days=10)
 
@@ -2356,18 +2172,15 @@ def test_get_recent_sessions_date_range(db):
 
 
 @pytest.mark.django_db
-def test_get_session_messages_returns_trace_content(db):
-    """get_session_messages surfaces thought/text/result for agents and raw for tasks."""
+def test_get_session_messages_returns_trace_content(db, org_a):
+    """get_session_messages surfaces each message's primary content field by message type."""
     from django.utils import timezone
 
-    from tables.models.session_models import (
-        AgentSessionMessage,
-        Session,
-        TaskSessionMessage,
-    )
+    from tables.models.graph_models import GraphSessionMessage
+    from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_messages
 
-    graph_msgs = Graph.objects.create(name="Messages Flow", description="")
+    graph_msgs = Graph.objects.create(name="Messages Flow", description="", org=org_a)
     now = timezone.now()
     session = Session.objects.create(
         graph=graph_msgs,
@@ -2378,22 +2191,21 @@ def test_get_session_messages_returns_trace_content(db):
     AGENT_THOUGHT = "I concluded the city is Berlin."
     TASK_RAW = "Final output: Berlin confirmed."
 
-    AgentSessionMessage.objects.create(
+    GraphSessionMessage.objects.create(
         session=session,
-        node_name="my_agent",
+        name="my_agent",
         execution_order=0,
-        thought=AGENT_THOUGHT,
-        text="some text",
-        result="some result",
+        created_at=now,
+        uuid=uuid.uuid4(),
+        message_data={"message_type": "agent_node_stream", "data": AGENT_THOUGHT},
     )
-    TaskSessionMessage.objects.create(
+    GraphSessionMessage.objects.create(
         session=session,
-        node_name="my_task",
+        name="my_task",
         execution_order=1,
-        raw=TASK_RAW,
-        name="task_1",
-        description="a task description",
-        expected_output="something",
+        created_at=now,
+        uuid=uuid.uuid4(),
+        message_data={"message_type": "task_node_stream", "data": TASK_RAW},
     )
 
     result = get_session_messages(graph_msgs.pk, session.pk)
@@ -2406,26 +2218,26 @@ def test_get_session_messages_returns_trace_content(db):
     messages_sorted = sorted(messages, key=lambda m: m["execution_order"])
 
     agent_msg = messages_sorted[0]
-    assert agent_msg["kind"] == "agent"
+    assert agent_msg["kind"] == "agent_node_stream"
     assert agent_msg["node_name"] == "my_agent"
     assert agent_msg["content"] == AGENT_THOUGHT
 
     task_msg = messages_sorted[1]
-    assert task_msg["kind"] == "task"
+    assert task_msg["kind"] == "task_node_stream"
     assert task_msg["node_name"] == "my_task"
     assert task_msg["content"] == TASK_RAW
 
 
 @pytest.mark.django_db
-def test_get_session_messages_rejects_cross_graph_session(db):
+def test_get_session_messages_rejects_cross_graph_session(db, org_a):
     """get_session_messages returns an error when session belongs to a different graph."""
     from django.utils import timezone
 
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_messages
 
-    graph_a = Graph.objects.create(name="Graph A", description="")
-    graph_b = Graph.objects.create(name="Graph B", description="")
+    graph_a = Graph.objects.create(name="Graph A", description="", org=org_a)
+    graph_b = Graph.objects.create(name="Graph B", description="", org=org_a)
     now = timezone.now()
 
     session = Session.objects.create(
@@ -2441,14 +2253,15 @@ def test_get_session_messages_rejects_cross_graph_session(db):
 
 
 @pytest.mark.django_db
-def test_get_session_messages_respects_limit_clamp(db):
+def test_get_session_messages_respects_limit_clamp(db, org_a):
     """get_session_messages clamps limit to 200; passing 500 returns at most 200."""
     from django.utils import timezone
 
-    from tables.models.session_models import AgentSessionMessage, Session
+    from tables.models.graph_models import GraphSessionMessage
+    from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_messages
 
-    graph_limit = Graph.objects.create(name="Limit Flow", description="")
+    graph_limit = Graph.objects.create(name="Limit Flow", description="", org=org_a)
     now = timezone.now()
     session = Session.objects.create(
         graph=graph_limit,
@@ -2456,16 +2269,15 @@ def test_get_session_messages_respects_limit_clamp(db):
         status_updated_at=now,
     )
 
-    # Create 220 agent messages
-    AgentSessionMessage.objects.bulk_create(
+    GraphSessionMessage.objects.bulk_create(
         [
-            AgentSessionMessage(
+            GraphSessionMessage(
                 session=session,
-                node_name="agent",
+                name="agent",
                 execution_order=i,
-                thought=f"thought {i}",
-                text="",
-                result="",
+                created_at=now,
+                uuid=uuid.uuid4(),
+                message_data={"message_type": "agent_node_stream", "data": f"thought {i}"},
             )
             for i in range(220)
         ]
@@ -2473,16 +2285,14 @@ def test_get_session_messages_respects_limit_clamp(db):
 
     result = get_session_messages(graph_limit.pk, session.pk, limit=500)
     assert "error" not in result
-    assert (
-        result["count"] <= 200
-    ), f"Expected at most 200 messages, got {result['count']}"
+    assert result["count"] == 200, f"Expected 200 messages, got {result['count']}"
 
 
 # ── Fix 22: runtime variable path in get_session_detail ──────────────────────
 
 
 @pytest.mark.django_db
-def test_get_session_detail_includes_final_variables_from_status_data(db):
+def test_get_session_detail_includes_final_variables_from_status_data(db, org_a):
     """get_session_detail must expose final_variables from status_data["variables"],
     not from Session.variables, when the runtime snapshot is available."""
     from django.utils import timezone
@@ -2490,7 +2300,7 @@ def test_get_session_detail_includes_final_variables_from_status_data(db):
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_detail
 
-    graph = Graph.objects.create(name="Detail Vars Flow", description="")
+    graph = Graph.objects.create(name="Detail Vars Flow", description="", org=org_a)
     now = timezone.now()
     start_vars = {"city": "Berlin", "temperature": None, "recommendation": None}
     runtime_vars = {
@@ -2524,14 +2334,14 @@ def test_get_session_detail_includes_final_variables_from_status_data(db):
 
 
 @pytest.mark.django_db
-def test_get_session_detail_final_variables_falls_back_to_variables(db):
+def test_get_session_detail_final_variables_falls_back_to_variables(db, org_a):
     """When status_data has no 'variables' key, final_variables falls back to Session.variables."""
     from django.utils import timezone
 
     from tables.models.session_models import Session
     from tables.services.flow_assistant.tools import get_session_detail
 
-    graph = Graph.objects.create(name="Detail Fallback Flow", description="")
+    graph = Graph.objects.create(name="Detail Fallback Flow", description="", org=org_a)
     now = timezone.now()
     start_vars = {"city": "Paris", "result": None}
 
@@ -2627,7 +2437,6 @@ async def test_stream_reply_bails_on_cancel_flag(
 ):
     """stream_reply stops early and persists an interrupted partial when the cancel
     flag is set before the LLM call completes."""
-    import asyncio
     import fakeredis
     from unittest.mock import patch
     from asgiref.sync import sync_to_async
@@ -2635,7 +2444,6 @@ async def test_stream_reply_bails_on_cancel_flag(
     from tables.services.flow_assistant.constants import _CANCEL_KEY
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
 
     user_message = "what does this flow do?"
@@ -2719,7 +2527,6 @@ async def test_stream_reply_disconnect_persists_partial(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
 
     user_message = "hello"
@@ -2982,6 +2789,31 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
 # ── LiteLLMClient request-building tests ─────────────────────────────────────
 
 
+def _litellm_request(client) -> dict:
+    """The kwargs one streamed completion sends to litellm."""
+    import asyncio
+
+    captured: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+
+        async def no_chunks():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return no_chunks()
+
+    async def drain():
+        async for _ in client.stream_completion([], []):
+            pass
+
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        asyncio.run(drain())
+    return captured
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "provider_name, model_name, expected_model",
     [
@@ -3000,25 +2832,53 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
     ],
 )
 def test_litellm_client_prefixes_provider_only_when_missing(
-    db, provider_name, model_name, expected_model
+    org_a, provider_name, model_name, expected_model
 ):
     from tables.services.llm_clients.litellm_client import LiteLLMClient
 
     provider = Provider.objects.create(name=provider_name)
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
-    config = LLMConfig.objects.create(custom_name="test-config", model=model)
+    config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+    kwargs = _litellm_request(LiteLLMClient(config, api_key=None))
 
     assert kwargs["model"] == expected_model
 
 
+@pytest.mark.django_db
 def test_litellm_client_drops_provider_unsupported_params(llm_config):
     from tables.services.llm_clients.litellm_client import LiteLLMClient
 
-    kwargs = LiteLLMClient(llm_config, api_key=None)._build_kwargs([], [])
+    kwargs = _litellm_request(LiteLLMClient(llm_config, api_key=None))
 
     assert kwargs["drop_params"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "provider_name, model_name, expected_store",
+    [
+        ("openai", "gpt-5.6-luna", False),
+        ("azure", "gpt-5.6-luna", False),
+        ("azure_openai", "gpt-5.6-luna", False),
+        ("anthropic", "claude-sonnet-4-5", None),
+        ("ollama", "ollama/mistral", None),
+    ],
+)
+def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
+    org_a, provider_name, model_name, expected_store
+):
+    """OpenAI/Azure calls send store=False; other providers never get the key."""
+    from tables.services.llm_clients.litellm_client import LiteLLMClient
+
+    provider = Provider.objects.create(name=provider_name)
+    model = LLMModel.objects.create(name=model_name, llm_provider=provider)
+    config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
+
+    kwargs = _litellm_request(LiteLLMClient(config, api_key=None))
+
+    assert kwargs.get("store") == expected_store
+    assert ("store" in kwargs) is (expected_store is not None)
 
 
 # ── Final-turn JSON parse fallback tests ─────────────────────────────────────

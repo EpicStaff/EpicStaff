@@ -2,6 +2,8 @@
     class="dialog-container"
     [ngClass]="data.type || 'info'"
     [class.raised]="data.appearance === 'raised'"
+    (appEnterSubmit)="onEnterSubmit()"
+    [appEnterSubmitDisabled]="isConfirmBlocked()"
 >
     <div
         class="dialog-header"

@@ -5,12 +5,19 @@ unconditionally sets the completion model's `api_key` from whatever
 made every graph RAG search through realtime fail with
 `litellm.exceptions.InternalServerError: Missing credentials`.
 
-These tests pin down that `RealtimeSurfaceService._resolve_graph_rag` now also
-resolves the GraphRag's LLM secret id, and that `_resolve_naive_rag` leaves it
-`None` (naive RAG has no LLM call to key).
+These tests pin down that `RealtimeSurfaceService.resolve` resolves a graph
+RAG's LLM secret id too, and leaves it `None` for naive RAG (no LLM call to key).
 """
 
 import pytest
+
+from agents.models import AgentDefinition, Surface
+from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
+from agents.models.surface_models import (
+    SurfaceGraphBasicSearchConfig,
+    SurfaceKnowledge,
+    SurfaceNaiveSearchConfig,
+)
 
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.knowledge_models.collection_models import (
@@ -35,14 +42,23 @@ def org(db):
 def collection(db, org):
     return SourceCollection.objects.create(
         collection_name="RealtimeSurfaceRagLlmSecret Collection",
-        user_id="test_user",
         org=org,
     )
 
 
-@pytest.fixture
-def resolver():
-    return RealtimeSurfaceService(converter_service=ConverterService())
+def _resolve_for_realtime(org, collection, rag_type):
+    """Give a realtime agent a surface searching `collection`, then resolve it."""
+    agent = AgentDefinition.objects.create(
+        org=org, name="rag-secret-agent", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+    )
+    surface = Surface.objects.create(org=org, name="rag-secret-surface", instructions="")
+    knowledge = SurfaceKnowledge.objects.create(surface=surface, collection=collection)
+    if rag_type == "naive":
+        SurfaceNaiveSearchConfig.objects.create(surface_knowledge=knowledge, search_limit=5, similarity_threshold="0.5")
+    else:
+        SurfaceGraphBasicSearchConfig.objects.create(surface_knowledge=knowledge, prompt="basic prompt", k=7)
+    AgentDefaultSurface.objects.create(agent_definition=agent, surface=surface, place=SurfacePlace.REALTIME)
+    return RealtimeSurfaceService(converter_service=ConverterService()).resolve(agent)
 
 
 def _embedder(*, org, secret=None):
@@ -60,7 +76,7 @@ def _llm_config(*, org, secret=None):
 
 
 @pytest.mark.django_db
-def test_graph_rag_resolves_both_embedder_and_llm_secret_ids(resolver, org, collection):
+def test_graph_rag_resolves_both_embedder_and_llm_secret_ids(org, collection):
     embedder_secret = secret_service.create(text="sk-emb", org=org, name="emb-graph")
     llm_secret = secret_service.create(text="sk-llm", org=org, name="llm-graph")
     embedder = _embedder(org=org, secret=embedder_secret)
@@ -75,9 +91,7 @@ def test_graph_rag_resolves_both_embedder_and_llm_secret_ids(resolver, org, coll
         rag_status=GraphRag.GraphRagStatus.COMPLETED,
     )
 
-    result = resolver._resolve_graph_rag(
-        collection.pk, {"graph_basic_search_config": {}}
-    )
+    result = _resolve_for_realtime(org, collection, "graph")
 
     assert result.rag_type_id.startswith("graph:")
     assert result.rag_embedder_api_key_secret_id == embedder_secret.pk
@@ -85,7 +99,7 @@ def test_graph_rag_resolves_both_embedder_and_llm_secret_ids(resolver, org, coll
 
 
 @pytest.mark.django_db
-def test_graph_rag_without_llm_config_reports_none(resolver, org, collection):
+def test_graph_rag_without_llm_config_reports_none(org, collection):
     embedder_secret = secret_service.create(text="sk-emb2", org=org, name="emb-graph2")
     embedder = _embedder(org=org, secret=embedder_secret)
     base_rag = BaseRagType.objects.create(
@@ -98,15 +112,13 @@ def test_graph_rag_without_llm_config_reports_none(resolver, org, collection):
         rag_status=GraphRag.GraphRagStatus.COMPLETED,
     )
 
-    result = resolver._resolve_graph_rag(
-        collection.pk, {"graph_basic_search_config": {}}
-    )
+    result = _resolve_for_realtime(org, collection, "graph")
 
     assert result.rag_llm_api_key_secret_id is None
 
 
 @pytest.mark.django_db
-def test_naive_rag_never_reports_an_llm_secret_id(resolver, org, collection):
+def test_naive_rag_never_reports_an_llm_secret_id(org, collection):
     """Naive RAG has no LLM call — the LLM secret id must stay None even
     though naive_rag_models.NaiveRag has no `llm` field at all."""
     embedder_secret = secret_service.create(text="sk-emb3", org=org, name="emb-naive")
@@ -120,9 +132,7 @@ def test_naive_rag_never_reports_an_llm_secret_id(resolver, org, collection):
         rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
     )
 
-    result = resolver._resolve_naive_rag(
-        collection.pk, {"search_limit": 5, "similarity_threshold": 0.5}
-    )
+    result = _resolve_for_realtime(org, collection, "naive")
 
     assert result.rag_type_id.startswith("naive:")
     assert result.rag_embedder_api_key_secret_id == embedder_secret.pk

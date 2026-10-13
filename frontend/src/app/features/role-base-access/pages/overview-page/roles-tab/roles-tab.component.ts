@@ -17,6 +17,7 @@ import {
     ViewButtonComponent,
 } from '@shared/components';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 import { EMPTY, finalize, switchMap } from 'rxjs';
 
 import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
@@ -260,7 +261,7 @@ export class RolesTabComponent implements OnInit {
                             : 'This role is not currently assigned to any user.';
                     return this.confirmation.confirm({
                         title: 'Delete the role?',
-                        message: `The ${row['name']} role will be permanently deleted.`,
+                        message: `The ${escapeHtml(row['name'] as string)} role will be permanently deleted.`,
                         caution,
                         type: 'danger',
                         confirmText: 'Delete',

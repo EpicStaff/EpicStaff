@@ -1,3 +1,14 @@
+// Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar; expanded, it stretches
+// but keeps the same left edge ($row-inset) and inner padding, so icons stay put when the sidebar expands.
+$row-size: 2.5rem;
+$row-inset: 0.625rem; // (60px collapsed sidebar - 40px row) / 2
+$nav-icon-size: 1.4rem;
+$nav-icon-padding: ($row-size - $nav-icon-size) * 0.5;
+$avatar-size: 1.5rem; // app-org-avatar and app-user-avatar are 24px
+$avatar-padding: ($row-size - $avatar-size) * 0.5;
+// Must match chat-icon-size on <epic-chat> in sidenav.component.html.
+$chat-launcher-size: 2rem;
+
 :host {
     display: block;
     height: 100%;
@@ -35,6 +46,25 @@
         text-decoration: none;
         background-color: var(--color-sidenav-background);
 
+        // Fixed box: the hover swap to the smaller, scaled video changes neither the logo's place nor the name's.
+        .logo-mark {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: $row-size;
+            height: $row-size;
+        }
+
+        .app-logo-name {
+            min-width: 0;
+            margin-left: var(--space-sm);
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            color: var(--color-text-primary);
+        }
+
         .logo-svg {
             width: 2.5rem;
             height: 2.5rem;
@@ -58,6 +88,36 @@
         &:hover .gif-logo {
             display: block;
             transform: scale(1.25);
+        }
+    }
+}
+
+// Collapsed, the toggle is hidden over the logo mark and replaces it on hover or keyboard focus
+// (not after a mouse click, which would leave it shown). Expanded, it always shows at the end of the row.
+.sidenav:not(.expanded) .logo-container {
+    .logo-mark {
+        transition: opacity 0.15s ease;
+    }
+
+    .logo-sidebar-toggle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+
+    &:hover,
+    &:has(:focus-visible) {
+        .logo-mark {
+            opacity: 0;
+        }
+
+        .logo-sidebar-toggle {
+            opacity: 1;
+            pointer-events: auto;
         }
     }
 }
@@ -99,8 +159,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 2.5rem;
-            height: 2.5rem;
+            gap: var(--space-sm);
+            width: $row-size;
+            height: $row-size;
+            padding: 0 $avatar-padding;
             border-radius: 0.5rem;
             cursor: pointer;
             transition: background-color 0.2s ease-out;
@@ -112,6 +174,9 @@
             &:hover {
                 background-color: var(--white-alpha-5);
             }
+            &:hover .sidenav-row-label {
+                color: var(--gray-200);
+            }
 
             &.opened {
                 background-color: var(--graphite-750);
@@ -119,6 +184,9 @@
 
             &.active {
                 background-color: var(--purple-alpha-15);
+            }
+            &.active .sidenav-row-label {
+                color: var(--accent-color);
             }
         }
     }
@@ -135,13 +203,16 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                gap: var(--space-sm);
                 text-decoration: none;
                 color: var(--white);
                 cursor: pointer;
-                width: 2.5rem;
-                height: 2.5rem;
+                width: $row-size;
+                height: $row-size;
+                padding: 0 $nav-icon-padding;
                 border-radius: 0.5rem;
-                transition: all 0.2s ease-out;
+                // Only colours animate: the row geometry changes with the sidebar width and must follow the pointer.
+                transition: background-color 0.2s ease-out;
                 margin: 0 auto;
                 position: relative;
 
@@ -156,24 +227,55 @@
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 1.4rem;
-                    height: 1.4rem;
+                    flex-shrink: 0;
+                    width: $nav-icon-size;
+                    height: $nav-icon-size;
                     color: var(--gray-400);
                     transition: color 0.2s ease-in-out;
                 }
-                &:hover .sidenav-link-icon {
+                &:hover .sidenav-link-icon,
+                &:hover .sidenav-row-label {
                     color: var(--gray-200);
                 }
-                &.active .sidenav-link-icon {
+                &.active .sidenav-link-icon,
+                &.active .sidenav-row-label {
                     color: var(--accent-color);
                 }
 
+                // The launcher is wider than the row icons: centre it in the 40px row with equal padding.
                 &.epic-chat-slot {
                     overflow: visible;
+                    padding: 0 ($row-size - $chat-launcher-size) * 0.5;
+                }
+
+                // Fills the rest of the row, so the whole row past the launcher opens and closes the chat.
+                .epic-chat-label {
+                    flex: 1 1 auto;
+                    align-self: stretch;
+                    line-height: $row-size;
                 }
             }
         }
     }
+}
+
+.sidenav-row-leading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: $avatar-size;
+    height: $avatar-size;
+}
+
+// Same colours as the row icons, so a label always matches its icon's hover/active state.
+.sidenav-row-label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--gray-400);
+    transition: color 0.2s ease-in-out;
 }
 
 .user-avatar-wrapper {
@@ -186,8 +288,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    gap: var(--space-sm);
+    width: $row-size;
+    height: $row-size;
+    padding: 0 $avatar-padding;
     border-radius: 0.5rem;
     margin: 0 auto;
     cursor: pointer;
@@ -196,12 +300,52 @@
     &:hover {
         background-color: var(--white-alpha-5);
     }
+    &:hover .sidenav-row-label {
+        color: var(--gray-200);
+    }
 
     &.opened {
         background-color: var(--graphite-750);
     }
 }
 
+// The widget's shadow root forces its host to display: block and width: 100%, and stretches the launcher to that
+// width, so the host is sized here to exactly the launcher: the row layout then never depends on widget internals.
 .epic-chat-host {
-    display: contents;
+    display: block;
+    flex: 0 0 $chat-launcher-size;
+    width: $chat-launcher-size;
+    min-width: $chat-launcher-size;
+}
+
+// Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.
+// The org and user menus are positioned against their full-width wrappers, so they open beside the sidebar edge.
+.sidenav.expanded {
+    // The toggle takes its own place in the row, so the name never runs under it.
+    .logo-container .app-logo {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+        justify-content: flex-start;
+        padding-inline: $row-inset var(--space-sm);
+    }
+
+    .logo-container .logo-sidebar-toggle {
+        margin-right: $row-inset;
+    }
+
+    .org-menu-container .org-menu-wrapper {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .org-menu-container .org-menu-btn,
+    .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link,
+    .user-avatar-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
+        margin: 0 $row-inset;
+        justify-content: flex-start;
+    }
 }

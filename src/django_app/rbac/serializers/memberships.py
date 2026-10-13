@@ -1,16 +1,6 @@
 from rest_framework import serializers
 
-
-def _avatar_url(user, request):
-    """Absolute avatar URL, or None when unset or unresolvable."""
-    if not user.avatar:
-        return None
-    try:
-        return (
-            request.build_absolute_uri(user.avatar.url) if request is not None else user.avatar.url
-        )
-    except ValueError:
-        return None
+from rbac.profile.avatar import build_avatar_url
 
 
 class MembershipResponseSerializer(serializers.Serializer):
@@ -28,7 +18,7 @@ class MembershipResponseSerializer(serializers.Serializer):
                 "id": user.id,
                 "email": user.email,
                 "display_name": user.display_name,
-                "avatar_url": _avatar_url(user, self.context.get("request")),
+                "avatar_url": build_avatar_url(user, self.context.get("request")),
                 "is_active": user.is_active,
             },
             "role": {"id": instance.role_id, "name": instance.role.name},
@@ -48,7 +38,7 @@ class AssignableUserSerializer(serializers.Serializer):
             "id": instance.id,
             "email": instance.email,
             "display_name": instance.display_name,
-            "avatar_url": _avatar_url(instance, self.context.get("request")),
+            "avatar_url": build_avatar_url(instance, self.context.get("request")),
             "org_ids": [m.org_id for m in instance._visible_memberships],
         }
 

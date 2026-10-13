@@ -49,12 +49,16 @@ import { CdtExplanationStoreService } from '../../../../visual-programming/servi
 import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
+import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
+import { livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
 import {
     extractParentNotUpdatedMessage,
     FlowVisualProgrammingComponent,
+    REMOTE_SAVE_RELOAD_FAILED_MESSAGE,
     RUN_WHILE_SAVING_MESSAGE,
     TEST_RUN_NODE_GONE_MESSAGE,
     TEST_RUN_PAYLOAD_REJECTED_MESSAGE,
@@ -65,6 +69,13 @@ const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
 const VERSION_A: GraphVersionDto = { id: 11, graph_id: 1, name: 'Version A', description: '', created_at: '' };
 const VERSION_B: GraphVersionDto = { id: 12, graph_id: 1, name: 'Version B', description: '', created_at: '' };
+/** The authorship the backend renders on a node nobody has edited since it was created. */
+const UNEDITED_NODE = {
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
+};
 
 function graphDto(overrides: Partial<GraphDto> = {}): GraphDto {
     return { id: 1, uuid: 'graph-uuid', name: 'Flow', description: '', save_version: 1, ...overrides } as GraphDto;
@@ -72,7 +83,19 @@ function graphDto(overrides: Partial<GraphDto> = {}): GraphDto {
 
 const RESTORED_GRAPH = graphDto({
     save_version: 2,
-    graph_note_list: [{ id: 99, node_name: 'Restored note', graph: 1, content: 'restored', metadata: {} }],
+    graph_note_list: [
+        {
+            id: 99,
+            created_at: '2026-01-01T00:00:00Z',
+            node_name: 'Restored note',
+            graph: 1,
+            content: 'restored',
+            metadata: {},
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
+        },
+    ],
 });
 
 @Component({
@@ -290,17 +313,17 @@ describe('FlowVisualProgrammingComponent', () => {
         return element ? FlowGraphStubComponent.instances.at(-1) : undefined;
     }
 
+    function makeLiveFlowDirty(): void {
+        const flow = flowService.getFlowState();
+        flowService.setFlow({
+            ...flow,
+            nodes: flow.nodes.map((node) => ({ ...node, position: { x: 4242, y: 0 } })),
+        });
+    }
+
     describe('version preview', () => {
         function preview(): HTMLElement | null {
             return fixture.nativeElement.querySelector('app-flow-version-preview');
-        }
-
-        function makeLiveFlowDirty(): void {
-            const flow = flowService.getFlowState();
-            flowService.setFlow({
-                ...flow,
-                nodes: flow.nodes.map((node) => ({ ...node, position: { x: 4242, y: 0 } })),
-            });
         }
 
         function enterPreview(version: GraphVersionDto = VERSION_A): void {
@@ -564,6 +587,11 @@ describe('FlowVisualProgrammingComponent', () => {
             metadata: {},
             webhook_trigger: null,
             test_payload: {},
+            use_storage: false,
+            created_at: '2026-01-01T00:00:00Z',
+            created_by: null,
+            last_edited_by: null,
+            last_edited_at: null,
         };
         let testRun: FlowTestRunService;
         let webhookNode: WebhookTriggerNodeModel;
@@ -761,6 +789,11 @@ describe('FlowVisualProgrammingComponent', () => {
                                 metadata: {},
                                 webhook_trigger: null,
                                 test_payload: {},
+                                use_storage: false,
+                                created_at: '2026-01-01T00:00:00Z',
+                                created_by: null,
+                                last_edited_by: null,
+                                last_edited_at: null,
                             },
                         ],
                     })
@@ -783,25 +816,298 @@ describe('FlowVisualProgrammingComponent', () => {
         it('gives the editor the stored webhook code and its id of the loaded flow, until the page goes away', () => {
             loadFlowWithWebhookNode(2);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
 
             fixture.destroy();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
         });
 
-        it('drops it when another user saves the graph, until the graph is loaded again', () => {
+        it('drops it when another user saves a flow with unsaved edits, until the graph is loaded again', () => {
             loadFlowWithWebhookNode(2);
+            // A clean flow would take the save over right away; unsaved edits keep the outdated graph.
+            makeLiveFlowDirty();
 
             remoteSave();
+            fixture.detectChanges();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
 
             loadFlowWithWebhookNode(3);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
+        });
+    });
+
+    describe('when another user saves the flow', () => {
+        const REMOTE_GRAPH = graphDto({
+            save_version: 2,
+            graph_note_list: [
+                {
+                    id: 77,
+                    created_at: '2026-01-01T00:00:00Z',
+                    node_name: 'Remote note',
+                    graph: 1,
+                    content: 'remote',
+                    metadata: {},
+                    created_by: null,
+                    last_edited_by: null,
+                    last_edited_at: null,
+                },
+            ],
+        });
+        let undoRedo: UndoRedoService;
+
+        beforeEach(() => {
+            undoRedo = TestBed.inject(UndoRedoService);
+            flowsApi['getGraphById'].mockClear();
+            flowsApi['getGraphById'].mockReturnValue(of(REMOTE_GRAPH));
+        });
+
+        function remoteSave(): void {
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 1,
+                new_save_version: 2,
+                saved_by: { user_id: 7, display_name: 'Another user' },
+                saved_at: '',
+            });
+            fixture.detectChanges();
+        }
+
+        function showsRemoteSave(): boolean {
+            return flowService.getFlowState().nodes.some((node) => node.backendId === 77);
+        }
+
+        it('loads the save into a clean editor and drops the undo history from before it', () => {
+            undoRedo.setUndoStack([flowService.getFlowState()]);
+
+            remoteSave();
+
+            expect(flowsApi['getGraphById']).toHaveBeenCalledWith(1, true);
+            expect(showsRemoteSave()).toBe(true);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(2);
+            expect(component.hasUnsavedChangesSignal()).toBe(false);
+            expect(undoRedo.canUndo()).toBe(false);
+        });
+
+        it('keeps the old save_version while the flow has unsaved edits, so the next save is rejected', () => {
+            makeLiveFlowDirty();
+
+            remoteSave();
+
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+            expect(flowService.hasSavedGraph()).toBe(false);
+            component.onGraphSave(flowService.getFlowState());
+            expect(flowsApi['bulkSaveGraph'].mock.calls[0][1].save_version).toBe(1);
+        });
+
+        it('waits until the open node panel closes, since its edits are not in the flow yet', () => {
+            const sidePanel = TestBed.inject(SidePanelService);
+            sidePanel.setSelectedNodeId('open-node');
+
+            remoteSave();
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+
+            sidePanel.clearSelection();
+            fixture.detectChanges();
+            expect(showsRemoteSave()).toBe(true);
+        });
+
+        it('waits until the version preview closes', () => {
+            component.onVersionPreviewRequested(VERSION_A);
+            fixture.detectChanges();
+
+            remoteSave();
+            expect(flowsApi['getGraphById']).not.toHaveBeenCalled();
+
+            component.onPreviewExit();
+            fixture.detectChanges();
+            expect(showsRemoteSave()).toBe(true);
+        });
+
+        it('discards the loaded save when the flow was edited while it loaded', () => {
+            const remoteGraph$ = new Subject<GraphDto>();
+            flowsApi['getGraphById'].mockReturnValue(remoteGraph$);
+            remoteSave();
+
+            makeLiveFlowDirty();
+            remoteGraph$.next(REMOTE_GRAPH);
+            remoteGraph$.complete();
+            fixture.detectChanges();
+
+            expect(showsRemoteSave()).toBe(false);
+            expect(component.hasUnsavedChangesSignal()).toBe(true);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+
+        it.each([
+            ['the request fails', () => throwError(() => new HttpErrorResponse({ status: 500 }))],
+            ['the backend returns a graph older than the save', () => of(graphDto())],
+        ])('warns and keeps the old save_version when %s', (_case, response) => {
+            flowsApi['getGraphById'].mockReturnValue(response());
+
+            remoteSave();
+
+            expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+    });
+
+    describe('node authorship for the details dialog', () => {
+        const grace = { id: 9, display_name: 'Grace Hopper', avatar_url: null };
+        const pythonGraph = graphDto({ python_node_list: [livePython] });
+        let nextRouteId = 100;
+
+        // The page's own store, which the live canvas's side panel reads.
+        const pageStore = (): NodeAuthorshipStore => fixture.debugElement.injector.get(NodeAuthorshipStore);
+        const livePythonNode = () => flowService.getFlowState().nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        function enterPreview(): void {
+            component.onVersionPreviewRequested(VERSION_A);
+            fixture.detectChanges();
+        }
+
+        it('shows the author of a node as the loaded graph lists it', () => {
+            openFlow(pythonGraph);
+
+            expect(pageStore().authorshipOf(livePythonNode())).toEqual({
+                created_by: livePython.created_by,
+                created_at: livePython.created_at,
+                last_edited_by: livePython.last_edited_by,
+                last_edited_at: livePython.last_edited_at,
+            });
+        });
+
+        it('shows the fresh last editor after a flow save, from the save response', () => {
+            openFlow(pythonGraph);
+            const node = livePythonNode();
+            flowService.setFlow({ nodes: [{ ...node, position: { x: 500, y: 0 } }], connections: [] });
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(
+                    graphDto({
+                        save_version: 2,
+                        python_node_list: [
+                            { ...livePython, last_edited_by: grace, last_edited_at: '2026-10-06T10:00:00Z' },
+                        ],
+                    })
+                )
+            );
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(pageStore().authorshipOf(livePythonNode())).toEqual(
+                expect.objectContaining({ last_edited_by: grace, last_edited_at: '2026-10-06T10:00:00Z' })
+            );
+        });
+
+        it('shows the fresh last editor after a single-node save from the side panel', () => {
+            openFlow(pythonGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [{ ...livePython, last_edited_by: grace }] }))
+            );
+
+            TestBed.inject(SidePanelService).requestSaveNode({ ...livePythonNode(), node_name: 'Renamed' });
+
+            expect(pageStore().authorshipOf(livePythonNode()).last_edited_by).toEqual(grace);
+        });
+
+        it("gives a node re-created by undo after its deletion was saved the new row's authorship", () => {
+            openFlow(pythonGraph);
+            const deletedNode = livePythonNode();
+            flowsApi['bulkSaveGraph'].mockReturnValue(of(graphDto({ save_version: 2, python_node_list: [] })));
+            flowService.setFlow({ nodes: [], connections: [] });
+            component.onGraphSave(flowService.getFlowState());
+
+            // Undo brings the node back with the id of the row the save deleted.
+            flowService.setFlow({ nodes: [deletedNode], connections: [] });
+            const recreatedRow = {
+                ...livePython,
+                id: 40,
+                created_by: grace,
+                created_at: '2026-10-06T11:00:00Z',
+                last_edited_by: grace,
+                last_edited_at: '2026-10-06T11:00:00Z',
+            };
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 3, python_node_list: [recreatedRow] }))
+            );
+            component.onGraphSave(flowService.getFlowState());
+
+            const recreatedNode = livePythonNode();
+            expect(recreatedNode.backendId).toBe(40);
+            expect(pageStore().authorshipOf(recreatedNode)).toEqual({
+                created_by: grace,
+                created_at: '2026-10-06T11:00:00Z',
+                last_edited_by: grace,
+                last_edited_at: '2026-10-06T11:00:00Z',
+            });
+            expect(pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id })).toEqual(
+                expect.objectContaining({ created_by: null, last_edited_by: null })
+            );
+        });
+
+        it('shows the fresh last editor after a partial import, which reloads the whole graph', () => {
+            openFlow(pythonGraph);
+            flowsApi['getGraphById'].mockReturnValue(
+                of(graphDto({ python_node_list: [{ ...livePython, last_edited_by: grace }] }))
+            );
+
+            component.handlePartialImportComplete();
+
+            expect(
+                pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id }).last_edited_by
+            ).toEqual(grace);
+        });
+
+        it('takes the rename response as the whole graph: fresh rows win, nodes it no longer lists are dropped', () => {
+            openFlow(graphDto({ python_node_list: [livePython], task_node_list: [liveTask] }));
+            expect(pageStore().authorshipOf({ type: NodeType.TASK, backendId: liveTask.id }).created_by).toEqual(
+                liveTask.created_by
+            );
+
+            component.onFlowEdited(
+                graphDto({
+                    name: 'Renamed',
+                    python_node_list: [{ ...livePython, last_edited_by: grace }],
+                    task_node_list: [],
+                })
+            );
+
+            expect(
+                pageStore().authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id }).last_edited_by
+            ).toEqual(grace);
+            expect(pageStore().authorshipOf({ type: NodeType.TASK, backendId: liveTask.id })).toEqual({
+                created_by: null,
+                created_at: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            });
+        });
+
+        it('gives the version preview its own store, which the live graph never fills', () => {
+            openFlow(pythonGraph);
+            enterPreview();
+
+            const previewStore = fixture.debugElement
+                .query(By.directive(FlowVersionPreviewStubComponent))
+                .injector.get(NodeAuthorshipStore);
+
+            expect(previewStore).not.toBe(pageStore());
+            expect(previewStore.authorshipOf({ type: NodeType.PYTHON, backendId: livePython.id })).toEqual({
+                created_by: null,
+                created_at: null,
+                last_edited_by: null,
+                last_edited_at: null,
+            });
         });
     });
 
@@ -906,6 +1212,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
+            ...UNEDITED_NODE,
             id: 50,
             metadata: {},
             node_name: 'Agent #1',
@@ -983,6 +1290,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
         function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
             return {
+                ...UNEDITED_NODE,
                 id,
                 graph: 1,
                 node_name: name,
@@ -1260,17 +1568,19 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
         });
 
-        it('keeps a graph that another user’s save made outdated outdated', () => {
-            explanationsApi.saveExplanations.mockReturnValue(
-                of({ explanations: { 'rule:route:spam': SPAM }, save_version: 4 })
-            );
+        function announceOtherUsersSave(saveVersion: number): void {
             TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
                 type: 'graph_saved',
                 graph_id: 1,
-                new_save_version: 3,
+                new_save_version: saveVersion,
                 saved_by: { user_id: 7, display_name: 'Another user' },
                 saved_at: '',
             });
+        }
+
+        it('sends the version it loaded once another user has saved, so the server refuses instead of overwriting', () => {
+            explanationsApi.saveExplanations.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+            announceOtherUsersSave(3);
             expect(flowService.hasSavedGraph()).toBe(false);
 
             explain(21, 'rule:route:spam', SPAM);
@@ -1278,9 +1588,23 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(explanationsApi.saveExplanations).toHaveBeenCalledWith(
                 21,
-                expect.objectContaining({ save_version: 3 })
+                expect.objectContaining({ save_version: 1 })
             );
-            expect(component.versionHistoryGraphSaveVersion()).toBe(4);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+            expect(component.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('keeps the graph outdated when another user saved while its own save was in flight', () => {
+            const explanationSave = new Subject<{ explanations: CdtExplanations; save_version: number }>();
+            explanationsApi.saveExplanations.mockReturnValue(explanationSave);
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            announceOtherUsersSave(3);
+            explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+            explanationSave.complete();
+
+            expect(component.versionHistoryGraphSaveVersion()).toBe(2);
             // Its node lists still lack what the other user saved.
             expect(flowService.hasSavedGraph()).toBe(false);
         });
@@ -1536,6 +1860,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
         describe('unpack a subflow', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
+                ...UNEDITED_NODE,
                 id: 41,
                 node_name: 'Inner flow',
                 graph: 1,

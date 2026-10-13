@@ -1,4 +1,5 @@
-"""The `assigned_count` / `assigned_by_org` rule, at service level.
+"""How many members hold a role, as the roles API shows it (`assigned_count`,
+`assigned_by_org`, `org`).
 
 Two rules, because the two role kinds differ. A custom role belongs to exactly
 one org, so its holders can only be there and the count is unambiguous. A
@@ -9,177 +10,95 @@ counted at all.
 
 import pytest
 
+from rbac.governance.roles import RoleManagementService
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
-from rbac.governance.roles import RoleManagementService
+from rbac.serializers.permissions import RoleResponseSerializer
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-
-
-@pytest.fixture
-def role_superadmin(db):
-    return Role.objects.get(
-        name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
-    )
 
 
 def _holder(django_user_model, org, role, email):
     user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
     OrganizationUser.objects.create(user=user, org=org, role=role)
-    return user
 
 
-def _reload(role):
-    """Refetch with the prefetch `attach_role_display` expects."""
-    return (
-        Role.objects.select_related("org")
-        .prefetch_related("permissions_set")
-        .get(pk=role.pk)
-    )
-
-
-# ---- built-in roles: counted across the request's scope ----
+def _shown(role, scope_org_ids) -> dict:
+    """The role as the roles endpoints render it for a request scoped to `scope_org_ids`."""
+    role = Role.objects.select_related("org").prefetch_related("permissions_set").get(pk=role.pk)
+    RoleManagementService().attach_role_display(roles=[role], scope_org_ids=scope_org_ids)
+    return RoleResponseSerializer(role).data
 
 
 @pytest.mark.django_db
-def test_built_in_count_is_scoped_to_the_given_orgs(
-    django_user_model, acme, beta, role_member
+@pytest.mark.parametrize(
+    ("scope", "expected_count", "expected_orgs"),
+    [
+        ("acme", 2, ["acme"]),
+        # Superadmin requests are unscoped: every org, sorted by name.
+        (None, 3, ["acme", "beta"]),
+        ("nothing", 0, []),
+        # An org in scope with no holders gets no breakdown entry.
+        ("acme+empty", 2, ["acme"]),
+    ],
+)
+def test_built_in_role_is_counted_across_the_request_scope(
+    django_user_model, acme, beta, role_member, scope, expected_count, expected_orgs
 ):
+    empty = Organization.objects.create(name="empty-count")
     _holder(django_user_model, acme, role_member, "m-acme-1@example.com")
     _holder(django_user_model, acme, role_member, "m-acme-2@example.com")
     _holder(django_user_model, beta, role_member, "m-beta-1@example.com")
-    member = _reload(role_member)
+    orgs = {"acme": acme, "beta": beta}
+    scope_org_ids = {
+        "acme": {acme.id}, None: None, "nothing": set(), "acme+empty": {acme.id, empty.id}
+    }[scope]
 
-    RoleManagementService().attach_role_display(roles=[member], scope_org_ids={acme.id})
+    shown = _shown(role_member, scope_org_ids)
 
-    assert member._assigned_count == 2
-    assert member._assigned_by_org == [
-        {"org": {"id": acme.id, "name": "Acme-xorg"}, "count": 2}
-    ]
-
-
-@pytest.mark.django_db
-def test_built_in_count_with_none_scope_counts_every_org(
-    django_user_model, acme, beta, role_member
-):
-    _holder(django_user_model, acme, role_member, "m-acme-3@example.com")
-    _holder(django_user_model, beta, role_member, "m-beta-2@example.com")
-    member = _reload(role_member)
-
-    RoleManagementService().attach_role_display(roles=[member], scope_org_ids=None)
-
-    assert member._assigned_count == 2
-    assert [entry["org"]["id"] for entry in member._assigned_by_org] == [
-        acme.id,
-        beta.id,
-    ]
+    assert shown["org"] is None
+    assert shown["assigned_count"] == expected_count
+    assert [entry["org"]["id"] for entry in shown["assigned_by_org"]] == [orgs[name].id for name in expected_orgs]
+    assert sum(entry["count"] for entry in shown["assigned_by_org"]) == expected_count
 
 
 @pytest.mark.django_db
-def test_built_in_count_with_empty_scope_counts_nothing(
-    django_user_model, acme, role_member
-):
-    _holder(django_user_model, acme, role_member, "m-acme-4@example.com")
-    member = _reload(role_member)
-
-    RoleManagementService().attach_role_display(roles=[member], scope_org_ids=set())
-
-    assert member._assigned_count == 0
-    assert member._assigned_by_org == []
-
-
-@pytest.mark.django_db
-def test_built_in_breakdown_omits_orgs_with_no_holders(
-    django_user_model, acme, beta, role_member
-):
-    _holder(django_user_model, acme, role_member, "m-acme-5@example.com")
-    member = _reload(role_member)
-
-    RoleManagementService().attach_role_display(
-        roles=[member], scope_org_ids={acme.id, beta.id}
-    )
-
-    assert [entry["org"]["id"] for entry in member._assigned_by_org] == [acme.id]
-
-
-@pytest.mark.django_db
-def test_built_in_breakdown_is_sorted_by_org_name_case_insensitively(
-    django_user_model, role_member
-):
+def test_breakdown_is_sorted_by_org_name_case_insensitively(django_user_model, role_member):
     zeta = Organization.objects.create(name="zeta-count")
     alpha = Organization.objects.create(name="Alpha-count")
     _holder(django_user_model, zeta, role_member, "m-zeta@example.com")
     _holder(django_user_model, alpha, role_member, "m-alpha@example.com")
-    member = _reload(role_member)
 
-    RoleManagementService().attach_role_display(roles=[member], scope_org_ids=None)
+    shown = _shown(role_member, None)
 
-    assert [entry["org"]["name"] for entry in member._assigned_by_org] == [
-        "Alpha-count",
-        "zeta-count",
-    ]
+    assert [entry["org"]["name"] for entry in shown["assigned_by_org"]] == ["Alpha-count", "zeta-count"]
 
 
 @pytest.mark.django_db
-def test_assigned_count_equals_the_breakdown_sum(
-    django_user_model, acme, beta, role_member
-):
-    _holder(django_user_model, acme, role_member, "m-sum-1@example.com")
-    _holder(django_user_model, acme, role_member, "m-sum-2@example.com")
-    _holder(django_user_model, beta, role_member, "m-sum-3@example.com")
-    member = _reload(role_member)
-
-    RoleManagementService().attach_role_display(roles=[member], scope_org_ids=None)
-
-    assert member._assigned_count == sum(
-        entry["count"] for entry in member._assigned_by_org
-    )
-
-
-# ---- the Superadmin row is never counted ----
-
-
-@pytest.mark.django_db
-def test_superadmin_role_is_never_counted(django_user_model, acme, role_superadmin):
+def test_superadmin_role_is_never_counted(django_user_model, acme):
     # A bootstrap-style membership carrying the Superadmin role: migration 0211
     # retains exactly this shape, so it is present in real deployments.
-    _holder(django_user_model, acme, role_superadmin, "sa-holder@example.com")
-    superadmin_role = _reload(role_superadmin)
+    superadmin = Role.objects.get(name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True)
+    _holder(django_user_model, acme, superadmin, "sa-holder@example.com")
 
-    RoleManagementService().attach_role_display(
-        roles=[superadmin_role], scope_org_ids=None
-    )
+    shown = _shown(superadmin, None)
 
-    assert superadmin_role._assigned_count == 0
-    assert superadmin_role._assigned_by_org == []
-
-
-# ---- custom roles: counted in their own org, one breakdown entry ----
+    assert (shown["assigned_count"], shown["assigned_by_org"]) == (0, [])
 
 
 @pytest.mark.django_db
-def test_custom_role_is_counted_in_its_own_org(django_user_model, acme):
+@pytest.mark.parametrize("holders", [2, 0])
+def test_custom_role_is_counted_in_its_own_org_whatever_the_scope(django_user_model, acme, holders):
     billing = Role.objects.create(name="Billing-count", org=acme, is_built_in=False)
-    _holder(django_user_model, acme, billing, "c-acme-1@example.com")
-    _holder(django_user_model, acme, billing, "c-acme-2@example.com")
-    role = _reload(billing)
+    for index in range(holders):
+        _holder(django_user_model, acme, billing, f"c-acme-{index}@example.com")
 
-    # A custom role ignores the scope entirely: passing an empty selection must
-    # not zero it, because its holders can only be in its own org and the
-    # caller was already authorized against it there.
-    RoleManagementService().attach_role_display(roles=[role], scope_org_ids=set())
+    # An empty scope must not zero a custom role: its holders can only be in its
+    # own org, and the caller was already authorized against it there.
+    shown = _shown(billing, set())
 
-    assert role._assigned_count == 2
-    assert role._assigned_by_org == [
-        {"org": {"id": acme.id, "name": "Acme-xorg"}, "count": 2}
-    ]
-
-
-@pytest.mark.django_db
-def test_custom_role_with_no_holders_has_an_empty_breakdown(acme):
-    role = _reload(Role.objects.create(name="Empty-count", org=acme, is_built_in=False))
-
-    RoleManagementService().attach_role_display(roles=[role], scope_org_ids=None)
-
-    assert role._assigned_count == 0
-    assert role._assigned_by_org == []
+    assert shown["org"] == {"id": acme.id, "name": acme.name}
+    assert shown["assigned_count"] == holders
+    assert shown["assigned_by_org"] == (
+        [{"org": {"id": acme.id, "name": acme.name}, "count": holders}] if holders else []
+    )

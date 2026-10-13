@@ -22,5 +22,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_duplicated_tools),
+        migrations.RunPython(delete_duplicated_tools, elidable=True),
     ]

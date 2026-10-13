@@ -1,4 +1,8 @@
-<div class="create-custom-tool-dialog">
+<div
+    class="create-custom-tool-dialog"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSaving()"
+>
     <form
         [formGroup]="form"
         (ngSubmit)="submit()"

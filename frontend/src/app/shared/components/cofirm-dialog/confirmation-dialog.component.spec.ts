@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { EMPTY } from 'rxjs';
 
 import { ConfirmationDialogComponent, ConfirmationDialogData } from './confirmation-dialog.component';
 
@@ -11,10 +12,10 @@ const BASE_DATA: ConfirmationDialogData = {
     type: 'danger',
 };
 
-let dialogRef: { close: ReturnType<typeof vi.fn> };
+let dialogRef: { close: ReturnType<typeof vi.fn>; keydownEvents: typeof EMPTY };
 
 function render(data: ConfirmationDialogData): ComponentFixture<ConfirmationDialogComponent> {
-    dialogRef = { close: vi.fn() };
+    dialogRef = { close: vi.fn(), keydownEvents: EMPTY };
     TestBed.configureTestingModule({
         imports: [ConfirmationDialogComponent],
         providers: [
