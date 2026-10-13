@@ -14,10 +14,22 @@ import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
+import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createStartNode } from '../utils/load';
+import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
+
+const UNKNOWN_AUTHORSHIP = { created_by: null, created_at: null, last_edited_by: null, last_edited_at: null };
+
+const authorshipOfRow = (row: typeof liveStart | typeof liveNote) => ({
+    created_by: row.created_by,
+    created_at: row.created_at,
+    last_edited_by: row.last_edited_by,
+    last_edited_at: row.last_edited_at,
+});
 
 // The real template pulls in the whole Foblex canvas, which jsdom cannot lay out. Every
 // handler under test either returns before it touches a canvas reference or never uses one,
@@ -53,6 +65,13 @@ function mount(
             // Read-only from permissions (a Viewer) only where a test asks for it.
             { provide: PermissionsService, useValue: { can: () => canUpdateFlows } },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
+            // Provided by the flow page (live editor) or by FLOW_EDITOR_STATE_PROVIDERS (version preview).
+            ...(isPreview
+                ? [
+                      VersionPreviewNodeAuthorshipStore,
+                      { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
+                  ]
+                : [NodeAuthorshipStore]),
         ],
     });
     TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
@@ -150,7 +169,25 @@ describe('FlowGraphComponent', () => {
             // Opened with this editor's injector, so the dialog sees this editor's read-only state.
             for (const [, config] of dialogOpen.mock.calls) {
                 expect(config.injector.get(FlowReadOnlyService).isReadOnly()).toBe(true);
+                // Nothing filled this preview's own store: the footer shows dashes.
+                expect(config.data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
             }
+        });
+
+        it('passes the Start authorship the version recorded to the domain dialog (toolbar and Start node)', () => {
+            dialogOpen.mockReturnValue({ closed: of(null) });
+            const [start] = flowService.nodes();
+            const recorded = {
+                ...UNKNOWN_AUTHORSHIP,
+                created_by: liveStart.created_by,
+                created_at: liveStart.created_at,
+            };
+            TestBed.inject(VersionPreviewNodeAuthorshipStore).replaceFromVersion(new Map([[start.id, recorded]]));
+
+            component.onDomainClick();
+            component.onOpenNodePanel(start);
+
+            expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([recorded, recorded]);
         });
 
         it('does not open the note dialog', () => {
@@ -174,6 +211,40 @@ describe('FlowGraphComponent', () => {
     });
 
     describe('editable (FLOW_EDITOR_PREVIEW = false)', () => {
+        it('passes the saved Start and Note authorship to their windows (Start node and toolbar Domain button)', () => {
+            const start = { ...createStartNode(), backendId: liveStart.id };
+            const note = { ...noteNode(), backendId: liveNote.id };
+            const fixture = mount(false, { nodes: [start, note], connections: [] }, () =>
+                TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph)
+            );
+            const component = fixture.componentInstance;
+            const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+            dialogOpen.mockReturnValue({ closed: of(null) });
+
+            component.onOpenNodePanel(start);
+            component.onDomainClick();
+            component.onOpenNodePanel(note);
+
+            const startAuthorship = authorshipOfRow(liveStart);
+            expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([
+                startAuthorship,
+                startAuthorship,
+                authorshipOfRow(liveNote),
+            ]);
+        });
+
+        it('passes dashes to the window of a node that is not saved yet', () => {
+            const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] }, () =>
+                TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph)
+            );
+            const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+            dialogOpen.mockReturnValue({ closed: of(null) });
+
+            fixture.componentInstance.onOpenNodePanel(noteNode());
+
+            expect(dialogOpen.mock.calls[0][1].data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
+        });
+
         it('does not replay an earlier full-save request when the canvas is re-created', () => {
             const emitSave = vi.spyOn(FlowGraphComponent.prototype, 'emitSave').mockImplementation(() => undefined);
 

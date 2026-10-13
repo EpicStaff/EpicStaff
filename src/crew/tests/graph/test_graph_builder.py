@@ -28,6 +28,7 @@ from src.shared.models import (
 )
 import asyncio
 import json
+import uuid
 
 
 class FakePythonCodeExecutorService:
@@ -49,16 +50,23 @@ class FakePythonCodeExecutorService:
         namespace: dict = {"DotDict": DotDict}
         namespace.update(python_code_data.global_kwargs or {})
         namespace.update(additional_global_kwargs or {})
+        execution_id = str(uuid.uuid4())
         try:
             exec(python_code_data.code, namespace)
             result = namespace[python_code_data.entrypoint](**DotDict(inputs or {}))
             return {
+                "execution_id": execution_id,
                 "returncode": 0,
                 "stderr": "",
                 "result_data": json.dumps(result),
             }
         except Exception as e:
-            return {"returncode": 1, "stderr": str(e), "result_data": "null"}
+            return {
+                "execution_id": execution_id,
+                "returncode": 1,
+                "stderr": str(e),
+                "result_data": "null",
+            }
 
 
 @pytest.fixture
@@ -69,8 +77,8 @@ def mock_services():
         user="default",
         password="redis_password",
     )
-    # Decision table nodes publish their messages straight to Redis; keep unit tests off a live server.
-    redis_service.publish = Mock()
+    # Decision table nodes write their messages straight to Redis; keep unit tests off a live server.
+    redis_service.add_graph_message = Mock()
     return {
         "redis_service": redis_service,
         "python_code_executor_service": FakePythonCodeExecutorService(),
@@ -135,7 +143,6 @@ def mock_session_data() -> SessionData:
                 EdgeData(start_key="__start__", end_key="start_node"),
                 EdgeData(start_key="start_node", end_key="decision_table_node_1"),
             ],
-            conditional_edge_list=[],
             decision_table_node_list=[
                 DecisionTableNodeData(
                     node_name="decision_table_node_1",
@@ -247,6 +254,48 @@ def test_run_decision_table_node_with_error(mock_services, mock_session_data):
             print(f"Mode: {stream_mode}. Chunk: {chunk}")
         assert last_chunk is not None
         assert last_chunk["variables"]["end_output"] == "ERROR HANDELED"
+
+    asyncio.run(run_graph())
+
+
+def test_run_decision_table_node_routes_to_default_branch(mock_services, mock_session_data):
+    session_data = mock_session_data.model_copy(deep=True)
+    session_data.graph.decision_table_node_list = [
+        DecisionTableNodeData(
+            node_name="decision_table_node_1",
+            conditional_group_list=[
+                ConditionGroupData(
+                    group_name="never_matches",
+                    group_type="simple",
+                    expression="True",
+                    manipulation=None,
+                    next_node="error_node",
+                    condition_list=[ConditionData(condition="variables.test1 == 2")],
+                ),
+            ],
+            default_next_node="end_node",
+            next_error_node="error_node",
+        )
+    ]
+    builder = SessionGraphBuilder(
+        session_id=session_data.id,
+        redis_service=mock_services["redis_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+    )
+    state = {
+        "state_history": [],
+        "variables": DotDict({"test1": 1}),
+        "system_variables": {},
+    }
+    compiled_graph = builder.compile_from_schema(session_data)
+
+    async def run_graph():
+        last_chunk = None
+        async for _, chunk in compiled_graph.astream(state, stream_mode=["values", "custom"]):
+            last_chunk = chunk
+        assert last_chunk["variables"]["end_output"] == "end"
 
     asyncio.run(run_graph())
 

@@ -39,7 +39,7 @@ from tables.models.knowledge_models import (
 def another_collection():
     """Create another collection for security tests."""
     return SourceCollection.objects.create(
-        collection_name="Another Collection", user_id="test_user"
+        collection_name="Another Collection"
     )
 
 

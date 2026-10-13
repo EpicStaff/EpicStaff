@@ -10,6 +10,7 @@ import {
     SelectComponent,
     SelectItem,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, FullMembership, GetRoleResponse, ResourceCode, UserRole } from '@shared/models';
 import { catchError, concat, EMPTY, map, Observable, of, toArray } from 'rxjs';
@@ -22,7 +23,6 @@ import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { RolesService } from '../../../services/admin/roles.service';
 import { adminUsersToAggregated, aggregateMembershipsByUser, rbacErrorMessage } from '../../../utils';
-import { UserAvatarComponent } from '../../user-avatar/user-avatar.component';
 
 interface MembershipSnapshot {
     membershipId: number;

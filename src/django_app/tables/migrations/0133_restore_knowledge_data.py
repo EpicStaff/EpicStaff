@@ -520,5 +520,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(restore_knowledge_data, reverse_restore),
+        migrations.RunPython(restore_knowledge_data, reverse_restore, elidable=True),
     ]

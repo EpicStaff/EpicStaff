@@ -1,0 +1,11 @@
+<div class="authorship-footer text-body-small">
+    @for (column of columns(); track column.label) {
+        <section class="authorship-footer__column">
+            <p class="authorship-footer__user">
+                <span class="authorship-footer__label">{{ column.label }}</span
+                >&ngsp;<span class="authorship-footer__name">{{ column.userName }}</span>
+            </p>
+            <p class="authorship-footer__when">{{ column.when }}</p>
+        </section>
+    }
+</div>

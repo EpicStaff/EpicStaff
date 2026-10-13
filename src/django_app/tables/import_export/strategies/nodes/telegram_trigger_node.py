@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.telegram_trigger_node import (
@@ -42,7 +44,7 @@ class TelegramTriggerNodeStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         fields_serializer = TelegramTriggerNodeFieldImportSerializer(data=fields_data, many=True)
         fields_serializer.is_valid(raise_exception=True)

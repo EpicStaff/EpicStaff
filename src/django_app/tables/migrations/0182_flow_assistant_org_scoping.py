@@ -19,6 +19,7 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql="DELETE FROM tables_flowassistantconversation;",
             reverse_sql=migrations.RunSQL.noop,
+            elidable=True,
         ),
         # Drop the old user FK column
         migrations.RemoveField(

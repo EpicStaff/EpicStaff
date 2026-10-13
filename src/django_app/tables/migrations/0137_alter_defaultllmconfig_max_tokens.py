@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(fix_low_max_tokens, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(fix_low_max_tokens, reverse_code=migrations.RunPython.noop, elidable=True),
         
         migrations.AlterField(
             model_name="defaultllmconfig",

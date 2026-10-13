@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
@@ -7,7 +7,7 @@ import {
     CustomInputComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ResourceCode } from '@shared/models';
+import { ResourceCode, toSecretIds } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -16,7 +16,8 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { RunPythonCodeRequest } from '../../../services/python-code-run.service';
+import { PythonNode } from '../../../core/models/python-node.model';
+import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
@@ -28,6 +29,16 @@ import {
     parseCommaSeparatedList,
 } from '../node-panel-form.utils';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
+import {
+    NODE_SAVING_MESSAGE,
+    pythonCodeSignature,
+    resolveStoredCodeState,
+    SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_TO_RUN_LATEST_CODE_MESSAGE,
+    STORED_GRAPH_OUTDATED_MESSAGE,
+    StoredCodeState,
+} from '../shared/python-code-test-run/stored-python-code';
 import { PythonTerminalComponent } from './python-terminal/python-terminal.component';
 
 @Component({
@@ -106,12 +117,52 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
+    /** How the panel's code, libraries, secrets and storage flag relate to the ones the backend stores for the node. */
+    private readonly storedCodeState = computed<StoredCodeState>(() =>
+        resolveStoredCodeState(
+            this.flowService.hasSavedGraph(),
+            this.node().backendId,
+            this.flowService.savedPythonNode(this.node().backendId),
+            (savedNode) => this.differsFromSaved(savedNode)
+        )
+    );
+    /**
+     * Why the test Run cannot run now, or null. The backend runs the code and storage flag it stores for the
+     * node, not the panel's: an edit (e.g. toggling storage, whose autosave only reaches the flow) must be
+     * saved first, or the run would use the old one. A run in flight is reported by the input map itself.
+     */
+    protected readonly runTestBlocker = computed<string | null>(() => {
+        if (this.isSaving()) return NODE_SAVING_MESSAGE;
+        switch (this.storedCodeState()) {
+            case 'outdated':
+                return STORED_GRAPH_OUTDATED_MESSAGE;
+            case 'not-created':
+                return SAVE_NODE_BEFORE_CODE_RUN_MESSAGE;
+            case 'missing':
+                return SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE;
+            case 'changed':
+                return SAVE_TO_RUN_LATEST_CODE_MESSAGE;
+            case 'stored':
+                return null;
+        }
+    });
+    /**
+     * The node must be saved before its test can run although the panel may have no edit (a new node, or one
+     * reopened after an edit that only reached the flow): the panel shell then shows its Save button too.
+     * Save cannot help a `missing` or `outdated` node.
+     */
+    public readonly needsSave = computed(() => {
+        if (this.isReadOnly()) return false;
+        const state = this.storedCodeState();
+        return state === 'not-created' || state === 'changed';
+    });
 
-    constructor(
-        private readonly sidePanelService: SidePanelService,
-        private readonly secretsStorageService: SecretsStorageService,
-        private readonly permissionsService: PermissionsService
-    ) {
+    private readonly sidePanelService = inject(SidePanelService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly flowService = inject(FlowService);
+
+    constructor() {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
             this.sidePanelService.triggerAutosave();
@@ -159,6 +210,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ...raw,
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
+            use_storage: this.useStorage(),
         };
         return JSON.stringify(stripped);
     }
@@ -205,6 +257,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     insertStorageCode(code: string): void {
         if (!this.pythonCode.includes('epicstaff_storage')) {
             this.pythonCode = code + '\n\n' + this.pythonCode;
+            this.formDirtyTick.update((v) => v + 1);
         }
         this.sidePanelService.triggerAutosave();
     }
@@ -213,6 +266,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const prefix = code + '\n\n';
         if (this.pythonCode.startsWith(prefix)) {
             this.pythonCode = this.pythonCode.slice(prefix.length);
+            this.formDirtyTick.update((v) => v + 1);
             this.sidePanelService.triggerAutosave();
         }
     }
@@ -239,6 +293,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.form = form;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
+        // The values computed from the form (dirty state, stored-code state) were read without it.
+        this.formDirtyTick.update((v) => v + 1);
 
         form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.formDirtyTick.update((v) => v + 1);
@@ -331,13 +387,25 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     onRunTest(variables: Record<string, string>): void {
-        const payload: RunPythonCodeRequest = {
-            python_code_id: this.node().python_code_id ?? null,
-            code: this.pythonCode,
-            entrypoint: 'main',
-            libraries: parseCommaSeparatedList(this.form.value.libraries),
+        const backendId = this.node().backendId;
+        if (this.runTestBlocker() !== null || backendId == null) return;
+        this.codeTestRun.run({
+            target: { type: 'python_node', id: backendId },
             variables: parseTestInputValues(variables),
-        };
-        this.codeTestRun.run(payload);
+        });
+    }
+
+    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend stores. */
+    private differsFromSaved(savedNode: PythonNode): boolean {
+        this.formDirtyTick();
+        if (!this.form) return true;
+        const savedCode = savedNode.python_code;
+        const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
+        const current = pythonCodeSignature(
+            this.pythonCode,
+            parseCommaSeparatedList(this.form.value.libraries),
+            this.selectedSecretIds()
+        );
+        return saved !== current || (savedNode.use_storage ?? false) !== this.useStorage();
     }
 }
