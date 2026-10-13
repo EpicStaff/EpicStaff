@@ -70,6 +70,16 @@ def test_member_of_session_org_gets_session(member_a, org_a):
 
 
 @pytest.mark.django_db
+def test_accessible_session_loads_only_id_and_status(member_a, org_a):
+    session = _session(org_a)
+
+    accessible = get_accessible_session(member_a, session.pk)
+
+    assert accessible.status == Session.SessionStatus.PENDING
+    assert {"graph_schema", "variables", "status_data"} <= accessible.get_deferred_fields()
+
+
+@pytest.mark.django_db
 def test_non_member_gets_session_not_found(member_a, org_b):
     with pytest.raises(SessionNotFoundError):
         get_accessible_session(member_a, _session(org_b).pk)
