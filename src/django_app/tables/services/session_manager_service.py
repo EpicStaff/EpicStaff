@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from django.db import transaction
+from django.utils import timezone
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
@@ -203,6 +204,15 @@ class SessionManagerService(metaclass=SingletonMeta):
             run_type=run_type,
         )
 
+    def _mark_session_error(self, session: Session, reason: str) -> None:
+        now = timezone.now()
+        Session.objects.filter(pk=session.pk).update(
+            status=Session.SessionStatus.ERROR,
+            status_data={"reason": reason},
+            status_updated_at=now,
+            finished_at=now,
+        )
+
     def run_session(
         self,
         graph_id: int,
@@ -251,7 +261,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             # TODO: add ping or waiting for crew to accept connections
 
-            session.graph_schema = session_data.graph.model_dump(mode="json")
+            Session.objects.filter(pk=session.pk).update(
+                graph_schema=session_data.graph.model_dump(mode="json"),
+            )
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
@@ -259,20 +271,17 @@ class SessionManagerService(metaclass=SingletonMeta):
             required_listeners = 2
             if received_n != required_listeners:
                 logger.error("Data was sent but not received.")
-                session.status = Session.SessionStatus.ERROR
-                session.status_data = {
-                    "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
-                }
+                self._mark_session_error(
+                    session=session,
+                    reason=f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required.",
+                )
             logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
         except Exception as e:
             msg = f"Error occured running a session: {e}"
             logger.exception(msg)
-            session.status = Session.SessionStatus.ERROR
-            session.status_data = {"reason": msg}
+            self._mark_session_error(session=session, reason=msg)
             raise
-        finally:
-            session.save()
 
         surface_knowledge_warnings = self.surface_knowledge_warning_service.build_warnings(graph)
         all_warnings = run_vars.warnings + surface_knowledge_warnings
