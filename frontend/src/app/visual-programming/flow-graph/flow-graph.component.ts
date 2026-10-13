@@ -89,7 +89,6 @@ import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
-import { routeAllCurved } from '../core/routing/curved-route-all';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
@@ -1228,10 +1227,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const connections = this.flowService.connections();
         const nodes = this.flowService.nodes();
-        const routes =
-            this.flowSettings.edgeStyle() === 'adaptive-curve'
-                ? routeAllCurved(nodes, connections)
-                : routeAll(nodes, connections);
+        const routes = routeAll(nodes, connections);
         for (const conn of connections) {
             const points = routes.get(conn.id);
             if (points && !waypointsEqual(conn.waypoints ?? [], points)) {
