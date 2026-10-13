@@ -22,17 +22,19 @@
 }
 
 .page-btn {
-    min-width: 36px;
-    height: 36px;
-    padding: 0 8px;
+    box-sizing: border-box;
+    // min-width, not width: a single digit renders 33px wide, multi-digit pages must still grow
+    min-width: 33px;
+    height: 40px;
+    padding: 0 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    // Unselected pages read as accent-outlined links; the selected one is filled (see .active).
-    background: transparent;
+    // Unselected pages sit on the dark page surface with accent digits; the selected one is filled (see .active).
+    background: var(--color-background-body);
     color: var(--accent-color);
     border: 1px solid var(--accent-color);
-    border-radius: 8px;
+    border-radius: 4px;
     font-size: 0.9rem;
     cursor: pointer;
     transition:
@@ -41,17 +43,18 @@
         border-color 0.15s;
 
     &:hover:not(:disabled):not(.active) {
-        background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+        background: color-mix(in srgb, var(--accent-color) 15%, var(--color-background-body));
     }
 
     &.active {
         background: var(--accent-color);
-        border-color: var(--accent-color);
+        border-width: 0;
         color: var(--white);
         pointer-events: none;
     }
 
     &.nav {
+        width: 40px;
         background: var(--accent-color);
         border-color: var(--accent-color);
         color: var(--white);
@@ -66,10 +69,9 @@
         }
 
         &:disabled {
-            background: var(--color-secondary-btn-background);
-            border-color: var(--color-secondary-btn-background);
-            color: var(--color-text-secondary);
-            opacity: 0.5;
+            background: var(--inactive-purple);
+            border-color: transparent;
+            color: var(--white);
             cursor: default;
         }
     }
@@ -80,6 +82,9 @@
     align-items: center;
     justify-content: center;
     min-width: 24px;
-    height: 36px;
-    color: var(--color-text-secondary);
+    height: 40px;
+    color: var(--accent-color);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: 1;
 }
