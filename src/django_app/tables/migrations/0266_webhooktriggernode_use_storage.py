@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0264_alter_graphversion_snapshot_delete_conditionaledge'),
+        ('tables', '0265_merge_20261012_1603'),
     ]
 
     operations = [

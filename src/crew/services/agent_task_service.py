@@ -44,6 +44,7 @@ from src.shared.models.agent_service import (
     AgentTaskSpec,
     RunType,
 )
+from src.shared.models.storage_scope import StorageCredentials
 from src.shared.redis_streams import StreamEnvelope, agent_result_stream
 
 LIVE_EVENT_TYPES = frozenset(
@@ -88,8 +89,9 @@ class AgentTaskService:
         node_data: TaskNodeData,
         stop_event: StopEvent,
         on_event: Callable[[StreamEnvelope], None] | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict:
-        blob = self._build_request_blob(node_data)
+        blob = self._build_request_blob(node_data, storage_credentials=storage_credentials)
         timeout_s = self._resolve_timeout_s(node_data.agent_definition)
         return await self._dispatch(blob, timeout_s, stop_event, on_event)
 
@@ -98,8 +100,11 @@ class AgentTaskService:
         agent_node_data: AgentNodeData,
         stop_event: StopEvent,
         on_event: Callable[[StreamEnvelope], None] | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> dict:
-        blob = self._build_agent_node_request_blob(agent_node_data)
+        blob = self._build_agent_node_request_blob(
+            agent_node_data, storage_credentials=storage_credentials
+        )
         task_count = len(agent_node_data.tasks)
         timeout_s = self._resolve_timeout_s(agent_node_data.agent_definition, task_count=task_count)
         return await self._dispatch(blob, timeout_s, stop_event, on_event)
@@ -233,7 +238,9 @@ class AgentTaskService:
             s3_refs=[s3_file.id for s3_file in s3_files],
         )
 
-    def _build_request_blob(self, node_data: TaskNodeData) -> str:
+    def _build_request_blob(
+        self, node_data: TaskNodeData, storage_credentials: StorageCredentials | None = None
+    ) -> str:
         agent_definition = node_data.agent_definition
 
         agent_spec = self._build_agent_spec(
@@ -256,11 +263,14 @@ class AgentTaskService:
             collections=node_data.collections,
             s3_files=node_data.s3_files,
             payload=payload,
+            storage_credentials=storage_credentials,
         )
         dumped = request.model_dump(mode="json", exclude={"correlation_id"})
         return json.dumps(dumped)
 
-    def _build_agent_node_request_blob(self, agent_node_data: AgentNodeData) -> str:
+    def _build_agent_node_request_blob(
+        self, agent_node_data: AgentNodeData, storage_credentials: StorageCredentials | None = None
+    ) -> str:
         agent_definition = agent_node_data.agent_definition
 
         agent_spec = self._build_agent_spec(
@@ -291,6 +301,7 @@ class AgentTaskService:
             collections=agent_node_data.collections,
             s3_files=agent_node_data.s3_files,
             payload=payload,
+            storage_credentials=storage_credentials,
         )
         dumped = request.model_dump(mode="json", exclude={"correlation_id"})
         return json.dumps(dumped)

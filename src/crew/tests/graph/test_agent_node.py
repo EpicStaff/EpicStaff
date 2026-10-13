@@ -106,7 +106,10 @@ async def test_execute_returns_result_dict(agent_node_data):
         ],
     }
     agent_task_service.run_agent_node.assert_awaited_once_with(
-        mock.ANY, node.stop_event, on_event=mock.ANY
+        mock.ANY,
+        node.stop_event,
+        on_event=mock.ANY,
+        storage_credentials=None,
     )
 
 
@@ -186,7 +189,7 @@ async def test_execute_forwards_live_agent_events_as_agent_node_stream(
 ):
     agent_task_service = AsyncMock()
 
-    async def fake_run_agent_node(node_data, stop_event, on_event=None):
+    async def fake_run_agent_node(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.task_start",
@@ -266,7 +269,7 @@ async def test_execute_forwards_knowledge_search_envelope_as_extracted_chunks(
         "token_usage": {"total_tokens": 15},
     }
 
-    async def fake_run_agent_node(node_data, stop_event, on_event=None):
+    async def fake_run_agent_node(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.knowledge_search",
@@ -309,7 +312,7 @@ async def test_execute_knowledge_search_envelope_does_not_shift_stream_step_id(
 ):
     agent_task_service = AsyncMock()
 
-    async def fake_run_agent_node(node_data, stop_event, on_event=None):
+    async def fake_run_agent_node(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.task_start",
@@ -383,7 +386,7 @@ async def test_execute_drops_unknown_envelope_type_and_writes_no_message(
 ):
     agent_task_service = AsyncMock()
 
-    async def fake_run_agent_node(node_data, stop_event, on_event=None):
+    async def fake_run_agent_node(node_data, stop_event, on_event=None, storage_credentials=None):
         on_event(
             StreamEnvelope(
                 type="agent.heartbeat",
