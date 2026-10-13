@@ -94,8 +94,22 @@ export const CHAT_BINDING_DEFAULTS: Omit<
     handoff_enabled: true,
 };
 
-// Both display names; the server refuses longer ones.
+// Both display names and an operator's alias; the server refuses longer ones (counted in characters, after trimming).
 export const CHAT_DISPLAY_NAME_MAX = 64;
+
+// `GET /bindings/my-aliases`: a name the user goes by on one desk instead of the desk's operator display name.
+export interface ChatMyAlias {
+    binding_id: string;
+    alias: string;
+}
+
+// `PUT /bindings/{id}/my-alias`: the alias as stored (null once cleared) and the name visitors now see on the user's
+// replies there: the alias, else the desk's operator display name.
+export interface ChatMyAliasResult {
+    binding_id: string;
+    alias: string | null;
+    visible_name: string;
+}
 
 // `GET /bindings/contract?graph_id=`: what keeps a flow from serving chat; empty when it can.
 export interface ChatContractCheck {
@@ -179,6 +193,9 @@ export interface ChatOperatorMessage {
     author_user_id: number | null;
     // The authoring operator's display name; null when not known yet and on visitor, bot and system messages.
     author_name: string | null;
+    // The name visitors saw on an operator message, kept as it was sent (the alias, else the desk's operator display
+    // name); null on every other message.
+    visible_name: string | null;
 }
 
 // Inbox `message.created`: the public message shape plus the conversation it belongs to and, unlike the visitor's
@@ -193,6 +210,7 @@ export interface ChatInboxMessageEvent {
     created_at: string;
     author_user_id: number | null;
     author_name: string | null;
+    visible_name: string | null;
 }
 
 // What a visitor message may carry besides its text (public send body); unset keys are not sent.
@@ -220,6 +238,6 @@ export interface ChatErrorBody {
     contract_errors?: string[];
     field?: string;
     max?: number;
-    // On 400 `validation_error`: what was refused, one entry per problem.
-    errors?: { message: string }[];
+    // On 400 `validation_error`: what was refused, one entry per problem; `key` names a refused body field.
+    errors?: { message: string; key?: string }[];
 }

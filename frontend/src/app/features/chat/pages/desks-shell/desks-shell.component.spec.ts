@@ -65,7 +65,7 @@ function desksRoute(): Route {
 describe('DesksShellComponent', () => {
     const readyEpoch = signal(0);
     const waitingByBinding = signal<Record<string, number>>({});
-    const chatApi = { getBindings: vi.fn(() => of(DESKS)) };
+    const chatApi = { getBindings: vi.fn(() => of(DESKS)), getMyAliases: vi.fn(() => of([])) };
     let harness: RouterTestingHarness;
     let router: Router;
 
@@ -166,21 +166,25 @@ describe('DesksShellComponent', () => {
         expect(new Set(entriesSeen)).toEqual(new Set([3]));
     });
 
-    it('loads the desks once on open, again on a stream ready and for a newly active org, not for a logout', () => {
+    it('loads the desks and my names on them once on open, again on a stream ready and for a newly active org, not for a logout', () => {
         expect(chatApi.getBindings).toHaveBeenCalledTimes(1);
+        expect(chatApi.getMyAliases).toHaveBeenCalledTimes(1);
 
         readyEpoch.update((value) => value + 1);
         harness.detectChanges();
         expect(chatApi.getBindings).toHaveBeenCalledTimes(2);
+        expect(chatApi.getMyAliases).toHaveBeenCalledTimes(2);
 
         const activeOrg = TestBed.inject(ActiveOrgService);
         activeOrg.set(2);
         harness.detectChanges();
         expect(chatApi.getBindings).toHaveBeenCalledTimes(3);
+        expect(chatApi.getMyAliases).toHaveBeenCalledTimes(3);
 
         activeOrg.set(null);
         harness.detectChanges();
         expect(chatApi.getBindings).toHaveBeenCalledTimes(3);
+        expect(chatApi.getMyAliases).toHaveBeenCalledTimes(3);
     });
 
     it('gives the rail the live waiting counts', () => {

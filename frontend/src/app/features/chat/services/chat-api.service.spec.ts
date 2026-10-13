@@ -55,6 +55,26 @@ describe('ChatApiService', () => {
         request.flush({ results: [], next_cursor: null });
     });
 
+    it('reads my aliases and sets one on a desk, null clearing it', () => {
+        let aliases: unknown = null;
+        service.getMyAliases().subscribe((value) => (aliases = value));
+        const list = httpMock.expectOne('/chat/operator/v1/bindings/my-aliases');
+        expect(list.request.method).toBe('GET');
+        list.flush([{ binding_id: 'b-1', alias: 'Mike' }]);
+        expect(aliases).toEqual([{ binding_id: 'b-1', alias: 'Mike' }]);
+
+        service.setMyAlias('b-1', 'Mike').subscribe();
+        const set = httpMock.expectOne('/chat/operator/v1/bindings/b-1/my-alias');
+        expect(set.request.method).toBe('PUT');
+        expect(set.request.body).toEqual({ alias: 'Mike' });
+        set.flush({ binding_id: 'b-1', alias: 'Mike', visible_name: 'Mike' });
+
+        service.setMyAlias('b-1', null).subscribe();
+        const clear = httpMock.expectOne('/chat/operator/v1/bindings/b-1/my-alias');
+        expect(clear.request.body).toEqual({ alias: null });
+        clear.flush({ binding_id: 'b-1', alias: null, visible_name: 'Support' });
+    });
+
     it('reads the waiting set from inbox/badges', () => {
         const badges = { waiting: [{ id: 'c-1', binding_id: 'b-1', assigned_operator_id: null }] };
         let received: unknown = null;

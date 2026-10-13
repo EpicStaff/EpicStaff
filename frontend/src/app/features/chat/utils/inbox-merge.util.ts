@@ -76,6 +76,7 @@ export function upsertMessage(messages: ChatOperatorMessage[], message: ChatOper
               session_id: message.session_id ?? existing.session_id,
               author_user_id: message.author_user_id ?? existing.author_user_id,
               author_name: message.author_name ?? existing.author_name,
+              visible_name: message.visible_name ?? existing.visible_name,
           }
         : message;
     return [...messages.filter((item) => item.id !== message.id), merged].sort(

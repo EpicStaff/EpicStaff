@@ -45,6 +45,7 @@ import {
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { bindingPatch } from '../../utils/binding-patch.util';
+import { normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
 
 const IDENTITY_ITEMS: SelectItem<ChatIdentityMode>[] = [
     { name: 'Anonymous visitors', value: 'anonymous' },
@@ -64,13 +65,13 @@ const BUDGET_DESCRIPTIONS: Record<BudgetField, string> = {
 };
 
 type TextField = 'name' | 'bot_display_name' | 'operator_display_name';
+const TEXT_FIELD_LABELS: Record<TextField, string> = {
+    name: 'Name',
+    bot_display_name: 'Displayed bot name',
+    operator_display_name: 'Displayed operator name',
+};
+const TEXT_FIELDS = Object.keys(TEXT_FIELD_LABELS) as TextField[];
 const PAUSED_ON_SAVE_MESSAGE = 'Saved but paused: the flow does not meet the chat contract.';
-// The server strips the names and refuses an empty one.
-const displayNameValidators = [
-    Validators.required,
-    Validators.pattern(/\S/),
-    Validators.maxLength(CHAT_DISPLAY_NAME_MAX),
-];
 
 type BindingTab = 'general' | 'limits' | 'handoff';
 type BindingControl = keyof ChatBindingsDialogComponent['form']['controls'];
@@ -133,6 +134,8 @@ export class ChatBindingsDialogComponent {
     readonly isSubmitting = signal(false);
     readonly activeTab = signal<BindingTab>('general');
     readonly errorMessage = signal<string | null>(null);
+    /** The server's refusals of named fields, said once for screen readers; each also shows under its field. */
+    readonly fieldRefusalAnnouncement = signal('');
     readonly contractErrors = signal<string[]>([]);
     /** The identity secret the last save issued; shown once instead of the form, gone when the dialog closes. */
     readonly revealedSecret = signal<string | null>(null);
@@ -172,10 +175,10 @@ export class ChatBindingsDialogComponent {
     // Public because the spec drives it; the template binds it too.
     readonly form = new FormGroup({
         name: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/\S/)] }),
-        bot_display_name: new FormControl('', { nonNullable: true, validators: displayNameValidators }),
+        bot_display_name: new FormControl('', { nonNullable: true, validators: this.publicName() }),
         operator_display_name: new FormControl(CHAT_BINDING_DEFAULTS.operator_display_name, {
             nonNullable: true,
-            validators: displayNameValidators,
+            validators: this.publicName(),
         }),
         graph_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
         allowed_origins: new FormControl<string[]>([], { nonNullable: true }),
@@ -240,7 +243,10 @@ export class ChatBindingsDialogComponent {
         // On create the bot name follows the binding name until the user edits it.
         this.form.controls.name.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((name) => {
             const botName = this.form.controls.bot_display_name;
-            if (this.isCreating() && botName.pristine) botName.setValue(name.slice(0, CHAT_DISPLAY_NAME_MAX));
+            // Characters, not UTF-16 units: a cut through an emoji would leave half of it.
+            if (this.isCreating() && botName.pristine) {
+                botName.setValue([...name].slice(0, CHAT_DISPLAY_NAME_MAX).join(''));
+            }
         });
         // The contract of the picked flow, checked live; a newer pick or a cleared flow cancels the pending check.
         this.form.controls.graph_id.valueChanges
@@ -269,6 +275,7 @@ export class ChatBindingsDialogComponent {
 
         this.isSubmitting.set(true);
         this.errorMessage.set(null);
+        this.fieldRefusalAnnouncement.set('');
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (binding) => {
                 this.isSubmitting.set(false);
@@ -288,6 +295,13 @@ export class ChatBindingsDialogComponent {
                     // A control error clears itself on the next edit of that field.
                     this.form.controls[capField].setErrors({ budgetAboveCap: body.max });
                     this.showFirstInvalidTab();
+                    return;
+                }
+                const { byField, rest } = fieldRefusals(body);
+                if (byField.size) {
+                    this.showFieldRefusals(byField);
+                    // Refusals the dialog cannot place on a field still show, in the banner.
+                    if (rest.length) this.errorMessage.set(rest.join(' '));
                     return;
                 }
                 this.errorMessage.set(extractHttpErrorMessage(error));
@@ -327,8 +341,12 @@ export class ChatBindingsDialogComponent {
 
     textFieldError(field: TextField): string {
         const control = this.form.controls[field];
+        // The server's word on what was sent; gone with the next edit of the field.
+        const refusal: unknown = control.errors?.['serverRefusal'];
+        if (typeof refusal === 'string') return refusal;
         if (!control.touched) return '';
-        if (control.hasError('maxlength')) return `At most ${CHAT_DISPLAY_NAME_MAX} characters`;
+        const publicNameError: unknown = control.errors?.['publicName'];
+        if (typeof publicNameError === 'string') return publicNameError;
         return control.invalid ? 'Required' : '';
     }
 
@@ -343,6 +361,20 @@ export class ChatBindingsDialogComponent {
         const saved: Partial<ChatBindingWithSecret> = { ...binding };
         delete saved.identity_secret;
         this.saved = saved as ChatBinding;
+    }
+
+    /** Each refusal under its field (on its tab), said once for screen readers; the dialog stays open. */
+    private showFieldRefusals(byField: ReadonlyMap<TextField, string>): void {
+        byField.forEach((message, field) => {
+            const control = this.form.controls[field];
+            // A control error clears itself on the next edit of that field.
+            control.setErrors({ serverRefusal: message });
+            control.markAsTouched();
+        });
+        this.showFirstInvalidTab();
+        this.fieldRefusalAnnouncement.set(
+            [...byField].map(([field, message]) => `${TEXT_FIELD_LABELS[field]}: ${message}`).join(' ')
+        );
     }
 
     // A field on a hidden tab would block Save without the user seeing why.
@@ -399,6 +431,22 @@ export class ChatBindingsDialogComponent {
         };
     }
 
+    /**
+     * The chat service's rules for a name visitors see, checked on the name as it will store it (NFC, then stripped):
+     * blank is refused (`required`); too long or with a refused character, the reason is `publicName`. The service
+     * still decides. While editing, only a typed name is checked against the rules: the PATCH never sends an untouched
+     * one, so a name stored before them must not block other edits.
+     */
+    private publicName(): ValidatorFn {
+        return (control: AbstractControl<string>): ValidationErrors | null => {
+            const name = normalizePublicName(control.value ?? '');
+            if (!name) return { required: true };
+            if (!control.dirty && !this.isCreating()) return null;
+            const error = publicNameError(name);
+            return error ? { publicName: error } : null;
+        };
+    }
+
     /** Same error key as the server's `budget_above_cap`, so `budgetCapMessage` shows both. */
     private withinCap(field: BudgetField): ValidatorFn {
         return (control: AbstractControl<number | null>): ValidationErrors | null => {
@@ -409,4 +457,27 @@ export class ChatBindingsDialogComponent {
             return cap !== undefined && control.value > cap ? { budgetAboveCap: cap } : null;
         };
     }
+}
+
+/**
+ * The server's refusals that name one of the dialog's text fields: `bot_name_taken` (the bot name is an operator's
+ * alias on the desk) and the `validation_error` entries keyed by a field (a refused character, a name too long).
+ * `rest` is every other validation entry, to say in the banner.
+ */
+function fieldRefusals(body: ChatErrorBody | null): { byField: Map<TextField, string>; rest: string[] } {
+    const byField = new Map<TextField, string>();
+    const rest: string[] = [];
+    if (body?.code === 'bot_name_taken' && body.field === 'bot_display_name') {
+        byField.set('bot_display_name', body.message);
+    }
+    if (body?.code === 'validation_error') {
+        for (const { message, key } of body.errors ?? []) {
+            // Keyed by the field, or by a path ending in it ("data.bot_display_name").
+            const field = TEXT_FIELDS.find((name) => name === key?.split('.').at(-1));
+            const text = validationReason(message);
+            if (field && !byField.has(field)) byField.set(field, text);
+            else if (!field && text) rest.push(text);
+        }
+    }
+    return { byField, rest };
 }

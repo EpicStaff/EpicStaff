@@ -10,7 +10,12 @@ import {
     ChatBindingsDialogComponent,
     ChatBindingsDialogData,
 } from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
-import { ChatBinding, ChatErrorBody } from '../models/chat.model';
+import {
+    MY_DESK_ALIAS_TITLE_ID,
+    MyDeskAliasDialogComponent,
+    MyDeskAliasDialogData,
+} from '../components/my-desk-alias-dialog/my-desk-alias-dialog.component';
+import { ChatBinding, ChatErrorBody, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
@@ -40,6 +45,20 @@ export class ChatBindingActionsService {
     /** Opens a desk's settings. Emits once when the dialog closes; the caller reloads, as edits may have been saved. */
     openSettings(binding: ChatBinding): Observable<void> {
         return this.openDialog(binding).pipe(map(() => undefined));
+    }
+
+    /**
+     * Opens the name the user goes by on a desk. The dialog stores a saved name itself; this emits once when it
+     * closes: the server's answer, or null when nothing was saved.
+     */
+    editMyAlias(binding: ChatBinding): Observable<ChatMyAliasResult | null> {
+        return this.dialog
+            .open<ChatMyAliasResult, MyDeskAliasDialogData>(MyDeskAliasDialogComponent, {
+                width: '480px',
+                data: { binding },
+                ariaLabelledBy: MY_DESK_ALIAS_TITLE_ID,
+            })
+            .closed.pipe(map((saved) => saved ?? null));
     }
 
     pause(binding: ChatBinding): Observable<boolean> {

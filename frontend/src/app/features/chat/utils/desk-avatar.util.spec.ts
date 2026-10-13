@@ -31,12 +31,16 @@ describe('deskInitials', () => {
     it('keeps letters outside Latin and a letter with its combining accent whole', () => {
         expect(deskInitials('підтримка клієнтів')).toBe('ПК');
         expect(deskInitials('日本語サポート')).toBe('日本');
-        expect(deskInitials('Éva Nagy')).toBe('ÉN');
+        // E with a combining acute accent (U+0301), kept with its letter.
+        const accentedE = `E${String.fromCodePoint(0x301)}`;
+        expect(deskInitials(`${accentedE}va Nagy`)).toBe(`${accentedE}N`);
     });
 
     it('shows the first symbol of a name without letters or digits, keeping an emoji sequence whole', () => {
         expect(deskInitials('🚀')).toBe('🚀');
-        expect(deskInitials('👩‍💻 🚀')).toBe('👩‍💻');
+        // A technologist: woman, zero width joiner, laptop.
+        const technologist = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
+        expect(deskInitials(`${technologist} 🚀`)).toBe(technologist);
         expect(deskInitials('🇺🇦')).toBe('🇺🇦');
         expect(deskInitials('---')).toBe('-');
     });

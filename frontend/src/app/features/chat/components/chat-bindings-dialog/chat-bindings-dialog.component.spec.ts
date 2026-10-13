@@ -167,6 +167,11 @@ describe('ChatBindingsDialogComponent', () => {
         expect(component.form.controls.bot_display_name.value).toBe('Portal');
         component.form.controls.name.setValue('x'.repeat(70));
         expect(component.form.controls.bot_display_name.value).toBe('x'.repeat(64));
+        // Cut by characters: 64 emoji, not 32 and a half.
+        const rocket = String.fromCodePoint(0x1f680);
+        component.form.controls.name.setValue(rocket.repeat(70));
+        expect(component.form.controls.bot_display_name.value).toBe(rocket.repeat(64));
+        expect(component.form.controls.bot_display_name.valid).toBe(true);
         component.form.controls.bot_display_name.setValue('Ava');
         component.form.controls.bot_display_name.markAsDirty();
         component.form.controls.name.setValue('Portal');
@@ -186,16 +191,80 @@ describe('ChatBindingsDialogComponent', () => {
 
         for (const field of ['bot_display_name', 'operator_display_name'] as const) {
             const control = component.form.controls[field];
+            // As typing does.
+            control.markAsDirty();
             control.setValue('');
             expect(control.valid).toBe(false);
             control.setValue('   ');
             expect(control.valid).toBe(false);
+            // Blank to the service's strip too, which trim() would not strip.
+            control.setValue(String.fromCodePoint(0x1c, 0x85));
+            expect(control.valid).toBe(false);
             control.setValue('x'.repeat(65));
             control.markAsTouched();
-            expect(component.textFieldError(field)).toBe('At most 64 characters');
+            expect(component.textFieldError(field)).toBe('Use at most 64 characters.');
             control.setValue('x'.repeat(64));
             expect(control.valid).toBe(true);
+            // Characters, not UTF-16 units.
+            control.setValue(String.fromCodePoint(0x1f600).repeat(64));
+            expect(control.valid).toBe(true);
         }
+    });
+
+    describe("the service's rules for the names visitors see", () => {
+        const around = (codePoint: number): string => `Sup${String.fromCodePoint(codePoint)}port`;
+        const reason = (codePoint: string): string =>
+            `Remove the invisible or control character U+${codePoint}: visitors would not see it.`;
+
+        it('refuses a typed name with a control, format or filler character, naming it, on either name field', () => {
+            const component = open(binding({}));
+            for (const field of ['bot_display_name', 'operator_display_name'] as const) {
+                const control = component.form.controls[field];
+                control.markAsDirty();
+                control.markAsTouched();
+                for (const [codePoint, name] of [
+                    [0x202e, '202E'],
+                    [0x200b, '200B'],
+                    [0x3164, '3164'],
+                    [0xfe00, 'FE00'],
+                    [0xe0041, 'E0041'],
+                ] as const) {
+                    control.setValue(around(codePoint));
+                    expect(component.textFieldError(field)).toBe(reason(name));
+                }
+            }
+            component.submit();
+            expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        });
+
+        it('keeps the joiner and variation selectors 15 and 16 that emoji need', () => {
+            const component = open(binding({}));
+            const control = component.form.controls.bot_display_name;
+            control.markAsDirty();
+            control.setValue(`Ava ${String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb, 0x2764, 0xfe0f, 0x2764, 0xfe0e)}`);
+            expect(control.valid).toBe(true);
+        });
+
+        it('lets other edits through when a name stored before the rules breaks them, until that name is typed in', () => {
+            chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales' })));
+            const stored = around(0x200b);
+            const component = open(binding({ bot_display_name: stored }));
+            expect(component.form.controls.bot_display_name.valid).toBe(true);
+            component.form.controls.name.setValue('Sales');
+            component.submit();
+            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { name: 'Sales' });
+
+            const control = component.form.controls.bot_display_name;
+            control.markAsDirty();
+            control.setValue(`${stored}!`);
+            expect(control.hasError('publicName')).toBe(true);
+        });
+
+        it("checks a new desk's names from the start, the bot name taken from the desk name included", () => {
+            const component = open(null);
+            component.form.controls.name.setValue(around(0x202e));
+            expect(component.form.controls.bot_display_name.hasError('publicName')).toBe(true);
+        });
     });
 
     it('warns when a save comes back paused on a failing contract', () => {
@@ -415,6 +484,108 @@ describe('ChatBindingsDialogComponent', () => {
         component.form.controls.daily_token_budget.setValue(2_000_000);
         expect(component.budgetCapMessage('daily_token_budget')).toBe('');
     });
+    describe("the server's refusals of a name field", () => {
+        const refused = (error: unknown) =>
+            throwError(() => new HttpErrorResponse({ status: (error as { status: number }).status, error }));
+
+        /** The error shown under the custom input labelled `label`, as the user sees it. */
+        function fieldError(label: string): string | null {
+            const host: HTMLElement = fixture.nativeElement;
+            const input = Array.from(host.querySelectorAll('app-custom-input')).find(
+                (candidate) => candidate.querySelector('label')?.textContent?.trim() === label
+            );
+            return input?.querySelector('.error-message')?.textContent?.trim() ?? null;
+        }
+
+        const announcement = (): string | undefined =>
+            text('.bindings-dialog__form > [role="alert"]').find((message) => message !== '');
+
+        /** Saves a renamed bot, which the server refuses with `body`. */
+        function saveRefused(body: unknown): ChatBindingsDialogComponent {
+            chatApi.updateBinding.mockReturnValue(refused(body));
+            const component = open(binding({}));
+            component.form.controls.bot_display_name.setValue('Mike');
+            component.form.controls.operator_display_name.setValue('Helpers');
+            component.submit();
+            fixture.detectChanges();
+            return component;
+        }
+
+        it('shows bot_name_taken under the bot name, says it, and stays open without a toast', () => {
+            const message =
+                'An operator on this desk already uses this name; visitors could not tell the bot from them. Choose another bot name.';
+            const component = saveRefused({ status: 409, code: 'bot_name_taken', message, field: 'bot_display_name' });
+
+            expect(fieldError('Displayed bot name')).toBe(message);
+            expect(announcement()).toBe(`Displayed bot name: ${message}`);
+            expect(component.errorMessage()).toBeNull();
+            expect(component.activeTab()).toBe('general');
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+            expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+
+            // Gone with the next edit of the field, and the save goes out again.
+            component.form.controls.bot_display_name.setValue('Ava');
+            fixture.detectChanges();
+            expect(fieldError('Displayed bot name')).toBeNull();
+            expect(component.form.valid).toBe(true);
+        });
+
+        it('shows refused characters and lengths on the fields the validation errors name, without the validator prefix', () => {
+            const component = saveRefused({
+                status: 400,
+                code: 'validation_error',
+                message: 'Validation failed for PATCH /chat/operator/v1/bindings/b-1',
+                errors: [
+                    {
+                        message: 'Value error, Must be plain text: U+202E is not allowed.',
+                        key: 'bot_display_name',
+                        source: 'body',
+                    },
+                    { message: 'Value error, Must be at most 64 characters.', key: 'data.operator_display_name' },
+                ],
+            });
+
+            expect(fieldError('Displayed bot name')).toBe('Must be plain text: U+202E is not allowed.');
+            expect(component.textFieldError('operator_display_name')).toBe('Must be at most 64 characters.');
+            expect(announcement()).toBe(
+                'Displayed bot name: Must be plain text: U+202E is not allowed. ' +
+                    'Displayed operator name: Must be at most 64 characters.'
+            );
+            // The first refused field's tab; the other refusal waits on its own tab.
+            expect(component.activeTab()).toBe('general');
+            component.activeTab.set('handoff');
+            fixture.detectChanges();
+            expect(fieldError('Displayed operator name')).toBe('Must be at most 64 characters.');
+            expect(component.errorMessage()).toBeNull();
+            expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+        });
+
+        it('says validation errors that name no field of the dialog in the banner, beside the placed ones', () => {
+            const component = saveRefused({
+                status: 400,
+                code: 'validation_error',
+                message: 'Validation failed',
+                errors: [
+                    { message: 'Value error, Must be plain text: U+0007 is not allowed.', key: 'bot_display_name' },
+                    { message: 'Input should be a valid list', key: 'allowed_origins' },
+                ],
+            });
+            expect(component.textFieldError('bot_display_name')).toBe('Must be plain text: U+0007 is not allowed.');
+            expect(component.errorMessage()).toBe('Input should be a valid list');
+        });
+
+        it('keeps the banner for a validation error that names no field', () => {
+            const component = saveRefused({
+                status: 400,
+                code: 'validation_error',
+                message: 'The body is nested too deeply.',
+            });
+            expect(component.errorMessage()).toBe('The body is nested too deeply.');
+            expect(component.textFieldError('bot_display_name')).toBe('');
+            expect(announcement()).toBeUndefined();
+        });
+    });
+
     it('fills the budgets with the server defaults when the limits arrive after a create dialog opened', () => {
         const limits$ = new Subject<ChatBindingLimits>();
         chatApi.getBindingLimits.mockReturnValue(limits$);

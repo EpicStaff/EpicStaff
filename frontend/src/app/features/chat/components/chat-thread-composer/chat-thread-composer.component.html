@@ -53,6 +53,9 @@
             </app-button>
         }
     </div>
+    @if (operatorVisibleName(); as name) {
+        <p class="composer__visible-name text-body-small">Visitors see you as {{ name }}</p>
+    }
     @if (isVisitor()) {
         <div class="composer__extra">
             <button

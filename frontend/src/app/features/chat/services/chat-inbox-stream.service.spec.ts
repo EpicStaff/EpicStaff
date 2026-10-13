@@ -323,6 +323,7 @@ describe('ChatInboxStreamService', () => {
             created_at: '2026-10-10T10:00:00Z',
             author_user_id: null,
             author_name: null,
+            visible_name: null,
         };
         source.emit('message.created', event, '11');
         expect(seen).toEqual([event]);

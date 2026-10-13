@@ -289,6 +289,22 @@ describe('ChatThreadComposerComponent', () => {
         }
     );
 
+    it('says under the operator composer which name visitors see, and nothing while writing as the visitor', () => {
+        const visibleName = (): string | null =>
+            host().querySelector('.composer__visible-name')?.textContent?.trim() ?? null;
+        setInputs({ conversation: row({ is_test: false }), isClaimedByMe: true, visibleName: 'Mike' });
+        expect(visibleName()).toBe('Visitors see you as Mike');
+
+        setInputs({ visibleName: null });
+        expect(visibleName()).toBeNull();
+
+        setInputs({ conversation: row(), visitorToken: 'vt-1', visibleName: 'Mike' });
+        expect(visibleName()).toBeNull();
+        roleButtons()[1].click();
+        fixture.detectChanges();
+        expect(visibleName()).toBe('Visitors see you as Mike');
+    });
+
     it('offers extra data only when writing as the visitor', () => {
         setInputs({ conversation: row(), visitorToken: 'vt-1' });
         expect(host().querySelector('.composer__extra-toggle')).not.toBeNull();

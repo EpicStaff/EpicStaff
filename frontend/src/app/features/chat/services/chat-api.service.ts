@@ -17,6 +17,8 @@ import {
     ChatInboxBadges,
     ChatInboxOrder,
     ChatInboxSection,
+    ChatMyAlias,
+    ChatMyAliasResult,
     ChatOperatorMessage,
     ChatSendResult,
     ChatSnippet,
@@ -100,6 +102,19 @@ export class ChatApiService {
 
     getSnippet(id: string): Observable<ChatSnippet> {
         return this.http.get<ChatSnippet>(`${this.operatorUrl}bindings/${id}/snippet`);
+    }
+
+    /** The caller's aliases on the active org's desks; a desk without one is absent. */
+    getMyAliases(): Observable<ChatMyAlias[]> {
+        return this.http.get<ChatMyAlias[]>(`${this.operatorUrl}bindings/my-aliases`);
+    }
+
+    /**
+     * Sets the caller's alias on a desk; null (or blank) clears it. 409 `alias_taken` (another operator on the desk
+     * uses it) or `alias_reserved` (the desk's bot name); 400 `validation_error` with `errors[]`.
+     */
+    setMyAlias(bindingId: string, alias: string | null): Observable<ChatMyAliasResult> {
+        return this.http.put<ChatMyAliasResult>(`${this.operatorUrl}bindings/${bindingId}/my-alias`, { alias });
     }
 
     createTestConversation(bindingId: string): Observable<ChatTestConversation> {

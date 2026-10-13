@@ -42,6 +42,7 @@ import { ChatBindingActionsService } from '../../services/chat-binding-actions.s
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
+import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { actionLabel } from '../../utils/action-label.util';
 import { operatorName, visitorName } from '../../utils/conversation-row.util';
 import { upsertMessage } from '../../utils/inbox-merge.util';
@@ -118,6 +119,27 @@ export class ChatPageComponent {
         () => this.desksStorage.desks().find((binding) => binding.id === this.selected()?.binding_id) ?? null
     );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
+    /**
+     * The name visitors see on the user's replies on the open desk: their alias there, else its operator name. Null
+     * while not known: the My name action then names no one rather than a name that may be wrong.
+     */
+    readonly myNameOnDesk = computed(() => {
+        const binding = this.routeBinding();
+        return binding ? this.myAliasesStorage.visibleNameOn(binding) : null;
+    });
+    readonly myNameLabel = computed(() => {
+        const name = this.myNameOnDesk();
+        return name ? `My name: ${name}` : 'My name';
+    });
+    readonly myNameTooltip = computed(() => {
+        const name = this.myNameOnDesk();
+        return name ? `Visitors see you as ${name}` : '';
+    });
+    /** The same on the open conversation's desk, for the composer; null until that desk is known. */
+    readonly myNameOnConversationDesk = computed(() => {
+        const binding = this.selectedBinding();
+        return binding ? this.myAliasesStorage.visibleNameOn(binding) : null;
+    });
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
     readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
     readonly isClaimedByMe = computed(() => {
@@ -226,6 +248,7 @@ export class ChatPageComponent {
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly bindingActions = inject(ChatBindingActionsService);
     private readonly desksStorage = inject(ChatDesksStorageService);
+    private readonly myAliasesStorage = inject(ChatMyAliasesStorageService);
     private readonly conversationActions = inject(ChatConversationActionsService);
     private readonly injector = inject(Injector);
     private threadId: string | null = null;
@@ -263,6 +286,7 @@ export class ChatPageComponent {
                         session_id: null,
                         author_user_id: event.author_user_id,
                         author_name: event.author_name,
+                        visible_name: event.visible_name,
                     })
                 )
             );
@@ -372,6 +396,12 @@ export class ChatPageComponent {
             .subscribe(() => this.desksStorage.reload());
     }
 
+    /** The name the user goes by on the open desk; the dialog stores a change itself. */
+    editMyAlias(): void {
+        const binding = this.routeBinding();
+        if (binding) this.bindingActions.editMyAlias(binding);
+    }
+
     /**
      * Still on the deleted desk's page, it leaves for All desks before the desks reload: a list without the desk would
      * otherwise read as "no longer exists". Moved on to another desk meanwhile, it only reloads.
@@ -405,8 +435,17 @@ export class ChatPageComponent {
         return CHAT_MODE_LABELS[mode];
     }
 
-    /** Who wrote an operator message: "You", their name, or "Operator #7" while the name is not known. */
+    /**
+     * Who wrote an operator message: "You", their name, or "Operator #7" while the name is not known; then the name
+     * visitors saw on it when that was another one: "Bea Agent · as Mike". Operators only see this line.
+     */
     operatorLabel(message: ChatOperatorMessage): string {
+        const author = this.operatorAuthor(message);
+        const visibleName = message.visible_name;
+        return visibleName && visibleName !== message.author_name ? `${author} · as ${visibleName}` : author;
+    }
+
+    private operatorAuthor(message: ChatOperatorMessage): string {
         const authorId = message.author_user_id;
         if (authorId === null) return message.author_name || '—';
         if (authorId === this.profileService.currentUserSignal()?.id) return 'You';

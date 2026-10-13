@@ -61,6 +61,13 @@
             @if (errorMessage()) {
                 <div class="bindings-dialog__error-message">{{ errorMessage() }}</div>
             }
+            <!-- Always present, so a refusal shown under a field is also read out when it appears. -->
+            <p
+                class="visually-hidden"
+                role="alert"
+            >
+                {{ fieldRefusalAnnouncement() }}
+            </p>
             <div
                 class="bindings-dialog__tab"
                 [hidden]="activeTab() !== 'general'"

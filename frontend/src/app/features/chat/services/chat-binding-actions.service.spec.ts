@@ -6,7 +6,11 @@ import { of, throwError } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
 import { ChatBindingsDialogComponent } from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
-import { CHAT_BINDING_DEFAULTS, ChatBinding } from '../models/chat.model';
+import {
+    MY_DESK_ALIAS_TITLE_ID,
+    MyDeskAliasDialogComponent,
+} from '../components/my-desk-alias-dialog/my-desk-alias-dialog.component';
+import { CHAT_BINDING_DEFAULTS, ChatBinding, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 import { ChatBindingActionsService } from './chat-binding-actions.service';
 
@@ -76,6 +80,21 @@ describe('ChatBindingActionsService', () => {
             expect.objectContaining({ data: { binding } })
         );
         expect(closes).toBe(1);
+    });
+
+    it('opens my name on a desk, named by its title, and emits what was saved, or null', () => {
+        const saved: ChatMyAliasResult = { binding_id: 'b-1', alias: 'Mike', visible_name: 'Mike' };
+        const results: (ChatMyAliasResult | null)[] = [];
+        dialog.open.mockReturnValueOnce({ closed: of(saved) }).mockReturnValueOnce({ closed: of(undefined) });
+
+        service.editMyAlias(binding).subscribe((result) => results.push(result));
+        service.editMyAlias(binding).subscribe((result) => results.push(result));
+
+        expect(dialog.open).toHaveBeenCalledWith(
+            MyDeskAliasDialogComponent,
+            expect.objectContaining({ data: { binding }, ariaLabelledBy: MY_DESK_ALIAS_TITLE_ID })
+        );
+        expect(results).toEqual([saved, null]);
     });
 
     it('pauses only after a danger confirm naming the escaped binding, and sends nothing when cancelled', () => {

@@ -17,6 +17,27 @@
         @if (routeBinding()) {
             <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
             <div class="header-actions">
+                <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
+                @if (canUse()) {
+                    <button
+                        type="button"
+                        class="header-action header-action--ghost"
+                        [attr.aria-label]="myNameLabel()"
+                        [matTooltip]="myNameTooltip()"
+                        [matTooltipDisabled]="!myNameTooltip()"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".btn-label"
+                        collapseOnOverflowClass="btn--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                        (click)="editMyAlias()"
+                    >
+                        <app-svg-icon
+                            icon="user"
+                            size="1.25rem"
+                        />
+                        <span class="btn-label">My name</span>
+                    </button>
+                }
                 @if (canUpdate()) {
                     <button
                         type="button"
@@ -309,6 +330,7 @@
                         [visitorTokenError]="visitorTokenErrors()[conversation.id] ?? null"
                         [isClaimedByMe]="isClaimedByMe()"
                         [isActionPending]="isActionPending()"
+                        [visibleName]="myNameOnConversationDesk()"
                         (claimRequested)="claim(conversation)"
                         (operatorMessageSent)="onOperatorMessageSent($event)"
                     />

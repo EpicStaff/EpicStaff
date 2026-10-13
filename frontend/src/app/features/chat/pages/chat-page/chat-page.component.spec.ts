@@ -19,12 +19,14 @@ import {
     ChatConversation,
     ChatConversationPage,
     ChatInboxMessageEvent,
+    ChatMyAlias,
     ChatOperatorMessage,
 } from '../../models/chat.model';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService, ConversationListParams } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
+import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { ChatPageComponent } from './chat-page.component';
 
@@ -132,6 +134,7 @@ describe('ChatPageComponent', () => {
     const readyEpoch = signal(0);
     const chatApi = {
         getBindings: vi.fn(() => of(serverBindings)),
+        getMyAliases: vi.fn(() => of([] as ChatMyAlias[])),
         // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
         getConversations: vi.fn(
             (params: ConversationListParams): Observable<ChatConversationPage> =>
@@ -156,7 +159,25 @@ describe('ChatPageComponent', () => {
         delete: vi.fn(),
         copySnippet: vi.fn(),
         openSettings: vi.fn(),
+        editMyAlias: vi.fn(),
     };
+
+    /** The user's aliases load, as the desks shell loads them; none means the desks' operator names. */
+    function loadAliases(aliases: ChatMyAlias[] = []): void {
+        chatApi.getMyAliases.mockReturnValueOnce(of(aliases));
+        TestBed.inject(ChatMyAliasesStorageService).reload();
+        fixture.detectChanges();
+    }
+
+    /** The user goes by `alias` on a desk, as a save in the dialog stores it. */
+    function goBy(alias: string | null, bindingId = 'b-1'): void {
+        TestBed.inject(ChatMyAliasesStorageService).remember({
+            binding_id: bindingId,
+            alias,
+            visible_name: alias ?? binding.operator_display_name,
+        });
+        fixture.detectChanges();
+    }
 
     function text(selector: string): string[] {
         const host: HTMLElement = fixture.nativeElement;
@@ -320,7 +341,7 @@ describe('ChatPageComponent', () => {
         expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual(['b-2', 'b-2', 'b-2']);
     });
 
-    it('shows the all-bindings inbox unscoped, without Settings, Get snippet, Pause or Test', () => {
+    it('shows the all-bindings inbox unscoped, without My name, Settings, Get snippet, Pause or Test', () => {
         listBindings([binding]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['All desks']);
@@ -366,10 +387,12 @@ describe('ChatPageComponent', () => {
             );
             expect(
                 buttons.map((button) => [
-                    button.className.split(' ').slice(0, 2).join(' '),
+                    [...button.classList].filter((name) => name.startsWith('header-action')).join(' '),
                     button.getAttribute('aria-label'),
                 ])
             ).toEqual([
+                // My aliases have not loaded here: the action names no one rather than a name that may be wrong.
+                ['header-action header-action--ghost', 'My name'],
                 ['header-action header-action--ghost', 'Settings'],
                 ['header-action header-action--ghost', 'Delete'],
                 ['header-action header-action--outline', 'Get snippet'],
@@ -435,10 +458,11 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('hides Pause and Settings without chats:update, Delete without chats:delete and Test without chats:use', () => {
+    it('hides Pause and Settings without chats:update, Delete without chats:delete, Test and My name without chats:use', () => {
         listBindings([binding]);
         scopeTo('b-1');
         expect(headerButton('Test')).toBeDefined();
+        expect(headerButton('My name')).toBeDefined();
         expect(headerButton('Pause')).toBeUndefined();
         expect(headerButton('Settings')).toBeUndefined();
         expect(headerButton('Delete')).toBeUndefined();
@@ -450,9 +474,114 @@ describe('ChatPageComponent', () => {
             listBindings([binding]);
             scopeTo('b-1');
             expect(headerButton('Test')).toBeUndefined();
+            expect(headerButton('My name')).toBeUndefined();
         } finally {
             permissions.can = can;
         }
+    });
+
+    describe('my name on the desk', () => {
+        it('names the action after the name visitors see once it is known, and opens the dialog for the open desk', () => {
+            listBindings([binding]);
+            scopeTo('b-1');
+            const action = (): HTMLButtonElement => headerButton('My name')!;
+            const tooltipOf = (): MatTooltip =>
+                fixture.debugElement
+                    .queryAll(By.directive(MatTooltip))
+                    .find((element) => element.nativeElement === action())!
+                    .injector.get(MatTooltip);
+            const tooltip = (): string => tooltipOf().message;
+            // Not known yet: no name at all, rather than the desk's while visitors may see an alias.
+            expect(action().getAttribute('aria-label')).toBe('My name');
+            expect(tooltipOf().disabled).toBe(true);
+
+            loadAliases();
+            expect(action().getAttribute('aria-label')).toBe('My name: Support');
+            expect(tooltipOf().disabled).toBe(false);
+            expect(tooltip()).toBe('Visitors see you as Support');
+
+            goBy('Mike');
+            expect(action().getAttribute('aria-label')).toBe('My name: Mike');
+            expect(tooltip()).toBe('Visitors see you as Mike');
+
+            action().click();
+            expect(bindingActions.editMyAlias).toHaveBeenCalledWith(binding);
+        });
+
+        it("says under the operator composer which name visitors see on the open conversation's desk, once known", () => {
+            listBindings([binding]);
+            fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+            fixture.detectChanges();
+            expect(text('.composer__visible-name')).toEqual([]);
+
+            loadAliases();
+            expect(text('.composer__visible-name')).toEqual(['Visitors see you as Support']);
+
+            goBy('Mike');
+            expect(text('.composer__visible-name')).toEqual(['Visitors see you as Mike']);
+            // Another desk's alias is not this one's.
+            goBy('Ann', 'b-2');
+            expect(text('.composer__visible-name')).toEqual(['Visitors see you as Mike']);
+        });
+
+        it('shows the name visitors saw beside the author of an operator message, for operators only', () => {
+            const operatorMessage = (
+                id: string,
+                authorId: number,
+                authorName: string | null,
+                visibleName: string | null
+            ): ChatOperatorMessage => ({
+                id,
+                role: 'operator',
+                content: id,
+                actions: null,
+                action: null,
+                session_id: null,
+                created_at: `2026-10-10T10:0${id.slice(-1)}:00Z`,
+                author_user_id: authorId,
+                author_name: authorName,
+                visible_name: visibleName,
+            });
+            chatApi.getMessages.mockReturnValueOnce(
+                of([
+                    operatorMessage('m-1', 7, 'Bea Agent', 'Mike'),
+                    operatorMessage('m-2', 3, 'Ada Lovelace', 'Support'),
+                    operatorMessage('m-3', 9, null, 'Support'),
+                    // Under their own name: nothing to add.
+                    operatorMessage('m-4', 7, 'Bea Agent', 'Bea Agent'),
+                ])
+            );
+            fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 7 }));
+            fixture.detectChanges();
+            expect(text('.message__author')).toEqual([
+                'Bea Agent · as Mike',
+                'You · as Support',
+                'Operator #9 · as Support',
+                'Bea Agent',
+            ]);
+        });
+
+        it('keeps the name visitors saw on a streamed operator message, and on a later copy without it', () => {
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            const streamed = {
+                conversation_id: 'c-1',
+                id: 'm-1',
+                role: 'operator' as const,
+                content: 'on my way',
+                actions: null,
+                action: null,
+                created_at: '2026-10-10T10:01:00Z',
+                author_user_id: 7,
+                author_name: 'Bea Agent',
+                visible_name: 'Mike',
+            };
+            messageCreated$.next(streamed);
+            messageCreated$.next({ ...streamed, visible_name: null });
+            fixture.detectChanges();
+            expect(fixture.componentInstance.messages()).toEqual([expect.objectContaining({ visible_name: 'Mike' })]);
+            expect(text('.message__author')).toEqual(['Bea Agent · as Mike']);
+        });
     });
 
     it('sends a binding the route moves to and the server does not list back to All desks', () => {
@@ -632,6 +761,7 @@ describe('ChatPageComponent', () => {
             created_at: `2026-10-10T10:0${id.slice(-1)}:00Z`,
             author_user_id: authorId,
             author_name: authorName,
+            visible_name: null,
         });
         chatApi.getMessages.mockReturnValueOnce(
             of([
@@ -658,6 +788,7 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:01:00Z',
             author_user_id: 7,
             author_name: 'Grace Hopper',
+            visible_name: null,
         });
         fixture.detectChanges();
         expect(fixture.componentInstance.messages()[0]).toEqual(
@@ -679,6 +810,7 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:01:00Z',
             author_user_id: null,
             author_name: null,
+            visible_name: null,
         };
         messageCreated$.next(event);
         messageCreated$.next(event);
@@ -700,6 +832,7 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:01:00Z',
             author_user_id: null,
             author_name: null,
+            visible_name: null,
         };
         messageCreated$.next(event);
         messageCreated$.next({
@@ -730,6 +863,7 @@ describe('ChatPageComponent', () => {
                 created_at: `2026-10-10T${{ older: '08', old: '09' }[prefix] ?? '10'}:${String(index).padStart(2, '0')}:00Z`,
                 author_user_id: null,
                 author_name: null,
+                visible_name: null,
             }));
         const scroller = (): HTMLElement => fixture.nativeElement.querySelector('.thread');
 
@@ -937,6 +1071,7 @@ describe('ChatPageComponent', () => {
                 created_at: '2026-10-10T10:02:00Z',
                 author_user_id: 3,
                 author_name: 'Ada Lovelace',
+                visible_name: null,
             } as ChatOperatorMessage)
         );
         reloadWith(page([claimed]), page([]));
@@ -963,6 +1098,7 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:00:00Z',
             author_user_id: null,
             author_name: null,
+            visible_name: null,
         };
         const second: ChatOperatorMessage = {
             ...first,

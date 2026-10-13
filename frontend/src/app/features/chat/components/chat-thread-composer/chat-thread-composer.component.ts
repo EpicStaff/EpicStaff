@@ -100,6 +100,8 @@ export class ChatThreadComposerComponent {
     readonly isClaimedByMe = input(false);
     // A claim or release in flight on the page.
     readonly isActionPending = input(false);
+    /** The name visitors see on the user's replies on this conversation's desk; null while not known. */
+    readonly visibleName = input<string | null>(null);
     readonly claimRequested = output<void>();
     readonly operatorMessageSent = output<ChatOperatorReplySent>();
 
@@ -126,6 +128,8 @@ export class ChatThreadComposerComponent {
     readonly isAwaitingRun = signal(false);
     readonly isProcessing = computed(() => this.conversation().state === 'processing' || this.isAwaitingRun());
     readonly isVisitor = computed(() => this.role() === 'visitor');
+    // Said under the operator composer only: as the visitor, the user writes under no name.
+    readonly operatorVisibleName = computed(() => (this.isVisitor() ? null : this.visibleName()));
     readonly canSend = computed(() =>
         this.isVisitor()
             ? !this.isSending() && !this.isProcessing()

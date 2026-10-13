@@ -36,6 +36,7 @@ const message = (overrides: Partial<ChatOperatorMessage>): ChatOperatorMessage =
     created_at: '2026-10-10T10:00:00Z',
     author_user_id: null,
     author_name: null,
+    visible_name: null,
     ...overrides,
 });
 
@@ -198,7 +199,13 @@ describe('upsertMessage', () => {
 
     it('keeps one row per id and the richer operator fields whichever arrives first', () => {
         const streamed = message({ id: 'm-9', role: 'operator', created_at: '2026-10-10T10:09:00Z' });
-        const fromPost = { ...streamed, session_id: 7, author_user_id: 3, author_name: 'Ada Lovelace' };
+        const fromPost = {
+            ...streamed,
+            session_id: 7,
+            author_user_id: 3,
+            author_name: 'Ada Lovelace',
+            visible_name: 'Mike',
+        };
         expect(upsertMessage(upsertMessage([], streamed), fromPost)).toEqual([fromPost]);
         expect(upsertMessage(upsertMessage([], fromPost), streamed)).toEqual([fromPost]);
     });
