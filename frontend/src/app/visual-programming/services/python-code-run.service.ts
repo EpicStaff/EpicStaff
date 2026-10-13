@@ -12,11 +12,20 @@ const POLL_TIMEOUT_MS = 60000;
 
 const MAX_NOT_FOUND_RETRIES = 3;
 
+/**
+ * The kinds of node whose stored Python code run-python-code can run. Add a kind here when the backend
+ * accepts it as a target.
+ */
+export type PythonCodeRunTargetType = 'python_node' | 'webhook_trigger_node';
+
+/** A saved node, by its backend id: the backend resolves the code it runs (and the node's storage) from it. */
+export interface PythonCodeRunTarget {
+    type: PythonCodeRunTargetType;
+    id: number;
+}
+
 export interface RunPythonCodeRequest {
-    python_code_id: number | null;
-    code: string;
-    entrypoint: string;
-    libraries: string[];
+    target: PythonCodeRunTarget;
     variables: Record<string, unknown>;
 }
 

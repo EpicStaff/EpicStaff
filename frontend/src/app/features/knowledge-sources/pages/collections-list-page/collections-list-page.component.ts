@@ -2,6 +2,9 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FetchErrorStateComponent, SpinnerComponent } from '@shared/components';
+import { STORAGE_SIDEBAR_WIDTH_KEY } from '@shared/constants';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -23,6 +26,7 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
         CollectionsListItemSidebarComponent,
         SpinnerComponent,
         FetchErrorStateComponent,
+        ResizableSidebarDirective,
     ],
 })
 export class CollectionsListPageComponent implements OnInit, OnDestroy {
@@ -36,6 +40,9 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     isLoading = signal<boolean>(true);
     error = signal<string | null>(null);
     collections = this.collectionsStorageService.collections;
+
+    protected readonly sidebarStorageKey = STORAGE_SIDEBAR_WIDTH_KEY;
+    protected readonly sidebarWidth = inject(SidebarWidthService).getWidth(STORAGE_SIDEBAR_WIDTH_KEY);
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();

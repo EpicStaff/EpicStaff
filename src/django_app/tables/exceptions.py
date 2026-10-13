@@ -42,6 +42,16 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
+class CodeRunTargetNotFoundError(Exception):
+    """Raised for a test-run target that is missing, deleted, owned by another org,
+    or whose code slot is empty. The caller maps it to the same error as a missing
+    id, so none of these cases is distinguishable from outside."""
+
+    def __init__(self, target_id: int):
+        super().__init__(f"Code run target {target_id} does not exist.")
+        self.target_id = target_id
+
+
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"

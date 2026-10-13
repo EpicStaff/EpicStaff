@@ -16,6 +16,7 @@ import {
     SelectItem,
     StopButtonComponent,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
@@ -25,7 +26,6 @@ import { catchError, finalize } from 'rxjs/operators';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { AdminApiKeysService } from '../../../services/admin/api-keys.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import {

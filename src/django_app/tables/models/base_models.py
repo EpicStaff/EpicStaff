@@ -2,14 +2,17 @@ import hashlib
 import json
 import time
 from abc import abstractmethod
+from collections.abc import Mapping
 from enum import Enum
-from typing import Self
+from typing import ClassVar, Self
 
 from django.apps import apps
 from django.conf import settings
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
+from rbac.models.author import AuthorModel
+from rbac.models.last_edit import LastEditTrackedModel
 
 
 class AbstractDefaultFillableModel(models.Model):
@@ -302,7 +305,7 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata"]
+        excluded_fields = ["id", "created_at", "updated_at", "metadata", "created_by"]
 
         data = {
             f.name: str(getattr(self, f.name))
@@ -325,7 +328,21 @@ class ContentHashMixin(models.Model):
         super().save(*args, **kwargs)
 
 
+# Keys of a node's or edge's canvas `metadata` whose change is an edit of the graph.
+# Everything else in it (size, color, icon, badge number, edge waypoints) is
+# presentation and is no edit at all.
+GRAPH_EDIT_METADATA_KEYS = ("position",)
+
+
 class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
+    # Every edit of a node or edge is also an edit of its graph, and canvas metadata is
+    # never an edit of the node or edge itself; see LastEditTracker. A subclass without a
+    # `graph` foreign key sets None (enforced by the rbac.E002 system check).
+    last_edit_owner_field: ClassVar[str | None] = "graph"
+    last_edit_canvas_fields: ClassVar[Mapping[str, tuple[str, ...]]] = {
+        "metadata": GRAPH_EDIT_METADATA_KEYS
+    }
+
     class Meta:
         abstract = True
 
@@ -343,6 +360,15 @@ class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
             from tables.models import Graph
 
             Graph.objects.filter(pk=graph_id).update(updated_at=timezone.now())
+
+
+class GraphAuthorModel(AuthorModel, LastEditTrackedModel):
+    """Abstract author and last-edit record for graph nodes; their organization is `graph.org`."""
+
+    author_org_lookup = "graph__org_id"
+
+    class Meta:
+        abstract = True
 
 
 class NextVal(Func):

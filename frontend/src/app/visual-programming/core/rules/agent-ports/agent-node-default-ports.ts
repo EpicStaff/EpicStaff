@@ -11,10 +11,8 @@ export const DEFAULT_AGENT_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-out',
             'python-out',
-            'edge-out',
             'start-start',
             'table-out',
-            'llm-out-right',
             'file-extractor-out',
             'subgraph-out',
             'audio-to-text-out',
@@ -39,9 +37,7 @@ export const DEFAULT_AGENT_NODE_PORTS: BasePort[] = [
         allowedConnections: [
             'project-in',
             'python-in',
-            'edge-in',
             'table-in',
-            'llm-out-left',
             'file-extractor-in',
             'end-in',
             'subgraph-in',

@@ -85,7 +85,7 @@ def test_validate_create_duplicate_resource_type_rejected(validator):
                 "name": "Dup Resource",
                 "permissions": [
                     {"resource_type": "secrets", "actions": ["read"]},
-                    {"resource_type": "secrets", "actions": ["update"]},
+                    {"resource_type": "secrets", "actions": ["use"]},
                 ],
             }
         )

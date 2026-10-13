@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import Callable, Coroutine
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from types import CoroutineType
 from typing import Any
 
@@ -196,28 +196,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                 elif stream_mode == "custom":
+                    data = chunk.to_payload()
+                    encoded_data = GraphMessage.encode_payload(data)
                     try:
-                        data = asdict(chunk)
-                    except Exception as e:
-                        logger.error(
-                            f"Error during chunk cleaning/serialization: {e}",
-                            exc_info=True,
-                        )
-                        data = {
-                            "session_id": chunk.session_id
-                            if hasattr(chunk, "session_id")
-                            else None,
-                            "name": chunk.name if hasattr(chunk, "name") else None,
-                            "execution_order": chunk.execution_order
-                            if hasattr(chunk, "execution_order")
-                            else None,
-                            "message_data": {"message_type": "error", "error": str(e)},
-                        }
-
-                    assert isinstance(data, dict), "custom chunk must be a dict"
-                    data["uuid"] = str(uuid.uuid4())
-                    try:
-                        emit_session_audit_event(data)
+                        emit_session_audit_event(encoded_data)
                     except Exception as audit_exc:
                         # Audit must never break the primary pipeline - this
                         # dispatch call must never propagate, no matter what
@@ -244,7 +226,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                             # etc.) with no new status.
                             stop_event.set()
 
-                    await self.redis_service.aadd_graph_message(data)
+                    await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
                 elif stream_mode == "values":
                     final_state = chunk
 
@@ -264,10 +246,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     "end_node_result": end_node_result,
                 },
             )
-            graph_end_message_data = asdict(graph_end_data)
-            graph_end_message_data["uuid"] = str(uuid.uuid4())
-
-            await self.redis_service.aadd_graph_message(graph_end_message_data)
+            graph_end_payload = graph_end_data.to_payload()
+            await self.redis_service.aadd_graph_message(
+                graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
+            )
             await asyncio.sleep(0.05)
 
             org_id = get_session_org(session_id)
@@ -277,7 +259,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         session_id=session_id,
                         org_id=org_id,
                         flow_name=get_session_flow_name(session_id) or "",
-                        event_id=graph_end_message_data["uuid"],
+                        event_id=graph_end_payload["uuid"],
                         status="completed",
                         output=end_node_result,
                         run_type=session_data.run_type,

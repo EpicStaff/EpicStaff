@@ -6,13 +6,16 @@ import { getLabelColorOption } from '@shared/models';
 
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
-import { FlowMenuComponent } from './flow-menu/flow-menu.component';
+import { FlowMenuAction, FlowMenuComponent, FlowMenuSelection } from './flow-menu/flow-menu.component';
 
-export type FlowAction = 'viewSessions' | 'delete' | 'open' | 'rename' | 'run' | 'copy' | 'export';
+/** A ⋮ menu action, or `open` when the card itself was clicked. */
+export type FlowAction = FlowMenuAction | 'open';
 
 export interface FlowCardAction {
     action: FlowAction;
     flow: GetGraphLightRequest;
+    /** The ⋮ button of the menu the action was chosen from; absent when the card itself was clicked. */
+    trigger?: HTMLElement;
 }
 
 @Component({
@@ -118,8 +121,8 @@ export class FlowCardComponent {
         this.isMenuOpen = isOpen;
     }
 
-    onActionSelected(action: string): void {
-        this.emitAction(action as FlowAction);
+    onActionSelected({ action, trigger }: FlowMenuSelection): void {
+        this.emitAction(action, trigger);
     }
 
     onSelectionToggle(event: MouseEvent): void {
@@ -127,10 +130,11 @@ export class FlowCardComponent {
         this.selectionToggle.emit();
     }
 
-    private emitAction(action: FlowAction): void {
+    private emitAction(action: FlowAction, trigger: HTMLElement): void {
         this.action.emit({
             action,
             flow: this.flow,
+            trigger,
         });
     }
 
@@ -142,7 +146,7 @@ export class FlowCardComponent {
         this.subflowMenuStates.set(id, isOpen);
     }
 
-    public onSubflowActionSelected(action: string, subflow: SubflowLightDto): void {
+    public onSubflowActionSelected({ action, trigger }: FlowMenuSelection, subflow: SubflowLightDto): void {
         const flowLike: GetGraphLightRequest = {
             id: subflow.id,
             uuid: '',
@@ -153,7 +157,7 @@ export class FlowCardComponent {
             created_at: subflow.created_at,
             updated_at: subflow.updated_at,
         };
-        this.action.emit({ action: action as FlowAction, flow: flowLike });
+        this.action.emit({ action, flow: flowLike, trigger });
     }
 
     public onSubflowClick(subflow: SubflowLightDto): void {

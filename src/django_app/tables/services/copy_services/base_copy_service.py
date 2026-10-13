@@ -20,6 +20,6 @@ class BaseCopyService(ABC):
     ) -> models.Model:
         """Duplicate `entity` and return the new row.
 
-        `user` is the acting user; services that re-bind permission-gated references
-        check it, the rest ignore it.
+        `user` is the acting user: every row the copy creates is authored by it, and
+        permission-gated references are re-bound only if it may use them.
         """

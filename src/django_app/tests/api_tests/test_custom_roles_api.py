@@ -90,7 +90,7 @@ def test_create_role(auth_client, admin_acme, acme):
         "org_id": acme.id,
         "name": "Billing Manager",
         "description": "manage billing",
-        "permissions": [{"resource_type": "secrets", "actions": ["read", "update"]}],
+        "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
     }
     resp = auth_client(admin_acme).post("/api/admin/roles/", payload, format="json")
     assert resp.status_code == status.HTTP_201_CREATED

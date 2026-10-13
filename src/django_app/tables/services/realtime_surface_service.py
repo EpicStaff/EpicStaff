@@ -11,6 +11,7 @@ from agents.models.agent_models import (
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
 from loguru import logger
+from rbac.authorship import OMIT_AUTHORSHIP_CONTEXT_KEY
 from src.shared.models import (
     BaseToolData,
     GraphRagBasicSearchParams,
@@ -69,13 +70,13 @@ class RealtimeSurfaceService:
 
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
             combined_surface["storage_items"],
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         tools = self._resolve_python_tools(
             combined_surface["python_tools"],
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         self._warn_on_mcp_tools(combined_surface["mcp_tools"])
 
@@ -105,7 +106,11 @@ class RealtimeSurfaceService:
             if surface.id not in explicit_surface_ids:
                 surfaces.append(surface)
 
-        surface_dicts = [SurfaceReadSerializer(surface).data for surface in surfaces]
+        # Combining reads only the surfaces' rules, so authorship is never loaded.
+        surface_dicts = [
+            SurfaceReadSerializer(surface, context={OMIT_AUTHORSHIP_CONTEXT_KEY: True}).data
+            for surface in surfaces
+        ]
         return SurfaceCombineService.combine(surface_dicts)
 
     def _resolve_python_tools(
