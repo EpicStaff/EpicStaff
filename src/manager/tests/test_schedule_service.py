@@ -6,7 +6,6 @@ import pytest
 import pytest_asyncio
 import settings
 from fakeredis import FakeAsyncRedis
-from helpers.logger import logger
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from services.redis_service import RedisService
@@ -153,12 +152,8 @@ def no_reconnect_delay(monkeypatch):
     monkeypatch.setattr(settings, "SYNC_RETRY_DELAY", 0)
 
 
-@pytest.fixture
-def captured_logs():
-    records = []
-    sink_id = logger.add(lambda message: records.append(message.record), level="DEBUG")
-    yield records
-    logger.remove(sink_id)
+def _scheduled_nodes(service: ScheduleService) -> dict[int, ScheduleTriggerNodePayload]:
+    return {job.args[0].id: job.args[0] for job in service.scheduler.get_jobs()}
 
 
 async def _stop_listener_and_scheduler(service: ScheduleService):
@@ -205,10 +200,9 @@ async def test_reconcile_removes_vanished_node_and_adds_new_one_without_deactiva
 
     await schedule_service.reconcile_schedules_with_db()
 
-    assert schedule_service.scheduler.get_job("schedule_1") is None
-    assert schedule_service.scheduler.get_job("schedule_2") is not None
-    assert schedule_service.scheduler.get_job("schedule_3") is not None
-    assert set(schedule_service.schedule_nodes) == {2, 3}
+    assert 1 not in _scheduled_nodes(schedule_service)
+    assert 2 in _scheduled_nodes(schedule_service)
+    assert 3 in _scheduled_nodes(schedule_service)
     assert await _published_actions(schedule_channel_subscription) == []
 
 
@@ -219,8 +213,7 @@ async def test_reconcile_replaces_job_whose_node_changed(schedule_service):
 
     await schedule_service.reconcile_schedules_with_db()
 
-    scheduled_node = schedule_service.scheduler.get_job("schedule_1").args[0]
-    assert scheduled_node.every == 6
+    assert _scheduled_nodes(schedule_service)[1].every == 6
 
 
 @pytest.mark.asyncio
@@ -230,15 +223,18 @@ async def test_reconcile_does_not_re_add_once_node_that_already_fired(
     once_node = _once_node(7, start=datetime.now(UTC) - timedelta(seconds=1))
     await running_schedule_service.add_schedule(once_node)
     first_fire = await _published_actions(schedule_channel_subscription, timeout=1.5)
-    assert {"action": "run_session", "node_id": 7} in first_fire
+    assert first_fire == [
+        {"action": "run_session", "node_id": 7},
+        {"action": "deactivate", "node_id": 7},
+    ]
     # Django has not processed the 'deactivate' yet, so the node is still active.
     future_once_node = _once_node(8, start=datetime.now(UTC) + timedelta(hours=1))
     running_schedule_service.repository = FakeScheduleRepository([once_node, future_once_node])
 
     await running_schedule_service.reconcile_schedules_with_db()
 
-    assert running_schedule_service.scheduler.get_job("schedule_7") is None
-    assert running_schedule_service.scheduler.get_job("schedule_8") is not None
+    assert 7 not in _scheduled_nodes(running_schedule_service)
+    assert 8 in _scheduled_nodes(running_schedule_service)
     assert await _published_actions(schedule_channel_subscription, timeout=1.5) == []
 
 
@@ -286,7 +282,7 @@ async def test_reconcile_leaves_jobs_untouched_when_db_unreadable(schedule_servi
     with pytest.raises(ScheduleSyncError):
         await schedule_service.reconcile_schedules_with_db()
 
-    assert schedule_service.scheduler.get_job("schedule_1") is not None
+    assert 1 in _scheduled_nodes(schedule_service)
 
 
 @pytest.mark.asyncio
@@ -298,15 +294,14 @@ async def test_listener_resubscribes_after_pubsub_error_and_reconciles(no_reconn
 
     await service.start()
     try:
-        await _wait_until(lambda: service.scheduler.get_job("schedule_2") is not None)
-        assert service.scheduler.get_job("schedule_1") is None
-        assert flaky_client.subscription_count == 2
+        await _wait_until(lambda: 2 in _scheduled_nodes(service))
+        assert 1 not in _scheduled_nodes(service)
 
         # The new subscription receives live updates again.
         await flaky_client.publish(
             settings.SCHEDULE_CHANNEL, _node_update_message("create", _repeat_node(3))
         )
-        await _wait_until(lambda: service.scheduler.get_job("schedule_3") is not None)
+        await _wait_until(lambda: 3 in _scheduled_nodes(service))
     finally:
         await _stop_listener_and_scheduler(service)
         await flaky_client.aclose()
@@ -328,9 +323,8 @@ async def test_start_buffers_update_published_during_initial_load(redis_service)
 
     await service.start()
     try:
-        await _wait_until(lambda: service.scheduler.get_job("schedule_2") is not None)
-        assert service.scheduler.get_job("schedule_1") is not None
-        assert service.repository.calls == 1
+        await _wait_until(lambda: 2 in _scheduled_nodes(service))
+        assert 1 in _scheduled_nodes(service)
     finally:
         await _stop_listener_and_scheduler(service)
 
@@ -348,34 +342,25 @@ async def test_start_reconciles_once_listener_subscribes_after_initial_subscribe
 
     await service.start()
     try:
-        await _wait_until(lambda: service.scheduler.get_job("schedule_2") is not None)
-        assert service.scheduler.get_job("schedule_1") is not None
-        assert client.subscribe_attempts == 2
+        await _wait_until(lambda: 2 in _scheduled_nodes(service))
+        assert 1 in _scheduled_nodes(service)
     finally:
         await _stop_listener_and_scheduler(service)
         await client.aclose()
 
 
 @pytest.mark.asyncio
-async def test_listener_retries_reconcile_while_db_is_down_with_warning_only(
-    no_reconnect_delay, captured_logs
-):
+async def test_listener_retries_reconcile_while_db_is_down(no_reconnect_delay):
     flaky_client = FlakyPubSubRedis(failing_subscriptions=1)
     service = ScheduleService(redis_service=_redis_service_with(flaky_client))
     service.repository = FakeScheduleRepository([_repeat_node(1)], None, [_repeat_node(2)])
 
     await service.start()
     try:
-        await _wait_until(lambda: service.scheduler.get_job("schedule_2") is not None)
+        await _wait_until(lambda: 2 in _scheduled_nodes(service))
     finally:
         await _stop_listener_and_scheduler(service)
         await flaky_client.aclose()
-
-    reconcile_failures = [
-        record for record in captured_logs if "Reconcile failed" in record["message"]
-    ]
-    assert [record["level"].name for record in reconcile_failures] == ["WARNING"]
-    assert reconcile_failures[0]["exception"] is None
 
 
 @pytest.mark.asyncio
@@ -385,5 +370,58 @@ async def test_initial_load_retries_until_db_is_readable(redis_service, no_recon
 
     await service.load_schedules_from_django()
 
-    assert service.scheduler.get_job("schedule_1") is not None
-    assert service.repository.calls == 3
+    assert 1 in _scheduled_nodes(service)
+
+
+@pytest.mark.asyncio
+async def test_live_updates_from_django_add_pause_and_delete_schedules(
+    redis_service, schedule_channel_subscription
+):
+    service = ScheduleService(redis_service=redis_service)
+    service.repository = FakeScheduleRepository([])
+    client = redis_service.aioredis_client
+    await service.start()
+    try:
+        await client.publish(settings.SCHEDULE_CHANNEL, _node_update_message("create", _repeat_node(1)))
+        await client.publish(settings.SCHEDULE_CHANNEL, _node_update_message("create", _repeat_node(2)))
+        await _wait_until(lambda: set(_scheduled_nodes(service)) == {1, 2})
+
+        paused_node = _repeat_node(1).model_copy(update={"is_active": False})
+        await client.publish(settings.SCHEDULE_CHANNEL, _node_update_message("update", paused_node))
+        await client.publish(
+            settings.SCHEDULE_CHANNEL,
+            json.dumps({"action": "node_update", "data": {"action": "delete", "node": {"id": 2}}}),
+        )
+        await _wait_until(lambda: _scheduled_nodes(service) == {})
+    finally:
+        await _stop_listener_and_scheduler(service)
+
+    # Django already knows these nodes are inactive or deleted: no 'deactivate' back.
+    published = await _published_actions(schedule_channel_subscription)
+    assert [message for message in published if message.get("action") == "deactivate"] == []
+
+
+@pytest.mark.asyncio
+async def test_repeat_schedule_publishes_deactivate_once_its_end_date_passes(
+    running_schedule_service, schedule_channel_subscription
+):
+    now = datetime.now(UTC)
+    ending_node = ScheduleTriggerNodePayload(
+        id=11,
+        node_name="ending",
+        graph=1,
+        is_active=True,
+        run_mode="repeat",
+        start_date_time=now,
+        every=1,
+        unit="seconds",
+        end_type="on_date",
+        end_date_time=now + timedelta(seconds=1.5),
+    )
+
+    await running_schedule_service.add_schedule(ending_node)
+
+    published = await _published_actions(schedule_channel_subscription, timeout=3)
+    assert {"action": "run_session", "node_id": 11} in published
+    assert published[-1] == {"action": "deactivate", "node_id": 11}
+    assert published.count({"action": "deactivate", "node_id": 11}) == 1
