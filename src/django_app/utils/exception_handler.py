@@ -1,8 +1,8 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django_app.settings import DEBUG
-from rest_framework import exceptions
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
+from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
 
@@ -29,10 +29,17 @@ def _flatten_detail(detail) -> str:
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
+    # DRF's own `exception_handler()` converts Django's `Http404`/
+    # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,
+    # but only on its own local `exc` binding -- the caller's `exc` here is
+    # left untouched. Without mirroring that conversion, the `isinstance`
+    # check below always misses for these two (e.g. `get_object_or_404()`
+    # on a queryset the caller isn't allowed to see), and a correct 404/403
+    # response falls through to the generic 500 branch.
     if isinstance(exc, Http404):
-        exc = exceptions.NotFound(*exc.args)
+        exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
-        exc = exceptions.PermissionDenied(*exc.args)
+        exc = DRFPermissionDenied(*exc.args)
 
     response = exception_handler(exc, context)
 

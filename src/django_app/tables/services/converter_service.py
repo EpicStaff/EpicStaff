@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from loguru import logger
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
@@ -36,6 +37,12 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from storage_credentials.exceptions import (
+    CredentialScopeValidationError,
+    TemporaryCredentialIssueError,
+)
+from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -211,7 +218,7 @@ class ConverterService(metaclass=SingletonMeta):
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
         org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
-            return f"org_{org_id}"
+            return org_storage_prefix(org_id)
         return None
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
@@ -336,6 +343,44 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider=rt_provider,
         )
 
+        # Check if any tools require storage and mint credentials if needed
+        try:
+            union_allowed_paths = set()
+            needs_storage = False
+
+            for tool in surface_resolution.tools:
+                tool_data = tool.data
+                if isinstance(tool_data, PythonCodeToolData) and tool_data.python_code.use_storage:
+                    needs_storage = True
+                    if tool_data.python_code.storage_allowed_paths:
+                        union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
+
+            if needs_storage:
+                if not union_allowed_paths:
+                    # Resolved before any mint attempt -- same class of
+                    # problem as RealtimeSurfaceService's fail-closed check,
+                    # same exception type and status code (400, not 500).
+                    raise CredentialScopeValidationError(
+                        "This agent's tools need file storage access, but no files are "
+                        "attached. Attach the required files or folders."
+                    )
+                rt_agent_chat_data.storage_credentials = (
+                    session_credential_service.issue_for_realtime_chat(
+                        realtime_agent_chat=rt_agent_chat,
+                        storage_allowed_paths=list(union_allowed_paths),
+                        org_id=ad.org_id,
+                    )
+                )
+        except (TemporaryCredentialIssueError, CredentialScopeValidationError):
+            raise
+        except Exception as error:
+            logger.exception(
+                "Failed to mint temporary storage credentials for realtime chat {}: {}",
+                rt_agent_chat.id,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
+
         return rt_agent_chat_data
 
     def convert_python_code_to_pydantic(
@@ -396,6 +441,12 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # `storage_allowed_paths_override` may be a list shared across
+                # several tool conversions in the same caller loop (see
+                # `base_node_payload_service._build_tool_pool`) -- rebuild rather
+                # than `.append()` so we never mutate a caller-owned list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if storage_org_prefix_override is not None:
                 storage_org_prefix = storage_org_prefix_override
             elif graph_id is not None:
@@ -460,6 +511,10 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # See `convert_python_code_tool_to_pydantic` -- rebuild instead of
+                # `.append()` to avoid mutating a caller-owned override list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if graph_id is not None:
                 storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
@@ -551,6 +606,36 @@ class ConverterService(metaclass=SingletonMeta):
             ),
         )
 
+    def _convert_code_slot(
+        self,
+        python_code: PythonCode,
+        use_storage: bool,
+        graph_id: int | None,
+        session_id: int | None,
+        extra_storage_paths: list[str] | None,
+    ) -> PythonCodeData:
+        writable_paths = list(extra_storage_paths or [])
+        if session_id is not None:
+            writable_paths.append(f"sessions/{session_id}/")
+        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
+            graph_id=graph_id,
+            use_storage=use_storage,
+            extra_paths=writable_paths,
+        )
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
+        return self.convert_python_code_to_pydantic(
+            python_code=python_code,
+            use_storage=use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
+        )
+
     def convert_python_node_to_pydantic(
         self,
         python_node: PythonNode,
@@ -567,26 +652,12 @@ class ConverterService(metaclass=SingletonMeta):
             extra_storage_paths: Further writable folders for a run without a
                 session, such as a test-mode run's own folder.
         """
-        writable_paths = list(extra_storage_paths or [])
-        if session_id is not None:
-            writable_paths.append(f"sessions/{session_id}/")
-        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
-            graph_id=graph_id,
-            use_storage=python_node.use_storage,
-            extra_paths=writable_paths,
-        )
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
-
-        python_code_data = self.convert_python_code_to_pydantic(
+        python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
             use_storage=python_node.use_storage,
-            storage_allowed_paths=storage_allowed_paths,
-            storage_org_prefix=storage_org_prefix,
+            graph_id=graph_id,
             session_id=session_id,
-            org_id=org_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -759,9 +830,24 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         webhook_trigger_node: WebhookTriggerNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+        extra_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
-        python_code_data = self.convert_python_code_to_pydantic(
-            python_code=webhook_trigger_node.python_code
+        """Convert a webhook trigger node into the data a run sends to the sandbox.
+
+        Args:
+            session_id: The running session; its `sessions/<id>/` folder becomes
+                writable when the node uses storage.
+            extra_storage_paths: Further writable folders for a run without a
+                session, such as a test-mode run's own folder.
+        """
+        python_code_data = self._convert_code_slot(
+            python_code=webhook_trigger_node.python_code,
+            use_storage=webhook_trigger_node.use_storage,
+            graph_id=graph_id,
+            session_id=session_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),

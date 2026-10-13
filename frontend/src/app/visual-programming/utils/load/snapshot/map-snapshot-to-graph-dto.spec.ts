@@ -301,6 +301,35 @@ describe('buildPreviewFlowModel', () => {
             expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
         }
     });
+
+    it('keeps the webhook storage flag and turns it off for versions saved without one', () => {
+        const withStorage: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    use_storage: true,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+            ],
+        };
+        const legacy: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    use_storage: undefined,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+            ],
+        };
+
+        const webhookUseStorage = (version: GraphVersionSnapshot): unknown =>
+            buildPreviewFlowModel(version, secretsByName, availableFlows).flow.nodes.find(
+                (node) => node.type === NodeType.WEBHOOK_TRIGGER
+            )?.data;
+
+        expect(webhookUseStorage(withStorage)).toMatchObject({ use_storage: true });
+        expect(webhookUseStorage(legacy)).toMatchObject({ use_storage: false });
+    });
 });
 
 describe('mapNodeAuthorshipToCanvas', () => {

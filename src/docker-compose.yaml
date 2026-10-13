@@ -337,7 +337,12 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: [*docker-env, *redis-env, *storage-env, *communication-env]
+      # Deliberately no *storage-env here: sandbox must never hold the admin
+      # STORAGE_USER/STORAGE_PASSWORD credential. Only the non-secret
+      # endpoint/bucket connection details are passed explicitly below;
+      # per-execution credentials arrive inside the task payload, already
+      # minted and scoped by django_app.
+      <<: [*docker-env, *redis-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
@@ -347,6 +352,10 @@ services:
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_SSL: ${STORAGE_SSL:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}

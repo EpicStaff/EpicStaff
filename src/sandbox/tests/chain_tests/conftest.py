@@ -77,16 +77,25 @@ def _ensure_src_shared_stub() -> None:
     src_shared_mod.__package__ = "src.shared"
 
     src_shared_models_mod = types.ModuleType("src.shared.models")
+    # __path__ makes real submodules (storage_scope) importable while this stub
+    # keeps the heavyweight package __init__.py from executing.
+    src_shared_models_mod.__path__ = [str(shared_dir / "models")]
+    src_shared_models_mod.__package__ = "src.shared.models"
     src_shared_models_mod.CodeResultData = CodeResultData
     src_shared_models_mod.CodeTaskData = CodeTaskData
+
+    src_shared_models_tools_mod = types.ModuleType("src.shared.models.tools")
+    src_shared_models_tools_mod.CodeResultData = CodeResultData
+    src_shared_models_tools_mod.CodeTaskData = CodeTaskData
+    src_shared_models_mod.tools = src_shared_models_tools_mod
 
     src_mod.shared = src_shared_mod
     src_shared_mod.models = src_shared_models_mod
 
     sys.modules.setdefault("src", src_mod)
     sys.modules.setdefault("src.shared", src_shared_mod)
-    # Register the stub so the real models module is never imported.
-    sys.modules["src.shared.models"] = src_shared_models_mod
+    sys.modules.setdefault("src.shared.models", src_shared_models_mod)
+    sys.modules.setdefault("src.shared.models.tools", src_shared_models_tools_mod)
 
 
 # Env defaults must be set before anything imports settings.py.

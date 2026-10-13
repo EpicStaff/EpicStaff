@@ -23,6 +23,7 @@ from shared.models.knowledge import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -169,10 +170,14 @@ async def test_python_code_executor_forwards_storage_config_from_data():
             "storage_allowed_paths": ["reports/"],
             "storage_org_prefix": "org1",
             "session_id": 42,
+            "org_id": 77,
         },
     )
     builder = ToolRegistryBuilder(sandbox)
-    registry = builder.add_python_code_tool(data).build()
+    registry = builder.add_python_code_tool(
+        data,
+        storage_credentials=StorageCredentials(access_key="test-access", secret_key="test-secret"),
+    ).build()
 
     await registry.execute("storage_tool", {})
 

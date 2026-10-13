@@ -443,6 +443,7 @@ export function buildBulkSavePayload(
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
             test_payload: n.data.test_payload ?? {},
+            use_storage: n.data.use_storage ?? false,
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({

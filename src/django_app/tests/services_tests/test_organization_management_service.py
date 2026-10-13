@@ -176,6 +176,17 @@ def _no_storage_calls(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_org_storage_deprovision_calls(mocker):
+    """`OrgStorageProvisioningService.deprovision_for_organization` is a network
+    dependency called from `deactivate_organization` and, since the delete-path
+    fix, from `delete_organization`'s post-commit cleanup -- without this stub
+    those tests would reach real MinIO/RustFS via `asyncio.run()`."""
+    return mocker.patch(
+        "rbac.governance.organizations.org_storage_provisioning_service.deprovision_for_organization"
+    )
+
+
 def _grouped_row_counts() -> dict[str, int]:
     """Count every installed model's rows through its base manager (so soft-delete filters cannot hide a row), folded under the same friendly resource name `affected_resources` reports under."""
     from django.apps import apps
@@ -668,6 +679,50 @@ def test_storage_purge_runs_after_a_real_delete(
             actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
         )
     _no_storage_calls.return_value.delete_prefix.assert_called_once_with("")
+
+
+@pytest.mark.django_db
+def test_storage_deprovision_runs_after_a_real_delete(
+    actor,
+    populated_org,
+    _surviving_org,
+    _no_org_storage_deprovision_calls,
+    django_capture_on_commit_callbacks,
+):
+    """Deleting an org deprovisions its MinIO/RustFS IAM user, same as deactivation.
+
+    Asserts the call carries the org's real integer id, not None: Django's
+    deletion Collector nulls out `instance.pk` once `collector.delete()` runs,
+    and this cleanup fires later, via `transaction.on_commit`, so a call-count
+    assertion alone would pass even if the id had regressed to None."""
+    org_id = populated_org.pk
+
+    with django_capture_on_commit_callbacks(execute=True):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=org_id, verification_phrase=f"delete-{populated_org.name}"
+        )
+
+    _no_org_storage_deprovision_calls.assert_called_once_with(org_id)
+
+
+@pytest.mark.django_db
+def test_storage_deprovision_failure_does_not_undo_the_delete(
+    actor,
+    populated_org,
+    _surviving_org,
+    _no_org_storage_deprovision_calls,
+    django_capture_on_commit_callbacks,
+):
+    from storage_credentials.exceptions import OrgStorageProvisioningError
+
+    _no_org_storage_deprovision_calls.side_effect = OrgStorageProvisioningError("minio down")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+        )
+
+    assert not Organization.objects.filter(pk=populated_org.pk).exists()
 
 
 @pytest.mark.django_db

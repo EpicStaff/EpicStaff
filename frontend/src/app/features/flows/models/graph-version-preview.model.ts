@@ -128,6 +128,8 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     python_code: SnapshotPythonCode;
     /** Absent in versions saved before test payloads existed. */
     test_payload?: Record<string, unknown>;
+    /** Absent in versions saved before webhook trigger code could use storage. */
+    use_storage?: boolean;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {

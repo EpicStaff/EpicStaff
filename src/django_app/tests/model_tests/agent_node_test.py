@@ -61,7 +61,7 @@ def org_request(org, superadmin_user):
     """Authenticated request scoped to `org`, for serializers built directly
     (not through a view). `AgentNodeSerializer`'s `graph`/`agent_definition`/
     `surface_list` fields resolve org scope from `request` via
-    `OrgContextService` (see `tables/serializers/org_scoped_fields.py`) —
+    `OrgContextService` (see `rbac/scoping/fields.py`) —
     without a request they deny every pk. `superadmin_user` bypasses the
     membership check so this fixture doesn't need an `OrganizationUser` row
     wired up. Built directly rather than via `force_authenticate` since that

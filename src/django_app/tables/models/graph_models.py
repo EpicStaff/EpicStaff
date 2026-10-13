@@ -612,6 +612,7 @@ class WebhookTriggerNode(
         related_name="webhook_trigger_nodes",
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
+    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
