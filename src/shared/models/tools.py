@@ -149,6 +149,11 @@ class CodeResultData(BaseModel):
     stderr: str
     stdout: str
     returncode: int = 0
+    timed_out: bool = False
+    effective_timeout_seconds: float | None = None
+    """The execution timeout the sandbox actually applied, after clamping the
+    requested one to its own ceiling. Set only when `timed_out` is True, so the
+    caller reports the limit that killed the code rather than the one it asked for."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,6 +166,9 @@ class CodeTaskData(StorageScopedData):
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
+    timeout: float | None = Field(default=None, gt=0)
+    """Requested execution timeout in seconds. Untrusted: the sandbox clamps it to
+    its own SANDBOX_EXECUTION_TIMEOUT ceiling. None means the ceiling applies."""
 
     storage_credentials: StorageCredentials | None = None
     """Ephemeral temporary storage credentials for sandbox execution.
@@ -208,6 +216,7 @@ class CodeTaskData(StorageScopedData):
         return (
             f"execution_id={self.execution_id} venv={self.venv_name} "
             f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"timeout={self.timeout} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 

@@ -702,8 +702,14 @@ except Exception:
             **drop_kwargs,
         )
 
+        # The requested timeout is optional in the context: the ceiling alone
+        # applies when the task did not ask for a shorter one.
+        timeout = effective_execution_timeout(
+            requested_seconds=context.get("requested_timeout"),
+            ceiling_seconds=settings.EXECUTION_TIMEOUT,
+        )
         comm_task = asyncio.ensure_future(process.communicate())
-        done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
+        done, _ = await asyncio.wait({comm_task}, timeout=timeout)
 
         if comm_task not in done:
             return await self._handle_timeout(
@@ -711,6 +717,7 @@ except Exception:
                 comm_task=comm_task,
                 context=context,
                 masking_values=masking_values,
+                timeout=timeout,
             )
 
         stdout, stderr = comm_task.result()
@@ -756,13 +763,13 @@ except Exception:
         comm_task: asyncio.Task,
         context: dict[str, Any],
         masking_values: dict[str, str],
+        timeout: float,
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
         The job never finishes writing output.txt, so unlike the normal path
         this never reads the result file: result_data stays None.
         """
-        timeout = settings.EXECUTION_TIMEOUT
         logger.error(
             "Execution {} exceeded {} seconds; killing process tree.",
             context["execution_id"],
@@ -809,7 +816,25 @@ except Exception:
             stdout=stdout,
             stderr=stderr,
             returncode=124,
+            timed_out=True,
+            effective_timeout_seconds=timeout,
         )
+
+
+def effective_execution_timeout(
+    requested_seconds: float | None, ceiling_seconds: float | None
+) -> float | None:
+    """Return the execution timeout to apply, never above the sandbox ceiling.
+
+    The requested value comes from the task message and is untrusted, so it can
+    only shorten the ceiling. None on either side means "no limit from this side";
+    None from both means the execution is unbounded.
+    """
+    if ceiling_seconds is None:
+        return requested_seconds
+    if requested_seconds is None:
+        return ceiling_seconds
+    return min(requested_seconds, ceiling_seconds)
 
 
 class DynamicVenvExecutorChain:
@@ -849,8 +874,15 @@ class DynamicVenvExecutorChain:
         storage_org_prefix: str | None = None,
         storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> CodeResultData:
-        """Run the complete workflow asynchronously."""
+        """Run the complete workflow asynchronously.
+
+        Args:
+            timeout: Requested execution timeout in seconds, clamped to
+                SANDBOX_EXECUTION_TIMEOUT. Bounds only the code run itself;
+                venv creation and library installation are not limited by it.
+        """
         if func_kwargs is None:
             func_kwargs = {}
 
@@ -904,6 +936,7 @@ class DynamicVenvExecutorChain:
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
+            "requested_timeout": timeout,
         }
         if use_storage:
             # Fail-closed: code that requests storage access must have valid
