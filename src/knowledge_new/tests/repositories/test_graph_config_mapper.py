@@ -60,35 +60,6 @@ def _make_fake_rag(
     )
 
 
-def test_to_graph_rag_config_populates_vector_store_index_schema():
-    rag = _make_fake_rag(slot=SlotEnum.A)
-
-    config = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A)
-
-    assert (
-        config.vector_store.index_schema
-    ), "vector_store.index_schema must be non-empty — the @model_validator did not run"
-    assert (
-        "entity_description" in config.vector_store.index_schema
-    ), "KeyError regression: 'entity_description' must be present in index_schema"
-
-
-def test_to_graph_rag_config_uses_requested_slot_not_row_slot():
-    rag = _make_fake_rag(rag_id=7, slot=SlotEnum.A)
-
-    config = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.B)
-
-    assert (
-        "/b/output" in config.output_storage.prefix
-    ), f"output_storage.prefix should contain '/b/output', got: {config.output_storage.prefix!r}"
-    assert (
-        "/b/lancedb" in config.vector_store.db_uri
-    ), f"vector_store.db_uri should contain '/b/lancedb', got: {config.vector_store.db_uri!r}"
-    assert (
-        "/a/" not in config.output_storage.prefix
-    ), "output_storage.prefix must not use the row's active slot (A) when slot=B was requested"
-
-
 @pytest.mark.parametrize(
     "slot, expected_output_subdir, expected_lancedb_subdir",
     [
@@ -97,12 +68,16 @@ def test_to_graph_rag_config_uses_requested_slot_not_row_slot():
     ],
     ids=["slot_a", "slot_b"],
 )
-def test_to_graph_rag_config_slot_routing(
+def test_config_points_at_the_requested_slot_of_this_rag(
     slot, expected_output_subdir, expected_lancedb_subdir
 ):
+    """The row is on slot A; a reindex asks for B, and must never write into A."""
     rag = _make_fake_rag(rag_id=42, slot=SlotEnum.A)
+
     config = graph_rag_orm_to_graphrag_config(rag, slot=slot)
 
+    assert "rag_42" in config.output_storage.prefix
     assert expected_output_subdir in config.output_storage.prefix
     assert expected_lancedb_subdir in config.vector_store.db_uri
+    # graphrag's validator fills the schema; without it indexing fails with a KeyError.
     assert "entity_description" in config.vector_store.index_schema

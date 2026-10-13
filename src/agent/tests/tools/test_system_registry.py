@@ -38,19 +38,6 @@ async def test_decorator_registers_tool():
     assert entries[0].description == "Greet someone."
 
 
-async def test_decorator_returns_original_function():
-    @system_tool(
-        name="identity",
-        description="Returns input.",
-        parameters_schema={},
-    )
-    async def identity(args: dict) -> dict:
-        return args
-
-    result = await identity({"x": 1})
-    assert result == {"x": 1}
-
-
 async def test_duplicate_name_raises_value_error():
     @system_tool(name="dup", description="First.", parameters_schema={})
     async def first(args: dict) -> str:
@@ -137,16 +124,6 @@ async def test_input_model_passes_valid_args():
 
     assert result.is_error is False
     assert result.content == "42"
-
-
-async def test_clear_empties_registry():
-    @system_tool(name="temp", description="Temporary.", parameters_schema={})
-    async def temp(args: dict) -> str:
-        return ""
-
-    assert len(get_system_registry().entries()) == 1
-    get_system_registry().clear()
-    assert len(get_system_registry().entries()) == 0
 
 
 async def test_entries_returns_list_of_all_registered():

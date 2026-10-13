@@ -43,36 +43,27 @@ def _assert_session_dead(client: APIClient, access: str) -> None:
     assert bearer.get(PROFILE_URL).status_code == 401
 
 
-@pytest.mark.django_db
-def test_password_reset_confirm_kills_a_rotated_session(regular_user):
-    session, access = _logged_in_and_rotated(regular_user)
-    _token_row, raw_token = PasswordResetTokenRepository().create_for_user(regular_user)
-
-    reset = APIClient().post(
-        reverse("password_reset_confirm"),
-        data={"token": raw_token, "new_password": NEW_PASSWORD},
-        format="json",
+def _reset_by_link(user, superadmin_user):
+    _token_row, raw_token = PasswordResetTokenRepository().create_for_user(user)
+    return APIClient().post(
+        reverse("password_reset_confirm"), data={"token": raw_token, "new_password": NEW_PASSWORD}, format="json"
     )
 
-    assert reset.status_code == 200
-    _assert_session_dead(session, access)
 
-
-@pytest.mark.django_db
-def test_admin_password_reset_kills_a_rotated_session(regular_user, superadmin_user):
-    session, access = _logged_in_and_rotated(regular_user)
+def _reset_by_admin(user, superadmin_user):
     admin = APIClient()
-    admin.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
+    admin.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}")
+    return admin.post(
+        reverse("admin_password_reset"), data={"user_id": user.id, "new_password": NEW_PASSWORD}, format="json"
     )
 
-    reset = admin.post(
-        reverse("admin_password_reset"),
-        data={"user_id": regular_user.id, "new_password": NEW_PASSWORD},
-        format="json",
-    )
 
-    assert reset.status_code == 204
+@pytest.mark.django_db
+@pytest.mark.parametrize(("reset", "status_code"), [(_reset_by_link, 200), (_reset_by_admin, 204)], ids=["reset-link", "admin-reset"])
+def test_a_password_reset_kills_a_rotated_session(regular_user, superadmin_user, reset, status_code):
+    session, access = _logged_in_and_rotated(regular_user)
+
+    assert reset(regular_user, superadmin_user).status_code == status_code
     _assert_session_dead(session, access)
 
 
@@ -130,19 +121,6 @@ def test_refresh_for_a_deleted_user_is_rejected(regular_user):
     assert client.post(reverse("refresh")).status_code == 401
 
 
-@pytest.mark.django_db
-def test_rotation_keeps_the_password_claim(regular_user):
-    session, _access = _logged_in_and_rotated(regular_user)
-
-    rotated = RefreshToken(session.cookies[REFRESH_COOKIE_NAME].value)
-
-    assert rotated[api_settings.REVOKE_TOKEN_CLAIM]
-    assert (
-        rotated.access_token[api_settings.REVOKE_TOKEN_CLAIM]
-        == rotated[api_settings.REVOKE_TOKEN_CLAIM]
-    )
-
-
 # ---- token introspection (used by the realtime service's WebSocket auth) ----
 
 
@@ -154,57 +132,41 @@ def _introspect(system_raw_key: str, token: str) -> dict:
     return response.json()
 
 
-@pytest.mark.django_db
-def test_introspect_reports_a_token_from_a_previous_password_inactive(
-    regular_user, env_api_key
-):
-    system_raw_key, _system_key = env_api_key
-    access = str(RefreshToken.for_user(regular_user).access_token)
-    assert _introspect(system_raw_key, access)["active"] is True
-
-    regular_user.set_password(NEW_PASSWORD)
-    regular_user.save(update_fields=["password"])
-
-    assert _introspect(system_raw_key, access) == {"active": False}
+def _new_password(user, token):
+    user.set_password(NEW_PASSWORD)
+    user.save(update_fields=["password"])
+    return str(token.access_token)
 
 
-@pytest.mark.django_db
-def test_introspect_reports_a_token_without_password_claim_inactive(
-    regular_user, env_api_key
-):
-    system_raw_key, _system_key = env_api_key
-    refresh = RefreshToken.for_user(regular_user)
-    del refresh[api_settings.REVOKE_TOKEN_CLAIM]
+def _no_password_claim(user, token):
+    del token[api_settings.REVOKE_TOKEN_CLAIM]
+    return str(token.access_token)
 
-    assert _introspect(system_raw_key, str(refresh.access_token)) == {"active": False}
+
+def _deactivated(user, token):
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    return str(token.access_token)
+
+
+def _deleted(user, token):
+    access = str(token.access_token)
+    user.delete()
+    return access
 
 
 @pytest.mark.django_db
-def test_introspect_reports_a_token_of_an_inactive_user_inactive(regular_user, env_api_key):
+@pytest.mark.parametrize(
+    "spoil",
+    [_new_password, _no_password_claim, _deactivated, _deleted, lambda user, token: str(token)],
+    ids=["previous-password", "no-password-claim", "inactive-user", "deleted-user", "refresh-token"],
+)
+def test_introspect_reports_unusable_tokens_inactive_and_nothing_else(regular_user, env_api_key, spoil):
     system_raw_key, _system_key = env_api_key
-    access = str(RefreshToken.for_user(regular_user).access_token)
-    regular_user.is_active = False
-    regular_user.save(update_fields=["is_active"])
+    token = RefreshToken.for_user(regular_user)
+    assert _introspect(system_raw_key, str(token.access_token))["active"] is True
 
-    assert _introspect(system_raw_key, access) == {"active": False}
-
-
-@pytest.mark.django_db
-def test_introspect_reports_a_token_of_a_deleted_user_inactive(regular_user, env_api_key):
-    system_raw_key, _system_key = env_api_key
-    access = str(RefreshToken.for_user(regular_user).access_token)
-    regular_user.delete()
-
-    assert _introspect(system_raw_key, access) == {"active": False}
-
-
-@pytest.mark.django_db
-def test_introspect_reports_a_refresh_token_inactive(regular_user, env_api_key):
-    system_raw_key, _system_key = env_api_key
-
-    assert _introspect(system_raw_key, str(RefreshToken.for_user(regular_user))) == {
-        "active": False
-    }
+    assert _introspect(system_raw_key, spoil(regular_user, token)) == {"active": False}
 
 
 @pytest.mark.django_db

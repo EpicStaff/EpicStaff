@@ -119,50 +119,38 @@ class TestRulesetAttrLayout:
 
 
 class TestApplyRulesetSize:
-    def test_filesystem_only_passes_size_8(self, fake_libc, monkeypatch):
-        _pin_abi(monkeypatch, 8)
-
-        _apply()
-
-        assert fake_libc.ruleset_attr_size == 8
-        assert fake_libc.ruleset_attr["handled_access_net"] == 0
-        assert fake_libc.ruleset_attr["scoped"] == 0
-        assert fake_libc.restricted
-
-    def test_network_without_signal_isolation_passes_size_16(self, fake_libc, monkeypatch):
-        _pin_abi(monkeypatch, 4)
-
-        _apply(allowed_tcp_ports=(9000,))
-
-        assert fake_libc.ruleset_attr_size == 16
-        assert fake_libc.ruleset_attr["handled_access_net"] == _NET_BITS
-        assert fake_libc.ruleset_attr["scoped"] == 0
-        assert fake_libc.net_rule_ports == [9000]
-
-    def test_signal_isolation_only_passes_size_24_with_net_unhandled(
-        self, fake_libc, monkeypatch
+    @pytest.mark.parametrize(
+        ("abi", "apply_kwargs", "expected_size", "expected_net", "expected_scope", "expected_ports"),
+        [
+            (8, {}, 8, 0, 0, []),
+            (4, {"allowed_tcp_ports": (9000,)}, 16, _NET_BITS, 0, [9000]),
+            (6, {"isolate_signals": True}, 24, 0, _SIGNAL_ISOLATION_BITS, []),
+            (
+                6,
+                {"allowed_tcp_ports": (9000,), "isolate_signals": True},
+                24,
+                _NET_BITS,
+                _SIGNAL_ISOLATION_BITS,
+                [9000],
+            ),
+        ],
+        ids=["filesystem-only", "network", "signal-isolation", "signal-isolation-and-network"],
+    )
+    def test_ruleset_handed_to_the_kernel(
+        self, fake_libc, monkeypatch, abi, apply_kwargs, expected_size, expected_net,
+        expected_scope, expected_ports,
     ):
-        _pin_abi(monkeypatch, 6)
+        """The attr size tells the kernel which fields exist, so an older kernel is
+        never handed fields it does not know."""
+        _pin_abi(monkeypatch, abi)
 
-        _apply(isolate_signals=True)
+        _apply(**apply_kwargs)
 
-        assert fake_libc.ruleset_attr_size == 24
-        assert fake_libc.ruleset_attr["scoped"] == _SIGNAL_ISOLATION_BITS
-        assert fake_libc.ruleset_attr["handled_access_net"] == 0
-        assert fake_libc.net_rule_ports == []
+        assert fake_libc.ruleset_attr_size == expected_size
+        assert fake_libc.ruleset_attr["handled_access_net"] == expected_net
+        assert fake_libc.ruleset_attr["scoped"] == expected_scope
+        assert fake_libc.net_rule_ports == expected_ports
         assert fake_libc.restricted
-
-    def test_signal_isolation_with_network_passes_size_24_with_both(
-        self, fake_libc, monkeypatch
-    ):
-        _pin_abi(monkeypatch, 6)
-
-        _apply(allowed_tcp_ports=(9000,), isolate_signals=True)
-
-        assert fake_libc.ruleset_attr_size == 24
-        assert fake_libc.ruleset_attr["scoped"] == _SIGNAL_ISOLATION_BITS
-        assert fake_libc.ruleset_attr["handled_access_net"] == _NET_BITS
-        assert fake_libc.net_rule_ports == [9000]
 
     def test_isolation_bits_match_the_kernel_uapi(self):
         """Pin the include/uapi/linux/landlock.h values, for CI hosts without ABI 6."""
