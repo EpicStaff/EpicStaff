@@ -601,3 +601,108 @@ async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
 
     text_chunks = [c for c in result if c.delta_text]
     assert text_chunks[0].delta_text == "hi"
+
+
+# ---------------------------------------------------------------------------
+# Tests — per-config token prices
+# ---------------------------------------------------------------------------
+
+UNPRICED_MODEL = "openai/epicstaff-test-gateway-model-without-price"
+PRICED_MODEL_CONFIG = {
+    "model": UNPRICED_MODEL,
+    "api_key": "sk-test",
+    "input_cost_per_token": 0.001,
+    "output_cost_per_token": 0.002,
+}
+
+
+async def test_usage_cost_uses_the_config_prices_when_both_are_set():
+    """An unpriced model gets its cost from the config; cached prompt tokens are
+    already inside prompt_tokens and billed once, at the input price."""
+    chunks_in = [
+        _chunk(
+            finish_reason="stop",
+            usage={
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "prompt_tokens_details": {"cached_tokens": 40},
+            },
+        ),
+    ]
+    pool = make_pool_with_router(make_router(chunks_in))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], PRICED_MODEL_CONFIG)
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(100 * 0.001 + 20 * 0.002)
+
+
+async def test_usage_cost_prefers_the_config_prices_over_the_price_map():
+    chunks_in = [
+        _chunk(finish_reason="stop", usage={"prompt_tokens": 10, "completion_tokens": 5}),
+    ]
+    pool = make_pool_with_router(make_router(chunks_in))
+    model_config = {**PRICED_MODEL_CONFIG, "model": "openai/gpt-4o"}
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], model_config)
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(10 * 0.001 + 5 * 0.002)
+
+
+@pytest.mark.parametrize(
+    "prices",
+    [{"input_cost_per_token": 0.001}, {"output_cost_per_token": 0.002}],
+    ids=["input-only", "output-only"],
+)
+async def test_usage_cost_falls_back_to_the_price_map_without_both_prices(prices):
+    chunks_in = [
+        _chunk(finish_reason="stop", usage={"prompt_tokens": 10, "completion_tokens": 5}),
+    ]
+    pool = make_pool_with_router(make_router(chunks_in))
+    model_config = {"model": "openai/gpt-4o", "api_key": "sk-test", **prices}
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], model_config)
+
+    prompt_cost, completion_cost = litellm.cost_per_token(
+        model="openai/gpt-4o", prompt_tokens=10, completion_tokens=5
+    )
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(prompt_cost + completion_cost)
+    assert usage_chunks[0].usage["total_cost_usd"] > 0
+
+
+async def test_unpriced_model_without_config_prices_costs_zero():
+    chunks_in = [
+        _chunk(finish_reason="stop", usage={"prompt_tokens": 10, "completion_tokens": 5}),
+    ]
+    pool = make_pool_with_router(make_router(chunks_in))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], {"model": UNPRICED_MODEL, "api_key": "sk-test"})
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert usage_chunks[0].usage["total_cost_usd"] == 0.0
+
+
+async def test_token_prices_are_not_forwarded_to_acompletion():
+    recorded_calls = []
+    router = MagicMock()
+    router.model_list = [{"model_name": "synth-model-001"}]
+
+    async def capturing_acompletion(**kwargs):
+        recorded_calls.append(kwargs)
+        return _aiter([_chunk(finish_reason="stop")])
+
+    router.acompletion = capturing_acompletion
+    pool = make_pool_with_router(router)
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    await collect(client, MESSAGES, [], {**PRICED_MODEL_CONFIG, "temperature": 0.3})
+
+    assert "input_cost_per_token" not in recorded_calls[0]
+    assert "output_cost_per_token" not in recorded_calls[0]
+    assert recorded_calls[0]["temperature"] == 0.3

@@ -25,6 +25,7 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.validators.extra_headers_validator import validate_extra_headers
+from tables.validators.token_price_validator import validate_token_prices_set_together
 
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
@@ -139,6 +140,17 @@ class LLMConfigSerializer(
         exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
         extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # A PATCH may send one price; the other one is then the stored value.
+        validate_token_prices_set_together(
+            attrs.get("input_cost_per_token", getattr(self.instance, "input_cost_per_token", None)),
+            attrs.get(
+                "output_cost_per_token", getattr(self.instance, "output_cost_per_token", None)
+            ),
+        )
+        return attrs
 
 
 class LLMModelSerializer(

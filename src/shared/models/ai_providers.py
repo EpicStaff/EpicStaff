@@ -4,6 +4,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LLMConfigData(BaseModel):
+    """LLM settings a run sends to the agent and crew services.
+
+    The token prices are cost-only and are never forwarded to litellm's completion
+    call, which would treat them as custom pricing and register them in its
+    process-wide price map.
+    """
+
     model: str
     timeout: float | int | None = None
     temperature: float | None = None
@@ -22,6 +29,12 @@ class LLMConfigData(BaseModel):
     Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
+    input_cost_per_token: float | None = None
+    """USD per prompt token. Used for cost, together with output_cost_per_token,
+    instead of litellm's price map; null means litellm's price map."""
+    output_cost_per_token: float | None = None
+    """USD per completion token. Used for cost, together with input_cost_per_token,
+    instead of litellm's price map; null means litellm's price map."""
 
     model_config = ConfigDict(from_attributes=True)
 

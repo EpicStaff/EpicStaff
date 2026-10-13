@@ -543,6 +543,8 @@ class ConverterService(metaclass=SingletonMeta):
                 api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
                 extra_headers=config.extra_headers,
+                input_cost_per_token=config.input_cost_per_token,
+                output_cost_per_token=config.output_cost_per_token,
             ),
         )
 

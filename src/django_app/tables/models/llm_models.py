@@ -11,6 +11,7 @@ from tables.models.tag_models import (
     RealtimeConfigTag,
     RealtimeTranscriptionConfigTag,
 )
+from tables.validators.finite_number_validator import validate_finite_number
 
 
 class LLMModel(OrgScopedModel, models.Model):
@@ -106,6 +107,20 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
     )
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
+    # Not on DefaultLLMConfig on purpose: fill_with_defaults only copies the default
+    # model's fields, so a price is never inherited from the platform defaults.
+    input_cost_per_token = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[validate_finite_number, MinValueValidator(0.0)],
+        help_text="USD per prompt token. Null uses litellm's price map. Set together with output_cost_per_token.",
+    )
+    output_cost_per_token = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[validate_finite_number, MinValueValidator(0.0)],
+        help_text="USD per completion token. Null uses litellm's price map. Set together with input_cost_per_token.",
+    )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
     # Nullable because configs created before this column existed have no known
@@ -117,6 +132,15 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
             models.UniqueConstraint(
                 fields=["org", "custom_name"],
                 name="unique_llmconfig_name_per_org",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(input_cost_per_token__isnull=True, output_cost_per_token__isnull=True)
+                    | models.Q(
+                        input_cost_per_token__isnull=False, output_cost_per_token__isnull=False
+                    )
+                ),
+                name="llmconfig_token_prices_set_together",
             ),
         ]
 

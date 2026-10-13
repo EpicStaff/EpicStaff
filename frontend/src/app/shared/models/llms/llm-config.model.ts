@@ -17,6 +17,10 @@ export interface GetLlmConfigRequest extends AuthorshipFields {
     timeout: number | null;
     is_visible: boolean;
     extra_headers?: Record<string, string>;
+    /** USD per token; null means the provider's published pricing. Set together with `output_cost_per_token`. */
+    input_cost_per_token: number | null;
+    /** USD per token; null means the provider's published pricing. Set together with `input_cost_per_token`. */
+    output_cost_per_token: number | null;
     tags: Tag[];
     /** Read-only ISO 8601 creation time; null for configs created before it was recorded. Never sent back. */
     created_at: string | null;
@@ -37,6 +41,8 @@ export interface CreateLLMConfigRequest {
     timeout?: number | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
+    input_cost_per_token?: number | null;
+    output_cost_per_token?: number | null;
     tags?: Tag[];
 }
 
@@ -56,5 +62,7 @@ export interface UpdateLLMConfigRequest {
     timeout?: number | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
+    input_cost_per_token?: number | null;
+    output_cost_per_token?: number | null;
     tags?: Tag[];
 }

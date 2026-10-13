@@ -17,6 +17,7 @@ from tables.models.realtime_models import (
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.validators.extra_headers_validator import validate_extra_headers
+from tables.validators.token_price_validator import validate_token_prices_set_together
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -59,6 +60,13 @@ class LLMConfigImportSerializer(BaseConfigImportSerializer):
         # its own creation time, so re-imports would stop matching it and duplicate it.
         exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
         extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        validate_token_prices_set_together(
+            attrs.get("input_cost_per_token"), attrs.get("output_cost_per_token")
+        )
+        return attrs
 
 
 class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):

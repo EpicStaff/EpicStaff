@@ -22,6 +22,8 @@ export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {
         seed: null,
         timeout: null,
         is_visible: true,
+        input_cost_per_token: null,
+        output_cost_per_token: null,
         tags: [],
         created_at: null,
         created_by: null,

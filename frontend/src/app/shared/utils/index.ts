@@ -13,4 +13,5 @@ export * from './import-preview.util';
 export * from './json-parser.util';
 export * from './retry-after.util';
 export * from './role-permissions-to-set.util';
+export * from './token-price.util';
 export * from './unique-name.util';

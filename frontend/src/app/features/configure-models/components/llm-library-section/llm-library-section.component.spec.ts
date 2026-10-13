@@ -51,6 +51,8 @@ const LLM_CONFIG: GetLlmConfigRequest = {
     seed: null,
     timeout: null,
     is_visible: true,
+    input_cost_per_token: null,
+    output_cost_per_token: null,
     tags: [],
     created_at: '2026-03-12T13:28:23Z',
     created_by: LLM_OWNER,

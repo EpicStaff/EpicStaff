@@ -17,9 +17,11 @@ import {
     SliderWithStepperComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
+import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
+import { perMillionToPerToken } from '@shared/utils';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -68,6 +70,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     readonly dialogRef = inject(DialogRef);
     readonly data = inject<{ initialTab?: ConfigTab }>(DIALOG_DATA, { optional: true });
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+    protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
 
     activeTab = signal<ConfigTab>(this.data?.initialTab ?? 'llm');
     selectedProvider = signal<RealtimeProvider>('openai');
@@ -154,6 +157,13 @@ export class AddConfigurationDialogComponent implements OnInit {
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
+            pricing: this.fb.group(
+                {
+                    input_price_per_million: [null as number | null, [Validators.min(0)]],
+                    output_price_per_million: [null as number | null, [Validators.min(0)]],
+                },
+                { validators: pricePairValidator('input_price_per_million', 'output_price_per_million') }
+            ),
         });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: KeyboardEvent) => {
@@ -193,9 +203,14 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.llmForm.markAllAsTouched();
             return;
         }
+        const { pricing, ...config } = this.llmForm.value;
         this.isSubmitting.set(true);
         this.llmStorage
-            .createConfig(this.llmForm.value)
+            .createConfig({
+                ...config,
+                input_cost_per_token: perMillionToPerToken(pricing.input_price_per_million),
+                output_cost_per_token: perMillionToPerToken(pricing.output_price_per_million),
+            })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
