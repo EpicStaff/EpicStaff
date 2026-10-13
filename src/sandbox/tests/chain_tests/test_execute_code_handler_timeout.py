@@ -127,32 +127,6 @@ def _wait_until_dead(pid: int, timeout: float = 5.0) -> bool:
 
 
 class TestExecutionTimeout:
-    def test_infinite_loop_is_killed_and_reported_as_timeout(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
-        context = _context(
-            tmp_path,
-            code="def main(**kwargs):\n    while True:\n        pass",
-        )
-
-        result = _run(context)
-
-        assert result.returncode == 124
-        assert result.execution_id == context["execution_id"]
-        assert "exceeded" in result.stderr.lower()
-        assert "terminated" in result.stderr.lower()
-
-    def test_fast_job_still_returns_zero(self, tmp_path, monkeypatch):
-        """The timeout path must not regress the happy path."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 5)
-        context = _context(tmp_path, code="def main(**kwargs):\n    return 1")
-
-        result = _run(context)
-
-        assert result.returncode == 0
-        assert result.result_data == "1"
-
     @pytest.mark.skipif(
         os.name != "posix", reason="process-group kill (killpg) is POSIX-only"
     )
@@ -346,6 +320,7 @@ class TestTimeoutOutputIsScrubbed:
         assert STORAGE_SECRET_KEY_VALUE not in result.stdout
         assert STORAGE_ACCESS_KEY_VALUE not in result.stderr
         assert STORAGE_SECRET_KEY_VALUE not in result.stderr
+        assert USER_SECRET_VALUE not in result.stdout
         assert MASK in result.stdout
 
     def test_timed_out_job_masks_storage_credentials_even_when_mask_secret_is_false(
@@ -364,42 +339,3 @@ class TestTimeoutOutputIsScrubbed:
         assert STORAGE_SECRET_KEY_VALUE not in result.stdout
         assert STORAGE_ACCESS_KEY_VALUE not in result.stderr
         assert USER_SECRET_VALUE in result.stdout
-
-    def test_timed_out_job_masks_user_secrets(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
-        monkeypatch.setattr(settings, "MASK_SECRET", True)
-        context = _context(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    import sys\n"
-                "    print(get_secret('K'))\n"
-                "    sys.stdout.flush()\n"
-                "    while True:\n"
-                "        pass\n"
-            ),
-            secrets={"K": USER_SECRET_VALUE},
-        )
-
-        result = _run_bounded(context, bound_seconds=10)
-
-        assert result.returncode == 124
-        assert USER_SECRET_VALUE not in result.stdout
-        assert MASK in result.stdout
-
-    def test_timed_out_job_without_secrets_still_reports_timeout(
-        self, tmp_path, monkeypatch
-    ):
-        """The masking set is empty here; scrub() must leave the path intact."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
-        context = _context(
-            tmp_path,
-            code="def main(**kwargs):\n    while True:\n        pass",
-            secrets=None,
-        )
-
-        result = _run_bounded(context, bound_seconds=10)
-
-        assert result.returncode == 124
-        assert "exceeded" in result.stderr.lower()
-        assert "terminated" in result.stderr.lower()

@@ -5,7 +5,6 @@ pytest.importorskip(
     reason="POSIX-only: sandbox isolation requires pwd/landlock; runs in the Linux image",
 )
 
-import settings
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain, AbstractHandler
 from src.shared.models import CodeResultData
 from src.shared.models.storage_scope import StorageCredentials
