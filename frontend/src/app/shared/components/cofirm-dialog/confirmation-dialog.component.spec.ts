@@ -218,3 +218,24 @@ describe('ConfirmationDialogComponent verification', () => {
         expect(strong.textContent).toBe(phrase);
     });
 });
+
+describe('ConfirmationDialogComponent appearance', () => {
+    function container(fixture: ComponentFixture<ConfirmationDialogComponent>): HTMLElement {
+        return query(fixture, '.dialog-container') as HTMLElement;
+    }
+
+    it('is not raised by default', () => {
+        expect(container(render(BASE_DATA)).classList.contains('raised')).toBe(false);
+    });
+
+    it('is not raised with the default appearance named explicitly', () => {
+        expect(container(render({ ...BASE_DATA, appearance: 'default' })).classList.contains('raised')).toBe(false);
+    });
+
+    it('adds the raised class, beside its type, for the raised appearance', () => {
+        const classes = container(render({ ...BASE_DATA, appearance: 'raised' })).classList;
+
+        expect(classes.contains('raised')).toBe(true);
+        expect(classes.contains('danger')).toBe(true);
+    });
+});

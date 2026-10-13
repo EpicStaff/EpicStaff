@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
+import { CDT_EXPLANATION_LIMITS } from '../core/constants/cdt-explanation-limits';
 import { CdtExplanation } from '../core/models/classification-decision-table.model';
 import { NodeModel } from '../core/models/node.model';
 import { CdtExplanationCacheService } from './cdt-explanation-cache.service';
@@ -24,7 +25,7 @@ function tableNode(): NodeModel {
 
 function setUp({ isReadOnly, isPreview }: { isReadOnly: boolean; isPreview: boolean }) {
     const flowService = { nodes: signal<NodeModel[]>([tableNode()]), updateNode: vi.fn() };
-    const sidePanelService = { requestNodeAutosave: vi.fn() };
+    const sidePanelService = { requestCdtExplanationsSave: vi.fn() };
     const cache = {
         get: vi.fn((key: string) => (key === '42|cached' ? CACHED : null)),
         set: vi.fn(),
@@ -43,31 +44,61 @@ function setUp({ isReadOnly, isPreview }: { isReadOnly: boolean; isPreview: bool
     const scope = TestBed.inject(CdtExplanationStoreService).forNode({
         nodeId: 'node-1',
         backendId: 42,
-        liveStepKeys: new Set(['stored', 'cached', 'fresh']),
+        retainedStepKeys: new Set(['stored', 'cached', 'fresh']),
     });
 
     return { scope, flowService, sidePanelService, cache };
 }
 
 describe('CdtExplanationStoreService', () => {
-    it('writes a generated explanation to the node and asks for an autosave in an editable editor', () => {
+    it('writes a generated explanation to the node and asks for its explanations to be persisted in an editable editor', () => {
         const { scope, flowService, sidePanelService, cache } = setUp({ isReadOnly: false, isPreview: false });
 
-        scope.set('fresh', GENERATED);
+        expect(scope.set('fresh', GENERATED)).toBe(true);
 
         expect(cache.set).toHaveBeenCalledWith('42|fresh', GENERATED);
         expect(flowService.updateNode).toHaveBeenCalledTimes(1);
         expect(flowService.updateNode.mock.calls[0][0].explanations).toEqual({ fresh: GENERATED, stored: STORED });
-        expect(sidePanelService.requestNodeAutosave).toHaveBeenCalledTimes(1);
+        expect(sidePanelService.requestCdtExplanationsSave).toHaveBeenCalledExactlyOnceWith('node-1');
     });
 
-    it('writes nothing — node, autosave or cache — in a read-only editor', () => {
+    it('says so and keeps an explanation too long to store nowhere — node, persist or cache', () => {
+        const { scope, flowService, sidePanelService, cache } = setUp({ isReadOnly: false, isPreview: false });
+
+        const kept = scope.set('fresh', { ...GENERATED, text: 't'.repeat(CDT_EXPLANATION_LIMITS.maxTextLength + 1) });
+
+        expect(kept).toBe(false);
+        expect(flowService.updateNode).not.toHaveBeenCalled();
+        expect(sidePanelService.requestCdtExplanationsSave).not.toHaveBeenCalled();
+        expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('refuses one that would push an explanation already kept out of the stored map', () => {
+        const { flowService } = setUp({ isReadOnly: false, isPreview: false });
+        const big = { ...GENERATED, text: 't'.repeat(CDT_EXPLANATION_LIMITS.maxTextLength) };
+        const crowded = Object.fromEntries(
+            Array.from({ length: 52 }, (_, index) => [`stored-${String(index).padStart(2, '0')}`, big])
+        );
+        flowService.nodes.set([{ ...tableNode(), explanations: crowded } as NodeModel]);
+        const retained = new Set([...Object.keys(crowded), 'aaa-new']);
+        const crowdedScope = TestBed.inject(CdtExplanationStoreService).forNode({
+            nodeId: 'node-1',
+            backendId: 42,
+            retainedStepKeys: retained,
+        });
+
+        // Sorts first, so the stored map's size limit would cut the last kept one to fit it.
+        expect(crowdedScope.set('aaa-new', big)).toBe(false);
+        expect(flowService.updateNode).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing — node, persist or cache — in a read-only editor', () => {
         const { scope, flowService, sidePanelService, cache } = setUp({ isReadOnly: true, isPreview: false });
 
         scope.set('fresh', GENERATED);
 
         expect(flowService.updateNode).not.toHaveBeenCalled();
-        expect(sidePanelService.requestNodeAutosave).not.toHaveBeenCalled();
+        expect(sidePanelService.requestCdtExplanationsSave).not.toHaveBeenCalled();
         expect(cache.set).not.toHaveBeenCalled();
     });
 
