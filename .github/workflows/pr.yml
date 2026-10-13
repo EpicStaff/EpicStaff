@@ -227,10 +227,6 @@ jobs:
             exit 1
           fi
 
-  # This is the repository's only required status check (ruleset "Main PR"). A job
-  # skipped by `if:` reports conclusion `skipped`, and required status checks treat
-  # `skipped` as passing -- a workflow-level `paths:` filter would instead leave the
-  # check pending and block the merge.
   frontend-checks:
     needs: changes
     if: needs.changes.outputs.fe == 'true'
@@ -452,3 +448,30 @@ jobs:
     with:
       compose-file: src/docker-compose.yaml
       max-parallel: 2
+
+  # The only required status check, and only for pull requests into main (ruleset
+  # "Main"); on developer it is informational while the service tests are being
+  # tuned. Every other job here is skipped when its paths are untouched, and a
+  # required check that is skipped counts as passing, so requiring them directly
+  # would let a backend-only pull request merge with backend-tests red. This job
+  # always runs and fails if any job it waits on failed or was cancelled;
+  # `skipped` stays a pass.
+  pr-checks:
+    needs:
+      - changes
+      - check-cla-version
+      - check-cla
+      - check-external-urls
+      - check-ticket-references
+      - check-backend-notices
+      - check-rbac-boundary
+      - frontend-checks
+      - backend-tests
+      - sandbox-tests
+      - build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any check failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
