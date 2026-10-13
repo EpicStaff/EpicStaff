@@ -27,6 +27,7 @@ from tables.services.recycle_bin.presentation import BinPresentation, bin_presen
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import BinResource, bin_resources
 from tables.services.recycle_bin.restore_service import RestoreService
+from tables.services.recycle_bin.sources import RecycleBinSource
 
 # Seeing the bin is a read, restoring brings an item back (a create), and
 # purging finishes a delete. One bit per action, so the any-bit can() is exact.
@@ -62,7 +63,7 @@ class RecycleBinActionsMixin:
     move_to_recycle_bin itself.
     """
 
-    recycle_bin_resource_key: str
+    recycle_bin_resource_key: RecycleBinSource
     recycle_bin_entry_serializer_class = RecycleBinEntrySerializer
 
     def get_permissions(self):

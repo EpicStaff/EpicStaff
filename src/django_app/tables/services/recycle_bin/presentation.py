@@ -26,6 +26,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
+from tables.services.recycle_bin.sources import RecycleBinSource
 
 
 @dataclass(frozen=True)
@@ -329,7 +330,7 @@ def _secret_usage_details(ids: list[int], context: DetailContext) -> dict[int, l
 
 
 @cache
-def bin_presentations() -> dict[str, BinPresentation]:
+def bin_presentations() -> dict[RecycleBinSource, BinPresentation]:
     """Every recycle-bin resource's tab, keyed like `bin_resources()`.
 
     Every field is always sent, null when empty, so a tab shows the same lines
@@ -346,7 +347,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
     from tables.models import DocumentMetadata, KeyValueTableEntry
 
     return {
-        "flow": BinPresentation(
+        RecycleBinSource.FLOW: BinPresentation(
             detail_fields=(
                 DetailField("Description", ("description",)),
                 DetailField("Created", ("created_at",), "date"),
@@ -359,7 +360,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
             ),
         ),
         # Agents have no created/updated columns.
-        "agent": BinPresentation(
+        RecycleBinSource.AGENT: BinPresentation(
             detail_fields=(
                 DetailField("Description", ("description",)),
                 DetailField(
@@ -373,7 +374,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
             # An agent's own surfaces go to the bin with it and come back with it.
             content_sources=(ContentSource(Surface, "owner_agent_id", "name", "surface"),),
         ),
-        "surface": BinPresentation(
+        RecycleBinSource.SURFACE: BinPresentation(
             detail_fields=(
                 DetailField("Instructions", ("instructions",)),
                 DetailField("Owner agent", ("owner_agent__name",)),
@@ -392,14 +393,14 @@ def bin_presentations() -> dict[str, BinPresentation]:
                 ContentSource(SurfaceStorageItem, "surface_id", "storage_file__path", "file"),
             ),
         ),
-        "python_tool": BinPresentation(
+        RecycleBinSource.PYTHON_TOOL: BinPresentation(
             detail_fields=(
                 DetailField("Description", ("description",)),
                 DetailField("Created", ("created_at",), "date"),
                 DetailField("Last changed", ("updated_at",), "date"),
             ),
         ),
-        "mcp_tool": BinPresentation(
+        RecycleBinSource.MCP_TOOL: BinPresentation(
             detail_fields=(
                 DetailField("Server", ("transport",)),
                 DetailField("Tool name", ("tool_name",)),
@@ -407,7 +408,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
                 DetailField("Last changed", ("updated_at",), "date"),
             ),
         ),
-        "key_value_table": BinPresentation(
+        RecycleBinSource.KEY_VALUE_TABLE: BinPresentation(
             detail_fields=(
                 DetailField("Description", ("description",)),
                 DetailField("Created", ("created_at",), "date"),
@@ -417,7 +418,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
             # A table's keys can be private data, so only how many come back is shown.
             named_contents=False,
         ),
-        "collection": BinPresentation(
+        RecycleBinSource.COLLECTION: BinPresentation(
             detail_fields=(
                 DetailField("Description", ("description",)),
                 DetailField("Created", ("created_at",), "date"),
@@ -429,14 +430,14 @@ def bin_presentations() -> dict[str, BinPresentation]:
             ),
         ),
         # Never the value.
-        "secret": BinPresentation(
+        RecycleBinSource.SECRET: BinPresentation(
             detail_fields=(
                 DetailField("Created", ("created_at",), "date"),
                 DetailField("Last changed", ("updated_at",), "date"),
             ),
             extra_details=_secret_usage_details,
         ),
-        "realtime_channel": BinPresentation(
+        RecycleBinSource.REALTIME_CHANNEL: BinPresentation(
             detail_fields=(
                 DetailField("Phone number", ("twilio__phone_number",)),
                 DetailField("Account SID", ("twilio__account_sid",)),
@@ -451,7 +452,7 @@ def bin_presentations() -> dict[str, BinPresentation]:
             ),
             extra_details=_voice_channel_details,
         ),
-        "webhook_trigger": BinPresentation(
+        RecycleBinSource.WEBHOOK_TRIGGER: BinPresentation(
             detail_fields=(
                 DetailField("Provider", ("provider_type",)),
                 DetailField("Domain", ("ngrok__domain", "localhost__domain")),

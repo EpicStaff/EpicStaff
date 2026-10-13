@@ -23,6 +23,7 @@ from tables.serializers.knowledge_serializers import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
@@ -74,7 +75,7 @@ class SourceCollectionViewSet(
         "copy": Permission.CREATE,
         "available_rags": Permission.READ,
     }
-    recycle_bin_resource_key = "collection"
+    recycle_bin_resource_key = RecycleBinSource.COLLECTION
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""

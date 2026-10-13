@@ -9,7 +9,8 @@ Adding a resource to the recycle bin, and the test that fails if a step is misse
    restore reconnects them. The cost: every writable PrimaryKeyRelatedField pointing
    at the model must become a KeptLinkPrimaryKeyRelatedField or get an EXEMPT entry,
    caught by test_kept_reference_coverage.py.
-2. Registry: a BinResource in `bin_resources()` below.
+2. Registry: a RecycleBinSource member (sources.py), and a BinResource under it in
+   `bin_resources()` below.
 3. Presentation: a BinPresentation in `presentation.bin_presentations()` under the
    same key, even with no contents. Caught by
    test_recycle_bin_api.py::test_every_bin_resource_has_a_presentation.
@@ -36,6 +37,7 @@ from functools import cache
 
 from django.db.models import Model, Q
 from rbac.models.enums import ResourceType
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.soft_delete import keeps_references as model_keeps_references
 
 
@@ -89,7 +91,7 @@ class BinResource:
 
 
 @cache
-def bin_resources() -> dict[str, BinResource]:
+def bin_resources() -> dict[RecycleBinSource, BinResource]:
     """Every recycle-bin resource, keyed by the name the bin API uses."""
     from agents.models import AgentDefinition, Surface
     from tables.models import (
@@ -108,23 +110,23 @@ def bin_resources() -> dict[str, BinResource]:
     )
 
     return {
-        "flow": BinResource(Graph, "name", "org", ResourceType.FLOWS),
-        "python_tool": BinResource(
+        RecycleBinSource.FLOW: BinResource(Graph, "name", "org", ResourceType.FLOWS),
+        RecycleBinSource.PYTHON_TOOL: BinResource(
             PythonCodeTool, "name", "org", ResourceType.TOOLS, also_taken=Q(built_in=True)
         ),
-        "mcp_tool": BinResource(McpTool, "name", "org", ResourceType.TOOLS),
-        "agent": BinResource(AgentDefinition, "name", "org", ResourceType.AGENTS),
-        "surface": BinResource(
+        RecycleBinSource.MCP_TOOL: BinResource(McpTool, "name", "org", ResourceType.TOOLS),
+        RecycleBinSource.AGENT: BinResource(AgentDefinition, "name", "org", ResourceType.AGENTS),
+        RecycleBinSource.SURFACE: BinResource(
             Surface, "name", "org", ResourceType.SURFACES, owner_field="owner_agent"
         ),
-        "key_value_table": BinResource(
+        RecycleBinSource.KEY_VALUE_TABLE: BinResource(
             KeyValueTable, "name", "org", ResourceType.KEY_VALUE_TABLES, case_insensitive_names=True
         ),
-        "collection": BinResource(
+        RecycleBinSource.COLLECTION: BinResource(
             SourceCollection, "collection_name", "org", ResourceType.KNOWLEDGE_SOURCES
         ),
-        "secret": BinResource(Secret, "name", "org", ResourceType.SECRETS),
-        "realtime_channel": BinResource(
+        RecycleBinSource.SECRET: BinResource(Secret, "name", "org", ResourceType.SECRETS),
+        RecycleBinSource.REALTIME_CHANNEL: BinResource(
             RealtimeChannel,
             "name",
             "org",
@@ -132,7 +134,7 @@ def bin_resources() -> dict[str, BinResource]:
             unique_names=False,
             before_restore=drop_taken_phone_number,
         ),
-        "webhook_trigger": BinResource(
+        RecycleBinSource.WEBHOOK_TRIGGER: BinResource(
             WebhookTrigger,
             "path",
             "org",

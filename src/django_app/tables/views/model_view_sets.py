@@ -267,6 +267,7 @@ from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -552,7 +553,7 @@ class PythonCodeToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
-    recycle_bin_resource_key = "python_tool"
+    recycle_bin_resource_key = RecycleBinSource.PYTHON_TOOL
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -735,7 +736,7 @@ class GraphViewSet(
         "delete_by_uuid": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
-    recycle_bin_resource_key = "flow"
+    recycle_bin_resource_key = RecycleBinSource.FLOW
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -1719,7 +1720,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
 
     rbac_resource_type = ResourceType.VOICE
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
-    recycle_bin_resource_key = "realtime_channel"
+    recycle_bin_resource_key = RecycleBinSource.REALTIME_CHANNEL
 
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
@@ -2214,7 +2215,7 @@ class McpToolViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    recycle_bin_resource_key = "mcp_tool"
+    recycle_bin_resource_key = RecycleBinSource.MCP_TOOL
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
         **RECYCLE_BIN_ACTION_MAP,
@@ -2425,7 +2426,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
-    recycle_bin_resource_key = "webhook_trigger"
+    recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
     ).prefetch_related(*authorship_prefetches())
@@ -2633,7 +2634,7 @@ class SecretViewSet(
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
-    recycle_bin_resource_key = "secret"
+    recycle_bin_resource_key = RecycleBinSource.SECRET
     # system=True rows (e.g. org-level MinIO credentials) are internal to
     # storage_credentials and must never be visible through this API — not
     # even their existence. `Secret.objects` and `Secret.deleted_objects` (the
@@ -2759,7 +2760,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         "lookup_entries": Permission.READ,
         "usage": Permission.READ,
     }
-    recycle_bin_resource_key = "key_value_table"
+    recycle_bin_resource_key = RecycleBinSource.KEY_VALUE_TABLE
     queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
     # These actions never serialize a table, so they skip counting its entries and

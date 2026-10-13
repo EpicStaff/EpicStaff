@@ -9,23 +9,23 @@ from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult
 from tables.services.recycle_bin.bulk_service import RecycleBinBulkService
 from tables.services.recycle_bin.registry import bin_resources
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 
-STORAGE_SOURCE = "storage"
 #: The order the bin's tabs show them. Must name every bin (a test checks it against the registry).
 EMPTY_ORDER = (
-    "flow",
-    "agent",
-    "surface",
-    "python_tool",
-    "mcp_tool",
-    STORAGE_SOURCE,
-    "collection",
-    "key_value_table",
-    "secret",
-    "realtime_channel",
-    "webhook_trigger",
+    RecycleBinSource.FLOW,
+    RecycleBinSource.AGENT,
+    RecycleBinSource.SURFACE,
+    RecycleBinSource.PYTHON_TOOL,
+    RecycleBinSource.MCP_TOOL,
+    RecycleBinSource.STORAGE,
+    RecycleBinSource.COLLECTION,
+    RecycleBinSource.KEY_VALUE_TABLE,
+    RecycleBinSource.SECRET,
+    RecycleBinSource.REALTIME_CHANNEL,
+    RecycleBinSource.WEBHOOK_TRIGGER,
 )
 #: How long one request purges for, well inside a proxy's timeout; the client calls again
 #: while items remain. Each item commits on its own, so a cut-off call loses nothing.
@@ -58,7 +58,9 @@ class RecycleBinEmptyService:
         sources = []
         for source in EMPTY_ORDER:
             resource_type = (
-                ResourceType.FILES if source == STORAGE_SOURCE else resources[source].resource_type
+                ResourceType.FILES
+                if source == RecycleBinSource.STORAGE
+                else resources[source].resource_type
             )
             if effective.can(resource_type.value, Permission.READ) and effective.can(
                 resource_type.value, Permission.DELETE
@@ -80,7 +82,7 @@ class RecycleBinEmptyService:
             done_something = result.purged_count or result.failed
             if done_something and time.monotonic() >= until:
                 break
-            if source == STORAGE_SOURCE:
+            if source == RecycleBinSource.STORAGE:
                 purged = cls._empty_storage(org_id, actor, until)
             else:
                 purged = RecycleBinBulkService.purge_many(
@@ -102,7 +104,7 @@ class RecycleBinEmptyService:
         """The items still in `sources`' bins, counted as the bin lists them."""
         return sum(
             StorageRecycleBinService.top_level(org_id).count()
-            if source == STORAGE_SOURCE
+            if source == RecycleBinSource.STORAGE
             else RecycleBinService.binned(resources[source], org_id).count()
             for source in sources
         )

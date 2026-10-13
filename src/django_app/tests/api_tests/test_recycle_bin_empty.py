@@ -8,7 +8,8 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.test import APIClient
 from tables.models import Graph, Secret
-from tables.services.recycle_bin.empty_service import EMPTY_ORDER, STORAGE_SOURCE
+from tables.services.recycle_bin.empty_service import EMPTY_ORDER
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import bin_resources
 from tables.services.secrets import secret_service
@@ -122,7 +123,7 @@ def test_a_failed_item_is_reported_with_its_bin_and_the_rest_go(admin_client, ac
 
 
 def test_empty_names_every_bin_the_registry_has():
-    assert set(EMPTY_ORDER) == set(bin_resources()) | {STORAGE_SOURCE}
+    assert set(EMPTY_ORDER) == set(bin_resources()) | {RecycleBinSource.STORAGE}
 
 
 def test_a_bin_the_caller_can_delete_in_but_not_see_is_left_alone(django_user_model, acme):

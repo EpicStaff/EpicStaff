@@ -9,6 +9,7 @@ from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 from agents.models import AgentDefinition
@@ -22,7 +23,7 @@ class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
-    recycle_bin_resource_key = "agent"
+    recycle_bin_resource_key = RecycleBinSource.AGENT
     queryset = AgentDefinition.objects.select_related(
         "org", "llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
