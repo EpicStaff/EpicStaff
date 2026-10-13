@@ -11,6 +11,7 @@ import {
     VoiceSelectorComponent,
 } from '@shared/components';
 import { AVAILABLE_LANGUAGES, AVAILABLE_VOICES } from '@shared/constants';
+import { EnterSubmitDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { finalize } from 'rxjs';
 
@@ -36,13 +37,14 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
 @Component({
     selector: 'app-agent-definition-realtime-settings-dialog',
     imports: [
+        EnterSubmitDirective,
         FormsModule,
-        ReactiveFormsModule,
-        LanguageSelectorComponent,
-        VoiceSelectorComponent,
         HelpTooltipComponent,
-        SelectComponent,
+        LanguageSelectorComponent,
         RadioButtonComponent,
+        ReactiveFormsModule,
+        SelectComponent,
+        VoiceSelectorComponent,
     ],
     templateUrl: './agent-definition-realtime-settings-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

@@ -35,7 +35,13 @@ class EntityImportExportStrategy(ABC):
 
     @abstractmethod
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Any:
-        pass
+        """Persist the imported entity and return it.
+
+        A row this call inserts is authored by the importing user: pass
+        `created_by=resolve_author(kwargs.get("user"))` to the write that creates it. A
+        row it updates in place (a flow replaced by uuid) or reuses keeps its author, or
+        the lack of one.
+        """
 
     def import_entity(
         self,
@@ -57,8 +63,8 @@ class EntityImportExportStrategy(ABC):
 
         # The exported created_by references a user id from the source
         # system; it may not exist here (e.g. its org was deleted), which
-        # would otherwise fail FK validation in create_entity. Drop it and
-        # stamp the importing user on the freshly created instance instead.
+        # would otherwise fail FK validation in create_entity. Drop it;
+        # create_entity authors the rows it inserts with the importing user.
         data = {k: v for k, v in data.items() if k != "created_by"}
 
         settings_kwargs = vars(settings) if settings is not None else {}
@@ -72,17 +78,6 @@ class EntityImportExportStrategy(ABC):
 
             instance = self.create_entity(data, id_mapper, **create_kwargs)
 
-        user = kwargs.get("user")
-        # Fresh instances arrive without an author (created_by is dropped above); a
-        # row that create_entity updated in place (graph replace) keeps its own.
-        if (
-            user is not None
-            and hasattr(instance, "created_by_id")
-            and instance.created_by_id is None
-        ):
-            instance.created_by = user
-            instance.save(update_fields=["created_by"])
-
         return instance
 
     def find_existing(
@@ -93,6 +88,15 @@ class EntityImportExportStrategy(ABC):
         Return existing instance or None.
         """
         return None
+
+    def nested_entity_types(self, data: dict) -> tuple[EntityType, ...]:
+        """Return entity types `create_entity` also creates for this entry.
+
+        The import services gate a new entry on CREATE for its own type and for
+        each of these, so a row created as part of another needs the same
+        permission it would need on its own.
+        """
+        return ()
 
     def get_org_scope_q(self, org_id: int) -> Q:
         """Q applied to find_existing lookups to scope reuse to the active org.

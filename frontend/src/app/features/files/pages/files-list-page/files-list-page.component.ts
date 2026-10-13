@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, untracked } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, PRIMARY_OUTLET, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent, TabButtonComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -54,8 +54,8 @@ export class FilesListPageComponent {
             isPermitted: () => this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read),
         },
         {
-            label: 'Storage',
-            link: 'storage',
+            label: 'Files',
+            link: 'files',
             isPermitted: () => this.permissionService.can(ResourceCode.Files, ActionCode.Read),
         },
         {
@@ -76,9 +76,12 @@ export class FilesListPageComponent {
     );
 
     // The one search box means something different on each tab, so a term never carries over a tab switch.
+    // The tab is the segment after `/storage`; a substring match would also hit the `path` query of the Files tab.
     private readonly activeTabLink = computed(() => {
         const url = this.currentUrl();
-        return this.tabs.find((tab) => url?.includes(`/${tab.link}`))?.link ?? null;
+        if (!url) return null;
+        const tabSegment = this.router.parseUrl(url).root.children[PRIMARY_OUTLET]?.segments[1]?.path;
+        return this.tabs.find((tab) => tab.link === tabSegment)?.link ?? null;
     });
     // Key-Value Tables searches keys in its own grid header, next to "Add entry".
     readonly showSearch = computed(() => this.activeTabLink() !== 'key-value-tables');
@@ -88,8 +91,8 @@ export class FilesListPageComponent {
     });
 
     activeTabBtn = computed(() => {
-        const url = this.currentUrl();
-        if (url?.includes('/storage')) {
+        const tabLink = this.activeTabLink();
+        if (tabLink === 'files') {
             const canCreateFiles = this.permissionService.can(ResourceCode.Files, ActionCode.Create);
             return {
                 label: 'Add files',
@@ -98,7 +101,7 @@ export class FilesListPageComponent {
             };
         }
 
-        if (url?.includes('/knowledge-sources')) {
+        if (tabLink === 'knowledge-sources') {
             const canCreateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Create);
             const canUpdateCollection = this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Update);
             return {

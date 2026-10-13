@@ -1,6 +1,6 @@
 import { computed, Injectable, Signal, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
-import { GetPythonCodeRequest, NodeType } from '@shared/models';
+import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../features/flows/models/graph.model';
@@ -20,6 +20,8 @@ import {
     StartNodeModel,
 } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
+import { PythonNode } from '../core/models/python-node.model';
+import { GetWebhookTriggerNodeRequest } from '../core/models/webhook-trigger';
 
 export interface FlattenedPort {
     nodeId: string;
@@ -47,8 +49,11 @@ export class FlowService {
      */
     private readonly savedGraphSource = signal<Signal<GraphDto | null> | null>(null);
     private readonly savedGraph = computed(() => this.savedGraphSource()?.() ?? null);
-    private readonly savedWebhookPythonCodeByNodeId = computed(
-        () => new Map((this.savedGraph()?.webhook_trigger_node_list ?? []).map((node) => [node.id, node.python_code]))
+    private readonly savedWebhookTriggerNodeById = computed(
+        () => new Map((this.savedGraph()?.webhook_trigger_node_list ?? []).map((node) => [node.id, node]))
+    );
+    private readonly savedPythonNodeById = computed(
+        () => new Map((this.savedGraph()?.python_node_list ?? []).map((node) => [node.id, node]))
     );
     /** Whether the editor knows what the backend stores for this graph (see `bindSavedGraph`). */
     public readonly hasSavedGraph = computed(() => this.savedGraph() !== null);
@@ -96,12 +101,21 @@ export class FlowService {
     }
 
     /**
-     * The Python code (with its row id) the backend has stored for webhook trigger node `backendId`; null
-     * for a node that is not in the saved graph (never saved, or deleted).
+     * The webhook trigger node `backendId` as the backend stores it (its code, libraries, secrets and storage
+     * flag); null for a node that is not in the saved graph (never saved, or deleted).
      */
-    public savedWebhookPythonCode(backendId: number | null): GetPythonCodeRequest | null {
+    public savedWebhookTriggerNode(backendId: number | null): GetWebhookTriggerNodeRequest | null {
         if (backendId == null) return null;
-        return this.savedWebhookPythonCodeByNodeId().get(backendId) ?? null;
+        return this.savedWebhookTriggerNodeById().get(backendId) ?? null;
+    }
+
+    /**
+     * The Python node `backendId` as the backend stores it (its code, libraries, secrets and storage flag);
+     * null for a node that is not in the saved graph (never saved, or deleted).
+     */
+    public savedPythonNode(backendId: number | null): PythonNode | null {
+        if (backendId == null) return null;
+        return this.savedPythonNodeById().get(backendId) ?? null;
     }
 
     public setFlow(flow: FlowModel) {
@@ -742,14 +756,6 @@ export class FlowService {
 
                 connectionIdsToRemove.add(connection.id);
             });
-            // Auto-delete conditional edge nodes that lose their source connection
-            for (const conn of flow.connections) {
-                if (!connectionIdsToRemove.has(conn.id)) continue;
-                const targetNode = flow.nodes.find((n) => n.id === conn.targetNodeId);
-                if (targetNode?.type === NodeType.EDGE) {
-                    nodeIdsToRemove.add(targetNode.id);
-                }
-            }
 
             // Track removed connections for decision table cleanup
             const removedConnections: ConnectionModel[] = [];

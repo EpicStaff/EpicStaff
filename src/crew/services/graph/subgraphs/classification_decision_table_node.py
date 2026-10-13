@@ -1,8 +1,6 @@
 import itertools
 import json
 import re
-import uuid
-from dataclasses import asdict
 from typing import Any
 
 import litellm
@@ -24,6 +22,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 # litellm reports json_schema support for these providers, but their APIs reject it
 # ("This response_format type is unavailable now") and only accept json_object.
@@ -125,6 +124,7 @@ class ClassificationDecisionTableNodeSubgraph:
         stop_event: StopEvent,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -135,37 +135,24 @@ class ClassificationDecisionTableNodeSubgraph:
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
         )
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
-        """Publish a GraphMessage directly to Redis.
+        """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead - and, since that
+        astream, so we write to Redis directly instead - and, since that
         also means _emit_session_audit_event's own interception point (the
         parent's astream loop) never sees these chunks either, dispatch to
         the audit pipeline explicitly here too, right alongside the primary
-        publish (same data dict, same uuid, so both pipelines agree on the
-        event's identity)."""
+        write (the same encoded message, so both pipelines agree on the
+        event's identity and content)."""
         if self.redis_service is None:
             return
+        data = graph_message.to_payload()
+        encoded_data = GraphMessage.encode_payload(data)
+        self.redis_service.add_graph_message(data["uuid"], encoded_data)
         try:
-            data = asdict(graph_message)
-        except (TypeError, Exception) as e:
-            logger.warning(f"Failed to serialize GraphMessage via asdict: {e}")
-            data = {
-                "session_id": graph_message.session_id,
-                "name": graph_message.name,
-                "execution_order": graph_message.execution_order,
-                "message_data": graph_message.message_data
-                if isinstance(graph_message.message_data, dict)
-                else {
-                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
-                },
-                "timestamp": graph_message.timestamp,
-            }
-        data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
-        try:
-            emit_session_audit_event(data)
+            emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
             # Audit must never break the primary pipeline.
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
@@ -256,6 +243,7 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -383,6 +371,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "variables": state["variables"].model_dump(),
             },
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -443,6 +432,7 @@ def main(**kwargs) -> dict:
             python_code_data=python_code_data,
             inputs={"variables": variables_dict},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:

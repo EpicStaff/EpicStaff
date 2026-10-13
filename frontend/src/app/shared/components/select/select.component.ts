@@ -30,6 +30,8 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** CSS color (e.g. `var(--success-color)`) of a dot shown before the name, in the trigger, options and readonly value. */
+    dotColor?: string;
     /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
     trailingActionIcon?: string;
 }

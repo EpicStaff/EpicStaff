@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { EnterSubmitDirective } from '@shared/directives';
 import { GetRealtimeTranscriptionModelRequest, LLMProvider } from '@shared/models';
 import { TranscriptionModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
@@ -32,6 +33,7 @@ export interface CreateTranscriptionModelDialogData {
         ButtonComponent,
         TooltipComponent,
         ValidationErrorsComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './create-transcription-model-modal.component.html',
     styleUrls: ['./create-transcription-model-modal.component.scss'],

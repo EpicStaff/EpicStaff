@@ -58,7 +58,7 @@ class Migration(migrations.Migration):
                 to="tables.graph",
             ),
         ),
-        migrations.RunPython(deduplicate_constraints, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(deduplicate_constraints, reverse_code=migrations.RunPython.noop, elidable=True),
         migrations.AddConstraint(
             model_name="conditionaledge",
             constraint=models.UniqueConstraint(

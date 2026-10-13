@@ -14,56 +14,6 @@
         align-items: center;
     }
 
-    &__header {
-        padding: 1rem 3rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid var(--color-divider-subtle);
-    }
-
-    &__header-name {
-        width: calc(60% - 2rem);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        overflow: auto;
-        scrollbar-gutter: stable;
-    }
-
-    &__header-label {
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-    }
-
-    &__name-input {
-        height: 2.5rem;
-        padding: 0 1rem;
-        border-radius: 4px;
-        border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
-        color: var(--color-text-primary);
-        font-size: 1.25rem;
-        transition: border-color 0.2s ease;
-
-        &:focus {
-            outline: none;
-            border-color: var(--accent-color);
-        }
-
-        &::placeholder {
-            color: var(--color-input-text-placeholder);
-        }
-    }
-
-    &__name-readonly {
-        height: 2.5rem;
-        display: flex;
-        align-items: center;
-        color: var(--color-text-primary);
-        font-size: 1.25rem;
-    }
-
     &__action {
         border-radius: 50%;
         border: 1px solid var(--accent-color);
@@ -79,22 +29,11 @@
             width: 1.75rem;
             height: 1.75rem;
         }
-
-        &--large {
-            width: 2.5rem;
-            height: 2.5rem;
-            padding: 0.75rem;
-        }
-    }
-
-    &__layout {
-        display: flex;
-        overflow: hidden;
-        flex-grow: 1;
     }
 
     &__main-wrapper {
-        flex: 0 0 60%;
+        flex: 1;
+        min-height: 0;
         min-width: 0;
         overflow: hidden;
     }
@@ -105,7 +44,7 @@
         flex: 1;
         min-height: 0;
         overflow: hidden;
-        margin: 1.5rem 2.5rem 1.5rem 3rem;
+        margin: 1.5rem 3rem;
         row-gap: 1.875rem;
     }
 
@@ -132,25 +71,38 @@
 
     &__section-header {
         display: flex;
+        flex-shrink: 0;
         justify-content: space-between;
         align-items: center;
-        overflow: auto;
+        column-gap: 1rem;
+        // Never scrolls: overflow is only non-visible so scrollbar-gutter can reserve the same
+        // inline-end gutter as the lists below (app-list, .rags), keeping the right-most action
+        // aligned with the list's right edge whatever the browser's scrollbar width is.
+        overflow: hidden;
         scrollbar-gutter: stable;
     }
 
     &__section-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         font-size: 0.75rem;
         color: var(--color-text-primary);
     }
 
     &__section-actions {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
         column-gap: 0.5rem;
     }
 
-    &__files {
-        width: 503px;
+    &__file-type-filter {
+        // A definite width, not flex-basis: Firefox sizes the content-sized actions row from
+        // the items' width/content and ignores flex-basis, which made the row 24px too narrow.
+        flex: none;
+        width: 7.5rem;
     }
 
     // empty page

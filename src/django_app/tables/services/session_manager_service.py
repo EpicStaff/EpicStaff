@@ -4,7 +4,6 @@ from django.db import transaction
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
-    ConditionalEdgeData,
     EdgeData,
     GraphData,
     GraphSessionMessageData,
@@ -30,7 +29,6 @@ from tables.models.graph_models import (
     AgentNode,
     ClassificationConditionGroup,
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     GraphSessionMessage,
@@ -253,10 +251,22 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             # TODO: add ping or waiting for crew to accept connections
 
+            # Issue temporary storage credentials if needed
+            from storage_credentials.services.session_credential_service import (
+                session_credential_service,
+            )
+
+            storage_credentials = session_credential_service.issue_for_session(
+                session_data=session_data,
+                session_orm=session,
+                org=graph.org,
+            )
+
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
+                storage_credentials=storage_credentials,
             )
             required_listeners = 2
             if received_n != required_listeners:
@@ -303,9 +313,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 created_at=created_at_dt,
             )
 
-            self.redis_service.publish_user_graph_message(
-                session.id, str(graph_session_message_data.uuid), data
-            )
+            self.redis_service.publish_user_graph_message(session.id, data)
 
         else:
             raise ValueError(f"Unsupported message_type: {data['message_data']['message_type']}")
@@ -344,9 +352,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         key_value_node_list = KeyValueNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(graph=graph.pk)
         edge_list = Edge.objects.filter(graph=graph.pk)
-        conditional_edge_list = ConditionalEdge.objects.filter(graph=graph.pk).select_related(
-            "python_code"
-        )
         decision_table_node_list = DecisionTableNode.objects.filter(
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
@@ -477,15 +482,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             + [n.next_error_node_id for n in classification_decision_table_node_list]
             + [e.start_node_id for e in edge_list]
             + [e.end_node_id for e in edge_list]
-            + [e.source_node_id for e in conditional_edge_list]
             + condition_group_next_ids
             + classification_condition_group_next_ids
         )
         missing_ids = [i for i in edge_referenced_ids if i is not None and i not in name_cache]
         if missing_ids:
-            name_cache.update(resolve_node_names(missing_ids))
+            name_cache.update(resolve_node_names(missing_ids, graph_ids=[graph.pk]))
 
-        resolver = NodeNameResolver(cache=name_cache)
+        resolver = NodeNameResolver(cache=name_cache, graph_id=graph.pk)
         """
         TODO: future improvements: use cleaner approach
         """
@@ -506,7 +510,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         webhook_trigger_node_data_list = [
             cv.convert_webhook_trigger_node_to_pydantic(
-                webhook_trigger_node=item, resolver=resolver
+                webhook_trigger_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in webhook_trigger_node_list
         ]
@@ -583,15 +590,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         if entrypoint is None:
             raise GraphEntryPointException()
 
-        conditional_edge_data_list: list[ConditionalEdgeData] = []
-        for item in conditional_edge_list:
-            if item.source_node_id is None:
-                logger.warning(f"Conditional edge {item.pk} has no source_node_id, skipping.")
-                continue
-            conditional_edge_data_list.append(
-                cv.convert_conditional_edge_to_pydantic(item, resolver=resolver)
-            )
-
         if start_node_obj is None and entrypoint is None:
             raise GraphEntryPointException()
 
@@ -653,7 +651,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             task_node_list=task_node_data_list,
             agent_node_list=agent_node_data_list,
             edge_list=edge_data_list,
-            conditional_edge_list=conditional_edge_data_list,
             decision_table_node_list=decision_table_node_data_list,
             subgraph_node_list=subgraph_node_data_list,
             entrypoint=entrypoint,

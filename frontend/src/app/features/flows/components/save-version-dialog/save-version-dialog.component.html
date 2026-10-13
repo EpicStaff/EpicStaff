@@ -1,4 +1,8 @@
-<div class="dialog-container">
+<div
+    class="dialog-container"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="form.invalid"
+>
     <div class="dialog-header">
         <h2 class="dialog-title">Create Version</h2>
         <button

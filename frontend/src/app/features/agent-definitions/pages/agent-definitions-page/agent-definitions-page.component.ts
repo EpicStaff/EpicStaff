@@ -5,6 +5,7 @@ import {
     Component,
     computed,
     effect,
+    ElementRef,
     HostListener,
     inject,
     Injector,
@@ -15,6 +16,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
     ButtonComponent,
     ConfirmationDialogService,
     UNSAVED_CHANGES_RESULT,
@@ -93,6 +95,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly route: ActivatedRoute = inject(ActivatedRoute);
     private readonly router: Router = inject(Router);
     private readonly permissions: PermissionsService = inject(PermissionsService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
@@ -125,12 +128,21 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         return false;
     });
 
+    /**
+     * Authorship is read-only, so anyone who can see the agent may view it — no permission gate.
+     * Only agents: a selected surface renders the surface view, whose card menu has its own entry.
+     */
+    protected readonly canViewSelectedDetails = computed<boolean>(() => this.store.selectedAgent() !== null);
+
     /** Kebab is worth showing only if at least one action is permitted. */
     protected readonly canOpenHeaderMenu = computed<boolean>(
-        () => this.canDuplicateSelected() || this.canDeleteSelected()
+        () => this.canDuplicateSelected() || this.canViewSelectedDetails() || this.canDeleteSelected()
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
+        read: ElementRef,
+    });
 
     private preselectApplied = false;
     private sawLoading = false;
@@ -446,12 +458,25 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         if (s) this.store.duplicateSurface(s.id);
     }
 
+    protected onHeaderViewDetails(): void {
+        const agent = this.store.selectedAgent();
+        this.closeHeaderMenu();
+        if (agent) {
+            this.authorshipDetailsDialog.open('Agent Details', agent, this.headerMenuTrigger()?.nativeElement);
+        }
+    }
+
     onHeaderDelete(): void {
         this.closeHeaderMenu();
         this.onDeleteSelected();
     }
 
     onExplorerTreeMenu(event: ExplorerTreeMenuEvent): void {
+        // Read-only: it neither changes the selection nor discards edits, so no unsaved-changes prompt.
+        if (event.action === 'view-details') {
+            this.openExplorerAgentDetails(event);
+            return;
+        }
         this.guardUnsaved(() => this.applyExplorerTreeMenu(event));
     }
 
@@ -545,5 +570,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 onCancel?.();
             }
         });
+    }
+
+    private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {
+        if (node.kind !== 'agent') return;
+        const agent = this.store.agents().find((candidate) => candidate.id === node.agentId);
+        if (agent) this.authorshipDetailsDialog.open('Agent Details', agent, trigger);
     }
 }

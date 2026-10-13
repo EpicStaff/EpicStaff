@@ -25,7 +25,7 @@ class TestCancelRagIndexingView:
             "tables.clients.knowledge.KnowledgeClient.cancel",
             side_effect=ClientResourceNotFoundError("no running operation"),
         ):
-            response = auth_client.delete(self._url("naive", naive_rag.id))
+            response = auth_client.delete(self._url("naive", naive_rag.pk))
 
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
@@ -35,7 +35,7 @@ class TestCancelRagIndexingView:
             "tables.clients.knowledge.KnowledgeClient.cancel",
             side_effect=ClientBadGatewayError("knowledge_new is down"),
         ):
-            response = auth_client.delete(self._url("naive", naive_rag.id))
+            response = auth_client.delete(self._url("naive", naive_rag.pk))
 
         assert response.status_code == 502
         assert "error" in response.data

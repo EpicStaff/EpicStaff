@@ -50,7 +50,8 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            code=store_mapping, reverse_code=migrations.RunPython.noop
+            code=store_mapping, reverse_code=migrations.RunPython.noop,
+            elidable=True,
         ),
         migrations.RemoveField(
             model_name="documentcontent",
@@ -67,6 +68,7 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunPython(
-            code=apply_mapping, reverse_code=migrations.RunPython.noop
+            code=apply_mapping, reverse_code=migrations.RunPython.noop,
+            elidable=True,
         ),
     ]

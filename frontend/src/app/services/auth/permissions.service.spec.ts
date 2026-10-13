@@ -20,28 +20,30 @@ function serviceWith(readable: ResourceCode[]): PermissionsService {
     return service;
 }
 
-describe('PermissionsService files tab', () => {
+describe('PermissionsService storage tab', () => {
     it('opens Key-Value Tables for a role that can read only key-value tables', () => {
         const service = serviceWith([ResourceCode.KeyValueTables]);
-        expect(service.resolveFilesTab()).toBe('/files/key-value-tables');
-        expect(service.resolveDefaultRoute()).toBe('/files/key-value-tables');
+        expect(service.resolveStorageTab()).toBe('/storage/key-value-tables');
+        expect(service.resolveDefaultRoute()).toBe('/storage/key-value-tables');
     });
 
-    it('prefers Knowledge Sources, then Storage, over Key-Value Tables', () => {
+    it('prefers Knowledge Sources, then Files, over Key-Value Tables', () => {
         expect(
             serviceWith([
                 ResourceCode.KeyValueTables,
                 ResourceCode.Files,
                 ResourceCode.KnowledgeSources,
-            ]).resolveFilesTab()
-        ).toBe('/files/knowledge-sources');
+            ]).resolveStorageTab()
+        ).toBe('/storage/knowledge-sources');
         TestBed.resetTestingModule();
-        expect(serviceWith([ResourceCode.KeyValueTables, ResourceCode.Files]).resolveFilesTab()).toBe('/files/storage');
+        expect(serviceWith([ResourceCode.KeyValueTables, ResourceCode.Files]).resolveStorageTab()).toBe(
+            '/storage/files'
+        );
     });
 
-    it('has no Files tab without read on any of them, and falls back to the profile', () => {
+    it('has no Storage tab without read on any of them, and falls back to the profile', () => {
         const service = serviceWith([]);
-        expect(service.resolveFilesTab()).toBeNull();
+        expect(service.resolveStorageTab()).toBeNull();
         expect(service.resolveDefaultRoute()).toBe('/profile');
     });
 });

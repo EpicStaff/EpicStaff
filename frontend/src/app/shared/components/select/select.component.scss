@@ -73,7 +73,7 @@
         }
 
         &--transparent {
-            background-color: transparent;
+            background-color: var(--color-input-transparent);
         }
 
         &:disabled {
@@ -190,6 +190,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    &__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
     }
 
     &__item-icon {

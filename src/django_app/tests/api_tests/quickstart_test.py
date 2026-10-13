@@ -1,20 +1,13 @@
 import pytest
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
-
-from tables.models.llm_models import (
-    LLMConfig,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-)
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.default_models import DefaultModels
-from tables.models.tag_models import (
-    LLMConfigTag,
-    EmbeddingConfigTag,
-    RealtimeConfigTag,
-    RealtimeTranscriptionConfigTag,
-)
+from tables.models.embedding_models import EmbeddingConfig
+from tables.models.llm_models import LLMConfig
+from tables.models.realtime_models import OpenAIRealtimeConfig
+
 from tests.fixtures import *
 
 QUICKSTART_TAG = "quickstart:latest"
@@ -41,22 +34,12 @@ def openai_provider_seeded(openai_provider):
     QuickstartService calls Provider.objects.get(name=provider) and also
     uses get_or_create for models, so the provider must already exist.
     """
-    from tables.models.llm_models import (
-        LLMModel,
-        RealtimeModel,
-        RealtimeTranscriptionModel,
-    )
     from tables.models.embedding_models import EmbeddingModel
+    from tables.models.llm_models import LLMModel
 
     LLMModel.objects.get_or_create(name="gpt-4o-mini", llm_provider=openai_provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=openai_provider
-    )
-    RealtimeModel.objects.get_or_create(
-        name="test-realtime-model", provider=openai_provider
-    )
-    RealtimeTranscriptionModel.objects.get_or_create(
-        name="whisper-1", provider=openai_provider
     )
     return openai_provider
 
@@ -92,8 +75,6 @@ def test_get_quickstart_shows_last_config_after_run(
     assert last["config_name"] == "quickstart_openai"
     assert last["llm_config"] is not None
     assert last["embedding_config"] is not None
-    assert last["realtime_config"] is not None
-    assert last["realtime_transcription_config"] is not None
 
 
 @pytest.mark.django_db
@@ -123,6 +104,29 @@ def test_get_quickstart_is_synced_true_after_apply(
     assert response.data["is_synced"] is True
 
 
+@pytest.mark.django_db
+def test_get_quickstart_renders_llm_config_created_at_and_stays_synced(
+    auth_client, quickstart_url, quickstart_apply_url, openai_provider_seeded
+):
+    before = timezone.now()
+    created = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+    applied = auth_client.post(quickstart_apply_url, format="json")
+    assert created.status_code == status.HTTP_200_OK, created.content
+    assert applied.status_code == status.HTTP_200_OK, applied.content
+
+    response = auth_client.get(quickstart_url)
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    assert body["is_synced"] is True
+    rendered = body["last_config"]["llm_config"]["created_at"]
+    created_at = parse_datetime(rendered)
+    assert created_at is not None, f"created_at is not an ISO datetime: {rendered!r}"
+    assert created_at >= before
+
+
 # ---------------------------------------------------------------------------
 # POST /api/quickstart/
 # ---------------------------------------------------------------------------
@@ -138,8 +142,6 @@ def test_post_quickstart_success(auth_client, quickstart_url, openai_provider_se
     assert response.data["config_name"] == "quickstart_openai"
     assert response.data["configs"]["llm_config"] is not None
     assert response.data["configs"]["embedding_config"] is not None
-    assert response.data["configs"]["realtime_config"] is not None
-    assert response.data["configs"]["realtime_transcription_config"] is not None
 
 
 @pytest.mark.django_db
@@ -152,10 +154,10 @@ def test_post_quickstart_creates_configs_in_db(
 
     assert LLMConfig.objects.filter(custom_name="quickstart_openai").exists()
     assert EmbeddingConfig.objects.filter(custom_name="quickstart_openai").exists()
-    assert RealtimeConfig.objects.filter(custom_name="quickstart_openai").exists()
-    assert RealtimeTranscriptionConfig.objects.filter(
-        custom_name="quickstart_openai"
-    ).exists()
+    # One OpenAI realtime config carries both the realtime and transcription keys.
+    realtime = OpenAIRealtimeConfig.objects.get(custom_name="quickstart_openai")
+    assert realtime.api_key_secret_id is not None
+    assert realtime.transcription_api_key_secret_id is not None
 
 
 @pytest.mark.django_db
@@ -170,12 +172,6 @@ def test_post_quickstart_applies_quickstart_tag(
         tags__name=QUICKSTART_TAG, tags__predefined=True
     ).exists()
     assert EmbeddingConfig.objects.filter(
-        tags__name=QUICKSTART_TAG, tags__predefined=True
-    ).exists()
-    assert RealtimeConfig.objects.filter(
-        tags__name=QUICKSTART_TAG, tags__predefined=True
-    ).exists()
-    assert RealtimeTranscriptionConfig.objects.filter(
         tags__name=QUICKSTART_TAG, tags__predefined=True
     ).exists()
 
@@ -259,18 +255,12 @@ def test_post_apply_sets_default_models(
     dm = DefaultModels.objects.get(org=default_org)
     llm = LLMConfig.objects.get(custom_name="quickstart_openai")
     embedding = EmbeddingConfig.objects.get(custom_name="quickstart_openai")
-    realtime = RealtimeConfig.objects.get(custom_name="quickstart_openai")
-    transcription = RealtimeTranscriptionConfig.objects.get(
-        custom_name="quickstart_openai"
-    )
 
     assert dm.agent_llm_config_id == llm.id
     assert dm.agent_fcm_llm_config_id == llm.id
     assert dm.project_manager_llm_config_id == llm.id
     assert dm.memory_llm_config_id == llm.id
     assert dm.memory_embedding_config_id == embedding.id
-    assert dm.voice_llm_config_id == realtime.id
-    assert dm.transcription_llm_config_id == transcription.id
 
 
 @pytest.mark.django_db

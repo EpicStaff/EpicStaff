@@ -2,6 +2,8 @@ import itertools
 from unittest import mock
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from agents.models import AgentDefinition
@@ -16,6 +18,7 @@ from tables.models.webhook_models import (
 )
 from tables.models import Agent
 from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
+from rbac.authorship import record_last_edit
 from rbac.models import Organization
 from tables.services.secrets import secret_resolver, secret_service
 
@@ -103,7 +106,7 @@ def _make_realtime_agent_definition(org):
     """Create a RealtimeAgentDefinition — the only supported destination
     going forward for `RealtimeChannel.realtime_agent_definition`."""
     agent_definition = AgentDefinition.objects.create(
-        organization=org, name="voice-agent-definition"
+        org=org, name="voice-agent-definition"
     )
     return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 
@@ -698,8 +701,8 @@ class TestRealtimeChannelLookupByToken:
         member can mint one via POST /api/profile/api-keys/) must NOT be able
         to use this org-bypass path, even for their own org's channel.
         IsSystemApiKeyAuthenticated requires key_type=SYSTEM specifically —
-        the generic IsApiKeyAuthenticated (system OR user) is not enough here,
-        since this action performs no org filter of its own."""
+        admitting any API key (system OR user) is not enough here, since this
+        action performs no org filter of its own."""
         raw_key, _key = user_api_key
         rc = _make_realtime_channel(db, default_org)
         api_client.credentials(HTTP_X_API_KEY=raw_key)
@@ -776,6 +779,42 @@ class TestRealtimeChannelLookupByToken:
         assert twilio is not None
         assert twilio["auth_token"] == "webhook-signature-secret"
 
+    def test_lookup_by_token_omits_authorship_and_reads_no_user(
+        self, api_client, db, default_org, env_api_key, django_user_model
+    ):
+        """The realtime service never reads authorship, so lookup-by-token sends no
+        user ids, names or avatars -- top level or on the nested webhook trigger --
+        and loads no user or last edit to render them."""
+        raw_key, _key = env_api_key
+        editor = django_user_model.objects.create_user(
+            email="lookup-editor@example.com",
+            password="StrongPass123!",
+            display_name="Lookup Editor Name",
+        )
+        rc = _make_realtime_channel(db, default_org, created_by=editor)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="lookup-authorship")
+        _make_twilio_channel(rc, webhook_trigger=trigger)
+        record_last_edit(rc, editor)
+        record_last_edit(trigger, editor)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = api_client.get(self._url(), {"token": str(rc.token)})
+
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert body["twilio"]["webhook_trigger"]["id"] == trigger.pk
+        authorship_keys = {"created_by", "last_edited_by", "last_edited_at"}
+        assert not authorship_keys & set(body)
+        assert not authorship_keys & set(body["twilio"]["webhook_trigger"])
+        assert "Lookup Editor Name" not in response.content.decode()
+        authorship_tables = ('FROM "rbac_user"', 'FROM "rbac_resourcelastedit"')
+        assert not [
+            query["sql"]
+            for query in captured.captured_queries
+            if any(table in query["sql"] for table in authorship_tables)
+        ]
+
     def test_list_still_requires_org_context(self, api_client, db, env_api_key):
         """Regression guard: normal list/CRUD on /realtime-channels/ must keep
         requiring org context — only the dedicated lookup-by-token action is
@@ -791,13 +830,17 @@ class TestRealtimeChannelLookupByToken:
         assert response.json()["code"] == "org_context_required"
 
 
+# A syntactically valid Account SID: the action rejects anything else before
+# resolving the secret.
+VALID_ACCOUNT_SID = "AC" + "0" * 32
+
+
 @pytest.mark.django_db
 class TestTwilioChannelPhoneNumbersAction:
-    """GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
-    and the auth token server-side from the channel's stored Secret — unlike
-    the removed, header-based TwilioPhoneNumbersView (superadmin-only), the
-    frontend supplies no raw credentials at all here, and the caller only
-    needs normal org membership on the channel's own org."""
+    """GET /twilio-channels/phone-numbers/?sid=&auth_token_secret_id= lists an
+    account's Twilio numbers before a channel is saved. The caller sends the
+    account SID and the id of a Secret in its own org; the auth token is
+    resolved server-side, so the frontend never handles the raw token."""
 
     def _fake_twilio_response(self, *args, **kwargs):
         return {
@@ -811,18 +854,17 @@ class TestTwilioChannelPhoneNumbersAction:
             ]
         }
 
-    def test_returns_same_shape_as_header_based_endpoint(
-        self, auth_client, db, default_org
-    ):
-        rc = _make_realtime_channel(db, default_org)
-        tc = _make_twilio_channel(rc, default_org)
+    def test_returns_phone_numbers_for_own_org_secret(self, auth_client, default_org):
+        secret = _make_secret(default_org, "auth_test")
 
-        url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
+        url = reverse("twiliochannel-phone-numbers")
         with mock.patch(
             "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ) as mocked:
-            response = auth_client.get(url)
+            response = auth_client.get(
+                url, {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": secret.id}
+            )
 
         assert response.status_code == 200, response.json()
         assert response.json() == {
@@ -836,48 +878,84 @@ class TestTwilioChannelPhoneNumbersAction:
             ]
         }
         # The resolved plaintext token (not the secret id) was passed through
-        # to the Twilio call, and account_sid came from the stored field.
+        # to the Twilio call, together with the requested account SID.
         called_account_sid, called_auth_token = mocked.call_args.args[:2]
-        assert called_account_sid == "AC_test"
+        assert called_account_sid == VALID_ACCOUNT_SID
         assert called_auth_token == "auth_test"
 
-    def test_missing_secret_returns_400(self, auth_client, db, default_org):
-        """Channel not yet configured with a secret must 400, not crash."""
-        rc = _make_realtime_channel(db, default_org)
-        tc = _make_twilio_channel(rc, default_org, auth_token_secret=None)
-
-        url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
+    def test_missing_secret_returns_400(self, auth_client, db):
+        """No secret id means no credentials: 400, and Twilio is never called."""
+        url = reverse("twiliochannel-phone-numbers")
         with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
-            response = auth_client.get(url)
+            response = auth_client.get(url, {"sid": VALID_ACCOUNT_SID})
 
         assert response.status_code == 400, response.json()
         assert "error" in response.json()
         mocked.assert_not_called()
 
-    def test_rejects_other_orgs_channel(self, auth_client, db, default_org):
-        """Org scoping mirrors retrieve/list: a channel in another org 404s,
-        same as OrgScopedChildViewSetMixin.get_queryset for any other action."""
+    def test_rejects_another_orgs_secret(self, auth_client, db):
+        """A secret id from another org must not resolve: it is rejected like any
+        unknown id, Twilio is never called, and the foreign token never leaks."""
         other_org = Organization.objects.create(name="Other Org (phone-numbers)")
-        rc = _make_realtime_channel(db, other_org)
-        tc = _make_twilio_channel(rc, other_org)
+        foreign_secret = _make_secret(other_org, "foreign_auth_token")
 
-        url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
+        url = reverse("twiliochannel-phone-numbers")
         with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
-            response = auth_client.get(url)
+            response = auth_client.get(
+                url,
+                {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": foreign_secret.id},
+            )
 
-        assert response.status_code == 404
+        mocked.assert_not_called()
+        assert "foreign_auth_token" not in response.content.decode()
+        assert response.status_code == 400, response.content
+
+    def test_foreign_secret_rejection_matches_a_nonexistent_id(self, auth_client, db):
+        """Existence in another org must not leak: both ids get the same 400."""
+        other_org = Organization.objects.create(name="Other Org (phone-numbers leak)")
+        foreign_secret = _make_secret(other_org, "foreign_auth_token")
+        missing_id = foreign_secret.id + 1000
+
+        url = reverse("twiliochannel-phone-numbers")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            foreign = auth_client.get(
+                url,
+                {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": foreign_secret.id},
+            )
+            missing = auth_client.get(
+                url, {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": missing_id}
+            )
+
+        mocked.assert_not_called()
+        assert foreign.status_code == missing.status_code == 400
+
+        def without_digits(body):
+            return "".join(character for character in body if not character.isdigit())
+
+        assert without_digits(foreign.content.decode()) == without_digits(missing.content.decode())
+
+    def test_non_integer_secret_id_returns_400(self, auth_client, db):
+        url = reverse("twiliochannel-phone-numbers")
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.get(
+                url, {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": "not-an-id"}
+            )
+
+        assert response.status_code == 400, response.content
+        assert "error" in response.json()
         mocked.assert_not_called()
 
-    def test_response_never_includes_raw_auth_token(self, auth_client, db, default_org):
-        rc = _make_realtime_channel(db, default_org)
-        tc = _make_twilio_channel(rc, default_org)
+    def test_response_never_includes_raw_auth_token(self, auth_client, default_org):
+        secret = _make_secret(default_org, "auth_test")
 
-        url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
+        url = reverse("twiliochannel-phone-numbers")
         with mock.patch(
             "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ):
-            response = auth_client.get(url)
+            response = auth_client.get(
+                url, {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": secret.id}
+            )
 
         assert response.status_code == 200, response.json()
         assert "auth_test" not in response.content.decode()
@@ -890,17 +968,6 @@ class TestTwilioChannelPhoneNumbersSidValidation:
     (the shared helper; the header-based `TwilioPhoneNumbersView.get` that
     used to share it was removed on `main`) without any format check — it
     needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
-
-    NOTE: this action is registered `detail=False` (list-level), so its real
-    URL is `/api/twilio-channels/phone-numbers/` with no `<pk>` segment —
-    unlike the sibling tests above in `TestTwilioChannelPhoneNumbersAction`,
-    which pass `args=[tc.channel_id]` to `reverse()` and are consequently
-    reversing to a bogus URL (a pre-existing, unrelated routing bug: the
-    channel_id lands in the DRF format-suffix, e.g.
-    `/api/twilio-channels/phone-numbers.25`, and 500s before the view body
-    ever runs). Reversing with no args here hits the actual, correctly
-    routed action, so it validates the new SID check without depending on
-    that pre-existing bug being fixed.
     """
 
     def test_rejects_invalid_sid_query_param(self, auth_client, db, default_org):

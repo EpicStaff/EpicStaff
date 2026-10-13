@@ -2,7 +2,7 @@
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.db.models import Exists, F, IntegerField, OuterRef
+from django.db.models import CharField, Exists, F, IntegerField, OuterRef
 from django.db.models.functions import Cast, Extract
 from django_filters import rest_framework as filters
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
@@ -123,8 +123,25 @@ class KeyValueTableEntryOrderingFilter(OrderingFilter):
         return queryset.order_by(*expressions, "key", "id")
 
 
+def filter_sessions_by_id_search(queryset, search: str):
+    """Keep sessions whose id contains `search` as a substring (`12` matches 12, 112, 1203).
+
+    Shared by the session list filter and the export-all action so both read the
+    search the same way. Surrounding whitespace is ignored and a blank search
+    leaves the queryset unfiltered. Ids are integers, so a search containing any
+    non-digit cannot match and returns no rows.
+    """
+    search = search.strip()
+    if not search:
+        return queryset
+    if not search.isdigit():
+        return queryset.none()
+    return queryset.annotate(id_text=Cast("id", CharField())).filter(id_text__contains=search)
+
+
 class SessionFilter(filters.FilterSet):
     status = CharInFilter(field_name="status", lookup_expr="in")
+    id_search = filters.CharFilter(method="filter_by_id_search")
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
@@ -179,6 +196,9 @@ class SessionFilter(filters.FilterSet):
         return self._annotate_duration(queryset).filter(
             finished_at__isnull=False, duration__gte=value
         )
+
+    def filter_by_id_search(self, queryset, name, value):
+        return filter_sessions_by_id_search(queryset, value)
 
     def filter_by_test_run(self, queryset, name, value):
         # An EXISTS pair keeps `false` the exact complement of `true`: a join-based

@@ -24,7 +24,7 @@ class TestRealtimeChannelInvalidation:
         self, org, django_capture_on_commit_callbacks
     ):
         with mock.patch(
-            "tables.services.redis_service.RedisService"
+            "tables.signals.webhook_signals.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel = RealtimeChannel.objects.create(name="Voice line", org=org)
 
@@ -39,7 +39,7 @@ class TestRealtimeChannelInvalidation:
         channel = RealtimeChannel.objects.create(name="Voice line", org=org)
 
         with mock.patch(
-            "tables.services.redis_service.RedisService"
+            "tables.signals.webhook_signals.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel.is_enabled = False
             channel.save()
@@ -55,7 +55,7 @@ class TestRealtimeChannelInvalidation:
         token = channel.token
 
         with mock.patch(
-            "tables.services.redis_service.RedisService"
+            "tables.signals.webhook_signals.RedisService"
         ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
             channel.delete()
 

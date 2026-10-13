@@ -9,10 +9,13 @@ accounting / stop-triggering logic that lives in run_session() itself.
 
 from __future__ import annotations
 
+import importlib
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import redis
 from dotdict import DotDict
 
 from models.graph_models import FinishMessageData, GraphMessage
@@ -24,6 +27,7 @@ from services.graph.graph_session_manager_service import (
 from services.graph.exceptions import StopSession
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
+from tests.graph.rebuild_counting_dict import RebuildCountingDict
 
 
 def make_finish_chunk(
@@ -94,7 +98,8 @@ def _reset_singleton():
 def service():
     redis_service = Mock()
     redis_service.aupdate_session_status = AsyncMock()
-    redis_service.publish = Mock()
+    redis_service.aset_session_final_variables = AsyncMock()
+    redis_service.aadd_graph_message = AsyncMock()
 
     svc = GraphSessionManagerService(
         redis_service=redis_service,
@@ -295,6 +300,254 @@ async def test_subgraph_finish_messages_count_toward_budget(service, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_edge_case_9_terminal_status_published_after_all_nodes_complete(
+    service, monkeypatch
+):
+    """Crew publishes terminal status ONLY AFTER all graph nodes
+    complete, not in parallel with execution loop. This ensures no race between
+    credential revocation and last storage operation in sandbox.
+
+    The test verifies that aupdate_session_status(status="end") is called
+    after run_session() finishes streaming all chunks, ensuring:
+      1. All graph nodes have executed
+      2. All storage operations are complete
+      3. Revocation (deferred via transaction.on_commit in redis_pubsub.py)
+         happens strictly after the last storage-dependent operation
+    """
+    session_id = 40
+    chunks = [
+        make_finish_chunk(session_id, total_tokens=10, name="storage_node_1"),
+        make_finish_chunk(session_id, total_tokens=10, name="storage_node_2"),
+    ]
+    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
+
+    stop_event = StopEvent()
+    session_data = _session_data(session_id, token_budget=None)
+
+    await service.run_session(session_data, stop_event)
+
+    # Collect all status calls in order they were made
+    status_calls = service.redis_service.aupdate_session_status.call_args_list
+
+    # Extract the status values in call order
+    statuses = [call.kwargs.get("status") for call in status_calls]
+
+    # The terminal status ("end") must appear AFTER all custom chunks
+    # have streamed through (which happens before astream yields the final state).
+    # Verify "end" is the last status update.
+    assert statuses, "Expected at least one status update"
+    assert statuses[-1] == "end", (
+        f"Terminal status must be last update; got order: {statuses}"
+    )
+
+    # Verify no status updates were published in parallel during execution
+    # (i.e., no "end" before all chunks were processed). This is the key
+    # regression test: terminal status AFTER execute(), not during.
+    end_positions = [i for i, s in enumerate(statuses) if s == "end"]
+    assert len(end_positions) == 1, (
+        f"Expected exactly one 'end' status, got {len(end_positions)}: {statuses}"
+    )
+    end_position = end_positions[0]
+
+    # If there were multiple status updates (e.g., progress updates), the
+    # terminal "end" must be strictly last (highest index).
+    assert end_position == len(statuses) - 1, (
+        f"Terminal status at index {end_position} but total calls {len(statuses)}"
+    )
+    
+    
+@pytest.mark.asyncio
+async def test_streamed_messages_and_graph_end_go_to_the_stream_before_end_status(
+    service, monkeypatch
+):
+    session_id = 31
+    _patch_builder(
+        monkeypatch, FakeCompiledGraph([make_finish_chunk(session_id, total_tokens=5)])
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    calls = [
+        (name, call_args, call_kwargs)
+        for name, call_args, call_kwargs in service.redis_service.mock_calls
+        if name in ("aadd_graph_message", "aupdate_session_status")
+    ]
+    added_messages = [
+        json.loads(call_args[1]) for name, call_args, _ in calls if name == "aadd_graph_message"
+    ]
+    assert [message["message_data"]["message_type"] for message in added_messages] == [
+        "finish",
+        "graph_end",
+    ]
+    assert all(message["session_id"] == session_id for message in added_messages)
+    assert len({message["uuid"] for message in added_messages}) == 2
+    assert [name for name, _, call_kwargs in calls if call_kwargs.get("status") != "run"] == [
+        "aadd_graph_message",
+        "aadd_graph_message",
+        "aupdate_session_status",
+    ]
+
+
+def _redis_calls(service, *names):
+    return [
+        (name, call_kwargs)
+        for name, _, call_kwargs in service.redis_service.mock_calls
+        if name in names
+    ]
+
+
+@pytest.mark.asyncio
+async def test_end_writes_final_variables_before_publishing_end_status(
+    service, monkeypatch
+):
+    session_id = 40
+    final_state = {
+        "variables": DotDict({"final_result": "done", "counter": 3}),
+        "state_history": [],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    assert _redis_calls(
+        service, "aupdate_session_status", "aset_session_final_variables"
+    ) == [
+        ("aupdate_session_status", {"session_id": session_id, "status": "run"}),
+        (
+            "aset_session_final_variables",
+            {
+                "session_id": session_id,
+                "variables": {"final_result": "done", "counter": 3},
+            },
+        ),
+        ("aupdate_session_status", {"session_id": session_id, "status": "end"}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_end_is_published_when_final_variables_write_fails(service, monkeypatch):
+    session_id = 41
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+    service.redis_service.aset_session_final_variables.side_effect = (
+        redis.ConnectionError("redis down")
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+
+
+@pytest.mark.asyncio
+async def test_unserialisable_final_variables_end_the_session_as_error(
+    service, monkeypatch
+):
+    session_id = 44
+    final_state = {
+        "variables": DotDict({"finished_at": datetime(2026, 1, 1)}),
+        "state_history": [],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    # Serialises like the real RedisService.aset_session_final_variables does.
+    def _serialise_like_redis_service(session_id, variables):
+        json.dumps(variables)
+
+    service.redis_service.aset_session_final_variables.side_effect = (
+        _serialise_like_redis_service
+    )
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    status_calls = service.redis_service.aupdate_session_status.call_args_list
+    assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
+    assert "not JSON serializable" in status_calls[-1].kwargs["error"]
+
+
+@pytest.mark.asyncio
+async def test_stopped_session_does_not_write_final_variables(service, monkeypatch):
+    session_id = 42
+    chunks = [
+        make_finish_chunk(session_id, total_tokens=100),
+        make_finish_chunk(session_id, total_tokens=100),
+    ]
+    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
+
+    await service.run_session(_session_data(session_id, token_budget=150), StopEvent())
+
+    service.redis_service.aset_session_final_variables.assert_not_called()
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_failed_session_does_not_write_final_variables(service, monkeypatch):
+    session_id = 43
+
+    class FailingGraph:
+        async def astream(self, input, config, stream_mode):
+            raise RuntimeError("node crashed")
+            yield
+
+    _patch_builder(monkeypatch, FailingGraph())
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    service.redis_service.aset_session_final_variables.assert_not_called()
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "error"]
+
+
+class _ReprCountingStr(str):
+    """A state value that counts how often it is rendered into a log line."""
+
+    render_count = 0
+
+    def __repr__(self):
+        type(self).render_count += 1
+        return super().__repr__()
+
+
+@pytest.fixture
+def production_log_level():
+    """Reapply the service's INFO-level loguru setup, as configured in production."""
+    import utils.logger
+
+    importlib.reload(utils.logger)
+    yield
+
+
+@pytest.mark.asyncio
+async def test_streamed_state_is_not_rendered_for_debug_logs_at_info_level(
+    service, monkeypatch, production_log_level
+):
+    _ReprCountingStr.render_count = 0
+    final_state = {
+        "variables": DotDict({}),
+        "state_history": [_ReprCountingStr("large node output")],
+    }
+    _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
+
+    await service.run_session(_session_data(45), StopEvent())
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+    assert _ReprCountingStr.render_count == 0
+
+
+@pytest.mark.asyncio
 async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypatch):
     def broken_audit_writer():
         raise RuntimeError("audit client misconfigured")
@@ -305,7 +558,7 @@ async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypat
     )
     _patch_builder(monkeypatch, FakeCompiledGraph([]))
 
-    await service.run_session(_session_data(40), StopEvent())
+    await service.run_session(_session_data(46), StopEvent())
 
     statuses = [
         call.kwargs.get("status")
@@ -313,3 +566,29 @@ async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypat
     ]
     assert "end" in statuses
     assert "error" not in statuses
+
+
+
+@pytest.mark.asyncio
+async def test_streamed_message_state_is_sent_without_being_rebuilt(service, monkeypatch):
+    session_id = 32
+    variables = RebuildCountingDict(customer=RebuildCountingDict(name="Ada"))
+    finish_chunk = (
+        "custom",
+        GraphMessage(
+            session_id=session_id,
+            name="python_node",
+            execution_order=0,
+            message_data=FinishMessageData(output={}, state={"variables": variables}),
+        ),
+    )
+    _patch_builder(monkeypatch, FakeCompiledGraph([finish_chunk]))
+    RebuildCountingDict.constructions = 0
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    assert RebuildCountingDict.constructions == 0
+    first_added = service.redis_service.aadd_graph_message.await_args_list[0]
+    assert json.loads(first_added.args[1])["message_data"]["state"]["variables"] == {
+        "customer": {"name": "Ada"}
+    }

@@ -1,0 +1,210 @@
+:host {
+    display: block;
+}
+
+.basics {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 1.5rem 3rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: -8px;
+    }
+
+    &__title {
+        margin: 0;
+        color: var(--color-text-primary);
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        line-height: var(--text-h4-line-height);
+    }
+
+    &__menu-trigger {
+        width: 2.5rem;
+        height: 2.5rem;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: 1px solid var(--accent-color);
+        border-radius: 50%;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        transition:
+            background 0.2s ease,
+            border-color 0.2s ease,
+            color 0.2s ease;
+
+        &:hover {
+            border-color: var(--accent-color-hover);
+            background: var(--color-ghost-btn-hover);
+            color: var(--accent-color-hover);
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        &--active,
+        &--active:hover {
+            border-color: var(--accent-color);
+            background: var(--accent-color);
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    &__label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 28px;
+    }
+
+    &__guidance-actions {
+        display: flex;
+        align-items: center;
+        column-gap: 8px;
+    }
+
+    &__guidance-edit {
+        width: 1.75rem;
+        height: 1.75rem;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+        }
+    }
+
+    &__label {
+        color: var(--color-text-primary);
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+    }
+
+    &__required {
+        color: var(--accent-color);
+    }
+
+    &__input {
+        width: 100%;
+        height: 2.5rem;
+        padding: 0 12px;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        font-family: inherit;
+        font-size: var(--text-body-size);
+        line-height: var(--text-body-line-height);
+        transition: border-color 0.2s ease;
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+
+    &__textarea {
+        height: auto;
+        min-height: 2.5rem;
+        padding: 10px 12px;
+        resize: vertical;
+    }
+
+    &__readonly {
+        margin: 0;
+        overflow-wrap: anywhere;
+        color: var(--color-text-primary);
+        font-size: var(--text-body-size);
+        line-height: var(--text-body-line-height);
+
+        &--guidance {
+            white-space: pre-wrap;
+        }
+
+        &--empty {
+            color: var(--color-text-secondary);
+            font-style: italic;
+        }
+    }
+}
+
+// CDK menu panel, rendered in an overlay; the trigger handles placement.
+.basics-menu {
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+    overflow: hidden;
+    background: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px var(--black-alpha-24);
+
+    &__item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 40px;
+        padding: 0 16px;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        text-align: left;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            background: var(--color-ghost-btn-hover);
+        }
+
+        // Inset, so the menu's overflow clipping cannot cut the ring off.
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+
+        & + & {
+            border-top: 1px solid var(--color-divider-subtle);
+        }
+    }
+}
