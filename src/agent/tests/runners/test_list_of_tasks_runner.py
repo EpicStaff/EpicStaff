@@ -254,10 +254,7 @@ async def test_per_task_output_schema_uses_enforcer():
     runner = _runner(loop=answer_loop)
     request = _request([{"name": "task_a", "instructions": "Do A", "output_schema": schema}])
 
-    from unittest.mock import patch
-
-    with patch("app.runners.list_of_tasks._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter)
 
     assert emitter.errors == []
     final = emitter.finals[0]
