@@ -11,11 +11,14 @@ import {
     LoadingSpinnerComponent,
     NodeListItem,
     PaginationControlsComponent,
+    resolveUserName,
     SelectComponent,
     SelectItem,
     SelectTriggerDirective,
+    UserAvatarComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
+import { UserSummary } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
@@ -48,6 +51,8 @@ const ACTIONS_COLUMN = '96px';
 const CHECKBOX_COLUMN = '2rem';
 /** How the backend joins the parts of a text detail (recycle_bin/presentation.py, _collection_indexes). */
 const DETAIL_PART_SEPARATOR = ' · ';
+/** A user detail without a user: never recorded, or no longer in the organization. */
+const UNKNOWN_USER = 'Unknown';
 
 /** The bin list of one tab. Presentational: the tab decides what the buttons do. */
 @Component({
@@ -68,6 +73,7 @@ const DETAIL_PART_SEPARATOR = ' · ';
         SelectComponent,
         SelectTriggerDirective,
         TooltipOnOverflowDirective,
+        UserAvatarComponent,
     ],
     templateUrl: './recycle-bin-table.component.html',
     styleUrls: ['./recycle-bin-table.component.scss'],
@@ -181,6 +187,7 @@ export class RecycleBinTableComponent {
     protected readonly contentLabels = RECYCLE_BIN_CONTENT_LABELS;
     protected readonly contentVisuals = RECYCLE_BIN_CONTENT_VISUALS;
     protected readonly showAllLimit = RECYCLE_BIN_SHOW_ALL_LIMIT;
+    protected readonly unknownUser = UNKNOWN_USER;
 
     private readonly locale = inject(LOCALE_ID);
 
@@ -266,6 +273,11 @@ export class RecycleBinTableComponent {
     /** A text detail's parts: the backend joins a list (a collection's index states) with " · ". */
     protected detailParts(detail: RecycleBinDetail): string[] {
         return detail.format === 'text' ? detail.value.split(DETAIL_PART_SEPARATOR) : [];
+    }
+
+    /** The user's display name, with the same fallback as authors elsewhere ("Unnamed user"). */
+    protected userName(user: UserSummary): string {
+        return resolveUserName(user);
     }
 
     protected isSelected(item: RecycleBinItem): boolean {

@@ -11,6 +11,7 @@ from rbac.models import Organization
 from rest_framework.exceptions import APIException
 from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
+from tables.services.recycle_bin.authorship import BinEntryAuthorship, authorship_details
 from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, SHOW_ALL_LIMIT
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult, BulkRestoreResult
@@ -118,17 +119,24 @@ class StorageRecycleBinService:
             "parent_path",
             "created_at",
             "updated_at",
+            "created_by_id",
         )
 
     @classmethod
-    def to_entries(cls, org_id: int, rows) -> list[StorageRecycleBinEntry]:
-        """Entries for a page of entry_rows; a folder lists what its restore brings back."""
+    def to_entries(cls, org_id: int, rows, *, request=None) -> list[StorageRecycleBinEntry]:
+        """Entries for a page of entry_rows; a folder lists what its restore brings back.
+
+        `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
+        """
         rows = list(rows)
         parent_paths = {row[6] for row in rows if row[6]}
         live_folders = set(
             StorageFile.objects.filter(org_id=org_id, path__in=parent_paths).values_list(
                 "path", flat=True
             )
+        )
+        authorship = authorship_details(
+            StorageFile, {row[0]: BinEntryAuthorship(row[9], row[3]) for row in rows}, request
         )
         entries = []
         for (
@@ -141,6 +149,7 @@ class StorageRecycleBinService:
             parent_path,
             created_at,
             updated_at,
+            _created_by_id,
         ) in rows:
             contents, total = (
                 cls._folder_contents(org_id, path, batch) if item_type == "folder" else ([], 0)
@@ -152,15 +161,18 @@ class StorageRecycleBinService:
                     item_type=item_type,
                     deleted_at=deleted_at,
                     days_left=RecycleBinService.days_left(deleted_at),
-                    details=cls._details(
-                        path,
-                        item_type,
-                        size,
-                        parent_path,
-                        created_at,
-                        updated_at,
-                        folder_is_live=not parent_path or parent_path in live_folders,
-                    ),
+                    details=[
+                        *authorship[pk],
+                        *cls._details(
+                            path,
+                            item_type,
+                            size,
+                            parent_path,
+                            created_at,
+                            updated_at,
+                            folder_is_live=not parent_path or parent_path in live_folders,
+                        ),
+                    ],
                     contents=contents,
                     contents_total=total,
                 )

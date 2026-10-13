@@ -1,5 +1,5 @@
 import { NodeListItem } from '@shared/components';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 
 export type RecycleBinTabKey =
     | 'flows'
@@ -75,16 +75,29 @@ export interface GetRecycleBinContentResponse {
     kind: string;
 }
 
-/** `notice` is text the UI highlights (the item won't come back quite as it was). */
-export type RecycleBinDetailFormat = 'text' | 'date' | 'size' | 'notice';
+/**
+ * `notice` is text the UI highlights (the item won't come back quite as it was); `user` is a person
+ * ("Created by", "Deleted by").
+ */
+export type RecycleBinDetailFormat = 'text' | 'date' | 'size' | 'notice' | 'user';
 
-/** One line of basic info. Every field of the tab is sent, in a fixed order, and long text whole. */
-export interface GetRecycleBinDetailResponse {
-    label: string;
-    /** Text, an ISO 8601 date or a size in bytes, per `format`; null when the field is empty. */
-    value: string | number | null;
-    format: RecycleBinDetailFormat;
-}
+/**
+ * One line of basic info. Every field of the tab is sent, in a fixed order, and long text whole; every tab
+ * starts with "Created by" and "Deleted by".
+ */
+export type GetRecycleBinDetailResponse =
+    | {
+          label: string;
+          /** Text, an ISO 8601 date or a size in bytes, per `format`; null when the field is empty. */
+          value: string | number | null;
+          format: Exclude<RecycleBinDetailFormat, 'user'>;
+      }
+    | {
+          label: string;
+          /** Null when the user is unknown (never recorded, or no longer in the organization). */
+          value: UserSummary | null;
+          format: 'user';
+      };
 
 export interface GetRecycleBinEntryResponse {
     id: number;
@@ -160,6 +173,8 @@ export type RecycleBinDetail =
     | { label: string; format: 'size'; value: number }
     /** How it comes back: without something, or differently (shared). Accent colour, no icon. */
     | { label: string; format: 'notice'; value: string }
+    /** A person with their avatar; null is an unknown user, shown as a muted "Unknown". */
+    | { label: string; format: 'user'; value: UserSummary | null }
     /** The field is empty; shown as a muted dash so every row of a tab has the same lines. */
     | { label: string; format: 'empty'; value: null };
 

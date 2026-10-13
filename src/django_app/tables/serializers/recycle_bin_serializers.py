@@ -1,5 +1,6 @@
 """Response shapes of the recycle-bin endpoints."""
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 
@@ -22,14 +23,38 @@ class RecycleBinContentsSerializer(serializers.Serializer):
     contents_total = serializers.IntegerField()
 
 
+# The user summary every authorship field renders (rbac UserSummarySerializer).
+_USER_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer"},
+        "display_name": {"type": "string", "nullable": True},
+        "avatar_url": {"type": "string", "nullable": True},
+    },
+    "required": ["id", "display_name", "avatar_url"],
+}
+
+
+@extend_schema_field(
+    {
+        "oneOf": [{"type": "string"}, {"type": "integer"}, _USER_SUMMARY_SCHEMA],
+        "nullable": True,
+    }
+)
+class BinDetailValueField(serializers.JSONField):
+    """A detail's value: text, a date, a size or a user summary, per the detail's `format`."""
+
+
 class BinDetailSerializer(serializers.Serializer):
     label = serializers.CharField()
-    value = serializers.JSONField(
+    value = BinDetailValueField(
         allow_null=True,
-        help_text="Text, an ISO 8601 date or a size in bytes, per `format`; null when the field is empty",
+        help_text="Text (`text`, `notice`), an ISO 8601 date (`date`), a size in bytes (`size`) "
+        "or a user summary {id, display_name, avatar_url} (`user`); null when the field is "
+        "empty or, for `user`, the user is unknown",
     )
     format = serializers.ChoiceField(
-        choices=["text", "date", "size", "notice"],
+        choices=["text", "date", "size", "notice", "user"],
         help_text="How to show `value`; `notice` is text the UI highlights",
     )
 
@@ -40,7 +65,9 @@ class RecycleBinEntrySerializer(serializers.Serializer):
     deleted_at = serializers.DateTimeField()
     days_left = serializers.IntegerField()
     details = BinDetailSerializer(
-        many=True, help_text="Basic info about the item; empty values are left out"
+        many=True,
+        help_text='Basic info about the item: always "Created by" and "Deleted by" first '
+        "(format `user`), then the tab's fields. Every line is sent, null when empty",
     )
     contents = BinContentSerializer(
         many=True, help_text="What a restore brings back with it (at most 100)"

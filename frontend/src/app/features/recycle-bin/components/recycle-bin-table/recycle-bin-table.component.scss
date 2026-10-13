@@ -245,6 +245,28 @@
         color: var(--transparent-white-16);
     }
 
+    // "Created by" / "Deleted by": the avatar and the name on one line, the name cut with "…".
+    // An unknown user has no avatar but keeps its height (app-user-avatar's 24px), so both lines match.
+    &__user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        min-height: 24px;
+        white-space: nowrap;
+    }
+
+    &__user-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    // The label sits level with the avatar, not with the top of it.
+    &__row--user &__label {
+        align-self: center;
+    }
+
     // How the item comes back (shared, without an agent, into a new folder…): the system accent.
     &__row--notice &__value {
         color: var(--accent-color);

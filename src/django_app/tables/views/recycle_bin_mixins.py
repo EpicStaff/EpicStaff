@@ -22,6 +22,7 @@ from tables.services.recycle_bin.bin_contents_service import (
 )
 from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_service import RecycleBinBulkService
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.presentation import BinPresentation, bin_presentations
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import BinResource, bin_resources
@@ -55,6 +56,10 @@ class RecycleBinActionsMixin:
     Both purges refuse API keys (403), as emptying the whole bin does: a purge
     can't be undone, so a leaked key must not wipe the bin type by type. Listing
     and restoring stay open to API keys.
+
+    `perform_destroy` bins the row and records the request user as who deleted it.
+    A viewset that overrides it, or deletes outside it (a bulk delete), calls
+    move_to_recycle_bin itself.
     """
 
     recycle_bin_resource_key: str
@@ -67,6 +72,9 @@ class RecycleBinActionsMixin:
             permissions.append(DenyApiKeyAuth())
         return permissions
 
+    def perform_destroy(self, instance):
+        move_to_recycle_bin(instance, self.request.user)
+
     def _bin_resource(self) -> BinResource:
         return bin_resources()[self.recycle_bin_resource_key]
 
@@ -75,7 +83,9 @@ class RecycleBinActionsMixin:
 
     def recycle_bin_entries(self, org_id: int) -> list[RecycleBinEntryWithContents]:
         """Entries the list action returns, each with what its restore brings back."""
-        return BinContentsService.entries(self._bin_resource(), self._bin_presentation(), org_id)
+        return BinContentsService.entries(
+            self._bin_resource(), self._bin_presentation(), org_id, request=self.request
+        )
 
     def _get_binned_or_404(self, pk):
         # DRF's get_object_or_404 turns a non-numeric pk into a 404, not a 500.

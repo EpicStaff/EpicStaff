@@ -24,6 +24,7 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.validators.key_value_entries_validator import resolved_key_error
 
 # The one order in which entry rows are locked, by every statement that locks several at
@@ -210,8 +211,10 @@ class KeyValueTableService:
             return False
         return True
 
-    def delete_table(self, table: KeyValueTable) -> None:
+    def delete_table(self, table: KeyValueTable, *, deleted_by: object | None) -> None:
         """Move `table` with its entries to the recycle bin and unlink every Key-Value node that used it.
+
+        `deleted_by` (the user who asked) is recorded as who deleted it.
 
         Nodes keep existing with `key_value_table = NULL` (the FK's SET_NULL, which DeleteService
         applies to every row, binned ones too, so nodes of soft-deleted flows are unlinked as well).
@@ -228,7 +231,7 @@ class KeyValueTableService:
         with transaction.atomic():
             if KeyValueTable.objects.select_for_update().filter(pk=table.pk).first() is None:
                 raise KeyValueTableNotFoundError(table.pk)
-            table.delete()
+            move_to_recycle_bin(table, deleted_by)
 
     def usage(self, table: KeyValueTable) -> dict[str, int]:
         """Count the Key-Value nodes using `table` and their distinct flows.

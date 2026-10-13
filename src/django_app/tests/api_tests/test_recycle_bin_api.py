@@ -692,7 +692,8 @@ def test_extra_details_show_without_detail_fields(acme):
 
     entries = BinContentsService.entries(bin_resources()["flow"], presentation, acme.id)
 
-    assert [entry.details for entry in entries] == [[notice]]
+    # After the "Created by" and "Deleted by" lines every tab starts with.
+    assert [entry.details[2:] for entry in entries] == [[notice]]
 
 
 @pytest.mark.parametrize("viewset, key", WIRED_VIEWSETS, ids=[key for _, key in WIRED_VIEWSETS])
@@ -972,7 +973,7 @@ class TestBinDetails:
         entry = _bin(admin_client, "/api/secrets/")[0]
         details = _details(entry)
 
-        assert list(details) == ["Created", "Last changed", "Used by"]
+        assert list(details) == ["Created by", "Deleted by", "Created", "Last changed", "Used by"]
         assert details["Used by"] == ("1", "text")
         assert "sk-abcd1234" not in str(entry)
         assert Secret.all_objects.get(pk=secret.pk).value not in str(entry)
@@ -1018,7 +1019,7 @@ class TestBinDetails:
 
         details = _details(_bin(admin_client, AGENTS_URL)[0])
 
-        assert list(details) == ["Description", "Instructions", "LLM"]
+        assert list(details) == ["Created by", "Deleted by", "Description", "Instructions", "LLM"]
         assert details["Description"] == (None, "text")
         assert details["LLM"] == (None, "text")
         assert details["Instructions"] == (None, "text")
@@ -1051,7 +1052,7 @@ class TestBinDetails:
         details = _details(entry)
         assert details["Server"] == ("https://example.com/mcp", "text")
         assert details["Tool name"] == ("some_tool", "text")
-        assert list(details) == ["Server", "Tool name", "Created", "Last changed"]
+        assert list(details) == ["Created by", "Deleted by", "Server", "Tool name", "Created", "Last changed"]
         assert all("secret" not in label.lower() for label in details)
 
     def test_a_collection_shows_its_indexes_instead_of_upload_status(self, admin_client, acme):
@@ -1075,7 +1076,7 @@ class TestBinDetails:
         rows = _bin(admin_client, SURFACES_URL)
 
         assert {tuple(detail["label"] for detail in row["details"]) for row in rows} == {
-            ("Instructions", "Owner agent", "Created", "Last changed")
+            ("Created by", "Deleted by", "Instructions", "Owner agent", "Created", "Last changed")
         }
 
     def test_a_surface_whose_agent_is_binned_says_it_comes_back_shared(self, admin_client, acme):

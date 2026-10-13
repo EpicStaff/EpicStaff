@@ -17,7 +17,11 @@ Adding a resource to the recycle bin, and the test that fails if a step is misse
    RECYCLE_BIN_ACTION_MAP in its `rbac_action_map`. Add it to WIRED_VIEWSETS and a
    BinCase to CASES in test_recycle_bin_api.py: test_every_bin_resource_has_a_viewset
    and test_every_bin_resource_has_a_lifecycle_case fail until you do, and the
-   cases then run the restore, purge and cross-org checks.
+   cases then run the restore, purge and cross-org checks (and, in
+   test_recycle_bin_deleted_by.py, the "Deleted by" checks). The mixin's
+   perform_destroy records who deleted the row; a destroy that bypasses it, or
+   any other delete path (a bulk delete, a service), calls
+   deleting.move_to_recycle_bin instead of `delete()`.
 5. Empty order: the key in `empty_service.EMPTY_ORDER`. Caught by
    test_recycle_bin_empty.py::test_empty_names_every_bin_the_registry_has.
 6. Frontend: the key in RecycleBinSourceKey and the maps in

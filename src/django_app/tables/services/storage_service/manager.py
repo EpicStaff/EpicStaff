@@ -222,8 +222,10 @@ class StorageManager:
             return FileDownload(self._backend.download(key))
         return FileDownload(*self._backend.download_range(key, *byte_range))
 
-    def delete(self, org_id: int, path: str) -> uuid.UUID | None:
+    def delete(self, org_id: int, path: str, *, user: object | None) -> uuid.UUID | None:
         """Move a file, or a folder with everything under it, to the recycle bin.
+
+        `user` is recorded as who deleted it.
 
         The rows are binned first and the objects moved second, inside one
         transaction. If copying to the trash fails, the rows stay live and the
@@ -241,7 +243,7 @@ class StorageManager:
             # runs alone among them, so a restore can't move a folder back into a
             # subtree this delete is binning, nor an upload land in it meanwhile.
             Organization.objects.select_for_update().get(pk=org_id)
-            subtree = StorageFileSync.on_soft_delete(org_id, path)
+            subtree = StorageFileSync.on_soft_delete(org_id, path, user=user)
             if subtree is None:
                 return None
             trash_key = trash_storage_key(org_id, subtree.batch, subtree.root_path)

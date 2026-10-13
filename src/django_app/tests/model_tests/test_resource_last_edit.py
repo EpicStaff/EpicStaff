@@ -11,7 +11,7 @@ from rbac.authorship import record_last_edit, record_last_edits
 from rbac.authorship.registry import last_edit_tracked_models
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import LastEditTrackedModel, ResourceLastEdit
-from tables.models import Graph, GraphNote, Label, StorageFile
+from tables.models import Graph, GraphNote, Label, Secret, StorageFile
 from tables.models.graph_models import Edge, PythonNode, StartNode
 from tables.models.knowledge_models import SourceCollection
 from tables.models.python_models import PythonCode, PythonCodeTool
@@ -219,6 +219,7 @@ EXPECTED_TRACKED_MODEL_NAMES = {
     "StorageFile",
     "SourceCollection",
     "KeyValueTable",
+    "Secret",
 }
 
 
@@ -230,6 +231,7 @@ def test_registry_lists_exactly_the_tracked_models():
     assert tracked[Graph] == "org_id"
     assert tracked[StorageFile] == "org_id"
     assert tracked[SourceCollection] == "org_id"
+    assert tracked[Secret] == "org_id"
     assert not issubclass(Label, LastEditTrackedModel)
 
 

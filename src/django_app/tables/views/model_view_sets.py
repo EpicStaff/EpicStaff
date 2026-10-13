@@ -266,6 +266,7 @@ from tables.services.copy_services import (
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -631,7 +632,7 @@ class PythonCodeToolViewSet(
             )
             deleted_count = tool_list.count()
             for tool in tool_list:
-                tool.delete()
+                move_to_recycle_bin(tool, request.user)
 
         return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
 
@@ -2312,7 +2313,7 @@ class McpToolViewSet(
             tool_list = McpTool.objects.filter(id__in=ids, org_id=self.get_active_org_id())
             deleted_count = tool_list.count()
             for tool in tool_list:
-                tool.delete()
+                move_to_recycle_bin(tool, request.user)
 
         return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
 
@@ -2774,7 +2775,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewse
         )
 
     def perform_destroy(self, instance: KeyValueTable) -> None:
-        KeyValueTableService().delete_table(instance)
+        KeyValueTableService().delete_table(instance, deleted_by=self.request.user)
 
     @extend_schema(**KEY_VALUE_TABLE_USAGE_GET)
     @action(detail=True, methods=["get"], url_path="usage")

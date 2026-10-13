@@ -29,6 +29,7 @@ from tables.models.knowledge_models.naive_rag_models import (
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 
 _GRAPH_RAG_CLEANUP_TIMEOUT_SECONDS = 5.0
 
@@ -201,7 +202,7 @@ class CollectionManagementService:
 
     @staticmethod
     @transaction.atomic
-    def delete_collection(collection_id: int) -> dict[str, Any]:
+    def delete_collection(collection_id: int, *, deleted_by: object | None) -> dict[str, Any]:
         """
         Move a collection and its documents to the recycle bin.
 
@@ -210,6 +211,7 @@ class CollectionManagementService:
 
         Args:
             collection_id: ID of collection to delete
+            deleted_by: The user who asked for it, recorded as who deleted it.
 
         Returns:
             dict: Deletion summary
@@ -222,7 +224,7 @@ class CollectionManagementService:
         # Counted before the delete: the documents go to the bin with the collection.
         document_count = collection.documents.count()
 
-        collection.delete()
+        move_to_recycle_bin(collection, deleted_by)
         logger.info(
             "Soft-deleted collection '{}' (ID: {}) with {} documents",
             collection_name,
@@ -328,12 +330,15 @@ class CollectionManagementService:
 
     @staticmethod
     @transaction.atomic
-    def bulk_delete_collections(collection_ids: list[int]) -> dict[str, Any]:
+    def bulk_delete_collections(
+        collection_ids: list[int], *, deleted_by: object | None
+    ) -> dict[str, Any]:
         """
         Move multiple collections to the recycle bin in a single transaction.
 
         Args:
             collection_ids: List of collection IDs to delete
+            deleted_by: The user who asked for it, recorded as who deleted each one.
 
         Returns:
             dict: Deletion summary
@@ -372,7 +377,7 @@ class CollectionManagementService:
         # Documents and content stay intact for a restore.
         deleted_count = 0
         for collection in collections:
-            collection.delete()
+            move_to_recycle_bin(collection, deleted_by)
             deleted_count += 1
 
         logger.info(

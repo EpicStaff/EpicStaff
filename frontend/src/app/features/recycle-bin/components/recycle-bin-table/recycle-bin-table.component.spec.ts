@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { FetchErrorStateComponent, FlowNodeListComponent, SelectComponent } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { NodeType, UserSummary } from '@shared/models';
 
 import { RECYCLE_BIN_DATE_FORMAT } from '../../constants/recycle-bin-dates.constants';
 import { RecycleBinItem } from '../../models/recycle-bin.model';
@@ -486,6 +486,85 @@ describe('RecycleBinTableComponent', () => {
         });
         const element = renderOpen({ items: [tool] });
         expect(element.querySelector('.bin-details__value .bin-details__empty')?.textContent?.trim()).toBe('—');
+    });
+
+    describe('user details', () => {
+        const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://example.com/ivan.png' };
+        const UNNAMED: UserSummary = { id: 2, display_name: null, avatar_url: null };
+
+        function userRows(createdBy: UserSummary | null, deletedBy: UserSummary | null): Element[] {
+            const tool = binItem({
+                details: [
+                    { label: 'Created by', format: 'user', value: createdBy },
+                    { label: 'Deleted by', format: 'user', value: deletedBy },
+                ],
+            });
+            const element = renderOpen({ items: [tool] });
+            return Array.from(element.querySelectorAll('.bin-details__row'));
+        }
+
+        it('shows the avatar and the name of a user', () => {
+            const [created] = userRows(IVAN, IVAN);
+
+            expect(created.classList).toContain('bin-details__row--user');
+            expect(created.querySelector('.bin-details__label')?.textContent?.trim()).toBe('Created by');
+            expect(created.querySelector('.bin-details__user-name')?.textContent?.trim()).toBe('Ivan Bohun');
+            expect(created.querySelector('app-user-avatar img')?.getAttribute('src')).toBe(
+                'https://example.com/ivan.png'
+            );
+        });
+
+        it('shows an unknown user as a muted "Unknown", without an avatar', () => {
+            const [, deleted] = userRows(IVAN, null);
+
+            expect(deleted.classList).toContain('bin-details__row--user');
+            expect(deleted.querySelector('.bin-details__user .bin-details__empty')?.textContent?.trim()).toBe(
+                'Unknown'
+            );
+            expect(deleted.querySelector('app-user-avatar')).toBeNull();
+        });
+
+        it('shows "Unnamed user" with the placeholder avatar for a user without a display name', () => {
+            const [created] = userRows(UNNAMED, IVAN);
+
+            expect(created.querySelector('.bin-details__user-name')?.textContent?.trim()).toBe('Unnamed user');
+            const avatar = created.querySelector('app-user-avatar');
+            expect(avatar).not.toBeNull();
+            expect(avatar?.querySelector('img')).toBeNull();
+            expect(avatar?.querySelector('app-svg-icon')).not.toBeNull();
+        });
+
+        it('leaves the other formats as they were around the user lines', () => {
+            const created = new Date('2026-09-01T08:00:00Z');
+            const file = binItem({
+                details: [
+                    { label: 'Created by', format: 'user', value: IVAN },
+                    { label: 'Deleted by', format: 'user', value: null },
+                    { label: 'Description', format: 'text', value: 'Quarterly report' },
+                    { label: 'Created', format: 'date', value: created },
+                    { label: 'Size', format: 'size', value: 1536 },
+                    { label: 'Folder', format: 'empty', value: null },
+                    { label: 'Comes back to', format: 'notice', value: 'A new docs/ folder' },
+                ],
+            });
+            const element = renderOpen({ items: [file] });
+
+            const rows = Array.from(element.querySelectorAll('.bin-details__row'));
+            expect(rows.map((row) => row.querySelector('.bin-details__value')?.textContent?.trim())).toEqual([
+                'Ivan Bohun',
+                'Unknown',
+                'Quarterly report',
+                new DatePipe('en-US').transform(created, RECYCLE_BIN_DATE_FORMAT),
+                '2 KB',
+                '—',
+                'A new docs/ folder',
+            ]);
+            expect(rows[2].querySelector('.bin-details__text')).not.toBeNull();
+            expect(rows[5].querySelector('.bin-details__empty')).not.toBeNull();
+            expect(rows[6].classList).toContain('bin-details__row--notice');
+            expect(rows.slice(2).some((row) => row.classList.contains('bin-details__row--user'))).toBe(false);
+            expect(rows.slice(2).some((row) => row.querySelector('app-user-avatar'))).toBe(false);
+        });
     });
 
     it('shows a storage row by its own name', () => {

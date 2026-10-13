@@ -2,6 +2,7 @@ from typing import ClassVar
 
 from django.db import models
 from django.db.models import Q
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
 from .base_models import (
@@ -12,7 +13,7 @@ from .base_models import (
 )
 
 
-class Secret(OrgScopedModel, TimestampMixin, MetadataMixin, SoftDeleteMixin):
+class Secret(OrgScopedModel, LastEditTrackedModel, TimestampMixin, MetadataMixin, SoftDeleteMixin):
     """A named, reversibly-encrypted credential owned by one organization.
 
     `value` holds a Fernet encryptedtext, never the plain text. The plain text
@@ -21,8 +22,9 @@ class Secret(OrgScopedModel, TimestampMixin, MetadataMixin, SoftDeleteMixin):
 
     In the recycle bin the encrypted value stays until the purge, and the rows
     that use the secret keep their link (soft_delete_keeps_references), so a
-    restore brings them back working. SecretResolver reads through `objects`,
-    so a binned secret never resolves.
+    restore brings them back working. Its last edit is who moved it to the bin
+    (a secret is never edited: name and value are immutable). SecretResolver
+    reads through `objects`, so a binned secret never resolves.
 
     `system=True` rows (e.g. org-level storage admin credentials) are internal to
     storage_credentials: they are `internal_rows`, so `objects` and

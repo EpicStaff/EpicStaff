@@ -176,7 +176,7 @@ class SourceCollectionViewSet(
 
         try:
             result = CollectionManagementService.delete_collection(
-                collection_id=instance.collection_id
+                collection_id=instance.collection_id, deleted_by=request.user
             )
 
             return Response(
@@ -218,7 +218,9 @@ class SourceCollectionViewSet(
         )
 
         try:
-            result = CollectionManagementService.bulk_delete_collections(collection_ids)
+            result = CollectionManagementService.bulk_delete_collections(
+                collection_ids, deleted_by=request.user
+            )
 
             return Response(
                 {

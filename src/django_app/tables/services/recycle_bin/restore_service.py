@@ -45,7 +45,8 @@ class RestoreService:
         root's name is taken among the org's live rows, it gets the next free
         "#N" name, the same pattern a copy uses. An owned row whose owner is
         still in the bin (a surface deleted with its agent) comes back on its
-        own, without its owner: see _detach_from_binned_owner.
+        own, without its owner: see _detach_from_binned_owner. Its last edit
+        stays the deletion: "Last edited by" then shows who deleted it.
 
         Raises:
             NotInRecycleBinError: The root isn't binned, or was binned before

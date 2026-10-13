@@ -352,7 +352,7 @@ def test_delete_table_unlinks_its_nodes(service, table, graph):
     node = KeyValueNode.objects.create(graph=graph, node_name="p", key_value_table=table)
     KeyValueTableEntry.objects.create(table=table, key="k", value=1)
 
-    service.delete_table(table)
+    service.delete_table(table, deleted_by=None)
 
     assert not KeyValueTable.objects.filter(pk=table.pk).exists()
     node.refresh_from_db()
@@ -366,7 +366,7 @@ def test_delete_table_already_deleted_meanwhile_is_not_found(service, table):
     KeyValueTable.objects.filter(pk=table.pk).delete()
 
     with pytest.raises(KeyValueTableNotFoundError) as error:
-        service.delete_table(stale)
+        service.delete_table(stale, deleted_by=None)
 
     assert error.value.status_code == 404
     assert error.value.default_code == "key_value_table_not_found"

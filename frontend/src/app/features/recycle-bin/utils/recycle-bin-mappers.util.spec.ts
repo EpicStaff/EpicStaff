@@ -93,6 +93,28 @@ describe('recycle bin mappers', () => {
         });
     });
 
+    it('keeps a user detail as a user, an unknown one too (not as an empty field)', () => {
+        const author = { id: 7, display_name: 'Ivan Bohun', avatar_url: null };
+        expect(toRecycleBinDetail({ label: 'Created by', value: author, format: 'user' })).toEqual({
+            label: 'Created by',
+            value: author,
+            format: 'user',
+        });
+        expect(toRecycleBinDetail({ label: 'Deleted by', value: null, format: 'user' })).toEqual({
+            label: 'Deleted by',
+            value: null,
+            format: 'user',
+        });
+    });
+
+    it('still maps a null value of the other formats to an empty field', () => {
+        expect(toRecycleBinDetail({ label: 'Description', value: null, format: 'text' })).toEqual({
+            label: 'Description',
+            value: null,
+            format: 'empty',
+        });
+    });
+
     it('maps a restore response', () => {
         const outcome = toRestoreOutcome('flow', {
             id: 1,

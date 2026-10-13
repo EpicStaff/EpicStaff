@@ -14,6 +14,13 @@ pytestmark = pytest.mark.django_db
 SYSTEM_NAME = "system_minio_org_user"
 
 
+@pytest.fixture
+def admin_client(client_as, admin_acme, acme):
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client
+
+
 def _system_secret(org, *, binned=False):
     secret = Secret.all_objects.create(name=SYSTEM_NAME, value="ciphertext-s", org=org, system=True)
     if binned:

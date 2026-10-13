@@ -219,7 +219,7 @@ class TestPurgeExpired:
 
     def test_an_expired_storage_batch_goes_with_its_trash_objects(self, storage_org, storage_manager):
         seed_file(storage_manager._backend, storage_org.id, "docs/a.txt", b"a")
-        storage_manager.delete(storage_org.id, "docs/a.txt")
+        storage_manager.delete(storage_org.id, "docs/a.txt", user=None)
         row = StorageFile.all_objects.get(org=storage_org, path="docs/a.txt")
         _backdate(StorageFile, row, 8)
 
@@ -232,8 +232,8 @@ class TestPurgeExpired:
     def test_a_restored_storage_file_survives_the_bin_expiring(self, storage_org, storage_manager):
         seed_file(storage_manager._backend, storage_org.id, "docs/a.txt", b"a")
         seed_file(storage_manager._backend, storage_org.id, "docs/b.txt", b"b")
-        storage_manager.delete(storage_org.id, "docs/a.txt")
-        storage_manager.delete(storage_org.id, "docs/b.txt")
+        storage_manager.delete(storage_org.id, "docs/a.txt", user=None)
+        storage_manager.delete(storage_org.id, "docs/b.txt", user=None)
         StorageRecycleBinService(storage_manager).restore(
             storage_org.id, StorageFile.deleted_objects.get(org=storage_org, path="docs/a.txt").pk
         )

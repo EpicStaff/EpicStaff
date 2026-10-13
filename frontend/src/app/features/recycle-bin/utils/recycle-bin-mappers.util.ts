@@ -93,8 +93,12 @@ function toContentItem(content: GetRecycleBinContentResponse, index: number): No
     return { name: content.name || UNNAMED_CONTENT, nodeType: content.kind, key: `${content.kind}-${index}` };
 }
 
-/** A value that doesn't parse in its format is shown as text rather than dropped. */
+/**
+ * A value that doesn't parse in its format is shown as text rather than dropped. A user keeps its own
+ * format even when null: an unknown user reads "Unknown", not an empty field's dash.
+ */
 export function toRecycleBinDetail(detail: GetRecycleBinDetailResponse): RecycleBinDetail {
+    if (detail.format === 'user') return { label: detail.label, format: 'user', value: detail.value };
     const { label, value, format } = detail;
     if (value === null) return { label, format: 'empty', value: null };
     if (format === 'date') {

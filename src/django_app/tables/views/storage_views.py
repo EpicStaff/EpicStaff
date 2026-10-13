@@ -267,7 +267,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         for path in serializer.validated_data["paths"]:
             try:
-                self.manager.delete(org_id, path)
+                self.manager.delete(org_id, path, user=request.user)
             except ValueError as e:
                 raise ValidationError({"detail": str(e)}) from e
 
@@ -518,7 +518,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             item_type=request.query_params.get("item_type", ""),
         )
         page = paginator.paginate_queryset(rows, request, view=self)
-        entries = StorageRecycleBinService.to_entries(self.get_active_org_id(), page)
+        entries = StorageRecycleBinService.to_entries(
+            self.get_active_org_id(), page, request=request
+        )
         return paginator.get_paginated_response(
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )

@@ -55,7 +55,7 @@ def _trash_keys(manager, org, batch) -> list[str]:
 class TestRestore:
     def test_a_file_deleted_with_its_folder_comes_back_only_with_it(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         with pytest.raises(NotInRecycleBinError):
             service.restore(org.id, _row(org, "docs/a.txt").pk)
@@ -68,7 +68,7 @@ class TestRestore:
         manager.mkdir(org.id, "docs")
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
         seed_file(manager._backend, org.id, "docs/sub/b.txt", b"b")
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         service.restore(org.id, _row(org, "docs/").pk)
 
@@ -83,7 +83,7 @@ class TestRestore:
 
     def test_a_folder_whose_name_is_taken_comes_back_renamed_with_its_contents(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"old")
-        manager.delete(org.id, "docs")
+        manager.delete(org.id, "docs", user=None)
         manager.mkdir(org.id, "docs")
 
         result = service.restore(org.id, StorageFile.deleted_objects.get(org=org, path="docs/").pk)
@@ -96,7 +96,7 @@ class TestRestore:
 
     def test_a_file_whose_name_is_taken_comes_back_renamed(self, manager, service, org):
         seed_file(manager._backend, org.id, "report.pdf", b"v1")
-        manager.delete(org.id, "report.pdf")
+        manager.delete(org.id, "report.pdf", user=None)
         seed_file(manager._backend, org.id, "report.pdf", b"v2")
 
         result = service.restore(org.id, StorageFile.deleted_objects.get(org=org, path="report.pdf").pk)
@@ -108,8 +108,8 @@ class TestRestore:
     def test_a_parent_deleted_on_its_own_stays_whole_in_the_bin(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
         seed_file(manager._backend, org.id, "docs/b.txt", b"b")
-        manager.delete(org.id, "docs/a.txt")
-        manager.delete(org.id, "docs")
+        manager.delete(org.id, "docs/a.txt", user=None)
+        manager.delete(org.id, "docs", user=None)
         deleted_folder = StorageFile.deleted_objects.get(org=org, path="docs/")
 
         service.restore(org.id, StorageFile.deleted_objects.get(org=org, path="docs/a.txt").pk)
@@ -121,7 +121,7 @@ class TestRestore:
 
     def test_a_parent_that_no_longer_exists_is_created(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        manager.delete(org.id, "docs/a.txt")
+        manager.delete(org.id, "docs/a.txt", user=None)
         StorageFile.objects.filter(org=org, path="docs/").delete()
 
         service.restore(org.id, _row(org, "docs/a.txt").pk)
@@ -130,7 +130,7 @@ class TestRestore:
 
     def test_an_unindexed_object_at_the_target_is_a_conflict(self, manager, service, org):
         seed_file(manager._backend, org.id, "report.pdf", b"v1")
-        manager.delete(org.id, "report.pdf")
+        manager.delete(org.id, "report.pdf", user=None)
         manager._backend.put_bytes(f"org_{org.id}/report.pdf", b"stray")
 
         with pytest.raises(StorageRestoreConflictError):
@@ -148,7 +148,7 @@ class TestRestore:
 class TestPurge:
     def test_a_file_goes_for_good(self, manager, service, org):
         seed_file(manager._backend, org.id, "a.txt", b"a")
-        batch = manager.delete(org.id, "a.txt")
+        batch = manager.delete(org.id, "a.txt", user=None)
         row = _row(org, "a.txt")
 
         service.purge(org.id, row.pk, actor="test")
@@ -159,7 +159,7 @@ class TestPurge:
     def test_a_folder_goes_with_its_batch(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
         seed_file(manager._backend, org.id, "docs/sub/b.txt", b"b")
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         service.purge(org.id, _row(org, "docs/").pk, actor="test")
 
@@ -168,7 +168,7 @@ class TestPurge:
 
     def test_a_file_deleted_with_its_folder_goes_only_with_it(self, manager, service, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         with pytest.raises(NotInRecycleBinError):
             service.purge(org.id, _row(org, "docs/a.txt").pk, actor="test")
@@ -179,7 +179,7 @@ class TestPurge:
         from tables.services.storage_service.quota import org_used_bytes
 
         seed_file(manager._backend, org.id, "a.txt", b"abcde")
-        manager.delete(org.id, "a.txt")
+        manager.delete(org.id, "a.txt", user=None)
 
         service.purge(org.id, _row(org, "a.txt").pk, actor="test")
 
@@ -187,7 +187,7 @@ class TestPurge:
 
     def test_an_expired_batch_purges_only_after_its_cutoff(self, manager, service, org):
         seed_file(manager._backend, org.id, "a.txt", b"a")
-        batch = manager.delete(org.id, "a.txt")
+        batch = manager.delete(org.id, "a.txt", user=None)
         deleted_at = _row(org, "a.txt").soft_deleted_at
 
         assert service.purge_expired_batch(org.id, batch, deleted_at - timedelta(seconds=1), actor="test") == 0
@@ -225,7 +225,7 @@ def client_with_files_bits(client_as, django_user_model, acme):
 
 def _binned(manager, org, path, content=b"x") -> StorageFile:
     seed_file(manager._backend, org.id, path, content)
-    manager.delete(org.id, path)
+    manager.delete(org.id, path, user=None)
     return StorageFile.deleted_objects.get(org=org, path=path)
 
 
@@ -234,7 +234,7 @@ def test_delete_locks_the_org_row_before_any_storage_row(real_manager, acme):
     seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
 
     with CaptureQueriesContext(connection) as queries:
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
 
     locks = [query["sql"] for query in queries.captured_queries if "FOR UPDATE" in query["sql"]]
     assert locks, "the delete took no row lock"
@@ -247,7 +247,7 @@ class TestStorageBinApi:
         older = _binned(real_manager, acme, "old.txt")
         StorageFile.all_objects.filter(pk=older.pk).update(soft_deleted_at=timezone.now() - timedelta(hours=1))
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
         seed_file(real_manager._backend, acme.id, "live.txt", b"l")
         _binned(real_manager, beta, "theirs.txt")
 
@@ -267,9 +267,17 @@ class TestStorageBinApi:
         }
         folder_details = {detail["label"]: detail["value"] for detail in entries[0]["details"]}
         file_details = {detail["label"]: detail["value"] for detail in entries[1]["details"]}
-        assert list(folder_details) == ["Location", "Created", "Last changed"]
+        assert list(folder_details) == ["Created by", "Deleted by", "Location", "Created", "Last changed"]
         assert folder_details["Location"] == "/"
-        assert list(file_details) == ["Location", "Size", "Type", "Created", "Last changed"]
+        assert list(file_details) == [
+            "Created by",
+            "Deleted by",
+            "Location",
+            "Size",
+            "Type",
+            "Created",
+            "Last changed",
+        ]
         assert (file_details["Location"], file_details["Size"], file_details["Type"]) == ("/", 1, "TXT")
         assert entries[0]["contents"] == [{"name": "a.txt", "kind": "file"}]
         assert entries[0]["contents_total"] == 1
@@ -283,7 +291,7 @@ class TestStorageBinApi:
     ):
         _binned(real_manager, acme, "docs/a.txt")
         _binned(real_manager, acme, "keep/b.txt")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
 
         entries = {entry["name"]: entry for entry in admin_client.get(BIN).json()["results"]}
 
@@ -319,7 +327,7 @@ class TestStorageBinApi:
 
     def test_restore_returns_each_id_with_its_path(self, admin_client, real_manager, acme):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
         folder = _row(acme, "docs/")
         loose = _binned(real_manager, acme, "notes.txt")
 
@@ -338,7 +346,7 @@ class TestStorageBinApi:
     @pytest.mark.parametrize("action", ["restore", "purge"])
     def test_an_id_deleted_with_its_folder_is_404(self, admin_client, real_manager, acme, action):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
 
         response = admin_client.post(
             f"{BIN}{action}/", {"ids": [_row(acme, "docs/a.txt").pk]}, format="json"
@@ -426,7 +434,7 @@ class TestStorageBinApi:
 
     def test_search_finds_a_folder_by_a_file_deleted_inside_it(self, admin_client, real_manager, acme):
         seed_file(real_manager._backend, acme.id, "reports/2025/invoice-77.pdf", b"x")
-        real_manager.delete(acme.id, "reports")
+        real_manager.delete(acme.id, "reports", user=None)
         _binned(real_manager, acme, "notes.txt")
 
         found = admin_client.get(BIN, {"search": "INVOICE"}).json()["results"]
@@ -438,7 +446,7 @@ class TestStorageBinApi:
     ):
         for index in range(3):
             seed_file(real_manager._backend, acme.id, f"docs/f{index}.txt", b"x")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
         folder, child = _row(acme, "docs/"), _row(acme, "docs/f0.txt")
         theirs = _binned(real_manager, beta, "theirs.txt")
 
@@ -455,7 +463,7 @@ class TestStorageBinApi:
     def test_filter_by_kind(self, admin_client, real_manager, acme):
         _binned(real_manager, acme, "loose.txt")
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
-        real_manager.delete(acme.id, "docs")
+        real_manager.delete(acme.id, "docs", user=None)
 
         folders = admin_client.get(BIN, {"item_type": "folder"}).json()["results"]
         files = admin_client.get(BIN, {"item_type": "file"}).json()["results"]
@@ -499,7 +507,7 @@ class TestStorageBinApi:
         assert restorer.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json").status_code == 403
         assert purger.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 403
         assert restorer.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 200
-        real_manager.delete(acme.id, "a.txt")
+        real_manager.delete(acme.id, "a.txt", user=None)
         again = StorageFile.deleted_objects.get(org=acme, path="a.txt")
         assert purger.post(f"{BIN}purge/", {"ids": [again.pk]}, format="json").status_code == 200
 
@@ -518,7 +526,7 @@ class TestFailures:
     ):
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
         seed_file(manager._backend, org.id, "docs/b.txt", b"b")
-        manager.delete(org.id, "docs")
+        manager.delete(org.id, "docs", user=None)
         folder_id = _row(org, "docs/").pk
         real_rename = manager._backend.rename
 
@@ -539,7 +547,7 @@ class TestFailures:
 
     def test_a_storage_failure_during_purge_brings_the_rows_back(self, manager, service, org, monkeypatch):
         seed_file(manager._backend, org.id, "a.txt", b"a")
-        batch = manager.delete(org.id, "a.txt")
+        batch = manager.delete(org.id, "a.txt", user=None)
         row = _row(org, "a.txt")
         monkeypatch.setattr(manager._backend, "delete_prefix", lambda prefix: (_ for _ in ()).throw(RuntimeError("down")))
 

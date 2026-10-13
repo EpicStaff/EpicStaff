@@ -10,6 +10,12 @@ from dataclasses import dataclass, field
 
 from django.db.models import Count, F, Model, Window
 from django.db.models.functions import RowNumber
+from rbac.authorship.policy import AUTHOR_FIELD, has_author_field
+from tables.services.recycle_bin.authorship import (
+    BinEntryAuthorship,
+    DeletedWith,
+    authorship_details,
+)
 from tables.services.recycle_bin.bin_service import RecycleBinEntry, RecycleBinService
 from tables.services.recycle_bin.presentation import (
     BinContent,
@@ -36,9 +42,12 @@ class RecycleBinEntryWithContents(RecycleBinEntry):
 class BinContentsService:
     @classmethod
     def entries(
-        cls, resource: BinResource, presentation: BinPresentation, org_id: int
+        cls, resource: BinResource, presentation: BinPresentation, org_id: int, *, request=None
     ) -> list[RecycleBinEntryWithContents]:
-        """The org's bin entries for `resource`, newest first, each with what its restore brings back."""
+        """The org's bin entries for `resource`, newest first, each with what its restore brings back.
+
+        `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
+        """
         entries = RecycleBinService.entries(resource, org_id)
         batch_by_parent = {entry.id: entry.batch for entry in entries}
         contents, totals = cls._contents(
@@ -47,7 +56,7 @@ class BinContentsService:
             names=presentation.named_contents,
         )
         details = cls._details(
-            resource, presentation, list(batch_by_parent), DetailContext(org_id=org_id)
+            resource, presentation, list(batch_by_parent), DetailContext(org_id=org_id), request
         )
         return [
             RecycleBinEntryWithContents(
@@ -132,10 +141,13 @@ class BinContentsService:
         presentation: BinPresentation,
         ids: list[int],
         context: DetailContext,
+        request,
     ) -> dict[int, list[BinDetail]]:
-        """Basic info per entry: one query for the whole list, plus a resource's extra lines.
+        """Basic info per entry: who created and who deleted it first, then the tab's fields.
 
-        Every field of the tab is sent, with a null value when it's empty.
+        Three queries for the whole list (the fields, the last edits, the users), plus
+        a resource's extra lines. Every field of the tab is sent, with a null value when
+        it's empty.
 
         Only plain descriptive fields: never secrets, URLs with credentials or keys.
         """
@@ -143,16 +155,38 @@ class BinContentsService:
             return {}
         fields = presentation.detail_fields
         paths = {path for detail_field in fields for path in detail_field.paths}
-        if resource.owner_field is not None:
-            paths.add(f"{resource.owner_field}__active")
+        paths.add("soft_deleted_at")
+        author_path = f"{AUTHOR_FIELD}_id" if has_author_field(resource.model) else None
+        if author_path is not None:
+            paths.add(author_path)
+        owner = resource.owner_field
+        if owner is not None:
+            paths |= {
+                f"{owner}__active",
+                f"{owner}_id",
+                f"{owner}__soft_delete_batch",
+                "soft_delete_batch",
+            }
         extra = (
             presentation.extra_details(ids, context)
             if presentation.extra_details is not None
             else {}
         )
+        rows = list(resource.model.all_objects.filter(pk__in=ids).values("pk", *paths))
+        authorship = authorship_details(
+            resource.model,
+            {
+                row["pk"]: BinEntryAuthorship(
+                    row[author_path] if author_path else None, row["soft_deleted_at"]
+                )
+                for row in rows
+            },
+            request,
+            deleted_with=_deleted_with_owner(resource, rows),
+        )
         details: dict[int, list[BinDetail]] = {}
-        for row in resource.model.all_objects.filter(pk__in=ids).values("pk", *paths):
-            lines = []
+        for row in rows:
+            lines = list(authorship[row["pk"]])
             for detail_field in fields:
                 lines.append(
                     BinDetail(
@@ -174,3 +208,18 @@ class BinContentsService:
                 )
             details[row["pk"]] = lines
         return details
+
+
+def _deleted_with_owner(resource: BinResource, rows: list[dict]) -> dict[int, DeletedWith]:
+    """The entries binned in their owner's batch (a surface deleted with its agent), with that owner."""
+    owner = resource.owner_field
+    if owner is None:
+        return {}
+    owner_model = resource.model._meta.get_field(owner).related_model
+    return {
+        row["pk"]: (owner_model, row[f"{owner}_id"])
+        for row in rows
+        if row[f"{owner}_id"] is not None
+        and row["soft_delete_batch"] is not None
+        and row["soft_delete_batch"] == row[f"{owner}__soft_delete_batch"]
+    }

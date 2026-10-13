@@ -29,7 +29,7 @@ class TestSoftDelete:
     def test_a_file_moves_to_its_trash_batch(self, manager, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"old")
 
-        batch = manager.delete(org.id, "docs/a.txt")
+        batch = manager.delete(org.id, "docs/a.txt", user=None)
 
         assert f"org_{org.id}/docs/a.txt" not in _objects(manager)
         assert f"org_{org.id}/.recycle-bin/{batch}/docs/a.txt" in _objects(manager)
@@ -39,7 +39,7 @@ class TestSoftDelete:
 
     def test_a_new_upload_to_the_same_path_keeps_the_binned_bytes(self, manager, org):
         seed_file(manager._backend, org.id, "docs/a.txt", b"old")
-        batch = manager.delete(org.id, "docs/a.txt")
+        batch = manager.delete(org.id, "docs/a.txt", user=None)
 
         seed_file(manager._backend, org.id, "docs/a.txt", b"new")
 
@@ -52,7 +52,7 @@ class TestSoftDelete:
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
         seed_file(manager._backend, org.id, "docs/sub/b.txt", b"b")
 
-        batch = manager.delete(org.id, path)
+        batch = manager.delete(org.id, path, user=None)
 
         rows = StorageFile.all_objects.filter(org=org, path__startswith="docs/")
         assert {row.path for row in rows} == {"docs/", "docs/a.txt", "docs/sub/", "docs/sub/b.txt"}
@@ -68,22 +68,22 @@ class TestSoftDelete:
     def test_a_folder_with_no_marker_is_still_binned(self, manager, org):
         # An upload's ancestors get rows but no marker object.
         seed_file(manager._backend, org.id, "docs/a.txt", b"a")
-        manager.delete(org.id, "docs/a.txt")
+        manager.delete(org.id, "docs/a.txt", user=None)
 
-        assert manager.delete(org.id, "docs") is not None
+        assert manager.delete(org.id, "docs", user=None) is not None
 
         assert StorageFile.deleted_objects.filter(org=org, path="docs/").exists()
 
     def test_nothing_live_at_the_path_is_a_no_op(self, manager, org):
         manager._backend.put_bytes(f"org_{org.id}/unindexed.txt", b"x")
 
-        assert manager.delete(org.id, "unindexed.txt") is None
+        assert manager.delete(org.id, "unindexed.txt", user=None) is None
 
         assert f"org_{org.id}/unindexed.txt" in _objects(manager)
 
     def test_binned_files_disappear_from_live_reads(self, manager, org):
         seed_file(manager._backend, org.id, "a.txt", b"a")
-        manager.delete(org.id, "a.txt")
+        manager.delete(org.id, "a.txt", user=None)
 
         assert manager.list_(org.id, "") == []
         with pytest.raises(FileNotFoundError):
@@ -108,7 +108,7 @@ class TestOnSoftDelete:
         surface = Surface.objects.create(org=org, name="Reads a file")
         SurfaceStorageItem.objects.create(surface=surface, storage_file=row)
 
-        StorageFileSync.on_soft_delete(org.id, "a.txt")
+        StorageFileSync.on_soft_delete(org.id, "a.txt", user=None)
 
         assert not GraphStorageFile.all_objects.filter(storage_file=row).exists()
         assert not SessionStorageFile.objects.filter(storage_file=row).exists()
@@ -118,7 +118,7 @@ class TestOnSoftDelete:
         StorageFileSync.on_upload(org.id, "docs/a/x.txt", size=1)
         StorageFileSync.on_upload(org.id, "docs/b.txt", size=1)
 
-        StorageFileSync.on_soft_delete(org.id, "docs/a/")
+        StorageFileSync.on_soft_delete(org.id, "docs/a/", user=None)
 
         assert StorageFile.objects.filter(org=org, path="docs/b.txt").exists()
         assert not StorageFile.objects.filter(org=org, path="docs/a/x.txt").exists()
@@ -147,7 +147,7 @@ class TestDeleteFailures:
         monkeypatch.setattr(manager._backend, "rename", rename_then_fail)
 
         with pytest.raises(RuntimeError):
-            manager.delete(org.id, "docs")
+            manager.delete(org.id, "docs", user=None)
 
         assert StorageFile.objects.filter(org=org, path__startswith="docs/").count() == 3
         assert GraphStorageFile.objects.filter(storage_file=row).exists()
@@ -171,7 +171,7 @@ class TestDeleteFailures:
         seed_file(manager._backend, org.id, "docs/b.txt", b"b")
         self._rename_then_fail_deleting_sources(manager, monkeypatch)
 
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         trash = f"org_{org.id}/.recycle-bin/{batch}/docs/"
         assert _objects(manager)[f"{trash}a.txt"][0] == b"a"
@@ -187,7 +187,7 @@ class TestDeleteFailures:
         self._rename_then_fail_deleting_sources(manager, monkeypatch)
         monkeypatch.setattr(manager._backend, "delete_keys", lambda keys: (_ for _ in ()).throw(RuntimeError("down")))
 
-        batch = manager.delete(org.id, "docs")
+        batch = manager.delete(org.id, "docs", user=None)
 
         trash = f"org_{org.id}/.recycle-bin/{batch}/docs/"
         assert {f"{trash}a.txt", f"{trash}b.txt"} <= set(_objects(manager))
@@ -195,14 +195,14 @@ class TestDeleteFailures:
 
     def test_deleting_the_same_path_twice_is_a_no_op_the_second_time(self, manager, org):
         seed_file(manager._backend, org.id, "a.txt", b"a")
-        manager.delete(org.id, "a.txt")
+        manager.delete(org.id, "a.txt", user=None)
 
-        assert manager.delete(org.id, "a.txt") is None
+        assert manager.delete(org.id, "a.txt", user=None) is None
 
     def test_a_delete_does_not_free_quota(self, manager, org):
         seed_file(manager._backend, org.id, "a.txt", b"abcde")
 
-        manager.delete(org.id, "a.txt")
+        manager.delete(org.id, "a.txt", user=None)
 
         assert org_used_bytes(org.id) == 5
 

@@ -3,12 +3,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from django.db import transaction
-from django.db.models import QuerySet, Value
+from django.db.models import Exists, OuterRef, QuerySet, Value
 from django.db.models.functions import Concat, Substr
 from django.utils import timezone
 from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
 from tables.models import StorageFile, User
+from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
 
 
@@ -261,13 +262,14 @@ class StorageFileSync:
         record_last_edits(created_folders, user)
 
     @staticmethod
-    def on_soft_delete(org_id: int, path: str) -> SoftDeletedSubtree | None:
+    def on_soft_delete(org_id: int, path: str, *, user: object | None) -> SoftDeletedSubtree | None:
         """Bin the live file at `path`, or the folder at `path` with everything under it, as one batch.
 
         Same lookup as on_delete: an exact live file path wins, otherwise `path`
         is a folder. Every row pointing at a binned row (flow attachments,
         session outputs, surface grants) is hard-deleted: a binned file is
         linked to nothing, and a restore brings it back without its links.
+        `user` is recorded as who deleted each recycle-bin entry the batch makes.
         Returns None when nothing live sits at `path`.
         """
         clean_path = path.rstrip("/")
@@ -282,12 +284,15 @@ class StorageFileSync:
             return None
 
         batch = uuid.uuid4()
-        binned = rows.update(active=False, soft_deleted_at=timezone.now(), soft_delete_batch=batch)
+        deleted_at = timezone.now()
+        binned = rows.update(active=False, soft_deleted_at=deleted_at, soft_delete_batch=batch)
         if not binned:
             # A concurrent delete binned these rows first (the UPDATE waited for
             # its locks, then re-checked active=True). Its objects are its to move.
             return None
-        _delete_links_to(StorageFile.all_objects.filter(soft_delete_batch=batch))
+        batch_rows = StorageFile.all_objects.filter(soft_delete_batch=batch)
+        _delete_links_to(batch_rows)
+        record_deleter(_bin_entries_of(batch_rows), user, deleted_at=deleted_at)
         return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod
@@ -340,6 +345,16 @@ class StorageFileSync:
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
                 record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
+
+
+def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:
+    """The rows of one batch the recycle bin lists: those whose folder wasn't binned with them.
+
+    The same rule as StorageRecycleBinService.top_level. Usually just the deleted
+    file or folder; more only when the folder had no row of its own.
+    """
+    deleted_with_its_folder = batch_rows.filter(path=OuterRef("parent_path"))
+    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk"))
 
 
 def _delete_links_to(rows: QuerySet) -> None:

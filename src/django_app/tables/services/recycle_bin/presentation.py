@@ -84,9 +84,10 @@ class BinDetail:
     """One line of basic info about a bin entry. `format` tells the UI how to show `value`."""
 
     label: str
-    value: str | int | None  # None: the field is empty
-    # "text", "date" (ISO 8601), "size" (bytes) or "notice" (how the item comes back: without
-    # something, or differently; the UI shows it in the accent colour)
+    value: str | int | dict | None  # None: the field is empty
+    # "text", "date" (ISO 8601), "size" (bytes), "user" (a user summary: id, display_name,
+    # avatar_url) or "notice" (how the item comes back: without something, or differently;
+    # the UI shows it in the accent colour)
     format: str = "text"
 
 

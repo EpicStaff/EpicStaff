@@ -229,6 +229,7 @@
                                                             [class.bin-details__row--notice]="
                                                                 detail.format === 'notice'
                                                             "
+                                                            [class.bin-details__row--user]="detail.format === 'user'"
                                                         >
                                                             <dt class="bin-details__label">{{ detail.label }}</dt>
                                                             <dd class="bin-details__value">
@@ -244,6 +245,31 @@
                                                                     }
                                                                     @case ('notice') {
                                                                         {{ detail.value }}
+                                                                    }
+                                                                    @case ('user') {
+                                                                        <!-- Avatar and name, like an author elsewhere; an unknown user keeps
+                                                                             the avatar's height, so both user lines are as tall. -->
+                                                                        <span class="bin-details__user">
+                                                                            @if (detail.value; as user) {
+                                                                                <app-user-avatar
+                                                                                    [name]="user.display_name"
+                                                                                    [avatarUrl]="user.avatar_url"
+                                                                                />
+                                                                                <span
+                                                                                    class="bin-details__user-name"
+                                                                                    appTooltipOnOverflow
+                                                                                    [matTooltip]="userName(user)"
+                                                                                    matTooltipPosition="above"
+                                                                                    matTooltipShowDelay="500"
+                                                                                    matTooltipClass="bin-name-tooltip"
+                                                                                    >{{ userName(user) }}</span
+                                                                                >
+                                                                            } @else {
+                                                                                <span class="bin-details__empty">{{
+                                                                                    unknownUser
+                                                                                }}</span>
+                                                                            }
+                                                                        </span>
                                                                     }
                                                                     @default {
                                                                         <!-- At most 3 lines; the full text is in the tooltip when cut.
