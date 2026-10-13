@@ -60,7 +60,7 @@ def build_pipeline(credentials: AbstractStorageCredentials) -> Pipeline:
         )
         .register(LaunchStep(default_timeout=settings.EXECUTION_TIMEOUT))
         .register(CaptureMutationsStep())
-        .register(CaptureResultStep(mask_secrets=settings.MASK_SECRET))
+        .register(CaptureResultStep())
     )
 
 
@@ -79,6 +79,7 @@ def build_job_consumer(
         build_pipeline(credentials),
         credentials=credentials,
         result_sink=QueueResultSink(result_queue),
+        mask_secrets=settings.MASK_SECRET,
     )
     return JobConsumer(
         QueueJobSource(job_queue), orchestrator, concurrency=settings.WORKER_CONCURRENCY

@@ -15,6 +15,7 @@ from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
 from worker.application.ports.result_sink import AbstractResultSink
 from worker.application.ports.storage_credentials import AbstractStorageCredentials
+from worker.application.secret_scrubber import scrub
 from worker.domain.models import ExecutionResult, Job
 
 __all__ = ["ExecutionOrchestrator"]
@@ -27,10 +28,12 @@ class ExecutionOrchestrator:
         *,
         credentials: AbstractStorageCredentials,
         result_sink: AbstractResultSink,
+        mask_secrets: bool,
     ):
         self._pipeline = pipeline
         self._credentials = credentials
         self._result_sink = result_sink
+        self._mask_secrets = mask_secrets
 
     async def execute(self, job: Job) -> None:
         context = ExecutionContext(job=job)
@@ -39,14 +42,28 @@ class ExecutionOrchestrator:
         finally:
             await self._finalize(context)
 
-        result = ExecutionResult(
-            execution_id=job.execution_id,
-            result=context.result_data,
-            stdout=context.stdout,
-            stderr=context.stderr,
+        result = self._build_result(context)
+        await self._result_sink.send(result, mutations=context.storage_mutations)
+
+    def _build_result(self, context: ExecutionContext) -> ExecutionResult:
+        # The scrub runs here, not in a pipeline step, so it covers every outcome --
+        # including a step that failed after the child's output was captured, where
+        # the pipeline stops before the capture step would have masked anything.
+        stdout = context.stdout
+        stderr = context.stderr
+        result_data = context.result_data
+        if self._mask_secrets:
+            secrets = context.job.secrets or {}
+            stdout = scrub(text=stdout, secrets=secrets) or ""
+            stderr = scrub(text=stderr, secrets=secrets) or ""
+            result_data = scrub(text=result_data, secrets=secrets)
+        return ExecutionResult(
+            execution_id=context.job.execution_id,
+            result=result_data,
+            stdout=stdout,
+            stderr=stderr,
             returncode=context.returncode if context.returncode is not None else 1,
         )
-        await self._result_sink.send(result, mutations=context.storage_mutations)
 
     async def _finalize(self, context: ExecutionContext) -> None:
         if context.storage_credentials is not None:

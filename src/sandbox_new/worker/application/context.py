@@ -1,7 +1,7 @@
 """The mutable working state threaded through one execution's pipeline.
 
 Each step reads what earlier steps put here and writes what later steps need. It
-also carries the outcome: once the pipeline finishes, the presentation layer reads
+also carries the outcome: once the pipeline finishes, the orchestrator reads
 ``returncode``/``stdout``/``stderr``/``result_data`` off the context to build the
 wire result. Errors are recorded here via ``fail`` rather than raised, so a failing
 step ends the run cleanly instead of taking the worker down.

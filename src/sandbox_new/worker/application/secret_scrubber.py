@@ -12,12 +12,14 @@ secret. A determined author can still exfiltrate by encoding or chunking the val
 or by sending it out over the network. This is a safety net, not a boundary.
 
 Gated by the SANDBOX_MASK_SECRET environment variable (default on), parsed into
-settings.MASK_SECRET at import time. When it is false ExecuteCodeHandler reads
-settings.MASK_SECRET directly and skips scrubbing, so debugging can see real
-values -- and plaintext credentials then reach every consumer listed above,
-including persisted rows and container logs. It is a development affordance, not
-something to carry into an environment holding real credentials. scrub() itself
-always masks unconditionally.
+settings.MASK_SECRET and handed to ExecutionOrchestrator. When it is false the
+orchestrator skips scrubbing, so debugging can see real values -- and plaintext
+credentials then reach every consumer listed above, including persisted rows and
+container logs. It is a development affordance, not something to carry into an
+environment holding real credentials. scrub() itself always masks unconditionally.
+
+The orchestrator runs scrub() on the way out rather than a pipeline step, so a
+step that fails after the child's output is captured cannot bypass it.
 """
 
 import json
@@ -34,8 +36,7 @@ def _pattern(*, secrets: dict[str, str]) -> re.Pattern | None:
 
     Only an EMPTY value is skipped here -- there is no minimum length. A
     one-character secret masks every occurrence of that character in the
-    output, including incidental, unrelated matches. This is intentional,
-    pinned in tests/chain_tests/test_secret_scrubber.py::TestLengthIsNotConsidered:
+    output, including incidental, unrelated matches. This is intentional:
     garbling output is a loud, self-correcting symptom, while leaking a value
     is silent and permanent, so the trade is accepted rather than bounded. The
     fix for a short-value collision is not to store something like "1" as a
