@@ -119,7 +119,8 @@ class NodeNameResolver:
         return self._cache[id]
 
 
-#: Default resolver with an empty cache — falls back to individual DB lookups.
-#: Use this as a default parameter value for converter methods so they work
-#: correctly both with and without a pre-built batch resolver.
+#: Default resolver with an empty cache — falls back to unscoped individual DB lookups.
+#: Only a default for converter methods that resolve the node's OWN id. A converter that
+#: renders a reference stored on the node (edges, routing targets) takes the resolver as
+#: a required argument, so a forgotten graph-scoped resolver cannot leak foreign names.
 SINGLE_LOOKUP_RESOLVER = NodeNameResolver()
