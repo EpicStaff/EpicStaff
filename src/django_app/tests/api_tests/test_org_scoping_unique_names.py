@@ -205,10 +205,11 @@ def test_python_code_tool_create_with_name_of_soft_deleted_tool_succeeds(
 
 
 @pytest.mark.django_db
-def test_python_code_tool_delete_soft_delete_default_leaves_row_in_all_objects(
+@override_settings(SOFT_DELETE=True)
+def test_python_code_tool_delete_leaves_row_in_all_objects_when_soft_delete_enabled(
     client_a, org_a
 ):
-    """SOFT_DELETE=True (default): DELETE hides the tool from `objects` but keeps
+    """SOFT_DELETE=True: DELETE hides the tool from `objects` but keeps
     it in `all_objects` with `is_soft_deleted=True` and `soft_deleted_at` set."""
     tool = _make_tool(org=org_a, built_in=False, name="to-delete")
 

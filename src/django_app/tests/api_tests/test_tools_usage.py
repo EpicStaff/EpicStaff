@@ -178,13 +178,10 @@ def test_cross_org_mcp_tool_not_visible(client_a, org_b, mcp_tool_factory):
 
 @pytest.mark.django_db
 def test_requires_authentication(db):
-    # Test settings zero out DEFAULT_AUTHENTICATION_CLASSES (the suite uses
-    # force_authenticate instead), so with no authenticators configured DRF's
-    # IsAuthenticated denies via PermissionDenied (403) rather than
-    # NotAuthenticated (401) — matches the other plain-APIView endpoints in
-    # this codebase (e.g. RunPythonCodeAPIView) under the same test settings.
+    # Test settings use JwtOrApiKeyAuthentication, whose authenticate_header
+    # makes DRF answer an anonymous request with 401 rather than 403.
     resp = APIClient().post(PYTHON_USAGE_URL)
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---- is_built_in field ----

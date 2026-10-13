@@ -167,7 +167,7 @@ def test_non_numeric_mcp_tool_pk_is_404(client_a):
 @pytest.mark.django_db
 def test_requires_authentication(db):
     resp = APIClient().get(python_usage_detail_url(1))
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---- agent_surface: catalog Surface with owner_agent set ----

@@ -28,7 +28,12 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
-from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    ProviderType,
+    WebhookTrigger,
+)
+from tables.services.secrets import secret_service
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -44,16 +49,21 @@ _PYTHON_CODE_DATA = {
 
 
 @pytest.fixture
-def ngrok_config(db) -> NgrokWebhookConfig:
-    return NgrokWebhookConfig.objects.create(
-        name="test_ngrok", auth_token="test_token_123", region="eu"
+def webhook_trigger(default_org) -> WebhookTrigger:
+    return WebhookTrigger.objects.create(
+        path="test-path", provider_type=ProviderType.NGROK, org=default_org
     )
 
 
 @pytest.fixture
-def webhook_trigger(ngrok_config) -> WebhookTrigger:
-    return WebhookTrigger.objects.create(
-        path="test-path", ngrok_webhook_config=ngrok_config
+def ngrok_config(webhook_trigger, default_org) -> NgrokWebhookConfig:
+    return NgrokWebhookConfig.objects.create(
+        name="test_ngrok",
+        auth_token_secret=secret_service.create(
+            text="test_token_123", org=default_org, name="cleanup-ngrok-secret"
+        ),
+        region="eu",
+        trigger=webhook_trigger,
     )
 
 
@@ -68,7 +78,7 @@ def test_delete_python_code_tool_deletes_python_code(
 ):
     create_payload = {
         "name": "cleanup-test-tool",
-        "description": "",
+        "description": "Tool whose PythonCode the cleanup must remove.",
         "variables": [],
         "python_code": _PYTHON_CODE_DATA,
     }
@@ -281,13 +291,14 @@ def test_deleting_owner_preserves_python_code_result_with_null_python_code(
 
 @pytest.mark.django_db
 def test_shared_python_code_survives_until_last_owner_deleted(
-    auth_client, graph, python_code, django_capture_on_commit_callbacks
+    auth_client, default_org, graph, python_code, django_capture_on_commit_callbacks
 ):
     tool = PythonCodeTool.objects.create(
         name="shared-code-tool",
         description="",
         variables=[],
         python_code=python_code,
+        org=default_org,
     )
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
     python_code_id = python_code.id
@@ -379,6 +390,8 @@ def test_signal_pending_buffer_rearms_after_transaction_rollback(
     auth_client, graph, python_code, django_capture_on_commit_callbacks
 ):
     rolled_back_node = PythonNode.objects.create(graph=graph, python_code=python_code)
+    # Model.delete() clears the instance pk even when the transaction rolls back.
+    rolled_back_node_id = rolled_back_node.id
 
     surviving_python_code = PythonCode.objects.create(code="def main(): return 99")
     surviving_node = PythonNode.objects.create(
@@ -396,7 +409,7 @@ def test_signal_pending_buffer_rearms_after_transaction_rollback(
     # The rollback discarded the delete itself along with the on_commit
     # registration it triggered — the owner and its PythonCode are both
     # still there.
-    assert PythonNode.objects.filter(id=rolled_back_node.id).exists()
+    assert PythonNode.objects.filter(id=rolled_back_node_id).exists()
     assert PythonCode.objects.filter(id=python_code.id).exists()
 
     with django_capture_on_commit_callbacks(execute=True):

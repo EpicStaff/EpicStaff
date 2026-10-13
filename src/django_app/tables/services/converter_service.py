@@ -672,7 +672,8 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_condition_group_to_pydantic(
         self,
         condition_group: ConditionGroup,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
     ) -> ConditionGroupData:
         return ConditionGroupData(
             group_name=condition_group.group_name,
@@ -689,7 +690,8 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_classification_decision_table_node_to_pydantic(
         self,
         node: ClassificationDecisionTableNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
         graph_id: int | None = None,
         session_id: int | None = None,
     ):
@@ -787,10 +789,11 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_decision_table_node_to_pydantic(
         self,
         decision_table_node: DecisionTableNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
     ) -> DecisionTableNodeData:
         condition_group_list = [
-            self.convert_condition_group_to_pydantic(condition_group, resolver)
+            self.convert_condition_group_to_pydantic(condition_group, resolver=resolver)
             for condition_group in decision_table_node.condition_groups.all()
         ]
         return DecisionTableNodeData(
@@ -897,9 +900,7 @@ class ConverterService(metaclass=SingletonMeta):
             max_runs=schedule_trigger_node.max_runs,
         )
 
-    def convert_edge_to_pytdantic(
-        self, edge: Edge, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
-    ) -> EdgeData:
+    def convert_edge_to_pytdantic(self, edge: Edge, *, resolver: NodeNameResolver) -> EdgeData:
         return EdgeData(
             start_key=resolver(edge.start_node_id),
             end_key=resolver(edge.end_node_id),

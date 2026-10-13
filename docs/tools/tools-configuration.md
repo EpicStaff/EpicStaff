@@ -164,7 +164,7 @@ When a variable's `type` is `object` or `array`, the value passed to `main(**kwa
 ```python
 # Variable: { "name": "user", "type": "object", ... }
 def main(**kwargs):
-    return kwargs["user"].name        # attribute access works
+    return kwargs["user"].name  # attribute access works
     # equivalent to kwargs["user"]["name"]
 ```
 
@@ -253,6 +253,8 @@ The LLM only sees `item`. At runtime, `suffix="_done"` arrives via `global_kwarg
 ```python
 def main(**kwargs):
     return kwargs["item"] + kwargs.get("suffix", "")
+
+
 # result: "hello_done"
 ```
 

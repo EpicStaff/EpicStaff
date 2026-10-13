@@ -87,8 +87,10 @@ def py_tool_b(db):
 
 
 @pytest.fixture
-def naive_collection(db):
-    collection = SourceCollection.objects.create(collection_name="voice-naive-coll")
+def naive_collection(default_org):
+    collection = SourceCollection.objects.create(
+        collection_name="voice-naive-coll", org=default_org
+    )
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
     )
@@ -105,8 +107,10 @@ def completed_naive_rag(naive_collection):
 
 
 @pytest.fixture
-def graph_collection(db):
-    collection = SourceCollection.objects.create(collection_name="voice-graph-coll")
+def graph_collection(default_org):
+    collection = SourceCollection.objects.create(
+        collection_name="voice-graph-coll", org=default_org
+    )
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.GRAPH, source_collection=collection
     )
