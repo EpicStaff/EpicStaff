@@ -9,6 +9,7 @@ accounting / stop-triggering logic that lives in run_session() itself.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 from datetime import datetime
@@ -591,4 +592,50 @@ async def test_streamed_message_state_is_sent_without_being_rebuilt(service, mon
     first_added = service.redis_service.aadd_graph_message.await_args_list[0]
     assert json.loads(first_added.args[1])["message_data"]["state"]["variables"] == {
         "customer": {"name": "Ada"}
+    }
+
+
+@pytest.mark.asyncio
+async def test_session_stopped_while_queued_does_not_run(service, monkeypatch):
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+
+    stop_event = StopEvent(default_status="expired")
+    stop_event.set()
+
+    await service.session_runner(_session_data(session_id=3), stop_event)
+
+    service.redis_service.aupdate_session_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_session_stopped_while_queued_is_audited_as_skipped(service, monkeypatch):
+    audit_calls: list[tuple[str, dict]] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(("start", kwargs))
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(("end", kwargs))
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+    stop_event = StopEvent(default_status="expired")
+    stop_event.set()
+
+    await service.session_runner(_session_data(session_id=4), stop_event)
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    assert [kind for kind, _ in audit_calls] == ["start", "end"]
+    end_call = audit_calls[1][1]
+    assert end_call["session_id"] == 4
+    assert end_call["name"] == "Session Skipped"
+    assert end_call["details"] == {
+        "reason": "stopped while queued",
+        "session_status": "expired",
     }
