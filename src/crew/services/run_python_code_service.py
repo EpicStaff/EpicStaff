@@ -4,12 +4,23 @@ from typing import Any
 
 import settings
 from loguru import logger
+from models.state import State
 from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from utils.singleton_meta import SingletonMeta
+
+
+def build_state_globals(state: State) -> dict[str, Any]:
+    """Build the `state` global that user Python code can read in the sandbox."""
+    return {
+        "state": {
+            "variables": state["variables"].model_dump(),
+            "state_history": state["state_history"],
+        }
+    }
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
@@ -70,6 +81,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 returncode=1,
             ).model_dump()
 
+        code_task_message = code_task_data.model_dump_json()
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
@@ -79,7 +91,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         for g in self.redis_service._async_pubsub_groups.values():
             total_len += len(g._subscribers)
 
-        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
+        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_message)
         logger.info("Waiting for code_results")
 
         while True:
