@@ -56,6 +56,8 @@ class LLMConfig(BaseModel):
     seed = Column(Integer, nullable=True)
     extra_headers = Column(JSON, nullable=True, default=dict)
     timeout = Column(Float, nullable=True)
+    input_cost_per_token = Column(Float, nullable=True)
+    output_cost_per_token = Column(Float, nullable=True)
     is_visible = Column(Boolean, default=True)
 
     model_id = Column(Integer, ForeignKey("tables_llmmodel.id"), nullable=True)

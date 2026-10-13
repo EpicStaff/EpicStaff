@@ -7,7 +7,10 @@ export interface IndexingDocumentInfo {
     wasIndexed: boolean;
 }
 
-export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): ConfirmationDialogData {
+export function getIndexingConfirmationData(
+    documents: IndexingDocumentInfo[],
+    estimateHtml = ''
+): ConfirmationDialogData {
     const newDocs = documents.filter((d) => !d.wasIndexed);
     const reindexDocs = documents.filter((d) => d.wasIndexed);
     const hasReindexDocs = reindexDocs.length > 0;
@@ -34,7 +37,8 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         return {
             title: 'Confirm Indexing',
             message:
-                "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume.",
+                "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume." +
+                estimateHtml,
             caution: sections.join(''),
             type: 'warning',
             cancelText: 'Cancel',
@@ -46,7 +50,7 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
 
     return {
         title: 'Confirm Indexing',
-        message: `Initializing indexing${filesText}. This process involves document parsing, chunking, and generating vector embeddings via <strong>LLM services</strong>.`,
+        message: `Initializing indexing${filesText}. This process involves document parsing, chunking, and generating vector embeddings via <strong>LLM services</strong>.${estimateHtml}`,
         caution:
             "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume.",
         type: 'warning',

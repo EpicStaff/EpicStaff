@@ -4,6 +4,7 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "GetIndexEstimate",
     "GetMetrics",
     "RemoveRag",
     "RunIndex",
@@ -55,3 +56,9 @@ class RemoveRag(Command):
 @dataclass(frozen=True)
 class GetMetrics(Command):
     rag_id: int
+
+
+@dataclass(frozen=True)
+class GetIndexEstimate(Command):
+    rag_id: int
+    document_ids: frozenset[int]

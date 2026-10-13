@@ -3,6 +3,7 @@ from typing import Literal
 
 from application import commands
 from application.commands import GetMetrics, RemoveRag
+from application.orchestrators.estimating import build_estimator
 from application.orchestrators.indexing import build_indexer
 from application.orchestrators.metrics import build_metrics
 from application.orchestrators.prechunking import build_prechunker
@@ -107,6 +108,23 @@ class RagController(Controller):
         orchestrator = build_prechunker(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.PrechunkOutputSchema.model_validate(result)
+
+    @post(
+        path="{rag_id:int}/index-estimate/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Estimate indexing tokens and cost",
+    )
+    async def index_estimate(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        data: schemas.IndexEstimateInputSchema,
+        uow: AbstractUnitOfWork,
+    ) -> schemas.IndexEstimateOutputSchema:
+        command = commands.GetIndexEstimate(rag_id=rag_id, document_ids=data.document_ids)
+        orchestrator = build_estimator(strategy, uow)
+        result = await orchestrator.execute(command)
+        return schemas.IndexEstimateOutputSchema.model_validate(result)
 
     @get(
         path="{rag_id:int}/metrics/",

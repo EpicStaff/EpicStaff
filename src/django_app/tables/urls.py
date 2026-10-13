@@ -106,6 +106,7 @@ from tables.views.views import (
     GetUpdates,
     InitRealtimeAPIView,
     NotifyEmailView,
+    ProcessRagIndexingEstimateView,
     ProcessRagIndexingView,
     PythonNodeLastTestInputView,
     QuickstartApplyView,
@@ -275,6 +276,11 @@ urlpatterns = [
         "process-rag-indexing/",
         ProcessRagIndexingView.as_view(),
         name="process-rag-indexing",
+    ),
+    path(
+        "process-rag-indexing/estimate/",
+        ProcessRagIndexingEstimateView.as_view(),
+        name="process-rag-indexing-estimate",
     ),
     path(
         "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",

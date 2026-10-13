@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -902,14 +903,18 @@ class QuickstartApplyView(APIView):
         )
 
 
-class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+class RagOrgLookupMixin:
+    """The RAG models by `rag_type` and the path to their owning org, for org-scoped lookups."""
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+
+class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
-
-    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
-    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -986,6 +991,47 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
+    """Read-only token and cost estimate for an indexing run, computed by knowledge_new.
+
+    Takes the same body and needs the same permission as `ProcessRagIndexingView`, so
+    the estimate is available to exactly the users who can start the indexing.
+    """
+
+    # Chunking whole documents in memory is slower than the indexing hand-off call.
+    _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
+
+    @extend_schema(request=ProcessRagIndexingSerializer, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        serializer = ProcessRagIndexingSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
+
+        model = self._RAG_MODELS[rag_type]
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+
+        try:
+            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+                estimate = client.index_estimate(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    document_ids=frozenset(document_config_ids),
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+
+        return Response(estimate, status=status.HTTP_200_OK)
 
 
 class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):

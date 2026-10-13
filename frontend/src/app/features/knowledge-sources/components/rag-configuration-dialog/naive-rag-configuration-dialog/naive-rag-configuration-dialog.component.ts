@@ -4,9 +4,8 @@ import { ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
-import { filter, switchMap } from 'rxjs/operators';
+import { filter, finalize, switchMap } from 'rxjs/operators';
 
-import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
 import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
 import { NaiveRagConfigurationComponent } from '../../naive-rag-configuration/naive-rag-configuration.component';
@@ -24,7 +23,9 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
     private documentsStorage = inject(NaiveRagDocumentsStorageService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
     hasUnsavedChanges = computed(() => this.ragConfiguration().hasUnsavedChanges());
-    indexingDisabled = computed(() => !this.ragConfiguration().filteredAndCheckedDocIds().length);
+    indexingDisabled = computed(
+        () => this.isPreparingIndexing() || !this.ragConfiguration().filteredAndCheckedDocIds().length
+    );
 
     processingDocIds = computed(() => {
         const processing = this.collectionsStorage.processingConfigIds();
@@ -57,6 +58,8 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
     }
 
     runIndexing(): void {
+        if (this.isPreparingIndexing()) return;
+
         const config = this.ragConfiguration();
         const indexingDocs = config.getIndexingDocuments();
         const configIds = indexingDocs.map((d) => d.configId);
@@ -65,8 +68,8 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
 
         const delete$: Observable<unknown> = hasPendingDeletes ? config.bulkDeletePending() : of(null);
 
-        this.confirmation
-            .confirm(getIndexingConfirmationData(indexingDocs))
+        this.isPreparingIndexing.set(true);
+        this.confirmIndexing(indexingDocs, configIds)
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => delete$),
@@ -86,7 +89,8 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                         document_config_ids: configIds,
                     });
                 }),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.isPreparingIndexing.set(false))
             )
             .subscribe({
                 next: () => {

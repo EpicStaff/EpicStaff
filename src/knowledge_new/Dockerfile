@@ -54,6 +54,9 @@ RUN apt-get update && apt-get install -y libpq-dev \
 COPY --from=builder /app /app
 
 # Add virtualenv to PATH.
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` - the index estimate
+# imports it for token counting and prices.
 # The app's top-level modules (main, bootstrap, settings, ...) live in the
 # WORKDIR and `src.shared` resolves from /app, so both are on PYTHONPATH
 # explicitly rather than relying on the CWD being searched. PYTHONSAFEPATH=1
@@ -63,7 +66,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONSAFEPATH=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/.venv
+    VIRTUAL_ENV=/app/.venv \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/knowledge
 

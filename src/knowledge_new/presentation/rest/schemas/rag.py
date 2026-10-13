@@ -1,3 +1,4 @@
+from domain.enums import RAGStrategy
 from domain.models import ChunkingConfig, FoundChunk, SearchConfig
 from presentation.rest.schemas.base import BaseSchema
 from pydantic import Field
@@ -38,3 +39,29 @@ class SearchOutputSchema(BaseSchema):
 class MetricsOutputSchema(BaseSchema):
     total_chunks: int
     avg_chunk_size: float
+
+
+class IndexEstimateInputSchema(BaseSchema):
+    document_ids: frozenset[int]
+
+
+class EmbeddingEstimateSchema(BaseSchema):
+    tokens: int
+    exact: bool
+    cost_usd: float | None
+
+
+class LlmEstimateSchema(BaseSchema):
+    calls: int
+    tokens_min: int
+    tokens_max: int
+    cost_usd_min: float | None
+    cost_usd_max: float | None
+
+
+class IndexEstimateOutputSchema(BaseSchema):
+    rag_type: RAGStrategy
+    document_count: int
+    chunk_count: int
+    embedding: EmbeddingEstimateSchema
+    llm: LlmEstimateSchema | None

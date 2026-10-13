@@ -10,6 +10,7 @@ from domain.models import (
     Document,
     EmbeddingConfig,
     FoundChunk,
+    GraphEstimateConfig,
     IndexedChunk,
     PreviewChunk,
     Rag,
@@ -190,6 +191,14 @@ class AbstractGraphRagRepository(abc.ABC):
         Args:
             rag_id: Primary key of the GraphRAG collection.
             slot: Optional slot override; when None the active slot from the DB row is used.
+        """
+
+    @abc.abstractmethod
+    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig | None:
+        """Return the settings that size and price an index run for `rag_id`, or `None` if unset.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
         """
 
     @abc.abstractmethod

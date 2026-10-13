@@ -41,6 +41,24 @@ export interface StartIndexingDtoRequest {
     document_config_ids?: number[];
 }
 
+export interface IndexingEstimate {
+    rag_type: RagType;
+    document_count: number;
+    chunk_count: number;
+    embedding: {
+        tokens: number;
+        exact: boolean;
+        cost_usd: number | null;
+    };
+    llm: {
+        calls: number;
+        tokens_min: number;
+        tokens_max: number;
+        cost_usd_min: number | null;
+        cost_usd_max: number | null;
+    } | null;
+}
+
 export interface StopIndexingDtoRequest {
     rag_id: number;
     rag_type: RagType;

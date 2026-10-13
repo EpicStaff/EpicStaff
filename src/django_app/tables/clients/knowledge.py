@@ -51,6 +51,19 @@ class KnowledgeClient:
             },
         )
 
+    def index_estimate(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        document_ids: frozenset[int],
+    ) -> dict:
+        response = self._request(
+            method="post",
+            url=f"rags/{strategy}/{rag_id}/index-estimate/",
+            json={"document_ids": list(document_ids)},
+        )
+        return response.json()
+
     def prechunk(
         self,
         strategy: RAGStrategy,

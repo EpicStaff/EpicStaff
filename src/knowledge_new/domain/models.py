@@ -30,6 +30,7 @@ __all__ = [
     "Document",
     "EmbeddingConfig",
     "FoundChunk",
+    "GraphEstimateConfig",
     "GraphSearchConfig",
     "IndexRequest",
     "IndexedChunk",
@@ -137,3 +138,16 @@ class EmbeddingConfig(ValueObject):
     base_url: str | None = None
     extra_headers: dict[str, str] = Field(default_factory=dict, repr=False)
     extra: dict = Field(default_factory=dict)
+
+
+class GraphEstimateConfig(ValueObject):
+    """The settings of a GraphRAG that decide the size and price of an index run."""
+
+    embedding: EmbeddingConfig
+    llm_provider: str
+    llm_model: str
+    input_cost_per_token: float | None = None
+    output_cost_per_token: float | None = None
+    chunk_size: int
+    chunk_overlap: int
+    max_gleanings: int
