@@ -1,5 +1,6 @@
 import {
-    DESK_AVATAR_COLORS,
+    AVATAR_COLORS,
+    avatarColor,
     deskAccessibleName,
     deskAvatarColor,
     deskBadgeText,
@@ -49,7 +50,7 @@ describe('deskInitials', () => {
 describe('deskAvatarColor', () => {
     it('picks one of the palette tokens, the same one every time for the same id', () => {
         const color = deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10');
-        expect(DESK_AVATAR_COLORS.map((token) => `var(${token})`)).toContain(color);
+        expect(AVATAR_COLORS.map((token) => `var(${token})`)).toContain(color);
         expect(deskAvatarColor('6f1c2a9e-0d4b-4c43-9a51-2b7e8f3c1d10')).toBe(color);
     });
 
@@ -61,7 +62,14 @@ describe('deskAvatarColor', () => {
 
     it('spreads ids over the whole palette', () => {
         const used = new Set(Array.from({ length: 60 }, (_, index) => deskAvatarColor(`desk-${index}`)));
-        expect(used.size).toBe(DESK_AVATAR_COLORS.length);
+        expect(used.size).toBe(AVATAR_COLORS.length);
+    });
+});
+
+describe('avatarColor', () => {
+    it('is the colour a desk gets too, so desks and conversations share one palette', () => {
+        expect(avatarColor('b-1')).toBe(deskAvatarColor('b-1'));
+        expect(AVATAR_COLORS.map((token) => `var(${token})`)).toContain(avatarColor('c-42'));
     });
 });
 

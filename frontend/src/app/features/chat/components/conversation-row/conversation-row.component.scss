@@ -1,0 +1,152 @@
+@use '../../../../../styles/status-chip';
+
+:host {
+    position: relative;
+    display: block;
+}
+
+.conversation-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
+    &--selected,
+    &--selected:hover {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    &__name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    // Waiting for a person: the name stands out, and a dot sits where an unread mark would.
+    &--waiting &__name {
+        font-size: var(--text-body-bold-size);
+        font-weight: var(--text-body-bold-weight);
+        line-height: var(--text-body-bold-line-height);
+    }
+
+    &__test-chip {
+        @include status-chip.chip;
+        @include status-chip.expired;
+        flex-shrink: 0;
+    }
+
+    &__time {
+        flex-shrink: 0;
+        margin-left: auto;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+
+    &__desk,
+    &__preview {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+
+    &__preview {
+        flex: 1;
+
+        &--replying {
+            color: var(--accent-color);
+        }
+
+        // A system note (a hand-off, a budget notice) is not anyone's message.
+        &--system {
+            font-style: italic;
+            color: var(--color-text-secondary);
+        }
+    }
+
+    &__sender {
+        color: var(--color-text-primary);
+    }
+
+    &__holder {
+        width: 20px;
+        height: 20px;
+    }
+
+    // How long the visitor has waited, after the dot: the accent marks what needs a person.
+    &__waiting {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        color: var(--accent-color);
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+    }
+
+    &__waiting-dot {
+        flex-shrink: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--accent-color);
+    }
+}
+
+// Over the time and the dot, only while the row is hovered or holds the keyboard focus.
+.conversation-row__take-over {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    visibility: hidden;
+}
+
+:host(:hover) .conversation-row__take-over,
+:host(:focus-within) .conversation-row__take-over {
+    visibility: visible;
+}

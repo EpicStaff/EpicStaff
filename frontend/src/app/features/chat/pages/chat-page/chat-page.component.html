@@ -105,96 +105,11 @@
 
     <div class="inbox">
         <aside class="inbox__sidebar">
-            <div class="inbox__sections">
-                @for (item of sectionLayout(); track item.section.id) {
-                    @let section = item.section;
-                    @let state = inbox()[section.id];
-                    <section
-                        class="inbox__section"
-                        [class.inbox__section--fill]="item.fills"
-                        [class.inbox__section--bottom-anchor]="item.anchorsBottom"
-                    >
-                        <app-section-header
-                            [label]="section.label"
-                            [icon]="section.icon"
-                            [expanded]="expanded()[section.id]"
-                            [showAdd]="false"
-                            [resource]="ResourceCode.Chats"
-                            (toggleSection)="toggleSection(section.id)"
-                        />
-                        @if (expanded()[section.id]) {
-                            <div class="inbox__section-body">
-                                @if (state.isLoading && !state.rows.length) {
-                                    <app-spinner
-                                        class="inbox__loading"
-                                        [size]="24"
-                                        text="Loading conversations…"
-                                    />
-                                } @else {
-                                    <app-list
-                                        class="inbox__list"
-                                        [items]="state.rows"
-                                        [trackBy]="trackConversation"
-                                        [striped]="false"
-                                        [emptyTitle]="section.emptyTitle"
-                                        [emptyDescription]="section.emptyDescription"
-                                    >
-                                        <ng-template let-conversation>
-                                            <div
-                                                class="conversation"
-                                                [class.conversation--selected]="conversation.id === selectedId()"
-                                                [class.conversation--awaiting]="conversation.mode === 'awaiting_human'"
-                                                role="button"
-                                                tabindex="0"
-                                                (click)="selectConversation(conversation.id)"
-                                                (keydown.enter)="selectConversation(conversation.id)"
-                                            >
-                                                <div class="conversation__top">
-                                                    <span class="conversation__id text-body-medium">
-                                                        {{ conversation.id.slice(0, 8) }}
-                                                        @if (conversation.is_test) {
-                                                            <span class="test-chip">Test</span>
-                                                        }
-                                                    </span>
-                                                    <span
-                                                        class="mode-badge"
-                                                        [class]="'mode-badge--' + conversation.mode"
-                                                    >
-                                                        {{ modeLabel(conversation.mode) }}
-                                                    </span>
-                                                </div>
-                                                <div class="conversation__preview text-body-small">
-                                                    {{ conversation.last_message_preview || '—' }}
-                                                </div>
-                                                <div class="conversation__meta text-body-small">
-                                                    <span>{{
-                                                        conversation.state === 'processing'
-                                                            ? 'Replying…'
-                                                            : conversation.turns + ' turns total'
-                                                    }}</span>
-                                                    <span>{{ conversation.last_message_at | date: 'short' }}</span>
-                                                </div>
-                                            </div>
-                                        </ng-template>
-                                    </app-list>
-                                    @if (state.nextCursor) {
-                                        <div class="inbox__more">
-                                            <app-button
-                                                type="ghost"
-                                                mod="small"
-                                                [disabled]="state.isLoading"
-                                                (click)="loadMoreConversations(section.id)"
-                                            >
-                                                Load more
-                                            </app-button>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        }
-                    </section>
-                }
-            </div>
+            <app-conversation-list
+                [bindingId]="bindingId() ?? null"
+                [selectedId]="selectedId()"
+                (selectedChange)="selectConversation($event)"
+            />
         </aside>
 
         <section class="inbox__thread">
@@ -211,8 +126,13 @@
                         >
                             {{ modeLabel(conversation.mode) }}
                         </span>
-                        <span class="thread-header__title"
-                            >{{ selectedBinding()?.name ?? 'Desk' }} · {{ conversation.id.slice(0, 8) }}</span
+                        <!-- The visitor number is not unique: the full conversation id is one hover or focus away. -->
+                        <span
+                            class="thread-header__title"
+                            tabindex="0"
+                            matTooltipPosition="below"
+                            [matTooltip]="'Conversation ' + conversation.id"
+                            >{{ selectedBinding()?.name ?? 'Desk' }} · {{ visitorName(conversation) }}</span
                         >
                         @if (conversation.is_test) {
                             <span class="test-chip">Test</span>
@@ -347,11 +267,7 @@
                             >
                                 @if (message.role !== 'system') {
                                     <div class="message__author">
-                                        {{
-                                            message.role === 'operator'
-                                                ? operatorLabel(message.author_user_id)
-                                                : message.role
-                                        }}
+                                        {{ message.role === 'operator' ? operatorLabel(message) : message.role }}
                                     </div>
                                 }
                                 @if (message.content) {

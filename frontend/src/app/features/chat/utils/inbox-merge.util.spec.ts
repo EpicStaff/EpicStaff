@@ -16,6 +16,13 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_preview: '',
     handoff_reason: '',
     handoff_at: null,
+    visitor_number: 1,
+    chat_user_id: null,
+    assigned_operator_name: null,
+    last_message_role: 'user',
+    last_message_author_user_id: null,
+    last_message_author_name: null,
+    visitor_waiting_since: null,
     ...overrides,
 });
 
@@ -28,12 +35,20 @@ const message = (overrides: Partial<ChatOperatorMessage>): ChatOperatorMessage =
     session_id: null,
     created_at: '2026-10-10T10:00:00Z',
     author_user_id: null,
+    author_name: null,
     ...overrides,
 });
 
 const ids = (list: ChatConversation[]): string[] => list.map((item) => item.id);
 const human = (id: string, handoffAt: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
-    row({ id, mode: 'awaiting_human', handoff_at: handoffAt, last_message_at: handoffAt, ...overrides });
+    row({
+        id,
+        mode: 'awaiting_human',
+        handoff_at: handoffAt,
+        visitor_waiting_since: handoffAt,
+        last_message_at: handoffAt,
+        ...overrides,
+    });
 const bot = (id: string, lastMessageAt: string): ChatConversation => row({ id, last_message_at: lastMessageAt });
 
 describe('inboxSection', () => {
@@ -139,7 +154,7 @@ describe('upsertMessage', () => {
 
     it('keeps one row per id and the richer operator fields whichever arrives first', () => {
         const streamed = message({ id: 'm-9', role: 'operator', created_at: '2026-10-10T10:09:00Z' });
-        const fromPost = { ...streamed, session_id: 7, author_user_id: 3 };
+        const fromPost = { ...streamed, session_id: 7, author_user_id: 3, author_name: 'Ada Lovelace' };
         expect(upsertMessage(upsertMessage([], streamed), fromPost)).toEqual([fromPost]);
         expect(upsertMessage(upsertMessage([], fromPost), streamed)).toEqual([fromPost]);
     });

@@ -1,0 +1,59 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+// Laid out like the agents explorer: the first header stays at the top, the lowest expanded section fills the
+// leftover height and scrolls its own body, and collapsed Bot and Tests rest at the bottom.
+.conversation-list__sections {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.conversation-list__section {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+
+    app-section-header {
+        flex-shrink: 0;
+    }
+
+    // Grows into the leftover height; the floor keeps it usable when the section above has many rows.
+    &--fill {
+        flex: 1 1 0;
+        min-height: 40%;
+    }
+
+    &--bottom-anchor {
+        flex-shrink: 0;
+        margin-top: auto;
+    }
+}
+
+.conversation-list__section-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+// The section body scrolls, so a list grows with its rows instead of scrolling inside it.
+.conversation-list__rows {
+    height: auto;
+}
+
+.conversation-list__loading {
+    margin: 24px auto;
+}
+
+.conversation-list__more {
+    display: flex;
+    justify-content: center;
+    padding: 8px;
+}

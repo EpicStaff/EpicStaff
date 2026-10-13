@@ -47,6 +47,13 @@ const conversation = (overrides: Partial<ChatConversation>): ChatConversation =>
     last_message_preview: '',
     handoff_reason: '',
     handoff_at: null,
+    visitor_number: 1,
+    chat_user_id: null,
+    assigned_operator_name: null,
+    last_message_role: 'user',
+    last_message_author_user_id: null,
+    last_message_author_name: null,
+    visitor_waiting_since: null,
     ...overrides,
 });
 
@@ -283,6 +290,8 @@ describe('ChatInboxStreamService', () => {
             actions: null,
             action: null,
             created_at: '2026-10-10T10:00:00Z',
+            author_user_id: null,
+            author_name: null,
         };
         source.emit('message.created', event, '11');
         expect(seen).toEqual([event]);

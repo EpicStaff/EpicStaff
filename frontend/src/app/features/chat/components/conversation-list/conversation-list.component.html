@@ -1,0 +1,75 @@
+<div class="conversation-list__sections">
+    @for (item of store.layout(); track item.section.id) {
+        @let section = item.section;
+        @let state = store.sections()[section.id];
+        <section
+            class="conversation-list__section"
+            [class.conversation-list__section--fill]="item.fills"
+            [class.conversation-list__section--bottom-anchor]="item.anchorsBottom"
+        >
+            <app-section-header
+                [label]="section.label"
+                [icon]="section.icon"
+                [expanded]="store.expanded()[section.id]"
+                [showAdd]="false"
+                [resource]="ResourceCode.Chats"
+                (toggleSection)="store.toggle(section.id)"
+            />
+            @if (store.expanded()[section.id]) {
+                <div class="conversation-list__section-body">
+                    @if (state.isLoading && !state.rows.length) {
+                        <app-spinner
+                            class="conversation-list__loading"
+                            text="Loading conversations…"
+                            [size]="24"
+                        />
+                    } @else {
+                        <app-list
+                            class="conversation-list__rows"
+                            [items]="state.rows"
+                            [trackBy]="trackConversation"
+                            [striped]="false"
+                            [emptyTitle]="section.emptyTitle"
+                            [emptyDescription]="section.emptyDescription"
+                        >
+                            <ng-template let-conversation>
+                                <app-conversation-row
+                                    [conversation]="conversation"
+                                    [now]="now()"
+                                    [deskName]="deskNames()?.get(conversation.binding_id) ?? null"
+                                    [isSelected]="conversation.id === selectedId()"
+                                    [isTabStop]="conversation.id === tabStopId()"
+                                    [canTakeOver]="canTakeOver()"
+                                    [isActionPending]="isActionPending()"
+                                    (selectRequested)="selectedChange.emit(conversation)"
+                                    (takeOverRequested)="takeOver(conversation)"
+                                    (moveRequested)="move(conversation, $event)"
+                                />
+                            </ng-template>
+                        </app-list>
+                        @if (state.nextCursor) {
+                            <div class="conversation-list__more">
+                                <app-button
+                                    type="ghost"
+                                    mod="small"
+                                    [disabled]="state.isLoading"
+                                    (click)="store.loadMore(section.id)"
+                                >
+                                    Load more
+                                </app-button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </section>
+    }
+</div>
+
+<!-- Always present, so a change of its text is read out once; rows themselves are not live. -->
+<div
+    class="visually-hidden"
+    role="status"
+>
+    {{ replyingAnnouncement() }}
+</div>

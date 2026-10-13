@@ -94,59 +94,6 @@
         border-right: 1px solid var(--color-divider-regular);
     }
 
-    // Laid out like the agents explorer: the first header stays at the top, the lowest expanded section fills
-    // the leftover height and scrolls its own body, and collapsed Bot and Tests rest at the bottom.
-    &__sections {
-        flex: 1;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    &__section {
-        display: flex;
-        flex-direction: column;
-        flex: 0 1 auto;
-        min-height: 0;
-
-        app-section-header {
-            flex-shrink: 0;
-        }
-    }
-
-    // Grows into the leftover height; the floor keeps it usable when the section above has many rows.
-    &__section--fill {
-        flex: 1 1 0;
-        min-height: 40%;
-    }
-
-    &__section--bottom-anchor {
-        flex-shrink: 0;
-        margin-top: auto;
-    }
-
-    &__section-body {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-    }
-
-    // The section body scrolls, so a list grows with its rows instead of scrolling inside it.
-    &__list {
-        height: auto;
-    }
-
-    &__loading {
-        margin: 24px auto;
-    }
-
-    &__more {
-        display: flex;
-        justify-content: center;
-        padding: 8px;
-    }
-
     &__thread {
         display: flex;
         flex-direction: column;
@@ -169,57 +116,7 @@
     }
 }
 
-.conversation {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 12px;
-    border-bottom: 1px solid var(--color-divider-subtle);
-    border-left: 3px solid transparent;
-    cursor: pointer;
-
-    &:hover {
-        background-color: var(--color-ks-hover-row);
-    }
-
-    // The one state an operator must act on: it is ordered first by the API and stands out here.
-    &--awaiting {
-        border-left-color: var(--color-ks-status-warning);
-        background-color: color-mix(in srgb, var(--color-ks-status-warning) 8%, transparent);
-    }
-
-    // After awaiting so a selected awaiting row shows the selection and keeps the warning border.
-    &--selected {
-        background-color: var(--color-ghost-btn-active);
-    }
-
-    &__top,
-    &__meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-    }
-
-    &__id {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    &__preview {
-        color: var(--color-ks-transparent-text-80);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    &__meta {
-        color: var(--color-text-secondary);
-    }
-}
-
-// A test conversation, in its inbox row and in the thread header.
+// A test conversation, in the thread header.
 // The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
 // Bot = pending, Awaiting human = waiting, Human = running.
 .test-chip {
@@ -269,6 +166,12 @@
         font-size: var(--text-body-medium-size);
         font-weight: var(--text-body-medium-weight);
         line-height: var(--text-body-medium-line-height);
+
+        // Focusable for its tooltip (the full conversation id).
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: 2px;
+        }
     }
 
     &__usage {

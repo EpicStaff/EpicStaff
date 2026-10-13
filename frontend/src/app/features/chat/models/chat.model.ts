@@ -116,10 +116,16 @@ export interface ChatTestConversation {
 export interface ChatConversation {
     id: string;
     binding_id: string;
+    // Per desk, from 1 in creation order (test conversations included): "Visitor 12".
+    visitor_number: number;
+    // The verified customer id on a signed desk; null for anonymous and test conversations.
+    chat_user_id: string | null;
     mode: ChatMode;
     state: ChatRunState;
     is_test: boolean;
     assigned_operator_id: number | null;
+    // The holder's EpicStaff display name; null when nobody holds it or the name is not known yet.
+    assigned_operator_name: string | null;
     // Lifetime totals; the `_today` pair is what the per-conversation budget and max_turns count (per UTC day).
     tokens_used: number;
     turns: number;
@@ -127,9 +133,17 @@ export interface ChatConversation {
     turns_today: number;
     last_message_at: string | null;
     last_message_preview: string;
+    // Who wrote the last message; null before the first one.
+    last_message_role: ChatMessageRole | null;
+    // The operator who wrote it, and their display name (null when not known yet); null unless an operator reply.
+    last_message_author_user_id: number | null;
+    last_message_author_name: string | null;
     handoff_reason: string;
     // When the conversation left bot mode; null while the bot runs it. The human section's FIFO key.
     handoff_at: string | null;
+    // Since when the visitor has waited for a person: set by a hand-off or by a visitor message after the last
+    // operator reply; cleared by an operator reply or a return to the bot (a take over keeps it).
+    visitor_waiting_since: string | null;
 }
 
 // Cursor page of `GET /conversations`; `next_cursor` is opaque and null on the last page.
@@ -148,9 +162,12 @@ export interface ChatOperatorMessage {
     session_id: number | null;
     created_at: string;
     author_user_id: number | null;
+    // The authoring operator's display name; null when not known yet and on visitor, bot and system messages.
+    author_name: string | null;
 }
 
-// Inbox `message.created`: the public message shape plus the conversation it belongs to.
+// Inbox `message.created`: the public message shape plus the conversation it belongs to and, unlike the visitor's
+// stream, the operator who wrote it. No `session_id`.
 export interface ChatInboxMessageEvent {
     conversation_id: string;
     id: string;
@@ -159,6 +176,8 @@ export interface ChatInboxMessageEvent {
     actions: unknown[] | null;
     action: Record<string, unknown> | null;
     created_at: string;
+    author_user_id: number | null;
+    author_name: string | null;
 }
 
 // What a visitor message may carry besides its text (public send body); unset keys are not sent.

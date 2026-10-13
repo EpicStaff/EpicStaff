@@ -1,7 +1,7 @@
 import { CHAT_BINDING_STATUS_LABELS, ChatBindingStatus } from './binding-status.util';
 
 /** The avatar fills, as CSS custom properties defined in `_variables.scss` (the same in both themes). */
-export const DESK_AVATAR_COLORS: readonly string[] = [
+export const AVATAR_COLORS: readonly string[] = [
     '--color-avatar-1',
     '--color-avatar-2',
     '--color-avatar-3',
@@ -33,12 +33,17 @@ export function deskInitials(name: string): string {
     return firstGrapheme(name.trim());
 }
 
+/** An avatar fill picked by `seed` (a desk or conversation id), always the same one, as a `var(...)` for a style binding. */
+export function avatarColor(seed: string): string {
+    return `var(${AVATAR_COLORS[hashString(seed) % AVATAR_COLORS.length]})`;
+}
+
 /**
  * The fill of a desk's picture, picked by its id: stable across renames, and two desks with the same name still
- * (most likely) differ. Returns a `var(...)` for a style binding.
+ * (most likely) differ.
  */
 export function deskAvatarColor(deskId: string): string {
-    return `var(${DESK_AVATAR_COLORS[hashString(deskId) % DESK_AVATAR_COLORS.length]})`;
+    return avatarColor(deskId);
 }
 
 /** The badge text: nothing at zero, the count up to 99, then "99+". */

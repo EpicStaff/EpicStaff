@@ -53,7 +53,7 @@ export function placeRow(
     return [...rest, row].sort(order);
 }
 
-/** One row per id; the POST response and the streamed event race, so non-null operator fields win. */
+/** One row per id; the POST response, the streamed event and a page race, so non-null run and author fields win. */
 export function upsertMessage(messages: ChatOperatorMessage[], message: ChatOperatorMessage): ChatOperatorMessage[] {
     const existing = messages.find((item) => item.id === message.id);
     const merged: ChatOperatorMessage = existing
@@ -62,6 +62,7 @@ export function upsertMessage(messages: ChatOperatorMessage[], message: ChatOper
               ...message,
               session_id: message.session_id ?? existing.session_id,
               author_user_id: message.author_user_id ?? existing.author_user_id,
+              author_name: message.author_name ?? existing.author_name,
           }
         : message;
     return [...messages.filter((item) => item.id !== message.id), merged].sort(

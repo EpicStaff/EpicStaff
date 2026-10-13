@@ -34,6 +34,13 @@ const row = (overrides: Partial<ChatConversation> = {}): ChatConversation => ({
     last_message_preview: '',
     handoff_reason: '',
     handoff_at: null,
+    visitor_number: 1,
+    chat_user_id: null,
+    assigned_operator_name: null,
+    last_message_role: 'user',
+    last_message_author_user_id: null,
+    last_message_author_name: null,
+    visitor_waiting_since: null,
     ...overrides,
 });
 

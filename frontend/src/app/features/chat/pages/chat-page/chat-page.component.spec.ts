@@ -12,13 +12,14 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
+import { ConversationListStore } from '../../components/conversation-list/conversation-list.store';
 import {
     CHAT_BINDING_DEFAULTS,
     ChatBinding,
     ChatConversation,
     ChatConversationPage,
     ChatInboxMessageEvent,
-    ChatInboxSection,
     ChatOperatorMessage,
 } from '../../models/chat.model';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService, ConversationListParams } from '../../services/chat-api.service';
@@ -76,11 +77,25 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_preview: 'hello',
     handoff_reason: '',
     handoff_at: null,
+    visitor_number: 1,
+    chat_user_id: null,
+    assigned_operator_name: null,
+    last_message_role: 'user',
+    last_message_author_user_id: null,
+    last_message_author_name: null,
+    visitor_waiting_since: null,
     ...overrides,
 });
 
 const handedOff = (id: string, handoffAt: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
-    row({ id, mode: 'awaiting_human', handoff_at: handoffAt, last_message_preview: id, ...overrides });
+    row({
+        id,
+        mode: 'awaiting_human',
+        handoff_at: handoffAt,
+        visitor_waiting_since: handoffAt,
+        last_message_preview: id,
+        ...overrides,
+    });
 
 const page = (results: ChatConversation[], next_cursor: string | null = null): Observable<ChatConversationPage> =>
     of({ results, next_cursor });
@@ -146,8 +161,8 @@ describe('ChatPageComponent', () => {
         );
     }
 
-    const ids = (section: ChatInboxSection): string[] =>
-        fixture.componentInstance.inbox()[section].rows.map((item) => item.id);
+    const listStore = (): ConversationListStore =>
+        fixture.debugElement.query(By.directive(ConversationListComponent)).injector.get(ConversationListStore);
 
     /** A reload requests the human section first, then the bot section. */
     function reloadWith(human: Observable<ChatConversationPage>, bot: Observable<ChatConversationPage>): void {
@@ -181,11 +196,6 @@ describe('ChatPageComponent', () => {
     function listBindings(bindings: ChatBinding[]): void {
         serverBindings = bindings;
         TestBed.inject(ChatDesksStorageService).reload();
-    }
-
-    function expandBot(): void {
-        fixture.componentInstance.toggleSection('bot');
-        fixture.detectChanges();
     }
 
     beforeEach(() => {
@@ -222,291 +232,35 @@ describe('ChatPageComponent', () => {
         localStorage.clear();
     });
 
-    it('loads every section without waiting for the stream and reloads them all when the stream becomes ready', () => {
-        const sections = () => chatApi.getConversations.mock.calls.map(([params]) => params.section);
-        expect(sections()).toEqual(['human', 'bot', 'test']);
-        readyEpoch.update((value) => value + 1);
-        fixture.detectChanges();
-        expect(sections()).toEqual(['human', 'bot', 'test', 'human', 'bot', 'test']);
-    });
-
-    it('shows Needs a human, Bot and Tests headers in that order with Bot and Tests collapsed until toggled', () => {
-        const host: HTMLElement = fixture.nativeElement;
-        const expandedStates = () =>
-            Array.from(host.querySelectorAll('.header__toggle')).map((node) => node.getAttribute('aria-expanded'));
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-        expect(expandedStates()).toEqual(['true', 'false', 'false']);
-        expect(text('.conversation__preview')).toEqual([]);
-
-        (host.querySelectorAll('.header__toggle')[1] as HTMLButtonElement).click();
-        fixture.detectChanges();
-
-        expect(expandedStates()).toEqual(['true', 'true', 'false']);
-        expect(text('.conversation__preview')).toEqual(['hello']);
-    });
-
-    it('fills with the lowest expanded section and rests a collapsed Bot at the bottom', () => {
-        const host: HTMLElement = fixture.nativeElement;
-        const layout = () =>
-            Array.from(host.querySelectorAll('.inbox__section')).map((section) =>
-                ['fill', 'bottom-anchor'].filter((mod) => section.classList.contains(`inbox__section--${mod}`))
-            );
-        expect(layout()).toEqual([['fill'], ['bottom-anchor'], []]);
-
-        fixture.componentInstance.toggleSection('human');
-        fixture.detectChanges();
-        expect(layout()).toEqual([[], ['bottom-anchor'], []]);
-
-        expandBot();
-        expect(layout()).toEqual([[], ['fill'], ['bottom-anchor']]);
-
-        fixture.componentInstance.toggleSection('human');
-        fixture.detectChanges();
-        expect(layout()).toEqual([[], ['fill'], ['bottom-anchor']]);
-    });
-
-    it('hides Needs a human for a binding without handoff only while nothing waits there', () => {
+    it('keeps the open conversation current as it changes, whatever the list shows', () => {
         const component = fixture.componentInstance;
-        const bindings = [binding, { ...binding, id: 'b-2', name: 'No handoff', handoff_enabled: false }];
-        listBindings(bindings);
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-
-        scopeTo('b-2');
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Bot', 'Tests']);
-
-        // Handed off before handoff was turned off: still reachable.
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z', { binding_id: 'b-2' })]), page([]));
-        expect(component.bindingFilter()).toBe('b-2');
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-
-        scopeTo('b-1');
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-
-        scopeTo('');
-        listBindings([{ ...binding, handoff_enabled: false }]);
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-    });
-
-    it('rests a collapsed Bot at the bottom when Needs a human is hidden', () => {
-        const host: HTMLElement = fixture.nativeElement;
-        listBindings([{ ...binding, id: 'b-2', handoff_enabled: false }]);
-        scopeTo('b-2');
-        fixture.detectChanges();
-        const sections = () => Array.from(host.querySelectorAll('.inbox__section'));
-        expect(text('.header__label')).toEqual(['Bot', 'Tests']);
-        expect(sections()[0].classList.contains('inbox__section--bottom-anchor')).toBe(true);
-
-        expandBot();
-        expect(sections()[0].classList.contains('inbox__section--bottom-anchor')).toBe(false);
-        expect(sections()[0].classList.contains('inbox__section--fill')).toBe(true);
-    });
-
-    it('decides on Needs a human only once the human page of the new filter has landed', () => {
-        // Rows of the previous filter are still listed while the new one loads.
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z')]), page([]));
-        listBindings([
-            { ...binding, id: 'b-2', handoff_enabled: false },
-            { ...binding, id: 'b-3', handoff_enabled: false },
-        ]);
-        const pendingB2 = new Subject<ChatConversationPage>();
-        chatApi.getConversations.mockReturnValueOnce(pendingB2).mockReturnValueOnce(page([]));
-        scopeTo('b-2');
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-
-        pendingB2.next({ results: [], next_cursor: null });
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Bot', 'Tests']);
-
-        const pendingB3 = new Subject<ChatConversationPage>();
-        chatApi.getConversations.mockReturnValueOnce(pendingB3).mockReturnValueOnce(page([]));
-        scopeTo('b-3');
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Bot', 'Tests']);
-
-        pendingB3.next({
-            results: [handedOff('h-3', '2026-10-10T08:00:00Z', { binding_id: 'b-3' })],
-            next_cursor: null,
-        });
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
-    });
-
-    it('moves a bot conversation that is handed off to the end of the human section', () => {
-        reloadWith(
-            page([handedOff('h-1', '2026-10-10T08:00:00Z'), handedOff('h-2', '2026-10-10T09:00:00Z')]),
-            page([row({ id: 'c-1' })])
-        );
+        component.selectConversation(row({ id: 'c-1' }));
 
         conversationUpdated$.next(row({ id: 'c-1', mode: 'awaiting_human', handoff_at: '2026-10-10T11:00:00Z' }));
-
-        expect(ids('bot')).toEqual([]);
-        expect(ids('human')).toEqual(['h-1', 'h-2', 'c-1']);
-    });
-
-    it('keeps a human conversation in place when a new message arrives on it', () => {
-        reloadWith(
-            page([handedOff('h-1', '2026-10-10T08:00:00Z'), handedOff('h-2', '2026-10-10T09:00:00Z')]),
-            page([])
-        );
-
-        conversationUpdated$.next(
-            handedOff('h-1', '2026-10-10T08:00:00Z', { mode: 'human', last_message_at: '2026-10-10T12:00:00Z' })
-        );
-
-        expect(ids('human')).toEqual(['h-1', 'h-2']);
-    });
-
-    it("loads more of one section with that section's cursor, and only while it is expanded", () => {
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z')], 'human-2'), page([row({ id: 'c-1' })], 'bot-2'));
-        expect(text('.inbox__more')).toEqual(['Load more']);
-        expandBot();
-        expect(text('.inbox__more')).toEqual(['Load more', 'Load more']);
-
-        chatApi.getConversations.mockReturnValueOnce(page([]));
-        fixture.componentInstance.loadMoreConversations('bot');
-
-        expect(chatApi.getConversations).toHaveBeenLastCalledWith({ section: 'bot', binding: null, cursor: 'bot-2' });
-    });
-
-    it('loads more Tests with the Tests cursor', () => {
-        chatApi.getConversations
-            .mockReturnValueOnce(page([]))
-            .mockReturnValueOnce(page([]))
-            .mockReturnValueOnce(page([row({ id: 't-1', is_test: true })], 'test-2'));
-        readyEpoch.update((value) => value + 1);
-        fixture.detectChanges();
-        fixture.componentInstance.toggleSection('test');
-        fixture.detectChanges();
-        expect(text('.inbox__more')).toEqual(['Load more']);
-
-        chatApi.getConversations.mockReturnValueOnce(page([]));
-        fixture.componentInstance.loadMoreConversations('test');
-        expect(chatApi.getConversations).toHaveBeenLastCalledWith({ section: 'test', binding: null, cursor: 'test-2' });
-    });
-
-    it('keeps a live test conversation in Tests as it moves from bot to awaiting to human', () => {
-        const ids = (section: ChatInboxSection) =>
-            fixture.componentInstance.inbox()[section].rows.map((item) => item.id);
-        for (const mode of ['bot', 'awaiting_human', 'human'] as const) {
-            conversationUpdated$.next(
-                row({ id: 't-1', is_test: true, mode, handoff_at: mode === 'bot' ? null : '2026-10-10T10:00:00Z' })
-            );
-            expect(ids('test')).toEqual(['t-1']);
-            expect(ids('human')).toEqual([]);
-            expect(ids('bot')).toEqual(['c-1']);
-        }
-    });
-
-    it('keeps Needs a human hidden for a binding without handoff when only its tests were handed off', () => {
-        listBindings([{ ...binding, id: 'b-2', handoff_enabled: false }]);
-        scopeTo('b-2');
-        conversationUpdated$.next(
-            row({
-                id: 't-1',
-                binding_id: 'b-2',
-                is_test: true,
-                mode: 'awaiting_human',
-                handoff_at: '2026-10-10T10:00:00Z',
-            })
-        );
-        fixture.detectChanges();
-        expect(text('.header__label')).toEqual(['Bot', 'Tests']);
-    });
-
-    it('drops a live handoff past the human boundary and lists it when Load more reaches it', () => {
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z')], 'human-2'), page([]));
-
-        conversationUpdated$.next(row({ id: 'c-5', mode: 'awaiting_human', handoff_at: '2026-10-10T11:00:00Z' }));
-        expect(ids('human')).toEqual(['h-1']);
-
-        chatApi.getConversations.mockReturnValueOnce(
-            page([handedOff('h-2', '2026-10-10T09:00:00Z'), handedOff('c-5', '2026-10-10T11:00:00Z')])
-        );
-        fixture.componentInstance.loadMoreConversations('human');
-        expect(ids('human')).toEqual(['h-1', 'h-2', 'c-5']);
-    });
-
-    it('keeps a handoff that arrives while a Load more request is in flight', () => {
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z')], 'human-2'), page([]));
-        const more$ = new Subject<ChatConversationPage>();
-        chatApi.getConversations.mockReturnValueOnce(more$);
-        fixture.componentInstance.loadMoreConversations('human');
-
-        conversationUpdated$.next(row({ id: 'c-5', mode: 'awaiting_human', handoff_at: '2026-10-10T11:00:00Z' }));
-        more$.next({ results: [handedOff('h-2', '2026-10-10T09:00:00Z')], next_cursor: null });
-
-        expect(ids('human')).toEqual(['h-1', 'h-2', 'c-5']);
-    });
-
-    it('keeps every row of a page whose timestamps differ only in microseconds', () => {
-        // Newest first by microsecond; millisecond precision would tie them and reorder by id.
-        reloadWith(
-            page([]),
-            page(
-                [
-                    row({ id: 'c-a', last_message_at: '2026-10-10T10:00:00.123456Z' }),
-                    row({ id: 'c-b', last_message_at: '2026-10-10T10:00:00.123400Z' }),
-                ],
-                'bot-2'
-            )
-        );
-        expect(ids('bot')).toEqual(['c-a', 'c-b']);
-    });
-
-    it('moves a released conversation from the human section to the bot section', () => {
-        reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z', { mode: 'human' })]), page([row({ id: 'c-1' })]));
-
-        conversationUpdated$.next(row({ id: 'h-1', last_message_at: '2026-10-10T12:00:00Z' }));
-
-        expect(ids('human')).toEqual([]);
-        expect(ids('bot')).toEqual(['h-1', 'c-1']);
-    });
-
-    it('keeps the selection when the selected conversation moves to the other section', () => {
-        const component = fixture.componentInstance;
-        component.selectConversation('c-1');
-
-        conversationUpdated$.next(row({ id: 'c-1', mode: 'awaiting_human', handoff_at: '2026-10-10T11:00:00Z' }));
+        conversationUpdated$.next(row({ id: 'c-2', mode: 'human' }));
 
         expect(component.selectedId()).toBe('c-1');
         expect(component.selected()?.mode).toBe('awaiting_human');
-        expect(ids('human')).toEqual(['c-1']);
     });
 
-    it('cancels a page still in flight when the binding filter changes', () => {
-        const stale$ = new Subject<ChatConversationPage>();
-        reloadWith(page([]), stale$);
-        expect(stale$.observed).toBe(true);
-
-        scopeTo('b-2');
-        fixture.detectChanges();
-
-        expect(stale$.observed).toBe(false);
-        stale$.next({ results: [row({ id: 'c-stale' })], next_cursor: null });
-        expect(ids('bot')).toEqual(['c-1']);
-    });
-
-    it('reloads every section when the route binding changes', () => {
-        chatApi.getConversations.mockClear();
-        scopeTo('b-2');
-        fixture.detectChanges();
-        expect(chatApi.getConversations.mock.calls.map(([params]) => params)).toEqual([
-            { section: 'human', binding: 'b-2', cursor: null },
-            { section: 'bot', binding: 'b-2', cursor: null },
-            { section: 'test', binding: 'b-2', cursor: null },
-        ]);
-    });
-
-    it('expands Tests, not Bot, when a test conversation starts', () => {
+    it('hosts the conversations column for the route desk and opens what it selects', () => {
         const component = fixture.componentInstance;
-        expect(component.expanded().test).toBe(false);
-        component.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
-        expect(component.expanded()).toEqual({ human: true, bot: false, test: true });
+        const list = (): ConversationListComponent =>
+            fixture.debugElement.query(By.directive(ConversationListComponent)).componentInstance;
+        expect(list().bindingId()).toBeNull();
+        scopeTo('b-2');
+        expect(list().bindingId()).toBe('b-2');
+
+        list().selectedChange.emit(row({ id: 'c-4', binding_id: 'b-2' }));
+        fixture.detectChanges();
+        expect(component.selectedId()).toBe('c-4');
+        expect(list().selectedId()).toBe('c-4');
+    });
+
+    it('expands Tests, not Bot, in the conversations column when a test conversation starts', () => {
+        expect(listStore().expanded().test).toBe(false);
+        fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
+        expect(listStore().expanded()).toEqual({ human: true, bot: false, test: true });
     });
 
     it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
@@ -533,7 +287,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(component.expanded().test).toBe(true);
+        expect(listStore().expanded().test).toBe(true);
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
@@ -822,7 +576,7 @@ describe('ChatPageComponent', () => {
 
     it('closes the open conversation when the route moves to another binding, not before', () => {
         const component = fixture.componentInstance;
-        component.selectConversation('c-1');
+        component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         expect(component.selectedId()).toBe('c-1');
 
@@ -832,7 +586,7 @@ describe('ChatPageComponent', () => {
     });
 
     it('keeps the operator-only composer without a Visitor / Operator switch on a real conversation', () => {
-        fixture.componentInstance.selectConversation('c-1');
+        fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         const host: HTMLElement = fixture.nativeElement;
         expect(host.querySelector('app-chat-thread-composer')).not.toBeNull();
@@ -842,7 +596,7 @@ describe('ChatPageComponent', () => {
 
     it('adds an operator reply only to the thread it was sent on', () => {
         const component = fixture.componentInstance;
-        component.selectConversation('c-1');
+        component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         const message = { id: 'm-a', role: 'operator', content: 'for A' } as ChatOperatorMessage;
         component.onOperatorMessageSent({ conversationId: 'c-a', message });
@@ -851,8 +605,53 @@ describe('ChatPageComponent', () => {
         expect(component.messages()).toEqual([message]);
     });
 
+    it('names who wrote each operator message: you, their name, or their number while it is not known', () => {
+        const operatorMessage = (id: string, authorId: number, authorName: string | null): ChatOperatorMessage => ({
+            id,
+            role: 'operator',
+            content: id,
+            actions: null,
+            action: null,
+            session_id: null,
+            created_at: `2026-10-10T10:0${id.slice(-1)}:00Z`,
+            author_user_id: authorId,
+            author_name: authorName,
+        });
+        chatApi.getMessages.mockReturnValueOnce(
+            of([
+                operatorMessage('m-1', 3, 'Ada Lovelace'),
+                operatorMessage('m-2', 7, 'Grace Hopper'),
+                operatorMessage('m-3', 9, null),
+            ])
+        );
+        fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 7 }));
+        fixture.detectChanges();
+        expect(text('.message__author')).toEqual(['You', 'Grace Hopper', 'Operator #9']);
+    });
+
+    it('keeps the author of a streamed operator message', () => {
+        fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+        fixture.detectChanges();
+        messageCreated$.next({
+            conversation_id: 'c-1',
+            id: 'm-1',
+            role: 'operator',
+            content: 'on my way',
+            actions: null,
+            action: null,
+            created_at: '2026-10-10T10:01:00Z',
+            author_user_id: 7,
+            author_name: 'Grace Hopper',
+        });
+        fixture.detectChanges();
+        expect(fixture.componentInstance.messages()[0]).toEqual(
+            expect.objectContaining({ author_user_id: 7, author_name: 'Grace Hopper' })
+        );
+        expect(text('.message__author')).toEqual(['Grace Hopper']);
+    });
+
     it('appends a streamed message to the open thread once', () => {
-        fixture.componentInstance.selectConversation('c-1');
+        fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         const event: ChatInboxMessageEvent = {
             conversation_id: 'c-1',
@@ -862,6 +661,8 @@ describe('ChatPageComponent', () => {
             actions: null,
             action: null,
             created_at: '2026-10-10T10:01:00Z',
+            author_user_id: null,
+            author_name: null,
         };
         messageCreated$.next(event);
         messageCreated$.next(event);
@@ -871,7 +672,7 @@ describe('ChatPageComponent', () => {
     });
 
     it('shows a visitor action reply as text, alone when the message has no text, and keeps it through the stream', () => {
-        fixture.componentInstance.selectConversation('c-1');
+        fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         const event: ChatInboxMessageEvent = {
             conversation_id: 'c-1',
@@ -881,6 +682,8 @@ describe('ChatPageComponent', () => {
             actions: null,
             action: { type: 'button', label: '<b>Yes</b>' },
             created_at: '2026-10-10T10:01:00Z',
+            author_user_id: null,
+            author_name: null,
         };
         messageCreated$.next(event);
         messageCreated$.next({
@@ -910,12 +713,13 @@ describe('ChatPageComponent', () => {
                 // Older pages come an hour earlier.
                 created_at: `2026-10-10T${{ older: '08', old: '09' }[prefix] ?? '10'}:${String(index).padStart(2, '0')}:00Z`,
                 author_user_id: null,
+                author_name: null,
             }));
         const scroller = (): HTMLElement => fixture.nativeElement.querySelector('.thread');
 
         function openFullThread(id = 'c-1'): void {
             chatApi.getMessages.mockReturnValueOnce(of(thread(CHAT_MESSAGES_PAGE_SIZE)));
-            fixture.componentInstance.selectConversation(id);
+            fixture.componentInstance.selectConversation(row({ id }));
             fixture.detectChanges();
         }
 
@@ -1104,22 +908,6 @@ describe('ChatPageComponent', () => {
         });
     });
 
-    it('offers a take-over on 409 claimed_by_other and claims with force after confirmation', () => {
-        chatApi.claim
-            .mockReturnValueOnce(
-                throwError(
-                    () => new HttpErrorResponse({ status: 409, error: { code: 'claimed_by_other', message: 'held' } })
-                )
-            )
-            .mockReturnValueOnce(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
-        confirmation.confirm.mockReturnValue(of(true));
-
-        fixture.componentInstance.claim(row({ id: 'c-1' }));
-
-        expect(confirmation.confirm).toHaveBeenCalledTimes(1);
-        expect(chatApi.claim).toHaveBeenLastCalledWith('c-1', true);
-    });
-
     it('sends the typed reply on Enter in the composer without a native form submit', () => {
         const claimed = handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 });
         chatApi.reply.mockReturnValue(
@@ -1132,10 +920,11 @@ describe('ChatPageComponent', () => {
                 session_id: null,
                 created_at: '2026-10-10T10:02:00Z',
                 author_user_id: 3,
+                author_name: 'Ada Lovelace',
             } as ChatOperatorMessage)
         );
         reloadWith(page([claimed]), page([]));
-        fixture.componentInstance.selectConversation('c-1');
+        fixture.componentInstance.selectConversation(claimed);
         fixture.detectChanges();
         const host: HTMLElement = fixture.nativeElement;
         typeInComposer('on my way');
@@ -1157,6 +946,7 @@ describe('ChatPageComponent', () => {
             session_id: null,
             created_at: '2026-10-10T10:00:00Z',
             author_user_id: null,
+            author_name: null,
         };
         const second: ChatOperatorMessage = {
             ...first,
@@ -1172,8 +962,8 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:02:00Z',
         };
         chatApi.getMessages.mockReturnValueOnce(of([first, second]));
-        expandBot();
-        component.selectConversation('c-1');
+        listStore().toggle('bot');
+        component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         expect(text('.message__content')).toEqual(['first', 'second']);
 
@@ -1183,7 +973,7 @@ describe('ChatPageComponent', () => {
         reloadWith(page([]), page$);
         expect(component.selectedId()).toBe('c-1');
         expect(text('.message__content')).toEqual(['first', 'second']);
-        expect(text('.conversation__preview')).toEqual(['hello']);
+        expect(text('.conversation-row__preview')).toEqual(['hello']);
 
         conversationUpdated$.next(
             row({ id: 'c-7', last_message_at: '2026-10-10T11:00:00Z', last_message_preview: 'live' })
@@ -1197,44 +987,33 @@ describe('ChatPageComponent', () => {
         });
         thread$.next([second, third]);
         fixture.detectChanges();
-        expect(text('.conversation__preview')).toEqual(['live', 'fresh']);
+        expect(text('.conversation-row__preview')).toEqual(['live', 'fresh']);
         expect(component.selectedId()).toBe('c-1');
+        // No longer listed: the thread keeps the row it held.
         expect(component.selected()?.id).toBe('c-1');
         expect(text('.message__content')).toEqual(['first', 'second', 'third']);
     });
 
-    it('loads more with the cursor and lists a row returned by two pages once, the later page winning', () => {
+    it('takes the refetched row after a reconnect reload: a new holder reaches the header and the composer', () => {
         const component = fixture.componentInstance;
-        reloadWith(
-            page([]),
-            page(
-                [
-                    row({ id: 'c-1', last_message_preview: 'first copy' }),
-                    row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z', last_message_preview: 'older' }),
-                ],
-                'cursor-2'
-            )
-        );
-        expandBot();
-        expect(text('.inbox__more')).toEqual(['Load more']);
-
-        chatApi.getConversations.mockReturnValueOnce(
-            page([
-                row({ id: 'c-1', last_message_preview: 'later copy' }),
-                row({ id: 'c-3', last_message_at: '2026-10-10T08:00:00Z', last_message_preview: 'oldest' }),
-            ])
-        );
-        component.loadMoreConversations('bot');
+        const mine = handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 });
+        listBindings([binding]);
+        reloadWith(page([mine]), page([]));
+        component.selectConversation(mine);
         fixture.detectChanges();
+        expect(component.isClaimedByMe()).toBe(true);
+        expect(composerInput().disabled).toBe(false);
 
-        expect(chatApi.getConversations).toHaveBeenLastCalledWith({
-            section: 'bot',
-            binding: null,
-            cursor: 'cursor-2',
-        });
-        expect(text('.conversation__preview')).toEqual(['later copy', 'older', 'oldest']);
-        expect(component.inbox().bot.nextCursor).toBeNull();
-        expect(text('.inbox__more')).toEqual([]);
+        // The stream dropped meanwhile, and another operator took the conversation with force: no event reached us.
+        reloadWith(page([{ ...mine, assigned_operator_id: 7 }]), page([]));
+
+        expect(component.selected()?.assigned_operator_id).toBe(7);
+        expect(component.isClaimedByMe()).toBe(false);
+        expect(fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message).toBe(
+            'Held by Operator #7'
+        );
+        expect(composerInput().disabled).toBe(true);
+        expect(composerInput().placeholder).toBe('Claim the conversation to reply');
     });
 
     it('shows a started test conversation in the header even when its stream event came first', () => {
@@ -1246,46 +1025,20 @@ describe('ChatPageComponent', () => {
         expect(component.selected()).toEqual(created);
     });
 
-    it('keeps a row streamed after the reload when a Load more page brings an older copy', () => {
-        const component = fixture.componentInstance;
-        reloadWith(page([]), page([row({ id: 'c-1', last_message_preview: 'hello' })], 'cursor-2'));
-        expandBot();
-
-        conversationUpdated$.next(
-            row({ id: 'c-2', last_message_at: '2026-10-10T12:00:00Z', last_message_preview: 'live' })
-        );
-        chatApi.getConversations.mockReturnValueOnce(
-            of({
-                results: [row({ id: 'c-2', last_message_at: '2026-10-10T08:00:00Z', last_message_preview: 'stale' })],
-                next_cursor: null,
-            })
-        );
-        component.loadMoreConversations('bot');
-        fixture.detectChanges();
-
-        expect(text('.conversation__preview')).toEqual(['live', 'hello']);
-    });
-
-    it('does not list a streamed conversation without messages but keeps it as the selected header', () => {
+    it('keeps a started test conversation as the open one while it has no messages, and follows its state', () => {
         const component = fixture.componentInstance;
         const created = row({ id: 'c-9', is_test: true, last_message_at: null, last_message_preview: '' });
         component.onTestConversationStarted(created);
         conversationUpdated$.next({ ...created, state: 'processing' });
         fixture.detectChanges();
-        expect(text('.conversation__preview')).toEqual([]);
         expect(component.selected()?.state).toBe('processing');
-
-        conversationUpdated$.next(
-            row({ id: 'c-9', is_test: true, last_message_at: '2026-10-10T11:00:00Z', last_message_preview: 'first' })
-        );
-        fixture.detectChanges();
-        expect(text('.conversation__preview')).toEqual(['first']);
+        expect(text('.thread-header__title')).toHaveLength(1);
     });
 
     it('enables the composer from the claim response without waiting for a stream event', () => {
         const component = fixture.componentInstance;
         chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
-        component.selectConversation('c-1');
+        component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         expect(component.isClaimedByMe()).toBe(false);
 
@@ -1303,7 +1056,7 @@ describe('ChatPageComponent', () => {
 
         function selectTest(id: string): void {
             conversationUpdated$.next(row({ id, is_test: true }));
-            fixture.componentInstance.selectConversation(id);
+            fixture.componentInstance.selectConversation(row({ id, is_test: true }));
             fixture.detectChanges();
         }
 
@@ -1335,7 +1088,7 @@ describe('ChatPageComponent', () => {
             expect(caption()).toBe("Couldn't get a visitor token. Select the conversation again to retry.");
 
             chatApi.issueVisitorToken.mockReturnValueOnce(of({ visitor_token: 'vt-2' }));
-            fixture.componentInstance.selectConversation('t-1');
+            fixture.componentInstance.selectConversation(row({ id: 't-1', is_test: true }));
             fixture.detectChanges();
             expect(chatApi.issueVisitorToken).toHaveBeenCalledTimes(2);
             expect(visitorButton().disabled).toBe(false);
@@ -1345,7 +1098,7 @@ describe('ChatPageComponent', () => {
             const token$ = new Subject<{ visitor_token: string }>();
             chatApi.issueVisitorToken.mockReturnValueOnce(token$);
             selectTest('t-1');
-            fixture.componentInstance.selectConversation('c-1');
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
             fixture.detectChanges();
             token$.next({ visitor_token: 'vt-late' });
             token$.complete();
@@ -1355,7 +1108,7 @@ describe('ChatPageComponent', () => {
             // The open conversation is a real one: still no visitor switch.
             expect(fixture.nativeElement.querySelector('.composer__roles')).toBeNull();
 
-            fixture.componentInstance.selectConversation('t-1');
+            fixture.componentInstance.selectConversation(row({ id: 't-1', is_test: true }));
             fixture.detectChanges();
             expect(chatApi.issueVisitorToken).toHaveBeenCalledTimes(1);
             expect(visitorButton().disabled).toBe(false);
@@ -1383,14 +1136,17 @@ describe('ChatPageComponent', () => {
         function open(conversation: ChatConversation): void {
             listBindings([binding]);
             conversationUpdated$.next(conversation);
-            fixture.componentInstance.selectConversation(conversation.id);
+            fixture.componentInstance.selectConversation(conversation);
             fixture.detectChanges();
         }
 
         it("shows the mode, title, Test chip and today's turns and tokens against the binding's limits", () => {
             open(row({ id: 'c-1', is_test: true, tokens_used: 9000, tokens_today: 250, turns: 40, turns_today: 3 }));
             expect(text('.thread-header .mode-badge')).toEqual(['Bot']);
-            expect(text('.thread-header__title')).toEqual(['Support · c-1']);
+            expect(text('.thread-header__title')).toEqual(['Support · Visitor 1']);
+            const title = fixture.debugElement.query(By.css('.thread-header__title'));
+            expect(title.injector.get(MatTooltip).message).toBe('Conversation c-1');
+            expect(title.nativeElement.getAttribute('tabindex')).toBe('0');
             expect(text('.thread-header .test-chip')).toEqual(['Test']);
             expect(rings()).toEqual(['Turns today: 3 of 50', 'Tokens today: 250 of 1,000']);
             expect(
@@ -1425,6 +1181,12 @@ describe('ChatPageComponent', () => {
             conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
             fixture.detectChanges();
             expect(pillTooltip()).toBe('Held by you');
+
+            conversationUpdated$.next(
+                row({ id: 'c-1', mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' })
+            );
+            fixture.detectChanges();
+            expect(pillTooltip()).toBe('Held by Grace Hopper');
         });
 
         it('has no Claim or Take over in the header: the composer offers claiming', () => {
