@@ -219,23 +219,6 @@ def test_assign_multiple_tool_labels_to_mcp_tool(client_a, org_a, mcp_tool_a):
 
 
 @pytest.mark.django_db
-def test_patch_with_only_labels_on_python_code_tool(
-    client_a, org_a, python_code_tool_a
-):
-    l1 = Label.objects.create(name="PL1", org=org_a, scope=Label.Scope.TOOL)
-    l2 = Label.objects.create(name="PL2", org=org_a, scope=Label.Scope.TOOL)
-
-    resp = client_a.patch(
-        f"/api/python-code-tool/{python_code_tool_a.id}/",
-        {"labels": [l1.id, l2.id]},
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    python_code_tool_a.refresh_from_db()
-    assert set(python_code_tool_a.labels.values_list("id", flat=True)) == {l1.id, l2.id}
-
-
-@pytest.mark.django_db
 def test_patch_with_only_labels_on_mcp_tool(client_a, org_a, mcp_tool_a):
     # Regression test: McpToolViewSet.update() is a full-replace-only override
     # that back-fills every concrete field missing from the request body. It

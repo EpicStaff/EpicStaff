@@ -1,259 +1,89 @@
-"""Tests for session_status_handler credential revocation.
+"""A session reaching a terminal status revokes its temporary storage credentials.
 
-Tests the revocation and opportunistic deletion of temporary storage
-credentials when a session reaches a terminal status.
+Revoking is a call to the storage server (MinIO), the external side effect, so
+`session_credential_service.revoke` is the one thing replaced. The revoke runs in a
+`transaction.on_commit` callback, hence `django_capture_on_commit_callbacks`.
 """
 
 import json
+from contextlib import nullcontext
 from unittest import mock
 
-from django.test import TestCase
+import pytest
 
 from rbac.models import Organization
 from storage_credentials.exceptions import TemporaryCredentialRevokeError
 from storage_credentials.models import TemporaryStorageAccount
-from tables.models import Session, Graph
+from tables.models import Graph, Session
 from tables.services.redis_pubsub import RedisPubSub
 
+REVOKE = "tables.services.redis_pubsub.session_credential_service.revoke"
 
-class TestSessionStatusHandlerRevoke(TestCase):
-    """Test revocation and opportunistic deletion of session storage credentials.
 
-    Note: session_status_handler() uses transaction.on_commit(callback, robust=True)
-    to defer credential revocation until after the outer transaction commits --
-    this keeps the revoke network call from holding a database lock. Under
-    django.test.TestCase, each test runs inside its own (always-rolled-back)
-    outer transaction, so on_commit callbacks never fire on their own; every
-    call to session_status_handler() below is wrapped in
-    self.captureOnCommitCallbacks(execute=True) to force them to run.
+@pytest.fixture
+def session(db, monkeypatch):
+    # The handler calls close_old_connections(), which would close the test's own transaction.
+    monkeypatch.setattr("tables.services.redis_pubsub.close_old_connections", lambda: None)
+    graph = Graph.objects.create(org=Organization.objects.create(name="Test Org"), name="Test Graph")
+    return Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
 
-    session_status_handler() also calls close_old_connections() for real --
-    harmless in production, but under TestCase it closes the connection the
-    test's own (always-rolled-back) transaction depends on. Mocked out here,
-    mirroring the same pattern already used for code_results_handler() in
-    test_run_code_storage_credentials.py.
-    """
 
-    def setUp(self):
-        self.org = Organization.objects.create(name="Test Org")
-        self.graph = Graph.objects.create(org=self.org, name="Test Graph")
-        self.session = Session.objects.create(
-            graph=self.graph, status=Session.SessionStatus.RUN
-        )
-        self.redis_pubsub = RedisPubSub()
-        close_old_connections_patcher = mock.patch(
-            "tables.services.redis_pubsub.close_old_connections"
-        )
-        close_old_connections_patcher.start()
-        self.addCleanup(close_old_connections_patcher.stop)
+def _report_status(session, status, capture):
+    message = {"data": json.dumps({"session_id": session.id, "status": status, "status_data": {"variables": {}}})}
+    with capture(execute=True):
+        RedisPubSub().session_status_handler(message)
 
-    def test_session_status_handler_revokes_on_terminal_status_end(self):
-        """Verify revoke and opportunistic delete on 'end' status."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
 
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.END,
-                        "status_data": {"variables": {}},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
+@pytest.mark.parametrize(
+    ("status", "revoked"),
+    [
+        (Session.SessionStatus.END, True),
+        (Session.SessionStatus.ERROR, True),
+        (Session.SessionStatus.STOP, True),
+        (Session.SessionStatus.EXPIRED, True),
+        (Session.SessionStatus.RUN, False),
+    ],
+)
+def test_terminal_status_revokes_the_sessions_credentials_and_drops_the_row(
+    session, django_capture_on_commit_callbacks, status, revoked
+):
+    account = TemporaryStorageAccount.objects.create(session=session, access_key="test_access_key")
 
-            # Verify revoke was called with correct org_id from session.graph.org_id
-            mock_revoke.assert_called_once_with(
-                access_key="test_access_key", org_id=self.graph.org_id
-            )
+    with mock.patch(REVOKE) as revoke:
+        _report_status(session, status, django_capture_on_commit_callbacks)
 
-            # Verify row was deleted
-            assert not TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
+    if revoked:
+        revoke.assert_called_once_with(access_key="test_access_key", org_id=session.graph.org_id)
+    else:
+        revoke.assert_not_called()
+    assert TemporaryStorageAccount.objects.filter(id=account.id).exists() is not revoked
 
-    def test_session_status_handler_revokes_on_terminal_status_error(self):
-        """Verify revoke and opportunistic delete on 'error' status."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
 
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.ERROR,
-                        "status_data": {},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
+@pytest.mark.parametrize(
+    ("revoke_error", "delete_error"),
+    [(TemporaryCredentialRevokeError("Revoke failed"), None), (None, Exception("Delete failed"))],
+    ids=["revoke-fails", "row-delete-fails"],
+)
+def test_a_failed_cleanup_keeps_the_row_for_a_retry_and_still_ends_the_session(
+    session, django_capture_on_commit_callbacks, revoke_error, delete_error
+):
+    account = TemporaryStorageAccount.objects.create(session=session, access_key="test_access_key")
 
-            mock_revoke.assert_called_once_with(
-                access_key="test_access_key", org_id=self.graph.org_id
-            )
-            assert not TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
+    failing_delete = (
+        mock.patch.object(TemporaryStorageAccount, "delete", side_effect=delete_error)
+        if delete_error
+        else nullcontext()
+    )
+    with mock.patch(REVOKE, side_effect=revoke_error), failing_delete:
+        _report_status(session, Session.SessionStatus.END, django_capture_on_commit_callbacks)
 
-    def test_session_status_handler_revokes_on_terminal_status_stop(self):
-        """Verify revoke and opportunistic delete on 'stop' status."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
+    assert TemporaryStorageAccount.objects.filter(id=account.id).exists()
+    session.refresh_from_db()
+    assert session.status == Session.SessionStatus.END
 
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.STOP,
-                        "status_data": {},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
 
-            mock_revoke.assert_called_once_with(
-                access_key="test_access_key", org_id=self.graph.org_id
-            )
-            assert not TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
+def test_a_session_without_credentials_revokes_nothing(session, django_capture_on_commit_callbacks):
+    with mock.patch(REVOKE) as revoke:
+        _report_status(session, Session.SessionStatus.END, django_capture_on_commit_callbacks)
 
-    def test_session_status_handler_revokes_on_terminal_status_expired(self):
-        """Verify revoke and opportunistic delete on 'expired' status."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
-
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.EXPIRED,
-                        "status_data": {},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
-
-            mock_revoke.assert_called_once_with(
-                access_key="test_access_key", org_id=self.graph.org_id
-            )
-            assert not TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
-
-    def test_session_status_handler_revoke_failure_keeps_row(self):
-        """Verify that failed revoke keeps the row in the database."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
-
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke",
-            side_effect=TemporaryCredentialRevokeError("Revoke failed"),
-        ):
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.ERROR,
-                        "status_data": {},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
-
-            # Verify row was NOT deleted after revoke failure
-            assert TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
-
-    def test_session_status_handler_no_temp_account_no_op(self):
-        """Verify no error when there's no temporary account for the session."""
-        # Don't create any TemporaryStorageAccount for this session
-        message = {
-            "data": json.dumps(
-                {
-                    "session_id": self.session.id,
-                    "status": Session.SessionStatus.END,
-                    "status_data": {"variables": {}},
-                }
-            )
-        }
-
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            # Should not raise, should just log and return
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
-            mock_revoke.assert_not_called()
-
-    def test_session_status_handler_delete_row_failure_logs_but_continues(self):
-        """Verify that deletion failure logs but doesn't block status update."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
-
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ), mock.patch.object(
-            TemporaryStorageAccount, "delete", side_effect=Exception("Delete failed")
-        ):
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.END,
-                        "status_data": {"variables": {}},
-                    }
-                )
-            }
-            # Should not raise, should just log the error
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
-
-            # Verify row still exists (delete failed)
-            assert TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
-
-            # Verify session status was updated despite delete failure
-            self.session.refresh_from_db()
-            assert self.session.status == Session.SessionStatus.END
-
-    def test_session_status_handler_non_terminal_status_no_revoke(self):
-        """Verify no revoke attempt for non-terminal statuses."""
-        temp_account = TemporaryStorageAccount.objects.create(
-            session=self.session, access_key="test_access_key"
-        )
-
-        with mock.patch(
-            "tables.services.redis_pubsub.session_credential_service.revoke"
-        ) as mock_revoke:
-            message = {
-                "data": json.dumps(
-                    {
-                        "session_id": self.session.id,
-                        "status": Session.SessionStatus.RUN,
-                        "status_data": {},
-                    }
-                )
-            }
-            with self.captureOnCommitCallbacks(execute=True):
-                self.redis_pubsub.session_status_handler(message)
-
-            # Revoke should not be called for non-terminal status
-            mock_revoke.assert_not_called()
-
-            # Row should still exist
-            assert TemporaryStorageAccount.objects.filter(id=temp_account.id).exists()
+    revoke.assert_not_called()

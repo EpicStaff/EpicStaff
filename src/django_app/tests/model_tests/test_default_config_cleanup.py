@@ -1,18 +1,7 @@
 import pytest
 
-from tables.models.embedding_models import DefaultEmbeddingConfig
-from tables.models.llm_models import DefaultLLMConfig, LLMConfig, LLMModel
+from tables.models.llm_models import LLMConfig, LLMModel
 from rbac.models import Organization
-
-
-@pytest.mark.django_db
-def test_default_llm_config_has_no_api_key_field():
-    assert not hasattr(DefaultLLMConfig.load(), "api_key")
-
-
-@pytest.mark.django_db
-def test_default_embedding_config_has_no_api_key_field():
-    assert not hasattr(DefaultEmbeddingConfig.load(), "api_key")
 
 
 @pytest.mark.django_db

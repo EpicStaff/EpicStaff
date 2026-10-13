@@ -16,38 +16,29 @@ from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission
 
 
-def test_actions_to_bitmask_empty():
-    assert actions_to_bitmask([]) == 0
+@pytest.mark.parametrize(
+    ("actions", "expected"),
+    [
+        ([], 0),
+        (["read"], int(Permission.READ)),
+        (["create", "read", "update"], int(Permission.CREATE | Permission.READ | Permission.UPDATE)),
+    ],
+)
+def test_actions_to_bitmask(actions, expected):
+    assert actions_to_bitmask(actions) == expected
 
 
-def test_actions_to_bitmask_single():
-    assert actions_to_bitmask(["read"]) == int(Permission.READ)
-
-
-def test_actions_to_bitmask_combined():
-    expected = int(Permission.CREATE | Permission.READ | Permission.UPDATE)
-    assert actions_to_bitmask(["create", "read", "update"]) == expected
-
-
-def test_actions_to_bitmask_unknown_raises():
+def test_unknown_action_code_is_rejected():
     with pytest.raises(ValueError, match="Unknown action code"):
         actions_to_bitmask(["fly"])
 
 
-def test_bitmask_to_actions_filters_by_applicable():
-    bitmask = int(Permission.READ | Permission.CREATE | Permission.EXPORT)
-    result = bitmask_to_actions(
-        bitmask, applicable=["create", "read", "update", "delete"]
-    )
-    assert set(result) == {"create", "read"}
+def test_bitmask_to_actions_keeps_only_applicable_actions_in_catalog_order():
+    bitmask = int(Permission.UPDATE | Permission.READ | Permission.CREATE | Permission.EXPORT)
 
-
-def test_bitmask_to_actions_preserves_catalog_order():
-    bitmask = int(Permission.READ | Permission.CREATE | Permission.UPDATE)
-    result = bitmask_to_actions(
-        bitmask, applicable=["create", "read", "update", "delete", "export"]
-    )
-    assert result == ["create", "read", "update"]
+    assert bitmask_to_actions(bitmask, applicable=["create", "read", "update", "delete"]) == [
+        "create", "read", "update",
+    ]
 
 
 def test_effective_permissions_superadmin_can_anything():

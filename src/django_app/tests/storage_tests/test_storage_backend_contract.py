@@ -1,7 +1,27 @@
+"""The storage backend contract, run against both backends.
+
+`InMemoryStorageBackend` stands in for `S3StorageBackend` in every manager, view and
+upload test, so it must behave like the real one: each test here runs against the
+in-memory fake and against `S3StorageBackend` over the dict-backed S3 client.
+"""
+
 import pytest
 from botocore.exceptions import ClientError
 
 from tables.services.storage_service.dataclasses import FileInfo, FolderInfo
+from tests.storage_tests.in_memory_backend import FakeS3Client, InMemoryStorageBackend, make_s3_backend
+
+
+@pytest.fixture(params=["in-memory", "s3"])
+def fake_backend(request):
+    if request.param == "in-memory":
+        return InMemoryStorageBackend(organization_prefix="")
+    return make_s3_backend(FakeS3Client())
+
+
+@pytest.fixture
+def in_memory_backend():
+    return InMemoryStorageBackend(organization_prefix="")
 
 
 class TestList:
@@ -25,6 +45,13 @@ class TestList:
         fake_backend.mkdir("empty_dir")
         items = fake_backend.list_("")
         assert items[0].is_empty is True
+
+    def test_a_folder_holding_only_a_subfolder_is_not_empty(self, fake_backend):
+        fake_backend.mkdir("outer/inner")
+
+        (outer,) = fake_backend.list_("")
+
+        assert (outer.name, outer.is_empty) == ("outer", False)
 
     def test_list_marks_nonempty_folder_is_empty_false(self, fake_backend):
         fake_backend.mkdir("full_dir")
@@ -166,6 +193,14 @@ class TestInfo:
         assert isinstance(info, FolderInfo)
         assert info.path.endswith("/")
 
+    def test_info_finds_a_folder_that_has_files_but_no_marker(self, fake_backend):
+        fake_backend.put_bytes("implicit/file.txt", b"x")
+
+        info = fake_backend.info("implicit")
+
+        assert isinstance(info, FolderInfo)
+        assert (info.name, info.path) == ("implicit", "implicit/")
+
     def test_info_raises_file_not_found_for_missing_path(self, fake_backend):
         with pytest.raises(FileNotFoundError):
             fake_backend.info("ghost")
@@ -229,11 +264,49 @@ class TestListTree:
         assert len(root.children) <= 3
 
 
-def test_a_key_under_a_file_is_refused_like_the_s3_backend_reports_it(fake_backend):
-    fake_backend.put_bytes("org_7/report", b"keep me")
+def test_a_key_under_a_file_is_refused_like_minio_reports_it(in_memory_backend):
+    """MinIO refuses a key under an existing object; the dict-backed S3 client cannot."""
+    in_memory_backend.put_bytes("org_7/report", b"keep me")
 
     with pytest.raises(ClientError) as caught:
-        fake_backend.put_bytes("org_7/report/a.txt", b"a")
+        in_memory_backend.put_bytes("org_7/report/a.txt", b"a")
     assert caught.value.response["Error"]["Code"] == "XMinioParentIsObject"
     assert caught.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
-    assert list(fake_backend._objects) == ["org_7/report"]
+    assert in_memory_backend.list_all_keys("org_7") == ["org_7/report"]
+
+
+class TestTreeDepth:
+    """Regression: every key below max_depth used to disappear, ancestors included."""
+
+    @pytest.mark.parametrize(
+        "keys",
+        [["a/b/c/d/e/f/g/"], ["a/b/c/x.txt", "a/b/d/y.txt", "a/b/e/z.txt"]],
+        ids=["deep-folder-marker", "deep-files-sharing-an-ancestor"],
+    )
+    def test_deep_keys_keep_their_ancestors_once_up_to_max_depth(self, fake_backend, keys):
+        for key in keys:
+            if key.endswith("/"):
+                fake_backend.mkdir(key)
+            else:
+                fake_backend.put_bytes(key, b"x")
+
+        root, _ = fake_backend.list_tree("", max_depth=2)
+
+        (a,) = root.children
+        (b,) = a.children
+        assert (a.name, b.name, b.children) == ("a", "b", [])
+
+
+@pytest.mark.parametrize("operation", ["mkdir", "info", "put_bytes", "download", "delete"])
+@pytest.mark.parametrize(
+    "path",
+    ["../malicious", "a/../../b", "files/../../../etc/passwd", "/absolute/path", "file\x00name"],
+    ids=["parent", "parent-in-middle", "deep-escape", "absolute", "null-byte"],
+)
+def test_a_path_escaping_the_org_folder_is_refused_before_touching_storage(fake_backend, operation, path):
+    args = (path, b"x") if operation == "put_bytes" else (path,)
+
+    with pytest.raises(ValueError):
+        getattr(fake_backend, operation)(*args)
+
+    assert fake_backend.list_all_keys("") == []

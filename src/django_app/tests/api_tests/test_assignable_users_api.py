@@ -44,40 +44,22 @@ def test_returns_paginated_envelope(
 
 
 @pytest.mark.django_db
-def test_excludes_users_from_unreadable_orgs(
-    client_as, admin_acme, beta, role_member, django_user_model
+def test_superadmins_inactive_accounts_and_other_orgs_members_are_not_offered(
+    client_as, admin_acme, acme, beta, role_member, django_user_model
 ):
-    hidden = django_user_model.objects.create_user(
-        email="beta-only@x.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=hidden, org=beta, role=role_member)
+    def member_of(org, email, **fields):
+        user = django_user_model.objects.create_user(email=email, password="StrongPass123!", **fields)
+        OrganizationUser.objects.create(user=user, org=org, role=role_member)
 
-    emails = [r["email"] for r in client_as(admin_acme).get(URL).json()["results"]]
-    assert "beta-only@x.com" not in emails
+    member_of(acme, "offered@x.com")
+    member_of(beta, "beta-only@x.com")
+    member_of(acme, "api-sa@x.com", is_superadmin=True)
+    member_of(acme, "api-off@x.com", is_active=False)
 
+    emails = {row["email"] for row in client_as(admin_acme).get(URL).json()["results"]}
 
-@pytest.mark.django_db
-def test_excludes_superadmins(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    sa = django_user_model.objects.create_user(
-        email="api-sa@x.com", password="StrongPass123!", is_superadmin=True
-    )
-    OrganizationUser.objects.create(user=sa, org=acme, role=role_member)
-
-    emails = [r["email"] for r in client_as(admin_acme).get(URL).json()["results"]]
-    assert "api-sa@x.com" not in emails
-
-
-@pytest.mark.django_db
-def test_excludes_inactive(client_as, admin_acme, acme, role_member, django_user_model):
-    off = django_user_model.objects.create_user(
-        email="api-off@x.com", password="StrongPass123!", is_active=False
-    )
-    OrganizationUser.objects.create(user=off, org=acme, role=role_member)
-
-    emails = [r["email"] for r in client_as(admin_acme).get(URL).json()["results"]]
-    assert "api-off@x.com" not in emails
+    assert "offered@x.com" in emails
+    assert not emails & {"beta-only@x.com", "api-sa@x.com", "api-off@x.com"}
 
 
 @pytest.mark.django_db

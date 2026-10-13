@@ -110,14 +110,14 @@ def used_setup(org_a, python_tool_factory, mcp_tool_factory):
 
 
 @pytest.mark.django_db
-def test_used_python_tool_has_correct_surface_counts(client_a, used_setup):
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
+@pytest.mark.parametrize(("url", "tool_key"), [(PYTHON_USAGE_URL, "python_tool"), (MCP_USAGE_URL, "mcp_tool")], ids=["python", "mcp"])
+def test_used_tool_has_correct_surface_counts(client_a, used_setup, url, tool_key):
+    resp = client_a.post(url)
 
-    python_tool = used_setup["python_tool"]
-    assert rows[python_tool.id] == {
-        "id": python_tool.id,
+    assert resp.status_code == 200
+    tool = used_setup[tool_key]
+    assert {row["id"]: row for row in resp.data}[tool.id] == {
+        "id": tool.id,
         "agent_surface_count": 1,
         "shared_surface_count": 0,
         "inline_surface_count": 0,
@@ -126,28 +126,17 @@ def test_used_python_tool_has_correct_surface_counts(client_a, used_setup):
 
 
 @pytest.mark.django_db
-def test_used_mcp_tool_has_correct_surface_counts(client_a, used_setup):
-    resp = client_a.post(MCP_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
+@pytest.mark.parametrize("denied_on_a_surface", [False, True], ids=["unused", "deny-mode-only"])
+def test_tool_not_allowed_anywhere_has_zero_counts(client_a, org_a, unused_python_tool, denied_on_a_surface):
+    if denied_on_a_surface:
+        agent = AgentDefinition.objects.create(name="agent-deny", org=org_a)
+        surface = Surface.objects.create(name="s-deny", org=org_a, owner_agent=agent)
+        SurfacePythonTool.objects.create(surface=surface, python_tool=unused_python_tool, mode=ToolMode.DENY)
 
-    mcp_tool = used_setup["mcp_tool"]
-    assert rows[mcp_tool.id] == {
-        "id": mcp_tool.id,
-        "agent_surface_count": 1,
-        "shared_surface_count": 0,
-        "inline_surface_count": 0,
-        "is_built_in": False,
-    }
-
-
-@pytest.mark.django_db
-def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
     resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
 
-    assert rows[unused_python_tool.id] == {
+    assert resp.status_code == 200
+    assert {row["id"]: row for row in resp.data}[unused_python_tool.id] == {
         "id": unused_python_tool.id,
         "agent_surface_count": 0,
         "shared_surface_count": 0,
@@ -157,23 +146,19 @@ def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
 
 
 @pytest.mark.django_db
-def test_cross_org_python_tool_not_visible(client_a, org_b, python_tool_factory):
-    foreign_tool = python_tool_factory(org_b, name="ForeignTool")
+@pytest.mark.parametrize(
+    ("url", "make_foreign"),
+    [(PYTHON_USAGE_URL, "python_tool_factory"), (MCP_USAGE_URL, "mcp_tool_factory")],
+    ids=["python", "mcp"],
+)
+@pytest.mark.parametrize("asked_by_id", [False, True], ids=["listed", "asked-by-id"])
+def test_another_orgs_tool_never_appears(request, client_a, org_b, url, make_foreign, asked_by_id):
+    foreign_tool = request.getfixturevalue(make_foreign)(org_b, name="ForeignTool")
 
-    resp = client_a.post(PYTHON_USAGE_URL)
+    resp = client_a.post(url, {"ids": [foreign_tool.id]} if asked_by_id else {}, format="json")
+
     assert resp.status_code == 200
-    ids = {row["id"] for row in resp.data}
-    assert foreign_tool.id not in ids
-
-
-@pytest.mark.django_db
-def test_cross_org_mcp_tool_not_visible(client_a, org_b, mcp_tool_factory):
-    foreign_tool = mcp_tool_factory(org_b, name="ForeignMcp")
-
-    resp = client_a.post(MCP_USAGE_URL)
-    assert resp.status_code == 200
-    ids = {row["id"] for row in resp.data}
-    assert foreign_tool.id not in ids
+    assert foreign_tool.id not in {row["id"] for row in resp.data}
 
 
 @pytest.mark.django_db
@@ -188,31 +173,22 @@ def test_requires_authentication(db):
 
 
 @pytest.mark.django_db
-def test_is_built_in_true_for_built_in_python_code_tool(client_a, python_tool_factory):
-    tool = python_tool_factory(None, name="BuiltInPyTool", built_in=True)
-    resp = client_a.post(PYTHON_USAGE_URL)
+@pytest.mark.parametrize(
+    ("url", "make_tool", "expected"),
+    [
+        (PYTHON_USAGE_URL, lambda f, org: f("python_tool_factory")(None, name="BuiltInPyTool", built_in=True), True),
+        (PYTHON_USAGE_URL, lambda f, org: f("python_tool_factory")(org, name="OrgPyTool"), False),
+        (MCP_USAGE_URL, lambda f, org: f("mcp_tool_factory")(org, name="McpToolStandalone"), False),
+    ],
+    ids=["built-in-python", "org-python", "mcp"],
+)
+def test_is_built_in_flag(request, client_a, org_a, url, make_tool, expected):
+    tool = make_tool(request.getfixturevalue, org_a)
+
+    resp = client_a.post(url)
+
     assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    assert rows[tool.id]["is_built_in"] is True
-
-
-@pytest.mark.django_db
-def test_is_built_in_false_for_non_built_in_python_code_tool(
-    client_a, unused_python_tool
-):
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    assert rows[unused_python_tool.id]["is_built_in"] is False
-
-
-@pytest.mark.django_db
-def test_is_built_in_false_for_mcp_tool(client_a, org_a, mcp_tool_factory):
-    mcp_tool = mcp_tool_factory(org_a, name="McpToolStandalone")
-    resp = client_a.post(MCP_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    assert rows[mcp_tool.id]["is_built_in"] is False
+    assert {row["id"]: row for row in resp.data}[tool.id]["is_built_in"] is expected
 
 
 # ---- counts span all three attachment families ----
@@ -258,25 +234,6 @@ def test_counts_span_all_three_families(
 # ---- deny mode never counts ----
 
 
-@pytest.mark.django_db
-def test_deny_mode_row_not_counted(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-deny", org=org_a)
-    surface = Surface.objects.create(
-        name="s-deny", org=org_a, owner_agent=agent
-    )
-    SurfacePythonTool.objects.create(
-        surface=surface, python_tool=unused_python_tool, mode=ToolMode.DENY
-    )
-
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 200
-    rows = {row["id"]: row for row in resp.data}
-    row = rows[unused_python_tool.id]
-    assert row["agent_surface_count"] == 0
-    assert row["shared_surface_count"] == 0
-    assert row["inline_surface_count"] == 0
-
-
 # ---- `ids` request-body filter ----
 
 
@@ -291,92 +248,43 @@ def test_ids_filter_returns_only_requested_rows(client_a, used_setup):
 
 
 @pytest.mark.django_db
-def test_ids_omitted_preserves_full_list_behavior(client_a, used_setup):
-    resp_no_ids = client_a.post(PYTHON_USAGE_URL)
-    resp_with_ids_omitted = client_a.post(PYTHON_USAGE_URL, {}, format="json")
-    assert resp_no_ids.status_code == 200
-    assert resp_with_ids_omitted.status_code == 200
-    assert {r["id"] for r in resp_no_ids.data} == {
-        r["id"] for r in resp_with_ids_omitted.data
-    }
-    # sanity: at least one row present, not accidentally scoped
-    assert len(resp_no_ids.data) >= 1
+@pytest.mark.parametrize("body", [{}, {"ids": []}], ids=["ids-omitted", "ids-empty"])
+def test_omitted_or_empty_ids_return_every_visible_row(client_a, used_setup, body):
+    everything = {row["id"] for row in client_a.post(PYTHON_USAGE_URL).data}
 
+    resp = client_a.post(PYTHON_USAGE_URL, body, format="json")
 
-@pytest.mark.django_db
-def test_ids_empty_list_returns_everything(client_a, used_setup):
-    """`{"ids": []}` must behave like an omitted `ids` — return every visible
-    row, not an empty result (the documented contract is "omitted or empty
-    returns all rows")."""
-    resp_omitted = client_a.post(PYTHON_USAGE_URL)
-    resp_empty = client_a.post(PYTHON_USAGE_URL, {"ids": []}, format="json")
-    assert resp_omitted.status_code == 200
-    assert resp_empty.status_code == 200
-    assert {r["id"] for r in resp_empty.data} == {r["id"] for r in resp_omitted.data}
-    assert len(resp_empty.data) >= 1
-
-
-@pytest.mark.django_db
-def test_ids_omitted_over_cap_returns_400_not_truncated(client_a, used_setup, monkeypatch):
-    """When `ids` is omitted (or empty) and the unscoped result would exceed
-    the cap, the endpoint must reject the request rather than silently
-    truncate the response."""
-    from tables.views.mixins import ToolUsageActionsMixin
-
-    monkeypatch.setattr(ToolUsageActionsMixin, "MAX_USAGE_IDS", 0)
-
-    resp = client_a.post(PYTHON_USAGE_URL)
-    assert resp.status_code == 400
-    assert "ids" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_ids_over_max_count_returns_400(client_a, monkeypatch):
-    # MAX_USAGE_IDS is intentionally tied to api_settings.PAGE_SIZE (currently
-    # 500000) — patch the mixin's class attribute directly rather than
-    # building a request body with hundreds of thousands of ids.
-    from tables.views.mixins import ToolUsageActionsMixin
-
-    monkeypatch.setattr(ToolUsageActionsMixin, "MAX_USAGE_IDS", 200)
-    too_many = list(range(1, 202))
-    resp = client_a.post(MCP_USAGE_URL, {"ids": too_many}, format="json")
-    assert resp.status_code == 400
-    assert "maximum 200 allowed, got 201" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_ids_non_list_returns_400(client_a):
-    resp = client_a.post(MCP_USAGE_URL, {"ids": "not-a-list"}, format="json")
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_ids_bool_entries_returns_400(client_a):
-    """`bool` is an `int` subclass in Python — without excluding it
-    explicitly, `{"ids": [true]}` would silently pass validation and get
-    treated as tool id `1`."""
-    resp = client_a.post(MCP_USAGE_URL, {"ids": [True]}, format="json")
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_ids_non_integer_entries_returns_400(client_a):
-    resp = client_a.post(MCP_USAGE_URL, {"ids": ["abc"]}, format="json")
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_ids_for_foreign_org_tool_does_not_leak(client_a, org_b, python_tool_factory):
-    """Requesting an `ids` entry for a tool from another org must not leak
-    it — the row is simply absent from the response, same org-scoping as
-    the unscoped list."""
-    foreign_tool = python_tool_factory(org_b, name="ForeignTool")
-
-    resp = client_a.post(
-        PYTHON_USAGE_URL, {"ids": [foreign_tool.id]}, format="json"
-    )
     assert resp.status_code == 200
-    assert resp.data == []
+    assert {row["id"] for row in resp.data} == everything
+    assert used_setup["python_tool"].id in everything
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("cap", "body", "message"),
+    [
+        # Over the cap without ids: refused rather than silently truncated.
+        (0, None, "ids"),
+        (200, {"ids": list(range(1, 202))}, "maximum 200 allowed, got 201"),
+        (None, {"ids": "not-a-list"}, None),
+        # bool is an int subclass: [true] would otherwise pass as tool id 1.
+        (None, {"ids": [True]}, None),
+        (None, {"ids": ["abc"]}, None),
+    ],
+    ids=["over-cap-without-ids", "too-many-ids", "ids-not-a-list", "ids-bool", "ids-not-integers"],
+)
+def test_invalid_ids_request_is_400(client_a, used_setup, monkeypatch, cap, body, message):
+    from tables.views.mixins import ToolUsageActionsMixin
+
+    if cap is not None:
+        # MAX_USAGE_IDS is tied to api_settings.PAGE_SIZE (500000); lower it instead of sending that many ids.
+        monkeypatch.setattr(ToolUsageActionsMixin, "MAX_USAGE_IDS", cap)
+
+    resp = client_a.post(MCP_USAGE_URL, body, format="json") if body is not None else client_a.post(PYTHON_USAGE_URL)
+
+    assert resp.status_code == 400
+    if message is not None:
+        assert message in str(resp.data)
 
 
 # ---- bucket classification: agent_surface vs shared_surface ----

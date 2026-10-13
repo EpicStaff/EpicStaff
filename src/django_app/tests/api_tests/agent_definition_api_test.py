@@ -75,33 +75,28 @@ class TestAgentDefinitionNameUniqueness:
         assert response.status_code == 200, response.json()
         assert response.json()["description"] == "changed"
 
-    def test_same_name_in_other_organization_returns_201(self, client, beta):
+    @pytest.mark.parametrize(
+        ("name", "stored"),
+        [
+            ("new-agent", "new-agent"),
+            ("  padded-agent  ", "padded-agent"),
+            ("x" * 255, "x" * 255),
+            # Names are unique per organization only.
+            ("shared-name", "shared-name"),
+        ],
+        ids=["plain", "trimmed", "255-characters", "taken-in-another-org"],
+    )
+    def test_valid_name_is_created(self, client, beta, name, stored):
         AgentDefinition.objects.create(org=beta, name="shared-name")
 
-        response = _create(client, name="shared-name")
+        response = _create(client, name=name)
 
         assert response.status_code == 201, response.json()
-
-    def test_create_success_returns_201(self, client):
-        response = _create(client, name="new-agent")
-
-        assert response.status_code == 201
-        assert response.json()["name"] == "new-agent"
-
-    def test_name_is_trimmed(self, client):
-        response = _create(client, name="  padded-agent  ")
-
-        assert response.status_code == 201, response.json()
-        assert response.json()["name"] == "padded-agent"
+        assert response.json()["name"] == stored
 
     @pytest.mark.parametrize("name", ["", "   ", "x" * 256])
     def test_invalid_name_returns_400(self, client, name):
         _assert_invalid(_create(client, name=name), "name")
-
-    def test_name_of_255_characters_returns_201(self, client):
-        response = _create(client, name="x" * 255)
-
-        assert response.status_code == 201, response.json()
 
     def test_other_organization_agent_is_not_found(self, client, beta):
         foreign_agent = AgentDefinition.objects.create(org=beta, name="foreign")

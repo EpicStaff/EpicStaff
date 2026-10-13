@@ -4,15 +4,15 @@ import json
 
 import pytest
 
+from src.shared.epicstaff_secrets import SecretNotAvailableError, get_secret
 from src.shared.epicstaff_secrets import secrets as lib
 
 ENV_VAR = "EPICSTAFF_SECRETS"
 
-# These tests are pure os.environ manipulation and never touch the ORM. But
-# tests/conftest.py has an autouse `heal_builtin_roles` fixture that queries the
-# Role table before every db test, and without a test that pulls in the `db`
-# fixture, pytest-django never swaps the connection to the test database, so
-# that query would hit the real dev database instead.
+# These tests never touch the ORM. But tests/conftest.py has an autouse
+# `heal_builtin_roles` fixture that queries the Role table before every db test, and
+# without a test that pulls in the `db` fixture, pytest-django never swaps the
+# connection to the test database, so that query would hit the real dev database.
 pytestmark = pytest.mark.django_db
 
 
@@ -25,66 +25,31 @@ def clean_state(monkeypatch):
     lib.clear_cache()
 
 
-def test_returns_the_declared_value(monkeypatch):
-    monkeypatch.setenv(ENV_VAR, json.dumps({"STRIPE_KEY": "sk-live-abc"}))
+def test_a_declared_secret_is_returned_and_cached_after_the_first_read(monkeypatch):
+    monkeypatch.setenv(ENV_VAR, json.dumps({"K": "first"}))
+    assert get_secret("K") == "first"
 
-    assert lib.get_secret("STRIPE_KEY") == "sk-live-abc"
+    monkeypatch.setenv(ENV_VAR, json.dumps({"K": "second"}))
+    assert get_secret("K") == "first"
 
 
-def test_undeclared_name_raises_and_lists_what_is_available(monkeypatch):
-    monkeypatch.setenv(
-        ENV_VAR, json.dumps({"STRIPE_KEY": "sk-live-abc", "SLACK_TOKEN": "xoxb-1"})
-    )
+@pytest.mark.parametrize(
+    "declared",
+    [None, {}, {"STRIPE_KEY": "sk-live-abc", "SLACK_TOKEN": "xoxb-1"}],
+    ids=["env-unset", "node-declared-nothing", "typo"],
+)
+def test_an_undeclared_secret_names_what_is_available_but_never_a_value(monkeypatch, declared):
+    if declared is not None:
+        monkeypatch.setenv(ENV_VAR, json.dumps(declared))
 
-    with pytest.raises(lib.SecretNotAvailableError) as exc:
-        lib.get_secret("TYPO")
+    with pytest.raises(SecretNotAvailableError) as exc:
+        get_secret("TYPO")
 
     message = str(exc.value)
     assert "TYPO" in message
-    assert "STRIPE_KEY" in message
-    assert "SLACK_TOKEN" in message
-    # Names only. A value in an error message ends up in stderr and in the
-    # PythonCodeResult row.
-    assert "sk-live-abc" not in message
-    assert "xoxb-1" not in message
-
-
-def test_unset_env_raises_with_an_empty_available_list():
-    with pytest.raises(lib.SecretNotAvailableError) as exc:
-        lib.get_secret("ANYTHING")
-
-    assert "ANYTHING" in str(exc.value)
-
-
-def test_node_declared_nothing():
-    # Same error as a typo, empty available list — the node declared no secrets.
-    import os
-
-    os.environ[ENV_VAR] = json.dumps({})
-    try:
-        with pytest.raises(lib.SecretNotAvailableError):
-            lib.get_secret("ANYTHING")
-    finally:
-        del os.environ[ENV_VAR]
-
-
-def test_value_is_cached_after_first_read(monkeypatch):
-    monkeypatch.setenv(ENV_VAR, json.dumps({"K": "first"}))
-    assert lib.get_secret("K") == "first"
-
-    monkeypatch.setenv(ENV_VAR, json.dumps({"K": "second"}))
-    assert lib.get_secret("K") == "first"
-
-
-def test_error_is_not_a_keyerror_subclass():
-    """str(KeyError) wraps its message in quotes. wrap_code prints str(e) to
-    stderr, so a KeyError base would give the user a quoted, harder-to-read
-    message."""
-    assert not issubclass(lib.SecretNotAvailableError, KeyError)
-
-
-def test_public_api_is_importable_from_the_package():
-    from src.shared.epicstaff_secrets import SecretNotAvailableError, get_secret
-
-    assert callable(get_secret)
-    assert issubclass(SecretNotAvailableError, Exception)
+    # wrap_code prints str(e) to stderr; a KeyError would wrap it in quotes.
+    assert not message.startswith(("'", '"'))
+    for name, value in (declared or {}).items():
+        assert name in message
+        # A value in an error message ends up in stderr and the PythonCodeResult row.
+        assert value not in message

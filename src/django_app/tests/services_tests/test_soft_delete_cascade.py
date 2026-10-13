@@ -444,79 +444,33 @@ class TestHiddenReverseRelationSetNull:
         assert node_auth.trigger_id == webhook_trigger.pk
 
 
-class TestProtectRestrictDoNothingGuards:
-    """Item 8: the project has no real PROTECT/RESTRICT/DO_NOTHING relation
-    anywhere in its schema today (verified by grep), and adding one would
-    require a new model + migration, which is out of scope here (code-only,
-    no makemigrations/migrate). We exercise the actual guard branches in
-    `_DeleteContext._process_related_object` directly against mocked
-    child/relation objects instead of skipping this coverage silently."""
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("on_delete", "nullable", "error"),
+    [
+        (models.PROTECT, True, ProtectedError),
+        (models.RESTRICT, True, RestrictedError),
+        (models.DO_NOTHING, False, ImproperlyConfigured),
+    ],
+    ids=["protect", "restrict", "do-nothing-non-nullable"],
+)
+def test_blocking_relation_fails_the_delete_and_rolls_everything_back(mocker, graph, on_delete, nullable, error):
+    """No PROTECT / RESTRICT / DO_NOTHING relation exists in the schema today, so one
+    is injected into a real Graph's reverse-relation walk: DeleteService.delete()
+    must raise and leave the graph untouched, not half soft-deleted."""
+    relation = MagicMock()
+    relation.field.remote_field.on_delete = on_delete
+    relation.field.null = nullable
+    # A model without SoftDeleteFields: these rules only apply to plain models.
+    relation.field.model = object
+    mocker.patch.object(_DeleteContext, "_get_reverse_relations", return_value=[relation])
+    mocker.patch.object(_DeleteContext, "_get_related_objects", return_value=[MagicMock(spec=[])])
 
-    def test_protect_raises_protected_error(self):
-        context = _DeleteContext()
-        parent = MagicMock(spec=[])
-        child = MagicMock(spec=[])  # not a SoftDeleteFields instance
-        relation = MagicMock()
-        relation.field.remote_field.on_delete = models.PROTECT
+    with pytest.raises(error):
+        DeleteService.delete(graph)
 
-        with pytest.raises(ProtectedError):
-            context._process_related_object(
-                parent=parent, child=child, relation=relation
-            )
-
-    def test_restrict_raises_restricted_error(self):
-        context = _DeleteContext()
-        parent = MagicMock(spec=[])
-        child = MagicMock(spec=[])
-        relation = MagicMock()
-        relation.field.remote_field.on_delete = models.RESTRICT
-
-        with pytest.raises(RestrictedError):
-            context._process_related_object(
-                parent=parent, child=child, relation=relation
-            )
-
-    def test_do_nothing_on_non_nullable_field_raises_improperly_configured(self):
-        context = _DeleteContext()
-        parent = MagicMock(spec=[])
-        child = MagicMock(spec=[])
-        relation = MagicMock()
-        relation.field.remote_field.on_delete = models.DO_NOTHING
-        relation.field.null = False
-
-        with pytest.raises(ImproperlyConfigured):
-            context._process_related_object(
-                parent=parent, child=child, relation=relation
-            )
-
-    @pytest.mark.django_db
-    def test_protect_relation_rolls_back_the_whole_transaction(self, mocker, graph):
-        """Integration check: inject a synthetic PROTECT relation into a real
-        Graph's reverse-relation walk (via monkeypatching, since no real
-        PROTECT relation exists to exercise this through) and confirm
-        `DeleteService.delete()` propagates the error and the transaction
-        rolls back — the graph is not left in a partially soft-deleted state."""
-        fake_relation = MagicMock()
-        fake_relation.field.remote_field.on_delete = models.PROTECT
-        fake_child = MagicMock(spec=[])
-
-        mocker.patch.object(
-            _DeleteContext,
-            "_get_reverse_relations",
-            return_value=[fake_relation],
-        )
-        mocker.patch.object(
-            _DeleteContext,
-            "_get_related_objects",
-            return_value=[fake_child],
-        )
-
-        with pytest.raises(ProtectedError):
-            DeleteService.delete(graph)
-
-        graph.refresh_from_db()
-        assert graph.is_soft_deleted is False
-        assert graph.soft_deleted_at is None
+    graph.refresh_from_db()
+    assert (graph.is_soft_deleted, graph.soft_deleted_at) == (False, None)
 
 
 @pytest.mark.django_db

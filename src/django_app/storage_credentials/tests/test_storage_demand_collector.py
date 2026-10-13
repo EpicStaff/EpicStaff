@@ -7,13 +7,11 @@ information (storage_allowed_paths, storage_org_prefix).
 
 import typing
 
-import pytest
 
 from src.shared.models.graph_nodes import (
     AgentNodeData,
     AudioTranscriptionNodeData,
     ClassificationDecisionTableNodeData,
-    EdgeData,
     EndNodeData,
     FileExtractorNodeData,
     GraphData,
@@ -23,7 +21,6 @@ from src.shared.models.graph_nodes import (
     WebhookTriggerNodeData,
 )
 from src.shared.models.sessions import SessionData
-from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.tools import BaseToolData, PythonCodeData, PythonCodeToolData
 from storage_credentials.services.storage_demand_collector import collect_storage_demand
 

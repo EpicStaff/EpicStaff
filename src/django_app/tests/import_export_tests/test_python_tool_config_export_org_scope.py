@@ -63,9 +63,9 @@ def beta_config(builtin_tool, beta):
 
 @pytest.fixture
 def acme_agent_using_builtin_tool(acme, builtin_tool):
-    definition = AgentDefinition.objects.create(organization=acme, name="acme-agent")
+    definition = AgentDefinition.objects.create(org=acme, name="acme-agent")
     surface = Surface.objects.create(
-        organization=acme, name="acme-surface", owner_agent=definition
+        org=acme, name="acme-surface", owner_agent=definition
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=builtin_tool, mode=ToolMode.ALLOW

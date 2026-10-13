@@ -1,8 +1,8 @@
-"""
-Tests for CancelRagIndexingView.
+"""Cancelling a RAG's indexing or a document's chunking: both ask knowledge_new to stop.
 
-Covers the 404 → 204 no-op path (nothing running to cancel) and the
-upstream failure path (5xx) which must surface as an error response.
+knowledge_new answering 404 means nothing was running (a no-op, 204); an upstream
+failure must reach the caller instead of being swallowed. The knowledge client is
+the HTTP boundary to knowledge_new, so it is the only thing replaced.
 """
 
 from unittest.mock import patch
@@ -13,29 +13,30 @@ from rest_framework import status
 
 from tables.clients.errors import ClientBadGatewayError, ClientResourceNotFoundError
 
+pytestmark = pytest.mark.django_db
 
-@pytest.mark.django_db
-class TestCancelRagIndexingView:
-    def _url(self, rag_type: str, rag_id: int) -> str:
-        return reverse("cancel-rag-indexing", args=[rag_type, rag_id])
 
-    def test_upstream_404_returns_204(self, auth_client, naive_rag):
-        """knowledge_new 404 (no running operation) is a no-op — caller gets 204."""
-        with patch(
-            "tables.clients.knowledge.KnowledgeClient.cancel",
-            side_effect=ClientResourceNotFoundError("no running operation"),
-        ):
-            response = auth_client.delete(self._url("naive", naive_rag.pk))
+@pytest.fixture(params=["rag-indexing", "document-chunking"])
+def cancel_url(request, naive_rag_document_config):
+    if request.param == "rag-indexing":
+        return reverse("cancel-rag-indexing", args=["naive", naive_rag_document_config.naive_rag_id])
+    return reverse(
+        "cancel-document-chunking", args=[naive_rag_document_config.naive_rag_id, naive_rag_document_config.pk]
+    )
 
-        assert response.status_code == status.HTTP_204_NO_CONTENT
 
-    def test_upstream_5xx_returns_error(self, auth_client, naive_rag):
-        """Upstream service failure must not be swallowed — caller gets the error status."""
-        with patch(
-            "tables.clients.knowledge.KnowledgeClient.cancel",
-            side_effect=ClientBadGatewayError("knowledge_new is down"),
-        ):
-            response = auth_client.delete(self._url("naive", naive_rag.pk))
+@pytest.mark.parametrize(
+    ("upstream_error", "expected_status"),
+    [
+        (ClientResourceNotFoundError("no running operation"), status.HTTP_204_NO_CONTENT),
+        (ClientBadGatewayError("knowledge_new is down"), status.HTTP_502_BAD_GATEWAY),
+    ],
+    ids=["nothing-running", "knowledge-down"],
+)
+def test_cancel_maps_the_knowledge_service_answer(auth_client, cancel_url, upstream_error, expected_status):
+    with patch("tables.clients.knowledge.KnowledgeClient.cancel", side_effect=upstream_error):
+        response = auth_client.delete(cancel_url)
 
-        assert response.status_code == 502
+    assert response.status_code == expected_status
+    if expected_status >= 400:
         assert "error" in response.data

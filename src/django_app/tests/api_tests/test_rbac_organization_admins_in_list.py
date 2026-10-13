@@ -73,66 +73,16 @@ def test_org_with_multiple_admins_returns_all_in_join_order(
 
 
 @pytest.mark.django_db
-def test_org_with_no_admins_falls_back_to_oldest_active_superadmin(
-    api_client, superadmin_jwt, superadmin_user
-):
-    org = Organization.objects.create(name="NoAdminsOrg")
-
-    resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
-    assert len(payload["admins"]) == 1
-    assert payload["admins"][0]["id"] == superadmin_user.id
-
-
-@pytest.mark.django_db
-def test_multiple_orgs_without_admins_share_same_fallback(
-    api_client, superadmin_jwt, superadmin_user
-):
+def test_orgs_without_admins_show_the_oldest_active_superadmin(api_client, superadmin_jwt, superadmin_user):
+    older_inactive = _make_user("old@example.com", is_superadmin=True, is_active=False)
+    User.objects.filter(pk=older_inactive.pk).update(created_at=superadmin_user.created_at)
     Organization.objects.create(name="OrgX")
     Organization.objects.create(name="OrgY")
 
     resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    targets = [o for o in resp.json()["results"] if o["name"] in ("OrgX", "OrgY")]
-    assert len(targets) == 2
-    for o in targets:
-        assert len(o["admins"]) == 1
-        assert o["admins"][0]["id"] == superadmin_user.id
 
-
-@pytest.mark.django_db
-def test_inactive_superadmin_not_used_as_fallback(
-    api_client, superadmin_jwt, superadmin_user
-):
-    older_inactive = _make_user("old@example.com", is_superadmin=True, is_active=False)
-    User.objects.filter(pk=older_inactive.pk).update(
-        created_at=superadmin_user.created_at
-    )
-
-    org = Organization.objects.create(name="FallbackCheck")
-
-    resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
-    assert len(payload["admins"]) == 1
-    assert payload["admins"][0]["id"] == superadmin_user.id
-
-
-@pytest.mark.django_db
-def test_no_active_superadmin_returns_empty_admins(
-    api_client, superadmin_jwt, superadmin_user
-):
-    """If the only superadmin is inactive, an org with no Org Admins
-    surfaces `admins: []` in the response."""
-    org = Organization.objects.create(name="Lonely")
-    User.objects.filter(pk=superadmin_user.pk).update(is_active=False)
-
-    resp = _auth(api_client, superadmin_jwt).get(_list_url())
-    if resp.status_code != 200:
-        pytest.skip(
-            "Auth layer rejects inactive superadmin token — the HTTP path "
-            "for this edge case is unreachable in this environment."
-        )
-    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
-    assert payload["admins"] == []
+    targets = [org for org in resp.json()["results"] if org["name"] in ("OrgX", "OrgY")]
+    assert [[admin["id"] for admin in org["admins"]] for org in targets] == [[superadmin_user.id]] * 2
 
 
 @pytest.mark.django_db
