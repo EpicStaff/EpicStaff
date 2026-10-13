@@ -92,7 +92,7 @@ def client_for():
 @pytest.fixture
 def voice_agent_definition(db, voice_org):
     agent_definition = AgentDefinition.objects.create(
-        organization=voice_org, name="voice-rbac-agent"
+        org=voice_org, name="voice-rbac-agent"
     )
     return RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
 

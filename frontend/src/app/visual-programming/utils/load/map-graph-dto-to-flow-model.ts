@@ -14,7 +14,6 @@ import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper'
 import { mapGraphNoteToModel } from './nodes/graph-note.mapper';
 import { mapKeyValueNodeToModel } from './nodes/key-value-node.mapper';
 import { mapKnowledgeRetrieverNodeToModel } from './nodes/knowledge-retriever-node.mapper';
-import { mapLLMNodeToModel } from './nodes/llm-node.mapper';
 import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
@@ -50,7 +49,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
     const taskNodes = (graph.task_node_list ?? []).map((n) => mapTaskNodeToModel(n));
     const agentNodes = (graph.agent_node_list ?? []).map((n) => mapAgentNodeToModel(n));
-    const llmNodes = (graph.llm_node_list ?? []).map((n) => mapLLMNodeToModel(n));
     const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => mapFileExtractorNodeToModel(n));
     const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => mapAudioToTextNodeToModel(n));
     const subGraphNodes = (graph.subgraph_node_list ?? []).map((n) => mapSubGraphNodeToModel(n));
@@ -72,7 +70,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...pythonNodes,
         ...taskNodes,
         ...agentNodes,
-        ...llmNodes,
         ...fileExtractorNodes,
         ...audioToTextNodes,
         ...subGraphNodes,

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -35,6 +37,55 @@ def _mock_httpx_client(monkeypatch, handler):
 def _configure(module, graph_id=7, api_key="test-key"):
     module.graph_id = graph_id
     module.api_key = api_key
+
+
+_AUTHORSHIP_KEYS = {"created_by", "last_edited_by", "last_edited_at"}
+
+_SCHEDULE_BLOCK = {
+    "run_mode": "once",
+    "timezone": "UTC",
+    "start_date_time": "2026-07-06T09:15:00",
+    "interval": {"every": None, "unit": None, "weekdays": None},
+    "end": {"type": "never", "date_time": None, "max_runs": None},
+}
+
+
+def _schedule_with_authorship(schedule_id, node_name="nightly"):
+    return {
+        "id": schedule_id,
+        "graph": 7,
+        "node_name": node_name,
+        "is_active": True,
+        "schedule": _SCHEDULE_BLOCK,
+        "created_by": {
+            "id": 3,
+            "display_name": "Jane Colleague",
+            "avatar_url": "http://djangoapp:8000/media/avatars/3.png",
+        },
+        "last_edited_by": {
+            "id": 4,
+            "display_name": "John Colleague",
+            "avatar_url": "http://djangoapp:8000/media/avatars/4.png",
+        },
+        "last_edited_at": "2026-07-05T12:00:00Z",
+    }
+
+
+def _assert_no_authorship_anywhere(value):
+    if isinstance(value, dict):
+        assert not _AUTHORSHIP_KEYS & value.keys(), value
+        for nested in value.values():
+            _assert_no_authorship_anywhere(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _assert_no_authorship_anywhere(nested)
+
+
+def _assert_schedule_fields_kept(returned, schedule_id, node_name="nightly"):
+    assert returned["id"] == schedule_id
+    assert returned["graph"] == 7
+    assert returned["node_name"] == node_name
+    assert returned["schedule"] == _SCHEDULE_BLOCK
 
 
 class TestScheduleManagerToolCreate:
@@ -204,6 +255,25 @@ class TestScheduleManagerToolCreate:
         assert result.startswith("Error:")
         assert "max_runs" in result
 
+    def test_create_result_omits_authorship(self, monkeypatch):
+        _configure(schedule_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(201, json=_schedule_with_authorship(55))
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(
+            action="create",
+            node_name="nightly",
+            run_mode="once",
+            start_date_time="2026-07-06T09:15:00",
+        )
+
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        _assert_schedule_fields_kept(returned["created"], 55)
+
 
 class TestScheduleManagerToolList:
     def test_list_happy_path(self, monkeypatch):
@@ -263,6 +333,31 @@ class TestScheduleManagerToolList:
         assert '"count_returned": 100' in result
         assert '"truncated": true' in result
 
+    def test_list_results_omit_authorship(self, monkeypatch):
+        _configure(schedule_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "count": 2,
+                    "results": [
+                        _schedule_with_authorship(1, node_name="a"),
+                        _schedule_with_authorship(2, node_name="b"),
+                    ],
+                },
+            )
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(action="list")
+
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        assert returned["count_returned"] == 2
+        _assert_schedule_fields_kept(returned["schedules"][0], 1, node_name="a")
+        _assert_schedule_fields_kept(returned["schedules"][1], 2, node_name="b")
+
 
 class TestScheduleManagerToolUpdate:
     def test_update_toggle_is_active_only(self, monkeypatch):
@@ -298,6 +393,20 @@ class TestScheduleManagerToolUpdate:
         result = schedule_main(action="update", schedule_id=10, is_active=False)
 
         assert "Error" not in result
+
+    def test_update_result_omits_authorship(self, monkeypatch):
+        _configure(schedule_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_schedule_with_authorship(10))
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(action="update", schedule_id=10, node_name="nightly")
+
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        _assert_schedule_fields_kept(returned["updated"], 10)
 
     def test_update_missing_schedule_id(self):
         _configure(schedule_module)
@@ -411,6 +520,10 @@ class TestScheduleManagerToolGeneral:
 
         assert result.startswith("Error:")
         assert "api_key" in result
+
+    def test_without_authorship_passes_non_dict_payload_through(self):
+        assert schedule_module._without_authorship("not a schedule") == "not a schedule"
+        assert schedule_module._without_authorship(None) is None
 
     def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
         """Regression test (smoke test): python_code.global_kwargs

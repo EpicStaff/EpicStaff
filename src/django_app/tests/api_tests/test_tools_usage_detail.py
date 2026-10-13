@@ -175,9 +175,9 @@ def test_requires_authentication(db):
 
 @pytest.mark.django_db
 def test_surface_entry_agent_specific(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-owned", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-owned", org=org_a)
     surface = Surface.objects.create(
-        name="s-owned", organization=org_a, owner_agent=agent
+        name="s-owned", org=org_a, owner_agent=agent
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
@@ -194,9 +194,9 @@ def test_surface_entry_agent_specific(client_a, org_a, unused_python_tool):
 
 @pytest.mark.django_db
 def test_surface_entry_agent_specific_mcp(client_a, org_a, unused_mcp_tool):
-    agent = AgentDefinition.objects.create(name="agent-owned-mcp", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-owned-mcp", org=org_a)
     surface = Surface.objects.create(
-        name="s-owned-mcp", organization=org_a, owner_agent=agent
+        name="s-owned-mcp", org=org_a, owner_agent=agent
     )
     SurfaceMcpTool.objects.create(
         surface=surface, mcp_tool=unused_mcp_tool, mode=ToolMode.ALLOW
@@ -221,11 +221,11 @@ def test_surface_entry_shared_regardless_of_agent_default_surface_assignment(
     """A shared surface (`owner_agent` null) lands in `shared_surface`
     whether or not it's assigned to any agent via `AgentDefaultSurface` —
     that assignment no longer affects which bucket it lands in."""
-    surface = Surface.objects.create(name="s-shared", organization=org_a)
+    surface = Surface.objects.create(name="s-shared", org=org_a)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
-    agent = AgentDefinition.objects.create(name="agent-shared", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-shared", org=org_a)
     AgentDefaultSurface.objects.create(
         agent_definition=agent, surface=surface, place=SurfacePlace.ALL
     )
@@ -243,7 +243,7 @@ def test_surface_entry_shared_regardless_of_agent_default_surface_assignment(
 def test_surface_entry_shared_without_any_agent_assignment(
     client_a, org_a, unused_python_tool
 ):
-    surface = Surface.objects.create(name="s-shared-unassigned", organization=org_a)
+    surface = Surface.objects.create(name="s-shared-unassigned", org=org_a)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
@@ -350,9 +350,9 @@ def test_inline_entries_from_two_nodes_in_same_graph_share_id_but_differ_by_node
 
 @pytest.mark.django_db
 def test_deny_mode_catalog_surface_not_counted(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-deny", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-deny", org=org_a)
     surface = Surface.objects.create(
-        name="s-deny", organization=org_a, owner_agent=agent
+        name="s-deny", org=org_a, owner_agent=agent
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.DENY
@@ -389,10 +389,10 @@ def test_cross_org_surface_attachment_not_leaked(
     """A Surface belonging to a DIFFERENT org that attaches
     `unused_python_tool` (same name as the surface, deliberately, to rule out
     name-based false negatives) must not surface its entry — usage is scoped
-    by `Surface.organization_id`, not by the tool's own org."""
-    agent_b = AgentDefinition.objects.create(name="agent-b", organization=org_b)
+    by `Surface.org_id`, not by the tool's own org."""
+    agent_b = AgentDefinition.objects.create(name="agent-b", org=org_b)
     surface_b = Surface.objects.create(
-        name="UnusedTool", organization=org_b, owner_agent=agent_b
+        name="UnusedTool", org=org_b, owner_agent=agent_b
     )
     SurfacePythonTool.objects.create(
         surface=surface_b, python_tool=unused_python_tool, mode=ToolMode.ALLOW

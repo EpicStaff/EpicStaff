@@ -109,3 +109,22 @@ def test_webhook_endpoint_accepts_correct_telegram_secret_token(
     mock_redis_service.publish_webhook.assert_called_once()
 
 
+def test_webhook_endpoint_returns_503_when_no_listener_received_the_event(
+    client, mock_redis_service, register_tunnel_path
+):
+    """Telegram only redelivers an update after a non-2xx response, so a 200 for an
+    event that reached no listener would lose the chat message."""
+    from app.services.redis_service import NoWebhookSubscriberError
+
+    webhook_path = "telegram-trigger/listener-down-bot"
+    register_tunnel_path(webhook_path, auth=_auth("telegram", "tg-secret"))
+    mock_redis_service.publish_webhook.side_effect = NoWebhookSubscriberError("webhooks")
+
+    response = client.post(
+        f"/webhooks/{webhook_path}",
+        json={"update_id": 1},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "tg-secret"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"

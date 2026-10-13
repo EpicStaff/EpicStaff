@@ -1,5 +1,6 @@
 import os
 
+from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
 from tables.services.storage_service.path_utils import sanitize_storage_path
 from tables.validators.file_upload_validator import FileValidator
@@ -138,7 +139,22 @@ class StorageAddToGraphSerializer(serializers.Serializer):
         return [_normalize_path(path) for path in value]
 
 
-class FileItemSerializer(serializers.Serializer):
+class AuthorshipResponseFieldsSerializer(LastEditFieldsSerializerMixin, serializers.Serializer):
+    """Documents the author and last-edit fields of a storage entry, as every API renders them.
+
+    Schema-only: the views render storage entries from StorageManager dicts.
+    """
+
+    created_by = serializers.PrimaryKeyRelatedField(
+        read_only=True, help_text="The user who created the entry"
+    )
+    created_at = serializers.DateTimeField(
+        allow_null=True,
+        help_text="When the entry was created; null for tree folders without a row",
+    )
+
+
+class FileItemSerializer(AuthorshipResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     name = serializers.CharField(help_text="File or folder name")
     type = serializers.ChoiceField(
@@ -163,7 +179,7 @@ class StorageListResponseSerializer(serializers.Serializer):
     items = FileItemSerializer(many=True, help_text="Folder contents")
 
 
-class StorageInfoResponseSerializer(serializers.Serializer):
+class StorageInfoResponseSerializer(AuthorshipResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     path = serializers.CharField(help_text="File path")
     name = serializers.CharField(help_text="File name")
@@ -259,7 +275,7 @@ class StorageTreeQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class TreeNodeSerializer(serializers.Serializer):
+class TreeNodeSerializer(AuthorshipResponseFieldsSerializer):
     id = serializers.IntegerField(allow_null=True)
     name = serializers.CharField()
     path = serializers.CharField()
@@ -290,7 +306,7 @@ class StorageSearchQuerySerializer(serializers.Serializer):
         return _normalize_path(value)
 
 
-class StorageSearchResultSerializer(serializers.Serializer):
+class StorageSearchResultSerializer(AuthorshipResponseFieldsSerializer):
     id = serializers.IntegerField()
     path = serializers.CharField()
     name = serializers.CharField()
@@ -321,7 +337,7 @@ class StorageFilesByIdsQuerySerializer(serializers.Serializer):
         return [int(token) for token in tokens]
 
 
-class StorageFileSerializer(serializers.Serializer):
+class StorageFileSerializer(LastEditFieldsSerializerMixin, serializers.Serializer):
     id = serializers.IntegerField(read_only=True, help_text="StorageFile id")
     path = serializers.CharField(read_only=True, help_text="Org-relative storage path")
     name = serializers.CharField(read_only=True, help_text="Last path segment")
@@ -338,6 +354,11 @@ class StorageFileSerializer(serializers.Serializer):
     )
     is_system = serializers.BooleanField(
         read_only=True, help_text="True for platform-written files"
+    )
+    # LastEditFieldsSerializerMixin swaps this for the author's user summary; the plain
+    # id stays only when authorship is omitted.
+    created_by = serializers.PrimaryKeyRelatedField(
+        read_only=True, help_text="The user who created the entry"
     )
     parent_path = serializers.CharField(read_only=True, help_text="Immediate parent directory path")
     created_at = serializers.DateTimeField(read_only=True, help_text="Row creation timestamp")

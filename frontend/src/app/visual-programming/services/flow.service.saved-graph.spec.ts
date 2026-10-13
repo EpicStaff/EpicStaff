@@ -10,7 +10,7 @@ function graphWith(...webhookNodes: { id: number; python_code: typeof PYTHON_COD
     return { webhook_trigger_node_list: webhookNodes } as unknown as GraphDto;
 }
 
-describe('FlowService saved webhook python code', () => {
+describe('FlowService saved webhook trigger node', () => {
     let flowService: FlowService;
 
     beforeEach(() => {
@@ -19,25 +19,25 @@ describe('FlowService saved webhook python code', () => {
 
     it('knows no stored graph while unbound', () => {
         expect(flowService.hasSavedGraph()).toBe(false);
-        expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+        expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
     });
 
-    it('returns the stored code of a webhook node by its backend id', () => {
+    it('returns the stored webhook node by its backend id', () => {
         flowService.bindSavedGraph(signal(graphWith({ id: 21, python_code: PYTHON_CODE })));
 
         expect(flowService.hasSavedGraph()).toBe(true);
-        expect(flowService.savedWebhookPythonCode(21)).toEqual(PYTHON_CODE);
-        expect(flowService.savedWebhookPythonCode(22)).toBeNull();
-        expect(flowService.savedWebhookPythonCode(null)).toBeNull();
+        expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(PYTHON_CODE);
+        expect(flowService.savedWebhookTriggerNode(22)).toBeNull();
+        expect(flowService.savedWebhookTriggerNode(null)).toBeNull();
     });
 
     it('follows the bound signal instead of copying it', () => {
         const storedGraph = signal<GraphDto | null>(graphWith());
         flowService.bindSavedGraph(storedGraph);
-        expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+        expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
 
         storedGraph.set(graphWith({ id: 21, python_code: PYTHON_CODE }));
-        expect(flowService.savedWebhookPythonCode(21)).toEqual(PYTHON_CODE);
+        expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(PYTHON_CODE);
 
         storedGraph.set(null);
         expect(flowService.hasSavedGraph()).toBe(false);
@@ -48,6 +48,6 @@ describe('FlowService saved webhook python code', () => {
 
         flowService.bindSavedGraph(null);
 
-        expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+        expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
     });
 });

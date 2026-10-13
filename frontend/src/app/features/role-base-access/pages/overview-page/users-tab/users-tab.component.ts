@@ -17,6 +17,7 @@ import {
     SelectItem,
     StopButtonComponent,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import {
     HasPermissionInAnyOrgDirective,
@@ -43,7 +44,6 @@ import {
 } from '../../../components/create-user-dialog/create-user-dialog.component';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { AggregatedUser } from '../../../models/aggregated-user.model';
 import { AdminUserService } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';

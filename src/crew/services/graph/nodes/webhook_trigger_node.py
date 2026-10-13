@@ -9,6 +9,7 @@ from services.graph.exceptions import ReturnCodeError
 from services.graph.nodes.base_node import BaseNode
 from services.run_python_code_service import RunPythonCodeService, build_state_globals
 from src.shared.models import PythonCodeData
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class WebhookTriggerNode(BaseNode):
@@ -21,6 +22,7 @@ class WebhookTriggerNode(BaseNode):
         stop_event: StopEvent,
         python_code_executor_service: RunPythonCodeService,
         python_code_data: PythonCodeData,
+        storage_credentials: StorageCredentials | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -32,6 +34,7 @@ class WebhookTriggerNode(BaseNode):
         self.python_code_executor_service = python_code_executor_service
         self.python_code_data = python_code_data
         self.code_reads_state = "state" in python_code_data.code
+        self.storage_credentials = storage_credentials
 
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         additional_global_kwargs = build_state_globals(state) if self.code_reads_state else {}
@@ -40,6 +43,7 @@ class WebhookTriggerNode(BaseNode):
             inputs=input_,
             additional_global_kwargs=additional_global_kwargs,
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         python_message_data = PythonMessageData(

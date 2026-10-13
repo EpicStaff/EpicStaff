@@ -19,6 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 
 import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../../services/notifications';
@@ -156,7 +157,7 @@ export class AgentInstructionsListComponent {
         this.confirm
             .confirm({
                 title: 'Delete instruction?',
-                message: `"${instruction.name}" and its content will be removed from this agent.`,
+                message: `"${escapeHtml(instruction.name)}" and its content will be removed from this agent.`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel',
                 type: 'danger',
