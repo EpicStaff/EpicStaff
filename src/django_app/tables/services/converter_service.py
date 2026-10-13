@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.db.models import Prefetch
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
@@ -36,7 +37,7 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
-from tables.models import PythonCode, PythonCodeTool
+from tables.models import PythonCode, PythonCodeTool, Secret
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
@@ -81,6 +82,15 @@ from utils.graph_utils import (
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
+
+
+def secret_names_prefetch(lookup: str) -> Prefetch:
+    """Prefetch the secrets at `lookup` for `convert_python_code_to_pydantic`.
+
+    Loads names only: the payload carries secret names, and the encrypted
+    `value` has no reason to leave the database here.
+    """
+    return Prefetch(lookup, queryset=Secret.objects.only("id", "name"))
 
 
 class ConverterService(metaclass=SingletonMeta):
@@ -194,7 +204,11 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_storage_scope(
-        self, graph_id: int | None, use_storage: bool, extra_paths: list[str]
+        self,
+        graph_id: int | None,
+        org_id: int | None,
+        use_storage: bool,
+        extra_paths: list[str],
     ) -> tuple[list[str] | None, str | None]:
         """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
 
@@ -206,24 +220,32 @@ class ConverterService(metaclass=SingletonMeta):
         if not use_storage or graph_id is None:
             return None, None
         allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
-        return allowed_paths, self._resolve_org_prefix_for_graph(graph_id)
+        return allowed_paths, self.storage_prefix_for_org(org_id)
+
+    @staticmethod
+    def storage_prefix_for_org(org_id: int | None) -> str | None:
+        """Return the storage key prefix of an organization, or None without one."""
+        return f"org_{org_id}" if org_id is not None else None
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
-        if org_id is not None:
-            return f"org_{org_id}"
-        return None
+        return self.storage_prefix_for_org(self._resolve_authoritative_org_id_for_graph(graph_id))
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
         """Authoritative RBAC org for a graph, read directly from `Graph.org_id`.
 
-        Distinct from `_resolve_org_prefix_for_graph`, which reads the optional
-        `GraphOrganization` join table (a separate storage-prefix concept) and
-        can be None even when `Graph.org_id` is set. This resolver is the only
-        source of truth for the `X-Organization-Id` header injected into
-        sandbox callback tools -- never derive it from agent/tool config input.
+        The storage prefix (`_resolve_org_prefix_for_graph`) derives from the same
+        column. This value is the only source of truth for the `X-Organization-Id`
+        header injected into sandbox callback tools -- never derive it from
+        agent/tool config input. A caller passing `org_id` into the converters
+        instead must have read it from the Graph row itself.
         """
         return Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
+
+    def _org_id_for_graph(self, graph_id: int | None, org_id: int | None) -> int | None:
+        """Return `org_id` when the caller already has it, else read it from the graph."""
+        if org_id is None and graph_id is not None:
+            return self._resolve_authoritative_org_id_for_graph(graph_id)
+        return org_id
 
     def convert_tool_to_base_tool_pydantic(
         self,
@@ -367,7 +389,8 @@ class ConverterService(metaclass=SingletonMeta):
             # it. The parser is now only a validator (declaration_validator.py).
             # Names only: resolution happens in redis_service, on the copy that
             # goes to Redis -- never on the object that becomes graph_schema.
-            secret_names=list(python_code.secrets.values_list("name", flat=True)),
+            # Iterating .all() reuses a prefetch of `secrets` when the caller made one.
+            secret_names=[secret.name for secret in python_code.secrets.all()],
             org_id=org_id,
         )
 
@@ -558,6 +581,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
+        org_id: int | None = None,
     ) -> PythonNodeData:
         """Convert a python node into the data a run sends to the sandbox.
 
@@ -566,19 +590,19 @@ class ConverterService(metaclass=SingletonMeta):
                 writable when the node uses storage.
             extra_storage_paths: Further writable folders for a run without a
                 session, such as a test-mode run's own folder.
+            org_id: `Graph.org_id` of `graph_id` when the caller already loaded
+                the graph row; read from the graph when omitted.
         """
+        org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
         if session_id is not None:
             writable_paths.append(f"sessions/{session_id}/")
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
             graph_id=graph_id,
+            org_id=org_id,
             use_storage=python_node.use_storage,
             extra_paths=writable_paths,
         )
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
 
         python_code_data = self.convert_python_code_to_pydantic(
             python_code=python_node.python_code,
@@ -621,6 +645,7 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -657,9 +682,7 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+        org_id = self._org_id_for_graph(graph_id, org_id)
 
         pre_storage_allowed_paths = None
         pre_storage_org_prefix = None
@@ -667,7 +690,7 @@ class ConverterService(metaclass=SingletonMeta):
             pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 pre_storage_allowed_paths.append(f"sessions/{session_id}/")
-            pre_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+            pre_storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         post_storage_allowed_paths = None
         post_storage_org_prefix = None
@@ -675,7 +698,7 @@ class ConverterService(metaclass=SingletonMeta):
             post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 post_storage_allowed_paths.append(f"sessions/{session_id}/")
-            post_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+            post_storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         pre_python_code_data = None
         if node.pre_python_code is not None:
@@ -825,18 +848,16 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ) -> FileExtractorNodeData:
+        org_id = self._org_id_for_graph(graph_id, org_id)
         storage_allowed_paths = None
         storage_org_prefix = None
         if graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+            storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         return FileExtractorNodeData(
             node_name=resolver(file_extractor_node.id),
@@ -868,18 +889,16 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ) -> AudioTranscriptionNodeData:
+        org_id = self._org_id_for_graph(graph_id, org_id)
         storage_allowed_paths = None
         storage_org_prefix = None
         if graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+            storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         return AudioTranscriptionNodeData(
             node_name=resolver(audio_transcription_node.id),

@@ -75,7 +75,9 @@ def test_session_graph_data_does_not_expose_foreign_node_names(graph, local_node
         next_node_id=foreign_node.id,
     )
 
-    graph_data = SessionManagerService()._build_graph_data(graph, None, None)
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, None, start_node=start_node
+    )
 
     assert FOREIGN_NAME not in graph_data.model_dump_json()
     unknown = f"unknown node #{foreign_node.id}"

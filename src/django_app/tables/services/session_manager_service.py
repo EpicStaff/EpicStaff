@@ -46,7 +46,7 @@ from tables.models.session_models import (
     SessionWarningMessage,
 )
 from tables.services.agent_node_payload_service import AgentNodePayloadService
-from tables.services.converter_service import ConverterService
+from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
 from tables.services.secrets import (
@@ -132,8 +132,9 @@ class SessionManagerService(metaclass=SingletonMeta):
 
     def create_session(
         self,
-        graph_id: int,
+        graph: Graph,
         *,
+        start_node: StartNode | None,
         variables: dict | None = None,
         graph_user=None,
         trigger: TriggerSpec,
@@ -145,8 +146,6 @@ class SessionManagerService(metaclass=SingletonMeta):
     ) -> Session:
         if variables is None:
             variables = {}
-        # it might not exist if graph has no start node
-        start_node = StartNode.objects.filter(graph_id=graph_id).first()
 
         if start_node is not None and start_node.variables:
             # Resolve template variables in start_node config using user-provided variables
@@ -161,7 +160,6 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         variables = self._get_actual_variables(variables)
 
-        graph = Graph.objects.get(pk=graph_id)
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
         # node id, so generate_node_name returns None and an explicitly passed
@@ -169,8 +167,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         entrypoint = generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
 
         with transaction.atomic():
+            # Passing the instance caches it on session.graph for create_session_data.
             session = Session.objects.create(
-                graph_id=graph_id,
+                graph=graph,
                 status=Session.SessionStatus.PENDING,
                 variables=variables,
                 time_to_live=graph.time_to_live,
@@ -188,13 +187,17 @@ class SessionManagerService(metaclass=SingletonMeta):
     def create_session_data(
         self,
         session: Session,
+        *,
+        start_node: StartNode | None,
         token_budget: int | None = None,
         run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
-        graph_data = self._build_graph_data(session.graph, unique_subgraphs, session)
+        graph_data = self._build_graph_data(
+            session.graph, unique_subgraphs, session, start_node=start_node
+        )
 
         initial_state = dict(session.variables)
         if token_budget is not None:
@@ -236,7 +239,11 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables = self._get_actual_variables(variables)
         logger.info("'run_session' got variables: {}", variables)
 
-        graph = Graph.objects.get(pk=graph_id)
+        # Nothing on the run path reads the canvas JSON in metadata.
+        graph = Graph.objects.defer("metadata").get(pk=graph_id)
+        # The server does not require a start node (the editor only hides its delete
+        # button); without one, the run needs an entrypoint from its trigger.
+        start_node = StartNode.objects.filter(graph_id=graph_id).first()
         run_vars = self.persistent_variables_service.build_run_variables(
             graph=graph, user=user, payload=variables
         )
@@ -245,7 +252,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             trigger = replace(trigger, triggered_by_user=run_vars.graph_user)
 
         session: Session = self.create_session(
-            graph_id=graph_id,
+            graph=graph,
+            start_node=start_node,
             variables=run_vars.variables,
             graph_user=run_vars.graph_user,
             trigger=trigger,
@@ -264,6 +272,7 @@ class SessionManagerService(metaclass=SingletonMeta):
 
             session_data: SessionData = self.create_session_data(
                 session=session,
+                start_node=start_node,
                 token_budget=token_budget,
                 run_type=trigger.trigger_type,
             )
@@ -333,17 +342,22 @@ class SessionManagerService(metaclass=SingletonMeta):
         graph: Graph,
         unique_subgraphs: dict[int, SubGraphData] | None = None,
         session: Session = None,
+        *,
+        start_node: StartNode | None,
     ) -> GraphData:
         """Recursively build GraphData for a graph to handle subgraphs
 
         Args:
             graph: The graph to build data for
             unique_subgraphs: Dictionary to collect unique subgraphs (only used at top level)
+            start_node: The graph's start node, already loaded by the caller, or
+                None when the graph has none.
         """
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
             .select_related("python_code")
+            .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         knowledge_node_list = KnowledgeNode.objects.filter(graph=graph.pk).select_related(
             "source_collection",
@@ -360,19 +374,30 @@ class SessionManagerService(metaclass=SingletonMeta):
         decision_table_node_list = DecisionTableNode.objects.filter(
             graph=graph.pk
         ).prefetch_related("condition_groups__conditions")
-        subgraph_node_list = SubGraphNode.objects.filter(graph=graph.pk).select_related("subgraph")
+        subgraph_node_list = (
+            SubGraphNode.objects.filter(graph=graph.pk)
+            .select_related("subgraph")
+            .defer("subgraph__metadata")
+        )
         webhook_trigger_node_list = (
             WebhookTriggerNode.objects.filter(graph=graph.pk)
             .defer("test_payload")
             .select_related("python_code")
+            .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
             "test_payload"
         )
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
-        classification_decision_table_node_list = ClassificationDecisionTableNode.objects.filter(
-            graph=graph.pk
-        ).prefetch_related("condition_groups")
+        classification_decision_table_node_list = (
+            ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
+            .select_related("pre_python_code", "post_python_code")
+            .prefetch_related(
+                "condition_groups",
+                secret_names_prefetch("pre_python_code__secrets"),
+                secret_names_prefetch("post_python_code__secrets"),
+            )
+        )
         task_node_list = (
             TaskNode.objects.filter(graph=graph.pk)
             .select_related(
@@ -499,6 +524,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         TODO: future improvements: use cleaner approach
         """
         cv = self.converter_service
+        # Read once per graph from the Graph row, never from node or tool config:
+        # it becomes the X-Organization-Id header of sandbox callback tools.
+        org_id = graph.org_id
 
         python_node_data_list = [
             cv.convert_python_node_to_pydantic(
@@ -506,6 +534,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 resolver=resolver,
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in python_node_list
         ]
@@ -537,6 +566,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 resolver=resolver,
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in file_extractor_node_list
         ]
@@ -550,6 +580,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 resolver=resolver,
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in audio_transcription_node_list
         ]
@@ -561,6 +592,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 node_name=resolver(item.id),
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in task_node_list
         ]
@@ -572,13 +604,13 @@ class SessionManagerService(metaclass=SingletonMeta):
                 node_name=resolver(item.id),
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in agent_node_list
         ]
 
         entrypoint = session.entrypoint if session else None
-        start_node_obj = StartNode.objects.filter(graph=graph.pk).first()
-        start_node_id = start_node_obj.id if start_node_obj else None
+        start_node_id = start_node.id if start_node else None
 
         edge_data_list: list[EdgeData] = []
         for item in edge_list:
@@ -592,7 +624,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         if entrypoint is None:
             raise GraphEntryPointException()
 
-        if start_node_obj is None and entrypoint is None:
+        if start_node is None and entrypoint is None:
             raise GraphEntryPointException()
 
         decision_table_node_data_list = [
@@ -605,10 +637,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             subgraph = item.subgraph
 
             if unique_subgraphs is not None and item.subgraph_id not in unique_subgraphs:
-                subgraph_data = self._build_graph_data(subgraph, unique_subgraphs, None)
-                variables = self._get_actual_variables(
-                    subgraph.start_node_list.first().variables or {}
+                subgraph_start_node = subgraph.start_node_list.first()
+                subgraph_data = self._build_graph_data(
+                    subgraph, unique_subgraphs, None, start_node=subgraph_start_node
                 )
+                # Not None here: _build_graph_data raises GraphEntryPointException without one.
+                variables = self._get_actual_variables(subgraph_start_node.variables or {})
                 unique_subgraphs[item.subgraph_id] = SubGraphData(
                     id=subgraph.id,
                     data=subgraph_data,
@@ -629,6 +663,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     resolver=resolver,
                     graph_id=graph.pk,
                     session_id=session.pk if session else None,
+                    org_id=org_id,
                 )
             )
 

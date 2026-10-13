@@ -187,7 +187,8 @@ def test_create_session_is_atomic_no_orphan_session_on_trigger_failure(
 
     with pytest.raises(IntegrityError):
         SessionManagerService().create_session(
-            graph_id=graph.id,
+            graph=graph,
+            start_node=None,
             variables={},
             trigger=TriggerSpec.schedule(
                 ScheduleTriggerNode.objects.create(graph=graph, node_name="n")

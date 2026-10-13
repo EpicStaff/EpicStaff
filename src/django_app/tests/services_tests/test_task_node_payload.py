@@ -65,6 +65,12 @@ from src.shared.models import (
 )
 
 
+def _build_graph_data(graph: Graph) -> GraphData:
+    return SessionManagerService()._build_graph_data(
+        graph, start_node=graph.start_node_list.first()
+    )
+
+
 @pytest.fixture
 def org(db):
     from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
@@ -235,7 +241,7 @@ class TestBuildGraphDataTaskNode:
         task_node.surface_list.set([surface_a, surface_b])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         assert len(graph_data.task_node_list) == 1
         task_data = graph_data.task_node_list[0]
@@ -264,7 +270,7 @@ class TestBuildGraphDataTaskNode:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.agent_definition.max_tool_calls == 7
@@ -283,7 +289,7 @@ class TestBuildGraphDataTaskNode:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.input_map == {"topic": "variables.topic"}
@@ -292,7 +298,7 @@ class TestBuildGraphDataTaskNode:
     def test_task_node_default_input_map_is_empty(self, graph, task_node):
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.input_map == {}
@@ -309,7 +315,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
         assert agent_data.default_temperature == 0.7
@@ -336,7 +342,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
         assert agent_data.max_iter == 42
@@ -360,7 +366,7 @@ class TestSessionDataRoundTrip:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
         session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
@@ -399,7 +405,7 @@ class TestSurfaceValidationErrorPropagation:
         wire_entrypoint(graph, task_node)
 
         with pytest.raises(SurfaceValidationError):
-            SessionManagerService()._build_graph_data(graph)
+            _build_graph_data(graph)
 
 
 class TestDecimalCoercion:
@@ -424,7 +430,7 @@ class TestDecimalCoercion:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         naive_config = task_data.surface.knowledge[0].naive_search_config
@@ -443,7 +449,7 @@ class TestAgentDefinitionLLMHydration:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.agent_definition.llm is not None
@@ -487,7 +493,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.tools) == 1
@@ -510,7 +516,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a, surface_b])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.tools == []
@@ -523,7 +529,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.tools) == 1
@@ -542,7 +548,7 @@ class TestS3Pool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.s3_files) == 1
@@ -562,7 +568,7 @@ class TestS3Pool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -593,7 +599,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.collections) == 1
@@ -634,7 +640,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.collections) == 1
@@ -665,7 +671,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections == []
@@ -696,7 +702,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections[0].description == "Product FAQ knowledge base."
@@ -725,7 +731,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections[0].description is None
@@ -760,7 +766,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         entry = task_data.collections[0].search_configs[0]
@@ -827,7 +833,7 @@ class TestPoolsContractCrossCheck:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
         task_data = graph_data.task_node_list[0]
 
         agent_spec = AgentSpec(
@@ -861,7 +867,7 @@ class TestPoolsContractCrossCheck:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
         session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
@@ -887,7 +893,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -907,7 +913,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -923,7 +929,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -942,7 +948,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -967,7 +973,7 @@ class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -990,7 +996,7 @@ class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [storage_file.pk]
@@ -1058,7 +1064,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [docs_file.pk]
@@ -1076,7 +1082,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [docs_folder.pk]
@@ -1092,7 +1098,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -1108,7 +1114,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -1124,7 +1130,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = _build_graph_data(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
