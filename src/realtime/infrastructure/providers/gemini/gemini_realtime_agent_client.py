@@ -328,7 +328,9 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             result_str = str(tool_result)
         except Exception as e:
             correlation_id = new_error_correlation_id()
-            logger.exception(f"Gemini: Tool execution failed [correlation_id={correlation_id}]: {e}")
+            logger.exception(
+                f"Gemini: Tool execution failed [correlation_id={correlation_id}]: {e}"
+            )
             result_str = build_public_error_message(
                 PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
             )

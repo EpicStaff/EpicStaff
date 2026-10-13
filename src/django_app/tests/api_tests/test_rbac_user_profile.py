@@ -22,6 +22,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -476,7 +477,12 @@ class TestPasswordChangeConfirm:
         )
         assert resp.status_code == status.HTTP_200_OK
         body = resp.json()
-        assert "access" in body and "refresh" in body
+        assert "access" in body
+        # The refresh token travels only in the httpOnly cookie, never the body.
+        assert "refresh" not in body
+        refresh_cookie = resp.cookies[REFRESH_COOKIE_NAME]
+        assert refresh_cookie.value
+        assert refresh_cookie["httponly"]
         # New pair works: hit /api/profile/ with the access token.
         fresh = APIClient()
         fresh.credentials(HTTP_AUTHORIZATION=f"Bearer {body['access']}")

@@ -72,6 +72,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
     CONDITION_INPUT_FIELDS,
@@ -245,6 +246,9 @@ from tables.serializers.model_serializers.key_value_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
+)
+from tables.serializers.model_serializers.realtime_serializers import (
+    TwilioAuthTokenSecretSerializer,
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
@@ -1669,6 +1673,9 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         chat.duration_seconds = request.data.get("duration_seconds")
         chat.end_reason = request.data.get("end_reason", "completed")
         chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+
+        session_credential_service.revoke_for_realtime_chat(chat.id)
+
         return Response({"detail": "Updated"})
 
 
@@ -1786,7 +1793,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
-        """Return this channel's Twilio incoming phone numbers."""
+        """Return the incoming phone numbers of the Twilio account named by `sid`."""
 
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
@@ -1799,8 +1806,25 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
 
         try:
             TwilioService().validate_account_sid(sid)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+
+        # The id is client input: validate it against the active org first, so a
+        # foreign or unknown id is a 400 rather than a failed stored-reference
+        # resolution (500).
+        secret_input = TwilioAuthTokenSecretSerializer(
+            data={"auth_token_secret_id": auth_token_secret_id},
+            context={"request": request},
+        )
+        if not secret_input.is_valid():
+            return Response(
+                {"error": str(secret_input.errors["auth_token_secret_id"][0])},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
             auth_token = secret_resolver.resolve(
-                secret_id=auth_token_secret_id,
+                secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
                 org_id=resolve_active_org_id(request),
                 context="TwilioChannel.auth_token",
             )
@@ -2607,7 +2631,11 @@ class SecretViewSet(
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
-    queryset = Secret.objects.prefetch_related(*authorship_prefetches(last_edit=False))
+    # system=True rows (e.g. org-level MinIO credentials) are internal to
+    # storage_credentials and must never be visible through this API — not
+    # even their existence. `Secret.objects` (the default manager) already
+    # excludes them by construction; no explicit filter is needed here.
+    queryset = Secret.objects.all().prefetch_related(*authorship_prefetches(last_edit=False))
     serializer_class = SecretSerializer
 
     @extend_schema(**SECRET_USAGE_GET)
