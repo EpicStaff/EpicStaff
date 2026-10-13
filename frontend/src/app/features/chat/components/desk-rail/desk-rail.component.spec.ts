@@ -9,7 +9,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { CHAT_BINDING_DEFAULTS, ChatBinding } from '../../models/chat.model';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
-import { DeskRailComponent } from './desk-rail.component';
+import { DeskRailComponent, DeskRailPresentation } from './desk-rail.component';
 
 const STORAGE_KEY = 'chat:deskRailMode';
 
@@ -69,9 +69,13 @@ describe('DeskRailComponent', () => {
     let desksStorage: ReturnType<typeof createDesksStorage>;
     const bindingActions = { create: vi.fn<() => Observable<ChatBinding | null>>() };
 
-    function render(waitingByDesk: Record<string, number> = {}): HTMLElement {
+    function render(
+        waitingByDesk: Record<string, number> = {},
+        presentation: DeskRailPresentation = 'rail'
+    ): HTMLElement {
         fixture = TestBed.createComponent(DeskRailComponent);
         fixture.componentRef.setInput('waitingByDesk', waitingByDesk);
+        fixture.componentRef.setInput('presentation', presentation);
         fixture.detectChanges();
         return fixture.nativeElement as HTMLElement;
     }
@@ -380,5 +384,49 @@ describe('DeskRailComponent', () => {
         expect(isCompact()).toBe(false);
         expect(toggle()).not.toBeNull();
         expect(localStorage.getItem(STORAGE_KEY)).toBe('list');
+    });
+
+    it('always lists names in the phone drawer, whatever was picked or the screen, without the toggle', () => {
+        localStorage.setItem(STORAGE_KEY, 'compact');
+        isNarrowScreen.next(true);
+        render({ 'b-1': 2 }, 'drawer');
+
+        expect(host().classList).toContain('desk-rail--drawer');
+        expect(isCompact()).toBe(false);
+        expect(toggle()).toBeNull();
+        expect(host().querySelector('.desk-rail__title')?.textContent?.trim()).toBe('Desks');
+        expect(Array.from(host().querySelectorAll('.desk-rail__name')).map((name) => name.textContent?.trim())).toEqual(
+            ['All desks', 'Billing', 'Sales', 'Support', 'New desk']
+        );
+        // Listed, the counts sit beside the names, not on the avatars.
+        expect(host().querySelector('.desk-avatar__badge')).toBeNull();
+        // The column's choice is left as it was.
+        expect(localStorage.getItem(STORAGE_KEY)).toBe('compact');
+    });
+
+    it('says an entry was picked on a plain click, not on one that opens it elsewhere (a new tab)', () => {
+        render({}, 'drawer');
+        const picks: number[] = [];
+        fixture.componentInstance.picked.subscribe(() => picks.push(1));
+        // The browser would open the link in a new tab: jsdom must not try to navigate.
+        const keepPage = (event: Event): void => event.preventDefault();
+        document.addEventListener('click', keepPage);
+        try {
+            for (const init of [
+                { ctrlKey: true },
+                { metaKey: true },
+                { shiftKey: true },
+                { altKey: true },
+                { button: 1 },
+            ]) {
+                links()[1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+            }
+            expect(picks).toEqual([]);
+
+            links()[1].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            expect(picks).toEqual([1]);
+        } finally {
+            document.removeEventListener('click', keepPage);
+        }
     });
 });

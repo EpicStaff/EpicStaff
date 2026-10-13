@@ -150,3 +150,11 @@
 :host(:focus-within) .conversation-row__take-over {
     visibility: visible;
 }
+
+// Touch screens have no hover to reveal it. A tap on the row opens the conversation, where the composer offers taking
+// it over: the row keeps to opening.
+@media (hover: none) {
+    .conversation-row__take-over {
+        display: none;
+    }
+}

@@ -1,3 +1,6 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
 // The desk settings dialog's frame, for one field.
 .alias-dialog {
     display: flex;
@@ -96,5 +99,33 @@
         justify-content: flex-end;
         gap: 12px;
         padding: 0 24px 24px;
+    }
+}
+
+// Phones: a sheet from the bottom edge (see `ChatBindingActionsService`), rounded on top only, its field large enough
+// that iOS does not zoom into it, and its actions clear of the home indicator.
+@include bp.phone {
+    .alias-dialog {
+        width: 100%;
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+        border-radius: 0.75rem 0.75rem 0 0;
+
+        &__header {
+            padding: 16px 16px 12px;
+        }
+
+        &__form {
+            padding: 16px;
+        }
+
+        &__input {
+            min-height: touch.$target-size;
+            font-size: touch.$input-font-size;
+        }
+
+        &__actions {
+            padding: 0 16px max(16px, env(safe-area-inset-bottom, 0px));
+        }
     }
 }

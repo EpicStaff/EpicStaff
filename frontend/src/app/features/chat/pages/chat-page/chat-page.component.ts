@@ -1,5 +1,3 @@
-import { A11yModule } from '@angular/cdk/a11y';
-import { OverlayModule } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -25,10 +23,15 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, merge, Subscription } from 'rxjs';
 
+import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import {
+    ChatActionMenuComponent,
+    ChatActionMenuItem,
+} from '../../components/chat-action-menu/chat-action-menu.component';
 import { ChatBindingStatusComponent } from '../../components/chat-binding-status/chat-binding-status.component';
 import {
     ChatOperatorReplySent,
@@ -36,6 +39,7 @@ import {
 } from '../../components/chat-thread-composer/chat-thread-composer.component';
 import { ChatUsageRingComponent } from '../../components/chat-usage-ring/chat-usage-ring.component';
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
+import { DeskAvatarComponent } from '../../components/desk-avatar/desk-avatar.component';
 import { CHAT_MODE_LABELS, ChatConversation, ChatMode, ChatOperatorMessage } from '../../models/chat.model';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
@@ -43,29 +47,42 @@ import { ChatConversationActionsService } from '../../services/chat-conversation
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
+import { DeskDrawerService } from '../../services/desk-drawer.service';
+import { OpenConversationService } from '../../services/open-conversation.service';
 import { actionLabel } from '../../utils/action-label.util';
 import { operatorName, visitorName } from '../../utils/conversation-row.util';
+import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
 import { upsertMessage } from '../../utils/inbox-merge.util';
 
 const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
 
+type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
+type ConversationAction = 'take-over' | 'release';
+
+/**
+ * A desk's workspace (or All desks): the desk toolbar over the conversations and the open conversation's thread. The
+ * open conversation is in the URL (`OpenConversationService`), so a reload or a link reopens it. On phones the
+ * conversations and the thread are a navigation stack, as on iOS: the thread pushes in from the right over the list,
+ * and Back (the thread's own, Safari's edge swipe, Android's back) pops it.
+ */
 @Component({
     selector: 'app-chat-page',
     imports: [
-        A11yModule,
         DatePipe,
         MatTooltipModule,
-        OverlayModule,
         RouterLink,
         ChatUsageRingComponent,
         AppSvgIconComponent,
         ButtonComponent,
+        ChatActionMenuComponent,
         ChatBindingStatusComponent,
         ChatThreadComposerComponent,
         CollapseOnOverflowDirective,
         ConversationListComponent,
+        DeskAvatarComponent,
         SpinnerComponent,
     ],
+    providers: [OpenConversationService],
     templateUrl: './chat-page.component.html',
     styleUrls: ['./chat-page.component.scss'],
 })
@@ -77,12 +94,9 @@ export class ChatPageComponent {
     private readonly conversationList = viewChild(ConversationListComponent);
     private readonly threadScroller = viewChild<ElementRef<HTMLElement>>('threadScroller');
     private readonly olderSentinel = viewChild<ElementRef<HTMLElement>>('olderSentinel');
+    private readonly deskSwitcher = viewChild<ElementRef<HTMLButtonElement>>('deskSwitcher');
+    private readonly threadBack = viewChild<ElementRef<HTMLButtonElement>>('threadBack');
 
-    /**
-     * The conversation as it was selected (or started as a test), kept current from the stream and from actions. What
-     * the thread shows while the list does not have it: a test conversation without messages, a row past a loaded page.
-     */
-    private readonly held = signal<ChatConversation | null>(null);
     readonly messages = signal<ChatOperatorMessage[]>([]);
     readonly hasOlderMessages = signal(false);
     readonly isLoadingOlder = signal(false);
@@ -95,23 +109,36 @@ export class ChatPageComponent {
     // The desk list asked for once the route moved to a desk the list lacked: only that list can say it is gone.
     private readonly deskListRequestedFor = signal<{ bindingId: string; request: number } | null>(null);
 
-    readonly selectedId = computed(() => this.held()?.id ?? null);
+    /** The open conversation's id; the list marks its row even before the row itself is known. */
+    readonly selectedId = computed(() => this.openConversation.id());
     /**
      * The open conversation: the list's row when it lists it, so a reconnect reload (another operator took it over
-     * meanwhile) reaches the header and the composer; else the held row. Matched by id, as the list's `selectedId`
-     * input catches up one change detection later.
+     * meanwhile) reaches the header and the composer; else the row as last known. Matched by id, as the list's
+     * `selectedId` input catches up one change detection later. Null while the open id has no row yet (a link, a reload).
      */
     readonly selected = computed(() => {
-        const held = this.held();
+        const row = this.openConversation.row();
         const listed = this.conversationList()?.selectedRow();
-        return listed && listed.id === held?.id ? listed : held;
+        return row && listed?.id === row.id ? listed : row;
     });
+    // The thread's messages follow the conversation shown, not an id that has no row yet.
+    private readonly shownConversationId = computed(() => this.selected()?.id ?? null);
     readonly isAllBindings = computed(() => !this.bindingId());
     // Null until the desks load; an id they do not list sends the user back to All desks.
     readonly routeBinding = computed(
         () => this.desksStorage.desks().find((binding) => binding.id === this.bindingId()) ?? null
     );
     readonly title = computed(() => (this.isAllBindings() ? 'All desks' : (this.routeBinding()?.name ?? '')));
+    readonly deskSwitcherLabel = computed(() => {
+        const title = this.title();
+        return title ? `Switch desk, current: ${title}` : 'Switch desk';
+    });
+    /** The thread's Back on phones, named after the list it returns to. */
+    readonly backText = computed(() => this.title() || 'Back');
+    readonly backLabel = computed(() => {
+        const title = this.title();
+        return title ? `Back to ${title}` : 'Back';
+    });
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
     readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
     readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
@@ -155,7 +182,34 @@ export class ChatPageComponent {
         if (operatorId === this.profileService.currentUserSignal()?.id) return 'you';
         return operatorName(operatorId, conversation?.assigned_operator_name ?? null);
     });
-    readonly isThreadMenuOpen = signal(false);
+    /** Phones put every desk action except Test in the list screen's ⋯ menu; the same permissions as the toolbar's. */
+    readonly deskMenuItems = computed((): ChatActionMenuItem<DeskAction>[] => {
+        if (!this.routeBinding()) return [];
+        const canUpdate = this.canUpdate();
+        const items: (ChatActionMenuItem<DeskAction> | false)[] = [
+            this.canUse() && { id: 'my-name', label: this.myNameLabel() },
+            canUpdate && { id: 'settings', label: 'Settings' },
+            { id: 'snippet', label: 'Get snippet' },
+            canUpdate && { id: 'pause', label: this.pauseLabel() },
+            this.canDelete() && { id: 'delete', label: 'Delete' },
+        ];
+        return items.filter((item) => item !== false);
+    });
+    /**
+     * The open conversation's actions in its ⋯ menu: Take over and Release to bot while another operator holds it.
+     * The holder releases with a button beside the title, which phones have no room for: Release is in the menu there.
+     */
+    readonly conversationMenuItems = computed((): ChatActionMenuItem<ConversationAction>[] => {
+        const conversation = this.selected();
+        if (!conversation || !this.canUse()) return [];
+        const disabled = this.isActionPending();
+        if (this.isClaimedByMe()) return this.isPhone() ? [{ id: 'release', label: 'Release', disabled }] : [];
+        if (conversation.mode !== 'human') return [];
+        return [
+            { id: 'take-over', label: 'Take over', disabled },
+            { id: 'release', label: 'Release to bot', disabled },
+        ];
+    });
 
     /**
      * A route desk the list lacks may be newer than the list (created in another tab): once no list is loading, ask for
@@ -183,26 +237,90 @@ export class ChatPageComponent {
             void this.router.navigate(ALL_DESKS_ROUTE);
         });
     });
-    // A binding belongs to one org: after an org switch its page has nothing to show, so it goes back to All desks
-    // without a message (the binding was not deleted). The all-bindings inbox simply reloads for the new org.
+    /**
+     * The open conversation belongs to the previous org after a switch (or a logout), and this page forgets it. On All
+     * desks it closes at once, so neither its thread nor its composer stays usable, and its id leaves the URL in place;
+     * that lands before the org switch reads the URL to return to, so the new org's page does not try to open it. A
+     * binding's page goes back to All desks without a message (the binding was not deleted), which replaces the page;
+     * a logout leaves the page to the login flow.
+     */
     private readonly leaveOnOrgSwitch = effect(() => {
         const orgId = this.activeOrgService.activeOrgId();
         untracked(() => {
-            // null is a logout: the auth flow navigates away itself.
-            if (this.orgId !== undefined && orgId !== null && orgId !== this.orgId && this.bindingId()) {
-                this.isLeavingForOrgSwitch = true;
-                void this.router.navigate(ALL_DESKS_ROUTE).finally(() => (this.isLeavingForOrgSwitch = false));
+            if (this.orgId !== undefined && orgId !== this.orgId) {
+                // null is a logout: the auth flow navigates away itself.
+                if (orgId === null) {
+                    this.openConversation.forget();
+                } else if (this.bindingId()) {
+                    this.openConversation.forget();
+                    this.isLeavingForOrgSwitch = true;
+                    void this.router.navigate(ALL_DESKS_ROUTE).finally(() => (this.isLeavingForOrgSwitch = false));
+                } else {
+                    this.openConversation.drop();
+                }
             }
             this.orgId = orgId;
         });
     });
-    // Another desk's conversation must not stay open when the route moves to a different scope.
+    /**
+     * Another desk's conversation must not stay open when the route moves to a different scope. A link to another desk
+     * leaves the id out of its URL by itself; a move through history brings that desk's own id along, which stays.
+     */
     private readonly clearSelectionOnScope = effect(() => {
         const scope = this.bindingId() ?? null;
         untracked(() => {
-            if (this.scope !== undefined && scope !== this.scope) this.held.set(null);
+            if (this.scope !== undefined && scope !== this.scope) this.openConversation.forget();
             this.scope = scope;
         });
+    });
+    /**
+     * An id the page did not open itself (a reload, a link, history) takes its row from the conversations column, once
+     * the column holds the route's desk (until then its rows are another desk's). A column that hides rows (Mine, a
+     * search, a collapsed section) shows everything first; the chat service cannot fetch one conversation by id, so an
+     * id that everything the column can list does not have leaves the URL, with a message.
+     */
+    private readonly openConversationFromUrl = effect(() => {
+        const id = this.openConversation.id();
+        const list = this.conversationList();
+        if (!id || !list || this.openConversation.row()) return;
+        if (list.listedBindingId() !== (this.bindingId() ?? null)) return;
+        const lookup = list.lookUp(id);
+        untracked(() => {
+            if (typeof lookup !== 'string') {
+                if (this.isOfThisPage(lookup)) this.openConversation.remember(lookup);
+                else this.dropMissing();
+            } else if (lookup === 'hidden') {
+                list.showEverything();
+            } else if (lookup === 'missing') {
+                this.dropMissing();
+            }
+        });
+    });
+    // Phones: the focus goes with the screen the user moved to: the thread's Back, or the row the thread was opened from.
+    private readonly moveFocusWithStack = effect(() => {
+        const openId = this.isPhone() ? this.shownConversationId() : undefined;
+        untracked(() => {
+            const previousId = this.stackOpenId;
+            this.stackOpenId = openId;
+            if (openId === undefined || previousId === undefined) return;
+            // Without scrolling: a pane still sliding in may be past the edge, and the browser would scroll to it.
+            if (openId && !previousId) {
+                afterNextRender(() => this.threadBack()?.nativeElement.focus({ preventScroll: true }), {
+                    injector: this.injector,
+                });
+            } else if (!openId && previousId) {
+                afterNextRender(() => this.conversationList()?.focusRow(previousId, { preventScroll: true }), {
+                    injector: this.injector,
+                });
+            }
+        });
+    });
+    // The desk drawer returns the focus to the switcher shown now, whichever page shows it.
+    private readonly registerDeskSwitcher = effect((onCleanup) => {
+        const switcher = this.deskSwitcher()?.nativeElement;
+        if (!switcher) return;
+        this.deskDrawer.registerSwitcher(switcher);
+        onCleanup(() => this.deskDrawer.unregisterSwitcher(switcher));
     });
     /**
      * Infinite scroll up: the sentinel row entering the thread viewport loads the next older page. Only after the
@@ -229,7 +347,7 @@ export class ChatPageComponent {
         untracked(() => this.ensureVisitorToken(conversation.id));
     });
     private readonly loadThreadOnSelect = effect(() => {
-        const id = this.selectedId();
+        const id = this.shownConversationId();
         this.chatInboxStream.readyEpoch();
         untracked(() => this.loadThread(id));
     });
@@ -237,6 +355,10 @@ export class ChatPageComponent {
     protected readonly isActionPending = inject(ChatConversationActionsService).isPending;
     protected readonly actionLabel = actionLabel;
     protected readonly visitorName = visitorName;
+    protected readonly allDesksIcon = ALL_DESKS_ICON;
+    protected readonly deskDrawer = inject(DeskDrawerService);
+    protected readonly openConversation = inject(OpenConversationService);
+    protected readonly isPhone = inject(PhoneLayoutService).isPhone;
 
     private readonly chatApi = inject(ChatApiService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
@@ -257,20 +379,21 @@ export class ChatPageComponent {
     private threadEpoch = 0;
     private olderRequest: Subscription | null = null;
     private scope: string | null | undefined = undefined;
+    // Phones: the conversation the stack showed last (null: the list); undefined off phones and before the first look.
+    private stackOpenId: string | null | undefined = undefined;
     private orgId: number | null | undefined = undefined;
     private isLeavingForOrgSwitch = false;
 
     constructor() {
         // The newest state of the open conversation, streamed or returned by an action, keeps the thread current.
         merge(this.chatInboxStream.conversationUpdated$, this.conversationActions.changed$)
-            .pipe(
-                filter((row) => row.id === this.selectedId()),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((row) => this.held.set(row));
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((row) => {
+                if (this.isOfThisPage(row)) this.openConversation.remember(row);
+            });
         this.chatInboxStream.messageCreated$
             .pipe(
-                filter((event) => event.conversation_id === this.selectedId()),
+                filter((event) => event.conversation_id === this.shownConversationId()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((event) =>
@@ -294,7 +417,6 @@ export class ChatPageComponent {
 
     selectConversation(conversation: ChatConversation): void {
         const id = conversation.id;
-        this.isThreadMenuOpen.set(false);
         // Selecting again retries a failed visitor token.
         const hadFailed = !!this.visitorTokenErrors()[id];
         if (hadFailed) {
@@ -304,14 +426,38 @@ export class ChatPageComponent {
                 return rest;
             });
         }
-        this.held.set(conversation);
+        this.openConversation.open(conversation);
         if (hadFailed && conversation.is_test && this.canUse()) this.ensureVisitorToken(id);
     }
 
     // The created row seeds the header: its stream event may already have passed, before it was selected.
     onTestConversationStarted(conversation: ChatConversation): void {
-        this.held.set(conversation);
+        this.openConversation.open(conversation);
         this.conversationList()?.reveal('test');
+    }
+
+    /** The slide has ended: later moves are instant unless one made here asks again. */
+    onStackTransitionEnd(event: TransitionEvent): void {
+        if (event.target === event.currentTarget && event.propertyName === 'transform')
+            this.openConversation.stackSlid();
+    }
+
+    runDeskAction(action: DeskAction): void {
+        const run: Record<DeskAction, () => void> = {
+            'my-name': () => this.editMyAlias(),
+            settings: () => this.openSettings(),
+            snippet: () => this.copySnippet(),
+            pause: () => this.togglePause(),
+            delete: () => this.deleteDesk(),
+        };
+        run[action]();
+    }
+
+    runConversationAction(action: ConversationAction): void {
+        const conversation = this.selected();
+        if (!conversation) return;
+        if (action === 'take-over') this.claim(conversation);
+        else this.release(conversation);
     }
 
     /** Tests this workspace's binding; works on a paused one too (a test skips the active and origin checks). */
@@ -457,6 +603,20 @@ export class ChatPageComponent {
         return message.session_id && graphId ? ['/graph', graphId, 'session', message.session_id] : null;
     }
 
+    /**
+     * A desk's page shows that desk's conversations only. The stream and the actions report every desk's rows, so an
+     * id in the URL of another desk's conversation (a hand-made link) must not open it here from a live update.
+     */
+    private isOfThisPage(row: ChatConversation): boolean {
+        const bindingId = this.bindingId();
+        return !bindingId || row.binding_id === bindingId;
+    }
+
+    private dropMissing(): void {
+        this.toastService.error("Couldn't open that conversation.");
+        this.openConversation.drop();
+    }
+
     // A reload of the same thread merges into what is shown; only a different selection starts empty.
     private loadThread(id: string | null): void {
         if (id !== this.threadId) {
@@ -475,7 +635,7 @@ export class ChatPageComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (page) => {
-                    if (this.selectedId() !== id) return;
+                    if (this.shownConversationId() !== id) return;
                     this.messages.update((list) => page.reduce(upsertMessage, list));
                     this.hasOlderMessages.set(page.length === CHAT_MESSAGES_PAGE_SIZE);
                 },

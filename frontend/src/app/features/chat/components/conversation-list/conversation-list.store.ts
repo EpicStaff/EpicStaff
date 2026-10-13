@@ -127,10 +127,20 @@ export class ConversationListStore {
     readonly searchError = signal<string | null>(null);
     // Bumped by every load: a section has loaded once its first page for the current generation has landed.
     private readonly generation = signal(0);
+    /**
+     * Sections opened for this column only, over the remembered choice: to look for a conversation the page was asked
+     * to open. The user's own toggle of one replaces it with a remembered choice again.
+     */
+    private readonly openedForColumn = signal<ReadonlySet<ChatInboxSection>>(new Set());
+    // Collapsed as shown: the remembered choice, unless opened for this column.
+    private readonly collapsed = computed(() => {
+        const openedForColumn = this.openedForColumn();
+        return new Set([...this.preferences.collapsed()].filter((section) => !openedForColumn.has(section)));
+    });
     /** Each section the query lists, in column order, with its state and whether it is open. */
     readonly view = computed(() => {
         const sections = this.sections();
-        const collapsed = this.preferences.collapsed();
+        const collapsed = this.collapsed();
         const query = this.query();
         return CONVERSATION_SECTIONS.filter((section) => listsSection(query, section.id)).map((section) => ({
             section,
@@ -147,6 +157,21 @@ export class ConversationListStore {
     private readonly changesSubject = new Subject<ConversationListChange>();
     /** Every change to the rows, as it is made and before it renders. */
     readonly changes$: Observable<ConversationListChange> = this.changesSubject.asObservable();
+    /**
+     * Some section is open and every open one has its first page for the current query: what the column shows is
+     * known. A section that failed to load keeps it false, so nothing concludes a conversation is not listed from a
+     * list that did not load; so does a column with every section collapsed, which shows nothing to conclude from.
+     */
+    readonly isLoaded = computed(() => {
+        const generation = this.generation();
+        const open = this.view().filter(({ isExpanded }) => isExpanded);
+        return open.length > 0 && open.every(({ state }) => state.loadedFor === generation);
+    });
+    /** Rows the column could list are kept out of it: by Mine, a search or a collapsed section. */
+    readonly hidesSome = computed(() => {
+        const query = this.query();
+        return query.holderId !== null || !!query.search || this.view().some(({ isExpanded }) => !isExpanded);
+    });
     /** Every open section has loaded and has nothing: the column says so once, not once per section. */
     readonly isEverythingEmpty = computed(() => {
         const generation = this.generation();
@@ -197,17 +222,24 @@ export class ConversationListStore {
     }
 
     toggle(section: ChatInboxSection): void {
-        this.setCollapsed(section, !this.preferences.collapsed().has(section));
+        this.setCollapsed(section, !this.collapsed().has(section));
     }
 
-    /** Remembered per browser; opening a listed section that has not loaded for this query loads its first page. */
+    /**
+     * The user's choice, remembered per browser (it ends an opening for this column); opening a listed section that
+     * has not loaded for this query loads its first page.
+     */
     setCollapsed(section: ChatInboxSection, collapsed: boolean): void {
+        this.openedForColumn.update((sections) => withoutSection(sections, section));
         this.preferences.setCollapsed(section, collapsed);
-        this.changesSubject.next('load');
-        const state = this.sections()[section];
-        if (this.isOpen(section) && state.loadedFor !== this.generation() && !state.isLoading) {
-            this.loadPage(section, null);
-        }
+        this.showChange(section);
+    }
+
+    /** Opens a collapsed section in this column only; the remembered choice stays as it is. */
+    openForColumn(section: ChatInboxSection): void {
+        if (!this.collapsed().has(section)) return;
+        this.openedForColumn.update((sections) => new Set([...sections, section]));
+        this.showChange(section);
     }
 
     findRow(id: string | null): ChatConversation | null {
@@ -219,7 +251,16 @@ export class ConversationListStore {
     }
 
     private isOpen(section: ChatInboxSection): boolean {
-        return listsSection(this.query(), section) && !this.preferences.collapsed().has(section);
+        return listsSection(this.query(), section) && !this.collapsed().has(section);
+    }
+
+    // A section opened or closed: re-arranged rows do not animate, and a newly open one loads its first page.
+    private showChange(section: ChatInboxSection): void {
+        this.changesSubject.next('load');
+        const state = this.sections()[section];
+        if (this.isOpen(section) && state.loadedFor !== this.generation() && !state.isLoading) {
+            this.loadPage(section, null);
+        }
     }
 
     /**
@@ -396,4 +437,11 @@ function readErrorField(error: HttpErrorResponse, field: string): string | null 
     if (!body || typeof body !== 'object') return null;
     const value: unknown = (body as Record<string, unknown>)[field];
     return typeof value === 'string' && value ? value : null;
+}
+
+function withoutSection(
+    sections: ReadonlySet<ChatInboxSection>,
+    section: ChatInboxSection
+): ReadonlySet<ChatInboxSection> {
+    return new Set([...sections].filter((item) => item !== section));
 }

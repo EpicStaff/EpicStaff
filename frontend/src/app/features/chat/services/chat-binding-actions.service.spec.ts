@@ -1,9 +1,12 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { GlobalPositionStrategy } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { of, throwError } from 'rxjs';
 
+import { PhoneLayoutService } from '../../../core/services/phone-layout.service';
 import { ToastService } from '../../../services/notifications';
 import { ChatBindingsDialogComponent } from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
 import {
@@ -37,6 +40,7 @@ describe('ChatBindingActionsService', () => {
     const confirmation = { confirm: vi.fn(), confirmDelete: vi.fn() };
     const toast = { error: vi.fn(), success: vi.fn() };
     const dialog = { open: vi.fn() };
+    const isPhone = signal(false);
 
     function collect(source: ReturnType<ChatBindingActionsService['pause']>): boolean[] {
         const values: boolean[] = [];
@@ -46,12 +50,14 @@ describe('ChatBindingActionsService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        isPhone.set(false);
         TestBed.configureTestingModule({
             providers: [
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ConfirmationDialogService, useValue: confirmation },
                 { provide: ToastService, useValue: toast },
                 { provide: Dialog, useValue: dialog },
+                { provide: PhoneLayoutService, useValue: { isPhone } },
             ],
         });
         service = TestBed.inject(ChatBindingActionsService);
@@ -95,6 +101,23 @@ describe('ChatBindingActionsService', () => {
             expect.objectContaining({ data: { binding }, ariaLabelledBy: MY_DESK_ALIAS_TITLE_ID })
         );
         expect(results).toEqual([saved, null]);
+    });
+
+    it('opens the desk dialogs at their width on wider screens, and as full-width sheets from the bottom on phones', () => {
+        dialog.open.mockReturnValue({ closed: of(undefined) });
+        service.create().subscribe();
+        service.editMyAlias(binding).subscribe();
+        expect(dialog.open.mock.calls.map(([, config]) => config.width)).toEqual(['720px', '480px']);
+        expect(dialog.open.mock.calls.every(([, config]) => !config.positionStrategy)).toBe(true);
+
+        dialog.open.mockClear();
+        isPhone.set(true);
+        service.openSettings(binding).subscribe();
+        service.editMyAlias(binding).subscribe();
+        for (const [, config] of dialog.open.mock.calls) {
+            expect(config).toEqual(expect.objectContaining({ width: '100vw', maxWidth: '100vw' }));
+            expect(config.positionStrategy).toBeInstanceOf(GlobalPositionStrategy);
+        }
     });
 
     it('pauses only after a danger confirm naming the escaped binding, and sends nothing when cancelled', () => {

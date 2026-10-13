@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { provideLocationMocks } from '@angular/common/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -8,6 +9,7 @@ import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
+import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -28,6 +30,8 @@ import { ChatDesksStorageService } from '../../services/chat-desks-storage.servi
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
+import { DeskDrawerService } from '../../services/desk-drawer.service';
+import { OpenConversationService } from '../../services/open-conversation.service';
 import { ChatPageComponent } from './chat-page.component';
 
 class ResizeObserverStub {
@@ -132,6 +136,8 @@ describe('ChatPageComponent', () => {
     const conversationUpdated$ = new Subject<ChatConversation>();
     const messageCreated$ = new Subject<ChatInboxMessageEvent>();
     const readyEpoch = signal(0);
+    // Wider than a phone unless a spec says otherwise.
+    const isPhone = signal(false);
     const chatApi = {
         getBindings: vi.fn(() => of(serverBindings)),
         getMyAliases: vi.fn(() => of([] as ChatMyAlias[])),
@@ -233,10 +239,13 @@ describe('ChatPageComponent', () => {
         Element.prototype.scrollIntoView = vi.fn();
         vi.clearAllMocks();
         serverBindings = [];
+        isPhone.set(false);
         TestBed.configureTestingModule({
             imports: [ChatPageComponent],
             providers: [
                 provideRouter([]),
+                // The page writes the open conversation to the URL: each spec gets a history of its own.
+                provideLocationMocks(),
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ChatBindingActionsService, useValue: bindingActions },
                 {
@@ -253,10 +262,14 @@ describe('ChatPageComponent', () => {
                 { provide: PermissionsService, useValue: permissions },
                 { provide: ConfirmationDialogService, useValue: confirmation },
                 { provide: ToastService, useValue: { error: vi.fn(), success: vi.fn() } },
+                // The desks shell provides it around the page.
+                DeskDrawerService,
+                { provide: PhoneLayoutService, useValue: { isPhone } },
             ],
         });
         // Signed in to an org: the desks storage asks for nothing without one.
         TestBed.inject(ActiveOrgService).set(1);
+        // Desk pages are not routed here; the open conversation's URL (navigateByUrl) is, against the root route.
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
         fixture = TestBed.createComponent(ChatPageComponent);
         fixture.detectChanges();
@@ -1345,24 +1358,24 @@ describe('ChatPageComponent', () => {
             const labels = Array.from(header().querySelectorAll('button')).map((button) => button.textContent?.trim());
             expect(labels).not.toContain('Claim');
             expect(labels).not.toContain('Take over');
-            expect(header().querySelector('.thread-header__menu-btn')).toBeNull();
+            expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
             expect(text('.composer app-button')).toContain('Claim to reply');
         });
 
         it('offers Take over and Release to bot in the ⋯ menu when another operator holds it', () => {
             open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 7 }));
             chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
-            (header().querySelector('.thread-header__menu-btn') as HTMLButtonElement).click();
+            (header().querySelector('.chat-action-menu__trigger') as HTMLButtonElement).click();
             fixture.detectChanges();
             const item = (label: string) =>
-                Array.from(document.querySelectorAll<HTMLButtonElement>('.thread-menu__item')).find(
+                Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).find(
                     (button) => button.textContent?.trim() === label
                 );
             expect(item('Release to bot')).toBeDefined();
             item('Take over')!.click();
             expect(chatApi.claim).toHaveBeenCalledWith('c-1');
             fixture.detectChanges();
-            expect(document.querySelector('.thread-menu')).toBeNull();
+            expect(document.querySelector('.chat-action-menu')).toBeNull();
         });
 
         it('offers Release next to the menu when the current user holds it, and it releases', () => {
@@ -1372,7 +1385,7 @@ describe('ChatPageComponent', () => {
                 (button) => button.textContent?.trim() === 'Release'
             )!;
             // The holder's only other action would be Release again: no ⋯ menu.
-            expect(header().querySelector('.thread-header__menu-btn')).toBeNull();
+            expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
             release.click();
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
@@ -1383,11 +1396,151 @@ describe('ChatPageComponent', () => {
                 fixture = TestBed.createComponent(ChatPageComponent);
                 fixture.detectChanges();
                 open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 }));
-                expect(header().querySelector('.thread-header__menu-btn')).toBeNull();
+                expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
                 expect(header().querySelector('app-button')).toBeNull();
             } finally {
                 permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
             }
+        });
+    });
+
+    describe('on a phone', () => {
+        const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+        const inbox = (): HTMLElement => host().querySelector('.inbox') as HTMLElement;
+        const switcher = (): HTMLButtonElement => host().querySelector('.phone-bar__switcher') as HTMLButtonElement;
+        const back = (): HTMLButtonElement => host().querySelector('.thread-header__back') as HTMLButtonElement;
+        const menuItems = (): string[] =>
+            Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).map(
+                (item) => item.textContent?.trim() ?? ''
+            );
+        function openMenu(scope: string): void {
+            (host().querySelector(`${scope} .chat-action-menu__trigger`) as HTMLButtonElement).click();
+            fixture.detectChanges();
+        }
+
+        function chooseInMenu(label: string): void {
+            Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item'))
+                .find((item) => item.textContent?.trim() === label)!
+                .click();
+            fixture.detectChanges();
+        }
+
+        /** A fresh page on desk b-1: permissions are read once, as the page is created. */
+        function renderOnDesk(): void {
+            fixture = TestBed.createComponent(ChatPageComponent);
+            fixture.detectChanges();
+            scopeTo('b-1');
+        }
+
+        beforeEach(() => {
+            isPhone.set(true);
+            listBindings([binding]);
+            fixture.detectChanges();
+        });
+
+        it('shows one screen at a time: the hidden one is inert', () => {
+            const sidebar = (): HTMLElement => host().querySelector('.inbox__sidebar') as HTMLElement;
+            const thread = (): HTMLElement => host().querySelector('.inbox__thread') as HTMLElement;
+            expect(sidebar().hasAttribute('inert')).toBe(false);
+            expect(thread().hasAttribute('inert')).toBe(true);
+            expect(host().querySelector('.desk-toolbar')).toBeNull();
+
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            expect(sidebar().hasAttribute('inert')).toBe(true);
+            expect(thread().hasAttribute('inert')).toBe(false);
+        });
+
+        it('stops sliding once the thread has slid', () => {
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            const thread = host().querySelector('.inbox__thread') as HTMLElement;
+
+            thread.dispatchEvent(Object.assign(new Event('transitionend'), { propertyName: 'opacity' }));
+            fixture.detectChanges();
+            expect(inbox().classList).toContain('inbox--animated');
+
+            thread.dispatchEvent(Object.assign(new Event('transitionend'), { propertyName: 'transform' }));
+            fixture.detectChanges();
+            expect(inbox().classList).not.toContain('inbox--animated');
+        });
+
+        it('moves the focus to Back when a thread opens and to its row when it closes', async () => {
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement).toBe(back());
+
+            fixture.debugElement.injector.get(OpenConversationService).close();
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement?.closest('app-conversation-row')).not.toBeNull();
+            expect(document.activeElement?.getAttribute('aria-label')).toContain('Visitor 1');
+        });
+
+        it("heads the list with the desk switcher, which opens the desk drawer and is the drawer's way back", () => {
+            scopeTo('b-1');
+            const drawer = TestBed.inject(DeskDrawerService);
+            expect(host().querySelector('h2.phone-bar__heading .phone-bar__switcher')).toBe(switcher());
+            expect(switcher().getAttribute('aria-label')).toBe('Switch desk, current: Support');
+            expect(text('.phone-bar__desk-name')).toEqual(['Support']);
+            expect(text('.phone-bar app-chat-binding-status')).toEqual(['Live']);
+            expect(drawer.opener).toBe(switcher());
+
+            switcher().click();
+            expect(drawer.isOpen()).toBe(true);
+
+            scopeTo('');
+            expect(switcher().getAttribute('aria-label')).toBe('Switch desk, current: All desks');
+            expect(host().querySelector('.phone-bar app-chat-binding-status')).toBeNull();
+        });
+
+        it('offers Test beside the switcher and the other desk actions in its ⋯ menu, by permission', () => {
+            const permitted = permissions.can;
+            try {
+                permissions.can = () => true;
+                renderOnDesk();
+                expect(host().querySelector('.phone-bar [aria-label="Test"]')).not.toBeNull();
+                openMenu('.phone-bar');
+                expect(menuItems()).toEqual(['My name', 'Settings', 'Get snippet', 'Pause', 'Delete']);
+
+                bindingActions.openSettings.mockReturnValue(of(undefined));
+                chooseInMenu('Settings');
+                expect(bindingActions.openSettings).toHaveBeenCalledWith(binding);
+                expect(document.querySelector('.chat-action-menu')).toBeNull();
+
+                permissions.can = (_resource, action) => action === ActionCode.Read;
+                renderOnDesk();
+                expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
+                openMenu('.phone-bar');
+                expect(menuItems()).toEqual(['Get snippet']);
+            } finally {
+                permissions.can = permitted;
+            }
+        });
+
+        it('has no desk actions on All desks', () => {
+            expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
+            expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
+        });
+
+        it("heads the thread with Back to the list, the visitor and the conversation's actions, Release included", () => {
+            scopeTo('b-1');
+            conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+            fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+            fixture.detectChanges();
+            chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
+
+            expect(back().getAttribute('aria-label')).toBe('Back to Support');
+            expect(text('.thread-header__back-label')).toEqual(['Support']);
+            expect(text('.thread-header__title')).toEqual(['Visitor 1']);
+            // No Release button beside the title: it is in the menu.
+            expect(host().querySelector('.thread-header app-button')).toBeNull();
+
+            openMenu('.thread-header__nav');
+            expect(menuItems()).toEqual(['Release']);
+            chooseInMenu('Release');
+            expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
     });
 });

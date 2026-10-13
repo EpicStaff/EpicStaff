@@ -1,10 +1,12 @@
-import { Dialog } from '@angular/cdk/dialog';
+import { Dialog, DialogConfig } from '@angular/cdk/dialog';
+import { createGlobalPositionStrategy } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
 import { ConfirmationDialogService } from '@shared/components';
 import { copyWithFeedback, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, filter, firstValueFrom, map, Observable, of, switchMap } from 'rxjs';
 
+import { PhoneLayoutService } from '../../../core/services/phone-layout.service';
 import { ToastService } from '../../../services/notifications';
 import {
     ChatBindingsDialogComponent,
@@ -20,6 +22,8 @@ import { ChatApiService } from './chat-api.service';
 
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
 
+type DialogSize = Pick<DialogConfig, 'width' | 'maxWidth' | 'positionStrategy'>;
+
 /**
  * The desk actions offered by the desk rail and a desk's header, with their confirmations and error toasts. Pause,
  * resume and delete return an observable that emits `true` once the server changed the desk (the caller then reloads
@@ -32,6 +36,8 @@ export class ChatBindingActionsService {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
+    private readonly isPhone = inject(PhoneLayoutService).isPhone;
+    private readonly injector = inject(Injector);
 
     /**
      * Opens the dialog that creates a desk. Emits once when it closes: the created desk, or null when none was
@@ -54,7 +60,7 @@ export class ChatBindingActionsService {
     editMyAlias(binding: ChatBinding): Observable<ChatMyAliasResult | null> {
         return this.dialog
             .open<ChatMyAliasResult, MyDeskAliasDialogData>(MyDeskAliasDialogComponent, {
-                width: '480px',
+                ...this.dialogSize('480px'),
                 data: { binding },
                 ariaLabelledBy: MY_DESK_ALIAS_TITLE_ID,
             })
@@ -115,8 +121,21 @@ export class ChatBindingActionsService {
             .open<
                 ChatBinding,
                 ChatBindingsDialogData
-            >(ChatBindingsDialogComponent, { width: '720px', data: { binding } })
+            >(ChatBindingsDialogComponent, { ...this.dialogSize('720px'), data: { binding } })
             .closed.pipe(map((saved) => saved ?? null));
+    }
+
+    /**
+     * A dialog's width; on phones a sheet instead: the screen's whole width, rising from its bottom edge, the dialog
+     * scrolling inside (its own styles cap its height). Decided as it opens.
+     */
+    private dialogSize(width: string): DialogSize {
+        if (!this.isPhone()) return { width };
+        return {
+            width: '100vw',
+            maxWidth: '100vw',
+            positionStrategy: createGlobalPositionStrategy(this.injector).bottom('0').centerHorizontally(),
+        };
     }
 
     private fail(error: HttpErrorResponse): Observable<never> {

@@ -1,3 +1,6 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
 .bindings-dialog {
     background-color: var(--color-background-body);
     border-radius: 0.75rem;
@@ -123,4 +126,44 @@
 
 .bindings-dialog__contract-error {
     color: var(--color-error);
+}
+
+// Phones: a sheet from the bottom edge (see `ChatBindingActionsService`), the screen's width, rounded on top only, the
+// form scrolling inside it and the actions clear of the home indicator.
+@include bp.phone {
+    .bindings-dialog {
+        width: 100%;
+        max-height: calc(100dvh - 24px);
+        border-radius: 0.75rem 0.75rem 0 0;
+
+        &--editing {
+            height: calc(100dvh - 24px);
+        }
+
+        &__header,
+        &__form,
+        &__secret {
+            padding: 16px;
+        }
+
+        &__tabs {
+            padding: 0 16px;
+            overflow-x: auto;
+        }
+
+        &__row {
+            grid-template-columns: 1fr;
+        }
+
+        &__actions {
+            flex-wrap: wrap;
+            padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    // iOS zooms into a field with smaller text: every field of the form. Important: each shared field sets its size
+    // with a selector of its own, and this one must win whatever that is.
+    .bindings-dialog__form ::ng-deep :is(input, textarea) {
+        font-size: touch.$input-font-size !important;
+    }
 }

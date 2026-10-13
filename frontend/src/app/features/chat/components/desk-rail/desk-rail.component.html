@@ -2,7 +2,7 @@
     @if (!isCompact()) {
         <h2 class="desk-rail__title text-body-medium">Desks</h2>
     }
-    @if (!isNarrowScreen()) {
+    @if (showsToggle()) {
         <button
             type="button"
             class="desk-rail__toggle"
@@ -31,6 +31,7 @@
                 [routerLink]="entry.link"
                 [matTooltip]="entry.name"
                 [matTooltipDisabled]="!isCompact()"
+                (click)="onEntryClick($event)"
             >
                 <app-desk-avatar
                     class="desk-rail__avatar"

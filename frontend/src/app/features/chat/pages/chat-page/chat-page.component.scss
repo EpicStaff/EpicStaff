@@ -1,6 +1,6 @@
 @use '../../../../../styles/status-chip';
-@use '../../../../../styles/row-more-menu';
 @use '../../../../../styles/header-action-buttons';
+@use '../../../../../styles/touch';
 
 .chat-page {
     display: flex;
@@ -81,7 +81,8 @@
 
 .inbox {
     display: grid;
-    grid-template-columns: 340px 1fr;
+    // Narrower on tablets (the rail is compact there already), so the thread keeps room.
+    grid-template-columns: clamp(280px, 32vw, 340px) 1fr;
     grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
@@ -114,6 +115,19 @@
     &__placeholder {
         margin: auto;
     }
+}
+
+// The open conversation: its header, messages and composer.
+.thread-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+// A closed conversation's view goes at once; only the phone stack keeps it while it slides out (below).
+.thread-view--leaving {
+    display: none;
 }
 
 // A test conversation, in the thread header.
@@ -182,15 +196,6 @@
         flex-shrink: 0;
     }
 
-    &__menu-btn {
-        @include row-more-menu.trigger-button;
-        flex-shrink: 0;
-
-        &:focus-visible {
-            outline: 1px solid var(--accent-color);
-        }
-    }
-
     &__reason {
         color: var(--color-text-secondary);
         overflow: hidden;
@@ -202,10 +207,6 @@
         outline: 1px solid var(--accent-color);
         outline-offset: 2px;
     }
-}
-
-.thread-menu {
-    @include row-more-menu.panel;
 }
 
 // column-reverse anchors the scroll at the bottom, so new messages stay in view as the stream appends.
@@ -318,4 +319,286 @@
         color: var(--color-text-secondary);
         border: 1px dashed var(--color-divider-regular);
     }
+}
+
+// Phones: the conversations and the thread on top of each other, one screen at a time. The thread waits past the
+// right edge; open, it covers the list, which shifts left under it and dims, as an iOS navigation push.
+.inbox--stack {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    // Not even scrollable by script: focusing something in a pane still past the edge must not shift both panes.
+    overflow: clip;
+
+    .inbox__sidebar,
+    .inbox__thread {
+        position: absolute;
+        inset: 0;
+    }
+
+    .inbox__sidebar {
+        border-right: none;
+
+        // The dim over the list while the thread covers it; above the list's sticky section headers.
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            background-color: var(--color-backdrop);
+            opacity: 0;
+            pointer-events: none;
+        }
+    }
+
+    .inbox__thread {
+        z-index: 3;
+        background-color: var(--color-background-body);
+        transform: translateX(100%);
+    }
+
+    // The list is the screen until a conversation opens: there is nothing to put a hint beside.
+    .inbox__placeholder {
+        display: none;
+    }
+
+    // Over whatever replaces it while it slides out.
+    .thread-view--leaving {
+        position: absolute;
+        inset: 0;
+    }
+
+    .message {
+        max-width: 85%;
+    }
+
+    .thread {
+        padding: 12px max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
+    }
+}
+
+.inbox--stack.inbox--thread-open {
+    .inbox__sidebar {
+        transform: translateX(-30%);
+
+        &::after {
+            opacity: 1;
+        }
+    }
+
+    .inbox__thread {
+        transform: none;
+        box-shadow: var(--shadow-panel-elevated);
+    }
+}
+
+// Only the moves made on the page slide (see `isStackAnimated`); reduced motion never does.
+@media (prefers-reduced-motion: no-preference) {
+    .inbox--stack.inbox--animated {
+        .inbox__sidebar,
+        .inbox__thread {
+            transition: transform touch.$push-duration touch.$push-easing;
+        }
+
+        .inbox__sidebar::after {
+            transition: opacity touch.$push-duration touch.$push-easing;
+        }
+
+        // Popped: keeps showing the conversation for as long as the thread slides away.
+        .thread-view--leaving {
+            display: flex;
+            animation: thread-view-hold touch.$push-duration;
+        }
+    }
+}
+
+// Changes nothing: it only makes the leaving view last as long as the slide.
+@keyframes thread-view-hold {
+    to {
+        opacity: 1;
+    }
+}
+
+// The list screen's nav bar on phones, in place of the desk toolbar and as tall.
+.phone-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    height: var(--desk-toolbar-height, 52px);
+    padding: 0 max(4px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    background-color: var(--color-background-body);
+
+    &__heading {
+        display: flex;
+        flex: 0 1 auto;
+        min-width: 0;
+        margin: 0;
+    }
+
+    // The desk switcher: the desk's picture and name, and a chevron that says it opens the desks.
+    &__switcher {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        max-width: 100%;
+        min-height: touch.$target-size;
+        padding: 0 8px 0 4px;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        color: var(--color-text-primary);
+        font: inherit;
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+    }
+
+    &__avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    &__desk-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__chevron {
+        color: var(--color-text-secondary);
+    }
+
+    &__status {
+        flex-shrink: 0;
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        margin-left: auto;
+    }
+
+    &__icon-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: touch.$target-size;
+        height: touch.$target-size;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+
+        &--primary {
+            color: var(--accent-color);
+        }
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+    }
+}
+
+// The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode, Test and today's
+// usage centred under it, then the handoff reason.
+.inbox--stack .thread-header {
+    gap: 4px;
+    padding: 0 max(4px, env(safe-area-inset-right, 0px)) 8px max(4px, env(safe-area-inset-left, 0px));
+
+    .thread-header__row {
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 0 8px;
+    }
+
+    .thread-header__usage {
+        margin-left: 0;
+    }
+
+    .thread-header__reason {
+        padding: 0 8px;
+        text-align: center;
+    }
+}
+
+.thread-header__nav {
+    display: grid;
+    grid-template-columns: minmax(touch.$target-size, 1fr) minmax(0, max-content) minmax(touch.$target-size, 1fr);
+    align-items: center;
+    gap: 4px;
+    min-height: touch.$target-size;
+
+    .thread-header__title {
+        text-align: center;
+    }
+}
+
+.thread-header__back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: touch.$target-size;
+    padding: 0 8px 0 0;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--accent-color);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+}
+
+.thread-header__back-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.thread-header__nav-end {
+    justify-self: end;
+    display: flex;
+}
+
+// On All desks, which desk the conversation came in on (Back only says All desks).
+.thread-header__desk {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
 }

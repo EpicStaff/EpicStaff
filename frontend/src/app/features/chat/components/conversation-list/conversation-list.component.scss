@@ -1,3 +1,6 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
 // Fills the column at any width (a phone included): nothing here has a fixed width.
 :host {
     // Defined once: the section headers are this tall, and the scroller keeps this much clear under them.
@@ -7,6 +10,11 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
+
+    // A header is a toggle a finger has to hit.
+    @include bp.phone {
+        --conversation-section-header-height: #{touch.$target-size};
+    }
 }
 
 // The column's only scroller. Its sections are plain blocks one after another, so the column scrolls as one.

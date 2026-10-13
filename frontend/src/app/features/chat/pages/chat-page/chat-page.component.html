@@ -1,131 +1,203 @@
 <!-- The one main landmark: the open desk's toolbar with the conversations and the thread. -->
 <main class="chat-page">
-    <!-- Beneath the page header, lighter than it: what is open, and the desk's own actions. -->
-    <div class="desk-toolbar">
-        <div class="desk-toolbar__titles">
-            @if (title(); as text) {
-                <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
-            }
-            <!-- Beside the title, not part of it. -->
-            @if (routeBinding(); as binding) {
-                <app-chat-binding-status
-                    class="desk-toolbar__status"
-                    [binding]="binding"
-                />
-            }
-        </div>
-        @if (routeBinding()) {
-            <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
-            <div class="header-actions">
-                <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
-                @if (canUse()) {
-                    <button
-                        type="button"
-                        class="header-action header-action--ghost"
-                        [attr.aria-label]="myNameLabel()"
-                        [matTooltip]="myNameTooltip()"
-                        [matTooltipDisabled]="!myNameTooltip()"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".btn-label"
-                        collapseOnOverflowClass="btn--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                        (click)="editMyAlias()"
-                    >
-                        <app-svg-icon
-                            icon="user"
-                            size="1.25rem"
-                        />
-                        <span class="btn-label">My name</span>
-                    </button>
+    <!-- Beneath the page header, lighter than it: what is open, and the desk's own actions. Phones: the list's nav bar. -->
+    @if (!isPhone()) {
+        <div class="desk-toolbar">
+            <div class="desk-toolbar__titles">
+                @if (title(); as text) {
+                    <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
                 }
-                @if (canUpdate()) {
-                    <button
-                        type="button"
-                        class="header-action header-action--ghost"
-                        aria-label="Settings"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".btn-label"
-                        collapseOnOverflowClass="btn--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                        (click)="openSettings()"
-                    >
-                        <app-svg-icon
-                            icon="settings"
-                            size="1.25rem"
-                        />
-                        <span class="btn-label">Settings</span>
-                    </button>
+                <!-- Beside the title, not part of it. -->
+                @if (routeBinding(); as binding) {
+                    <app-chat-binding-status
+                        class="desk-toolbar__status"
+                        [binding]="binding"
+                    />
                 }
-                @if (canDelete()) {
-                    <button
-                        type="button"
-                        class="header-action header-action--ghost"
-                        aria-label="Delete"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".btn-label"
-                        collapseOnOverflowClass="btn--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                        (click)="deleteDesk()"
-                    >
-                        <app-svg-icon
-                            icon="trash"
-                            size="1.25rem"
-                        />
-                        <span class="btn-label">Delete</span>
-                    </button>
-                }
-                <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
-                <button
-                    type="button"
-                    class="header-action header-action--outline"
-                    aria-label="Get snippet"
-                    (click)="copySnippet()"
-                >
-                    <span class="btn-label">Get snippet</span>
-                </button>
-                @if (canUpdate()) {
+            </div>
+            @if (routeBinding()) {
+                <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
+                <div class="header-actions">
+                    <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
+                    @if (canUse()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            [attr.aria-label]="myNameLabel()"
+                            [matTooltip]="myNameTooltip()"
+                            [matTooltipDisabled]="!myNameTooltip()"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="editMyAlias()"
+                        >
+                            <app-svg-icon
+                                icon="user"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">My name</span>
+                        </button>
+                    }
+                    @if (canUpdate()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            aria-label="Settings"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="openSettings()"
+                        >
+                            <app-svg-icon
+                                icon="settings"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Settings</span>
+                        </button>
+                    }
+                    @if (canDelete()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            aria-label="Delete"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="deleteDesk()"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Delete</span>
+                        </button>
+                    }
+                    <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
                     <button
                         type="button"
                         class="header-action header-action--outline"
-                        [attr.aria-label]="pauseLabel()"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".btn-label"
-                        collapseOnOverflowClass="btn--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                        (click)="togglePause()"
+                        aria-label="Get snippet"
+                        (click)="copySnippet()"
                     >
-                        <app-svg-icon
-                            [icon]="pauseIcon()"
-                            size="1.25rem"
-                        />
-                        <span class="btn-label">{{ pauseLabel() }}</span>
+                        <span class="btn-label">Get snippet</span>
                     </button>
-                }
-                @if (canUse()) {
-                    <button
-                        type="button"
-                        class="header-action header-action--primary"
-                        aria-label="Test"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".btn-label"
-                        collapseOnOverflowClass="btn--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                        [disabled]="!canStartTest()"
-                        (click)="startTest()"
-                    >
-                        <app-svg-icon
-                            icon="player-play-filled"
-                            size="1.25rem"
-                        />
-                        <span class="btn-label">Test</span>
-                    </button>
-                }
-            </div>
-        }
-    </div>
+                    @if (canUpdate()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--outline"
+                            [attr.aria-label]="pauseLabel()"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="togglePause()"
+                        >
+                            <app-svg-icon
+                                [icon]="pauseIcon()"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">{{ pauseLabel() }}</span>
+                        </button>
+                    }
+                    @if (canUse()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--primary"
+                            aria-label="Test"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            [disabled]="!canStartTest()"
+                            (click)="startTest()"
+                        >
+                            <app-svg-icon
+                                icon="player-play-filled"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Test</span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
 
-    <div class="inbox">
-        <aside class="inbox__sidebar">
+    <!--
+        Phones: a navigation stack. Both screens stay rendered: the thread slides over the list from the right, and
+        whichever screen is hidden is inert, so neither the focus nor a screen reader reaches it.
+    -->
+    <div
+        class="inbox"
+        [class.inbox--stack]="isPhone()"
+        [class.inbox--thread-open]="isPhone() && !!selected()"
+        [class.inbox--animated]="openConversation.isStackAnimated()"
+    >
+        <aside
+            class="inbox__sidebar"
+            [attr.inert]="isPhone() && selected() ? '' : null"
+        >
+            @if (isPhone()) {
+                <!-- The list screen's nav bar: which desk (tap to switch), its status, Test and the other actions. -->
+                <div class="phone-bar">
+                    <h2 class="phone-bar__heading">
+                        <button
+                            #deskSwitcher
+                            type="button"
+                            class="phone-bar__switcher"
+                            [attr.aria-label]="deskSwitcherLabel()"
+                            (click)="deskDrawer.open()"
+                        >
+                            <app-desk-avatar
+                                class="phone-bar__avatar"
+                                [name]="title()"
+                                [deskId]="routeBinding()?.id ?? null"
+                                [icon]="isAllBindings() ? allDesksIcon : null"
+                                [showBadge]="false"
+                            />
+                            <span class="phone-bar__desk-name text-body-medium">{{ title() }}</span>
+                            <app-svg-icon
+                                class="phone-bar__chevron"
+                                icon="chevron-down"
+                                size="1rem"
+                            />
+                        </button>
+                    </h2>
+                    @if (routeBinding(); as binding) {
+                        <app-chat-binding-status
+                            class="phone-bar__status"
+                            [binding]="binding"
+                        />
+                    }
+                    <div class="phone-bar__actions">
+                        @if (routeBinding() && canUse()) {
+                            <button
+                                type="button"
+                                class="phone-bar__icon-button phone-bar__icon-button--primary"
+                                aria-label="Test"
+                                [disabled]="!canStartTest()"
+                                (click)="startTest()"
+                            >
+                                <app-svg-icon
+                                    icon="player-play-filled"
+                                    size="1.25rem"
+                                />
+                            </button>
+                        }
+                        @if (deskMenuItems().length) {
+                            <app-chat-action-menu
+                                label="Desk actions"
+                                icon="horizontal-dots"
+                                [items]="deskMenuItems()"
+                                (chosen)="runDeskAction($event)"
+                            />
+                        }
+                    </div>
+                </div>
+            }
             <app-conversation-list
                 [bindingId]="bindingId() ?? null"
                 [selectedId]="selectedId()"
@@ -133,208 +205,210 @@
             />
         </aside>
 
-        <section class="inbox__thread">
+        <section
+            class="inbox__thread"
+            [attr.inert]="isPhone() && !selected() ? '' : null"
+            (transitionend)="onStackTransitionEnd($event)"
+        >
             @if (selected(); as conversation) {
-                <header class="thread-header">
-                    <div class="thread-header__row">
-                        <span
-                            class="mode-badge"
-                            [class]="'mode-badge--' + conversation.mode"
-                            [attr.tabindex]="holderLabel() ? 0 : null"
-                            [matTooltip]="holderLabel() ? 'Held by ' + holderLabel() : ''"
-                            [matTooltipDisabled]="!holderLabel()"
-                            matTooltipPosition="below"
-                        >
-                            {{ modeLabel(conversation.mode) }}
-                        </span>
-                        <!-- The visitor number is not unique: the full conversation id is one hover or focus away. -->
-                        <span
-                            class="thread-header__title"
-                            tabindex="0"
-                            matTooltipPosition="below"
-                            [matTooltip]="'Conversation ' + conversation.id"
-                            >{{ selectedBinding()?.name ?? 'Desk' }} · {{ visitorName(conversation) }}</span
-                        >
-                        @if (conversation.is_test) {
-                            <span class="test-chip">Test</span>
-                        }
-                        <div class="thread-header__usage">
-                            <app-chat-usage-ring
-                                label="Turns today"
-                                unit="turns"
-                                icon="message"
-                                [used]="conversation.turns_today"
-                                [limit]="selectedBinding()?.max_turns ?? null"
-                            />
-                            <app-chat-usage-ring
-                                label="Tokens today"
-                                unit="tokens"
-                                icon="token"
-                                [compact]="true"
-                                [used]="conversation.tokens_today"
-                                [limit]="selectedBinding()?.token_budget_per_conversation ?? null"
-                            />
-                        </div>
-                        @if (canUse()) {
-                            @if (isClaimedByMe()) {
-                                <app-button
-                                    type="ghost"
-                                    mod="small"
-                                    [disabled]="isActionPending()"
-                                    (click)="release(conversation)"
-                                >
-                                    Release
-                                </app-button>
-                            }
-                            <!-- Only with something besides Release: the holder releases with the button above. -->
-                            @if (conversation.mode === 'human' && !isClaimedByMe()) {
+                <!-- Popped off the phone stack, it stays as it was while it slides out (see the styles). -->
+                <div
+                    class="thread-view"
+                    animate.leave="thread-view--leaving"
+                >
+                    <header class="thread-header">
+                        @if (isPhone()) {
+                            <!-- The thread screen's nav bar: Back to the list, the visitor, and the conversation's actions. -->
+                            <div class="thread-header__nav">
                                 <button
-                                    #threadMenuTrigger="cdkOverlayOrigin"
-                                    cdkOverlayOrigin
+                                    #threadBack
                                     type="button"
-                                    class="thread-header__menu-btn"
-                                    aria-label="Conversation actions"
-                                    [attr.aria-expanded]="isThreadMenuOpen()"
-                                    (click)="isThreadMenuOpen.set(!isThreadMenuOpen())"
+                                    class="thread-header__back"
+                                    [attr.aria-label]="backLabel()"
+                                    (click)="openConversation.close()"
                                 >
                                     <app-svg-icon
-                                        icon="dots-vertical"
-                                        size="1rem"
+                                        icon="chevron-left"
+                                        size="1.25rem"
                                     />
+                                    <span class="thread-header__back-label">{{ backText() }}</span>
                                 </button>
-                                <ng-template
-                                    cdkConnectedOverlay
-                                    [cdkConnectedOverlayOrigin]="threadMenuTrigger"
-                                    [cdkConnectedOverlayOpen]="isThreadMenuOpen()"
-                                    [cdkConnectedOverlayPositions]="[
-                                        {
-                                            originX: 'end',
-                                            originY: 'bottom',
-                                            overlayX: 'end',
-                                            overlayY: 'top',
-                                            offsetY: 4,
-                                        },
-                                    ]"
-                                    (overlayOutsideClick)="isThreadMenuOpen.set(false)"
-                                    (overlayKeydown)="$event.key === 'Escape' && isThreadMenuOpen.set(false)"
-                                    (detach)="isThreadMenuOpen.set(false)"
-                                >
-                                    <div
-                                        class="thread-menu"
-                                        cdkTrapFocus
-                                        [cdkTrapFocusAutoCapture]="true"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="thread-menu__item"
-                                            [disabled]="isActionPending()"
-                                            (click)="isThreadMenuOpen.set(false); claim(conversation)"
-                                        >
-                                            Take over
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="thread-menu__item"
-                                            [disabled]="isActionPending()"
-                                            (click)="isThreadMenuOpen.set(false); release(conversation)"
-                                        >
-                                            Release to bot
-                                        </button>
-                                    </div>
-                                </ng-template>
-                            }
-                        }
-                    </div>
-                    @if (conversation.handoff_reason && conversation.mode !== 'bot') {
-                        <div class="thread-header__reason text-body-small">{{ conversation.handoff_reason }}</div>
-                    }
-                </header>
-
-                <div
-                    #threadScroller
-                    class="thread"
-                    (scroll)="onThreadScroll()"
-                >
-                    <div class="thread__messages">
-                        <!-- Scrolling it into view loads the next older page; the button does the same from the keyboard. -->
-                        @if (hasOlderMessages()) {
-                            <div
-                                #olderSentinel
-                                class="thread__older"
-                            >
-                                <!-- Never swapped or disabled while loading: either would drop the keyboard focus on it. -->
-                                <app-button
-                                    type="ghost"
-                                    mod="small"
-                                    (click)="loadOlderMessages()"
-                                >
-                                    {{ isLoadingOlder() ? 'Loading older messages…' : 'Load older messages' }}
-                                </app-button>
                                 <span
-                                    class="thread__older-status"
-                                    role="status"
+                                    class="thread-header__title"
+                                    tabindex="0"
+                                    matTooltipPosition="below"
+                                    [matTooltip]="'Conversation ' + conversation.id"
+                                    >{{ visitorName(conversation) }}</span
                                 >
-                                    @if (isLoadingOlder()) {
-                                        <app-spinner [size]="16" />
-                                        <span class="visually-hidden">Loading older messages…</span>
+                                <span class="thread-header__nav-end">
+                                    @if (conversationMenuItems().length) {
+                                        <app-chat-action-menu
+                                            label="Conversation actions"
+                                            icon="horizontal-dots"
+                                            [items]="conversationMenuItems()"
+                                            (chosen)="runConversationAction($event)"
+                                        />
                                     }
                                 </span>
                             </div>
                         }
-                        @for (message of messages(); track message.id) {
-                            <div
-                                class="message"
-                                [class]="'message--' + message.role"
+                        <div class="thread-header__row">
+                            <span
+                                class="mode-badge"
+                                [class]="'mode-badge--' + conversation.mode"
+                                [attr.tabindex]="holderLabel() ? 0 : null"
+                                [matTooltip]="holderLabel() ? 'Held by ' + holderLabel() : ''"
+                                [matTooltipDisabled]="!holderLabel()"
+                                matTooltipPosition="below"
                             >
-                                @if (message.role !== 'system') {
-                                    <div class="message__author">
-                                        {{ message.role === 'operator' ? operatorLabel(message) : message.role }}
-                                    </div>
-                                }
-                                @if (message.content) {
-                                    <div class="message__content">{{ message.content }}</div>
-                                }
-                                @if (message.action) {
-                                    <div class="message__action">Action: {{ actionLabel(message.action) }}</div>
-                                }
-                                @if (message.actions?.length) {
-                                    <ul class="message__actions">
-                                        @for (action of message.actions; track $index) {
-                                            <li>{{ actionLabel(action) }}</li>
-                                        }
-                                    </ul>
-                                }
-                                <div class="message__time">
-                                    {{ message.created_at | date: 'mediumTime' }}
-                                    @if (sessionLink(message); as link) {
-                                        ·
-                                        <a
-                                            class="message__session"
-                                            [routerLink]="link"
-                                            >run #{{ message.session_id }}</a
-                                        >
-                                    }
-                                </div>
+                                {{ modeLabel(conversation.mode) }}
+                            </span>
+                            <!-- The visitor number is not unique: the full conversation id is one hover or focus away. -->
+                            @if (!isPhone()) {
+                                <span
+                                    class="thread-header__title"
+                                    tabindex="0"
+                                    matTooltipPosition="below"
+                                    [matTooltip]="'Conversation ' + conversation.id"
+                                    >{{ selectedBinding()?.name ?? 'Desk' }} · {{ visitorName(conversation) }}</span
+                                >
+                            } @else if (isAllBindings() && selectedBinding(); as desk) {
+                                <!-- Phones: Back says All desks, so the desk is said here. -->
+                                <span class="thread-header__desk text-body-small">{{ desk.name }}</span>
+                            }
+                            @if (conversation.is_test) {
+                                <span class="test-chip">Test</span>
+                            }
+                            <div class="thread-header__usage">
+                                <app-chat-usage-ring
+                                    label="Turns today"
+                                    unit="turns"
+                                    icon="message"
+                                    [used]="conversation.turns_today"
+                                    [limit]="selectedBinding()?.max_turns ?? null"
+                                />
+                                <app-chat-usage-ring
+                                    label="Tokens today"
+                                    unit="tokens"
+                                    icon="token"
+                                    [compact]="true"
+                                    [used]="conversation.tokens_today"
+                                    [limit]="selectedBinding()?.token_budget_per_conversation ?? null"
+                                />
                             </div>
-                        } @empty {
-                            <div class="inbox__empty">No messages.</div>
+                            @if (!isPhone()) {
+                                @if (canUse() && isClaimedByMe()) {
+                                    <app-button
+                                        type="ghost"
+                                        mod="small"
+                                        [disabled]="isActionPending()"
+                                        (click)="release(conversation)"
+                                    >
+                                        Release
+                                    </app-button>
+                                }
+                                <!-- Only with something besides Release: the holder releases with the button above. -->
+                                @if (conversationMenuItems().length) {
+                                    <app-chat-action-menu
+                                        class="thread-header__menu"
+                                        label="Conversation actions"
+                                        [items]="conversationMenuItems()"
+                                        (chosen)="runConversationAction($event)"
+                                    />
+                                }
+                            }
+                        </div>
+                        @if (conversation.handoff_reason && conversation.mode !== 'bot') {
+                            <div class="thread-header__reason text-body-small">{{ conversation.handoff_reason }}</div>
                         }
-                    </div>
-                </div>
+                    </header>
 
-                @if (canUse()) {
-                    <app-chat-thread-composer
-                        [conversation]="conversation"
-                        [visitorToken]="visitorTokens()[conversation.id] ?? null"
-                        [visitorTokenPending]="visitorTokenPendingFor() === conversation.id"
-                        [visitorTokenError]="visitorTokenErrors()[conversation.id] ?? null"
-                        [isClaimedByMe]="isClaimedByMe()"
-                        [isActionPending]="isActionPending()"
-                        [visibleName]="myNameOnConversationDesk()"
-                        (claimRequested)="claim(conversation)"
-                        (operatorMessageSent)="onOperatorMessageSent($event)"
-                    />
-                }
+                    <div
+                        #threadScroller
+                        class="thread"
+                        (scroll)="onThreadScroll()"
+                    >
+                        <div class="thread__messages">
+                            <!-- Scrolling it into view loads the next older page; the button does the same from the keyboard. -->
+                            @if (hasOlderMessages()) {
+                                <div
+                                    #olderSentinel
+                                    class="thread__older"
+                                >
+                                    <!-- Never swapped or disabled while loading: either would drop the keyboard focus on it. -->
+                                    <app-button
+                                        type="ghost"
+                                        mod="small"
+                                        (click)="loadOlderMessages()"
+                                    >
+                                        {{ isLoadingOlder() ? 'Loading older messages…' : 'Load older messages' }}
+                                    </app-button>
+                                    <span
+                                        class="thread__older-status"
+                                        role="status"
+                                    >
+                                        @if (isLoadingOlder()) {
+                                            <app-spinner [size]="16" />
+                                            <span class="visually-hidden">Loading older messages…</span>
+                                        }
+                                    </span>
+                                </div>
+                            }
+                            @for (message of messages(); track message.id) {
+                                <div
+                                    class="message"
+                                    [class]="'message--' + message.role"
+                                >
+                                    @if (message.role !== 'system') {
+                                        <div class="message__author">
+                                            {{ message.role === 'operator' ? operatorLabel(message) : message.role }}
+                                        </div>
+                                    }
+                                    @if (message.content) {
+                                        <div class="message__content">{{ message.content }}</div>
+                                    }
+                                    @if (message.action) {
+                                        <div class="message__action">Action: {{ actionLabel(message.action) }}</div>
+                                    }
+                                    @if (message.actions?.length) {
+                                        <ul class="message__actions">
+                                            @for (action of message.actions; track $index) {
+                                                <li>{{ actionLabel(action) }}</li>
+                                            }
+                                        </ul>
+                                    }
+                                    <div class="message__time">
+                                        {{ message.created_at | date: 'mediumTime' }}
+                                        @if (sessionLink(message); as link) {
+                                            ·
+                                            <a
+                                                class="message__session"
+                                                [routerLink]="link"
+                                                >run #{{ message.session_id }}</a
+                                            >
+                                        }
+                                    </div>
+                                </div>
+                            } @empty {
+                                <div class="inbox__empty">No messages.</div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (canUse()) {
+                        <app-chat-thread-composer
+                            [conversation]="conversation"
+                            [visitorToken]="visitorTokens()[conversation.id] ?? null"
+                            [visitorTokenPending]="visitorTokenPendingFor() === conversation.id"
+                            [visitorTokenError]="visitorTokenErrors()[conversation.id] ?? null"
+                            [isClaimedByMe]="isClaimedByMe()"
+                            [isActionPending]="isActionPending()"
+                            [visibleName]="myNameOnConversationDesk()"
+                            (claimRequested)="claim(conversation)"
+                            (operatorMessageSent)="onOperatorMessageSent($event)"
+                        />
+                    }
+                </div>
             } @else {
                 <div class="inbox__placeholder">Select a conversation</div>
             }

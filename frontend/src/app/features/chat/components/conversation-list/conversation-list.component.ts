@@ -47,6 +47,9 @@ const SENTINEL_MARGIN = '0px 0px 200px 0px';
 
 let nextListId = 0;
 
+/** See `ConversationListComponent.lookUp`. */
+export type ConversationLookup = ChatConversation | 'loading' | 'hidden' | 'missing';
+
 /**
  * The conversations column: a toolbar (search, Mine, sort) over one scroll with a section per inbox section (Waiting
  * for a person, In progress, Tests, Bot), each under a sticky header that collapses it. Loads, pages as each section's
@@ -80,6 +83,8 @@ export class ConversationListComponent {
 
     /** The list's own copy of the selected conversation: refetched on every reload. Null while it does not list it. */
     readonly selectedRow = computed(() => this.store.findRow(this.selectedId()));
+    /** The desk whose conversations the column holds (null: every desk); the `bindingId` input until it has reloaded. */
+    readonly listedBindingId = computed(() => this.store.query().bindingId);
     protected readonly now = signal(Date.now());
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
@@ -209,6 +214,39 @@ export class ConversationListComponent {
         afterNextRender(() => this.sectionElement(section)?.scrollIntoView({ block: 'start' }), {
             injector: this.injector,
         });
+    }
+
+    /**
+     * What the column can say about a conversation the page was asked to open: its row once listed; `loading` while
+     * what the column shows may still bring it; `hidden` once that has loaded without it while the column hides some
+     * rows (see `showEverything`); `missing` once everything it can list has loaded without it. Reads signals only,
+     * so an effect that calls it follows the answer.
+     */
+    lookUp(id: string): ConversationLookup {
+        const row = this.store.findRow(id);
+        if (row) return row;
+        if (this.store.isLoaded()) return this.store.hidesSome() ? 'hidden' : 'missing';
+        // Nothing open shows nothing to wait for.
+        return this.store.view().some(({ isExpanded }) => isExpanded) ? 'loading' : 'hidden';
+    }
+
+    /**
+     * Lists everything the column can, for a conversation it may be hiding: the search cleared, Mine set aside and
+     * every section opened, all for this column only. The remembered choices stay: the user asked for none of this.
+     */
+    showEverything(): void {
+        if (this.store.isSearching()) this.toolbar().clearSearch();
+        this.isMineOnly.set(false);
+        for (const { id } of CONVERSATION_SECTIONS) this.store.openForColumn(id);
+    }
+
+    /** Focuses a conversation's row, or the row Tab lands on when that one is no longer shown. */
+    focusRow(id: string, options?: FocusOptions): void {
+        const rows = this.rows();
+        const row =
+            rows.find((item) => item.conversation().id === id) ??
+            rows.find((item) => item.conversation().id === this.tabStopId());
+        row?.focus(options);
     }
 
     /**

@@ -1,10 +1,11 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { afterNextRender, Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AppSvgIconComponent, FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isPlainPrimaryClick } from '@shared/utils';
 import { map } from 'rxjs';
 
 import { BREAKPOINTS } from '../../../../core/constants/breakpoints';
@@ -13,15 +14,16 @@ import { ChatBindingActionsService } from '../../services/chat-binding-actions.s
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { DeskRailModeService } from '../../services/desk-rail-mode.service';
 import { bindingStatus, ChatBindingStatus } from '../../utils/binding-status.util';
-import { deskBadgeText } from '../../utils/desk-avatar.util';
+import { ALL_DESKS_ICON, deskBadgeText } from '../../utils/desk-avatar.util';
 import { DeskAvatarComponent } from '../desk-avatar/desk-avatar.component';
 
 const DESKS_ROUTE = '/chat-bindings';
 const ALL_DESKS_NAME = 'All desks';
-// The sidenav's Chat icon: All desks is where its badge leads.
-const ALL_DESKS_ICON = 'message-circle';
 
 type DeskListState = 'loading' | 'failed' | 'loaded';
+
+/** `rail`: the column beside the page. `drawer`: inside the desk drawer on phones, always listed. */
+export type DeskRailPresentation = 'rail' | 'drawer';
 
 interface DeskRailEntry {
     key: string;
@@ -38,7 +40,8 @@ interface DeskRailEntry {
 /**
  * The chat area's leftmost column: All desks, one entry per desk and "+ New desk". Listed (avatar, name, badge) or
  * compact (avatars only, the name in a tooltip); the user's choice is remembered per browser, and narrow screens are
- * always compact. The entry of the current page is marked by the route.
+ * always compact. In the phone desk drawer it is always listed, with finger-sized entries. The entry of the current
+ * page is marked by the route.
  */
 @Component({
     selector: 'app-desk-rail',
@@ -57,11 +60,18 @@ interface DeskRailEntry {
         role: 'navigation',
         'aria-label': 'Desks',
         '[class.desk-rail--compact]': 'isCompact()',
+        '[class.desk-rail--drawer]': 'isInDrawer()',
     },
 })
 export class DeskRailComponent {
     /** People waiting per desk id (a desk with none may be absent); All desks shows their sum. */
     readonly waitingByDesk = input<Readonly<Record<string, number>>>({});
+    readonly presentation = input<DeskRailPresentation>('rail');
+    /**
+     * An entry was followed (All desks or a desk), the one already open included: the drawer closes on it. Not for a
+     * click that opens the entry elsewhere (a new tab), which leaves this page as it is.
+     */
+    readonly picked = output<void>();
 
     protected readonly isNarrowScreen = toSignal(
         inject(BreakpointObserver)
@@ -69,8 +79,15 @@ export class DeskRailComponent {
             .pipe(map(({ matches }) => matches)),
         { initialValue: false }
     );
-    /** Narrow screens force compact, whatever the user picked; the toggle is hidden meanwhile. */
-    protected readonly isCompact = computed(() => this.isNarrowScreen() || this.railModeService.mode() === 'compact');
+    protected readonly isInDrawer = computed(() => this.presentation() === 'drawer');
+    /**
+     * Narrow screens force compact, whatever the user picked; the toggle is hidden meanwhile. The drawer always lists
+     * names: it has the room, and the user's choice is about the column.
+     */
+    protected readonly isCompact = computed(
+        () => !this.isInDrawer() && (this.isNarrowScreen() || this.railModeService.mode() === 'compact')
+    );
+    protected readonly showsToggle = computed(() => !this.isInDrawer() && !this.isNarrowScreen());
     protected readonly toggleLabel = computed(() => (this.isCompact() ? 'Show desk names' : 'Hide desk names'));
     protected readonly deskListState = computed((): DeskListState => {
         if (this.desksStorage.isLoaded()) return 'loaded';
@@ -130,6 +147,10 @@ export class DeskRailComponent {
     private readonly bindingActions = inject(ChatBindingActionsService);
     private readonly router = inject(Router);
     private readonly destroyRef = inject(DestroyRef);
+
+    protected onEntryClick(event: MouseEvent): void {
+        if (isPlainPrimaryClick(event)) this.picked.emit();
+    }
 
     protected toggleMode(): void {
         this.railModeService.setMode(this.isCompact() ? 'list' : 'compact');

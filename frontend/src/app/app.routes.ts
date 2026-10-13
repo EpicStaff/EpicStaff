@@ -15,6 +15,7 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
@@ -266,7 +267,8 @@ export const routes: Routes = [
                         // Not under `/chat`: nginx sends every `/chat/<anything>` to the chat service.
                         path: 'chat-bindings',
                         canActivate: [chatEnabledGuard, permissionGuard],
-                        data: { permission: [ResourceCode.Chats, ActionCode.Read] },
+                        // On phones the chat area takes the whole width; its desk drawer opens the app navigation.
+                        data: { permission: [ResourceCode.Chats, ActionCode.Read], [HIDE_SIDENAV_ON_PHONE]: true },
                         // The desk rail lives here, so moving between the pages below keeps it (and its focus).
                         loadComponent: () =>
                             import('./features/chat/pages/desks-shell/desks-shell.component').then(

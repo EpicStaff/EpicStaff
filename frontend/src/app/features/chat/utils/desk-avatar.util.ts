@@ -10,6 +10,9 @@ export const AVATAR_COLORS: readonly string[] = [
     '--color-avatar-6',
 ];
 
+/** The picture of All desks, which is not a desk: the sidenav's Chat icon, as All desks is where its badge leads. */
+export const ALL_DESKS_ICON = 'message-circle';
+
 const BADGE_CAP = 99;
 // A letter or digit with the combining marks that follow it, so a decomposed "É" stays one character.
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]\p{M}*/gu;

@@ -1,3 +1,6 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
 .composer {
     display: flex;
     flex-direction: column;
@@ -71,5 +74,25 @@
     // Always rendered, so screen readers announce what appears in it; empty, it takes no room.
     &__notice:empty {
         margin-top: -8px;
+    }
+}
+
+@include bp.phone {
+    // Clear of the home indicator and the screen's rounded corners when the page runs edge to edge.
+    .composer {
+        padding: 8px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px))
+            max(12px, env(safe-area-inset-left, 0px));
+    }
+
+    // iOS zooms into a field with smaller text. Important: the shared input sets its size with a selector of its own,
+    // and this one must win whatever that is; the input keeps its look everywhere else.
+    .composer__input ::ng-deep .text-input {
+        min-height: touch.$target-size;
+        font-size: touch.$input-font-size !important;
+    }
+
+    .composer__row ::ng-deep .btn,
+    .composer__roles ::ng-deep .tab-btn {
+        min-height: touch.$target-size;
     }
 }

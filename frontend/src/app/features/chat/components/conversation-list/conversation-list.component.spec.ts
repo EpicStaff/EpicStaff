@@ -199,6 +199,13 @@ describe('ConversationListComponent', () => {
             (button) => button.textContent?.trim() === label
         );
     const sectionLabels = (): string[] => text('.conversation-section-header__label');
+    // Remembered per browser, and as the column shows them.
+    const collapsedSections = (): string[] => [...TestBed.inject(ConversationListPreferencesService).collapsed()];
+    const expandedSections = (): string[] =>
+        store()
+            .view()
+            .filter(({ isExpanded }) => isExpanded)
+            .map(({ section }) => section.id);
     const sentParams = (): ConversationListParams[] => chatApi.getConversations.mock.calls.map(([params]) => params);
 
     /** Types into the search field as a user would; the column searches once typing settles. */
@@ -1495,6 +1502,94 @@ describe('ConversationListComponent', () => {
             const timersBefore = vi.getTimerCount();
             fixture.destroy();
             expect(vi.getTimerCount()).toBeLessThan(timersBefore);
+        });
+    });
+
+    describe('for the page that opens conversations from the URL', () => {
+        const lookUp = (id: string) => fixture.componentInstance.lookUp(id);
+
+        it('says loading until what it shows has landed, then gives the row', () => {
+            const bot$ = new Subject<ChatConversationPage>();
+            reloadWith({ bot: bot$ });
+            expect(lookUp('c-5')).toBe('loading');
+
+            bot$.next({ results: [row({ id: 'c-5' })], next_cursor: null });
+            fixture.detectChanges();
+            expect(lookUp('c-5')).toEqual(expect.objectContaining({ id: 'c-5' }));
+        });
+
+        it('keeps saying loading while a section failed: an id it lacks may just not have arrived', () => {
+            reloadWith({ bot: throwError(() => new HttpErrorResponse({ status: 500 })) });
+            expect(lookUp('c-404')).toBe('loading');
+        });
+
+        it('says hidden while it hides some rows, and missing once everything it can list has loaded without it', () => {
+            // Tests start collapsed.
+            expect(lookUp('c-404')).toBe('hidden');
+
+            fixture.componentInstance.showEverything();
+            fixture.detectChanges();
+            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'bot']);
+            expect(lookUp('c-404')).toBe('missing');
+        });
+
+        it('says hidden, not loading, when every section is collapsed: there is nothing open to wait for', () => {
+            for (const section of ['waiting', 'in_progress', 'bot'] as const) store().setCollapsed(section, true);
+            fixture.detectChanges();
+            expect(lookUp('c-404')).toBe('hidden');
+        });
+
+        it('shows everything for a conversation Mine hides: Mine set aside for this column only, every section open', () => {
+            chatApi.getConversations.mockImplementation((params: ConversationListParams) =>
+                page(params.section === 'test' ? [row({ id: 't-1', is_test: true })] : [])
+            );
+            click(toolbarButton('Mine'));
+            expect(lookUp('t-1')).toBe('hidden');
+
+            fixture.componentInstance.showEverything();
+            fixture.detectChanges();
+
+            expect(toolbarButton('Mine')?.getAttribute('aria-pressed')).toBe('false');
+            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'test', 'bot']);
+            expect(lookUp('t-1')).toEqual(expect.objectContaining({ id: 't-1' }));
+        });
+
+        it('leaves the remembered choices as they were: the user asked for none of it', () => {
+            store().setCollapsed('bot', true);
+            click(toolbarButton('Mine'));
+            const remembered = localStorage.getItem(PREFERENCES_KEY);
+
+            fixture.componentInstance.showEverything();
+            fixture.detectChanges();
+
+            expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
+            expect(collapsedSections()).toEqual(['test', 'bot']);
+            expect(TestBed.inject(ConversationListPreferencesService).isMineOnly()).toBe(true);
+        });
+
+        it("hands a section opened for the column back to the user's own toggle, which is remembered", () => {
+            fixture.componentInstance.showEverything();
+            fixture.detectChanges();
+            expect(expandedSections()).toContain('test');
+
+            toggle('Tests');
+            expect(expandedSections()).not.toContain('test');
+            expect(collapsedSections()).toEqual(['test']);
+
+            toggle('Tests');
+            expect(expandedSections()).toContain('test');
+            expect(collapsedSections()).toEqual([]);
+        });
+
+        it("focuses a conversation's row, or the row Tab lands on once that one is gone", () => {
+            reloadWith({
+                bot: page([row({ id: 'c-1' }), row({ id: 'c-2', last_message_at: '2026-10-10T09:00:00Z' })]),
+            });
+            fixture.componentInstance.focusRow('c-2');
+            expect(document.activeElement).toBe(rowButtons()[1]);
+
+            fixture.componentInstance.focusRow('c-404');
+            expect(document.activeElement).toBe(rowButtons()[0]);
         });
     });
 });
