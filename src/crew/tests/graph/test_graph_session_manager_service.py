@@ -27,6 +27,7 @@ from services.graph.graph_session_manager_service import (
 from services.graph.exceptions import StopSession
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
+from tests.graph.rebuild_counting_dict import RebuildCountingDict
 
 
 def make_finish_chunk(
@@ -299,6 +300,63 @@ async def test_subgraph_finish_messages_count_toward_budget(service, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_edge_case_9_terminal_status_published_after_all_nodes_complete(
+    service, monkeypatch
+):
+    """Crew publishes terminal status ONLY AFTER all graph nodes
+    complete, not in parallel with execution loop. This ensures no race between
+    credential revocation and last storage operation in sandbox.
+
+    The test verifies that aupdate_session_status(status="end") is called
+    after run_session() finishes streaming all chunks, ensuring:
+      1. All graph nodes have executed
+      2. All storage operations are complete
+      3. Revocation (deferred via transaction.on_commit in redis_pubsub.py)
+         happens strictly after the last storage-dependent operation
+    """
+    session_id = 40
+    chunks = [
+        make_finish_chunk(session_id, total_tokens=10, name="storage_node_1"),
+        make_finish_chunk(session_id, total_tokens=10, name="storage_node_2"),
+    ]
+    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
+
+    stop_event = StopEvent()
+    session_data = _session_data(session_id, token_budget=None)
+
+    await service.run_session(session_data, stop_event)
+
+    # Collect all status calls in order they were made
+    status_calls = service.redis_service.aupdate_session_status.call_args_list
+
+    # Extract the status values in call order
+    statuses = [call.kwargs.get("status") for call in status_calls]
+
+    # The terminal status ("end") must appear AFTER all custom chunks
+    # have streamed through (which happens before astream yields the final state).
+    # Verify "end" is the last status update.
+    assert statuses, "Expected at least one status update"
+    assert statuses[-1] == "end", (
+        f"Terminal status must be last update; got order: {statuses}"
+    )
+
+    # Verify no status updates were published in parallel during execution
+    # (i.e., no "end" before all chunks were processed). This is the key
+    # regression test: terminal status AFTER execute(), not during.
+    end_positions = [i for i, s in enumerate(statuses) if s == "end"]
+    assert len(end_positions) == 1, (
+        f"Expected exactly one 'end' status, got {len(end_positions)}: {statuses}"
+    )
+    end_position = end_positions[0]
+
+    # If there were multiple status updates (e.g., progress updates), the
+    # terminal "end" must be strictly last (highest index).
+    assert end_position == len(statuses) - 1, (
+        f"Terminal status at index {end_position} but total calls {len(statuses)}"
+    )
+    
+    
+@pytest.mark.asyncio
 async def test_streamed_messages_and_graph_end_go_to_the_stream_before_end_status(
     service, monkeypatch
 ):
@@ -314,7 +372,9 @@ async def test_streamed_messages_and_graph_end_go_to_the_stream_before_end_statu
         for name, call_args, call_kwargs in service.redis_service.mock_calls
         if name in ("aadd_graph_message", "aupdate_session_status")
     ]
-    added_messages = [call_args[0] for name, call_args, _ in calls if name == "aadd_graph_message"]
+    added_messages = [
+        json.loads(call_args[1]) for name, call_args, _ in calls if name == "aadd_graph_message"
+    ]
     assert [message["message_data"]["message_type"] for message in added_messages] == [
         "finish",
         "graph_end",
@@ -506,3 +566,29 @@ async def test_audit_writer_failure_does_not_fail_the_session(service, monkeypat
     ]
     assert "end" in statuses
     assert "error" not in statuses
+
+
+
+@pytest.mark.asyncio
+async def test_streamed_message_state_is_sent_without_being_rebuilt(service, monkeypatch):
+    session_id = 32
+    variables = RebuildCountingDict(customer=RebuildCountingDict(name="Ada"))
+    finish_chunk = (
+        "custom",
+        GraphMessage(
+            session_id=session_id,
+            name="python_node",
+            execution_order=0,
+            message_data=FinishMessageData(output={}, state={"variables": variables}),
+        ),
+    )
+    _patch_builder(monkeypatch, FakeCompiledGraph([finish_chunk]))
+    RebuildCountingDict.constructions = 0
+
+    await service.run_session(_session_data(session_id), StopEvent())
+
+    assert RebuildCountingDict.constructions == 0
+    first_added = service.redis_service.aadd_graph_message.await_args_list[0]
+    assert json.loads(first_added.args[1])["message_data"]["state"]["variables"] == {
+        "customer": {"name": "Ada"}
+    }

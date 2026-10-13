@@ -14,6 +14,10 @@ class NodeSaveableFactory(ABC):
         Returns (data_for_serializer, extra_data_for_build).
         The default passes data through unchanged.
 
+        Validation failures found here go in extra["preprocess_errors"] (a list);
+        the service rejects the item with them before the serializer runs. It is
+        the only key the service reads for errors — any other key is ignored.
+
         payload_temp_ids: the full set of temp_id strings declared across all
         node lists in this request — used to validate *_node_temp_id references.
         """

@@ -125,7 +125,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
                 OpenApiExample(
                     "Imported",
                     value={
-                        EntityType.AUDIT_FILTER_PRESET: {
+                        EntityType.AUDIT_FILTER_PRESET.value: {
                             "total": 1,
                             "created": {"count": 1, "items": [_PRESET_EXAMPLE]},
                             "reused": {"count": 0, "items": []},
@@ -136,7 +136,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
                 OpenApiExample(
                     "Duplicate reused",
                     value={
-                        EntityType.AUDIT_FILTER_PRESET: {
+                        EntityType.AUDIT_FILTER_PRESET.value: {
                             "total": 1,
                             "created": {"count": 0, "items": []},
                             "reused": {"count": 1, "items": [_PRESET_EXAMPLE]},

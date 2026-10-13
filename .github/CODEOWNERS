@@ -54,6 +54,7 @@
 /src/nginx/templates/                                         @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 **/Dockerfile*                                                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/workflows/                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/.github/dependabot.yml                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/scripts/                                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /.github/CODEOWNERS                                           @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 

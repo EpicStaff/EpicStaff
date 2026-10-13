@@ -8,8 +8,6 @@ tests below are what hold the two dedup rules together.
 """
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 
 from tables.models import (
     EmbeddingConfig,
@@ -22,7 +20,6 @@ from tables.models import (
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
-    ConditionalEdge,
     Graph,
     PythonNode,
     TelegramTriggerNode,
@@ -546,13 +543,12 @@ class TestSummary:
 class TestSummaryQueryCost:
     """summary() unions by column shape instead of querying each source in turn.
 
-    Twelve sources, three shapes (named / node / edge), so three queries — plus the
-    one extra resolve_node_names pass a conditional edge needs, which is why the
-    ceilings below differ.
+    Two shapes (named / node), so two union queries, plus the count_for() call
+    summary() makes for hidden_total.
     """
 
     def _used_everywhere(self, *, org, secret):
-        """One secret referenced in all three shapes at once."""
+        """One secret referenced in both shapes at once."""
         graph = Graph.objects.create(name="Shape flow", org=org)
         python_code = PythonCode.objects.create(code=DECLARING_CODE)
         python_code.secrets.set([secret])
@@ -568,24 +564,24 @@ class TestSummaryQueryCost:
         )
         return graph
 
-    def test_four_queries_when_no_conditional_edge_matches(
+    def test_three_queries_for_a_secret_used_in_both_shapes(
         self, org, secret, django_assert_num_queries
     ):
-        """The fourth query is the count_for() call summary() makes to get hidden_total."""
+        """The third query is the count_for() call summary() makes to get hidden_total."""
         self._used_everywhere(org=org, secret=secret)
 
-        with django_assert_num_queries(4):
+        with django_assert_num_queries(3):
             summary = secret_usage_service.summary(
                 secret=secret, effective=_all_readable()
             )
 
         assert summary["readable_total"] == 2
 
-    def test_four_queries_for_an_unused_secret(
+    def test_three_queries_for_an_unused_secret(
         self, org, secret, django_assert_num_queries
     ):
-        """The old per-source loop paid twelve even to answer "nothing", and the fourth of these four queries is still the count_for() call for hidden_total."""
-        with django_assert_num_queries(4):
+        """The old per-source loop paid twelve even to answer "nothing", and the third of these three queries is still the count_for() call for hidden_total."""
+        with django_assert_num_queries(3):
             assert secret_usage_service.summary(
                 secret=secret, effective=_all_readable()
             ) == {
@@ -593,36 +589,6 @@ class TestSummaryQueryCost:
                 "hidden_total": 0,
                 "categories": [],
             }
-
-    def test_a_matching_conditional_edge_adds_only_its_resolve_pass(
-        self, org, secret, django_assert_num_queries
-    ):
-        """resolve_node_names is one UNION plus one SELECT per node table, and it runs
-        only when an edge actually matches — it is no longer paid on every call."""
-        graph = Graph.objects.create(name="Edge shape flow", org=org)
-        router = PythonNode.objects.create(
-            graph=graph,
-            node_name="route",
-            python_code=PythonCode.objects.create(
-                code="def main(**kwargs):\n    return 1\n"
-            ),
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
-        )
-
-        with CaptureQueriesContext(connection) as captured:
-            summary = secret_usage_service.summary(
-                secret=secret, effective=_all_readable()
-            )
-
-        assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "route", "node_type": "edge", "code_field": "python_code"}
-        ]
-        # Three shape queries plus the resolve pass; nowhere near the old twelve.
-        assert 3 < len(captured) < 12, len(captured)
 
 
 @pytest.mark.django_db
@@ -722,33 +688,6 @@ class TestCountsQueryCost:
         with django_assert_num_queries(2):
             secret_usage_service.counts(org_id=org.id, effective=_all_readable())
 
-    def test_two_queries_even_with_a_conditional_edge_in_play(
-        self, org, secret, django_assert_num_queries
-    ):
-        """The specific regression. A ConditionalEdge is the only source whose detail
-        path needs resolve_node_names, and that ran on the counts path too — so this
-        case was the expensive one and must now cost the same as any other."""
-        graph = Graph.objects.create(name="Edge cost flow", org=org)
-        router = PythonNode.objects.create(
-            graph=graph,
-            node_name="route",
-            python_code=PythonCode.objects.create(
-                code="def main(**kwargs):\n    return 1\n"
-            ),
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
-        )
-
-        with django_assert_num_queries(2):
-            counts = secret_usage_service.counts(
-                org_id=org.id, effective=_all_readable()
-            )
-
-        assert counts[secret.pk].readable == 1
-
     def test_an_empty_org_costs_one_query(self, db, django_assert_num_queries):
         """No secrets means nothing can reference them, so the union never runs."""
         empty = Organization.objects.create(name="Org SecretUsageService NoQueries")
@@ -831,19 +770,17 @@ class TestCountsDedupInSql:
         )
 
     def test_two_different_sources_in_one_flow_count_once(self, org, secret):
-        """Cross-source, not just cross-row: a PythonNode and a ConditionalEdge are
-        separate registry entries and separate union branches, so collapsing them
-        relies on the key being the graph rather than the node."""
+        """Cross-source, not just cross-row: a PythonNode and a classification
+        decision table are separate registry entries and separate union branches, so
+        collapsing them relies on the key being the graph rather than the node."""
         graph = Graph.objects.create(name="Cross source flow", org=org)
         node_code = PythonCode.objects.create(code=DECLARING_CODE)
         node_code.secrets.set([secret])
-        router = PythonNode.objects.create(
-            graph=graph, node_name="route", python_code=node_code
-        )
-        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
-        edge_code.secrets.set([secret])
-        ConditionalEdge.objects.create(
-            graph=graph, source_node_id=router.pk, python_code=edge_code
+        PythonNode.objects.create(graph=graph, node_name="route", python_code=node_code)
+        table_code = PythonCode.objects.create(code=DECLARING_CODE)
+        table_code.secrets.set([secret])
+        ClassificationDecisionTableNode.objects.create(
+            graph=graph, node_name="classify", pre_python_code=table_code
         )
 
         assert (

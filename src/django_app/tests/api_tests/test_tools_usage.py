@@ -94,8 +94,8 @@ def used_setup(org_a, python_tool_factory, mcp_tool_factory):
     python_tool = python_tool_factory(org_a, name="PyTool")
     mcp_tool = mcp_tool_factory(org_a, name="McpTool")
 
-    agent = AgentDefinition.objects.create(name="agent1", organization=org_a)
-    surface = Surface.objects.create(name="s1", organization=org_a, owner_agent=agent)
+    agent = AgentDefinition.objects.create(name="agent1", org=org_a)
+    surface = Surface.objects.create(name="s1", org=org_a, owner_agent=agent)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=python_tool, mode=ToolMode.ALLOW
     )
@@ -178,13 +178,10 @@ def test_cross_org_mcp_tool_not_visible(client_a, org_b, mcp_tool_factory):
 
 @pytest.mark.django_db
 def test_requires_authentication(db):
-    # Test settings zero out DEFAULT_AUTHENTICATION_CLASSES (the suite uses
-    # force_authenticate instead), so with no authenticators configured DRF's
-    # IsAuthenticated denies via PermissionDenied (403) rather than
-    # NotAuthenticated (401) — matches the other plain-APIView endpoints in
-    # this codebase (e.g. RunPythonCodeAPIView) under the same test settings.
+    # Test settings use JwtOrApiKeyAuthentication, whose authenticate_header
+    # makes DRF answer an anonymous request with 401 rather than 403.
     resp = APIClient().post(PYTHON_USAGE_URL)
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---- is_built_in field ----
@@ -225,7 +222,7 @@ def test_is_built_in_false_for_mcp_tool(client_a, org_a, mcp_tool_factory):
 def test_counts_span_all_three_families(
     client_a, org_a, unused_python_tool
 ):
-    surface = Surface.objects.create(name="s-family-catalog", organization=org_a)
+    surface = Surface.objects.create(name="s-family-catalog", org=org_a)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
@@ -263,9 +260,9 @@ def test_counts_span_all_three_families(
 
 @pytest.mark.django_db
 def test_deny_mode_row_not_counted(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-deny", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-deny", org=org_a)
     surface = Surface.objects.create(
-        name="s-deny", organization=org_a, owner_agent=agent
+        name="s-deny", org=org_a, owner_agent=agent
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.DENY
@@ -394,15 +391,15 @@ def test_agent_specific_surface_and_unrelated_shared_surface_both_count(
     or not it's assigned to any agent via `AgentDefaultSurface`) counts
     toward `shared_surface_count` — the FE doesn't need agent-reachability
     distinctions here, only the per-bucket totals."""
-    agent = AgentDefinition.objects.create(name="agent-specific", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-specific", org=org_a)
     owned_surface = Surface.objects.create(
-        name="s-owned", organization=org_a, owner_agent=agent
+        name="s-owned", org=org_a, owner_agent=agent
     )
     SurfacePythonTool.objects.create(
         surface=owned_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
 
-    shared_surface = Surface.objects.create(name="s-shared", organization=org_a)
+    shared_surface = Surface.objects.create(name="s-shared", org=org_a)
     SurfacePythonTool.objects.create(
         surface=shared_surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )

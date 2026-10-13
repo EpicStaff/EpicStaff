@@ -1,9 +1,10 @@
 from unittest.mock import MagicMock
 
 import pytest
-
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole, Permission
+from rbac.access.bitmask import (
+    actions_to_bitmask,
+    bitmask_to_actions,
+)
 from rbac.access.effective import EffectivePermissions
 from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
@@ -11,10 +12,8 @@ from rbac.exceptions import (
     OrgContextRequiredError,
     OrgMembershipRequiredError,
 )
-from rbac.access.bitmask import (
-    actions_to_bitmask,
-    bitmask_to_actions,
-)
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission
 
 
 def test_actions_to_bitmask_empty():

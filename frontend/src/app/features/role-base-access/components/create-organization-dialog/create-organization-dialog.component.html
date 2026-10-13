@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="submitDisabled()"
+>
     <div class="header">
         <span class="title">{{ isEditMode ? 'Edit Organization' : 'Create New Organization' }}</span>
 

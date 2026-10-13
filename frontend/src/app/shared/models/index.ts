@@ -1,6 +1,7 @@
 export * from './agent-search-config.model';
 export * from './api-error.model';
 export * from './auth';
+export * from './authorship.model';
 export * from './custom-filter.model';
 export * from './date-range-filter.model';
 export * from './embeddings/embedding.model';

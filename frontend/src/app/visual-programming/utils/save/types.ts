@@ -9,7 +9,6 @@ import {
     GraphNoteModel,
     KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
-    LLMNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -30,7 +29,6 @@ export interface NodeDiffByType {
     pythonNodes: NodeDiff<PythonNodeModel>;
     taskNodes: NodeDiff<TaskNodeModel>;
     agentNodes: NodeDiff<AgentNodeModel>;
-    llmNodes: NodeDiff<LLMNodeModel>;
     fileExtractorNodes: NodeDiff<FileExtractorNodeModel>;
     audioToTextNodes: NodeDiff<AudioToTextNodeModel>;
     endNodes: NodeDiff<EndNodeModel>;

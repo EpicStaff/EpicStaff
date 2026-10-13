@@ -4,6 +4,7 @@ from agents.models import (
     AgentInlineSurfacePythonTool,
 )
 from django.core.exceptions import ObjectDoesNotExist
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -66,7 +67,7 @@ class AgentNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        agent_node = serializer.save()
+        agent_node = serializer.save(created_by=resolve_author(kwargs.get("user")))
 
         assign_node_surface_list(agent_node, surface_ids, id_mapper)
         create_inline_surface(

@@ -13,15 +13,6 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         inline_surface: null,
         tasks: [],
     }),
-    [NodeType.EDGE]: () => ({
-        source: null,
-        then: null,
-        python_code: {
-            libraries: [],
-            code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
-            entrypoint: 'main',
-        },
-    }),
     [NodeType.PYTHON]: () => ({
         name: 'Python Code Node',
         libraries: [],
@@ -107,6 +98,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             entrypoint: 'main',
         },
         test_payload: {},
+        use_storage: false,
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
         telegram_bot_api_key_secret_id: null,

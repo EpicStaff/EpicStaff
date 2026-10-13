@@ -10,10 +10,14 @@ required. The Twilio bridge has no client driving that follow-up, so
 path already gets a follow-up `response.create` from the vendored realtime
 client, so it must NOT be duplicated there.
 """
+import re
+
 import pytest
 from unittest.mock import AsyncMock
 
 from infrastructure.providers.openai.openai_realtime_agent_client import (
+    HIDDEN_ITEM_ID_PREFIX,
+    HIDDEN_ITEM_ID_SUFFIX_LENGTH,
     OpenaiRealtimeAgentClient,
 )
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
@@ -218,3 +222,99 @@ def test_base_url_uses_custom_override():
         base_url="https://my-proxy.internal",
     )
     assert c.base_url == "wss://my-proxy.internal/v1/realtime"
+
+
+@pytest.mark.asyncio
+async def test_call_tool_error_handling_sends_error_result(client):
+    """When tool execution fails, call_tool() must catch the error
+    and send an error message to the API instead of raising.
+    This prevents the conversation from hanging.
+
+    The error text sent to the model must NOT echo the exception's own
+    message: tool failures can carry secret plaintext or other sensitive
+    detail (e.g. a CodeTaskData ValidationError repr), so only a fixed,
+    generic message is safe to surface here."""
+    error_msg = "leaked-secret-AKIAEXAMPLE1234"
+    client.tool_manager_service.execute = AsyncMock(
+        side_effect=RuntimeError(error_msg)
+    )
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    sent_events = [c.args[0] for c in client.send_server.await_args_list]
+    function_result_events = [
+        e for e in sent_events if e.get("type") == "conversation.item.create"
+    ]
+    assert len(function_result_events) == 1
+    assert function_result_events[0]["item"]["call_id"] == "call_1"
+    output = function_result_events[0]["item"]["output"]
+    assert output == "Error: tool execution failed."
+    assert error_msg not in output
+
+
+@pytest.mark.asyncio
+async def test_call_tool_error_on_twilio_still_triggers_response_create(client):
+    """Even when tool execution fails, Twilio still needs response.create()
+    triggered to prevent the conversation from hanging."""
+    client.is_twilio = True
+    client.tool_manager_service.execute = AsyncMock(
+        side_effect=RuntimeError("Tool failed")
+    )
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    sent_events = [c.args[0] for c in client.send_server.await_args_list]
+    response_create_events = [e for e in sent_events if e.get("type") == "response.create"]
+    assert len(response_create_events) == 1
+
+
+# ---------------------------------------------------------------------------
+# send_conversation_item_to_server — unique ids for duplicate message handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_conversation_item_generates_unique_ids(client):
+    """Two calls to send_conversation_item_to_server must generate different ids."""
+    await client.send_conversation_item_to_server("hello")
+    await client.send_conversation_item_to_server("hello")
+
+    sent_events = [c.args[0] for c in client.send_server.await_args_list]
+    ids = [e["item"]["id"] for e in sent_events if e.get("type") == "conversation.item.create"]
+
+    assert len(ids) == 2
+    assert ids[0] != ids[1], "Two calls should generate different ids"
+    
+
+@pytest.mark.asyncio
+async def test_send_conversation_item_id_format_is_correct(client):
+    """Id format should be: {HIDDEN_ITEM_ID_PREFIX}_<HIDDEN_ITEM_ID_SUFFIX_LENGTH hex chars>."""
+    await client.send_conversation_item_to_server("test")
+
+    sent_event = client.send_server.await_args[0][0]
+    item_id = sent_event["item"]["id"]
+
+    expected_prefix = f"{HIDDEN_ITEM_ID_PREFIX}_"
+    assert item_id.startswith(expected_prefix), f"Id should start with '{expected_prefix}', got {item_id}"
+
+    suffix = item_id[len(expected_prefix):]
+    assert len(suffix) == HIDDEN_ITEM_ID_SUFFIX_LENGTH, (
+        f"Suffix should be {HIDDEN_ITEM_ID_SUFFIX_LENGTH} chars, got {len(suffix)}: {suffix}"
+    )
+    assert re.fullmatch(r"[0-9a-f]+", suffix), f"Suffix {suffix} should be valid lowercase hex"
+
+
+@pytest.mark.asyncio
+async def test_send_conversation_item_creates_correct_message_structure(client):
+    """The message structure should be correct with proper type and content."""
+    await client.send_conversation_item_to_server("test message")
+
+    sent_event = client.send_server.await_args[0][0]
+    item = sent_event["item"]
+
+    assert sent_event["type"] == "conversation.item.create"
+    assert item["type"] == "message"
+    assert item["role"] == "user"
+    assert len(item["content"]) == 1
+    assert item["content"][0]["type"] == "input_text"
+    assert item["content"][0]["text"] == "test message"

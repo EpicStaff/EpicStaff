@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
@@ -9,7 +10,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     EndNode,
@@ -22,10 +22,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.utils.mixins import (
-    NestedPythonCodeMixin,
-    assert_node_ref_in_graph,
-)
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -39,24 +36,25 @@ from tables.services.persistent_variables_service import (
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
-class ConditionalEdgeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+class StartNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
-    python_code = PythonCodeSerializer()
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta(BaseGraphEntityMixin.Meta):
-        model = ConditionalEdge
-        fields = "__all__"
-
-
-class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = StartNode
-        fields = ["id", "graph", "variables", "node_name", *BaseGraphEntityMixin.Meta.common_fields]
+        fields = [
+            "id",
+            "graph",
+            "variables",
+            "node_name",
+            "created_by",
+            *BaseGraphEntityMixin.Meta.common_fields,
+        ]
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
@@ -84,7 +82,12 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         return instance
 
 
-class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class EndNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     node_name = serializers.SerializerMethodField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -95,6 +98,7 @@ class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
             "graph",
             "output_map",
             "node_name",
+            "created_by",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
         read_only_fields = ["node_name"]
@@ -120,7 +124,12 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
         fields = "__all__"
 
 
-class DecisionTableNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class DecisionTableNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -140,19 +149,6 @@ class DecisionTableNodeSerializer(ContentHashWritableMixin, serializers.ModelSer
                 group.get("next_node_id"), graph, "condition_groups.next_node_id"
             )
         return attrs
-
-
-def validate_classification_condition_group_names(condition_groups_data) -> list[str]:
-    """Return a list of error strings for any group with a blank/null group_name."""
-    errors = []
-
-    for idx, group in enumerate(condition_groups_data or []):
-        name = group.get("group_name")
-
-        if name is None or (isinstance(name, str) and not name.strip()):
-            errors.append(f"condition_groups[{idx}]: group_name may not be blank.")
-
-    return errors
 
 
 class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
@@ -226,7 +222,9 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
         ]
 
 
-class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
+class ClassificationDecisionTableNodeSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
     prompt_configs = ClassificationDecisionTablePromptSerializer(many=True, required=False)
@@ -254,6 +252,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",
+            "created_by",
             "created_at",
             "updated_at",
             "metadata",

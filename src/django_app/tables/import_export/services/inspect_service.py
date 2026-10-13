@@ -52,19 +52,6 @@ def _project_flow_nodes(graphs: list) -> list:
             item.update(code_fields)
             items.append(item)
 
-        for edge in graph.get("conditional_edge_list", []):
-            code_fields = {key: edge[key] for key in _CODE_KEYS if edge.get(key)}
-            if not code_fields:
-                continue
-            item = {
-                "kind": "flow_node",
-                "flow_name": flow_name,
-                "node_name": None,
-                "node_type": "ConditionalEdge",
-            }
-            item.update(code_fields)
-            items.append(item)
-
     return items
 
 

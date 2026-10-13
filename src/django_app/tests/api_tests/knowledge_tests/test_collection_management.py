@@ -3,6 +3,7 @@ Tests for SourceCollection CRUD operations
 """
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -114,10 +115,10 @@ class TestCollectionCreate:
 
         test_collection_name = source_collection.collection_name
         collection_1 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name, user_id="test_user"
+            collection_name=test_collection_name, org_id=source_collection.org_id
         )
         collection_2 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name, user_id="test_user"
+            collection_name=test_collection_name, org_id=source_collection.org_id
         )
 
         # All should be created successfully with different names
@@ -298,6 +299,39 @@ class TestCollectionBulkDelete:
             ]
         ).exists()
 
+    @override_settings(SOFT_DELETE=False)
+    def test_bulk_hard_delete_counts_collections_not_cascaded_rows(
+        self, auth_client, source_collection, empty_collection, multiple_documents
+    ):
+        from tables.models import DocumentMetadata
+
+        url = reverse("sourcecollection-bulk-delete")
+        response = auth_client.post(
+            url,
+            {
+                "collection_ids": [
+                    source_collection.collection_id,
+                    empty_collection.collection_id,
+                ]
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        response_data = response.json()
+        assert response_data["deleted_count"] == 2
+        assert response_data["message"] == "Successfully deleted 2 collection(s)"
+        assert response_data["deleted_documents"] == len(multiple_documents)
+        assert not SourceCollection.all_objects.filter(
+            collection_id__in=[
+                source_collection.collection_id,
+                empty_collection.collection_id,
+            ]
+        ).exists()
+        assert not DocumentMetadata.objects.filter(
+            document_id__in=[doc.document_id for doc in multiple_documents]
+        ).exists()
+
     def test_bulk_delete_with_empty_list(self, auth_client):
         """Test bulk delete with empty collection_ids list."""
         url = reverse("sourcecollection-bulk-delete")
@@ -392,8 +426,9 @@ class TestCollectionSoftDelete:
         assert response.status_code == status.HTTP_201_CREATED, response.content
         return response.json()
 
-    def test_delete_collection_default_soft_deletes(self, auth_client):
-        """SOFT_DELETE=True (default): DELETE hides the collection from `objects`
+    @override_settings(SOFT_DELETE=True)
+    def test_delete_collection_soft_deletes_when_soft_delete_enabled(self, auth_client):
+        """SOFT_DELETE=True: DELETE hides the collection from `objects`
         but keeps it in `all_objects` with `is_soft_deleted=True` and
         `soft_deleted_at` set."""
         collection = self._create_collection(auth_client, "Soft Delete Me")
@@ -433,6 +468,7 @@ class TestCollectionSoftDelete:
             collection_id=collection_id
         ).exists()
 
+    @override_settings(SOFT_DELETE=True)
     def test_create_collection_with_name_of_soft_deleted_collection_keeps_name(
         self, auth_client
     ):
@@ -450,11 +486,12 @@ class TestCollectionSoftDelete:
         # (active rows), so the soft-deleted collection's name doesn't collide.
         assert second["collection_name"] == "Reusable Name"
 
+    @override_settings(SOFT_DELETE=True)
     def test_delete_collection_with_soft_delete_leaves_documents_intact(
         self, auth_client
     ):
         """When SOFT_DELETE=True, deleting a collection must not clean up its
-        DocumentContent/DocumentMetadata rows — content stays intact."""
+        DocumentContent, and its DocumentMetadata rows are soft-deleted, not removed."""
         from tables.models import DocumentContent, DocumentMetadata
 
         collection = self._create_collection(auth_client, "Collection With Docs")
@@ -477,9 +514,9 @@ class TestCollectionSoftDelete:
         ), delete_response.content
 
         assert DocumentContent.objects.filter(id=content.id).exists()
-        assert DocumentMetadata.objects.filter(
-            document_id=document.document_id
-        ).exists()
+        # Soft delete cascades to the documents: kept in the table for restoration.
+        kept_document = DocumentMetadata.all_objects.get(document_id=document.document_id)
+        assert kept_document.is_soft_deleted is True
 
 
 @pytest.mark.django_db
@@ -492,12 +529,13 @@ class TestCollectionBulkDeleteSoftDelete:
         assert response.status_code == status.HTTP_201_CREATED, response.content
         return response.json()
 
+    @override_settings(SOFT_DELETE=True)
     def test_bulk_delete_soft_deletes_collections_and_leaves_documents_intact(
         self, auth_client
     ):
-        """SOFT_DELETE=True (default): bulk-delete soft-deletes every collection
+        """SOFT_DELETE=True: bulk-delete soft-deletes every collection
         via a per-instance `.delete()` loop (so `DeleteService` runs for each
-        one) and leaves associated documents untouched."""
+        one): documents are soft-deleted with it and their content is kept."""
         from tables.models import DocumentContent, DocumentMetadata
 
         first = self._create_collection(auth_client, "Bulk Soft 1")
@@ -534,6 +572,112 @@ class TestCollectionBulkDeleteSoftDelete:
             assert deleted.soft_deleted_at is not None
 
         assert DocumentContent.objects.filter(id=content.id).exists()
-        assert DocumentMetadata.objects.filter(
-            document_id=document.document_id
-        ).exists()
+        # Soft delete cascades to the documents: kept in the table for restoration.
+        kept_document = DocumentMetadata.all_objects.get(document_id=document.document_id)
+        assert kept_document.is_soft_deleted is True
+
+
+@pytest.mark.django_db
+class TestCollectionAuthorship:
+    """SourceCollection records the acting user in created_by."""
+
+    def test_create_authors_collection_with_request_user(self, auth_client, regular_user):
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Authored"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        collection = SourceCollection.objects.get(pk=response.json()["collection_id"])
+        assert collection.created_by == regular_user
+
+    def test_user_id_absent_from_responses_and_ignored_on_create(
+        self, auth_client, regular_user
+    ):
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Ignored", "user_id": "spoofed"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "user_id" not in response.json()
+        collection = SourceCollection.objects.get(pk=response.json()["collection_id"])
+        assert not hasattr(collection, "user_id")
+        assert collection.created_by == regular_user
+
+        detail = auth_client.get(
+            reverse("sourcecollection-detail", args=[collection.pk])
+        ).json()
+        listing = auth_client.get(reverse("sourcecollection-list")).json()
+        assert "user_id" not in detail
+        assert all("user_id" not in item for item in listing)
+
+    def test_created_by_is_read_only_and_exposed(self, auth_client, regular_user):
+        other = get_user_model().objects.create_user(
+            email="other@example.com", password="OtherStrongPass123!"
+        )
+        response = auth_client.post(
+            reverse("sourcecollection-list"),
+            {"collection_name": "Spoof", "created_by": other.pk},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["created_by"] == {
+            "id": regular_user.pk,
+            "display_name": regular_user.display_name,
+            "avatar_url": None,
+        }
+
+    def test_patch_leaves_null_author_null(self, auth_client, source_collection):
+        assert source_collection.created_by is None
+
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.pk]),
+            {"description": "edited"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["created_by"] is None
+        source_collection.refresh_from_db()
+        assert source_collection.description == "edited"
+        assert source_collection.created_by is None
+
+    def test_patch_keeps_existing_author(self, auth_client, source_collection):
+        original_author = get_user_model().objects.create_user(
+            email="author@example.com", password="AuthorStrongPass123!"
+        )
+        source_collection.created_by = original_author
+        source_collection.save()
+
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.pk]),
+            {"description": "edited"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        source_collection.refresh_from_db()
+        assert source_collection.created_by == original_author
+
+    def test_copy_is_authored_by_actor(self, auth_client, source_collection, regular_user):
+        original_author = get_user_model().objects.create_user(
+            email="author2@example.com", password="AuthorStrongPass123!"
+        )
+        source_collection.created_by = original_author
+        source_collection.save()
+
+        response = auth_client.post(
+            reverse("sourcecollection-copy", args=[source_collection.pk]),
+            {"new_collection_name": "Copy"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        copied = SourceCollection.objects.get(
+            pk=response.json()["collection"]["collection_id"]
+        )
+        assert copied.created_by == regular_user

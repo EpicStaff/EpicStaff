@@ -1,10 +1,21 @@
 import pytest
-from types import SimpleNamespace
+from copy import deepcopy
 
+from rest_framework.exceptions import ValidationError
+
+from agents.models import Surface
+from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
+from tables.import_export.strategies.python_tools import python_code_key
+from tables.models import McpTool
+from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
+from tables.import_export.enums import EntityType
 from tables.import_export.utils import (
+    compared_values,
     ensure_unique_identifier,
     create_filters,
-    python_code_equal,
+    filter_by_name_or_renamed_copy,
+    import_values,
+    nest_owned_surface_entries,
 )
 
 
@@ -62,54 +73,120 @@ class TestCreateFilters:
         assert null_filters == {}
 
 
-@pytest.mark.django_db
-class TestPythonCodeEqual:
-    def _make_instance(
-        self, code="print('hi')", entrypoint="main", libraries="", global_kwargs=None
-    ):
-        return SimpleNamespace(
-            code=code,
-            entrypoint=entrypoint,
-            libraries=libraries,
-            global_kwargs=global_kwargs,
+class TestPythonCodeKey:
+    def test_trailing_whitespace_and_padded_libraries_are_ignored(self):
+        assert python_code_key("print('hi')\n\n", " requests ", "run") == (
+            python_code_key("print('hi')", "requests", "run")
         )
 
-    def test_matching(self):
-        instance = self._make_instance(code="print('hi')\n", libraries="requests")
-        data = {
-            "code": "print('hi')\n",
-            "entrypoint": "main",
-            "libraries": "requests",
-            "global_kwargs": None,
-        }
-        assert python_code_equal(instance, data) is True
+    def test_leading_whitespace_in_code_counts(self):
+        # The sandbox indents every line, so an indented first line is different code.
+        assert python_code_key("  print('hi')", "", "main") != python_code_key(
+            "print('hi')", "", "main"
+        )
 
-    def test_different_code(self):
-        instance = self._make_instance(code="print('hi')\n")
-        data = {
-            "code": "print('bye')\n",
-            "entrypoint": "main",
-            "libraries": "",
-            "global_kwargs": None,
-        }
-        assert python_code_equal(instance, data) is False
+    def test_stored_blank_entrypoint_is_not_main(self):
+        assert python_code_key("x", "", "") != python_code_key("x", "", "main")
 
-    def test_trailing_whitespace_normalization(self):
-        instance = self._make_instance(code="print('hi')  \n")
-        data = {
-            "code": "print('hi')\n",
-            "entrypoint": "main",
-            "libraries": "",
-            "global_kwargs": None,
-        }
-        assert python_code_equal(instance, data) is True
+    @pytest.mark.parametrize(
+        "other",
+        [
+            ("print('bye')", "requests", "main"),
+            ("print('hi')", "", "main"),
+            ("print('hi')", "requests", "run"),
+        ],
+    )
+    def test_any_compared_value_differing_differs(self, other):
+        assert python_code_key("print('hi')", "requests", "main") != python_code_key(*other)
 
-    def test_different_entrypoint(self):
-        instance = self._make_instance(code="x\n", entrypoint="main")
-        data = {
-            "code": "x\n",
-            "entrypoint": "run",
-            "libraries": "",
-            "global_kwargs": None,
+
+@pytest.mark.django_db
+class TestComparedValues:
+    def test_file_values_are_stored_as_the_serializer_would(self):
+        values = compared_values(
+            McpTool,
+            McpToolImportSerializer,
+            {"transport": "  https://example.com  ", "timeout": "30"},
+            ("transport", "timeout", "init_timeout"),
+        )
+
+        assert values == {"transport": "https://example.com", "timeout": 30.0, "init_timeout": 10}
+
+    def test_rejected_values_are_listed_by_field(self):
+        with pytest.raises(ValidationError) as exc:
+            import_values(
+                McpToolImportSerializer,
+                {"timeout": "abc", "tool_name": None, "transport": "https://example.com/mcp"},
+                ("transport", "tool_name", "timeout"),
+            )
+
+        assert set(exc.value.detail) == {"timeout", "tool_name"}
+
+
+@pytest.mark.django_db
+class TestFilterByNameOrRenamedCopy:
+    @pytest.fixture
+    def surfaces(self, default_org):
+        names = ["Surf (beta) #3", "Surf (beta)", "Surf (beta)#2", "Surf (beta) #x", "Surf (beta)ing #2"]
+        return {
+            name: Surface.objects.create(org=default_org, name=name) for name in names
         }
-        assert python_code_equal(instance, data) is False
+
+    def test_matches_exact_name_first_then_renamed_copies_newest_first(self, surfaces):
+        result = filter_by_name_or_renamed_copy(Surface.objects.all(), "Surf (beta)")
+
+        assert [surface.name for surface in result] == [
+            "Surf (beta)",
+            "Surf (beta)#2",
+            "Surf (beta) #3",
+        ]
+
+    def test_numbered_export_name_matches_its_base_copies(self, surfaces):
+        result = filter_by_name_or_renamed_copy(Surface.objects.all(), "Surf (beta)#2")
+
+        assert [surface.name for surface in result] == ["Surf (beta)#2", "Surf (beta) #3"]
+
+    def test_missing_name_matches_nothing(self, surfaces):
+        assert not filter_by_name_or_renamed_copy(Surface.objects.all(), None).exists()
+
+
+class TestNestOwnedSurfaceEntries:
+    def _export_data(self):
+        return {
+            EntityType.SURFACE: [{"id": 1, "name": "owned"}, {"id": 2, "name": "shared"}],
+            EntityType.AGENT_DEFINITION: [
+                {"id": 10, "owned_surfaces": [1, 99], OWNED_SURFACE_ENTRIES_KEY: ["forged"]},
+                {"id": 11, "owned_surfaces": [1]},
+            ],
+            "main_entity": EntityType.GRAPH,
+        }
+
+    def test_moves_owned_entries_under_first_owner(self):
+        nested = nest_owned_surface_entries(self._export_data())
+
+        assert nested[EntityType.SURFACE] == [{"id": 2, "name": "shared"}]
+        first_agent, second_agent = nested[EntityType.AGENT_DEFINITION]
+        # An id without a Surface entry (99) is dropped; a forged value is replaced.
+        assert first_agent[OWNED_SURFACE_ENTRIES_KEY] == [{"id": 1, "name": "owned"}]
+        assert second_agent[OWNED_SURFACE_ENTRIES_KEY] == []
+        assert nested["main_entity"] == EntityType.GRAPH
+
+    def test_does_not_modify_input(self):
+        export_data = self._export_data()
+        snapshot = deepcopy(export_data)
+
+        nest_owned_surface_entries(export_data)
+
+        assert export_data == snapshot
+
+    def test_without_agents_returns_input_unchanged(self):
+        export_data = {EntityType.SURFACE: [{"id": 1}], "main_entity": EntityType.SURFACE}
+
+        assert nest_owned_surface_entries(export_data) is export_data
+
+    def test_rejects_duplicate_agent_ids(self):
+        export_data = self._export_data()
+        export_data[EntityType.AGENT_DEFINITION][1]["id"] = 10
+
+        with pytest.raises(ValidationError):
+            nest_owned_surface_entries(export_data)

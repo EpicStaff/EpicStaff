@@ -31,7 +31,7 @@ import { KeyValueTablesStorageService } from '../../services/key-value-tables-st
 export class KeyValueTablesPageComponent {
     readonly selectedTableId = signal<number | null>(null);
     // A delete is on its way (usage, confirmation, delete): a second request for any table is ignored until it ends,
-    // so a double click or a held Enter cannot open two dialogs or send two deletes. The trash buttons stay enabled:
+    // so a held Enter or a reopened menu cannot open two dialogs or send two deletes. The Delete items stay enabled:
     // disabling the focused one would drop keyboard focus to <body>, where the dialog would then return it.
     readonly deletePending = signal(false);
     readonly selectedTable = computed(
@@ -128,7 +128,7 @@ export class KeyValueTablesPageComponent {
 
     // The backend unbinds the table from its nodes on delete, so the dialog says how many that is.
     private confirmTableDelete(table: KeyValueTable, usage: KeyValueTableUsage | null): Observable<ConfirmationResult> {
-        const name = escapeHtml(table.name);
+        const name = table.name;
         if (usage?.node_count === 0) return this.confirmationDialogService.confirmDelete(name);
         const usageNote = usage
             ? describeUsage(usage)
@@ -136,7 +136,7 @@ export class KeyValueTablesPageComponent {
               'table before their flows can run.';
         return this.confirmationDialogService.confirm({
             title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${name}</strong>? <br> ${usageNote} <br> This action cannot be undone.`,
+            message: `Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? <br> ${usageNote} <br> This action cannot be undone.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             type: 'danger',
