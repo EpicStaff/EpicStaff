@@ -184,3 +184,35 @@ async def test_search_without_extra_headers_sends_empty_objects():
     assert captured["body"]["llm_extra_headers"] == {}
 
     await client.stop()
+
+
+async def test_search_with_usage_returns_the_embedding_usage_knowledge_new_reports():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "result": [],
+                "usage": {"embedding_tokens": 15, "embedding_cost_usd": 0.0003},
+            },
+        )
+
+    client = _client_with_handler(handler)
+
+    outcome = await client.search_with_usage(_naive_target(), "q", timeout=5.0)
+
+    assert outcome.result == []
+    assert outcome.usage.embedding_tokens == 15
+    assert outcome.usage.embedding_cost_usd == 0.0003
+
+
+async def test_search_with_usage_defaults_to_no_usage_when_the_response_has_none():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": "an answer"})
+
+    client = _client_with_handler(handler)
+
+    outcome = await client.search_with_usage(_graph_target(), "q", timeout=5.0)
+
+    assert outcome.result == "an answer"
+    assert outcome.usage.embedding_tokens == 0
+    assert outcome.usage.to_token_usage() == {}

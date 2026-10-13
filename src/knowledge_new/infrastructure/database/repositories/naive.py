@@ -11,6 +11,7 @@ from domain.models import (
     Rag,
 )
 from domain.ports.repositories import AbstractNaiveRagRepository
+from domain.usage import IndexingRunUsage, merge_indexing_usage
 from infrastructure.database.mappers.naive import (
     document_update_values,
     embedding_row_to_embedding_config,
@@ -51,6 +52,17 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
             update(NaiveRag)
             .where(NaiveRag.naive_rag_id == rag.id)
             .values(**naive_rag_update_values(rag))
+        )
+
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage):
+        # Row lock: two runs finishing together must not both merge into the same stored total.
+        stored = await self._session.scalar(
+            select(NaiveRag.indexing_usage).where(NaiveRag.naive_rag_id == rag_id).with_for_update()
+        )
+        await self._session.execute(
+            update(NaiveRag)
+            .where(NaiveRag.naive_rag_id == rag_id)
+            .values(indexing_usage=merge_indexing_usage(stored, run))
         )
 
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:

@@ -3,16 +3,26 @@ from dataclasses import asdict
 import pandas
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
+from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
-from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
-from domain.models import Rag
+from domain.errors import (
+    DocumentNotFoundError,
+    GraphRagConfigNotFoundError,
+    RagNotFoundError,
+    RepositoryError,
+)
+from domain.models import GraphEstimateConfig, Rag
+from domain.usage import IndexingRunUsage, UsageTally
 from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
 from infrastructure.graphrag.model_headers import set_extra_headers
 from infrastructure.graphrag.storages import create_storage_config
+from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.graphrag.vector_stores import create_vector_store_config
+from infrastructure.token_estimation import qualified_model_name
+from infrastructure.usage_cost import embedding_cost, llm_cost, sum_costs
 from loguru import logger
 
 
@@ -50,12 +60,14 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
 
         input_documents = pandas.DataFrame(data=[asdict(d) for d in documents])
         input_documents["human_readable_id"] = input_documents.index
-        results = await build_index(
-            config=config,
-            input_documents=input_documents,
-            verbose=True,
-            is_update_run=is_update_run,
-        )
+        with track_usage(config) as usage:
+            self.state["usage"] = usage
+            results = await build_index(
+                config=config,
+                input_documents=input_documents,
+                verbose=True,
+                is_update_run=is_update_run,
+            )
 
         errors = {r.workflow: r.error for r in results if r.error is not None}
         if errors:
@@ -71,6 +83,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         await self._update_status_of_documents(
             rag.id, command.document_ids, DocumentStatusEnum.COMPLETED
         )
+        await self._record_usage(rag.id)
         await self._finish_rag(rag, command.document_ids)
 
         logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
@@ -83,6 +96,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             rag.mark_as_cancelled()
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            await self._record_usage(rag.id)
             if target_slot:
                 await self._clear_slot_storage(rag.id, target_slot)
 
@@ -94,6 +108,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             rag.mark_as_failed(error)
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            await self._record_usage(rag.id)
             if target_slot:
                 await self._clear_slot_storage(rag.id, target_slot)
 
@@ -114,6 +129,50 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         config.embedding_models["default_embedding_model"].api_key = embedding_api_key
         config.completion_models["default_completion_model"].api_key = llm_api_key
         return config
+
+    async def _record_usage(self, rag_id: int):
+        """Store what the run consumed on the RAG, once per run.
+
+        Token counts are only what graphrag's responses reported; the cost is None when
+        the embedding or LLM model has no price. A failure to store is logged, not
+        raised: the index already succeeded or failed on its own terms.
+        """
+        tally = self.state.pop("usage", None)
+        if tally is None or tally.is_empty:
+            return
+        try:
+            async with self.uow:
+                pricing = await self.uow.graph_rag_repo.get_estimate_config(rag_id=rag_id)
+                run = IndexingRunUsage(
+                    embedding_tokens=tally.embedding_tokens,
+                    llm_input_tokens=tally.llm_input_tokens,
+                    llm_output_tokens=tally.llm_output_tokens,
+                    cost_usd=self._cost_usd(tally, pricing),
+                    completed_at=utcnow(),
+                )
+                await self.uow.graph_rag_repo.add_indexing_usage(rag_id=rag_id, run=run)
+                await self.uow.commit()
+        except RepositoryError as error:
+            logger.warning("Could not store indexing usage of RAG(id={}): {}", rag_id, error)
+
+    @staticmethod
+    def _cost_usd(tally: UsageTally, pricing: GraphEstimateConfig | None) -> float | None:
+        """None when the RAG's pricing config is gone or a model has no price."""
+        if pricing is None:
+            return None
+        return sum_costs(
+            embedding_cost(
+                qualified_model_name(pricing.embedding.provider, pricing.embedding.model),
+                tally.embedding_tokens,
+            ),
+            llm_cost(
+                qualified_model_name(pricing.llm_provider, pricing.llm_model),
+                tally.llm_input_tokens,
+                tally.llm_output_tokens,
+                pricing.input_cost_per_token,
+                pricing.output_cost_per_token,
+            ),
+        )
 
     async def _get_documents_under_uow(
         self, rag_id: int, ids: frozenset[int]

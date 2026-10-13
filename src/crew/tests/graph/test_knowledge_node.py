@@ -11,6 +11,8 @@ from src.shared.models import (
     GraphRagBasicSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
+    SearchOutcome,
+    SearchUsage,
 )
 
 
@@ -30,8 +32,10 @@ class FakeKnowledgeClient:
     def __exit__(self, *exc_info):
         pass
 
-    def search(self, **kwargs):
-        return self.search_result
+    search_usage: SearchUsage = SearchUsage()
+
+    def search_with_usage(self, **kwargs):
+        return SearchOutcome(result=self.search_result, usage=self.search_usage)
 
 
 def make_node(
@@ -126,9 +130,9 @@ def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
     received = {}
 
     class CapturingKnowledgeClient(FakeKnowledgeClient):
-        def search(self, **kwargs):
+        def search_with_usage(self, **kwargs):
             received.update(kwargs)
-            return []
+            return SearchOutcome(result=[])
 
     monkeypatch.setattr(
         "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
@@ -152,3 +156,28 @@ def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
 
     assert received["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
     assert received["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+
+def test_execute_adds_search_embedding_usage_to_the_message_token_usage(monkeypatch):
+    monkeypatch.setattr(
+        FakeKnowledgeClient,
+        "search_usage",
+        SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0002),
+    )
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+            state={}, writer=writer, execution_order=3, input_={}
+        )
+    )
+
+    message_data = writer.call_args[0][0].message_data
+    assert message_data["token_usage"] == {
+        "prompt_tokens": 12,
+        "total_tokens": 12,
+        "total_cost_usd": 0.0002,
+    }

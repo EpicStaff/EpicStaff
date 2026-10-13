@@ -1,9 +1,9 @@
 from application.commands import RunSearch
 from application.orchestrators.searching.strategies import naive_search
 from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
-from application.results import SearchResult
 from domain.enums import EmbedderProviderEnum
 from domain.models import (
+    Embedding,
     EmbeddingConfig,
     FoundChunk,
     NaiveSearchConfig,
@@ -51,14 +51,15 @@ class FakeUoW:
 class FakeEmbedder:
     """Stands in for the external embedding-provider API. Returns a fixed opaque vector."""
 
-    def __init__(self, vector: list[float]):
+    def __init__(self, vector: list[float], tokens: int = 0):
         self._vector = vector
+        self._tokens = tokens
         self.embedded: list[str] = []
         self.received_api_key: str | None = None
 
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str) -> Embedding:
         self.embedded.append(text)
-        return self._vector
+        return Embedding(vector=self._vector, tokens=self._tokens)
 
 
 _EMBEDDING_CONFIG = EmbeddingConfig(
@@ -101,8 +102,8 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
 
     response = await NaiveSearchOrchestrator(uow).execute(command)
 
-    assert response == SearchResult(result=found_chunks)
     assert response.result == found_chunks
+    assert response.usage.embedding_tokens == 0
     assert embedder.embedded == ["find me"]
     assert repo.search_calls == [
         {
@@ -124,7 +125,6 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
 
     response = await NaiveSearchOrchestrator(uow).execute(command)
 
-    assert response == SearchResult(result=[])
     assert response.result == []
     assert embedder.embedded == ["no matches here"]
     assert len(repo.search_calls) == 1
@@ -206,3 +206,27 @@ def test_resolved_headers_are_kept_out_of_the_command_repr():
 
     assert "resolved-secret" not in repr(command)
     assert "resolved-llm-secret" not in repr(command)
+
+
+async def test_search_reports_embedding_tokens_and_priced_cost(monkeypatch):
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+    embedder = FakeEmbedder(vector=[0.1], tokens=250)
+    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
+    monkeypatch.setattr(naive_search, "embedding_cost", lambda model, tokens: tokens * 2e-8)
+
+    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
+
+    assert response.usage.embedding_tokens == 250
+    assert response.usage.embedding_cost_usd == 250 * 2e-8
+
+
+async def test_search_reports_null_cost_for_unpriced_embedding_model(monkeypatch):
+    unpriced = _EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
+    repo = FakeNaiveRagRepo(embedding_config=unpriced, found_chunks=[])
+    embedder = FakeEmbedder(vector=[0.1], tokens=9)
+    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
+
+    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
+
+    assert response.usage.embedding_tokens == 9
+    assert response.usage.embedding_cost_usd is None

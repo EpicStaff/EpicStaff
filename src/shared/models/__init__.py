@@ -92,8 +92,10 @@ from .knowledge_new import (
     PrechunkResponse,
     PreviewChunk,
     SearchConfig,
+    SearchOutcome,
     SearchRequest,
     SearchResponse,
+    SearchUsage,
 )
 from .sessions import (
     GraphSessionMessageData,
@@ -249,8 +251,10 @@ __all__ = [
     "ScheduleTriggerNodeUpdateMessage",
     "SearchConfig",
     "SearchConfigEntry",
+    "SearchOutcome",
     "SearchRequest",
     "SearchResponse",
+    "SearchUsage",
     "SessionAuditEvent",
     # sessions
     "SessionData",

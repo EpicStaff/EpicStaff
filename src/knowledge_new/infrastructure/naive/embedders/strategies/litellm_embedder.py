@@ -1,7 +1,8 @@
 import litellm
 import settings
 from application.ports import AbstractEmbedder
-from domain.models import EmbeddingConfig
+from domain.models import Embedding, EmbeddingConfig
+from infrastructure.token_estimation import count_tokens_batch, qualified_model_name
 
 
 def _endpoint_overrides(config: EmbeddingConfig) -> dict:
@@ -50,7 +51,7 @@ def _targets_env_endpoint(config_base_url: str | None) -> bool:
 class LiteLLMEmbedder(AbstractEmbedder):
     """Embed text through litellm, routing to the provider by `config.provider`."""
 
-    async def _embed(self, text: str) -> list[float]:
+    async def _embed(self, text: str) -> Embedding:
         text = text.replace("\n", " ")
         response = await litellm.aembedding(
             input=[text],
@@ -61,9 +62,23 @@ class LiteLLMEmbedder(AbstractEmbedder):
             **self._extra_params(),
         )
         result = response.data
-        if result:
-            return result[0]["embedding"]
-        return []
+        vector = result[0]["embedding"] if result else []
+        return Embedding(vector=vector, tokens=await self._billed_tokens(response, text))
+
+    async def _billed_tokens(self, response, text: str) -> int:
+        """Return the prompt tokens the provider reported for `response`.
+
+        Some providers return no usage; the count is then litellm's local tokenizer
+        estimate for `text`, which is close but not what the provider billed. It runs
+        off the event loop.
+        """
+        usage = getattr(response, "usage", None)
+        reported = getattr(usage, "prompt_tokens", None)
+        if reported:
+            return reported
+        model = qualified_model_name(self.config.provider, self.config.model)
+        (counted,) = await count_tokens_batch(model, [text])
+        return counted
 
     def _extra_params(self) -> dict:
         """Provider-specific params merged into the litellm call."""

@@ -7,11 +7,12 @@ AgentData; the knowledge service cannot resolve a Secret id itself.
 from unittest.mock import MagicMock, patch
 
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.models import SearchOutcome
 
 
 def _search_call_kwargs(service, **overrides):
     """Run one knowledge search against a mocked KnowledgeClient and return the
-    kwargs `KnowledgeClient.search(...)` was called with.
+    kwargs `KnowledgeClient.search_with_usage(...)` was called with.
 
     `KnowledgeSearchService.search_knowledges` builds its own `KnowledgeClient`
     (`with KnowledgeClient() as client:`), so that class is patched at its
@@ -19,7 +20,7 @@ def _search_call_kwargs(service, **overrides):
     """
     mock_client = MagicMock()
     mock_client.__enter__.return_value = mock_client
-    mock_client.search.return_value = []
+    mock_client.search_with_usage.return_value = SearchOutcome(result=[])
 
     with patch(
         "services.knowledge_search_service.KnowledgeClient", return_value=mock_client
@@ -33,7 +34,7 @@ def _search_call_kwargs(service, **overrides):
             **overrides,
         )
 
-    return mock_client.search.call_args.kwargs
+    return mock_client.search_with_usage.call_args.kwargs
 
 
 def test_the_instance_credential_reaches_the_message():

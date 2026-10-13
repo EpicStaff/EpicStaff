@@ -1,5 +1,5 @@
 from domain.enums import RAGStrategy
-from domain.models import ChunkingConfig, FoundChunk, SearchConfig
+from domain.models import ChunkingConfig, FoundChunk, SearchConfig, SearchUsage
 from presentation.rest.schemas.base import BaseSchema
 from pydantic import Field
 
@@ -34,6 +34,7 @@ class SearchInputSchema(BaseSchema):
 
 class SearchOutputSchema(BaseSchema):
     result: list[FoundChunk] | str
+    usage: SearchUsage = Field(default_factory=SearchUsage)
 
 
 class MetricsOutputSchema(BaseSchema):

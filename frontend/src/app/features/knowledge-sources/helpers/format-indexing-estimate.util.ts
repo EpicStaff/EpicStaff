@@ -4,7 +4,7 @@ const MIN_VISIBLE_COST_USD = 0.01;
 const SAVED_SETTINGS_NOTE = 'Based on the last saved settings.';
 const TOKEN_FORMATTER = new Intl.NumberFormat('en-US');
 
-function toFiniteNumber(value: unknown): number | null {
+export function toFiniteNumber(value: unknown): number | null {
     if (value === null || value === undefined) return null;
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;

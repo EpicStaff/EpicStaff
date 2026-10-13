@@ -41,6 +41,7 @@ class NaiveRagSerializer(serializers.ModelSerializer):
             "embedder_name",
             "rag_status",
             "outdated_reasons",
+            "indexing_usage",
             "collection_id",
             "error_message",
             "created_at",

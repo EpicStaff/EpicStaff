@@ -19,7 +19,7 @@ from shared.models.knowledge import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchOutcome, SearchUsage
 
 
 def _make_target(rag_type: str = "naive") -> KnowledgeSearchTarget:
@@ -61,13 +61,16 @@ def _make_response(
 def _fake_client(
     response: list[FoundChunk] | str | None = None,
     raises: Exception | None = None,
+    usage: SearchUsage | None = None,
 ) -> MagicMock:
     client = MagicMock()
 
     if raises is not None:
-        client.search = AsyncMock(side_effect=raises)
+        client.search_with_usage = AsyncMock(side_effect=raises)
     else:
-        client.search = AsyncMock(return_value=response)
+        client.search_with_usage = AsyncMock(
+            return_value=SearchOutcome(result=response, usage=usage or SearchUsage())
+        )
 
     return client
 
@@ -215,7 +218,7 @@ async def test_graph_rag_uses_longer_timeout():
 
     await executor({"query": "test"})
 
-    _, kwargs = client.search.call_args
+    _, kwargs = client.search_with_usage.call_args
     assert kwargs["timeout"] == settings.GRAPH_RAG_SEARCH_TIMEOUT
 
 
@@ -227,7 +230,7 @@ async def test_naive_rag_uses_shorter_timeout():
 
     await executor({"query": "test"})
 
-    _, kwargs = client.search.call_args
+    _, kwargs = client.search_with_usage.call_args
     assert kwargs["timeout"] == settings.NAIVE_RAG_SEARCH_TIMEOUT
 
 
@@ -244,7 +247,7 @@ async def test_graph_executor_dispatches_local_method():
 
     await executor({"query": "find entity", "search_method": "local"})
 
-    call_args = client.search.call_args
+    call_args = client.search_with_usage.call_args
     used_target = call_args[0][0]
     assert used_target is targets["local"]
 
@@ -257,7 +260,7 @@ async def test_graph_executor_dispatches_basic_method():
 
     await executor({"query": "summarize", "search_method": "basic"})
 
-    call_args = client.search.call_args
+    call_args = client.search_with_usage.call_args
     used_target = call_args[0][0]
     assert used_target is targets["basic"]
 
@@ -270,7 +273,7 @@ async def test_graph_executor_missing_method_defaults_to_basic():
 
     await executor({"query": "question"})
 
-    call_args = client.search.call_args
+    call_args = client.search_with_usage.call_args
     used_target = call_args[0][0]
     assert used_target is targets["basic"]
 
@@ -283,7 +286,7 @@ async def test_graph_executor_invalid_method_defaults_to_basic():
 
     await executor({"query": "question", "search_method": "nonexistent"})
 
-    call_args = client.search.call_args
+    call_args = client.search_with_usage.call_args
     used_target = call_args[0][0]
     assert used_target is targets["basic"]
 
@@ -296,7 +299,7 @@ async def test_graph_executor_only_local_target_defaults_to_local():
 
     await executor({"query": "question"})
 
-    call_args = client.search.call_args
+    call_args = client.search_with_usage.call_args
     used_target = call_args[0][0]
     assert used_target is targets["local"]
 
@@ -309,7 +312,7 @@ async def test_graph_executor_uses_graph_timeout():
 
     await executor({"query": "test", "search_method": "local"})
 
-    _, kwargs = client.search.call_args
+    _, kwargs = client.search_with_usage.call_args
     assert kwargs["timeout"] == settings.GRAPH_RAG_SEARCH_TIMEOUT
 
 
@@ -357,7 +360,9 @@ async def test_sink_receives_target_query_result_on_success():
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(target, "test", chunks, error=None)
+    sink.on_knowledge_search.assert_awaited_once_with(
+        target, "test", chunks, error=None, usage=SearchUsage()
+    )
 
 
 async def test_sink_receives_result_even_with_no_chunks():
@@ -369,7 +374,9 @@ async def test_sink_receives_result_even_with_no_chunks():
 
     await executor({"query": "test"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(target, "test", [], error=None)
+    sink.on_knowledge_search.assert_awaited_once_with(
+        target, "test", [], error=None, usage=SearchUsage()
+    )
 
 
 async def test_sink_notified_with_error_when_client_raises():
@@ -382,7 +389,7 @@ async def test_sink_notified_with_error_when_client_raises():
 
     assert result.is_error is True
     sink.on_knowledge_search.assert_awaited_once_with(
-        target, "test", [], error="connection refused"
+        target, "test", [], error="connection refused", usage=None
     )
 
 
@@ -440,7 +447,9 @@ async def test_graph_executor_sink_receives_dispatched_target():
 
     await executor({"query": "test", "search_method": "local"})
 
-    sink.on_knowledge_search.assert_awaited_once_with(targets["local"], "test", [], error=None)
+    sink.on_knowledge_search.assert_awaited_once_with(
+        targets["local"], "test", [], error=None, usage=SearchUsage()
+    )
 
 
 async def test_graph_executor_sink_notified_with_error_when_client_raises():
@@ -453,5 +462,16 @@ async def test_graph_executor_sink_notified_with_error_when_client_raises():
 
     assert result.is_error is True
     sink.on_knowledge_search.assert_awaited_once_with(
-        targets["local"], "test", [], error="graph down"
+        targets["local"], "test", [], error="graph down", usage=None
     )
+
+
+async def test_sink_receives_the_embedding_usage_of_the_search():
+    usage = SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0001)
+    client = _fake_client([], usage=usage)
+    sink = _fake_sink()
+    target = _make_target()
+
+    await KnowledgeSearchExecutor(client, target, sink=sink)({"query": "test"})
+
+    sink.on_knowledge_search.assert_awaited_once_with(target, "test", [], error=None, usage=usage)

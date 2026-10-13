@@ -22,12 +22,14 @@ from src.shared.models.knowledge_new import (
     SearchConfig,
     SearchRequest,
     SearchResponse,
+    SearchUsage,
 )
 
 __all__ = [
     "CancelRequest",
     "ChunkingConfig",
     "Document",
+    "Embedding",
     "EmbeddingConfig",
     "FoundChunk",
     "GraphEstimateConfig",
@@ -42,6 +44,7 @@ __all__ = [
     "SearchConfig",
     "SearchRequest",
     "SearchResponse",
+    "SearchUsage",
 ]
 
 
@@ -138,6 +141,13 @@ class EmbeddingConfig(ValueObject):
     base_url: str | None = None
     extra_headers: dict[str, str] = Field(default_factory=dict, repr=False)
     extra: dict = Field(default_factory=dict)
+
+
+class Embedding(ValueObject):
+    """An embedding vector with the provider-reported tokens the call consumed."""
+
+    vector: list[float]
+    tokens: int
 
 
 class GraphEstimateConfig(ValueObject):

@@ -18,7 +18,7 @@ from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, ToolResult
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchUsage
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
@@ -177,6 +177,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         query: str,
         result: list[FoundChunk] | str,
         error: str | None = None,
+        usage: SearchUsage | None = None,
     ) -> None:
         """Publish a live ``agent.knowledge_search`` envelope carrying the
         structured knowledge response (crew parity with ``extracted_chunks``),
@@ -198,7 +199,9 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             "rag_search_config": target.search_config.model_dump(),
             "chunks": [chunk.model_dump() for chunk in chunks],
             "answer": result if isinstance(result, str) else None,
-            "token_usage": {},
+            # Not in the agent loop's usage: crew forwards this envelope as an
+            # `extracted_chunks` message whose top-level `token_usage` the session adds up.
+            "token_usage": usage.to_token_usage() if usage is not None else {},
         }
 
         if error is not None:

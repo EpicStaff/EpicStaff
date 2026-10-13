@@ -21,11 +21,13 @@ from domain.errors import (
 from domain.models import (
     ChunkingConfig,
     Document,
+    Embedding,
     EmbeddingConfig,
     IndexedChunk,
     PreviewChunk,
     Rag,
 )
+from domain.usage import IndexingRunUsage
 
 
 class FakeNaiveRagRepo:
@@ -48,6 +50,10 @@ class FakeNaiveRagRepo:
         self.doc_status_log: list[DocumentStatusEnum] = []
         self.rag_status_log: list[IndexStatusEnum] = []
         self.saved_indexed_chunks: list[tuple[int, list[IndexedChunk]]] = []
+        self.usage_runs: list[IndexingRunUsage] = []
+
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage) -> None:
+        self.usage_runs.append(run)
 
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
         return self._embedding_config
@@ -114,16 +120,19 @@ class FakeUoW:
 class FakeEmbedder:
     """Stands in for the external embedding-provider API."""
 
-    def __init__(self, vector: list[float], *, raises: BaseException | None = None):
+    def __init__(
+        self, vector: list[float], *, raises: BaseException | None = None, tokens: int = 0
+    ):
         self._vector = vector
         self._raises = raises
+        self._tokens = tokens
         self.embedded: list[str] = []
 
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str) -> Embedding:
         self.embedded.append(text)
         if self._raises is not None:
             raise self._raises
-        return self._vector
+        return Embedding(vector=self._vector, tokens=self._tokens)
 
 
 _EMBEDDING_CONFIG = EmbeddingConfig(
@@ -844,3 +853,107 @@ async def test_embedding_extra_headers_reach_the_embedder_config(monkeypatch):
     await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
 
     assert received_configs[0].extra_headers == {"X-Gateway-Key": "resolved-value"}
+
+
+def _character_document(document_id: int = 7) -> Document:
+    return Document(
+        id=document_id,
+        name="doc.txt",
+        content=b"alpha\n\nbeta",
+        status=DocumentStatusEnum.NEW,
+        config=ChunkingConfig(
+            chunk_strategy=ChunkStrategyEnum.CHARACTER,
+            chunk_size=50,
+            chunk_overlap=0,
+            extra={"character": {"regex": r"\n\n"}},
+        ),
+    )
+
+
+async def test_run_records_embedding_tokens_and_priced_cost(monkeypatch):
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
+    )
+    embedder = FakeEmbedder(vector=[0.1], tokens=10)
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+    monkeypatch.setattr(naive_indexer, "embedding_cost", lambda model, tokens: tokens * 1e-7)
+
+    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 20  # two chunks, 10 tokens each
+    assert run.llm_input_tokens is None
+    assert run.llm_output_tokens is None
+    assert run.cost_usd == 20 * 1e-7
+
+
+async def test_run_records_null_cost_for_unpriced_embedding_model(monkeypatch):
+    unpriced = _EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
+    repo = FakeNaiveRagRepo(
+        embedding_config=unpriced, documents=[_character_document()], rag=_new_rag()
+    )
+    embedder = FakeEmbedder(vector=[0.1], tokens=10)
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+
+    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 20
+    assert run.cost_usd is None
+
+
+async def test_run_records_tokens_consumed_before_a_chunk_fails(monkeypatch):
+    class FailsOnSecondChunk(FakeEmbedder):
+        async def embed(self, text: str) -> Embedding:
+            if text == "beta":
+                raise EmbeddingError(embedder="FakeEmbedder")
+            return await super().embed(text)
+
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
+    )
+    embedder = FailsOnSecondChunk(vector=[0.1], tokens=10)
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+
+    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 10
+
+
+async def test_run_that_consumed_nothing_records_no_usage(monkeypatch):
+    document = _character_document()
+    document.status = DocumentStatusEnum.COMPLETED
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=_new_rag()
+    )
+    embedder = FakeEmbedder(vector=[0.1], tokens=10)
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+
+    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    assert repo.usage_runs == []
+
+
+async def test_cancelled_run_records_tokens_consumed_so_far(monkeypatch):
+    class CancelsOnSecondChunk(FakeEmbedder):
+        async def embed(self, text: str) -> Embedding:
+            if text == "beta":
+                raise asyncio.CancelledError
+            return await super().embed(text)
+
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
+    )
+    embedder = CancelsOnSecondChunk(vector=[0.1], tokens=10)
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+
+    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 10

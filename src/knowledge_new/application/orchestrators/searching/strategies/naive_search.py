@@ -2,8 +2,10 @@ from application.commands import RunSearch
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
 from domain.errors import EmbeddingConfigNotFoundError
-from domain.models import NaiveSearchConfig
+from domain.models import NaiveSearchConfig, SearchUsage
 from infrastructure.naive.embedders import build_embedder
+from infrastructure.token_estimation import qualified_model_name
+from infrastructure.usage_cost import embedding_cost
 from loguru import logger
 
 
@@ -27,15 +29,22 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
         embedder = build_embedder(
             embedding_config.provider, command.embedding_api_key, embedding_config
         )
-        vector = await embedder.embed(command.query)
+        embedding = await embedder.embed(command.query)
 
         async with self.uow:
             chunks = await self.uow.naive_rag_repo.search_chunks(
                 rag_id=command.rag_id,
-                vector=vector,
+                vector=embedding.vector,
                 limit=search_config.search_limit,
                 similarity_threshold=search_config.similarity_threshold,
             )
 
         logger.info("Search in rag {} returned {} chunks", command.rag_id, len(chunks))
-        return SearchResult(result=chunks)
+        usage = SearchUsage(
+            embedding_tokens=embedding.tokens,
+            embedding_cost_usd=embedding_cost(
+                qualified_model_name(embedding_config.provider, embedding_config.model),
+                embedding.tokens,
+            ),
+        )
+        return SearchResult(result=chunks, usage=usage)

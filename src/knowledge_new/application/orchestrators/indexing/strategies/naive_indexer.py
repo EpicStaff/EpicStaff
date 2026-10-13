@@ -3,6 +3,7 @@ from typing import cast
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
 from application.ports import AbstractEmbedder
+from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import (
     ChunksNotIndexedError,
@@ -13,9 +14,12 @@ from domain.errors import (
     RepositoryError,
 )
 from domain.models import Document, IndexedChunk, Rag
+from domain.usage import IndexingRunUsage, UsageTally
 from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.naive.chunkers import build_chunker
 from infrastructure.naive.embedders import build_embedder
+from infrastructure.token_estimation import qualified_model_name
+from infrastructure.usage_cost import embedding_cost
 from loguru import logger
 
 
@@ -31,6 +35,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
 
+        usage = self.state["usage"] = UsageTally()
         for document in documents:
             if (
                 document.status == DocumentStatusEnum.COMPLETED
@@ -66,13 +71,13 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
                     document.preview_chunks = preview_chunks
 
                 # TODO: embed batch of chunks instead of one per time.
-                indexed_chunks = [
-                    IndexedChunk(
-                        **ph.model_dump(),
-                        vector=await embedder.embed(ph.text)
+                indexed_chunks = []
+                for preview_chunk in document.preview_chunks:
+                    embedding = await embedder.embed(preview_chunk.text)
+                    usage.embedding_tokens += embedding.tokens
+                    indexed_chunks.append(
+                        IndexedChunk(**preview_chunk.model_dump(), vector=embedding.vector)
                     )
-                    for ph in document.preview_chunks
-                ]  # fmt: skip
                 if not indexed_chunks:
                     raise ChunksNotIndexedError(document_id=document.id, rag_id=rag.id)
 
@@ -98,6 +103,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
 
             await self._finish_document(rag, document)
 
+        await self._record_usage(rag.id)
         await self._finish_rag(rag)
         logger.info("Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value)
 
@@ -114,6 +120,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             rag.mark_as_cancelled()
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            await self._record_usage(rag.id)
 
     async def on_error(self, command: RunIndex, error: Exception):
         if (
@@ -128,6 +135,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             rag.mark_as_failed(error)
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            await self._record_usage(rag.id)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
         rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
@@ -143,6 +151,9 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=rag_id)
         embedding_config = embedding_config.model_copy(update={"extra_headers": extra_headers})
+        self.state["embedding_model"] = qualified_model_name(
+            embedding_config.provider, embedding_config.model
+        )
         return build_embedder(embedding_config.provider, api_key, embedding_config)
 
     async def _get_documents_under_uow(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
@@ -151,6 +162,29 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
         return documents
+
+    async def _record_usage(self, rag_id: int):
+        """Store what the run consumed on the RAG, once per run.
+
+        A failure to store is logged, not raised: the index itself already succeeded
+        or failed on its own terms, and usage is reporting only.
+        """
+        tally: UsageTally | None = self.state.pop("usage", None)
+        if tally is None or tally.is_empty:
+            return
+        run = IndexingRunUsage(
+            embedding_tokens=tally.embedding_tokens,
+            llm_input_tokens=None,
+            llm_output_tokens=None,
+            cost_usd=embedding_cost(self.state["embedding_model"], tally.embedding_tokens),
+            completed_at=utcnow(),
+        )
+        try:
+            async with self.uow:
+                await self.uow.naive_rag_repo.add_indexing_usage(rag_id=rag_id, run=run)
+                await self.uow.commit()
+        except RepositoryError as error:
+            logger.warning("Could not store indexing usage of RAG(id={}): {}", rag_id, error)
 
     async def _update_rag(self, rag: Rag):
         async with self.uow:

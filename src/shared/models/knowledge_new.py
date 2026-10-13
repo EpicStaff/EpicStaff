@@ -23,8 +23,10 @@ __all__ = [
     "PrechunkResponse",
     "PreviewChunk",
     "SearchConfig",
+    "SearchOutcome",
     "SearchRequest",
     "SearchResponse",
+    "SearchUsage",
 ]
 
 
@@ -322,6 +324,39 @@ class SearchResponse(ValueObject):
 
     request: SearchRequest
     result: list[FoundChunk] | str
+
+
+class SearchUsage(ValueObject):
+    """Embedding usage one search consumed, as reported by knowledge_new.
+
+    `embedding_cost_usd` is None when the embedding model has no price in litellm's
+    price map; the tokens are reported either way. Graph searches report zero: their
+    LLM and embedding calls are not metered.
+    """
+
+    embedding_tokens: int = 0
+    embedding_cost_usd: float | None = None
+
+    def to_token_usage(self) -> dict:
+        """Return this usage as the `token_usage` dict of a graph message, `{}` if none.
+
+        The session's token total adds up the top-level `token_usage` of every graph
+        message. The cost is 0.0 when the embedding model is unpriced, as for LLM calls.
+        """
+        if not self.embedding_tokens:
+            return {}
+        return {
+            "prompt_tokens": self.embedding_tokens,
+            "total_tokens": self.embedding_tokens,
+            "total_cost_usd": self.embedding_cost_usd or 0.0,
+        }
+
+
+class SearchOutcome(ValueObject):
+    """What a knowledge_new search returned: the matches and the usage it consumed."""
+
+    result: list[FoundChunk] | str
+    usage: SearchUsage = Field(default_factory=SearchUsage)
 
 
 class CancelRequest(ValueObject):

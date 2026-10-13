@@ -15,6 +15,7 @@ from domain.models import (
     PreviewChunk,
     Rag,
 )
+from domain.usage import IndexingRunUsage
 
 if TYPE_CHECKING:
     from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -38,6 +39,15 @@ class AbstractNaiveRagRepository(abc.ABC):
 
         Args:
             rag: The `Rag` aggregate.
+        """
+
+    @abc.abstractmethod
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage):
+        """Record `run` as the RAG's last run and add it to the RAG's total usage.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            run: What the finished, failed or cancelled index run consumed.
         """
 
     @abc.abstractmethod
@@ -161,6 +171,15 @@ class AbstractGraphRagRepository(abc.ABC):
 
         Args:
             rag: The `Rag` aggregate.
+        """
+
+    @abc.abstractmethod
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage):
+        """Record `run` as the RAG's last run and add it to the RAG's total usage.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            run: What the finished, failed or cancelled index run consumed.
         """
 
     @abc.abstractmethod

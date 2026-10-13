@@ -1,7 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from domain.enums import RAGStrategy
-from domain.models import FoundChunk
+from domain.models import FoundChunk, SearchUsage
 
 __all__ = [
     "EmbeddingEstimate",
@@ -21,6 +21,7 @@ class Result:
 @dataclass(frozen=True)
 class SearchResult(Result):
     result: list[FoundChunk] | str
+    usage: SearchUsage = field(default_factory=SearchUsage)
 
 
 @dataclass(frozen=True)

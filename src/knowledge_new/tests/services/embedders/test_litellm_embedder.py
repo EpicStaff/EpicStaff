@@ -11,8 +11,9 @@ from infrastructure.naive.embedders.strategies.litellm_embedder import (
 from tests.services.embedders.conftest import make_config
 
 
-def _response(embeddings: list[list[float]]):
-    return type("Resp", (), {"data": [{"embedding": e} for e in embeddings]})()
+def _response(embeddings: list[list[float]], prompt_tokens: int | None = None):
+    usage = None if prompt_tokens is None else type("Usage", (), {"prompt_tokens": prompt_tokens})()
+    return type("Resp", (), {"data": [{"embedding": e} for e in embeddings], "usage": usage})()
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ async def test_embed_returns_vector(config):
     ):
         result = await LiteLLMEmbedder("sk-test", config).embed("hi")
 
-    assert result == [0.1, 0.2, 0.3]
+    assert result.vector == [0.1, 0.2, 0.3]
 
 
 async def test_embed_returns_empty_list_when_no_data(config):
@@ -37,7 +38,33 @@ async def test_embed_returns_empty_list_when_no_data(config):
     ):
         result = await LiteLLMEmbedder("sk-test", config).embed("hi")
 
-    assert result == []
+    assert result.vector == []
+
+
+async def test_embed_reports_provider_billed_tokens(config):
+    with patch.object(
+        litellm_embedder.litellm,
+        "aembedding",
+        AsyncMock(return_value=_response([[0.1]], prompt_tokens=42)),
+    ):
+        result = await LiteLLMEmbedder("sk-test", config).embed("hi")
+
+    assert result.tokens == 42
+
+
+async def test_embed_falls_back_to_local_count_when_provider_reports_no_usage(config):
+    with (
+        patch.object(
+            litellm_embedder.litellm, "aembedding", AsyncMock(return_value=_response([[0.1]]))
+        ),
+        patch.object(
+            litellm_embedder, "count_tokens_batch", AsyncMock(return_value=[7])
+        ) as count,
+    ):
+        result = await LiteLLMEmbedder("sk-test", config).embed("a\nb")
+
+    assert result.tokens == 7
+    count.assert_awaited_once_with("openai/m", ["a b"])
 
 
 async def test_embed_raises_embedding_error_on_client_failure(config):

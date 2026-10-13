@@ -28,6 +28,7 @@ from shared.models.knowledge import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
+from shared.models.knowledge_new import SearchOutcome
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -616,11 +617,11 @@ async def test_no_sink_registration_when_sink_is_none():
 def _recording_knowledge_client(targets: list) -> MagicMock:
     client = MagicMock()
 
-    async def search(target, query, *, timeout):
+    async def search_with_usage(target, query, *, timeout):
         targets.append(target)
-        return []
+        return SearchOutcome(result=[])
 
-    client.search = search
+    client.search_with_usage = search_with_usage
     return client
 
 

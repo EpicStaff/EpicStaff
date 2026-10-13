@@ -29,10 +29,23 @@ export type RagStatus = 'new' | 'processing' | 'completed' | 'failed' | 'cancell
 
 export type RagType = RagValueMap[keyof RagValueMap];
 
+export interface IndexingUsageTotals {
+    embedding_tokens: number;
+    llm_input_tokens: number | null;
+    llm_output_tokens: number | null;
+    cost_usd: number | null;
+}
+
+export interface IndexingUsage {
+    last_run?: IndexingUsageTotals & { completed_at: string };
+    total?: IndexingUsageTotals;
+}
+
 export interface RagStatusConfiguration {
     rag_id: number;
     rag_type: RagType;
     status: RagStatus;
+    indexing_usage: IndexingUsage;
 }
 
 export interface StartIndexingDtoRequest {

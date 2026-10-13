@@ -9,7 +9,8 @@ from application.orchestrators.indexing.strategies import graph_indexer
 from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
-from domain.models import Rag
+from domain.models import EmbeddingConfig, GraphEstimateConfig, Rag
+from domain.usage import IndexingRunUsage
 from graphrag_input import TextDocument
 
 
@@ -66,6 +67,16 @@ def _make_request(document_ids: frozenset[int], rag_id: int = 1) -> RunIndex:
     )
 
 
+_PRICING = GraphEstimateConfig(
+    embedding=EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
+    llm_provider="openai",
+    llm_model="gpt-4o-mini",
+    chunk_size=1200,
+    chunk_overlap=100,
+    max_gleanings=1,
+)
+
+
 class FakeGraphRagRepo:
     """In-memory repo for the GraphIndexer flow."""
 
@@ -78,7 +89,10 @@ class FakeGraphRagRepo:
         has_indexed_db: bool = False,
         get_rag_raises: BaseException | None = None,
         get_documents_raises: BaseException | None = None,
+        pricing: GraphEstimateConfig | None = None,
     ):
+        self._pricing = pricing or _PRICING
+        self.usage_runs: list[IndexingRunUsage] = []
         self._rag = rag
         self._config = config
         self._documents = documents
@@ -97,6 +111,12 @@ class FakeGraphRagRepo:
         if self._get_rag_raises is not None:
             raise self._get_rag_raises
         return self._rag
+
+    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig:
+        return self._pricing
+
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage) -> None:
+        self.usage_runs.append(run)
 
     async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> object | None:
         self.get_config_calls.append((rag_id, slot))
@@ -686,3 +706,166 @@ async def test_extra_headers_injected_into_both_graphrag_models(monkeypatch):
         "temperature": 0.1,
         "extra_headers": {"X-Llm": "llm-resolved"},
     }
+
+
+def _metered_config() -> types.SimpleNamespace:
+    """A config whose models are real graphrag_llm models answering from litellm's mock."""
+    from graphrag_llm.config import ModelConfig
+
+    return types.SimpleNamespace(
+        input_storage=None,
+        output_storage=None,
+        update_output_storage=None,
+        vector_store=None,
+        embedding_models={
+            "default_embedding_model": ModelConfig(
+                model_provider="openai",
+                model="text-embedding-3-small",
+                api_key="x",
+                call_args={"mock_response": [0.1, 0.2]},
+            )
+        },
+        completion_models={
+            "default_completion_model": ModelConfig(
+                model_provider="openai",
+                model="gpt-4o-mini",
+                api_key="x",
+                call_args={"mock_response": "an answer"},
+            )
+        },
+    )
+
+
+def _calling_build_index(*, embeddings: int, completions: int, error: BaseException | None = None):
+    """A `build_index` stand-in that makes real graphrag_llm calls through `config`."""
+    from graphrag_llm.completion import create_completion
+    from graphrag_llm.embedding import create_embedding
+
+    async def build_index(*, config, **_):
+        completion = create_completion(config.completion_models["default_completion_model"])
+        embedding = create_embedding(config.embedding_models["default_embedding_model"])
+        for _ in range(completions):
+            await completion.completion_async(messages="say something")
+        for _ in range(embeddings):
+            await embedding.embedding_async(input=["some text"])
+        if error is not None:
+            raise error
+        return [_result("workflow_a")]
+
+    return build_index
+
+
+async def test_run_records_usage_reported_by_graphrag_models(monkeypatch):
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=_metered_config(), documents=[_text_document(7)])
+    monkeypatch.setattr(
+        graph_indexer, "build_index", _calling_build_index(embeddings=2, completions=3)
+    )
+
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens > 0
+    assert run.llm_input_tokens > 0
+    assert run.llm_output_tokens > 0
+    assert run.cost_usd is not None
+
+
+async def test_run_prefers_custom_llm_prices_over_the_price_map(monkeypatch):
+    pricing = _PRICING.model_copy(
+        update={"input_cost_per_token": 1.0, "output_cost_per_token": 2.0}
+    )
+    repo = FakeGraphRagRepo(
+        rag=_new_rag(), config=_metered_config(), documents=[_text_document(7)], pricing=pricing
+    )
+    monkeypatch.setattr(
+        graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
+    )
+    monkeypatch.setattr(graph_indexer, "embedding_cost", lambda model, tokens: 0.0)
+
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    (run,) = repo.usage_runs
+    assert run.cost_usd == run.llm_input_tokens * 1.0 + run.llm_output_tokens * 2.0
+
+
+async def test_run_records_null_cost_when_the_llm_is_unpriced(monkeypatch):
+    pricing = _PRICING.model_copy(update={"llm_model": "no-such-llm"})
+    repo = FakeGraphRagRepo(
+        rag=_new_rag(), config=_metered_config(), documents=[_text_document(7)], pricing=pricing
+    )
+    monkeypatch.setattr(
+        graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
+    )
+
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    (run,) = repo.usage_runs
+    assert run.llm_input_tokens > 0
+    assert run.cost_usd is None
+
+
+async def test_failed_run_records_usage_consumed_before_the_failure(monkeypatch):
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=_metered_config(), documents=[_text_document(7)])
+    monkeypatch.setattr(
+        graph_indexer,
+        "build_index",
+        _calling_build_index(embeddings=1, completions=2, error=RuntimeError("boom")),
+    )
+
+    with pytest.raises(RuntimeError):
+        await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    (run,) = repo.usage_runs
+    assert run.llm_input_tokens > 0
+    assert repo.rag_status_log[-1] == IndexStatusEnum.FAILED
+
+
+async def test_concurrent_runs_keep_their_usage_apart(monkeypatch):
+    first = FakeGraphRagRepo(rag=_new_rag(1), config=_metered_config(), documents=[_text_document(7)])
+    second = FakeGraphRagRepo(rag=_new_rag(2), config=_metered_config(), documents=[_text_document(8)])
+    calls_by_document_id = {"7": 1, "8": 4}
+
+    async def build_index(*, config, **kwargs):
+        rag_calls = calls_by_document_id[kwargs["input_documents"].iloc[0]["id"]]
+        return await _calling_build_index(embeddings=0, completions=rag_calls)(config=config)
+
+    monkeypatch.setattr(graph_indexer, "build_index", build_index)
+
+    await asyncio.gather(
+        GraphIndexOrchestrator(FakeUoW(first)).execute(_make_request(frozenset({7}), rag_id=1)),
+        GraphIndexOrchestrator(FakeUoW(second)).execute(_make_request(frozenset({8}), rag_id=2)),
+    )
+
+    assert second.usage_runs[0].llm_input_tokens == 4 * first.usage_runs[0].llm_input_tokens
+
+
+async def test_missing_pricing_config_leaves_cost_null_and_does_not_fail_the_run(monkeypatch):
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=_metered_config(), documents=[_text_document(7)])
+
+    async def no_pricing(rag_id: int):
+        return None
+
+    monkeypatch.setattr(repo, "get_estimate_config", no_pricing)
+    monkeypatch.setattr(
+        graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
+    )
+
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    (run,) = repo.usage_runs
+    assert run.llm_input_tokens > 0
+    assert run.cost_usd is None
+    assert repo.rag_status_log[-1] == IndexStatusEnum.COMPLETED
+
+
+async def test_run_without_model_calls_records_no_usage(monkeypatch):
+    repo = FakeGraphRagRepo(rag=_new_rag(), config=_make_config(), documents=[_text_document(7)])
+
+    async def fake_build_index(**kwargs):
+        return [_result("workflow_a")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    await GraphIndexOrchestrator(FakeUoW(repo)).execute(_make_request(frozenset({7})))
+
+    assert repo.usage_runs == []
