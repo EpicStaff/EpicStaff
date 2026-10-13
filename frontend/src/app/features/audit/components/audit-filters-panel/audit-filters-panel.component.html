@@ -21,15 +21,21 @@
             class="filters-panel__tab"
             type="button"
             [class.is-active]="activeTab() === 'builder'"
+            [attr.aria-pressed]="activeTab() === 'builder'"
             (click)="setActiveTab('builder')"
         >
             Builder
         </button>
-        <span class="filters-panel__tab-sep">/</span>
+        <span
+            class="filters-panel__tab-sep"
+            aria-hidden="true"
+            >/</span
+        >
         <button
             class="filters-panel__tab"
             type="button"
             [class.is-active]="activeTab() === 'query'"
+            [attr.aria-pressed]="activeTab() === 'query'"
             (click)="setActiveTab('query')"
         >
             Query Code
@@ -38,10 +44,25 @@
         <button
             class="filters-panel__tab"
             type="button"
-            [class.is-active]="activeTab() === 'presets'"
-            (click)="setActiveTab('presets')"
+            [class.is-active]="activeTab() === 'mine'"
+            [attr.aria-pressed]="activeTab() === 'mine'"
+            (click)="setActiveTab('mine')"
         >
-            Presets
+            My Presets <span class="filters-panel__tab-count">({{ myPresetsCount() }})</span>
+        </button>
+        <span
+            class="filters-panel__tab-sep"
+            aria-hidden="true"
+            >/</span
+        >
+        <button
+            class="filters-panel__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'shared'"
+            [attr.aria-pressed]="activeTab() === 'shared'"
+            (click)="setActiveTab('shared')"
+        >
+            Shared Presets <span class="filters-panel__tab-count">({{ sharedPresetsCount() }})</span>
         </button>
     </div>
 
@@ -52,6 +73,8 @@
                     [scope]="filter().matchScope"
                     (scopeChange)="setMatchScope($event)"
                 />
+
+                <p class="filters-panel__section">Quick filters</p>
 
                 <app-audit-filter-group label="Kind">
                     <app-audit-checkbox-enum
@@ -105,21 +128,6 @@
                         [disabledValues]="disabledNodeTypes()"
                         disabledHint="Only nodes and events carry a node type"
                         (valueChange)="setNodeTypes($event)"
-                    />
-                </app-audit-filter-group>
-
-                <app-audit-filter-group
-                    label="Run"
-                    [disabled]="!isRunTypeEnabled()"
-                    [class.is-disabled]="!isRunTypeEnabled()"
-                    [hint]="isRunTypeEnabled() ? '' : 'Only sessions carry a run type'"
-                >
-                    <app-audit-checkbox-enum
-                        [options]="runTypeOptions"
-                        [value]="filter().runTypes"
-                        [disabledValues]="disabledRunTypes()"
-                        disabledHint="Only sessions carry a run type"
-                        (valueChange)="setRunTypes($event)"
                     />
                 </app-audit-filter-group>
 
@@ -267,12 +275,42 @@
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">
-                <label
-                    class="filters-panel__section"
-                    for="audit-query"
-                >
-                    Query
-                </label>
+                <app-audit-match-scope
+                    [scope]="filter().matchScope"
+                    (scopeChange)="setMatchScope($event)"
+                />
+
+                <div class="filters-panel__query-header">
+                    <label
+                        class="filters-panel__section"
+                        for="audit-query"
+                    >
+                        Query
+                    </label>
+                    <button
+                        class="filters-panel__copy"
+                        type="button"
+                        [disabled]="isQueryEmpty()"
+                        (click)="copyQuery()"
+                    >
+                        <app-svg-icon
+                            icon="copy"
+                            size="14px"
+                        />
+                        Copy
+                    </button>
+                </div>
+                <div class="filters-panel__operators">
+                    @for (operator of queryOperators; track operator.label) {
+                        <button
+                            class="filters-panel__operator"
+                            type="button"
+                            (click)="insertField(queryInput, operator.text, operator.caretFromEnd)"
+                        >
+                            {{ operator.label }}
+                        </button>
+                    }
+                </div>
                 <textarea
                     #queryInput
                     id="audit-query"
@@ -344,8 +382,9 @@
                     </div>
                 </details>
             </div>
-        } @else if (activeTab() === 'presets') {
+        } @else if (activeTab() === 'mine') {
             <app-audit-presets
+                scope="mine"
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
@@ -353,10 +392,19 @@
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
             />
+        } @else {
+            <app-audit-presets
+                scope="shared"
+                [currentFilter]="filter()"
+                [agentOptions]="agentOptions()"
+                [toolOptions]="toolOptions()"
+                (presetApplied)="presetApplied.emit($event)"
+                (queryCopied)="openQuery($event)"
+            />
         }
     </div>
 
-    @if (activeTab() !== 'presets') {
+    @if (!isPresetsTab()) {
         <div class="filters-panel__footer">
             <button
                 class="filters-panel__btn"

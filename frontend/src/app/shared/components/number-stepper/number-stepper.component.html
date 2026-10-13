@@ -17,7 +17,7 @@
         (mouseenter)="hovered.set(true)"
         (mouseleave)="hovered.set(false)"
     >
-        @if (!readonly() && (hovered() || size() === 'lg')) {
+        @if (showButtons()) {
             <button
                 type="button"
                 class="number-stepper__btn number-stepper__btn--minus"
@@ -35,6 +35,7 @@
         <input
             [type]="integer() ? 'text' : 'number'"
             [attr.inputmode]="integer() ? 'numeric' : null"
+            [attr.aria-label]="ariaLabel()"
             class="number-stepper__input"
             [class]="'number-stepper__input--' + size()"
             [placeholder]="placeholder()"
@@ -46,7 +47,7 @@
             [readonly]="readonly()"
         />
 
-        @if (!readonly() && (hovered() || size() === 'lg')) {
+        @if (showButtons()) {
             <button
                 type="button"
                 class="number-stepper__btn number-stepper__btn--plus"

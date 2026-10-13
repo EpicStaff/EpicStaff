@@ -1,7 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, input, model, OnInit, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    inject,
+    input,
+    model,
+    OnInit,
+    output,
+    signal,
+} from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
+import { ToastService } from '../../../../services/notifications';
 import {
     AuditConditionGroup,
     AuditEnumOption,
@@ -20,16 +32,19 @@ import {
     NODE_TYPE_OPTIONS,
     QUERY_EXAMPLES,
     QUERY_FIELDS,
-    RUN_TYPE_OPTIONS,
+    QUERY_OPERATORS,
     STATUS_OPTIONS,
 } from '../../models/audit-filter-options';
-import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunType } from '../../models/audit-session.models';
+import { AuditPresetScope } from '../../models/audit-preset.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType } from '../../models/audit-session.models';
+import { AuditPresetsStorageService } from '../../services/audit-presets-storage.service';
 import {
     allowedKinds,
     AUDIT_FILTER_FIELDS,
     isFieldAvailable,
     isFieldEnabled,
 } from '../../utils/audit-filter-compatibility.util';
+import { insertQueryText } from '../../utils/insert-query-text.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
 import { AuditDateFilterComponent } from '../audit-date-filter/audit-date-filter.component';
@@ -40,7 +55,7 @@ import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope
 import { AuditPresetsComponent } from '../audit-presets/audit-presets.component';
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
-export type AuditFilterTab = 'builder' | 'query' | 'presets';
+export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
 
 @Component({
     selector: 'app-audit-filters-panel',
@@ -57,6 +72,7 @@ export type AuditFilterTab = 'builder' | 'query' | 'presets';
         AuditMatchScopeComponent,
         AuditPresetsComponent,
     ],
+    providers: [AuditPresetsStorageService],
     templateUrl: './audit-filters-panel.component.html',
     styleUrls: ['./audit-filters-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -80,7 +96,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public readonly kindOptions = KIND_OPTIONS;
     public readonly statusOptions = STATUS_OPTIONS;
-    public readonly runTypeOptions = RUN_TYPE_OPTIONS;
     public readonly nodeTypeOptions = NODE_TYPE_OPTIONS;
     public readonly errorOperators = ERROR_OPERATORS;
     public readonly jsonOperators = JSON_OPERATORS;
@@ -88,11 +103,21 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly queryExamples = QUERY_EXAMPLES;
     public readonly queryFields = QUERY_FIELDS;
 
-    public activeTab = signal<AuditFilterTab>('builder');
+    public readonly queryOperators = QUERY_OPERATORS;
+
+    public activeTab = signal<AuditFilterTab>('mine');
     public isCreatingPreset = signal(false);
+    public readonly isQueryEmpty = computed(() => !this.filter().query.trim());
+    public readonly isPresetsTab = computed(() => this.activeTab() === 'mine' || this.activeTab() === 'shared');
+
+    public readonly myPresetsCount = computed(() => this.presetsStorage.presetsInScope('mine').length);
+    public readonly sharedPresetsCount = computed(() => this.presetsStorage.presetsInScope('shared').length);
+
+    private readonly toastService = inject(ToastService);
+    private readonly presetsStorage = inject(AuditPresetsStorageService);
 
     public ngOnInit(): void {
-        this.activeTab.set(this.filter().mode);
+        this.presetsStorage.load();
     }
 
     public setActiveTab(tab: AuditFilterTab): void {
@@ -102,7 +127,7 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public createPreset(): void {
         this.isCreatingPreset.set(true);
-        this.activeTab.set('presets');
+        this.activeTab.set('mine');
     }
 
     public openQuery(query: string): void {
@@ -119,7 +144,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public isStatusEnabled = computed(() => isFieldAvailable('status', this.filter()));
     public isNodeTypeEnabled = computed(() => isFieldAvailable('nodeType', this.filter()));
-    public isRunTypeEnabled = computed(() => isFieldAvailable('run', this.filter()));
     public isErrorEnabled = computed(() => isFieldAvailable('error', this.filter()));
     public isInputEnabled = computed(() => isFieldAvailable('input', this.filter()));
     public isOutputEnabled = computed(() => isFieldAvailable('output', this.filter()));
@@ -151,12 +175,21 @@ export class AuditFiltersPanelComponent implements OnInit {
         this.filter.update((current) => ({ ...current, query, mode: 'query' }));
     }
 
-    // paste where cursor is and cursors appear after pasted word
-    public insertField(textarea: HTMLTextAreaElement, field: string): void {
-        const start = textarea.selectionStart;
-        const query = textarea.value.slice(0, start) + field + textarea.value.slice(textarea.selectionEnd);
+    public copyQuery(): void {
+        copyWithFeedback(this.filter().query, this.toastService);
+    }
+
+    // Replaces the selection with the text and puts the cursor after it (or `caretFromEnd` chars before its end).
+    public insertField(textarea: HTMLTextAreaElement, field: string, caretFromEnd = 0): void {
+        const { query, caret } = insertQueryText(
+            textarea.value,
+            textarea.selectionStart,
+            textarea.selectionEnd,
+            field,
+            caretFromEnd
+        );
         textarea.value = query;
-        textarea.setSelectionRange(start + field.length, start + field.length);
+        textarea.setSelectionRange(caret, caret);
         textarea.focus();
         this.filter.update((current) => ({ ...current, query, mode: 'query' }));
     }
@@ -167,10 +200,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public disabledNodeTypes = computed(() =>
         this.isNodeTypeEnabled() ? [] : this.nodeTypeOptions.map((option) => option.value)
-    );
-
-    public disabledRunTypes = computed(() =>
-        this.isRunTypeEnabled() ? [] : this.runTypeOptions.map((option) => option.value)
     );
 
     public readonly dateRange = computed<DateRangeFilter>(() => ({
@@ -192,10 +221,6 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     public setStatuses(statuses: string[]): void {
         this.updateBuilder({ statuses: statuses as AuditEventStatus[] });
-    }
-
-    public setRunTypes(values: string[]): void {
-        this.updateBuilder({ runTypes: values as AuditRunType[] });
     }
 
     public setNodeTypes(values: string[]): void {
