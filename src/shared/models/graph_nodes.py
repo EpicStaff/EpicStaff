@@ -16,6 +16,9 @@ class PythonNodeData(BaseModel):
     python_code: PythonCodeData
     input_map: dict[str, Any]
     output_variable_path: str | None = None
+    execution_timeout: int | None = None
+    """Minutes each sandbox code execution of this node may run. None (graph schemas
+    stored before this field existed) means the sandbox ceiling applies."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,6 +45,9 @@ class FileExtractorNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """File extractor nodes always require storage access."""
+    execution_timeout: int | None = None
+    """Minutes each sandbox code execution of this node may run. None (graph schemas
+    stored before this field existed) means the sandbox ceiling applies."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,6 +69,9 @@ class AudioTranscriptionNodeData(StorageScopedData):
     output_variable_path: str | None = None
     use_storage: bool = True
     """Audio transcription nodes always require storage access."""
+    execution_timeout: int | None = None
+    """Minutes each sandbox code execution of this node may run. None (graph schemas
+    stored before this field existed) means the sandbox ceiling applies."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,6 +136,10 @@ class ClassificationDecisionTableNodeData(BaseModel):
     prompts: dict[str, PromptConfigData] = {}
     default_next_node: str | None = None
     next_error_node: str | None = None
+    execution_timeout: int | None = None
+    """Minutes each sandbox code execution of this node may run (pre, every row
+    expression batch, manipulations and post each get the full limit). None (graph
+    schemas stored before this field existed) means the sandbox ceiling applies."""
 
 
 class AgentDefinitionData(BaseModel):
@@ -209,6 +222,9 @@ class EdgeData(BaseModel):
 class WebhookTriggerNodeData(BaseModel):
     node_name: str
     python_code: PythonCodeData
+    execution_timeout: int | None = None
+    """Minutes each sandbox code execution of this node may run. None (graph schemas
+    stored before this field existed) means the sandbox ceiling applies."""
 
     model_config = ConfigDict(from_attributes=True)
 

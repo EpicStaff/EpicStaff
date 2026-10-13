@@ -95,6 +95,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
 )
+from tables.views.sandbox_limits_views import SandboxLimitsAPIView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
@@ -231,6 +232,7 @@ urlpatterns = [
         for operation in ("read", "write", "delete")
     ],
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
+    path("sandbox-limits/", SandboxLimitsAPIView.as_view(), name="sandbox_limits"),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),
     path(
