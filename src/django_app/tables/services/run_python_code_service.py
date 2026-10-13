@@ -8,6 +8,8 @@ from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
+from src.shared.models.storage_scope import StorageCredentials
+from storage_credentials.exceptions import StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import CodeRunTargetNotFoundError
@@ -25,6 +27,13 @@ MAX_STORED_RESULTS = 200
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
+    _INVALID_REQUEST_LOG = "Invalid code execution request (execution_id={})"
+    _INVALID_REQUEST_STDERR = "Invalid code execution request."
+    _CREDENTIAL_ISSUE_LOG = (
+        "Failed to issue storage credentials for code execution (execution_id={})"
+    )
+    _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
+
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
         self.code_exec_task_channel: str = settings.CODE_EXEC_CHANNEL
@@ -92,12 +101,16 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             user=user,
             python_code=python_code,
         )
-        storage_credentials = self._issue_storage_credentials_if_needed(
+
+        storage_credentials, ok = self._mint_storage_credentials(
+            execution_id=execution_id,
             use_storage=use_storage,
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id,
         )
+        if not ok:
+            return execution_id
 
         try:
             code_task_data = CodeTaskData(
@@ -116,24 +129,12 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 storage_credentials=storage_credentials,
             )
         except ValidationError:
-            # Never log the error itself: pydantic's ValidationError repr embeds
-            # the full constructor input, including `secrets` plaintext.
-            logger.error(
-                "Invalid storage scope for code execution (execution_id={})",
-                execution_id,
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._INVALID_REQUEST_LOG,
+                stderr=self._INVALID_REQUEST_STDERR,
             )
-            PythonCodeResult.objects.filter(execution_id=execution_id).update(
-                status=PythonCodeResult.Status.ERROR,
-                stderr="Invalid storage scope for code execution.",
-                finished_at=timezone.now(),
-            )
-            # If credentials were minted above, nothing will ever be published
-            # for them, so the sandbox result path that normally revokes them
-            # never runs. Best-effort by contract: the helper swallows its own
-            # errors (and is a no-op when nothing was minted), so the ERROR
-            # result is still returned either way.
-            self._revoke_storage_credentials_safely(use_storage=use_storage, execution_id=execution_id)
-            return execution_id
 
         self._publish(code_task_data)
         return execution_id
@@ -196,12 +197,16 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             user=user,
             python_code=python_code,
         )
-        storage_credentials = self._issue_storage_credentials_if_needed(
+
+        storage_credentials, ok = self._mint_storage_credentials(
+            execution_id=execution_id,
             use_storage=resolved.use_storage,
             python_code_result=python_code_result,
             storage_allowed_paths=resolved.storage_allowed_paths,
             org_id=resolved.org_id,
         )
+        if not ok:
+            return execution_id
 
         try:
             code_task_data = CodeTaskData(
@@ -221,21 +226,58 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 storage_credentials=storage_credentials,
             )
         except ValidationError:
-            logger.error(
-                "Invalid storage scope for code execution (execution_id={})",
-                execution_id,
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=resolved.use_storage,
+                log_message=self._INVALID_REQUEST_LOG,
+                stderr=self._INVALID_REQUEST_STDERR,
             )
-            PythonCodeResult.objects.filter(execution_id=execution_id).update(
-                status=PythonCodeResult.Status.ERROR,
-                stderr="Invalid storage scope for code execution.",
-                finished_at=timezone.now(),
-            )
-            self._revoke_storage_credentials_safely(
-                use_storage=resolved.use_storage, execution_id=execution_id
-            )
-            return execution_id
 
         self._publish(code_task_data)
+        return execution_id
+
+    def _mint_storage_credentials(
+        self,
+        *,
+        execution_id: str,
+        use_storage: bool,
+        python_code_result: PythonCodeResult,
+        storage_allowed_paths: list[str] | None,
+        org_id: int,
+    ) -> tuple[StorageCredentials | None, bool]:
+        """Mint storage credentials if needed. Returns (credentials, ok);
+        ok=False means the execution already failed (ERROR, best-effort revoke)
+        and the caller should return `execution_id` without building anything.
+        """
+        try:
+            return (
+                self._issue_storage_credentials_if_needed(
+                    use_storage=use_storage,
+                    python_code_result=python_code_result,
+                    storage_allowed_paths=storage_allowed_paths,
+                    org_id=org_id,
+                ),
+                True,
+            )
+        except StorageCredentialError:
+            self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._CREDENTIAL_ISSUE_LOG,
+                stderr=self._CREDENTIAL_ISSUE_STDERR,
+            )
+            return None, False
+
+    def _fail_execution(
+        self, *, execution_id: str, use_storage: bool, log_message: str, stderr: str
+    ) -> str:
+        logger.error(log_message, execution_id)
+        PythonCodeResult.objects.filter(execution_id=execution_id).update(
+            status=PythonCodeResult.Status.ERROR,
+            stderr=stderr,
+            finished_at=timezone.now(),
+        )
+        self._revoke_storage_credentials_safely(use_storage=use_storage, execution_id=execution_id)
         return execution_id
 
     @staticmethod
