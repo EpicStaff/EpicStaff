@@ -477,18 +477,43 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             render();
         }
 
-        it('asks only about steps with no explanation, the twice-drawn one once', () => {
-            mountMixed();
-            // Answered at once: the chunks run one after another, so a pending one would hide the next.
+        /** Answered at once: the chunks run one after another, so a pending one would hide the next. */
+        function answerEveryChunk(): void {
             explainApi.explain.mockImplementation(
                 (_id: number, request: CdtExplainRequest): Observable<CdtExplainResponse> =>
                     of({ explanations: request.blocks.map((block) => explained(block.id, 'text')), failures: [] })
             );
+        }
+
+        function askedBlockIds(): string[] {
+            return explainApi.explain.mock.calls.flatMap((_, call) => sentBlockIds(call)).sort();
+        }
+
+        it('asks about every step without an up-to-date explanation — missing or outdated — the twice-drawn one once', () => {
+            mountMixed();
+            answerEveryChunk();
 
             clickExplainAll();
 
-            const asked = explainApi.explain.mock.calls.flatMap((_, call) => sentBlockIds(call));
-            expect(asked.sort()).toEqual(['exit:default:post', 'row-2:decision'].sort());
+            // Spam is current and left alone; Refund is outdated; Urgent and the post step have none.
+            expect(askedBlockIds()).toEqual(['exit:default:post', 'row-1:decision', 'row-2:decision']);
+        });
+
+        it('leaves no step outdated once it has run, filing each answer under the step’s current fingerprint', () => {
+            const data = mountMixed();
+            answerEveryChunk();
+
+            clickExplainAll();
+
+            for (const name of ['Spam', 'Refund', 'Urgent']) expect(isMarkedOutdated(name)).toBe(false);
+            const refund = decisionStep(data, 'Refund');
+            expect(nodeExplanations()[refund.key]).toEqual(stored('text', refund.fingerprint));
+
+            // And a second press finds nothing left to do.
+            explainApi.explain.mockClear();
+            clickExplainAll();
+            expect(explainApi.explain).not.toHaveBeenCalled();
+            expect(notice()).toBe(CDT_TREE_COPY.explainAllNothing);
         });
 
         it('with "outdated only", asks only about steps whose explanation went stale', () => {
@@ -518,6 +543,26 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             expect(notice()).toBe(CDT_TREE_COPY.explainAllNothing);
         });
 
+        it('does not claim nothing is left to do while one step is outdated', () => {
+            const data = input();
+            const keys = Object.fromEntries(
+                ['Spam', 'Refund', 'Urgent'].map((name) => {
+                    const step = decisionStep(data, name);
+                    return [
+                        step.key,
+                        stored(`${name} text`, name === 'Refund' ? 'an-older-fingerprint' : step.fingerprint),
+                    ];
+                })
+            );
+            mount(data, keys);
+            explainApi.explain.mockReturnValue(new Subject());
+
+            clickExplainAll();
+
+            expect(notice()).toBe('');
+            expect(sentBlockIds()).toEqual(['row-1:decision']);
+        });
+
         it('shows progress, marks the pending steps, and offers Stop while it runs', () => {
             mountMixed();
             const firstChunk = new Subject<CdtExplainResponse>();
@@ -526,7 +571,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             clickExplainAll();
             const label = (): string => host.querySelector('.cdt-tree__explain-all-label')?.textContent?.trim() ?? '';
 
-            expect(label()).toBe(CDT_TREE_COPY.explainAllBusy(0, 2));
+            expect(label()).toBe(CDT_TREE_COPY.explainAllBusy(0, 3));
             expect(isMarkedLoading('Urgent')).toBe(true);
             expect(isMarkedLoading('Spam')).toBe(false);
             expect(host.querySelector('.cdt-tree__explain-all-stop')).not.toBeNull();
@@ -536,7 +581,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             firstChunk.complete();
             render();
 
-            expect(label()).toBe(CDT_TREE_COPY.explainAllBusy(1, 2));
+            expect(label()).toBe(CDT_TREE_COPY.explainAllBusy(1, 3));
         });
 
         it('on Stop, puts back what each pending step had: stored text stays, the rest clears', () => {
@@ -605,14 +650,16 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
 
             expect(explainApi.explain).toHaveBeenCalledTimes(2);
             const [firstId] = sentBlockIds(0);
-            const [secondId] = sentBlockIds(1);
             expect(notice()).toBe(CDT_TREE_COPY.explainModelGone);
             expect(host.querySelector('.cdt-tree-block__explaining')).toBeNull();
             expect(host.querySelector('.cdt-tree__explain-all-stop')).toBeNull();
-            // The first chunk's answer was kept on the node; the failed chunk wrote nothing.
+            // The first chunk's answer was kept on the node; the failed chunk wrote nothing:
+            // the outdated step keeps its old text, the missing one stays missing.
             const stepKeys = buildExplainStepKeys(input({ postCode: 'result = 1' }));
             expect(nodeExplanations()[stepKeys.get(firstId)!]?.text).toBe(`text for ${firstId}`);
-            expect(nodeExplanations()[stepKeys.get(secondId)!]).toBeUndefined();
+            expect(sentBlockIds(1)).toEqual(['row-1:decision', 'row-2:decision']);
+            expect(nodeExplanations()[stepKeys.get('row-1:decision')!]?.text).toBe('Old refund text');
+            expect(nodeExplanations()[stepKeys.get('row-2:decision')!]).toBeUndefined();
         });
 
         it('asks with a model that has no key, and names the key when the endpoint misses it', () => {
@@ -634,7 +681,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
 
             clickExplainAll();
 
-            expect(notice()).toBe(CDT_TREE_COPY.explainAllFailed(2));
+            expect(notice()).toBe(CDT_TREE_COPY.explainAllFailed(3));
             openBlock('Urgent');
             expect(detailText()).toBe(CDT_TREE_COPY.explanationTooLarge);
         });
@@ -651,7 +698,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
 
             clickExplainAll();
 
-            expect(notice()).toBe(CDT_TREE_COPY.explainAllFailed(2));
+            expect(notice()).toBe(CDT_TREE_COPY.explainAllFailed(3));
         });
     });
 

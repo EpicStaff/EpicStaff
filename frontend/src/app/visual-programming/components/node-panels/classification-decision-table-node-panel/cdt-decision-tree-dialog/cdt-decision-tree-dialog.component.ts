@@ -625,9 +625,9 @@ export class CdtDecisionTreeDialogComponent {
     }
 
     /**
-     * Without the checkbox: steps with no explanation at all. With it: the ones
-     * whose explanation went stale. Two disjoint sets, so neither ever pays for
-     * text that is already current.
+     * Without the checkbox: every step without an up-to-date explanation — none
+     * yet, or one that went stale. With it: only the stale ones. Neither ever
+     * pays for text that is already current.
      */
     protected explainAll(): void {
         if (!this.canExplain || this.explainAllRunning()) return;
@@ -820,8 +820,12 @@ export class CdtDecisionTreeDialogComponent {
             const stepKey = this.explainStepKeys.get(blockId);
             if (!stepKey || seen.has(stepKey)) continue;
 
-            const state = this.explanations().get(stepKey);
-            const wanted = outdatedOnly ? this.isOutdated(blockId) : state?.status !== 'ready';
+            // An outdated explanation is `ready` too, so it is asked for by name. The
+            // twice-drawn post step has one fingerprint (its ids are not part of it),
+            // so either of its blocks answers this the same.
+            const isOutdated = this.isOutdated(blockId);
+            const hasNone = this.explanations().get(stepKey)?.status !== 'ready';
+            const wanted = outdatedOnly ? isOutdated : hasNone || isOutdated;
             if (!wanted) continue;
 
             seen.add(stepKey);
