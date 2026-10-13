@@ -18,8 +18,10 @@ import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RAG_TYPE_CONFIG } from '../../constants/constants';
-import { getIndexingEstimateHtml } from '../../helpers/format-indexing-estimate.util';
-import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
+import {
+    getIndexingConfirmationDataWithEstimate,
+    IndexingDocumentInfo,
+} from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
@@ -248,32 +250,31 @@ export class CreateCollectionDialogComponent {
 
         const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
 
-        return strategy.estimateIndexing(configIds).pipe(
-            switchMap((estimate) =>
-                this.confirmation.confirm(
-                    getIndexingConfirmationData(indexingDocs, getIndexingEstimateHtml(estimate, shouldSave))
-                )
-            ),
-            takeUntilDestroyed(this.destroyRef),
-            filter((result) => result === true),
-            switchMap(() => savePending$),
-            switchMap(() => {
-                if (componentInstance.hasFailedSavesForChecked?.()) {
-                    this.toastService.error('Some documents failed to save. Fix the errors and retry.');
-                    return EMPTY;
-                }
-                return strategy.startIndexing({ ...componentData, configIds, shouldSave, pendingDeleteIds }).pipe(
-                    catchError((err: HttpErrorResponse) => {
-                        if (err?.validationErrors?.length) {
-                            componentInstance.setServerValidationErrors?.(err.validationErrors);
+        return this.confirmation
+            .confirm(
+                getIndexingConfirmationDataWithEstimate(indexingDocs, strategy.estimateIndexing(configIds), shouldSave)
+            )
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                filter((result) => result === true),
+                switchMap(() => savePending$),
+                switchMap(() => {
+                    if (componentInstance.hasFailedSavesForChecked?.()) {
+                        this.toastService.error('Some documents failed to save. Fix the errors and retry.');
+                        return EMPTY;
+                    }
+                    return strategy.startIndexing({ ...componentData, configIds, shouldSave, pendingDeleteIds }).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            if (err?.validationErrors?.length) {
+                                componentInstance.setServerValidationErrors?.(err.validationErrors);
+                                return of(false);
+                            }
+                            this.toastService.error('Indexing failed');
                             return of(false);
-                        }
-                        this.toastService.error('Indexing failed');
-                        return of(false);
-                    })
-                );
-            })
-        );
+                        })
+                    );
+                })
+            );
     }
 
     stopIndexing() {

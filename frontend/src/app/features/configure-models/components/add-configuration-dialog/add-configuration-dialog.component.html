@@ -212,7 +212,7 @@
                     />
                     <app-validation-errors [control]="llmForm.get('pricing.output_price_per_million')!" />
                 </div>
-                @if (llmForm.get('pricing')?.hasError('pricePair') && llmForm.get('pricing')?.touched) {
+                @if (hasIncompletePricePair()) {
                     <app-validation-errors [control]="llmForm.get('pricing')!" />
                 }
             </section>
@@ -506,7 +506,7 @@
         <app-button
             type="primary"
             (click)="onSubmit()"
-            [disabled]="isSubmitting()"
+            [disabled]="isSubmitting() || hasIncompletePricePair()"
         >
             @if (isSubmitting()) {
                 Creating…

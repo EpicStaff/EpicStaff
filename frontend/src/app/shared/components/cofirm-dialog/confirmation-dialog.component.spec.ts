@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 
 import { ConfirmationDialogComponent, ConfirmationDialogData } from './confirmation-dialog.component';
 
@@ -216,5 +217,26 @@ describe('ConfirmationDialogComponent verification', () => {
 
         expect(strong.querySelector('img')).toBeNull();
         expect(strong.textContent).toBe(phrase);
+    });
+});
+
+describe('ConfirmationDialogComponent message updates', () => {
+    it('renders data.message when no messageUpdates stream is given', () => {
+        const fixture = render(BASE_DATA);
+
+        expect(query(fixture, '.dialog-message')?.textContent).toBe('Acme will be deleted.');
+    });
+
+    it('replaces the message when an update arrives and stops listening after destroy', () => {
+        const updates = new Subject<string>();
+        const fixture = render({ ...BASE_DATA, message: 'Estimating', messageUpdates: updates });
+        expect(query(fixture, '.dialog-message')?.textContent).toContain('Estimating');
+
+        updates.next('<strong>Done</strong>');
+        fixture.detectChanges();
+        expect(query(fixture, '.dialog-message')?.textContent).toBe('Done');
+
+        fixture.destroy();
+        expect(updates.observed).toBe(false);
     });
 });

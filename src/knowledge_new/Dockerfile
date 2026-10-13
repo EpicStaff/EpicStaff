@@ -39,6 +39,11 @@ WORKDIR /app/src/knowledge
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
+# Pre-cache the GPT-2 tokenizer the token chunker loads (tokie downloads it from
+# the HuggingFace Hub on first use), so no request or startup fetches it at runtime.
+# It lands in /root/.cache/huggingface, which the runtime stage copies.
+RUN /app/.venv/bin/python -c "from chonkie.tokenizer import AutoTokenizer; AutoTokenizer('gpt2')"
+
 # Copy application source
 COPY ./knowledge_new /app/src/knowledge
 COPY ./shared /app/src/shared
@@ -52,6 +57,7 @@ RUN apt-get update && apt-get install -y libpq-dev \
 
 # Copy built app (and the /app/.venv beside it) from builder
 COPY --from=builder /app /app
+COPY --from=builder /root/.cache/huggingface /root/.cache/huggingface
 
 # Add virtualenv to PATH.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to

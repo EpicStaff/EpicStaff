@@ -1,5 +1,11 @@
 import { ConfirmationDialogData } from '@shared/components';
 import { escapeHtml } from '@shared/utils';
+import { catchError, map, Observable, of } from 'rxjs';
+
+import { IndexingEstimate } from '../models/base-rag.model';
+import { getIndexingEstimateHtml } from './format-indexing-estimate.util';
+
+export const ESTIMATING_USAGE_HTML = '<div><em>Estimating usage…</em></div>';
 
 export interface IndexingDocumentInfo {
     configId: number;
@@ -56,5 +62,27 @@ export function getIndexingConfirmationData(
         type: 'warning',
         cancelText: 'Later',
         confirmText: 'Start Indexing',
+    };
+}
+
+/**
+ * Opens straight away with an "Estimating usage…" line; the line is replaced once the estimate arrives.
+ * A missing or failed estimate removes the line, so indexing is never blocked.
+ */
+export function getIndexingConfirmationDataWithEstimate(
+    documents: IndexingDocumentInfo[],
+    estimate$: Observable<IndexingEstimate | null>,
+    isBasedOnSavedSettings = false
+): ConfirmationDialogData {
+    return {
+        ...getIndexingConfirmationData(documents, ESTIMATING_USAGE_HTML),
+        messageUpdates: estimate$.pipe(
+            catchError(() => of(null)),
+            map(
+                (estimate) =>
+                    getIndexingConfirmationData(documents, getIndexingEstimateHtml(estimate, isBasedOnSavedSettings))
+                        .message
+            )
+        ),
     };
 }

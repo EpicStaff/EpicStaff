@@ -55,7 +55,7 @@ describe('RagIndexingService estimate', () => {
         let result: IndexingEstimate | null | undefined;
         service.estimateIndexingOrNull(REQUEST).subscribe((value) => (result = value));
         http.expectOne(ESTIMATE_URL);
-        vi.advanceTimersByTime(3001);
+        vi.advanceTimersByTime(30001);
         expect(result).toBeNull();
     });
 

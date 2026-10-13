@@ -6,8 +6,10 @@ import { Observable, of } from 'rxjs';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { getIndexingEstimateHtml } from '../../helpers/format-indexing-estimate.util';
-import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
+import {
+    getIndexingConfirmationDataWithEstimate,
+    IndexingDocumentInfo,
+} from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../services/rag-indexing.service';
@@ -71,12 +73,8 @@ export abstract class RagConfigurationDialogComponent {
               })
             : of(null);
 
-        return estimate$.pipe(
-            switchMap((estimate) =>
-                this.confirmation.confirm(
-                    getIndexingConfirmationData(documents, getIndexingEstimateHtml(estimate, hasUnsavedIndexConfig))
-                )
-            )
+        return this.confirmation.confirm(
+            getIndexingConfirmationDataWithEstimate(documents, estimate$, hasUnsavedIndexConfig)
         );
     }
 }

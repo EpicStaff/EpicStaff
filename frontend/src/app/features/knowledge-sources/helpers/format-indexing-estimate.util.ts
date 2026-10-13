@@ -37,7 +37,10 @@ export function formatLlmEstimate(llm: NonNullable<IndexingEstimate['llm']>): st
     const costMin = toFiniteNumber(llm.cost_usd_min);
     const costMax = toFiniteNumber(llm.cost_usd_max);
     if (costMin === null || costMax === null) return tokensText;
-    return `${tokensText} · ${formatCostUsd(costMin)}–${formatCostUsd(costMax)}`;
+    const costMinText = formatCostUsd(costMin);
+    const costMaxText = formatCostUsd(costMax);
+    const costText = costMinText === costMaxText ? costMinText : `${costMinText}–${costMaxText}`;
+    return `${tokensText} · ${costText}`;
 }
 
 /** Plain-text lines (no markup) describing the estimate; a single 'Nothing new to index.' line when no documents will be indexed. Invalid values are skipped. */

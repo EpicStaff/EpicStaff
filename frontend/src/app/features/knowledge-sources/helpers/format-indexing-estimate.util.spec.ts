@@ -34,6 +34,18 @@ describe('format-indexing-estimate.util', () => {
         ).toBe('1,000–2,000 tokens');
     });
 
+    it('shows a single cost when both ends of the llm range format the same', () => {
+        expect(
+            formatLlmEstimate({
+                calls: 3,
+                tokens_min: 1000,
+                tokens_max: 2000,
+                cost_usd_min: 0.001,
+                cost_usd_max: 0.004,
+            })
+        ).toBe('1,000–2,000 tokens · < $0.01');
+    });
+
     it('formats the llm range with costs', () => {
         expect(
             formatLlmEstimate({ calls: 3, tokens_min: 1000, tokens_max: 2000, cost_usd_min: 0.1, cost_usd_max: 0.3 })

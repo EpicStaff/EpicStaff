@@ -1,7 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
@@ -22,7 +22,7 @@ import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
 import { perMillionToPerToken } from '@shared/utils';
-import { catchError, EMPTY, Observable, tap } from 'rxjs';
+import { catchError, EMPTY, map, merge, Observable, startWith, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
@@ -95,6 +95,23 @@ export class AddConfigurationDialogComponent implements OnInit {
 
     llmForm!: FormGroup;
 
+    private readonly pricingGroup = this.fb.group(
+        {
+            input_price_per_million: [null as number | null, [Validators.min(0)]],
+            output_price_per_million: [null as number | null, [Validators.min(0)]],
+        },
+        { validators: pricePairValidator('input_price_per_million', 'output_price_per_million') }
+    );
+    private readonly isPricePairIncomplete = toSignal(
+        merge(this.pricingGroup.statusChanges, this.pricingGroup.valueChanges).pipe(
+            startWith(null),
+            map(() => this.pricingGroup.hasError('pricePair'))
+        ),
+        { requireSync: true }
+    );
+
+    readonly hasIncompletePricePair = computed(() => this.activeTab() === 'llm' && this.isPricePairIncomplete());
+
     openaiForm = this.fb.nonNullable.group({
         custom_name: ['', Validators.required],
         api_key_secret_id: [null as number | null],
@@ -157,13 +174,11 @@ export class AddConfigurationDialogComponent implements OnInit {
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             is_visible: [true],
-            pricing: this.fb.group(
-                {
-                    input_price_per_million: [null as number | null, [Validators.min(0)]],
-                    output_price_per_million: [null as number | null, [Validators.min(0)]],
-                },
-                { validators: pricePairValidator('input_price_per_million', 'output_price_per_million') }
-            ),
+            pricing: this.pricingGroup,
+        });
+
+        this.pricingGroup.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            if (this.pricingGroup.dirty) this.pricingGroup.markAsTouched();
         });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: KeyboardEvent) => {

@@ -11,7 +11,8 @@ import {
     StopIndexingDtoRequest,
 } from '../models/base-rag.model';
 
-const ESTIMATE_TIMEOUT_MS = 3000;
+// The dialog no longer waits on the estimate; estimates for large selections can take several seconds.
+const ESTIMATE_TIMEOUT_MS = 30000;
 
 @Injectable({ providedIn: 'root' })
 export class RagIndexingService {

@@ -132,6 +132,37 @@ describe('AddConfigurationDialogComponent embedding extra headers and LLM pricin
             expect(createLlmConfig).not.toHaveBeenCalled();
         });
 
+        it('reports an incomplete price pair so the save button can be disabled', () => {
+            expect(component.hasIncompletePricePair()).toBe(false);
+
+            component.llmForm.patchValue({ pricing: { input_price_per_million: 2.5, output_price_per_million: null } });
+            expect(component.hasIncompletePricePair()).toBe(true);
+
+            component.llmForm.patchValue({ pricing: { output_price_per_million: 10 } });
+            expect(component.hasIncompletePricePair()).toBe(false);
+        });
+
+        it('reacts to typing as well as patchValue, and ignores other tabs', () => {
+            const input = component.llmForm.get('pricing.input_price_per_million')!;
+
+            input.setValue(1);
+            expect(component.hasIncompletePricePair()).toBe(true);
+
+            component.setActiveTab('embedding');
+            expect(component.hasIncompletePricePair()).toBe(false);
+        });
+
+        it('marks the pair group touched once a field is dirty so the error shows without a blur', () => {
+            const pricing = component.llmForm.get('pricing')!;
+            component.llmForm.patchValue({ pricing: { input_price_per_million: 2.5 } });
+            expect(pricing.touched).toBe(false);
+
+            component.llmForm.get('pricing.input_price_per_million')!.markAsDirty();
+            component.llmForm.patchValue({ pricing: { input_price_per_million: 3 } });
+
+            expect(pricing.touched).toBe(true);
+        });
+
         it('blocks submit when a price is negative', () => {
             component.llmForm.patchValue({ pricing: { input_price_per_million: -1, output_price_per_million: 10 } });
 

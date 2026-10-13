@@ -1,6 +1,8 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Observable } from 'rxjs';
 
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -48,6 +50,9 @@ export interface ConfirmationDialogData {
     verification?: ConfirmationVerification;
     /** Optional checkbox shown above the action buttons. */
     checkbox?: ConfirmationCheckbox;
+    /** Optional stream of replacement messages, applied as they arrive after the dialog opened.
+     *  Unsubscribed when the dialog closes, so it can drive a cancellable request. */
+    messageUpdates?: Observable<string>;
 }
 
 export interface ConfirmationCheckbox {
@@ -75,6 +80,7 @@ export class ConfirmationDialogComponent {
 
     // `data` must stay above the fields below: they read it in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
+    protected readonly message = signal(this.data.message);
     protected readonly checkboxChecked = signal(this.data.checkbox?.checked ?? false);
     protected readonly breakdownListId = `confirmation-breakdown-list-${nextBreakdownListId++}`;
     protected readonly breakdown = this.data.breakdown?.items.length ? this.data.breakdown : null;
@@ -85,6 +91,13 @@ export class ConfirmationDialogComponent {
     );
 
     private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
+    private readonly destroyRef = inject(DestroyRef);
+
+    constructor() {
+        this.data.messageUpdates?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((message) => {
+            this.message.set(message);
+        });
+    }
 
     toggleBreakdown(): void {
         this.isBreakdownExpanded.update((isExpanded) => !isExpanded);
