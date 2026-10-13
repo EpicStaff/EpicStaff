@@ -1,5 +1,3 @@
-import { NodeType } from '@shared/models';
-
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
@@ -8,20 +6,7 @@ import { liveGraph } from '../testing/live-graph.fixture';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from './diff';
 import { buildBulkSavePayload } from './payload';
 
-const graph: GraphDto = {
-    ...liveGraph,
-    llm_node_list: [
-        {
-            id: 17,
-            graph: liveGraph.id,
-            node_name: 'LLM',
-            llm_config: 71,
-            input_map: {},
-            output_variable_path: null,
-            metadata: {},
-        },
-    ],
-};
+const graph: GraphDto = { ...liveGraph };
 const loadedFlow = buildFlowModelFromGraphDto(graph, [{ id: 99 }]);
 const emptyFlow: FlowModel = { nodes: [], connections: [] };
 
@@ -58,12 +43,10 @@ const otherUuidFlow = withNodes(loadedFlow, (node) => ({ ...node, nodeUuid: `${n
 
 describe('node uuid in the bulk-save payload', () => {
     it('sends the canvas uuid of every created node, so the backend stores the same one', () => {
-        const items = payloadNodeItems(bulkSavePayload(emptyFlow, loadedFlow)).filter(
-            ([key]) => key !== 'llm_node_list'
-        );
+        const items = payloadNodeItems(bulkSavePayload(emptyFlow, loadedFlow));
         const nodeById = new Map(loadedFlow.nodes.map((node) => [node.id, node]));
 
-        expect(items).toHaveLength(loadedFlow.nodes.length - 1);
+        expect(items).toHaveLength(loadedFlow.nodes.length);
         for (const [, item] of items) {
             const node = nodeById.get(item['temp_id'] as string)!;
             expect(node.nodeUuid).toEqual(expect.any(String));
@@ -76,19 +59,6 @@ describe('node uuid in the bulk-save payload', () => {
 
         expect(items).toHaveLength(loadedFlow.nodes.length);
         expect(items.filter(([, item]) => 'uuid' in item)).toEqual([]);
-    });
-
-    it('sends no uuid for a legacy LLM node, which loads without one', () => {
-        const flowWithNewLlm = withNodes(loadedFlow, (node) =>
-            node.type === NodeType.LLM ? { ...node, backendId: null } : node
-        );
-        const llmNode = flowWithNewLlm.nodes.find((node) => node.type === NodeType.LLM)!;
-
-        const [llmItem] = bulkSavePayload(emptyFlow, flowWithNewLlm)['llm_node_list'] as Record<string, unknown>[];
-
-        expect(llmNode.nodeUuid).toBeNull();
-        expect(llmItem['id']).toBeNull();
-        expect(llmItem).not.toHaveProperty('uuid');
     });
 
     it('targets the saved flow with every created and updated node', () => {

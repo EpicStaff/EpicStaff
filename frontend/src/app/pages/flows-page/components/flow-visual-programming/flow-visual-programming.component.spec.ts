@@ -807,6 +807,7 @@ describe('FlowVisualProgrammingComponent', () => {
             graph_note_list: [
                 {
                     id: 77,
+                    uuid: '00000000-0000-4000-8000-000000000077',
                     created_at: '2026-01-01T00:00:00Z',
                     node_name: 'Remote note',
                     graph: 1,

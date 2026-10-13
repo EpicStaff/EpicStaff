@@ -55,27 +55,6 @@ describe('buildFlowModelFromGraphDto', () => {
         }
     });
 
-    it('gives a legacy LLM node no uuid, since the backend has no such node', () => {
-        const flow = buildFlowModelFromGraphDto(
-            graph({
-                llm_node_list: [
-                    {
-                        id: 17,
-                        graph: 1,
-                        node_name: 'LLM',
-                        llm_config: 71,
-                        input_map: {},
-                        output_variable_path: null,
-                        metadata: {},
-                    },
-                ],
-            }),
-            []
-        );
-
-        expect(flow.nodes.find((node) => node.type === NodeType.LLM)!.nodeUuid).toBeNull();
-    });
-
     function blockedByBackendId(flow: FlowModel): Map<number | null, boolean | undefined> {
         return new Map(
             flow.nodes.filter((node) => node.type === NodeType.SUBGRAPH).map((node) => [node.backendId, node.isBlocked])
