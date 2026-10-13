@@ -38,7 +38,13 @@ zipp = "4.1.0"
 
 [[exception]]
 package = "certifi"
-services = ["sandbox", "knowledge_new"]
+services = ["django_app"]
+blocked_at = "2025.11.12"
+reason = "miniopy-async 1.23.5 requires certifi >=2025.1.31,<2026.0.0. Needs a miniopy-async upgrade. Moved from sandbox to django_app: sandbox no longer holds a MinIO admin client (finding #38's fix moved credential minting into django_app's storage_credentials app), so django_app is now the service that depends on miniopy-async."
+
+[[exception]]
+package = "certifi"
+services = ["knowledge_new"]
 blocked_at = "2025.11.12"
 reason = "miniopy-async 1.23.5 requires certifi >=2025.1.31,<2026.0.0. Needs a miniopy-async upgrade."
 

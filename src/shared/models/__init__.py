@@ -104,6 +104,10 @@ from .sessions import (
     TokenUsage,
     WebhookEventData,
 )
+from .storage_scope import (
+    StorageCredentials,
+    StorageScopedData,
+)
 from .surfaces import (
     CombinedSurfaceData,
     CombinedSurfaceKnowledgeData,
@@ -254,8 +258,10 @@ __all__ = [
     "SessionData",
     "StopSessionMessage",
     "StorageAccessLiteral",
+    "StorageCredentials",
     "StorageMutation",
     "StorageMutationEvent",
+    "StorageScopedData",
     "StringNestedVariable",
     "StringVariable",
     "SubGraphData",
