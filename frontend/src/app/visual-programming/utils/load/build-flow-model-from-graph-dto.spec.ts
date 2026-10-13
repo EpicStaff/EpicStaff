@@ -3,11 +3,13 @@ import { NodeType } from '@shared/models';
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { SubGraphNode } from '../../core/models/subgraph-node.model';
+import { LIVE_NODE_ID, LIVE_NODE_UUID, liveGraph } from '../testing/live-graph.fixture';
 import { buildFlowModelFromGraphDto } from './build-flow-model-from-graph-dto';
 
 function subgraphNode(id: number, subgraph: number | null): SubGraphNode {
     return {
         id,
+        uuid: `subgraph-node-uuid-${id}`,
         created_at: '2026-01-01T00:00:00Z',
         node_name: `Subflow #${id}`,
         graph: 1,
@@ -32,6 +34,25 @@ describe('buildFlowModelFromGraphDto', () => {
         const startNodes = flow.nodes.filter((node) => node.type === NodeType.START);
         expect(startNodes).toHaveLength(1);
         expect(startNodes[0].backendId).toBeNull();
+        expect(startNodes[0].nodeUuid).toEqual(expect.any(String));
+    });
+
+    it('gives a Start node it adds a new uuid on every load', () => {
+        const [first, second] = [buildFlowModelFromGraphDto(graph(), []), buildFlowModelFromGraphDto(graph(), [])].map(
+            (flow) => flow.nodes.find((node) => node.type === NodeType.START)!.nodeUuid
+        );
+
+        expect(first).not.toBe(second);
+    });
+
+    it('keeps the uuid the API returns for every node type', () => {
+        const flow = buildFlowModelFromGraphDto(liveGraph, [{ id: 99 }]);
+        const nodeUuidByBackendId = new Map(flow.nodes.map((node) => [node.backendId, node.nodeUuid]));
+
+        expect(flow.nodes).toHaveLength(Object.keys(LIVE_NODE_ID).length);
+        for (const [nodeKey, backendId] of Object.entries(LIVE_NODE_ID)) {
+            expect(nodeUuidByBackendId.get(backendId)).toBe(LIVE_NODE_UUID[nodeKey as keyof typeof LIVE_NODE_UUID]);
+        }
     });
 
     function blockedByBackendId(flow: FlowModel): Map<number | null, boolean | undefined> {

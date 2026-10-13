@@ -127,6 +127,7 @@ export class ClipboardService {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
+                nodeUuid: generateUuid(),
                 nodeNumber: nodeNumbers[index],
                 position: {
                     x: oldNode.position.x + offsetX,

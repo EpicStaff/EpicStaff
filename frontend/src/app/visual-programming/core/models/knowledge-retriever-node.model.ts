@@ -1,6 +1,8 @@
 import { AgentSearchConfigs, AuthorshipFields, GraphSearchMethod } from '@shared/models';
 
-export interface GetKnowledgeRetrieverNodeRequest extends AuthorshipFields {
+import { NodeIdentityDto } from './node-identity.model';
+
+export interface GetKnowledgeRetrieverNodeRequest extends AuthorshipFields, NodeIdentityDto {
     id: number;
     graph: number | null;
     source_collection: number | null;

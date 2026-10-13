@@ -9,6 +9,7 @@ import { buildBulkSavePayload } from './payload';
 
 const webhookDto: GetWebhookTriggerNodeRequest = {
     id: 21,
+    uuid: '00000000-0000-4000-8000-000000000021',
     graph: 1,
     node_name: 'Webhook Trigger #1',
     python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
@@ -27,6 +28,7 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
 
 const telegramDto: GetTelegramTriggerNodeRequest = {
     id: 22,
+    uuid: '00000000-0000-4000-8000-000000000022',
     graph: 1,
     node_name: 'Telegram Trigger #1',
     telegram_bot_api_key_secret_id: 9,

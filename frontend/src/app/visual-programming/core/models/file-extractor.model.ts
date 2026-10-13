@@ -1,6 +1,8 @@
 import { AuthorshipFields } from '@shared/models';
 
-export interface GetFileExtractorNodeRequest extends AuthorshipFields {
+import { NodeIdentityDto } from './node-identity.model';
+
+export interface GetFileExtractorNodeRequest extends AuthorshipFields, NodeIdentityDto {
     id: number;
     created_at: string;
     node_name: string;

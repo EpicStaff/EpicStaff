@@ -43,6 +43,26 @@ export const LIVE_NODE_ID = {
     keyValue: 16,
 } as const;
 
+/** Stable node uuids, as the backend returns them on every node. */
+export const LIVE_NODE_UUID = {
+    start: '00000000-0000-4000-8000-000000000001',
+    end: '00000000-0000-4000-8000-000000000002',
+    note: '00000000-0000-4000-8000-000000000003',
+    python: '00000000-0000-4000-8000-000000000004',
+    task: '00000000-0000-4000-8000-000000000005',
+    agent: '00000000-0000-4000-8000-000000000006',
+    fileExtractor: '00000000-0000-4000-8000-000000000007',
+    audio: '00000000-0000-4000-8000-000000000008',
+    subgraph: '00000000-0000-4000-8000-000000000009',
+    webhook: '00000000-0000-4000-8000-000000000010',
+    telegram: '00000000-0000-4000-8000-000000000011',
+    schedule: '00000000-0000-4000-8000-000000000012',
+    decisionTable: '00000000-0000-4000-8000-000000000013',
+    classificationTable: '00000000-0000-4000-8000-000000000014',
+    knowledge: '00000000-0000-4000-8000-000000000015',
+    keyValue: '00000000-0000-4000-8000-000000000016',
+} as const satisfies Record<keyof typeof LIVE_NODE_ID, string>;
+
 const ID = LIVE_NODE_ID;
 
 /** Id of the webhook trigger the webhook node references. */
@@ -70,6 +90,7 @@ const nodeBase = { metadata: {}, input_map: {}, output_variable_path: null };
 export const liveStart: StartNode = {
     ...authored,
     id: ID.start,
+    uuid: LIVE_NODE_UUID.start,
     created_at: persisted.created_at,
     graph: 1,
     node_name: '__start__',
@@ -79,6 +100,7 @@ export const liveStart: StartNode = {
 export const liveEnd: EndNode = {
     ...authored,
     id: ID.end,
+    uuid: LIVE_NODE_UUID.end,
     created_at: persisted.created_at,
     graph: 1,
     node_name: '__end_node__',
@@ -88,6 +110,7 @@ export const liveEnd: EndNode = {
 export const liveNote: GraphNote = {
     ...authored,
     id: ID.note,
+    uuid: LIVE_NODE_UUID.note,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Note',
@@ -98,6 +121,7 @@ export const livePython: PythonNode = {
     ...nodeBase,
     ...authored,
     id: ID.python,
+    uuid: LIVE_NODE_UUID.python,
     graph: 1,
     created_at: persisted.created_at,
     node_name: 'Python',
@@ -116,6 +140,7 @@ export const liveTask: TaskNode = {
     ...authored,
     ...persisted,
     id: ID.task,
+    uuid: LIVE_NODE_UUID.task,
     node_name: 'Task',
     instructions: 'Do it',
     output_schema: {},
@@ -134,6 +159,7 @@ export const liveAgent: AgentNode = {
     ...nodeBase,
     ...authored,
     id: ID.agent,
+    uuid: LIVE_NODE_UUID.agent,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Agent',
@@ -146,6 +172,7 @@ export const liveFileExtractor: GetFileExtractorNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.fileExtractor,
+    uuid: LIVE_NODE_UUID.fileExtractor,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Files',
@@ -154,6 +181,7 @@ export const liveAudio: GetAudioToTextNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.audio,
+    uuid: LIVE_NODE_UUID.audio,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Audio',
@@ -162,6 +190,7 @@ export const liveSubgraph: SubGraphNode = {
     ...nodeBase,
     ...authored,
     id: ID.subgraph,
+    uuid: LIVE_NODE_UUID.subgraph,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Sub',
@@ -171,6 +200,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.webhook,
+    uuid: LIVE_NODE_UUID.webhook,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Webhook',
@@ -183,6 +213,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
     id: ID.telegram,
+    uuid: LIVE_NODE_UUID.telegram,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Telegram',
@@ -196,6 +227,7 @@ const liveSchedule: GetScheduleTriggerNodeRequest = {
     ...persisted,
     ...authored,
     id: ID.schedule,
+    uuid: LIVE_NODE_UUID.schedule,
     node_name: 'Schedule',
     metadata: {},
     is_active: true,
@@ -213,6 +245,7 @@ const liveSchedule: GetScheduleTriggerNodeRequest = {
 export const liveDecisionTable: GetDecisionTableNodeRequest = {
     ...authored,
     id: ID.decisionTable,
+    uuid: LIVE_NODE_UUID.decisionTable,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Decide',
@@ -236,6 +269,7 @@ export const liveDecisionTable: GetDecisionTableNodeRequest = {
 export const liveClassificationTable: GetClassificationDecisionTableNodeRequest = {
     ...authored,
     id: ID.classificationTable,
+    uuid: LIVE_NODE_UUID.classificationTable,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Classify',
@@ -281,6 +315,7 @@ export const liveKnowledge: GetKnowledgeRetrieverNodeRequest = {
     ...authored,
     ...persisted,
     id: ID.knowledge,
+    uuid: LIVE_NODE_UUID.knowledge,
     node_name: 'Knowledge',
     source_collection: 5,
     search_configs: { naive: { search_limit: 3, similarity_threshold: 0.7, is_suggested: false } },
@@ -294,6 +329,7 @@ export const liveKeyValue: GetKeyValueNodeRequest = {
     ...nodeBase,
     ...authored,
     id: ID.keyValue,
+    uuid: LIVE_NODE_UUID.keyValue,
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Remember',

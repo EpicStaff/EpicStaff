@@ -20,6 +20,7 @@ from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.constants import NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.node_uuids import KeptNodeUuids
 from tables.import_export.registry import entity_registry
 from tables.import_export.serializers.graph import (
     EdgeImportSerializer,
@@ -208,6 +209,9 @@ class GraphStrategy(EntityImportExportStrategy):
             id_mapper,
             old_graph_id=old_id,
             user=kwargs.get("user"),
+            # Node uuids follow the flow: kept when the file replaces its flow in
+            # place, new for a flow created by this import.
+            keep_node_uuids=replaced_graph is not None,
         )
         if replaced_telegram_keys:
             self._restore_telegram_bot_keys(graph, replaced_telegram_keys)
@@ -331,6 +335,8 @@ class GraphStrategy(EntityImportExportStrategy):
         is_partial: bool = False,
         old_graph_id: int | None = None,
         user=None,
+        *,
+        keep_node_uuids: bool,
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
@@ -338,6 +344,15 @@ class GraphStrategy(EntityImportExportStrategy):
         node and is recorded as its last editor, and references that need a permission
         check (e.g. a key-value table) gate on it. `None` means there is no acting user,
         so nodes get no author and no last edit.
+
+        Args:
+            user: The acting user, handed to every node strategy so references that
+                need a permission check (e.g. a key-value table) can gate on it.
+                `None` means there is no acting user.
+            keep_node_uuids: Give each node the uuid it carries in `data` (restore,
+                in-place replace). When false, every node gets a new uuid, so the
+                same data can be added to a graph twice. See `KeptNodeUuids` for
+                the uuids that are not kept.
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -346,7 +361,13 @@ class GraphStrategy(EntityImportExportStrategy):
 
         # Pass 1: create all nodes and build the old→new node ID mapping
         created_nodes = self._create_nodes(
-            nodes_data, graph, node_mapper, id_mapper, old_graph_id, user
+            nodes_data,
+            graph,
+            node_mapper,
+            id_mapper,
+            old_graph_id,
+            user,
+            keep_node_uuids=keep_node_uuids,
         )
 
         # Pass 2: create edges with remapped node IDs,
@@ -383,6 +404,8 @@ class GraphStrategy(EntityImportExportStrategy):
         id_mapper: IDMapper,
         old_graph_id: int | None = None,
         user=None,
+        *,
+        keep_node_uuids: bool,
     ) -> list:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
@@ -390,6 +413,7 @@ class GraphStrategy(EntityImportExportStrategy):
         # (which could reuse an existing number). Each numbered node also gets its
         # assigned number written back into metadata["nodeNumber"].
         counter = self._max_node_number(graph)
+        kept_uuids = KeptNodeUuids(graph) if keep_node_uuids else None
         created_nodes = []
 
         for node_data in nodes_data:
@@ -398,6 +422,9 @@ class GraphStrategy(EntityImportExportStrategy):
             if node_type == "NoteNode":
                 node_type = "GraphNote"
             old_id = node_data.get("id")
+            # Taken out even when it is not kept, so a node serializer that one day
+            # accepts `uuid` cannot write it behind keep_node_uuids=False.
+            node_uuid = node_data.pop("uuid", None)
 
             # Old archives contain node types that no longer exist, and a type can
             # still be mapped while its strategy is gone — hence both checks.
@@ -438,6 +465,11 @@ class GraphStrategy(EntityImportExportStrategy):
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
+            if kept_uuids is not None and node:
+                kept_uuids.keep(node, node_uuid)
+
+        if kept_uuids is not None:
+            kept_uuids.save()
 
         return created_nodes
 

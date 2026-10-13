@@ -4,15 +4,21 @@ import time
 from abc import abstractmethod
 from collections.abc import Mapping
 from enum import Enum
-from typing import ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Self
+from uuid import UUID, uuid4
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.postgres.functions import RandomUUID
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
 from rbac.models.author import AuthorModel
 from rbac.models.last_edit import LastEditTrackedModel
+
+if TYPE_CHECKING:
+    # see NodeIdentityMixin.active_node_uuids()
+    from tables.models.graph_models import Graph
 
 
 class AbstractDefaultFillableModel(models.Model):
@@ -209,6 +215,76 @@ def soft_delete_consistency_constraint() -> models.CheckConstraint:
     )
 
 
+NODE_UUID_CONSTRAINT_SUFFIX = "_graph_uuid_unique"
+
+
+def node_uuid_unique_constraint() -> models.UniqueConstraint:
+    """
+    Reject two active nodes with the same uuid in one graph.
+
+    Call it in each concrete node model's own Meta.constraints (see
+    soft_delete_consistency_constraint). The columns are expressions, not
+    `fields=`: DRF would derive a UniqueTogetherValidator from `fields=` that
+    fails on partial updates (it reads is_soft_deleted from the request). So no
+    serializer guards this rule; code that accepts a client uuid must check it
+    against every node table of the graph.
+    """
+    return models.UniqueConstraint(
+        models.F("graph"),
+        models.F("uuid"),
+        condition=models.Q(is_soft_deleted=False),
+        name=f"%(app_label)s_%(class)s{NODE_UUID_CONSTRAINT_SUFFIX}",
+    )
+
+
+class NodeIdentityMixin(models.Model):
+    """
+    Stable identity of a flow node; unlike the primary key it survives a
+    restore or import. Not part of content_hash.
+
+    `default` sets the uuid for every ORM insert, `db_default` for inserts that
+    skip the column (raw SQL, an old release running during a deploy).
+    """
+
+    uuid = models.UUIDField(default=uuid4, db_default=RandomUUID(), editable=False)
+
+    class Meta:
+        abstract = True
+
+    @staticmethod
+    def get_node_models() -> tuple[type[models.Model], ...]:
+        """Return the concrete node models; their uuids share one namespace per graph."""
+        return tuple(model for model in apps.get_models() if issubclass(model, NodeIdentityMixin))
+
+    @staticmethod
+    def active_node_uuids(
+        graph: "Graph",
+        *,
+        among: set[UUID] | None = None,
+        excluded_ids_by_model: dict[type[models.Model], list[int]] | None = None,
+    ) -> set[UUID]:
+        """Return the uuids of the graph's active nodes, in one query over all node tables.
+
+        Soft-deleted rows are left out, like in the partial unique index.
+
+        Args:
+            among: Only look for these uuids.
+            excluded_ids_by_model: Node ids to leave out, per model.
+        """
+        excluded_ids_by_model = excluded_ids_by_model or {}
+        querysets = []
+        for model in NodeIdentityMixin.get_node_models():
+            queryset = model.objects.filter(graph=graph)
+            if among is not None:
+                queryset = queryset.filter(uuid__in=among)
+            excluded_ids = excluded_ids_by_model.get(model)
+            if excluded_ids:
+                queryset = queryset.exclude(id__in=excluded_ids)
+            querysets.append(queryset.values_list("uuid", flat=True))
+        first_queryset, *other_querysets = querysets
+        return set(first_queryset.union(*other_querysets, all=True))
+
+
 class SoftDeleteFields(models.Model):
     """
     Only the fields required for soft deletion. No delete() override —
@@ -305,7 +381,7 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata", "created_by"]
+        excluded_fields = ["id", "uuid", "created_at", "updated_at", "metadata", "created_by"]
 
         data = {
             f.name: str(getattr(self, f.name))

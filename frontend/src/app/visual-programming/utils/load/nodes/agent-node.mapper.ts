@@ -25,6 +25,7 @@ export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
     return {
         id: generateUuid(),
         backendId: an.id,
+        nodeUuid: an.uuid,
         type: NodeType.AGENT,
         node_name: an.node_name,
         nodeNumber: ui.nodeNumber,

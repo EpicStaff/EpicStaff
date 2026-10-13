@@ -18,6 +18,7 @@ export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
     return {
         id: generateUuid(),
         backendId: sn.id,
+        nodeUuid: sn.uuid,
         type: NodeType.SUBGRAPH,
         node_name: sn.node_name,
         nodeNumber: ui.nodeNumber,

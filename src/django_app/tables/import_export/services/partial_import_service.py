@@ -93,6 +93,8 @@ class PartialImportService:
                 id_mapper,
                 is_partial=True,
                 user=user,
+                # The same nodes can be pasted into one graph more than once.
+                keep_node_uuids=False,
             )
             # Only an added node edits the graph; every node can be skipped (unsupported
             # type), and new dependencies are rows of their own, not graph content.

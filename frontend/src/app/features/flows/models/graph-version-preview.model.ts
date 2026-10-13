@@ -55,12 +55,18 @@ export type SnapshotNodeType =
 
 type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at' | keyof AuthorshipFields;
 
-/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
-type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields> & {
-    node_type: TNodeType;
-};
+/** The node's stable uuid. Absent on nodes of versions saved before node uuids that the backend could not stamp. */
+interface SnapshotNodeIdentity {
+    uuid?: string;
+}
 
-interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
+/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
+type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields | 'uuid'> &
+    SnapshotNodeIdentity & {
+        node_type: TNodeType;
+    };
+
+interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> extends SnapshotNodeIdentity {
     id: number;
     node_type: TNodeType;
     node_name: string;

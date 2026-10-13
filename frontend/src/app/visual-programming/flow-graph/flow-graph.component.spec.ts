@@ -38,6 +38,7 @@ function noteNode(): GraphNoteModel {
     return {
         id: 'note-1',
         backendId: null,
+        nodeUuid: 'node-uuid-note-1',
         type: NodeType.NOTE,
         node_name: 'Note',
         data: { content: 'hello' },

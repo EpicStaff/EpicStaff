@@ -52,6 +52,7 @@ function registrationNode(
     return {
         id: 'telegram-1',
         backendId: 12,
+        nodeUuid: 'node-uuid-telegram-1',
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: 'Telegram Trigger #1',
         data: {
@@ -309,6 +310,7 @@ const MESSAGE_TEXT: TelegramTriggerNodeField = {
 function telegramNode(testPayload: Record<string, unknown> = {}): TelegramTriggerNodeModel {
     const dto: GetTelegramTriggerNodeRequest = {
         id: 31,
+        uuid: '00000000-0000-4000-8000-000000000031',
         graph: 1,
         node_name: 'Telegram Trigger #1',
         telegram_bot_api_key_secret_id: 7,

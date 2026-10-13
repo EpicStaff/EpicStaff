@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +28,8 @@ class BuildSaveableResult:
     error: dict | None = None
     inner_saveable: Any = None
     deferred_saveable: Any = None
+    # Client-sent uuid of a node being created; None on update or when omitted.
+    created_uuid: UUID | None = None
 
 
 @dataclass(slots=True)
@@ -37,6 +40,8 @@ class NodeListValidationResult:
     node_saveables: list = field(default_factory=list)
     deferred_saveables: list = field(default_factory=list)
     real_routing_node_ids: set[int] = field(default_factory=set)
+    # (payload index, uuid) of each node being created with a client-sent uuid.
+    created_uuids: list[tuple[int, UUID]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

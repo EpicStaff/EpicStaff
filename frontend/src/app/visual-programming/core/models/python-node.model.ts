@@ -1,6 +1,8 @@
 import { AuthorshipFields, GetPythonCodeRequest } from '@shared/models';
 
-export interface PythonNode extends AuthorshipFields {
+import { NodeIdentityDto } from './node-identity.model';
+
+export interface PythonNode extends AuthorshipFields, NodeIdentityDto {
     id: number;
     node_name: string;
     graph: number;

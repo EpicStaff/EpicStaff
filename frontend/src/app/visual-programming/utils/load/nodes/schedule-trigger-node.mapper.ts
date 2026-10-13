@@ -65,6 +65,7 @@ export function mapScheduleTriggerNodeToModel(dto: GetScheduleTriggerNodeRequest
     return {
         id: generateUuid(),
         backendId: dto.id,
+        nodeUuid: dto.uuid,
         type: NodeType.SCHEDULE_TRIGGER,
         node_name: dto.node_name,
         nodeNumber: ui.nodeNumber,

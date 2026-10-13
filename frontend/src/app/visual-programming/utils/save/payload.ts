@@ -294,11 +294,17 @@ export function buildBulkSavePayload(
     idMap: Map<string, number>,
     saveVersion: number
 ): Record<string, unknown> {
-    const nodeItems = <T extends { id: string; backendId: number | null }>(
+    // The node uuid is sent on create only: the backend keeps it immutable and rejects a changed one on update.
+    const nodeItems = <T extends { id: string; backendId: number | null; nodeUuid: string | null }>(
         diff: NodeDiff<T>,
         mapPayload: (node: T) => Record<string, unknown>
     ) => [
-        ...diff.toCreate.map((node) => ({ id: null, temp_id: node.id, ...mapPayload(node) })),
+        ...diff.toCreate.map((node) => ({
+            id: null,
+            temp_id: node.id,
+            ...(node.nodeUuid !== null ? { uuid: node.nodeUuid } : {}),
+            ...mapPayload(node),
+        })),
         ...diff.toUpdate.map(({ current: node }) => ({ id: node.backendId, ...mapPayload(node) })),
     ];
 
