@@ -4049,9 +4049,9 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-13T11:02:57Z UTC -->
-<!-- commit: 9239f901b94e226179b7df8e85a884fe488df0d0 -->
-<!-- lock-hashes: agent:1e776a36910d4c30, auditor:54c5e21e5f6f4d8b, crew:09e5560ef39695c8, django_app:6d31c93a9906cac0, knowledge_new:ea707068219286c3, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:8a9a40fc0b39d589, webhook:74291d202daa2b3f -->
+<!-- generated: 2026-10-13T11:22:39Z UTC -->
+<!-- commit: a87c382c83d8daded59af9394b683bfdab33fb29 -->
+<!-- lock-hashes: agent:1e776a36910d4c30, auditor:54c5e21e5f6f4d8b, crew:09e5560ef39695c8, django_app:95be92c6e3f380e0, knowledge_new:ea707068219286c3, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:8a9a40fc0b39d589, webhook:74291d202daa2b3f -->
 
 ## Backend (Python)
 
@@ -4064,8 +4064,8 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MIT | 75 |
 | MIT License | 71 |
 | Apache Software License | 28 |
-| BSD-3-Clause | 26 |
-| BSD License | 25 |
+| BSD-3-Clause | 27 |
+| BSD License | 24 |
 | Apache-2.0 | 21 |
 | BSD-2-Clause | 6 |
 | Apache Software License; MIT License | 4 |
@@ -4163,7 +4163,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `django-filter` | 24.3 | BSD License | Copyright (c) Alex Gaynor and individual contributors. |
 | `django-health-check` | 3.18.3 | MIT License | Copyright (C) 2011-2019 Kristian Øllegaard and contributors |
 | `django-redis` | 5.4.0 | BSD License | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
-| `djangorestframework` | 3.16.0 | BSD License | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
+| `djangorestframework` | 3.17.2 | BSD-3-Clause | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
 | `djangorestframework_simplejwt` | 5.4.0 | MIT License | Copyright 2017 David Sanders |
 | `dnspython` | 2.8.0 | ISC License (ISCL) | Copyright (C) Dnspython Contributors |
 | `docstring_parser` | 0.18.0 | MIT License | Copyright (c) 2018 Marcin Kurczewski |
@@ -9186,10 +9186,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### djangorestframework@3.16.0
+#### djangorestframework@3.17.2
 
-- **License:** BSD License
-- **Author:** Tom Christie
+- **License:** BSD-3-Clause
+- **Author:** Tom Christie <tom@tomchristie.com>
 
 <details><summary>License text</summary>
 
