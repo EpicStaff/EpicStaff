@@ -1,5 +1,5 @@
 # Developer case: payload flow only (no LLM), 100 sessions with 25 in flight.
-# The payload flow comes from benchmark/flows/payload.json, a UI export the developer adds
+# The payload flow comes from benchmark/flows/payload.json, the committed UI export, imported automatically
 # (see benchmark/README.md); --graph payload=<id> uses an existing flow instead.
 name = "dev-payload"
 kind = "dev"

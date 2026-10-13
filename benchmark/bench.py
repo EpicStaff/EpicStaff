@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """EpicStaff benchmark CLI. See benchmark/README.md.
 
-python benchmark/bench.py preflight cases/server.toml
-python benchmark/bench.py plan cases/server.toml
-python benchmark/bench.py run cases/server.toml --note "after the agent fix"
+python benchmark/bench.py preflight server --graph complex=<id>
+python benchmark/bench.py plan server --graph complex=<id>
+python benchmark/bench.py run server --graph complex=<id> --note "after the agent fix"
 python benchmark/bench.py dev --note "before fix"
 python benchmark/bench.py compare <run-folder> <run-folder> ...
 python benchmark/bench.py push <run-folder> ...
