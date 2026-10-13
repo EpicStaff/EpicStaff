@@ -134,6 +134,7 @@ def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode, user) -> W
         node_name=node.node_name,
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
+        use_storage=node.use_storage,
         metadata=node.metadata,
         test_payload=node.test_payload,
     )
