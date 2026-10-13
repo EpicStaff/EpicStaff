@@ -3,10 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../services/config/config.service';
-import {
-    CdtExplainRequest,
-    CdtExplainResponse,
-} from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-explain.model';
+import { CdtExplainRequest, CdtExplainResponse } from '../core/models/cdt-explain-api.model';
 
 /**
  * Plain-language explanations of Classification Decision Table steps.
@@ -17,9 +14,11 @@ import {
  *
  * Narrow on purpose — the decision-tree dialog is structurally unable to write to
  * the canvas, and injecting `HttpClient` there would give that guarantee away.
+ * Persisting what it generates is `CdtExplanationsApiService`, which only the page
+ * injects.
  */
 @Injectable({ providedIn: 'root' })
-export class CdtExplainService {
+export class CdtExplainApiService {
     private readonly http = inject(HttpClient);
     private readonly configService = inject(ConfigService);
 

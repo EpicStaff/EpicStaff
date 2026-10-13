@@ -36,7 +36,6 @@ interface CdtCodeRow {
  */
 @Component({
     selector: 'app-cdt-decision-tree-code',
-    standalone: true,
     templateUrl: './cdt-decision-tree-code.component.html',
     styleUrls: ['./cdt-decision-tree-code.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

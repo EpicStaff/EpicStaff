@@ -26,8 +26,7 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
  */
 @Component({
     selector: 'app-cdt-decision-tree-block',
-    standalone: true,
-    // The connector directives are not standalone in @foblex/flow 18.4.0, so they
+    // The connector directives are not standalone in @foblex/flow 19, so they
     // have to come in through the module rather than being imported directly.
     imports: [FFlowModule, MatTooltipModule, AppSvgIconComponent, Spinner2Component, CdtDecisionTreeShapeComponent],
     templateUrl: './cdt-decision-tree-block.component.html',
@@ -76,11 +75,6 @@ export class CdtDecisionTreeBlockComponent {
      */
     public readonly explaining = input<boolean>(false);
 
-    /** Undefined for the region outline, which is not a step and carries no glyph. */
-    protected readonly icon = computed<CdtTreeIcon | undefined>(() => ICON_BY_SHAPE[this.block().shape]);
-    protected readonly subtitleLines = CDT_TREE_SUBTITLE_CODE_LINES;
-    protected readonly copy = CDT_TREE_COPY;
-
     /**
      * Asks for this block's detail window.
      *
@@ -89,6 +83,11 @@ export class CdtDecisionTreeBlockComponent {
      * `@for` it was rendered in.
      */
     public readonly detailRequested = output<void>();
+
+    /** Undefined for the region outline, which is not a step and carries no glyph. */
+    protected readonly icon = computed<CdtTreeIcon | undefined>(() => ICON_BY_SHAPE[this.block().shape]);
+    protected readonly subtitleLines = CDT_TREE_SUBTITLE_CODE_LINES;
+    protected readonly copy = CDT_TREE_COPY;
 
     protected onActivate(): void {
         if (this.block().clickable) {

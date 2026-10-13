@@ -78,12 +78,16 @@ function isPageShortcut(event: CdtTreeKeyEvent): boolean {
         return false;
     }
 
-    // `KeyF` is `NodesSearchComponent`'s `document:keydown` handler, which opens
-    // the canvas node search and guards nothing at all.
+    // Matched the way each page listener matches, so a non-QWERTY layout cannot
+    // slip past: `ShortcutListenerDirective` opens the shortcuts dialog on the
+    // `Slash` key or a `/` character, and `NodesSearchComponent`'s
+    // `document:keydown` handler opens the canvas node search on an `f` character
+    // and guards nothing at all.
     return (
         event.code === 'KeyS' ||
         event.code === 'Slash' ||
-        event.code === 'KeyF' ||
+        event.key === '/' ||
+        event.key === 'f' ||
         PAGE_MODIFIER_KEYS.has(event.key.toLowerCase())
     );
 }

@@ -116,6 +116,9 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     return a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
 }
 
+/** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
+const CONNECTION_REFUSED_TOAST_MS = 5000;
+
 @Component({
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
@@ -644,7 +647,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const targetPortId = isSourceMoved ? conn.targetPortId : nextPortId;
             const error = this.getReassignError(sourcePortId, targetPortId, [...occupied, ...updated]);
             if (error) {
-                this.toastService.warning(error, 5000, 'bottom-right');
+                this.toastService.warning(error, CONNECTION_REFUSED_TOAST_MS, 'bottom-right');
                 return;
             }
             updated.push(
@@ -745,7 +748,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         if (this.isRoutePortBlockedByContinue(pair.sourcePortId)) {
-            this.toastService.warning(CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue, 4000, 'bottom-right');
+            this.toastService.warning(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                CONNECTION_REFUSED_TOAST_MS,
+                'bottom-right'
+            );
             return;
         }
 

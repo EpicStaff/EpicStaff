@@ -19,12 +19,15 @@ export class SidePanelService {
     public readonly saveNodeRequest$: Observable<NodeModel> = this.saveNodeRequestSubject.asObservable();
 
     /**
-     * Unattended saves of a single node, debounced and serialised by the page.
+     * Ids of Classification Decision Table nodes whose explanations changed and
+     * should be persisted — only the explanations, never the rest of the node. The
+     * page debounces these per node and runs them through its save queue.
      * Separate from `saveNodeRequest$`, a button press that reports its outcome:
      * this one can fire dozens of times in a burst and must stay quiet.
      */
-    private readonly autosaveNodeRequestSubject = new Subject<NodeModel>();
-    public readonly autosaveNodeRequest$: Observable<NodeModel> = this.autosaveNodeRequestSubject.asObservable();
+    private readonly cdtExplanationsSaveRequestSubject = new Subject<string>();
+    public readonly cdtExplanationsSaveRequest$: Observable<string> =
+        this.cdtExplanationsSaveRequestSubject.asObservable();
 
     private readonly graphSavedSubject = new Subject<void>();
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
@@ -98,8 +101,8 @@ export class SidePanelService {
         this.saveNodeRequestSubject.next(node);
     }
 
-    public requestNodeAutosave(node: NodeModel): void {
-        this.autosaveNodeRequestSubject.next(node);
+    public requestCdtExplanationsSave(nodeId: string): void {
+        this.cdtExplanationsSaveRequestSubject.next(nodeId);
     }
 
     public notifyGraphSaved(): void {

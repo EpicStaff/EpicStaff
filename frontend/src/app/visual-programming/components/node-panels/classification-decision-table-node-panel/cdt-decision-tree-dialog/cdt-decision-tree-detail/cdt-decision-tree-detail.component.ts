@@ -42,7 +42,6 @@ const AT_END_CLASS = 'cdt-tree-detail__body--at-end';
  */
 @Component({
     selector: 'app-cdt-decision-tree-detail',
-    standalone: true,
     imports: [AppSvgIconComponent, CopyButtonComponent, MatTooltipModule, CdtDecisionTreeCodeComponent],
     templateUrl: './cdt-decision-tree-detail.component.html',
     styleUrls: ['./cdt-decision-tree-detail.component.scss'],

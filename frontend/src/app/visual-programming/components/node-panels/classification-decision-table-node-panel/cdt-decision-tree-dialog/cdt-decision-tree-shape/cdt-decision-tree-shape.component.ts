@@ -12,7 +12,6 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
  */
 @Component({
     selector: 'app-cdt-decision-tree-shape',
-    standalone: true,
     template: `
         <svg
             class="cdt-shape"

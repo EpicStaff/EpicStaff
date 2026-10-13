@@ -50,13 +50,21 @@ export function ensureMonacoLoaded(): Promise<void> {
         return Promise.resolve();
     }
 
-    monacoLoadPromise = new Promise<void>((resolve) => {
+    // Set when this attempt gave up. It can do so synchronously, inside the
+    // executor (a throwing `require.config`, an errback the AMD loader calls at
+    // once) — before `attempt` is cached below — so the cache is written only if
+    // the attempt is still live, and cleared only if it is still this attempt.
+    let hasGivenUp = false;
+    let attempt: Promise<void> | null = null;
+    attempt = new Promise<void>((resolve) => {
         const win = window as unknown as MonacoWindow;
 
         /** Give up on this attempt, and let the next caller start a fresh one. */
         const giveUp = (): void => {
+            if (hasGivenUp) return;
+            hasGivenUp = true;
             failedAttempts += 1;
-            monacoLoadPromise = null;
+            if (monacoLoadPromise === attempt) monacoLoadPromise = null;
             resolve();
         };
 
@@ -97,5 +105,6 @@ export function ensureMonacoLoaded(): Promise<void> {
         document.head.appendChild(script);
     });
 
-    return monacoLoadPromise;
+    if (!hasGivenUp) monacoLoadPromise = attempt;
+    return attempt;
 }

@@ -21,7 +21,9 @@ import { CheckboxComponent } from '@shared/components';
 import { concatMap, from, map, Subject, takeUntil } from 'rxjs';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CdtExplainService } from '../../../../services/cdt-explain.service';
+import { CdtExplainBlock, CdtExplainResponse } from '../../../../core/models/cdt-explain-api.model';
+import { CdtExplanation } from '../../../../core/models/classification-decision-table.model';
+import { CdtExplainApiService } from '../../../../services/cdt-explain-api.service';
 import { CdtExplanationStoreService } from '../../../../services/cdt-explanation-store.service';
 import { filterByQuery } from '../cdt-search-filter.util';
 import { OverlayMenuController } from '../classification-decision-table-grid/shared/overlay-menu.util';
@@ -41,26 +43,15 @@ import { CdtDecisionTreeDetailComponent } from './cdt-decision-tree-detail/cdt-d
 import { resolveTreeKeyAction } from './cdt-decision-tree-keyboard.util';
 import { CdtDecisionTreeSearchComponent } from './cdt-decision-tree-search/cdt-decision-tree-search.component';
 import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-decision-tree-shape.component';
-import { buildExplainStepKeys, explainStepFingerprint } from './cdt-explain.identity';
-import { CdtExplainBlock, CdtExplainResponse, CdtExplanationState } from './cdt-explain.model';
+import { buildExplainStepKeys, buildRetainedExplainStepKeys, explainStepFingerprint } from './cdt-explain.identity';
+import { CdtExplanationState } from './cdt-explain.model';
 import {
     buildCdtExplainBlocks,
     buildCdtExplainTable,
     chunkExplainBlocks,
     resolveExplainLlmConfig,
 } from './cdt-explain.payload';
-
-/**
- * Keyed on the backend's error codes, not the status. Neither is handled by an
- * interceptor: `forbidden` covers 403 and `validation-errors` only annotates 4xx.
- */
-function explainErrorMessage(error: HttpErrorResponse): string {
-    const code: unknown = (error.error as { code?: unknown } | null)?.code;
-
-    if (code === 'cdt_explain_llm_config_not_found') return CDT_TREE_COPY.explainModelGone;
-    if (code === 'cdt_explain_upstream_failed') return CDT_TREE_COPY.explainUpstreamFailed;
-    return CDT_TREE_COPY.explainFailed;
-}
+import { explainErrorMessage } from './cdt-explain-error.util';
 
 /**
  * Read-only flowchart of a Classification Decision Table node.
@@ -71,12 +62,11 @@ function explainErrorMessage(error: HttpErrorResponse): string {
  * connection or edit a table.
  *
  * The one thing it writes is an explanation, only through
- * `CdtExplanationStoreService`. That write lands on the node's metadata and marks
- * the canvas dirty — see the store for why that trade is intended.
+ * `CdtExplanationStoreService`. That write lands on the node's metadata and is
+ * persisted on its own, without the table — see the store.
  */
 @Component({
     selector: 'app-cdt-decision-tree-dialog',
-    standalone: true,
     imports: [
         FFlowModule,
         FZoomDirective,
@@ -92,20 +82,13 @@ function explainErrorMessage(error: HttpErrorResponse): string {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeDialogComponent {
-    private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
+    /**
+     * The snapshot the dialog draws. First, out of the usual member order: the state
+     * and template-bound fields below are initialised from it.
+     */
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
 
-    /**
-     * The search panel's overlay. Mutually exclusive with the model picker only
-     * because `openSearch` and `openExplainMenu` stand each other down — both
-     * hang off the toolbar, so nothing structural separates them.
-     */
-    private readonly searchCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
-    /** The model picker's overlay. One controller holds one pane, hence two. */
-    private readonly explainMenuCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
-    private readonly destroyRef = inject(DestroyRef);
-    private readonly injector = inject(Injector);
-    private readonly explainService = inject(CdtExplainService);
+    // -- view queries --------------------------------------------------------
 
     private readonly fCanvas = viewChild(FCanvasComponent);
     private readonly fZoom = viewChild(FZoomDirective);
@@ -116,64 +99,7 @@ export class CdtDecisionTreeDialogComponent {
     private readonly searchTpl = viewChild.required<TemplateRef<unknown>>('searchTpl');
     private readonly explainMenuTpl = viewChild.required<TemplateRef<unknown>>('explainMenuTpl');
 
-    /** Built once: the dialog holds a snapshot and never re-layouts. */
-    protected readonly layout = layoutCdtDecisionTree(buildCdtDecisionTree(this.data));
-
-    /**
-     * Every explainable step, keyed by block id. Built once from the same snapshot
-     * as `layout`. Not every clickable block is here — a prompt block whose config
-     * is missing has nothing to explain.
-     */
-    private readonly explainBlocks = buildCdtExplainBlocks(this.data);
-    private readonly explainTable = buildCdtExplainTable(this.data);
-
-    /**
-     * Block id → the identity its explanation is filed under, and → what the step
-     * currently looks like. Fixed for a sitting: the snapshot cannot change.
-     */
-    private readonly explainStepKeys = buildExplainStepKeys(this.data);
-
-    private readonly explainFingerprints = new Map<string, string>(
-        [...this.explainBlocks].map(([id, block]) => [id, explainStepFingerprint(block)])
-    );
-
-    /**
-     * Declared after the keys above because it is handed the set of them, which is
-     * what tells the store which entries on the node are still real.
-     */
-    private readonly explanationStore = inject(CdtExplanationStoreService).forNode({
-        nodeId: this.data.nodeId,
-        backendId: this.data.backendId,
-        liveStepKeys: new Set(this.explainStepKeys.values()),
-    });
-
-    protected readonly legend = CDT_TREE_LEGEND;
-    protected readonly copy = CDT_TREE_COPY;
-
-    /**
-     * Whether Explain is offered at all. Generating writes to the node and saves it,
-     * so a read-only editor gets the stored explanations and nothing to press.
-     */
-    protected readonly canExplain = !this.data.readOnly;
-
-    /** The same icons the canvas blocks carry, so a legend entry is its block. */
-    protected readonly iconByShape = ICON_BY_SHAPE;
-
-    protected readonly eMarkerType = EFMarkerType;
-
-    /**
-     * How far an edge runs straight out of a connector before it may turn.
-     *
-     * The layout places the exit columns using the same number, so the drop into
-     * them is one straight line rather than a step.
-     */
-    protected readonly edgeOffset = CDT_TREE_EDGE_OFFSET;
-
-    /** Perpendicular shift that lifts an edge label off its own line. */
-    protected readonly edgeLabelOffset = CDT_TREE_EDGE_LABEL_OFFSET;
-
-    /** `fDraggable` is present only so the canvas can be panned. */
-    protected readonly canvasMoveTrigger = (): boolean => true;
+    // -- state ---------------------------------------------------------------
 
     /**
      * Edges are added one pass after the blocks.
@@ -210,37 +136,15 @@ export class CdtDecisionTreeDialogComponent {
 
     /**
      * Every explanation this dialog knows about, keyed by step identity. Seeded
-     * from the node on open and the source of truth from then on — the canvas
-     * reads it for every block's marker, so it has to be a signal.
+     * from the node on open (in the constructor, once the store scope exists) and
+     * the source of truth from then on — the canvas reads it for every block's
+     * marker, so it has to be a signal.
      *
      * Not in the detail window: that instance survives a switch between blocks —
      * the `@if` stays true and only its input changes — so state kept there would
      * show block A's text under block B's heading.
      */
-    private readonly explanations = signal<ReadonlyMap<string, CdtExplanationState>>(this.seedFromStore());
-
-    /**
-     * The model is not part of the key: a step has one explanation, and which model
-     * wrote it is reported by `Generated by:`. Keying by model would also make the
-     * canvas marker ambiguous — current for one model, stale for another.
-     */
-    private seedFromStore(): ReadonlyMap<string, CdtExplanationState> {
-        const seeded = new Map<string, CdtExplanationState>();
-
-        for (const stepKey of new Set(this.explainStepKeys.values())) {
-            const remembered = this.explanationStore.get(stepKey);
-            if (remembered) {
-                seeded.set(stepKey, {
-                    status: 'ready',
-                    text: remembered.text,
-                    generatedBy: remembered.generatedBy,
-                    fingerprint: remembered.fingerprint,
-                });
-            }
-        }
-
-        return seeded;
-    }
+    private readonly explanations = signal<ReadonlyMap<string, CdtExplanationState>>(new Map());
 
     /**
      * Which LLM writes the explanations this sitting. Seeded from what is already
@@ -249,16 +153,8 @@ export class CdtDecisionTreeDialogComponent {
      */
     protected readonly explainLlmConfig = signal<number | null>(resolveExplainLlmConfig(this.data));
 
-    protected readonly explainLlmOptions = this.data.llmConfigOptions;
-
     /** Which button opened the picker: its footer checkbox is Explain All's only. */
     protected readonly explainMenuScope = signal<'step' | 'all'>('step');
-
-    /**
-     * Tracked because both chevrons share one controller: `open` no-ops while a pane
-     * is attached, so without it the second chevron would only close the menu.
-     */
-    private explainMenuAnchor: HTMLElement | null = null;
 
     /** Restricts an Explain All pass to steps whose text has gone stale. */
     protected readonly explainOutdatedOnly = signal(false);
@@ -271,9 +167,6 @@ export class CdtDecisionTreeDialogComponent {
     protected readonly explainAllNotice = signal<string | null>(null);
 
     protected readonly explainAllRunning = computed(() => this.explainAllTotal() > 0);
-
-    /** Cancels an in-flight pass without tearing the dialog down. */
-    private readonly explainAllStopped = new Subject<void>();
 
     /**
      * Which block the detail window is showing. An id rather than the block, so a
@@ -314,40 +207,104 @@ export class CdtDecisionTreeDialogComponent {
     /** Whether the open block's explanation was written for an older version of it. */
     protected readonly selectedOutdated = computed(() => this.isOutdated(this.selectedBlockId()));
 
-    private explanationOf(blockId: string | null): CdtExplanationState | null {
-        const stepKey = blockId ? this.explainStepKeys.get(blockId) : undefined;
-        return stepKey ? (this.explanations().get(stepKey) ?? null) : null;
-    }
-
-    /**
-     * Whether this step is waiting on the endpoint right now.
-     *
-     * `explainAll` moves every step it is about to ask about into `loading` in one
-     * go, so during a pass this is true well before that step's own chunk is sent —
-     * which is the point: the canvas shows the whole set as pending, not a cursor
-     * crawling down it.
-     */
-    protected isExplaining(blockId: string | null): boolean {
-        return this.explanationOf(blockId)?.status === 'loading';
-    }
-
-    /** Outdated = has an explanation whose fingerprint no longer matches the step. */
-    protected isOutdated(blockId: string | null): boolean {
-        if (!blockId) return false;
-
-        const state = this.explanationOf(blockId);
-        if (state?.status !== 'ready') return false;
-
-        return state.fingerprint !== this.explainFingerprints.get(blockId);
-    }
-
     /** Whether the open block is one the endpoint can be asked about at all. */
     protected readonly canExplainSelected = computed(() => {
         const id = this.selectedBlockId();
         return !!id && this.explainBlocks.has(id);
     });
 
+    // -- template-bound ------------------------------------------------------
+
+    /** Built once: the dialog holds a snapshot and never re-layouts. */
+    protected readonly layout = layoutCdtDecisionTree(buildCdtDecisionTree(this.data));
+
+    protected readonly legend = CDT_TREE_LEGEND;
+    protected readonly copy = CDT_TREE_COPY;
+
+    /**
+     * Whether Explain is offered at all. Generating writes to the node and persists
+     * its explanations, so a read-only editor gets the stored explanations and
+     * nothing to press.
+     */
+    protected readonly canExplain = !this.data.readOnly;
+
+    protected readonly explainLlmOptions = this.data.llmConfigOptions;
+
+    /** The same icons the canvas blocks carry, so a legend entry is its block. */
+    protected readonly iconByShape = ICON_BY_SHAPE;
+
+    protected readonly eMarkerType = EFMarkerType;
+
+    /**
+     * How far an edge runs straight out of a connector before it may turn.
+     *
+     * The layout places the exit columns using the same number, so the drop into
+     * them is one straight line rather than a step.
+     */
+    protected readonly edgeOffset = CDT_TREE_EDGE_OFFSET;
+
+    /** Perpendicular shift that lifts an edge label off its own line. */
+    protected readonly edgeLabelOffset = CDT_TREE_EDGE_LABEL_OFFSET;
+
+    /** `fDraggable` is present only so the canvas can be panned. */
+    protected readonly canvasMoveTrigger = (): boolean => true;
+
+    // -- private fields ------------------------------------------------------
+
+    private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private readonly explainService = inject(CdtExplainApiService);
+
+    /**
+     * The search panel's overlay. Mutually exclusive with the model picker only
+     * because `openSearch` and `openExplainMenu` stand each other down — both
+     * hang off the toolbar, so nothing structural separates them.
+     */
+    private readonly searchCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
+    /** The model picker's overlay. One controller holds one pane, hence two. */
+    private readonly explainMenuCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
+
+    /**
+     * Every explainable step, keyed by block id. Built once from the same snapshot
+     * as `layout`. Not every clickable block is here — a prompt block whose config
+     * is missing has nothing to explain.
+     */
+    private readonly explainBlocks = buildCdtExplainBlocks(this.data);
+    private readonly explainTable = buildCdtExplainTable(this.data);
+
+    /**
+     * Block id → the identity its explanation is filed under, and → what the step
+     * currently looks like. Fixed for a sitting: the snapshot cannot change.
+     */
+    private readonly explainStepKeys = buildExplainStepKeys(this.data);
+
+    private readonly explainFingerprints = new Map<string, string>(
+        [...this.explainBlocks].map(([id, block]) => [id, explainStepFingerprint(block)])
+    );
+
+    /**
+     * Handed every key the table's rules — hidden ones included — can be filed
+     * under, which is what tells the store which entries on the node are still real.
+     */
+    private readonly explanationStore = inject(CdtExplanationStoreService).forNode({
+        nodeId: this.data.nodeId,
+        backendId: this.data.backendId,
+        retainedStepKeys: buildRetainedExplainStepKeys(this.data),
+    });
+
+    /**
+     * Tracked because both chevrons share one controller: `open` no-ops while a pane
+     * is attached, so without it the second chevron would only close the menu.
+     */
+    private explainMenuAnchor: HTMLElement | null = null;
+
+    /** Cancels an in-flight pass without tearing the dialog down. */
+    private readonly explainAllStopped = new Subject<void>();
+
     constructor() {
+        this.explanations.set(this.seedFromStore());
+
         // The dialog is opened with `disableClose`, so CDK closes it for neither
         // the backdrop nor Escape — both are ours to handle.
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
@@ -393,34 +350,6 @@ export class CdtDecisionTreeDialogComponent {
         this.zoomPercent.set(Math.round(event.scale * 100));
     }
 
-    /** Centre a block, and open its window if it is one the design lets you open. */
-    private revealBlock(blockId: string): void {
-        this.focusBlock(blockId);
-        this.openDetailFor(blockId);
-    }
-
-    private focusBlock(blockId: string): void {
-        const canvas = this.fCanvas();
-        if (!canvas) return;
-
-        if (canvas.getScale() < 1) {
-            canvas.resetScaleAndCenterGroupOrNode(blockId, true);
-        } else {
-            canvas.centerGroupOrNode(blockId, true);
-        }
-    }
-
-    /**
-     * Point the window at a block, or shut it if that block is not openable — the
-     * search offers the terminators too, and a stale window would describe the
-     * previously picked block while the canvas centred on this one.
-     */
-    private openDetailFor(blockId: string): void {
-        const block = this.layout.blocks.find((entry) => entry.id === blockId);
-        // `clickable` already folds in "has something to show" — see the builder.
-        this.selectedBlockId.set(block?.clickable ? blockId : null);
-    }
-
     protected zoomIn(): void {
         this.fZoom()?.zoomIn();
     }
@@ -435,6 +364,28 @@ export class CdtDecisionTreeDialogComponent {
 
     protected fit(): void {
         this.fCanvas()?.fitToScreen(CDT_TREE_FIT_PADDING, true);
+    }
+
+    /**
+     * Whether this step is waiting on the endpoint right now.
+     *
+     * `explainAll` moves every step it is about to ask about into `loading` in one
+     * go, so during a pass this is true well before that step's own chunk is sent —
+     * which is the point: the canvas shows the whole set as pending, not a cursor
+     * crawling down it.
+     */
+    protected isExplaining(blockId: string | null): boolean {
+        return this.explanationOf(blockId)?.status === 'loading';
+    }
+
+    /** Outdated = has an explanation whose fingerprint no longer matches the step. */
+    protected isOutdated(blockId: string | null): boolean {
+        if (!blockId) return false;
+
+        const state = this.explanationOf(blockId);
+        if (state?.status !== 'ready') return false;
+
+        return state.fingerprint !== this.explainFingerprints.get(blockId);
     }
 
     // -- search --------------------------------------------------------------
@@ -488,11 +439,6 @@ export class CdtDecisionTreeDialogComponent {
         // this, focus falls to `<body>`, outside the dialog's focus trap, and the
         // next Tab lands on the flow page behind the modal.
         this.searchToggle()?.nativeElement.focus();
-    }
-
-    private focusAndOpenSearch(): void {
-        this.searchInput()?.nativeElement.focus();
-        this.openSearch();
     }
 
     protected openSearch(): void {
@@ -586,11 +532,6 @@ export class CdtDecisionTreeDialogComponent {
         return this.selectedBlockId() === blockId;
     }
 
-    private revealActiveMatch(): void {
-        const id = this.matchIds()[this.activeMatch()];
-        if (id) this.focusBlock(id);
-    }
-
     // -- detail window -------------------------------------------------------
 
     /** Clicking a second block swaps the open window's contents rather than reopening it. */
@@ -659,18 +600,12 @@ export class CdtDecisionTreeDialogComponent {
         const block = this.explainBlocks.get(blockId);
         if (!block) return;
 
-        const backendId = this.data.backendId;
-        if (backendId == null) {
-            this.refuseExplain(blockId, CDT_TREE_COPY.explainUnsaved);
+        const target = this.explainTarget();
+        if ('refusal' in target) {
+            this.refuseExplain(blockId, target.refusal);
             return;
         }
-
-        // Null only when neither the table nor any of its prompts names a model.
-        const llmConfig = this.explainLlmConfig();
-        if (llmConfig == null) {
-            this.refuseExplain(blockId, CDT_TREE_COPY.explainNoModel);
-            return;
-        }
+        const { backendId, llmConfig } = target;
 
         const stepKey = this.explainStepKeys.get(blockId);
         if (!stepKey) return;
@@ -700,17 +635,12 @@ export class CdtDecisionTreeDialogComponent {
         this.explainAllNotice.set(null);
         this.explainAllFailed.set(0);
 
-        const backendId = this.data.backendId;
-        if (backendId == null) {
-            this.explainAllNotice.set(CDT_TREE_COPY.explainUnsaved);
+        const target = this.explainTarget();
+        if ('refusal' in target) {
+            this.explainAllNotice.set(target.refusal);
             return;
         }
-
-        const llmConfig = this.explainLlmConfig();
-        if (llmConfig == null) {
-            this.explainAllNotice.set(CDT_TREE_COPY.explainNoModel);
-            return;
-        }
+        const { backendId, llmConfig } = target;
 
         const outdatedOnly = this.explainOutdatedOnly();
         const blocks = this.blocksNeedingExplanation(outdatedOnly);
@@ -754,12 +684,14 @@ export class CdtDecisionTreeDialogComponent {
             .subscribe({
                 // Per chunk, so a pass that dies halfway keeps its work.
                 next: ({ response, ids }) => {
-                    this.applyExplanations(response, ids);
-                    this.explainAllDone.update((done) => done + response.explanations.length);
-                    this.explainAllFailed.update((failed) => failed + response.failures.length);
+                    const tooLarge = this.applyExplanations(response, ids);
+                    this.explainAllDone.update((done) => done + response.explanations.length - tooLarge);
+                    this.explainAllFailed.update((failed) => failed + response.failures.length + tooLarge);
                 },
-                error: () => {
-                    this.explainAllNotice.set(CDT_TREE_COPY.explainFailed);
+                // The same reading of the error as Explain Step, so a missing model is
+                // named as such here too rather than as a generic failure.
+                error: (error: HttpErrorResponse) => {
+                    this.explainAllNotice.set(explainErrorMessage(error));
                     this.finishExplainAll();
                 },
                 complete: () => this.finishExplainAll(),
@@ -773,6 +705,77 @@ export class CdtDecisionTreeDialogComponent {
     protected stopExplainAll(): void {
         this.explainAllStopped.next();
         this.finishExplainAll();
+    }
+
+    protected closeDetail(): void {
+        this.selectedBlockId.set(null);
+    }
+
+    /**
+     * Re-centre the selected block once the window has finished sliding: opening it
+     * narrows the canvas and can push the just-clicked block out of view. Fitting
+     * the diagram instead would throw away the zoom the user arrived with.
+     *
+     * `animationend` bubbles, so an animation inside the window would land here
+     * too — hence the target check. On the way out there is nothing selected, so
+     * the slide-out falls through it harmlessly.
+     */
+    protected onDetailSettled(event: AnimationEvent): void {
+        if (event.target !== event.currentTarget) return;
+
+        const id = this.selectedBlockId();
+        if (id) this.fCanvas()?.centerGroupOrNode(id, true);
+    }
+
+    protected close(): void {
+        this.dialogRef.close();
+    }
+
+    // -- private: explanations -----------------------------------------------
+
+    /**
+     * The model is not part of the key: a step has one explanation, and which model
+     * wrote it is reported by `Generated by:`. Keying by model would also make the
+     * canvas marker ambiguous — current for one model, stale for another.
+     */
+    private seedFromStore(): ReadonlyMap<string, CdtExplanationState> {
+        const seeded = new Map<string, CdtExplanationState>();
+
+        for (const stepKey of new Set(this.explainStepKeys.values())) {
+            const remembered = this.explanationStore.get(stepKey);
+            if (remembered) {
+                seeded.set(stepKey, {
+                    status: 'ready',
+                    text: remembered.text,
+                    generatedBy: remembered.generatedBy,
+                    fingerprint: remembered.fingerprint,
+                });
+            }
+        }
+
+        return seeded;
+    }
+
+    /**
+     * The table and model a request is made for, or why none can be. Shared by
+     * Explain Step and Explain All, so both refuse with the same sentence.
+     */
+    private explainTarget(): { backendId: number; llmConfig: number } | { refusal: string } {
+        const backendId = this.data.backendId;
+        if (backendId == null) return { refusal: CDT_TREE_COPY.explainUnsaved };
+
+        // Null only when neither the table nor any of its prompts names a model.
+        // A model without a key is not refused here: a keyless provider needs none,
+        // and the endpoint says so (`cdt_explain_llm_config_missing_key`) when it did.
+        const llmConfig = this.explainLlmConfig();
+        if (llmConfig == null) return { refusal: CDT_TREE_COPY.explainNoModel };
+
+        return { backendId, llmConfig };
+    }
+
+    private explanationOf(blockId: string | null): CdtExplanationState | null {
+        const stepKey = blockId ? this.explainStepKeys.get(blockId) : undefined;
+        return stepKey ? (this.explanations().get(stepKey) ?? null) : null;
     }
 
     private finishExplainAll(): void {
@@ -832,27 +835,37 @@ export class CdtDecisionTreeDialogComponent {
      * Filed under the id the response carries, never under the open block: the user
      * can switch blocks mid-flight. The fingerprint stored beside the text is the
      * step's current one, which is what puts the marker out on arrival.
+     *
+     * The store writes are made first, outside the signal updater, which only computes
+     * the next map. One the store cannot keep — past the storage limits — shows as an
+     * error rather than as text that would read as saved and be gone on reopen.
+     *
+     * Returns how many explanations were refused that way.
      */
-    private applyExplanations(response: CdtExplainResponse, requestedIds: readonly string[]): void {
+    private applyExplanations(response: CdtExplainResponse, requestedIds: readonly string[]): number {
+        const toStore: [string, CdtExplanation][] = [];
+        for (const item of response.explanations) {
+            const stepKey = this.explainStepKeys.get(item.id);
+            const fingerprint = this.explainFingerprints.get(item.id);
+            if (!stepKey || !fingerprint) continue;
+            toStore.push([stepKey, { text: item.text, generatedBy: item.generated_by, fingerprint }]);
+        }
+
+        const tooLarge = new Set<string>();
+        for (const [stepKey, explanation] of toStore) {
+            if (!this.explanationStore.set(stepKey, explanation)) tooLarge.add(stepKey);
+        }
+
         this.explanations.update((current) => {
             const next = new Map(current);
 
-            for (const item of response.explanations) {
-                const stepKey = this.explainStepKeys.get(item.id);
-                const fingerprint = this.explainFingerprints.get(item.id);
-                if (!stepKey || !fingerprint) continue;
-
-                next.set(stepKey, {
-                    status: 'ready',
-                    text: item.text,
-                    generatedBy: item.generated_by,
-                    fingerprint,
-                });
-                this.explanationStore.set(stepKey, {
-                    text: item.text,
-                    generatedBy: item.generated_by,
-                    fingerprint,
-                });
+            for (const [stepKey, explanation] of toStore) {
+                next.set(
+                    stepKey,
+                    tooLarge.has(stepKey)
+                        ? { status: 'error', message: CDT_TREE_COPY.explanationTooLarge }
+                        : { status: 'ready', ...explanation }
+                );
             }
 
             // A refusal answers the press directly, so the reason shows even over
@@ -873,6 +886,8 @@ export class CdtDecisionTreeDialogComponent {
 
             return next;
         });
+
+        return tooLarge.size;
     }
 
     /**
@@ -889,27 +904,47 @@ export class CdtDecisionTreeDialogComponent {
         this.explanations.update((current) => new Map(current).set(stepKey, state));
     }
 
-    protected closeDetail(): void {
-        this.selectedBlockId.set(null);
+    // -- private: canvas and search ------------------------------------------
+
+    /** Centre a block, and open its window if it is one the design lets you open. */
+    private revealBlock(blockId: string): void {
+        this.focusBlock(blockId);
+        this.openDetailFor(blockId);
+    }
+
+    private focusBlock(blockId: string): void {
+        const canvas = this.fCanvas();
+        if (!canvas) return;
+
+        if (canvas.getScale() < 1) {
+            canvas.resetScaleAndCenterGroupOrNode(blockId, true);
+        } else {
+            canvas.centerGroupOrNode(blockId, true);
+        }
     }
 
     /**
-     * Re-centre the selected block once the window has finished sliding: opening it
-     * narrows the canvas and can push the just-clicked block out of view. Fitting
-     * the diagram instead would throw away the zoom the user arrived with.
-     *
-     * `animationend` bubbles, so an animation inside the window would land here
-     * too — hence the target check. On the way out there is nothing selected, so
-     * the slide-out falls through it harmlessly.
+     * Point the window at a block, or shut it if that block is not openable — the
+     * search offers the terminators too, and a stale window would describe the
+     * previously picked block while the canvas centred on this one.
      */
-    protected onDetailSettled(event: AnimationEvent): void {
-        if (event.target !== event.currentTarget) return;
-
-        const id = this.selectedBlockId();
-        if (id) this.fCanvas()?.centerGroupOrNode(id, true);
+    private openDetailFor(blockId: string): void {
+        const block = this.layout.blocks.find((entry) => entry.id === blockId);
+        // `clickable` already folds in "has something to show" — see the builder.
+        this.selectedBlockId.set(block?.clickable ? blockId : null);
     }
 
-    // -- keyboard ------------------------------------------------------------
+    private focusAndOpenSearch(): void {
+        this.searchInput()?.nativeElement.focus();
+        this.openSearch();
+    }
+
+    private revealActiveMatch(): void {
+        const id = this.matchIds()[this.activeMatch()];
+        if (id) this.focusBlock(id);
+    }
+
+    // -- private: keyboard ---------------------------------------------------
 
     /**
      * Has to stay synchronous — see the module comment on `resolveTreeKeyAction`
@@ -953,9 +988,5 @@ export class CdtDecisionTreeDialogComponent {
             case 'none':
                 break;
         }
-    }
-
-    protected close(): void {
-        this.dialogRef.close();
     }
 }

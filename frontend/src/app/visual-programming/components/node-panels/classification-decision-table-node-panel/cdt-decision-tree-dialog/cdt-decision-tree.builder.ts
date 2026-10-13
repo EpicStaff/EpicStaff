@@ -405,8 +405,8 @@ function promptDetailBody(promptText: string, resultVariable: string): string {
 /**
  * Resolve a row's routing target the same way a save would, so the diagram never
  * disagrees with what is about to be persisted:
- * the canvas node's `next_node` first, then the panel clone's, then a scan of the
- * canvas connections by the row's output port id.
+ * the canvas node's `next_node` when the canvas has the row (the panel clone's only
+ * when it has not), then a scan of the canvas connections by the row's output port id.
  */
 function resolveRowTarget(
     row: ConditionGroup,
@@ -435,7 +435,12 @@ export function resolveRouteTargetId(
     const portId = routePortIdForRow(sources.nodeId, row);
     if (!portId) return null;
 
-    const targetId = canvasRowsByPort.get(portId)?.next_node ?? row.next_node ?? null;
+    // The canvas row is live — FlowService rewrites its `next_node` on every connect
+    // and disconnect — so its null means "unwired", not "unknown". The panel clone
+    // is consulted only for a row the canvas has not got yet (added, not committed),
+    // whose `next_node` would otherwise be stale.
+    const canvasRow = canvasRowsByPort.get(portId);
+    const targetId = canvasRow ? canvasRow.next_node : row.next_node;
     if (targetId) return targetId;
 
     return (

@@ -20,7 +20,6 @@ interface CdtTreeSearchGroup {
  */
 @Component({
     selector: 'app-cdt-decision-tree-search',
-    standalone: true,
     imports: [AppSvgIconComponent, ButtonComponent],
     templateUrl: './cdt-decision-tree-search.component.html',
     styleUrls: ['./cdt-decision-tree-search.component.scss'],

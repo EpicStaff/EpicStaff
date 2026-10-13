@@ -10,6 +10,7 @@
  * Pure and Angular-free, like the builder beside it.
  */
 
+import { CdtExplainBlock, CdtExplainRule, CdtExplainTable } from '../../../../core/models/cdt-explain-api.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { resolveLlmLabel } from '../cdt-llm-label.util';
 import {
@@ -21,7 +22,6 @@ import {
 } from './cdt-decision-tree.builder';
 import { CDT_TREE_COPY } from './cdt-decision-tree.constants';
 import { CdtDecisionTreeInput } from './cdt-decision-tree.model';
-import { CdtExplainBlock, CdtExplainRule, CdtExplainTable } from './cdt-explain.model';
 
 /** A multiple of the server's own batch size of six, well under its 100 cap. */
 const CHUNK_SIZE = 30;
@@ -191,19 +191,24 @@ export function resolveExplainLlmConfig(input: CdtDecisionTreeInput): number | n
 
 /**
  * One name per rule, shared by the rules list and the condition blocks. A blank
- * name falls back to its position among the *drawn* rules, so the payload says
- * `Rule 3` for the block the canvas also labels `Rule 3`.
+ * drawn rule falls back to its position among the *drawn* rules, so the payload
+ * says `Rule 3` for the block the canvas also labels `Rule 3`. A blank hidden
+ * rule is numbered among the hidden ones under its own prefix, so it can never
+ * take a drawn rule's name in the list the backend quotes.
  */
 function ruleNames(input: CdtDecisionTreeInput): ReadonlyMap<ConditionGroup, string> {
     const names = new Map<ConditionGroup, string>();
+    const drawn = enabledRowsInOrder(input.rows);
 
-    sortRowsByOrder(input.rows).forEach((row, index) => {
+    drawn.forEach((row, index) => {
         names.set(row, row.group_name?.trim() || CDT_TREE_COPY.ruleFallback(index + 1));
     });
 
-    enabledRowsInOrder(input.rows).forEach((row, index) => {
-        if (!row.group_name?.trim()) names.set(row, CDT_TREE_COPY.ruleFallback(index + 1));
-    });
+    sortRowsByOrder(input.rows)
+        .filter((row) => !names.has(row))
+        .forEach((row, index) => {
+            names.set(row, row.group_name?.trim() || CDT_TREE_COPY.hiddenRuleFallback(index + 1));
+        });
 
     return names;
 }

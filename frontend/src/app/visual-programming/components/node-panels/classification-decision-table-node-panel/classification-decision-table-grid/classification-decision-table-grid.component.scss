@@ -99,16 +99,21 @@ $grid-above-btns-height: 44px;
     padding: 4px 0;
 }
 
-.group-menu-item {
+// The group menu and the row context menu share one item style.
+.group-menu-item,
+.context-menu-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem;
     padding: 0.45rem 0.75rem;
     font-size: 0.8rem;
     color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
+}
+
+.group-menu-item {
+    justify-content: space-between;
 
     &:hover,
     &--submenu.active {
@@ -567,15 +572,6 @@ $group-gutter-width: 28px;
 }
 
 .context-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0.75rem;
-    font-size: 0.8rem;
-    color: var(--white-alpha-85);
-    cursor: pointer;
-    transition: background 0.1s ease;
-
     i {
         font-size: 1rem;
         color: var(--white-alpha-50);
@@ -735,18 +731,6 @@ $group-gutter-width: 28px;
             border: 1px solid var(--red-450-alpha-95) !important;
             box-shadow: inset 0 0 0 1px var(--red-450-alpha-35) !important;
             border-radius: 6px;
-        }
-
-        // Route Code status icon (RouteCodeCellRendererComponent). `app-help-tooltip`
-        // paints its icon in the accent colour, so it is recoloured here: muted like
-        // the dimmed code when the route code is ignored, red like the cell border
-        // when the route code and Continue conflict.
-        .cdt-route-code-cell__status .help-icon-wrapper {
-            color: var(--transparent-white-16);
-        }
-
-        .cdt-route-code-cell__status--conflict .help-icon-wrapper {
-            color: var(--color-error);
         }
 
         .ag-header-cell-resize::after {

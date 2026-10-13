@@ -66,8 +66,7 @@ export function routeCodeCellStatus(
  * ag-grid and open the text editor.
  *
  * The tooltip opens to the left, away from the Continue column that sits
- * immediately to the right of this cell. Icon colours live in the grid's scss,
- * because `app-help-tooltip` paints its icon itself.
+ * immediately to the right of this cell.
  */
 @Component({
     selector: 'app-route-code-cell-renderer',
@@ -123,9 +122,18 @@ export function routeCodeCellStatus(
             .cdt-route-code-cell__code--ignored {
                 color: var(--transparent-white-16);
             }
+            /* Muted like the dimmed code when the route code is ignored; red like the cell border on a conflict. */
             .cdt-route-code-cell__status {
                 display: inline-flex;
                 flex-shrink: 0;
+                color: var(--transparent-white-16);
+            }
+            .cdt-route-code-cell__status--conflict {
+                color: var(--color-error);
+            }
+            /* app-help-tooltip paints its icon in the accent colour; the status colour wins here. */
+            .cdt-route-code-cell__status ::ng-deep .help-icon-wrapper {
+                color: inherit;
             }
         `,
     ],

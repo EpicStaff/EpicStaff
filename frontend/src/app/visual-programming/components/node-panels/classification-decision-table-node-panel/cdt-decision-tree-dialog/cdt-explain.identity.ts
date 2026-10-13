@@ -23,11 +23,11 @@
  * Pure and Angular-free, like the builder beside it.
  */
 
+import { CdtExplainBlock } from '../../../../core/models/cdt-explain-api.model';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { slugifyRouteCode } from '../cdt-route-continue.util';
 import { enabledRowsInOrder } from './cdt-decision-tree.builder';
 import { CdtDecisionTreeInput } from './cdt-decision-tree.model';
-import { CdtExplainBlock } from './cdt-explain.model';
 
 /**
  * Excluded because they say where the step sits, not what it does. Without this,
@@ -74,6 +74,33 @@ export function buildExplainStepKeys(input: CdtDecisionTreeInput): ReadonlyMap<s
     });
 
     return keys;
+}
+
+/**
+ * Every key an explanation on this table may still be wanted under — what decides
+ * which stored explanations survive a write, never which one a step shows.
+ *
+ * Wider than `buildExplainStepKeys`, which only covers the rules the tree draws: a
+ * hidden rule is still a rule, and its explanation has to be there when it is
+ * shown again. Its key then depends on the rules it is shown alongside (a shared
+ * code or name falls back to content), so each way it can come back is covered —
+ * alone among the drawn rules, or with every hidden rule at once. Keeping a key
+ * that turns out unused costs a few bytes; dropping a live one loses text.
+ */
+export function buildRetainedExplainStepKeys(input: CdtDecisionTreeInput): ReadonlySet<string> {
+    const retained = new Set(buildExplainStepKeys(input).values());
+    const hiddenRows = input.rows.filter((row) => row.dock_visible === false);
+    if (hiddenRows.length === 0) return retained;
+
+    const keysWithShown = (shown: (row: ConditionGroup) => boolean): void => {
+        const rows = input.rows.map((row) => (shown(row) ? { ...row, dock_visible: true } : row));
+        for (const key of buildExplainStepKeys({ ...input, rows }).values()) retained.add(key);
+    };
+
+    keysWithShown((row) => row.dock_visible === false);
+    for (const hidden of hiddenRows) keysWithShown((row) => row === hidden);
+
+    return retained;
 }
 
 /** A shared code or a duplicate name disqualifies that source rather than colliding. */

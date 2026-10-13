@@ -99,14 +99,31 @@ export interface CdtTreeIcon {
     readonly name: string;
     readonly width: string;
     readonly height: string;
+    /** The legend colour; the sprite paints with `currentColor`, so this is it. */
+    readonly color: string;
 }
 
 export const ICON_BY_SHAPE: Readonly<Partial<Record<CdtTreeShape, CdtTreeIcon>>> = {
-    terminator: { name: 'tree-terminator', width: '16px', height: '16px' },
-    'predefined-process': { name: 'tree-computation', width: '18px', height: '16px' },
-    data: { name: 'tree-vars', width: '16px', height: '16px' },
-    decision: { name: 'tree-condition', width: '16px', height: '15px' },
-    process: { name: 'tree-processing', width: '16px', height: '16px' },
+    terminator: {
+        name: 'tree-terminator',
+        width: '16px',
+        height: '16px',
+        color: 'var(--color-ks-transparent-text-60)',
+    },
+    'predefined-process': {
+        name: 'tree-computation',
+        width: '18px',
+        height: '16px',
+        color: 'var(--color-ks-status-warning)',
+    },
+    data: { name: 'tree-vars', width: '16px', height: '16px', color: 'var(--color-ks-status-new)' },
+    decision: {
+        name: 'tree-condition',
+        width: '16px',
+        height: '15px',
+        color: 'var(--color-ks-status-processing)',
+    },
+    process: { name: 'tree-processing', width: '16px', height: '16px', color: 'var(--color-ks-status-blue)' },
     // `region` has none: it is an outline, not a step.
 };
 
@@ -198,6 +215,11 @@ export const CDT_TREE_COPY = {
         'Its route code has nothing connected to it, so the engine is given no target and a match does not end evaluation.',
     ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
     /**
+     * A blank hidden rule, numbered among the hidden ones. Never `Rule N`: that
+     * numbering belongs to the drawn rules, and the explain payload lists both.
+     */
+    hiddenRuleFallback: (oneBased: number): string => `Hidden rule ${oneBased}`,
+    /**
      * Headings of the search dropdown. The number counts drawn rules, not grid
      * rows — a disabled rule is not evaluated and is not in the diagram, which
      * the toolbar's hidden-rules chip already says out loud.
@@ -234,6 +256,8 @@ export const CDT_TREE_COPY = {
      */
     explanationEmpty: 'No explanation yet.',
     explanationLoading: 'Generating an explanation…',
+    /** Past the storage limits, so it is not kept: shown in the step's error state. */
+    explanationTooLarge: 'This explanation is too long to save.',
 
     /** Explaining the whole table from the toolbar. */
     explainAll: 'Explain All Steps',
@@ -258,7 +282,8 @@ export const CDT_TREE_COPY = {
     explainNoModel: 'Set a default LLM for this table, or on one of its prompts, before explaining a step.',
 
     /** Failures, mapped from the endpoint's own error codes. */
-    explainModelGone: 'The LLM chosen for this table no longer exists. Pick another in the panel.',
+    explainNoApiKey: 'The selected model has no API key. Choose another model or add a key.',
+    explainModelGone: 'The selected model no longer exists. Choose another model.',
     explainUpstreamFailed: 'The model did not return an explanation. Try again.',
     explainFailed: 'The explanation could not be generated.',
 } as const;

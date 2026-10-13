@@ -25,6 +25,7 @@ import { PermissionsService } from './services/auth/permissions.service';
 import { ConfigService } from './services/config';
 import { APP_STORAGE } from './shared/services/app-storage.token';
 import { provideSharedStorages } from './shared/services/shared-storages.providers';
+import { provideVisualProgrammingStorages } from './visual-programming/visual-programming.providers';
 
 export const appConfig: ApplicationConfig = {
     providers: [
@@ -66,5 +67,6 @@ export const appConfig: ApplicationConfig = {
         ...provideKnowledgeSourcesStorages(),
         ...provideKeyValueTablesStorages(),
         ...provideSharedStorages(),
+        ...provideVisualProgrammingStorages(),
     ],
 };
