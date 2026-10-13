@@ -22,7 +22,6 @@ def test_filter_snapshot_nulls_fk_for_agent_node_when_definition_missing(
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
@@ -39,7 +38,6 @@ def test_filter_snapshot_keeps_agent_node_untouched_when_definition_available(
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {}
 
@@ -82,26 +80,11 @@ def test_filter_edges_keeps_edge_between_kept_nodes(manager, start_node_dict):
     assert warnings == []
 
 
-def test_filter_conditional_edges_drops_edge_from_skipped_node(manager):
-    SKIPPED_NODE_ID = 777
-    conditional_edges = [{"source_node_id": SKIPPED_NODE_ID, "condition": "x > 0"}]
-
-    kept, warnings = manager._filter_conditional_edges(
-        conditional_edges, {SKIPPED_NODE_ID}
-    )
-
-    assert kept == []
-    assert len(warnings) == 1
-    assert warnings[0]["type"] == "edge_dropped"
-    assert "Conditional edge" in warnings[0]["reason"]
-
-
 def test_filter_snapshot_does_not_mutate_input(manager, agent_node_dict):
     original_definition_id = agent_node_dict["agent_definition"]
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
@@ -365,7 +348,7 @@ def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
 ):
     """CDT pre/post python_code columns are the gap the manual cleanup block
     in wipe_graph_children missed (it only collected PythonNode /
-    ConditionalEdge / WebhookTriggerNode ids). The generic post_delete signal
+    WebhookTriggerNode ids). The generic post_delete signal
     on ClassificationDecisionTableNode must cover both columns instead."""
     from tables.models import ClassificationDecisionTableNode, PythonCode
 

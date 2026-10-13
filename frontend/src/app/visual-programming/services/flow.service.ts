@@ -755,14 +755,6 @@ export class FlowService {
 
                 connectionIdsToRemove.add(connection.id);
             });
-            // Auto-delete conditional edge nodes that lose their source connection
-            for (const conn of flow.connections) {
-                if (!connectionIdsToRemove.has(conn.id)) continue;
-                const targetNode = flow.nodes.find((n) => n.id === conn.targetNodeId);
-                if (targetNode?.type === NodeType.EDGE) {
-                    nodeIdsToRemove.add(targetNode.id);
-                }
-            }
 
             // Track removed connections for decision table cleanup
             const removedConnections: ConnectionModel[] = [];

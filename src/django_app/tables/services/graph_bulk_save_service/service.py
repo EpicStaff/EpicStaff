@@ -7,11 +7,8 @@ from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
-from tables.models.graph_models import ConditionalEdge, Edge
-from tables.serializers.graph_bulk_save_serializers import (
-    ConditionalEdgeBulkSerializer,
-    EdgeBulkSerializer,
-)
+from tables.models.graph_models import Edge
+from tables.serializers.graph_bulk_save_serializers import EdgeBulkSerializer
 from tables.services.graph_bulk_save_service.data_types import (
     BuildSaveableResult,
     EdgeListValidationResult,
@@ -29,7 +26,6 @@ from tables.services.graph_bulk_save_service.registry import (
     NodeTypeConfig,
 )
 from tables.services.graph_bulk_save_service.saveables import (
-    _ConditionalEdgeSaveable,
     _EdgeSaveable,
     _NodeSaveable,
 )
@@ -133,33 +129,24 @@ class GraphBulkSaveService:
             edge_saveables.extend(edge_result.saveables)
             edge_refs_to_validate |= edge_result.real_node_ids
 
-        cond_result = self._validate_conditional_edge_list(
-            graph,
-            validated_input.get("conditional_edge_list", []),
-            payload_temp_ids,
-        )
-        if cond_result.errors:
-            all_errors["conditional_edge_list"] = cond_result.errors
-        else:
-            edge_saveables.extend(cond_result.saveables)
-            edge_refs_to_validate |= cond_result.real_node_ids
-
-        # Batch-validate all real (non-temp) node refs across edge types and
-        # decision table routing fields combined.
+        # Batch-validate that every real (non-temp) edge endpoint and decision table
+        # routing ref belongs to this graph. The message is the
+        # same for a nonexistent and a foreign id, so existence never leaks.
         all_real_refs = edge_refs_to_validate | routing_refs_to_validate
         if all_real_refs:
-            invalid_ids = self._find_nonexistent_global_node_ids(all_real_refs)
+            invalid_ids = self._find_node_ids_outside_graph(all_real_refs, graph.id)
             if invalid_ids:
                 # Partition errors by source for clearer attribution.
                 invalid_edge_refs = invalid_ids & edge_refs_to_validate
                 invalid_routing_refs = invalid_ids & routing_refs_to_validate
                 if invalid_edge_refs:
                     existing_node_ref_errors.append(
-                        f"Edge references node IDs that do not exist: {sorted(invalid_edge_refs)}"
+                        f"Edge references node IDs not found in this graph: "
+                        f"{sorted(invalid_edge_refs)}"
                     )
                 if invalid_routing_refs:
                     existing_node_ref_errors.append(
-                        f"DecisionTableNode routing references node IDs that do not exist: "
+                        f"Decision table routing references node IDs not found in this graph: "
                         f"{sorted(invalid_routing_refs)}"
                     )
         if existing_node_ref_errors:
@@ -200,10 +187,16 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+
+            # The URL graph is the authority: a per-item graph would let an item
+            # be written into (or moved to) another graph that skips the checks below.
+            item_data["graph"] = graph.id
+
             graph_error = self._foreign_graph_error(item_data, graph, index)
             if graph_error is not None:
                 result.errors.append(graph_error)
                 continue
+
             item_id = item_data.get("id")
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
@@ -275,8 +268,8 @@ class GraphBulkSaveService:
 
     @staticmethod
     def _collect_real_routing_refs(deferred) -> set[int]:
-        """Extract real (non-temp) node IDs from a _DecisionTableNodeRefsSaveable
-        for batch existence validation in Pass 1."""
+        """Extract real (non-temp) node IDs from a decision table or classification
+        decision table refs saveable for the batch same-graph check in Pass 1."""
         refs: set[int] = set()
         for attr in ("_default_next_ref", "_next_error_ref"):
             ref = getattr(deferred, attr, None)
@@ -302,6 +295,8 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            item_data["graph"] = graph.id
+
             graph_error = self._foreign_graph_error(item_data, graph, index)
             if graph_error is not None:
                 result.errors.append(graph_error)
@@ -352,68 +347,6 @@ class GraphBulkSaveService:
                     continue
                 result.saveables.append(
                     _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=db_instance)
-                )
-
-        return result
-
-    def _validate_conditional_edge_list(
-        self,
-        graph: Graph,
-        incoming_list: list[dict],
-        payload_temp_ids: set[str],
-    ) -> EdgeListValidationResult:
-        """Validate all ConditionalEdge items."""
-        result = EdgeListValidationResult()
-
-        db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
-
-        for index, item_data in enumerate(incoming_list):
-            item_data = dict(item_data)
-            graph_error = self._foreign_graph_error(item_data, graph, index)
-            if graph_error is not None:
-                result.errors.append(graph_error)
-                continue
-            item_id = item_data.get("id")
-
-            source_parsed = self._parse_node_ref(
-                item_data, "source_node_id", "source_temp_id", payload_temp_ids, index
-            )
-            if source_parsed.error:
-                result.errors.append(source_parsed.error)
-                continue
-
-            if source_parsed.ref and not source_parsed.ref.is_temp:
-                result.real_node_ids.add(source_parsed.ref.value)
-
-            if item_id is None:
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data, context=self._serializer_context)
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=None)
-                )
-            else:
-                db_instance = db_map.get(item_id)
-                if db_instance is None:
-                    result.errors.append(
-                        {
-                            "index": index,
-                            "errors": f"id={item_id} not found in graph {graph.id}",
-                        }
-                    )
-                    continue
-
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(
-                    db_instance, data=item_data, context=self._serializer_context
-                )
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=db_instance)
                 )
 
         return result
@@ -510,8 +443,15 @@ class GraphBulkSaveService:
         return temp_ids
 
     @staticmethod
-    def _find_nonexistent_global_node_ids(node_ids: set[int]) -> set[int]:
-        """Return the subset of node_ids that do not exist in any BaseGlobalNode table."""
+    def _find_node_ids_outside_graph(node_ids: set[int], graph_id: int) -> set[int]:
+        """Return the subset of node_ids that are not an active BaseGlobalNode of graph_id.
+
+        A nonexistent id, a soft-deleted node and an id belonging to another graph
+        (or organization) all count as outside, so callers cannot tell them apart.
+        Every concrete BaseGlobalNode model must have a ``graph`` FK and an
+        ``is_soft_deleted`` field; ``get_field`` raises FieldDoesNotExist for one
+        that does not, instead of silently skipping it.
+        """
         if not node_ids:
             return set()
 
@@ -522,10 +462,14 @@ class GraphBulkSaveService:
         id_list = list(node_ids)
         placeholders = ",".join(["%s"] * len(id_list))
         union_parts = [
-            f"SELECT id FROM {m._meta.db_table} WHERE id IN ({placeholders})" for m in node_models
+            f"SELECT id FROM {m._meta.db_table} "
+            f"WHERE {m._meta.get_field('graph').column} = %s "
+            f"AND {m._meta.get_field('is_soft_deleted').column} = false "
+            f"AND id IN ({placeholders})"
+            for m in node_models
         ]
         query = " UNION ALL ".join(union_parts)
-        params = id_list * len(node_models)
+        params = [graph_id, *id_list] * len(node_models)
 
         with connection.cursor() as cursor:
             cursor.execute(query, params)

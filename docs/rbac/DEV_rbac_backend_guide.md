@@ -164,7 +164,7 @@ change applies on the first request after the container restarts.
 
 ## 3. Authentication layer
 
-Global defaults (`django_app/settings.py`):
+Global defaults (`django_app/settings/rest_framework.py`):
 
 ```python
 REST_FRAMEWORK = {

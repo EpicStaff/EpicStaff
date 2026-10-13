@@ -4,7 +4,6 @@ import { NodeType } from '@shared/models';
 import { AgentNodePanelComponent } from '../../components/node-panels/agent-node-panel/agent-node-panel.component';
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
 import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
-import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/conditional-edge-node-panel/conditional-edge-node-panel.component';
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from '../../components/node-panels/file-extractor-node-panel/file-extractor-node-panel.component';
@@ -24,7 +23,6 @@ const asNodePanelComponent = <T extends NodeModel>(component: Type<NodePanel<T>>
 
 export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     python: asNodePanelComponent(PythonNodePanelComponent),
-    edge: asNodePanelComponent(ConditionalEdgeNodePanelComponent),
     'file-extractor': asNodePanelComponent(FileExtractorNodePanelComponent),
     'webhook-trigger': asNodePanelComponent(WebhookTriggerNodePanelComponent),
     'telegram-trigger': asNodePanelComponent(TelegramTriggerNodePanelComponent),

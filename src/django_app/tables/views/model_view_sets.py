@@ -72,6 +72,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
@@ -108,7 +112,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    ConditionalEdge,
     Edge,
     EmbeddingConfig,
     EmbeddingModel,
@@ -185,7 +188,6 @@ from tables.serializers.model_serializers import (
     AuditFilterPresetImportFileSerializer,
     AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     ConversationRecordingSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
@@ -752,12 +754,6 @@ class GraphViewSet(
                     queryset=AudioTranscriptionNode.objects.all(),
                 ),
                 Prefetch("edge_list", queryset=Edge.objects.all()),
-                Prefetch(
-                    "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
-                    ),
-                ),
                 Prefetch(
                     "webhook_trigger_node_list",
                     queryset=WebhookTriggerNode.objects.select_related(
@@ -1495,19 +1491,6 @@ class EdgeViewSet(
     serializer_class = EdgeSerializer
 
 
-class ConditionalEdgeViewSet(
-    OrgScopedChildViewSetMixin,
-    LastEditDestroyViewSetMixin,
-    ContentHashPreconditionMixin,
-    viewsets.ModelViewSet,
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = ConditionalEdge.objects.all()
-    serializer_class = ConditionalEdgeSerializer
-
-
 class GraphSessionMessageFilter(FilterSet):
     session_id = NumberFilter(field_name="session_id", lookup_expr="exact")
     parent_subgraph_execution_id = filters.UUIDFilter(
@@ -2079,23 +2062,18 @@ class DecisionTableNodeModelViewSet(
     def _create_condition_groups(self, node: DecisionTableNode, groups_data: list[dict]):
         """
         Create ConditionGroups and nested Conditions for a DecisionTableNode.
-        Uses bulk_create for efficiency.
         """
         for group_data in groups_data:
-            copy_group_data = group_data.copy()
-            conditions_data = copy_group_data.pop("conditions", [])
-            copy_group_data.pop("decision_table_node", None)
-            copy_group_data.pop("content_hash", None)
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            group = ConditionGroup.objects.create(decision_table_node=node, **group_fields)
 
-            group = ConditionGroup.objects.create(decision_table_node=node, **copy_group_data)
-
-            for cond_data in conditions_data:
-                cond_data = {
-                    k: v
-                    for k, v in cond_data.items()
-                    if k not in ("condition_group", "content_hash")
+            for cond_data in group_data.get("conditions", []):
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
                 }
-                Condition.objects.create(condition_group=group, **cond_data)
+                Condition.objects.create(condition_group=group, **condition_fields)
 
             # Re-save group so its hash includes the newly created conditions
             group.save()

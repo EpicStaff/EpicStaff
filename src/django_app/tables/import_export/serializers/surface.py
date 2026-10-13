@@ -7,7 +7,7 @@ from tables.import_export.enums import EntityType
 class SurfaceImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Surface
-        exclude = ["org", "created_by", "owner_agent"]
+        exclude = ["org", "created_by", "owner_agent", "created_at", "updated_at"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

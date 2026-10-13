@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models import Graph
-from tables.models.graph_models import ConditionalEdge, Edge, GraphNote, PythonNode, StartNode
+from tables.models.graph_models import Edge, GraphNote, PythonNode, StartNode
 from tests.fixtures import *  # noqa: F401,F403
 from tests.graph_node_builders import create_node
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -87,43 +87,6 @@ def test_edge_into_another_flow_returns_400(auth_client, graph, other_graph):
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
     assert response.data["errors"] == {"edge_list": [{"index": 0, "errors": _FOREIGN_GRAPH_ERROR}]}
     assert not Edge.objects.filter(graph__in=[graph, other_graph]).exists()
-
-
-@pytest.mark.django_db
-def test_conditional_edge_into_another_flow_returns_400(auth_client, graph, other_graph):
-    source_node = create_node(PythonNode, graph)
-
-    response = _save(
-        auth_client,
-        graph,
-        conditional_edge_list=[_conditional_edge_payload(other_graph.id, source_node.id)],
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        "conditional_edge_list": [{"index": 0, "errors": _FOREIGN_GRAPH_ERROR}]
-    }
-    assert not ConditionalEdge.objects.filter(graph__in=[graph, other_graph]).exists()
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("as_text", [False, True], ids=["number", "text"])
-def test_items_naming_the_saved_flow_are_written(auth_client, graph, as_text):
-    graph_id = str(graph.id) if as_text else graph.id
-    start_node, end_node = create_node(StartNode, graph), create_node(PythonNode, graph)
-
-    response = _save(
-        auth_client,
-        graph,
-        python_node_list=[_python_node_payload(graph_id, node_name="new")],
-        edge_list=[{"graph": graph_id, "start_node_id": start_node.id, "end_node_id": end_node.id}],
-        conditional_edge_list=[_conditional_edge_payload(graph_id, end_node.id)],
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert PythonNode.objects.filter(graph=graph, node_name="new").exists()
-    assert Edge.objects.filter(graph=graph).count() == 1
-    assert ConditionalEdge.objects.filter(graph=graph).count() == 1
 
 
 @pytest.mark.django_db

@@ -29,8 +29,29 @@ from tables.models.graph_models import (
 )
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 
+# Columns a condition group takes directly from input; shared with graph bulk save, which
+# builds groups from request dicts no serializer has validated. `prompt` and `section`
+# are not here: both are resolved among the node's own rows. An allow-list rather than a
+# denylist, so an FK attname (`classification_decision_table_node_id`, `prompt_id`,
+# `section_id`) can never be mass-assigned from the request.
+CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS = frozenset(
+    {
+        "group_name",
+        "order",
+        "expression",
+        "manipulation",
+        "continue_flag",
+        "next_node_id",
+        "dock_visible",
+        "field_expressions",
+        "field_manipulations",
+        "route_code",
+        "metadata",
+    }
+)
+
 # Fields bulk_update is allowed to write back on an existing condition group.
-_GROUP_UPDATE_FIELDS = [
+CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS = [
     "group_name",
     "order",
     "expression",
@@ -43,16 +64,6 @@ _GROUP_UPDATE_FIELDS = [
     "field_manipulations",
     "section",
 ]
-
-# Keys never written as-is; `prompt_id`/`section` are resolved node-locally instead.
-_GROUP_EXCLUDED_INPUT = {
-    "id",
-    "classification_decision_table_node",
-    "classification_decision_table_node_id",
-    "prompt_key",
-    "prompt_id",
-    "section",
-}
 
 
 def sync_classification_decision_table_children(
@@ -172,10 +183,12 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
     prompt_by_id = {p.id: p for p in node_prompts}
     prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
-    # Normalize payload rows once: strip non-column keys, resolve prompt/section FKs.
+    # Normalize payload rows once: keep input columns only, resolve prompt/section FKs.
     rows = []
     for group_data in condition_groups_data:
-        gd = {k: v for k, v in group_data.items() if k not in _GROUP_EXCLUDED_INPUT}
+        gd = {
+            k: v for k, v in group_data.items() if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+        }
         assert_node_ref_in_graph(
             node_id=gd.get("next_node_id"),
             graph=graph,
@@ -230,6 +243,8 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
     if surplus_ids:
         ClassificationConditionGroup.objects.filter(id__in=surplus_ids).delete()
     if to_update:
-        ClassificationConditionGroup.objects.bulk_update(to_update, _GROUP_UPDATE_FIELDS)
+        ClassificationConditionGroup.objects.bulk_update(
+            to_update, CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS
+        )
     if to_create:
         ClassificationConditionGroup.objects.bulk_create(to_create)

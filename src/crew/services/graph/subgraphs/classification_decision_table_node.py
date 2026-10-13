@@ -1,8 +1,6 @@
 import itertools
 import json
 import re
-import uuid
-from dataclasses import asdict
 from typing import Any
 
 import litellm
@@ -143,29 +141,15 @@ class ClassificationDecisionTableNodeSubgraph:
         also means _emit_session_audit_event's own interception point (the
         parent's astream loop) never sees these chunks either, dispatch to
         the audit pipeline explicitly here too, right alongside the primary
-        write (same data dict, same uuid, so both pipelines agree on the
-        event's identity)."""
+        write (the same encoded message, so both pipelines agree on the
+        event's identity and content)."""
         if self.redis_service is None:
             return
+        data = graph_message.to_payload()
+        encoded_data = GraphMessage.encode_payload(data)
+        self.redis_service.add_graph_message(data["uuid"], encoded_data)
         try:
-            data = asdict(graph_message)
-        except (TypeError, Exception) as e:
-            logger.warning(f"Failed to serialize GraphMessage via asdict: {e}")
-            data = {
-                "session_id": graph_message.session_id,
-                "name": graph_message.name,
-                "execution_order": graph_message.execution_order,
-                "message_data": graph_message.message_data
-                if isinstance(graph_message.message_data, dict)
-                else {
-                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
-                },
-                "timestamp": graph_message.timestamp,
-            }
-        data["uuid"] = str(uuid.uuid4())
-        self.redis_service.add_graph_message(data)
-        try:
-            emit_session_audit_event(data)
+            emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
             # Audit must never break the primary pipeline.
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")

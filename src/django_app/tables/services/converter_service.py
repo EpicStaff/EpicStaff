@@ -5,7 +5,6 @@ from src.shared.models import (
     BaseToolData,
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
-    ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
     DecisionTableNodeData,
@@ -43,7 +42,6 @@ from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -595,20 +593,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-        )
-
-    def convert_conditional_edge_to_pydantic(
-        self,
-        conditional_edge: ConditionalEdge,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
-    ) -> ConditionalEdgeData:
-        python_code_data = self.convert_python_code_to_pydantic(
-            python_code=conditional_edge.python_code
-        )
-        return ConditionalEdgeData(
-            source=resolver(conditional_edge.source_node_id),
-            python_code=python_code_data,
-            input_map=conditional_edge.input_map,
         )
 
     def convert_condition_to_pydantic(self, condition: Condition) -> ConditionData:

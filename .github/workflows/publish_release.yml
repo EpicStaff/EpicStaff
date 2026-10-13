@@ -60,16 +60,22 @@ jobs:
     name: Publish GitHub Release
     needs: [resolve, build-images]
     runs-on: self-hosted
+    # id-token: write is what keyless cosign signing of the release files needs;
+    # contents: write is the release upload. Job-level permissions replace the
+    # workflow-level set, so both are listed.
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve.outputs.tag }}
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12.10"
 
@@ -89,7 +95,7 @@ jobs:
         run: mkdir -p release-archives
 
       - name: Download digest-map artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: digest-map
           path: .
@@ -123,13 +129,33 @@ jobs:
             exit 1
           fi
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # The compose file is what tells a customer WHICH digests to run. Every image
+      # is signed (build-and-push.yml), but without a signature over this file an
+      # attacker who can alter the release asset could point it at an older,
+      # genuinely signed EpicStaff image and `cosign verify` would still pass.
+      # Signing the files themselves closes that downgrade path; README's
+      # "How to verify a release" documents the matching verify-blob command.
+      - name: Sign release files (keyless)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in docker-compose.yaml .env.example; do
+            cosign sign-blob --yes \
+              --bundle "release-archives/${file}.sigstore.json" \
+              "release-archives/${file}"
+          done
+
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}
           name: "Release ${{ needs.resolve.outputs.tag }}"
           files: |
             release-archives/*
             release-archives/.env.example
+            release-archives/.env.example.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
