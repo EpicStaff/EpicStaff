@@ -16,8 +16,8 @@ const LOOP_MAX_RADIUS = 40;
  * curves with horizontal stubs at both ends.
  *
  * Forward connections (target right of source): stub → C curve → stub.
- * Backward with vertical gap (target upper-left): stub → arc → line → arc → stub (S-curve).
- * Backward without vertical gap: stub → arc → line → arc → stub (loop above).
+ * Backward with vertical gap: stub → arc → line → arc → stub (S-curve, both directions).
+ * Backward without vertical gap: rounded-rectangle loop above both nodes.
  *
  * Candidates are always empty — curved connections are not user-editable.
  */
@@ -56,16 +56,13 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
     }
 
     /**
-     * Backward S-curve using two circular arc segments connected by a straight
-     * tangent line. The arcs use sin/cos for geometry and SVG `A` commands.
-     *
-     * When the vertical gap is too small for a clean S-curve, falls back to
-     * a Bézier loop above both nodes.
+     * Backward routing: S-curve between nodes when vertical gap is large
+     * enough, rounded-rectangle loop above when it isn't.
      */
     private backward(source: IPoint, target: IPoint, exitX: number, entryX: number): IFConnectionBuilderResponse {
         const verticalGap = source.y - target.y;
 
-        if (verticalGap < STUB) {
+        if (Math.abs(verticalGap) < STUB) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
 
@@ -73,20 +70,18 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
     }
 
     /**
-     * S-curve for backward connections where target is above source.
+     * S-curve for backward connections with sufficient vertical gap.
+     * Works in both directions:
+     *   sign = +1  (target above): exit circle above, entry circle below
+     *   sign = −1  (target below): exit circle below, entry circle above
      *
      * Three segments (plus horizontal stubs):
-     *   (3) Exit arc — from exitPoint, curves upward (center above, sweep CCW)
-     *   (2) Straight tangent line — connects the two arcs with G1 continuity
-     *   (1) Entry arc — curves into entryPoint (center below, sweep CW)
+     *   Exit arc → straight tangent line ("\" direction) → entry arc
      *
-     * Arc radii and sector angles are derived from dx/dy via trigonometry.
-     * The internal tangent between the two circles determines the connecting line.
-     *
-     *   target ──stub── (1) ╲
-     *                         ╲  (2)
-     *                           ╲
-     *                       (3) ──stub── source
+     *   sign=+1:                    sign=−1:
+     *   target ──(entry)╲           source ──(exit)╲
+     *                     ╲                          ╲
+     *                (exit)──source            (entry)──target
      */
     private backwardSCurve(
         source: IPoint,
@@ -98,12 +93,14 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         const exitPoint: IPoint = { x: exitX, y: source.y };
         const entryPoint: IPoint = { x: entryX, y: target.y };
 
-        const horizontalGap = exitX - entryX;
-        const straightDistance = Math.sqrt(horizontalGap * horizontalGap + verticalGap * verticalGap);
+        const absGap = Math.abs(verticalGap);
+        const sign = verticalGap >= 0 ? 1 : -1;
 
-        // R < verticalGap/4 guarantees the tangent line goes "\" direction.
-        // When even MIN_ARC_RADIUS exceeds this cap, fall back to loop.
-        const maxRadiusForSlash = Math.floor(verticalGap / 4) - 1;
+        const horizontalGap = exitX - entryX;
+        const straightDistance = Math.sqrt(horizontalGap * horizontalGap + absGap * absGap);
+
+        // R < absGap/4 guarantees the tangent line goes "\" direction.
+        const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
         if (maxRadiusForSlash < MIN_ARC_RADIUS) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
@@ -114,9 +111,9 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             Math.min(MAX_ARC_RADIUS, maxRadiusForSlash)
         );
 
-        // Circle centers: exit above exitPoint, entry below entryPoint
-        let cExitY = source.y - radius;
-        let cEntryY = target.y + radius;
+        // Circle centers: exit toward target side, entry toward source side
+        let cExitY = source.y - sign * radius;
+        let cEntryY = target.y + sign * radius;
 
         const centerDx = entryX - exitX;
         let centerDy = cEntryY - cExitY;
@@ -125,8 +122,8 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         // Shrink radius if internal tangent doesn't exist (circles overlap)
         if (centerDistance < 2 * radius) {
             radius = Math.max(Math.floor(centerDistance / 2) - 1, MIN_ARC_RADIUS);
-            cExitY = source.y - radius;
-            cEntryY = target.y + radius;
+            cExitY = source.y - sign * radius;
+            cEntryY = target.y + sign * radius;
             centerDy = cEntryY - cExitY;
             centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
 
@@ -135,10 +132,10 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             }
         }
 
-        // Internal tangent between the two circles
+        // Internal tangent — sign picks the correct tangent solution
         const theta = Math.atan2(centerDy, centerDx);
         const alpha = Math.acos(clamp((2 * radius) / centerDistance, -1, 1));
-        const contactAngle = theta + alpha;
+        const contactAngle = theta + sign * alpha;
 
         const cosContact = Math.cos(contactAngle);
         const sinContact = Math.sin(contactAngle);
@@ -153,23 +150,26 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         };
 
         // Tangent line must go "\" (upper-left → lower-right on screen).
-        // If it goes "/" or is flat, fall back to the loop above.
-        if (tangentEntryPoint.y >= tangentExitPoint.y) {
+        if (sign * (tangentExitPoint.y - tangentEntryPoint.y) <= 0) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
 
-        // Arc span (same for both arcs): sweep=0 goes DECREASING from π/2
-        const arcSpan = (((Math.PI / 2 - contactAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        // Arc span — generalized for both directions
+        const TAU = 2 * Math.PI;
+        const arcSpan = (((Math.PI / 2 - sign * contactAngle) % TAU) + TAU) % TAU;
         const largeArc = arcSpan > Math.PI ? 1 : 0;
 
-        // Exit arc: sweep=0 (CCW on screen → rightward tangent at exit)
-        // Entry arc: sweep=1 (CW on screen → rightward tangent at entry)
+        // sign=+1: exit sweep=0 (CCW), entry sweep=1 (CW)
+        // sign=−1: exit sweep=1 (CW), entry sweep=0 (CCW)
+        const exitSweep = sign > 0 ? 0 : 1;
+        const entrySweep = 1 - exitSweep;
+
         const path =
             `M ${source.x} ${source.y}` +
             ` L ${exitPoint.x} ${exitPoint.y}` +
-            ` A ${radius} ${radius} 0 ${largeArc} 0 ${tangentExitPoint.x} ${tangentExitPoint.y}` +
+            ` A ${radius} ${radius} 0 ${largeArc} ${exitSweep} ${tangentExitPoint.x} ${tangentExitPoint.y}` +
             ` L ${tangentEntryPoint.x} ${tangentEntryPoint.y}` +
-            ` A ${radius} ${radius} 0 ${largeArc} 1 ${entryPoint.x} ${entryPoint.y}` +
+            ` A ${radius} ${radius} 0 ${largeArc} ${entrySweep} ${entryPoint.x} ${entryPoint.y}` +
             ` L ${target.x} ${target.y}`;
 
         return {

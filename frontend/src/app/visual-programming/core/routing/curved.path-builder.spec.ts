@@ -131,7 +131,30 @@ describe('CurvedPathBuilder', () => {
         });
     });
 
-    describe('backward loop (target at same height or below source)', () => {
+    describe('backward S-curve (target lower-left of source)', () => {
+        const source = { x: 300, y: 0 };
+        const target = { x: 0, y: 200 };
+
+        it('uses SVG arc commands for the two arc segments', () => {
+            const response = builder.handle(request(source, target));
+
+            expect(response.path).toContain(' A ');
+            expect(response.path.match(/ A /g)?.length).toBe(2);
+        });
+
+        it('has 6 points and routes between nodes', () => {
+            const response = builder.handle(request(source, target));
+
+            expect(response.points.length).toBe(6);
+            const tExit = response.points[2];
+            const tEntry = response.points[3];
+            // tExit is below source, tEntry is above target (between them)
+            expect(tExit.y).toBeGreaterThan(source.y);
+            expect(tEntry.y).toBeLessThan(target.y);
+        });
+    });
+
+    describe('backward loop (insufficient vertical gap)', () => {
         it('uses 4 SVG arc commands for rounded-rectangle loop', () => {
             const response = builder.handle(request({ x: 300, y: 100 }, { x: 0, y: 100 }));
 
