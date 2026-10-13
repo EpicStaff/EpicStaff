@@ -9,6 +9,9 @@ from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
+# Matches the sandbox's own timeout exit code, so callers need no new branch.
+TIMEOUT_RETURNCODE = 124
+
 
 class RunPythonCodeService(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
@@ -57,19 +60,40 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         subscriber = AsyncPubsubSubscriber(callback_receiver.callback)
         await self.redis_service.asubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
-        total_len = 0
-        for g in self.redis_service._async_pubsub_groups.values():
-            total_len += len(g._subscribers)
-        await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_data.model_dump())
-        logger.info("Waiting for code_results")
+        try:
+            await self.redis_service.apublish(
+                settings.CODE_EXEC_CHANNEL, code_task_data.model_dump()
+            )
+            logger.info("Waiting for code_results")
 
-        while True:
-            if callback_receiver.results is not None:
-                self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
-                return callback_receiver.results
-            if stop_event is not None:
-                stop_event.check_stop()
-            await asyncio.sleep(0.001)
+            event_loop = asyncio.get_running_loop()
+            timeout = settings.CODE_RESULT_TIMEOUT
+            deadline = None if timeout is None else event_loop.time() + timeout
+
+            while True:
+                if callback_receiver.results is not None:
+                    return callback_receiver.results
+                if stop_event is not None:
+                    stop_event.check_stop()
+                if deadline is not None and event_loop.time() >= deadline:
+                    logger.error(
+                        "No code result for execution ID {} after {} seconds; giving up.",
+                        unique_task_id,
+                        timeout,
+                    )
+                    return CodeResultData(
+                        execution_id=unique_task_id,
+                        returncode=TIMEOUT_RETURNCODE,
+                        stdout="",
+                        stderr=(
+                            f"Timed out after {timeout} seconds waiting for the sandbox result "
+                            f"of execution {unique_task_id}."
+                        ),
+                        result_data=None,
+                    ).model_dump()
+                await asyncio.sleep(0.001)
+        finally:
+            self.redis_service.unsubscribe(settings.CODE_RESULT_CHUNNEL, subscriber=subscriber)
 
 
 class RunPythonCallbackReceiver:

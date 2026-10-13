@@ -37,8 +37,6 @@ class FakeRedisService:
         self.published = None
         self.asubscribe = AsyncMock()
         self.unsubscribe = MagicMock()
-        # run_code() reads this to log the current subscriber count.
-        self._async_pubsub_groups = {}
 
     async def apublish(self, channel: str, message: dict):
         self.published = message
