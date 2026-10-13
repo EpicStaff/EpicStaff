@@ -17,7 +17,7 @@ class CapturingExecutor:
     def __init__(self):
         self.additional_global_kwargs = None
 
-    async def run_code(self, python_code_data, inputs, additional_global_kwargs=None, stop_event=None, storage_credentials=None):
+    async def run_code(self, python_code_data, inputs, additional_global_kwargs=None, stop_event=None, storage_credentials=None, timeout=None):
         self.additional_global_kwargs = additional_global_kwargs
         return {"returncode": 0, "stderr": "", "result_data": '"next"'}
 

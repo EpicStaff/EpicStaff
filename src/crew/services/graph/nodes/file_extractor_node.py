@@ -20,6 +20,7 @@ class FileContentExtractorNode(PythonNode):
         storage_org_prefix: str | None = None,
         org_id: int | None = None,
         storage_credentials: StorageCredentials | None = None,
+        execution_timeout: int | None = None,
     ):
         if not input_map:
             raise ValueError("FileContentExtractor input cannot be empty.")
@@ -46,6 +47,7 @@ class FileContentExtractorNode(PythonNode):
             python_code_executor_service=python_code_executor_service,
             python_code_data=code_data,
             storage_credentials=storage_credentials,
+            execution_timeout=execution_timeout,
         )
 
     def _get_extractor_code(self, arg_names: list[str]):
