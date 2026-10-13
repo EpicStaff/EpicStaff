@@ -31,6 +31,7 @@ class GraphSessionMessageData(BaseModel):
     timestamp: str
     message_data: dict
     uuid: str = ""
+    node_type: str = ""
 
     model_config = ConfigDict(from_attributes=True)
 

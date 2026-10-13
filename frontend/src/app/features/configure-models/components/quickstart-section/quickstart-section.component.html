@@ -1,11 +1,10 @@
 <section class="quickstart-section">
-    <header class="quickstart-section__header">
-        <h3 class="quickstart-section__title">Quickstart</h3>
-        <p class="quickstart-section__subtitle">Quickly configure your environment with your AI provider</p>
-    </header>
-
     <div class="quickstart-section__layout">
         <div class="quickstart-section__left">
+            <header class="quickstart-section__header">
+                <h3 class="quickstart-section__title">Quickstart</h3>
+                <p class="quickstart-section__subtitle">Quickly configure your environment with your AI provider</p>
+            </header>
             <form
                 class="quickstart-section__form"
                 [formGroup]="quickStartForm"
@@ -59,95 +58,93 @@
             </form>
         </div>
 
-        <div class="quickstart-section__right">
-            <div class="quickstart-section__card">
-                <div class="quickstart-section__card-title">How to find your provider's API key</div>
-                <ol class="quickstart-section__steps">
-                    <li>
-                        Go to the official website of your provider
-                        <span
-                            class="quickstart-section__arrow-icon"
-                            aria-hidden="true"
+        <div class="quickstart-section__card">
+            <div class="quickstart-section__card-title">How to find your provider's API key</div>
+            <ol class="quickstart-section__steps">
+                <li>
+                    Go to the official website of your provider
+                    <span
+                        class="quickstart-section__arrow-icon"
+                        aria-hidden="true"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
                         >
-                            <svg
-                                viewBox="0 0 24 24"
-                                width="14"
-                                height="14"
-                            >
-                                <path
-                                    d="M5 12h14M13 5l6 7-6 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                        </span>
-                        open Settings
-                        <span
-                            class="quickstart-section__arrow-icon"
-                            aria-hidden="true"
+                            <path
+                                d="M5 12h14M13 5l6 7-6 7"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            />
+                        </svg>
+                    </span>
+                    open Settings
+                    <span
+                        class="quickstart-section__arrow-icon"
+                        aria-hidden="true"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
                         >
-                            <svg
-                                viewBox="0 0 24 24"
-                                width="14"
-                                height="14"
-                            >
-                                <path
-                                    d="M5 12h14M13 5l6 7-6 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                        </span>
-                        API Keys.
-                    </li>
-                    <li>Create or find a key.</li>
-                    <li>Copy the key and paste it here.</li>
-                </ol>
-            </div>
-
-            @if (activeCard) {
-                <div class="quickstart-section__card quickstart-section__card--success">
-                    <div class="quickstart-section__card-title quickstart-section__card-title--success">
-                        @if (activeCard.showIcon) {
-                            <i
-                                class="ti ti-check"
-                                aria-hidden="true"
-                            ></i>
-                        }
-                        {{ activeCard.title }}
-                    </div>
-
-                    <p class="quickstart-section__card-text">
-                        {{ activeCard.text1 }}
-                        <span class="quickstart-section__card-link">Knowledge</span>,
-                        <span class="quickstart-section__card-link">Agents</span>,
-                        <span class="quickstart-section__card-link">Planning</span>,
-                        <span class="quickstart-section__card-link">Memory</span>,
-                        <span class="quickstart-section__card-link">Tools</span>,
-                        <span class="quickstart-section__card-link">Voice</span> and
-                        <span class="quickstart-section__card-link">Transcription</span>
-                        <span>{{ quickstartStatus() === 'updated' ? '?' : '.' }}</span>
-                    </p>
-
-                    <p class="quickstart-section__card-text">
-                        {{ activeCard.text2 }}
-                    </p>
-
-                    <div class="quickstart-section__card-actions">
-                        @if (canRunActiveCardAction()) {
-                            <app-button (click)="activeCard.action()">
-                                {{ activeCard.actionText }}
-                            </app-button>
-                        }
-                    </div>
-                </div>
-            }
+                            <path
+                                d="M5 12h14M13 5l6 7-6 7"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            />
+                        </svg>
+                    </span>
+                    API Keys.
+                </li>
+                <li>Create or find a key.</li>
+                <li>Copy the key and paste it here.</li>
+            </ol>
         </div>
+
+        @if (activeCard) {
+            <div class="quickstart-section__card quickstart-section__card--success">
+                <div class="quickstart-section__card-title quickstart-section__card-title--success">
+                    @if (activeCard.showIcon) {
+                        <i
+                            class="ti ti-check"
+                            aria-hidden="true"
+                        ></i>
+                    }
+                    {{ activeCard.title }}
+                </div>
+
+                <p class="quickstart-section__card-text">
+                    {{ activeCard.text1 }}
+                    <span class="quickstart-section__card-link">Knowledge</span>,
+                    <span class="quickstart-section__card-link">Agents</span>,
+                    <span class="quickstart-section__card-link">Planning</span>,
+                    <span class="quickstart-section__card-link">Memory</span>,
+                    <span class="quickstart-section__card-link">Tools</span>,
+                    <span class="quickstart-section__card-link">Voice</span> and
+                    <span class="quickstart-section__card-link">Transcription</span>
+                    <span>{{ quickstartStatus() === 'updated' ? '?' : '.' }}</span>
+                </p>
+
+                <p class="quickstart-section__card-text">
+                    {{ activeCard.text2 }}
+                </p>
+
+                <div class="quickstart-section__card-actions">
+                    @if (canRunActiveCardAction()) {
+                        <app-button (click)="activeCard.action()">
+                            {{ activeCard.actionText }}
+                        </app-button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 </section>

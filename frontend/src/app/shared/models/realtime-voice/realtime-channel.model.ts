@@ -1,3 +1,4 @@
+import { AuthorshipFields } from '../authorship.model';
 import { WebhookTriggerModel } from '../webhook-trigger/webhook-trigger.model';
 
 export interface TwilioChannel {
@@ -8,7 +9,7 @@ export interface TwilioChannel {
     webhook_trigger: WebhookTriggerModel | null;
 }
 
-export interface RealtimeChannel {
+export interface RealtimeChannel extends AuthorshipFields {
     id: number;
     name: string;
     channel_type: 'twilio';
@@ -18,6 +19,8 @@ export interface RealtimeChannel {
     realtime_agent_definition: number | null;
     is_enabled: boolean;
     twilio?: TwilioChannel;
+    /** Read-only ISO 8601 creation time; null for channels created before it was recorded. Never sent back. */
+    created_at: string | null;
 }
 
 export interface CreateRealtimeChannelRequest {

@@ -134,7 +134,7 @@ RESOURCE_TYPE_METADATA = [
         "code": ResourceType.SECRETS.value,
         "label": "Secrets",
         "group": "config",
-        "description": "Provider API keys, credentials, sensitive config",
+        "description": "Provider credentials and sensitive configuration",
         "applicable_actions": ["create", "read", "delete", "use"],
         "platform_actions": [],
     },

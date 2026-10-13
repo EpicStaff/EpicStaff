@@ -143,7 +143,7 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         try:
             naive_rag = NaiveRagService.create_or_update_naive_rag(
-                collection_id=collection_id, embedder_id=embedder_id
+                collection_id=collection_id, embedder_id=embedder_id, user=request.user
             )
 
             response_serializer = NaiveRagSerializer(naive_rag)
@@ -221,7 +221,7 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     def destroy(self, request, pk=None):
         self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
         try:
-            result = NaiveRagService.delete_naive_rag(int(pk))
+            result = NaiveRagService.delete_naive_rag(int(pk), user=request.user)
 
             return Response(
                 {"message": "NaiveRag deleted successfully", **result},
@@ -243,7 +243,9 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             naive_rag = NaiveRagService.get_naive_rag(int(naive_rag_id))
 
             # Initialize configs for documents without configs
-            new_configs = NaiveRagService.init_document_configs(naive_rag_id=int(naive_rag_id))
+            new_configs = NaiveRagService.init_document_configs(
+                naive_rag_id=int(naive_rag_id), user=request.user
+            )
 
             existing_count = NaiveRagDocumentConfig.objects.filter(
                 naive_rag=naive_rag
@@ -371,6 +373,7 @@ class NaiveRagDocumentConfigViewSet(
             result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=int(naive_rag_id),
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             # Use the new serializer that includes errors field
@@ -428,7 +431,7 @@ class NaiveRagDocumentConfigViewSet(
 
         try:
             result = NaiveRagService.bulk_delete_document_configs(
-                naive_rag_id=int(naive_rag_id), config_ids=config_ids
+                naive_rag_id=int(naive_rag_id), config_ids=config_ids, user=request.user
             )
 
             return Response(
@@ -506,6 +509,7 @@ class NaiveRagDocumentConfigViewSet(
                 config_id=int(pk),
                 naive_rag_id=naive_rag_id,
                 data=serializer.validated_data,
+                user=request.user,
             )
 
             response_serializer = DocumentConfigSerializer(config)
@@ -535,7 +539,7 @@ class NaiveRagDocumentConfigViewSet(
         self._assert_naive_rag_in_active_org(naive_rag_id)
         try:
             result = NaiveRagService.delete_document_config(
-                config_id=int(pk), naive_rag_id=int(naive_rag_id)
+                config_id=int(pk), naive_rag_id=int(naive_rag_id), user=request.user
             )
 
             return Response(

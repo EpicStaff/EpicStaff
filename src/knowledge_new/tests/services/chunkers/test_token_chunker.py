@@ -1,11 +1,13 @@
 import os
 
 import pytest
+import settings
 from domain.enums import ChunkStrategyEnum
 from domain.errors import ChunkingError
 from infrastructure.naive.chunkers.strategies.token_chunker import TokenChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
+from tokie import Tokenizer
 
 LONG_TEXT = " ".join(f"word{i}" for i in range(40))
 
@@ -75,3 +77,23 @@ async def test_chunking_is_running_in_process():
     result, worker_pid = await offload_to_process(lambda: chunker.chunk(LONG_TEXT))
     assert result == inline_chunks
     assert worker_pid != os.getpid()
+
+
+@pytest.fixture
+def baked_tokenizer_path(tmp_path) -> str:
+    path = tmp_path / "gpt2.tkz"
+    Tokenizer.from_pretrained("openai-community/gpt2").save(str(path))
+    return str(path)
+
+
+async def test_uses_tokenizer_file_when_path_is_set(monkeypatch, baked_tokenizer_path):
+    resolved_by_name = await build_chunker(chunk_size=10, chunk_overlap=3).chunk(LONG_TEXT)
+    monkeypatch.setattr(settings, "TOKENIZER_PATH", baked_tokenizer_path)
+    loaded_from_file = await build_chunker(chunk_size=10, chunk_overlap=3).chunk(LONG_TEXT)
+    assert loaded_from_file == resolved_by_name
+
+
+async def test_missing_tokenizer_file_raises_chunking_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "TOKENIZER_PATH", str(tmp_path / "missing.tkz"))
+    with pytest.raises(ChunkingError):
+        await build_chunker(chunk_size=10, chunk_overlap=3).chunk("hello world")

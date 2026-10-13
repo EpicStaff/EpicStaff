@@ -24,4 +24,14 @@ export interface ToolCardVM {
     unused?: boolean;
 }
 
-export type ToolCardMenuAction = 'duplicate' | 'export' | 'show_used_places' | 'delete';
+export type ToolCardMenuAction = 'duplicate' | 'export' | 'show_used_places' | 'view_details' | 'delete';
+
+export interface ToolCardMenuActionEvent {
+    tool: ToolCardVM;
+    action: ToolCardMenuAction;
+    /**
+     * The card's ⋮ button when the action was chosen from its menu — a dialog the action opens should
+     * close back to it, as the focused menu item dies with the menu. Absent for the usage chip.
+     */
+    trigger?: HTMLElement;
+}

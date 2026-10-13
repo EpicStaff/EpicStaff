@@ -22,6 +22,9 @@ const TABLE: KeyValueTable = {
     entry_count: 0,
     created_at: '2026-09-24T00:00:00Z',
     updated_at: '2026-09-24T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const RUN_ENTRY: KeyValueTableEntryListItem = {

@@ -23,7 +23,6 @@ from tables.models import (
     RealtimeTranscriptionConfig,
 )
 from tables.models.graph_models import (
-    ConditionalEdge,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
@@ -39,7 +38,6 @@ from tables.services.secrets.python_code_sites import (
     PYTHON_CODE_SITES,
     PythonCodeSite,
 )
-from utils.graph_utils import resolve_node_names
 
 CATEGORY_FLOWS = "flows"
 CATEGORY_TOOLS = "tools"
@@ -111,12 +109,11 @@ class ConditionalPath:
         )
 
 
-# The three column shapes the sources fall into. Sources sharing a shape share
+# The two column shapes the sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
 # branch out to one common shape with typed NULLs.
 SHAPE_NAMED = "named"
 SHAPE_NODE = "node"
-SHAPE_EDGE = "edge"
 
 
 @dataclass(frozen=True)
@@ -152,9 +149,8 @@ class UsageSource:
     """ORM path from `model` to the org id. None means a hybrid resource that must be
     scoped with org_visible_queryset instead: built-ins carry org=NULL, so an org_id
     filter would hide them."""
-    name_field: str | None
-    """Display name. None means the row has no name of its own — ConditionalEdge,
-    which borrows the identity of the node it branches off."""
+    name_field: str
+    """ORM path to the display name."""
     rbac_resource_types: frozenset[str]
     """RBAC resource types that grant READ visibility of this resource unconditionally."""
     node_type: str | None = None
@@ -174,8 +170,8 @@ class UsageSource:
     site and each site's `UsageSource` entry must exclude the rows the other
     entry already covers."""
     graph_path: str = "graph"
-    """ORM path from `model` to its owning `Graph`, for flow (SHAPE_NODE/
-    SHAPE_EDGE) sources only. Defaults to `"graph"`, which is correct for every
+    """ORM path from `model` to its owning `Graph`, for flow (SHAPE_NODE)
+    sources only. Defaults to `"graph"`, which is correct for every
     existing flow-node model (the FK is direct) -- every existing entry omits
     this and behaves exactly as before. Overridden by sources whose model
     reaches `Graph` only through a nested relation."""
@@ -196,9 +192,7 @@ class UsageSource:
     @property
     def detail_shape(self) -> str:
         """Which projection this source contributes to in the detail union."""
-        if self.category != CATEGORY_FLOWS:
-            return SHAPE_NAMED
-        return SHAPE_EDGE if self.name_field is None else SHAPE_NODE
+        return SHAPE_NODE if self.category == CATEGORY_FLOWS else SHAPE_NAMED
 
     def named_rows(self, *, org_id: int, secret_ids: set[int], readability):
         """(secret_id, category, resource_type, name) for a standalone resource."""
@@ -238,26 +232,6 @@ class UsageSource:
                 f"{self.graph_path}_id",
                 "usage_graph_name",
                 "usage_node_name",
-                "usage_code_field",
-            )
-        )
-
-    def edge_rows(self, *, org_id: int, secret_ids: set[int], readability):
-        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id,
-        code_field). `graph_id` un-Cast, same reasoning as `node_rows`."""
-        return (
-            self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
-            .annotate(
-                usage_node_type=Value(self.node_type, output_field=TextField()),
-                usage_code_field=Value(self.code_field, output_field=TextField()),
-            )
-            .values_list(
-                self.secret_path,
-                "usage_node_type",
-                f"{self.graph_path}_id",
-                f"{self.graph_path}__name",
-                "source_node_id",
-                "id",
                 "usage_code_field",
             )
         )
@@ -348,68 +322,17 @@ def hits_from_node_rows(*, rows) -> list[UsageHit]:
     ]
 
 
-def hits_from_edge_rows(*, rows) -> list[UsageHit]:
-    """Conditional edges, which have no name of their own — only source_node_id."""
-    rows = list(rows)
-    if not rows:
-        return []
-
-    # One batched cross-table resolution for every source node at once —
-    # resolve_node_names issues a single UNION query plus one SELECT per matching
-    # table, so this stays bounded however many edges match.
-    formatted_names = resolve_node_names(
-        ids=[source_node_id for _, _, _, _, source_node_id, _, _ in rows]
-    )
-
-    return [
-        UsageHit(
-            secret_id=secret_id,
-            category=CATEGORY_FLOWS,
-            resource_id=graph_id,
-            resource_name=graph_name,
-            node_name=(
-                _plain_node_name(
-                    formatted=formatted_names.get(source_node_id),
-                    node_id=source_node_id,
-                )
-                or f"Conditional edge #{edge_id}"
-            ),
-            node_type=node_type,
-            code_field=code_field,
-        )
-        for (
-            secret_id,
-            node_type,
-            graph_id,
-            graph_name,
-            source_node_id,
-            edge_id,
-            code_field,
-        ) in rows
-    ]
-
-
 #: Assembler per shape, so the service can group, union and assemble without a branch.
 HITS_ASSEMBLERS = {
     SHAPE_NAMED: hits_from_named_rows,
     SHAPE_NODE: hits_from_node_rows,
-    SHAPE_EDGE: hits_from_edge_rows,
 }
 
 #: Projection method name per shape, paired with the assembler above.
 SHAPE_PROJECTIONS = {
     SHAPE_NAMED: "named_rows",
     SHAPE_NODE: "node_rows",
-    SHAPE_EDGE: "edge_rows",
 }
-
-
-def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | None:
-    """Strip the " #<id>" that resolve_node_names() appends."""
-    if formatted is None or node_id is None:
-        return None
-    suffix = f" #{node_id}"
-    return formatted.removesuffix(suffix)
 
 
 def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
@@ -581,11 +504,4 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
     ),
     # --- declaration-declared: PythonCode.secrets IS the allow-list ---
     *(_from_python_code_site(site=site) for site in PYTHON_CODE_SITES),
-)
-
-#: The ConditionalEdge source, for the tests that assert its name-borrowing branch.
-#: Named here rather than indexed by position so reordering the registry cannot
-#: silently retarget them.
-CONDITIONAL_EDGE_SOURCE: UsageSource = next(
-    source for source in USAGE_SOURCES if source.model is ConditionalEdge
 )

@@ -1,3 +1,5 @@
+@use '../../../../../styles/row-more-menu';
+
 // Header and filter stay fixed; only the rows scroll, as in the Knowledge Sources sidebar.
 :host {
     display: flex;
@@ -56,6 +58,7 @@
     // Figma "Key Storage Cards". The border is always there, transparent until hover or selection, so the card
     // never changes size.
     &__row {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 16px;
@@ -119,15 +122,83 @@
         color: var(--color-text-secondary);
     }
 
-    &__actions {
+    // The ⋮ floats over the row's right edge, as on the Agents page, and shows on hover, on keyboard focus
+    // anywhere in the row, and while its menu is open. Transparent rather than `visibility: hidden`
+    // so Tab still reaches it from either direction.
+    &__hover-actions {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 2;
         display: flex;
-        gap: 4px;
-        flex-shrink: 0;
+        align-items: center;
+        opacity: 0;
+    }
+
+    &__row:hover &__hover-actions,
+    &__row--menu-open &__hover-actions {
+        opacity: 1;
+    }
+
+    // Its own rule: a browser without `:has()` drops a whole selector list it cannot parse.
+    &__row:has(:focus-visible) &__hover-actions {
+        opacity: 1;
+    }
+
+    // 2.25rem clears the 28px ⋮ plus the 8px gap before it, so a long name ellipsizes instead of running under it.
+    &__row:hover &__select,
+    &__row--menu-open &__select {
+        padding-right: 2.25rem;
+    }
+
+    &__row:has(:focus-visible) &__select {
+        padding-right: 2.25rem;
+    }
+
+    &__hover-btn {
+        @include row-more-menu.trigger-button;
+
+        &:focus-visible {
+            color: var(--color-text-primary);
+            outline: 1px solid var(--accent-color);
+        }
+    }
+
+    // Looks like matTooltip (same tokens and shadow). Shifted left past the icon, its gap and the row padding (offsetX
+    // in the component), it starts 8px inside the 280px sidebar; 296px wide, it ends where the entries grid title
+    // starts (24px past the sidebar).
+    &__full-name {
+        max-width: 296px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: var(--mat-tooltip-container-color);
+        color: var(--mat-tooltip-supporting-text-color);
+        font-size: 0.75rem;
+        line-height: 1rem;
+        overflow-wrap: anywhere;
+        box-shadow:
+            0 6px 10px 4px rgba(0, 0, 0, 0.15),
+            0 2px 3px 0 rgba(0, 0, 0, 0.3);
+        // Never under the pointer, so it cannot steal the row's hover.
+        pointer-events: none;
     }
 
     &__empty {
         padding: 16px 12px;
         font-size: var(--text-body-size);
         color: var(--color-text-secondary);
+    }
+}
+
+// Rendered in an overlay by CdkMenu; the trigger handles placement and the overlay container the stacking.
+.table-list-menu {
+    @include row-more-menu.panel;
+
+    // Inset, so the panel's overflow clipping cannot cut the ring off.
+    &__item:focus-visible {
+        background-color: var(--color-ghost-btn-hover);
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
     }
 }

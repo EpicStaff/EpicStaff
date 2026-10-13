@@ -1,3 +1,4 @@
+from rest_framework.exceptions import AuthenticationFailed
 from utils.exceptions import CustomAPIExeption
 
 
@@ -297,6 +298,19 @@ class ApiKeyNotFoundError(CustomAPIExeption):
     default_code = "api_key_not_found"
 
 
+class SessionPasswordChangedError(AuthenticationFailed):
+    """Raised when the caller's JWT was minted under a password that has
+    since changed, detected after authentication already passed (under a
+    row lock, so a concurrent password set has committed in between).
+
+    Same status, code and detail as simplejwt's own `password_changed`
+    rejection, so clients handle both identically.
+    """
+
+    default_detail = "The user's password has been changed."
+    default_code = "password_changed"
+
+
 class ApiKeyLimitExceededError(CustomAPIExeption):
     """Raised by ApiKeyService.create_key when the caller already has the
     maximum number of active (non-revoked, non-expired) keys."""
@@ -430,3 +444,12 @@ class InvalidVerificationPhraseError(CustomAPIExeption):
     status_code = 400
     default_detail = "The verification phrase does not match the deletion target."
     default_code = "invalid_verification_phrase"
+
+
+class AuthorChangeForbiddenError(Exception):
+    """Raised when a save would replace a resource's set author with another
+    user. Clients cannot write the author, so this signals a server-side bug
+    and is deliberately not an API exception."""
+
+    def __init__(self, message: str = "The author of a resource cannot be changed."):
+        super().__init__(message)

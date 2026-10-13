@@ -17,7 +17,12 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
             collapseOnOverflowClass="status-badge--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
         >
-            @if (statusIcon) {
+            @if (sessionStatus === GraphSessionStatus.STOP) {
+                <span
+                    class="status-stop-square"
+                    aria-hidden="true"
+                ></span>
+            } @else if (statusIcon) {
                 <app-svg-icon
                     [icon]="statusIcon"
                     size="14px"
@@ -62,9 +67,27 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 color: #c69999ff;
             }
 
-            .status-stop {
-                background-color: rgba(16, 2, 2, 0.15);
-                color: #b7aeaeff;
+            .status-badge.status-stop {
+                height: 28px;
+                padding: 4px 8px 4px 4px;
+                border-radius: var(--radius-sm);
+                gap: 4px;
+                background-color: var(--red-alpha-8-flat);
+                color: var(--red-500);
+                font-family: Inter, sans-serif;
+                font-size: 12px;
+                font-weight: 400;
+                line-height: 1.3;
+                letter-spacing: 0;
+            }
+
+            .status-stop-square {
+                flex-shrink: 0;
+                width: 10px;
+                height: 10px;
+                margin: 5px;
+                border-radius: 1px;
+                background-color: var(--red-500);
             }
 
             .status-waiting {

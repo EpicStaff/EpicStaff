@@ -30,7 +30,7 @@ def test_viewer_cannot_create_surface(db, django_user_model, org):
 
 @pytest.mark.django_db
 def test_viewer_can_read_surface(db, django_user_model, org):
-    Surface.objects.create(name="s", organization=org)
+    Surface.objects.create(name="s", org=org)
     client = _client(django_user_model, org, BuiltInRole.VIEWER, "v2@example.com")
     resp = client.get("/api/surfaces/")
     assert resp.status_code == 200

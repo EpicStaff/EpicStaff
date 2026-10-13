@@ -39,6 +39,22 @@ WORKDIR /app/src/knowledge
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
+# Pre-cache every tokenizer the service resolves at runtime so no customer
+# deployment fetches one on first use (see docs/backend-runtime-fetch-audit.md):
+# - tiktoken encodings o200k_base (GraphRAG's ENCODING_MODEL default) and
+#   cl100k_base (litellm's default encoding), otherwise fetched from
+#   openaipublic.blob.core.windows.net.
+# - chonkie's default "gpt2" TokenChunker tokenizer, resolved through tokie.
+#   tokie ignores HF_HOME/HF_HUB_OFFLINE and caches under $HOME, which the
+#   runtime stage does not inherit, so the tokenizer is saved to a file that
+#   the chunker loads by path (KNOWLEDGE_TOKENIZER_PATH, set by compose).
+# Cache dirs must live under /app since nothing outside it is copied into the
+# runtime stage.
+ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
+RUN mkdir -p /app/.cache/tokie \
+ && /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); tiktoken.get_encoding('cl100k_base')" \
+ && /app/.venv/bin/python -c "from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save('/app/.cache/tokie/gpt2.tkz')"
+
 # Copy application source
 COPY ./knowledge_new /app/src/knowledge
 COPY ./shared /app/src/shared
@@ -58,12 +74,25 @@ COPY --from=builder /app /app
 # WORKDIR and `src.shared` resolves from /app, so both are on PYTHONPATH
 # explicitly rather than relying on the CWD being searched. PYTHONSAFEPATH=1
 # keeps the CWD off sys.path so spawn-based workers inherit nltk's CWD isolation.
+# TIKTOKEN_CACHE_DIR points at the pre-baked cache from the builder stage;
+# CUSTOM_TIKTOKEN_CACHE_DIR stops litellm from redirecting TIKTOKEN_CACHE_DIR to
+# its own bundled copy at import time.
+# HF_HUB_OFFLINE=1 makes any huggingface_hub (Python) call fail loudly instead
+# of phoning home; it does not reach tokie, which is why the baked tokenizer
+# file above exists.
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` (confirmed by runtime
+# trace, see docs/backend-runtime-fetch-audit.md item 7).
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app:/app/src/knowledge \
     PYTHONSAFEPATH=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/.venv
+    VIRTUAL_ENV=/app/.venv \
+    TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
+    CUSTOM_TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
+    HF_HUB_OFFLINE=1 \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/knowledge
 

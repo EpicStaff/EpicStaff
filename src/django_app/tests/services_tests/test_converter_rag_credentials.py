@@ -27,7 +27,7 @@ def org(db):
 @pytest.fixture
 def collection(db, org):
     return SourceCollection.objects.create(
-        collection_name="ConverterRagCreds Collection", user_id="test_user", org=org
+        collection_name="ConverterRagCreds Collection", org=org
     )
 
 

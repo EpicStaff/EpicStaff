@@ -1,3 +1,4 @@
+import { AuthorshipFields } from '../authorship.model';
 import { CreatePythonCodeRequest, GetPythonCodeRequest, UpdatePythonCodeRequest } from './python-code.model';
 
 export interface ArgsSchema {
@@ -14,7 +15,7 @@ export interface ArgsSchema {
     required?: string[];
 }
 
-export interface GetPythonCodeToolRequest {
+export interface GetPythonCodeToolRequest extends AuthorshipFields {
     id: number;
     python_code: GetPythonCodeRequest;
     name: string;

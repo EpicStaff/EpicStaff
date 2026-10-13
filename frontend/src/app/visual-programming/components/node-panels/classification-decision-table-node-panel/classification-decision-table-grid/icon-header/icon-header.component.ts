@@ -52,7 +52,7 @@ export interface IconHeaderParams extends IHeaderParams {
                 padding: 0 4px;
             }
             .icon-header-label {
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 flex: 1;
@@ -61,7 +61,7 @@ export interface IconHeaderParams extends IHeaderParams {
                 white-space: nowrap;
             }
             .icon-header i {
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 color: rgba(255, 255, 255, 0.7);
                 flex-shrink: 0;
             }
