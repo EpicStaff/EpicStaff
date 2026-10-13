@@ -141,11 +141,15 @@ def test_batch_record_without_instances_issues_no_query(editor):
 
 
 @pytest.mark.django_db
-def test_deleting_resource_deletes_its_last_edit(acme, editor):
+def test_purging_resource_deletes_its_last_edit(acme, editor):
     definition = AgentDefinition.objects.create(org=acme, name="agent-with-last-edit")
     record_last_edit(definition, editor)
 
+    # Delete only moves it to the recycle bin, where it keeps its last edit until purged.
     definition.delete()
+    assert ResourceLastEdit.objects.exists()
+
+    definition.purge()
 
     assert not ResourceLastEdit.objects.exists()
 

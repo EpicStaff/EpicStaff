@@ -50,11 +50,15 @@ def test_path_stays_unique_per_org(acme, beta):
     StorageFile.objects.create(org=acme, path="shared.txt", name="shared.txt")
     StorageFile.objects.create(org=beta, path="shared.txt", name="shared.txt")
 
-    assert _database_constraints()["unique_storage_file_per_org"]["columns"] == [
+    # Only among live rows: a file in the recycle bin doesn't block a new one at its path.
+    assert _database_constraints()["unique_active_storage_file_per_org"]["columns"] == [
         "org_id",
         "path",
     ]
-    with pytest.raises(IntegrityError, match="unique_storage_file_per_org"), transaction.atomic():
+    with (
+        pytest.raises(IntegrityError, match="unique_active_storage_file_per_org"),
+        transaction.atomic(),
+    ):
         StorageFile.objects.create(org=acme, path="shared.txt", name="shared.txt")
 
 
