@@ -14,8 +14,9 @@ import {
     ChatContractCheck,
     ChatConversation,
     ChatConversationPage,
+    ChatInboxBadges,
+    ChatInboxOrder,
     ChatInboxSection,
-    ChatMode,
     ChatOperatorMessage,
     ChatSendResult,
     ChatSnippet,
@@ -29,9 +30,13 @@ export const CHAT_MESSAGES_PAGE_SIZE = 50;
 export interface ConversationListParams {
     section: ChatInboxSection;
     binding: string | null;
-    // Narrows the human section only; the server refuses it with the bot section.
-    mode?: Exclude<ChatMode, 'bot'>;
     cursor?: string | null;
+    // Only the conversations the caller holds; the server lists none in Bot.
+    mine?: boolean;
+    // In progress, Tests and Bot; Waiting is always longest wait first.
+    order?: ChatInboxOrder;
+    // Visitor number, a signed visitor's id prefix or the holder's name; a blank one is not sent.
+    q?: string | null;
 }
 
 /** HTTP only (no state). Operator routes get the JWT and org header from the app interceptors;
@@ -123,8 +128,16 @@ export class ChatApiService {
         let httpParams = new HttpParams().set('section', params.section);
         if (params.cursor) httpParams = httpParams.set('cursor', params.cursor);
         if (params.binding) httpParams = httpParams.set('binding', params.binding);
-        if (params.mode) httpParams = httpParams.set('mode', params.mode);
+        if (params.mine) httpParams = httpParams.set('mine', true);
+        if (params.order) httpParams = httpParams.set('order', params.order);
+        const search = params.q?.trim();
+        if (search) httpParams = httpParams.set('q', search);
         return this.http.get<ChatConversationPage>(`${this.operatorUrl}conversations`, { params: httpParams });
+    }
+
+    /** Every conversation waiting for a person, org-wide; the inbox stream keeps the set current. */
+    getInboxBadges(): Observable<ChatInboxBadges> {
+        return this.http.get<ChatInboxBadges>(`${this.operatorUrl}inbox/badges`);
     }
 
     /** Newest page, oldest first; `before` pages backward from a message id. */

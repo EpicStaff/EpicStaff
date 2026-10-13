@@ -64,7 +64,7 @@ function desksRoute(): Route {
 
 describe('DesksShellComponent', () => {
     const readyEpoch = signal(0);
-    const awaitingByBinding = signal<Record<string, number>>({});
+    const waitingByBinding = signal<Record<string, number>>({});
     const chatApi = { getBindings: vi.fn(() => of(DESKS)) };
     let harness: RouterTestingHarness;
     let router: Router;
@@ -88,12 +88,12 @@ describe('DesksShellComponent', () => {
         vi.clearAllMocks();
         localStorage.clear();
         readyEpoch.set(0);
-        awaitingByBinding.set({});
+        waitingByBinding.set({});
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([desksRoute()]),
                 { provide: ChatApiService, useValue: chatApi },
-                { provide: ChatInboxStreamService, useValue: { readyEpoch, awaitingByBinding } },
+                { provide: ChatInboxStreamService, useValue: { readyEpoch, waitingByBinding } },
                 { provide: PermissionsService, useValue: { can: () => true } },
                 { provide: ChatBindingActionsService, useValue: { create: vi.fn() } },
                 { provide: ToastService, useValue: { error: vi.fn() } },
@@ -184,7 +184,7 @@ describe('DesksShellComponent', () => {
     });
 
     it('gives the rail the live waiting counts', () => {
-        awaitingByBinding.set({ 'b-1': 3 });
+        waitingByBinding.set({ 'b-1': 3 });
         harness.detectChanges();
         expect(link('/chat-bindings/b-1').querySelector('.desk-rail__badge')?.textContent).toBe('3');
         expect(link('/chat-bindings/all').querySelector('.desk-rail__badge')?.textContent).toBe('3');

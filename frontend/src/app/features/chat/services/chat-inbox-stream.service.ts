@@ -1,7 +1,8 @@
-import { inject, Injectable, signal } from '@angular/core';
-import { EMPTY, expand, map, Observable, Subject, Subscription } from 'rxjs';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { Subject, Subscription } from 'rxjs';
 
-import { ChatConversation, ChatConversationPage, ChatInboxMessageEvent } from '../models/chat.model';
+import { ChatConversation, ChatInboxBadge, ChatInboxMessageEvent } from '../models/chat.model';
+import { belongsTo } from '../utils/inbox-merge.util';
 import { ChatApiService } from './chat-api.service';
 
 export type ChatStreamStatus = 'closed' | 'connecting' | 'open' | 'reconnecting';
@@ -9,9 +10,12 @@ export type ChatStreamStatus = 'closed' | 'connecting' | 'open' | 'reconnecting'
 const BASE_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
 
+/** Where a waiting conversation waits and who holds it, so the count can be taken per desk and for Mine. */
+type WaitingPlacement = Omit<ChatInboxBadge, 'id'>;
+
 /**
  * The org-wide inbox stream (`GET /chat/operator/v1/inbox/stream`). Started by the sidenav for the active org,
- * so the awaiting badge is live on every page; the chat page reads the same stream.
+ * so the waiting badge is live on every page; the chat page reads the same stream.
  *
  * Every (re)connect mints a fresh single-use ticket and opens without a cursor: the service only reads
  * `Last-Event-ID` from a header `EventSource` cannot set once the ticket is consumed. Consumers therefore
@@ -23,9 +27,14 @@ export class ChatInboxStreamService {
     readonly status = signal<ChatStreamStatus>('closed');
     /** Bumped on every `ready`: the stream is live from now, so REST state loaded after this is complete. */
     readonly readyEpoch = signal(0);
-    readonly awaitingCount = signal(0);
-    /** Awaiting conversations per binding id, for the bindings list; a binding with none is absent. */
-    readonly awaitingByBinding = signal<Readonly<Record<string, number>>>({});
+    /** Conversations waiting for a person across the org, tests never included: the sidenav badge. */
+    readonly waitingCount = computed(() => this.waiting().size);
+    /** Waiting conversations per desk (binding id), for the desk rail; a desk with none is absent. */
+    readonly waitingByBinding = computed((): Readonly<Record<string, number>> => {
+        const byBinding: Record<string, number> = {};
+        this.waiting().forEach(({ binding_id }) => (byBinding[binding_id] = (byBinding[binding_id] ?? 0) + 1));
+        return byBinding;
+    });
     /** Snapshots that are older (lower seq) than one already seen for the same conversation are dropped here. */
     readonly conversationUpdated$ = new Subject<ChatConversation>();
     readonly messageCreated$ = new Subject<ChatInboxMessageEvent>();
@@ -39,13 +48,27 @@ export class ChatInboxStreamService {
     private reconnectAttempts = 0;
     private connectEpoch = 0;
     private readonly highestSeqByConversation = new Map<string, number>();
-    /** Awaiting conversation id → its binding id. */
-    private awaiting = new Map<string, string>();
+    /** Waiting conversation id → where it waits: seeded from `/inbox/badges` on every `ready`, then kept live. */
+    private readonly waiting = signal<ReadonlyMap<string, WaitingPlacement>>(new Map());
     /**
-     * Updates seen while a seed is in flight, by conversation id: its binding id when awaiting, null when not.
+     * Updates seen while a seed is in flight, by conversation id: where it waits, or null when it does not.
      * Replayed over the seed when it lands.
      */
-    private updatesDuringSeed: Map<string, string | null> | null = null;
+    private updatesDuringSeed: Map<string, WaitingPlacement | null> | null = null;
+
+    /**
+     * Waiting conversations on one desk, or on every desk for null; with `holderId` (Mine), only those that user
+     * holds — a taken conversation waits again when its visitor writes. Reactive inside `computed`.
+     */
+    waitingCountFor(bindingId: string | null, holderId: number | null): number {
+        let count = 0;
+        this.waiting().forEach((placement) => {
+            const isOnDesk = bindingId === null || placement.binding_id === bindingId;
+            const isHeld = holderId === null || placement.assigned_operator_id === holderId;
+            if (isOnDesk && isHeld) count++;
+        });
+        return count;
+    }
 
     start(orgId: number): void {
         if (this.orgId === orgId && this.status() !== 'closed') return;
@@ -68,7 +91,7 @@ export class ChatInboxStreamService {
         this.orgId = null;
         this.reconnectAttempts = 0;
         this.highestSeqByConversation.clear();
-        this.publishAwaiting(new Map());
+        this.waiting.set(new Map());
         this.status.set('closed');
     }
 
@@ -100,7 +123,7 @@ export class ChatInboxStreamService {
         source.addEventListener('ready', () => {
             if (!live()) return;
             this.readyEpoch.update((value) => value + 1);
-            this.seedAwaiting(epoch);
+            this.seedWaiting(epoch);
         });
         source.addEventListener('conversation.updated', (event: MessageEvent<string>) => {
             if (!live()) return;
@@ -112,11 +135,12 @@ export class ChatInboxStreamService {
                 this.highestSeqByConversation.set(row.id, seq);
             }
             this.conversationUpdated$.next(row);
-            // Test conversations never count as waiting: the seed (section=human) leaves them out too.
-            const awaitingOn = row.mode === 'awaiting_human' && !row.is_test ? row.binding_id : null;
-            this.applyAwaiting(this.awaiting, row.id, awaitingOn);
-            this.updatesDuringSeed?.set(row.id, awaitingOn);
-            this.publishAwaiting(this.awaiting);
+            // The after-state decides, by the Waiting section's own rule: tests never wait.
+            const placement: WaitingPlacement | null = belongsTo(row, 'waiting', null)
+                ? { binding_id: row.binding_id, assigned_operator_id: row.assigned_operator_id }
+                : null;
+            this.updatesDuringSeed?.set(row.id, placement);
+            this.place(row.id, placement);
         });
         source.addEventListener('message.created', (event: MessageEvent<string>) => {
             if (!live()) return;
@@ -148,51 +172,51 @@ export class ChatInboxStreamService {
     }
 
     /**
-     * Seeds the badge from every page of awaiting conversations (the human section filtered to `awaiting_human`).
-     * Updates that land meanwhile are replayed over the seed rather than unioned with it, so they can also remove
-     * an id: the last update per id during the seed wins over the pages, and later events are applied live.
+     * Seeds the waiting set from `/inbox/badges`, one request per `ready`. Updates that land meanwhile are replayed
+     * over the seed rather than unioned with it, so they can also remove an id: the last update per id during the
+     * seed wins over the response, and later events are applied live.
      */
-    private seedAwaiting(epoch: number): void {
+    private seedWaiting(epoch: number): void {
         this.seedSubscription?.unsubscribe();
-        const updatesDuringThisSeed = new Map<string, string | null>();
+        const updatesDuringThisSeed = new Map<string, WaitingPlacement | null>();
         this.updatesDuringSeed = updatesDuringThisSeed;
-        const seeded = new Map<string, string>();
-        const fetchPage = (cursor: string | null): Observable<{ page: ChatConversationPage; cursor: string | null }> =>
-            this.chatApi
-                .getConversations({ section: 'human', mode: 'awaiting_human', binding: null, cursor })
-                .pipe(map((page) => ({ page, cursor })));
-        this.seedSubscription = fetchPage(null)
-            .pipe(
-                // A repeated cursor would loop forever: treat it as the last page.
-                expand(({ page, cursor }) =>
-                    page.next_cursor && page.next_cursor !== cursor ? fetchPage(page.next_cursor) : EMPTY
-                )
-            )
-            .subscribe({
-                next: ({ page }) => page.results.forEach((item) => seeded.set(item.id, item.binding_id)),
-                // Keep the last known badge: a failed seed (403, network, 5xx) must not blank or break it.
-                error: () => {
-                    if (this.updatesDuringSeed === updatesDuringThisSeed) this.updatesDuringSeed = null;
-                },
-                complete: () => {
-                    if (epoch !== this.connectEpoch || this.updatesDuringSeed !== updatesDuringThisSeed) return;
-                    updatesDuringThisSeed.forEach((awaitingOn, id) => this.applyAwaiting(seeded, id, awaitingOn));
-                    this.updatesDuringSeed = null;
-                    this.publishAwaiting(seeded);
-                },
-            });
+        this.seedSubscription = this.chatApi.getInboxBadges().subscribe({
+            next: ({ waiting }) => {
+                if (epoch !== this.connectEpoch || this.updatesDuringSeed !== updatesDuringThisSeed) return;
+                const seeded = new Map<string, WaitingPlacement>(
+                    waiting.map(({ id, binding_id, assigned_operator_id }) => [
+                        id,
+                        { binding_id, assigned_operator_id },
+                    ])
+                );
+                updatesDuringThisSeed.forEach((placement, id) => setPlacement(seeded, id, placement));
+                this.updatesDuringSeed = null;
+                this.waiting.set(seeded);
+            },
+            // Keep the last known counts: a failed seed (403, network, 5xx) must not blank or break them.
+            error: () => {
+                if (this.updatesDuringSeed === updatesDuringThisSeed) this.updatesDuringSeed = null;
+            },
+        });
     }
 
-    private applyAwaiting(awaiting: Map<string, string>, id: string, bindingId: string | null): void {
-        if (bindingId) awaiting.set(id, bindingId);
-        else awaiting.delete(id);
+    /** One conversation's live after-state; most updates touch no waiting row, and those leave the set as it is. */
+    private place(id: string, placement: WaitingPlacement | null): void {
+        const current = this.waiting().get(id);
+        const isUnchanged = placement
+            ? current?.binding_id === placement.binding_id &&
+              current.assigned_operator_id === placement.assigned_operator_id
+            : !current;
+        if (!isUnchanged) this.waiting.update((waiting) => setPlacement(new Map(waiting), id, placement));
     }
+}
 
-    private publishAwaiting(awaiting: Map<string, string>): void {
-        this.awaiting = awaiting;
-        const byBinding: Record<string, number> = {};
-        awaiting.forEach((bindingId) => (byBinding[bindingId] = (byBinding[bindingId] ?? 0) + 1));
-        this.awaitingCount.set(awaiting.size);
-        this.awaitingByBinding.set(byBinding);
-    }
+function setPlacement(
+    waiting: Map<string, WaitingPlacement>,
+    id: string,
+    placement: WaitingPlacement | null
+): Map<string, WaitingPlacement> {
+    if (placement) waiting.set(id, placement);
+    else waiting.delete(id);
+    return waiting;
 }

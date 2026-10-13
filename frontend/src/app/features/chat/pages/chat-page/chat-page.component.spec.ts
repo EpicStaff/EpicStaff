@@ -13,7 +13,6 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
-import { ConversationListStore } from '../../components/conversation-list/conversation-list.store';
 import {
     CHAT_BINDING_DEFAULTS,
     ChatBinding,
@@ -26,6 +25,7 @@ import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService, ConversationListParams } from 
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
+import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { ChatPageComponent } from './chat-page.component';
 
 class ResizeObserverStub {
@@ -57,8 +57,12 @@ class IntersectionObserverStub {
     }
 
     /** The live observer of the current sentinel. */
+    /** The live observer of the thread's older-messages sentinel (the conversations column has its own). */
     static current(): IntersectionObserverStub {
-        return IntersectionObserverStub.instances.filter((instance) => !instance.disconnected).at(-1)!;
+        return IntersectionObserverStub.instances
+            .filter((instance) => !instance.disconnected)
+            .filter((instance) => instance.observed.some((target) => target.classList.contains('thread__older')))
+            .at(-1)!;
     }
 }
 
@@ -128,7 +132,7 @@ describe('ChatPageComponent', () => {
     const readyEpoch = signal(0);
     const chatApi = {
         getBindings: vi.fn(() => of(serverBindings)),
-        // By default the human section is empty and the bot section holds one conversation.
+        // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
         getConversations: vi.fn(
             (params: ConversationListParams): Observable<ChatConversationPage> =>
                 page(params.section === 'bot' ? [row({ id: 'c-1' })] : [])
@@ -161,12 +165,15 @@ describe('ChatPageComponent', () => {
         );
     }
 
-    const listStore = (): ConversationListStore =>
-        fixture.debugElement.query(By.directive(ConversationListComponent)).injector.get(ConversationListStore);
+    const collapsedSections = (): string[] => [...TestBed.inject(ConversationListPreferencesService).collapsed()];
 
-    /** A reload requests the human section first, then the bot section. */
-    function reloadWith(human: Observable<ChatConversationPage>, bot: Observable<ChatConversationPage>): void {
-        chatApi.getConversations.mockReturnValueOnce(human).mockReturnValueOnce(bot);
+    /** A reload requests the open sections in column order: Waiting, In progress, then Bot (Tests start collapsed). */
+    function reloadWith(
+        waiting: Observable<ChatConversationPage>,
+        bot: Observable<ChatConversationPage>,
+        inProgress: Observable<ChatConversationPage> = page([])
+    ): void {
+        chatApi.getConversations.mockReturnValueOnce(waiting).mockReturnValueOnce(inProgress).mockReturnValueOnce(bot);
         readyEpoch.update((value) => value + 1);
         fixture.detectChanges();
     }
@@ -202,6 +209,7 @@ describe('ChatPageComponent', () => {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
         IntersectionObserverStub.instances = [];
+        Element.prototype.scrollIntoView = vi.fn();
         vi.clearAllMocks();
         serverBindings = [];
         TestBed.configureTestingModule({
@@ -212,7 +220,13 @@ describe('ChatPageComponent', () => {
                 { provide: ChatBindingActionsService, useValue: bindingActions },
                 {
                     provide: ChatInboxStreamService,
-                    useValue: { conversationUpdated$, messageCreated$, readyEpoch, status: signal('open') },
+                    useValue: {
+                        conversationUpdated$,
+                        messageCreated$,
+                        readyEpoch,
+                        status: signal('open'),
+                        waitingCountFor: () => 0,
+                    },
                 },
                 { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 3 }) } },
                 { provide: PermissionsService, useValue: permissions },
@@ -230,6 +244,7 @@ describe('ChatPageComponent', () => {
     afterEach(() => {
         vi.unstubAllGlobals();
         localStorage.clear();
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
     });
 
     it('keeps the open conversation current as it changes, whatever the list shows', () => {
@@ -258,9 +273,9 @@ describe('ChatPageComponent', () => {
     });
 
     it('expands Tests, not Bot, in the conversations column when a test conversation starts', () => {
-        expect(listStore().expanded().test).toBe(false);
+        expect(collapsedSections()).toEqual(['test']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
-        expect(listStore().expanded()).toEqual({ human: true, bot: false, test: true });
+        expect(collapsedSections()).toEqual([]);
     });
 
     it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
@@ -287,7 +302,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(listStore().expanded().test).toBe(true);
+        expect(collapsedSections()).not.toContain('test');
         expect(component.selectedId()).toBe('c-9');
         expect(text('.thread-header .test-chip')).toEqual(['Test']);
         expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
@@ -298,6 +313,7 @@ describe('ChatPageComponent', () => {
         expect(chatApi.reply).not.toHaveBeenCalled();
     });
 
+    // Waiting, In progress and Bot: Tests start collapsed and load only when opened.
     it('lists only the route binding conversations', () => {
         chatApi.getConversations.mockClear();
         scopeTo('b-2');
@@ -962,7 +978,6 @@ describe('ChatPageComponent', () => {
             created_at: '2026-10-10T10:02:00Z',
         };
         chatApi.getMessages.mockReturnValueOnce(of([first, second]));
-        listStore().toggle('bot');
         component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         expect(text('.message__content')).toEqual(['first', 'second']);

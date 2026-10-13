@@ -31,7 +31,7 @@ export class DesksShellComponent {
     });
 
     // The rail's badges: the same live counts as the sidenav badge.
-    protected readonly waitingByDesk = inject(ChatInboxStreamService).awaitingByBinding;
+    protected readonly waitingByDesk = inject(ChatInboxStreamService).waitingByBinding;
 
     private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);

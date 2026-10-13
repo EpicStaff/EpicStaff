@@ -1,28 +1,44 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { computed, DestroyRef, inject, Injectable, linkedSignal, signal } from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { merge, Subscription } from 'rxjs';
+import { merge, Observable, Subject, Subscription } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { ChatConversation, ChatInboxSection } from '../../models/chat.model';
+import { ChatConversation, ChatInboxOrder, ChatInboxSection } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
-import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
-import { INBOX_ORDER, inboxSection, placeRow } from '../../utils/inbox-merge.util';
+import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
+import { belongsTo, inboxOrder, placeRow } from '../../utils/inbox-merge.util';
 
-// The scope that lists every desk.
-const ALL_DESKS = '';
-// Pinned to the top of the column; every other collapsed section rests at the bottom.
-const TOP_SECTION: ChatInboxSection = 'human';
+/**
+ * Why the rows changed: `live` for a stream event or an action result, `load` for anything that loads or re-arranges
+ * them (first pages, paging, reloads, another desk, search, sort, Mine, collapsing). Only live changes animate.
+ */
+export type ConversationListChange = 'live' | 'load';
+
+/** What the column lists; any change starts every section over. */
+export interface ConversationListQuery {
+    // One desk, or every desk for null.
+    bindingId: string | null;
+    // Trimmed; empty lists without searching.
+    search: string;
+    order: ChatInboxOrder;
+    // Mine: the user whose conversations are listed; null lists everyone's.
+    holderId: number | null;
+}
+
+const EVERYTHING: ConversationListQuery = { bindingId: null, search: '', order: 'newest', holderId: null };
 
 export interface ConversationSectionState {
     rows: ChatConversation[];
     nextCursor: string | null;
-    // Last row fetched while more pages remain; live rows sorting after it wait for Load more.
+    // Last row fetched while more pages remain; live rows sorting after it wait for the next page.
     boundary: ChatConversation | null;
     isLoading: boolean;
+    // The query (by generation) whose first page landed here; until it is the current one the section has not loaded.
+    loadedFor: number | null;
 }
 
 export interface ConversationSectionView {
@@ -31,22 +47,33 @@ export interface ConversationSectionView {
     icon: string;
     emptyTitle: string;
     emptyDescription: string;
+    // Said instead under Mine; only the sections Mine lists have one.
+    mineEmptyTitle?: string;
+    // Above the rows of a section that ignores the sort order.
+    orderNote?: string;
 }
 
+/**
+ * Top to bottom: the queue first, then what operators are on, Tests (collapsed by default), and Bot last — the only
+ * endless section, so anything below it would be out of reach.
+ */
 export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
     {
-        id: 'human',
-        label: 'Needs a human',
-        icon: 'user',
-        emptyTitle: 'Nothing waiting',
-        emptyDescription: 'Conversations the bot hands off, or an operator takes over, line up here.',
+        id: 'waiting',
+        label: 'Waiting for a person',
+        icon: 'hourglass',
+        emptyTitle: 'Nobody is waiting',
+        emptyDescription: 'Visitors the bot hands over, or who write after an operator took over, line up here.',
+        mineEmptyTitle: 'Nobody is waiting for you',
+        orderNote: 'Longest wait first',
     },
     {
-        id: 'bot',
-        label: 'Bot',
-        icon: 'robot',
-        emptyTitle: 'No conversations yet',
-        emptyDescription: 'Conversations from your website the bot is answering show up here.',
+        id: 'in_progress',
+        label: 'In progress',
+        icon: 'user',
+        emptyTitle: 'Nothing in progress',
+        emptyDescription: 'Conversations an operator took over and answered last show up here.',
+        mineEmptyTitle: 'None of yours in progress',
     },
     {
         id: 'test',
@@ -55,86 +82,85 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
         emptyTitle: 'No test conversations',
         emptyDescription: 'Start one with Test on a desk.',
     },
+    {
+        id: 'bot',
+        label: 'Bot',
+        icon: 'robot',
+        emptyTitle: 'No conversations yet',
+        emptyDescription: 'Conversations from your website the bot is answering show up here.',
+    },
 ];
 
-const emptySection = (): ConversationSectionState => ({ rows: [], nextCursor: null, boundary: null, isLoading: false });
+// Mine lists what the user holds: the bot holds nothing, and tests are not work to pick up.
+const MINE_SECTIONS: ReadonlySet<ChatInboxSection> = new Set(['waiting', 'in_progress']);
 
-/** A row is listed in its own section; the server hides bot and test conversations without messages. */
-const belongsTo = (row: ChatConversation, section: ChatInboxSection): boolean =>
-    inboxSection(row) === section && (section === 'human' || !!row.last_message_at);
+/** Whether a query lists a section at all: Mine hides Bot and Tests. */
+export const listsSection = (query: ConversationListQuery, section: ChatInboxSection): boolean =>
+    query.holderId === null || MINE_SECTIONS.has(section);
+
+const emptySection = (): ConversationSectionState => ({
+    rows: [],
+    nextCursor: null,
+    boundary: null,
+    isLoading: false,
+    loadedFor: null,
+});
 
 /**
- * The conversations column's state, one per column: a section per inbox section, its pages, and live rows from the
- * stream and from this user's actions merged in. Provided on `ConversationListComponent`.
+ * The conversations column's state, one per column: the query, a section per inbox section, its pages, and live rows
+ * from the stream and from this user's actions merged in. A collapsed section, or one the query does not list, never
+ * loads. Provided on `ConversationListComponent`.
  */
 @Injectable()
 export class ConversationListStore {
     readonly sections = signal<Record<ChatInboxSection, ConversationSectionState>>({
-        human: emptySection(),
-        bot: emptySection(),
+        waiting: emptySection(),
+        in_progress: emptySection(),
         test: emptySection(),
+        bot: emptySection(),
     });
-    // Bot and Tests start collapsed: the human queue is the work; the others are there to look into.
-    readonly expanded = signal<Record<ChatInboxSection, boolean>>({ human: true, bot: false, test: false });
-    // The desk listed, or every desk.
-    private readonly scope = signal(ALL_DESKS);
-    // The scope whose first human page last landed: until then the human rows still belong to the previous scope.
-    private readonly humanLoadedFor = signal<string | null>(null);
-    /**
-     * Without handoff a desk has no human queue, unless conversations handed off before it was turned off still wait
-     * there: hiding those would leave them unreachable. Decided only once the human page for the current scope has
-     * landed; meanwhile the previous decision stands, so a switch never flashes the section in and out.
-     */
-    private readonly showsHumanSection = linkedSignal<
-        { scope: string; handoffEnabled: boolean; isLoaded: boolean; hasRows: boolean },
-        boolean
-    >({
-        source: () => {
-            const scope = this.scope();
-            const desk = this.desksStorage.desks().find((item) => item.id === scope);
-            return {
-                scope,
-                handoffEnabled: desk?.handoff_enabled !== false,
-                isLoaded: this.humanLoadedFor() === scope,
-                hasRows: this.sections().human.rows.length > 0,
-            };
-        },
-        computation: (source, previous) => {
-            if (!source.scope || source.handoffEnabled) return true;
-            return source.isLoaded ? source.hasRows : (previous?.value ?? true);
-        },
-    });
-    /**
-     * Same layout as the agents explorer: the lowest expanded section fills the leftover height and scrolls, and the
-     * first section below it is pushed to the bottom. The top section stays at the top.
-     */
-    readonly layout = computed(() => {
-        const visible = CONVERSATION_SECTIONS.filter(({ id }) => id !== 'human' || this.showsHumanSection());
-        const expanded = this.expanded();
-        const lastExpanded = visible.reduce((last, { id }, index) => (expanded[id] ? index : last), -1);
-        const bottomAnchor = visible.findIndex(({ id }, index) => index > lastExpanded && id !== TOP_SECTION);
-        return visible.map((section, index) => ({
+    private readonly querySignal = signal(EVERYTHING);
+    readonly query = this.querySignal.asReadonly();
+    readonly isSearching = computed(() => !!this.query().search);
+    readonly isMineOnly = computed(() => this.query().holderId !== null);
+    /** The server refused the search (`invalid_search`): said next to the field, instead of a list or a toast. */
+    readonly searchError = signal<string | null>(null);
+    // Bumped by every load: a section has loaded once its first page for the current generation has landed.
+    private readonly generation = signal(0);
+    /** Each section the query lists, in column order, with its state and whether it is open. */
+    readonly view = computed(() => {
+        const sections = this.sections();
+        const collapsed = this.preferences.collapsed();
+        const query = this.query();
+        return CONVERSATION_SECTIONS.filter((section) => listsSection(query, section.id)).map((section) => ({
             section,
-            fills: index === lastExpanded,
-            anchorsBottom: index === bottomAnchor,
+            state: sections[section.id],
+            isExpanded: !collapsed.has(section.id),
         }));
     });
-    /** The rows as shown, top to bottom: those of the expanded sections, in order. What ↑/↓ moves through. */
-    readonly visibleRows = computed(() => {
-        const sections = this.sections();
-        const expanded = this.expanded();
-        return this.layout()
-            .filter(({ section }) => expanded[section.id])
-            .flatMap(({ section }) => sections[section.id].rows);
+    /** The rows as shown, top to bottom: those of the open sections, in order. What ↑/↓ moves through. */
+    readonly visibleRows = computed(() =>
+        this.view()
+            .filter(({ isExpanded }) => isExpanded)
+            .flatMap(({ state }) => state.rows)
+    );
+    private readonly changesSubject = new Subject<ConversationListChange>();
+    /** Every change to the rows, as it is made and before it renders. */
+    readonly changes$: Observable<ConversationListChange> = this.changesSubject.asObservable();
+    /** Every open section has loaded and has nothing: the column says so once, not once per section. */
+    readonly isEverythingEmpty = computed(() => {
+        const generation = this.generation();
+        const open = this.view().filter(({ isExpanded }) => isExpanded);
+        return open.length > 0 && open.every(({ state }) => state.loadedFor === generation && !state.rows.length);
     });
 
     private readonly chatApi = inject(ChatApiService);
     private readonly toastService = inject(ToastService);
-    private readonly desksStorage = inject(ChatDesksStorageService);
+    private readonly preferences = inject(ConversationListPreferencesService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly pageRequests: Partial<Record<ChatInboxSection, Subscription>> = {};
-    // Rows streamed since the last reload: newer than any page fetched meanwhile, so they win over the first pages and
-    // over Load more pages, in whichever section they now belong to.
+    // Rows streamed since the last load: newer than any page fetched meanwhile, so they win over the first pages and
+    // over later pages, in whichever section they now belong to.
     private rowsSinceReload = new Map<string, ChatConversation>();
 
     constructor() {
@@ -143,24 +169,45 @@ export class ConversationListStore {
             .subscribe((row) => this.applyRow(row));
     }
 
-    /** Lists one desk's conversations, or every desk's for null. The rows stay on screen until the first pages land. */
-    reload(bindingId: string | null): void {
-        this.scope.set(bindingId ?? ALL_DESKS);
+    /**
+     * Lists `query` from the start: every section starts over. Open sections keep their rows on screen until their
+     * first pages land; a collapsed section, or one the query does not list, is emptied and loads only once shown.
+     */
+    load(query: ConversationListQuery): void {
+        this.querySignal.set(query);
+        this.generation.update((generation) => generation + 1);
         this.rowsSinceReload = new Map();
-        for (const { id: section } of CONVERSATION_SECTIONS) this.loadPage(section, null);
+        this.searchError.set(null);
+        this.changesSubject.next('load');
+        for (const { id: section } of CONVERSATION_SECTIONS) {
+            if (this.isOpen(section)) {
+                this.loadPage(section, null);
+            } else {
+                this.pageRequests[section]?.unsubscribe();
+                this.patchSection(section, emptySection());
+            }
+        }
     }
 
+    /** The next page of an open section, once its first has landed; one request at a time per section. */
     loadMore(section: ChatInboxSection): void {
-        const cursor = this.sections()[section].nextCursor;
-        if (cursor) this.loadPage(section, cursor);
+        const state = this.sections()[section];
+        if (state.isLoading || !state.nextCursor || !this.isOpen(section)) return;
+        this.loadPage(section, state.nextCursor);
     }
 
     toggle(section: ChatInboxSection): void {
-        this.expanded.update((state) => ({ ...state, [section]: !state[section] }));
+        this.setCollapsed(section, !this.preferences.collapsed().has(section));
     }
 
-    expand(section: ChatInboxSection): void {
-        this.expanded.update((state) => ({ ...state, [section]: true }));
+    /** Remembered per browser; opening a listed section that has not loaded for this query loads its first page. */
+    setCollapsed(section: ChatInboxSection, collapsed: boolean): void {
+        this.preferences.setCollapsed(section, collapsed);
+        this.changesSubject.next('load');
+        const state = this.sections()[section];
+        if (this.isOpen(section) && state.loadedFor !== this.generation() && !state.isLoading) {
+            this.loadPage(section, null);
+        }
     }
 
     findRow(id: string | null): ChatConversation | null {
@@ -171,30 +218,66 @@ export class ConversationListStore {
         );
     }
 
+    private isOpen(section: ChatInboxSection): boolean {
+        return listsSection(this.query(), section) && !this.preferences.collapsed().has(section);
+    }
+
     /**
      * A stream or action row: newest state wins. It leaves the section it was in and is placed by its section's order,
-     * so a handed-off row joins the end of the human queue and a reply on a human row does not move it.
+     * so a fresh wait joins the end of the queue and a visitor writing again does not move a waiting row.
      */
     private applyRow(row: ChatConversation): void {
-        const scope = this.scope();
-        if (scope && row.binding_id !== scope) return;
+        const query = this.query();
+        if (query.bindingId && row.binding_id !== query.bindingId) return;
         this.rowsSinceReload.set(row.id, row);
+        if (query.search) {
+            this.applySearchedRow(row, query);
+            return;
+        }
         this.sections.update((sections) => {
             const next = { ...sections };
             for (const { id: section } of CONVERSATION_SECTIONS) {
                 const state = sections[section];
-                const rows = belongsTo(row, section)
-                    ? placeRow(state.rows, row, INBOX_ORDER[section], state.boundary)
-                    : state.rows.filter((item) => item.id !== row.id);
+                const rows =
+                    listsSection(query, section) && belongsTo(row, section, query.holderId)
+                        ? placeRow(state.rows, row, inboxOrder(section, query.order), state.boundary)
+                        : state.rows.filter((item) => item.id !== row.id);
                 next[section] = { ...state, rows };
             }
             return next;
         });
+        this.changesSubject.next('live');
+    }
+
+    /**
+     * While searching, the server decides what matches, and what it matches depends on the section (an operator's name
+     * only in Waiting and In progress, a signed id never in Tests). So a shown row is updated in place while it keeps
+     * its section and holder, and leaves when either changes: it comes back with the next search load if it still
+     * matches. A row not shown is never added.
+     */
+    private applySearchedRow(row: ChatConversation, query: ConversationListQuery): void {
+        const sections = this.sections();
+        const shownIn = CONVERSATION_SECTIONS.map(({ id }) => id).filter((section) =>
+            sections[section].rows.some((item) => item.id === row.id)
+        );
+        if (!shownIn.length) return;
+        const next = { ...sections };
+        for (const section of shownIn) {
+            const state = sections[section];
+            const shown = state.rows.find((item) => item.id === row.id)!;
+            const rows = keepsMatch(shown, row, section, query.holderId)
+                ? placeRow(state.rows, row, inboxOrder(section, query.order), state.boundary)
+                : state.rows.filter((item) => item.id !== row.id);
+            next[section] = { ...state, rows };
+        }
+        this.sections.set(next);
+        this.changesSubject.next('live');
     }
 
     private loadPage(section: ChatInboxSection, cursor: string | null): void {
-        const binding = this.scope() || null;
-        // A failed reload must not leave the previous scope's cursor behind for Load more.
+        const query = this.query();
+        const generation = this.generation();
+        // A failed reload must not leave the previous query's cursor behind for the next page.
         this.patchSection(
             section,
             cursor ? { isLoading: true } : { isLoading: true, nextCursor: null, boundary: null }
@@ -202,41 +285,115 @@ export class ConversationListStore {
         // Only the latest request per section may land: an older response would overwrite fresher rows or the cursor.
         this.pageRequests[section]?.unsubscribe();
         this.pageRequests[section] = this.chatApi
-            .getConversations({ section, binding, cursor })
+            .getConversations({
+                section,
+                binding: query.bindingId,
+                cursor,
+                mine: query.holderId !== null,
+                order: query.order,
+                q: query.search,
+            })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (result) => {
-                    if ((this.scope() || null) !== binding) return;
-                    if (section === 'human' && !cursor) this.humanLoadedFor.set(binding ?? ALL_DESKS);
-                    const order = INBOX_ORDER[section];
+                    if (this.generation() !== generation) return;
                     const boundary = result.next_cursor ? (result.results.at(-1) ?? null) : null;
-                    const pageIds = new Set(result.results.map((item) => item.id));
-                    // Rows the server returned unchanged are in its window by definition and are never filtered.
-                    const serverRows = result.results.filter((item) => !this.rowsSinceReload.has(item.id));
-                    // Everything else is ours: the rows already listed (Load more only) and every row streamed since the
-                    // reload, which also covers a row dropped past the old boundary while this request was in flight.
-                    // Streamed copies are newer and win; one that changed section is listed by the other.
-                    const ours = new Map<string, ChatConversation>(
-                        cursor ? this.sections()[section].rows.map((item) => [item.id, item]) : []
-                    );
-                    this.rowsSinceReload.forEach((item, id) => ours.set(id, item));
-                    const oursInWindow = [...ours.values()].filter(
-                        (item) =>
-                            belongsTo(item, section) &&
-                            (!pageIds.has(item.id) || this.rowsSinceReload.has(item.id)) &&
-                            (!boundary || order(item, boundary) <= 0)
-                    );
-                    const rows = [...serverRows, ...oursInWindow].sort(order);
-                    this.patchSection(section, { rows, nextCursor: result.next_cursor, boundary, isLoading: false });
+                    // Later pages add to the rows already listed; a first page replaces them.
+                    const listed = cursor ? this.sections()[section].rows : [];
+                    const page: SectionPage = { section, query, listed, results: result.results, boundary };
+                    const rows = query.search ? this.searchedPageRows(page) : this.pageRows(page);
+                    this.patchSection(section, {
+                        rows,
+                        nextCursor: result.next_cursor,
+                        boundary,
+                        isLoading: false,
+                        loadedFor: generation,
+                    });
+                    this.changesSubject.next('load');
                 },
                 error: (error: HttpErrorResponse) => {
+                    if (isInvalidSearch(error)) {
+                        // Every section gets the same answer: nothing is listed for a search the server cannot run.
+                        this.searchError.set(invalidSearchMessage(error));
+                        this.patchSection(section, { ...emptySection(), loadedFor: generation });
+                        this.changesSubject.next('load');
+                        return;
+                    }
                     this.patchSection(section, { isLoading: false });
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
     }
 
+    /**
+     * A page merged with what the column already knows. Rows the server returned unchanged are in its window by
+     * definition and are never filtered. Everything else is ours: the rows already listed and every row streamed since
+     * the load, which also covers a row dropped past the old boundary while this request was in flight. Streamed
+     * copies are newer and win; one that changed section is listed by the other.
+     */
+    private pageRows({ section, query, listed, results, boundary }: SectionPage): ChatConversation[] {
+        const order = inboxOrder(section, query.order);
+        const pageIds = new Set(results.map((item) => item.id));
+        const serverRows = results.filter((item) => !this.rowsSinceReload.has(item.id));
+        const ours = new Map<string, ChatConversation>(listed.map((item) => [item.id, item]));
+        this.rowsSinceReload.forEach((item, id) => ours.set(id, item));
+        const oursInWindow = [...ours.values()].filter(
+            (item) =>
+                belongsTo(item, section, query.holderId) &&
+                (!pageIds.has(item.id) || this.rowsSinceReload.has(item.id)) &&
+                (!boundary || order(item, boundary) <= 0)
+        );
+        return [...serverRows, ...oursInWindow].sort(order);
+    }
+
+    /**
+     * A search page: only what the server matched. A row streamed since the load replaces its page copy while it
+     * keeps the section and holder the search matched it in, and drops it otherwise; nothing streamed is added.
+     */
+    private searchedPageRows({ section, query, listed, results, boundary }: SectionPage): ChatConversation[] {
+        const order = inboxOrder(section, query.order);
+        const pageIds = new Set(results.map((item) => item.id));
+        const pageRows = results.flatMap((item) => {
+            const newer = this.rowsSinceReload.get(item.id);
+            if (!newer) return [item];
+            const isInWindow = !boundary || order(newer, boundary) <= 0;
+            return keepsMatch(item, newer, section, query.holderId) && isInWindow ? [newer] : [];
+        });
+        return [...listed.filter((item) => !pageIds.has(item.id)), ...pageRows].sort(order);
+    }
+
     private patchSection(section: ChatInboxSection, patch: Partial<ConversationSectionState>): void {
         this.sections.update((sections) => ({ ...sections, [section]: { ...sections[section], ...patch } }));
     }
+}
+
+/** One landed page of a section, for the query it was requested for. */
+interface SectionPage {
+    section: ChatInboxSection;
+    query: ConversationListQuery;
+    listed: ChatConversation[];
+    results: ChatConversation[];
+    boundary: ChatConversation | null;
+}
+
+/** While searching: a newer copy still matches where the search found it only in the same section, with the same holder. */
+const keepsMatch = (
+    matched: ChatConversation,
+    newer: ChatConversation,
+    section: ChatInboxSection,
+    holderId: number | null
+): boolean => belongsTo(newer, section, holderId) && newer.assigned_operator_id === matched.assigned_operator_id;
+
+const isInvalidSearch = (error: HttpErrorResponse): boolean =>
+    error.status === 400 && readErrorField(error, 'code') === 'invalid_search';
+
+// The server says what is wrong (too long, a NUL character); the fallback covers an answer without a message.
+const invalidSearchMessage = (error: HttpErrorResponse): string =>
+    readErrorField(error, 'message') ?? 'This search cannot be run. Try a shorter one.';
+
+function readErrorField(error: HttpErrorResponse, field: string): string | null {
+    const body: unknown = error.error;
+    if (!body || typeof body !== 'object') return null;
+    const value: unknown = (body as Record<string, unknown>)[field];
+    return typeof value === 'string' && value ? value : null;
 }

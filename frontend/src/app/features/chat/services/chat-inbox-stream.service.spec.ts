@@ -62,17 +62,27 @@ describe('ChatInboxStreamService', () => {
     let httpMock: HttpTestingController;
 
     const ticketUrl = '/chat/operator/v1/inbox/stream-ticket';
-    const seedUrl =
-        (cursor: string | null = null) =>
-        (request: { url: string; params: { get(name: string): string | null } }): boolean =>
-            request.url === '/chat/operator/v1/conversations' &&
-            request.params.get('section') === 'human' &&
-            request.params.get('mode') === 'awaiting_human' &&
-            request.params.get('cursor') === cursor;
-    const awaitingPage = (ids: string[], nextCursor: string | null = null) => ({
-        results: ids.map((id) => conversation({ id, mode: 'awaiting_human' })),
-        next_cursor: nextCursor,
+    const badgesUrl = '/chat/operator/v1/inbox/badges';
+    const at = '2026-10-10T10:00:00Z';
+    const badge = (id: string, bindingId = 'b-1', holderId: number | null = null) => ({
+        id,
+        binding_id: bindingId,
+        assigned_operator_id: holderId,
     });
+    const badges = (ids: string[]) => ({ waiting: ids.map((id) => badge(id)) });
+    /** The after-state of a conversation a visitor waits on (taken by `holderId` when set). */
+    const waiting = (id: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
+        conversation({
+            id,
+            mode: 'awaiting_human',
+            handoff_at: at,
+            visitor_waiting_since: at,
+            last_message_at: at,
+            ...overrides,
+        });
+    /** Taken and answered: nobody waits. */
+    const answered = (id: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
+        conversation({ id, mode: 'human', assigned_operator_id: 7, handoff_at: at, last_message_at: at, ...overrides });
 
     function openStream(ticket = 't-1'): FakeEventSource {
         httpMock.expectOne(ticketUrl).flush({ ticket, expires_in: 60 });
@@ -102,7 +112,7 @@ describe('ChatInboxStreamService', () => {
         vi.useRealTimers();
     });
 
-    it('mints a ticket, opens the stream, bumps the ready epoch and seeds the awaiting badge on ready', () => {
+    it('mints a ticket, opens the stream, bumps the ready epoch and seeds the waiting count on ready', () => {
         service.start(1);
         const source = openStream();
         expect(source.url).toBe('/chat/operator/v1/inbox/stream?ticket=t-1');
@@ -111,122 +121,141 @@ describe('ChatInboxStreamService', () => {
 
         source.emit('ready', {}, '42');
         expect(service.readyEpoch()).toBe(1);
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1', 'c-2', 'c-3']));
-        expect(service.awaitingCount()).toBe(3);
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2', 'c-3']));
+        expect(service.waitingCount()).toBe(3);
     });
 
-    it('seeds the awaiting badge across cursor pages until next_cursor is null', () => {
+    it('seeds with one badges request per ready', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1', 'c-2'], 'cursor-2'));
-        expect(service.awaitingCount()).toBe(0);
-        httpMock.expectOne(seedUrl('cursor-2')).flush(awaitingPage(['c-3']));
-        expect(service.awaitingCount()).toBe(3);
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1']));
+        httpMock.expectNone(badgesUrl);
+
+        source.emit('ready', {}, '2');
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2']));
+        expect(service.waitingCount()).toBe(2);
     });
 
-    it('adds and removes awaiting ids from conversation updates', () => {
+    it('adds and removes waiting ids from the after-state of conversation updates', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1']));
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1']));
 
-        source.emit('conversation.updated', conversation({ id: 'c-2', mode: 'awaiting_human' }), '5');
-        expect(service.awaitingCount()).toBe(2);
-        source.emit('conversation.updated', conversation({ id: 'c-1', mode: 'human' }), '6');
-        source.emit('conversation.updated', conversation({ id: 'c-2', mode: 'awaiting_human' }), '7');
-        expect(service.awaitingCount()).toBe(1);
-        // An older snapshot is deduped before it can touch the badge.
-        source.emit('conversation.updated', conversation({ id: 'c-1', mode: 'awaiting_human' }), '4');
-        expect(service.awaitingCount()).toBe(1);
+        source.emit('conversation.updated', waiting('c-2'), '5');
+        expect(service.waitingCount()).toBe(2);
+        // An operator reply clears the wait; the row is in progress now.
+        source.emit('conversation.updated', answered('c-1'), '6');
+        expect(service.waitingCount()).toBe(1);
+        // Released to the bot: nobody waits.
+        source.emit('conversation.updated', conversation({ id: 'c-2', last_message_at: at }), '7');
+        expect(service.waitingCount()).toBe(0);
+        // An older snapshot is deduped before it can touch the count.
+        source.emit('conversation.updated', waiting('c-1'), '4');
+        expect(service.waitingCount()).toBe(0);
     });
 
-    it('counts awaiting conversations per binding from the seed and from updates', () => {
+    it('counts a taken conversation whose visitor wrote again as waiting', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush({
-            results: [
-                conversation({ id: 'c-1', binding_id: 'b-1', mode: 'awaiting_human' }),
-                conversation({ id: 'c-2', binding_id: 'b-2', mode: 'awaiting_human' }),
-            ],
-            next_cursor: null,
-        });
-        expect(service.awaitingByBinding()).toEqual({ 'b-1': 1, 'b-2': 1 });
+        httpMock.expectOne(badgesUrl).flush(badges([]));
 
-        source.emit(
-            'conversation.updated',
-            conversation({ id: 'c-3', binding_id: 'b-1', mode: 'awaiting_human' }),
-            '5'
-        );
-        source.emit('conversation.updated', conversation({ id: 'c-2', binding_id: 'b-2', mode: 'human' }), '6');
-        expect(service.awaitingByBinding()).toEqual({ 'b-1': 2 });
-        expect(service.awaitingCount()).toBe(2);
+        source.emit('conversation.updated', answered('c-1'), '5');
+        expect(service.waitingCount()).toBe(0);
+        source.emit('conversation.updated', answered('c-1', { visitor_waiting_since: at }), '6');
+        expect(service.waitingCount()).toBe(1);
+        expect(service.waitingCountFor(null, 7)).toBe(1);
+    });
+
+    it('counts waiting conversations per desk from the seed and from updates', () => {
+        service.start(1);
+        const source = openStream();
+        source.emit('ready', {}, '1');
+        httpMock.expectOne(badgesUrl).flush({ waiting: [badge('c-1', 'b-1'), badge('c-2', 'b-2')] });
+        expect(service.waitingByBinding()).toEqual({ 'b-1': 1, 'b-2': 1 });
+
+        source.emit('conversation.updated', waiting('c-3', { binding_id: 'b-1' }), '5');
+        source.emit('conversation.updated', answered('c-2', { binding_id: 'b-2' }), '6');
+        expect(service.waitingByBinding()).toEqual({ 'b-1': 2 });
+        expect(service.waitingCount()).toBe(2);
 
         service.stop();
-        expect(service.awaitingByBinding()).toEqual({});
+        expect(service.waitingByBinding()).toEqual({});
+    });
+
+    it('counts per desk, across desks and for Mine by the holder, following take over live', () => {
+        service.start(1);
+        const source = openStream();
+        source.emit('ready', {}, '1');
+        httpMock.expectOne(badgesUrl).flush({
+            waiting: [badge('c-1', 'b-1'), badge('c-2', 'b-1', 7), badge('c-3', 'b-2', 7), badge('c-4', 'b-2', 8)],
+        });
+
+        expect(service.waitingCountFor(null, null)).toBe(4);
+        expect(service.waitingCountFor('b-1', null)).toBe(2);
+        expect(service.waitingCountFor(null, 7)).toBe(2);
+        expect(service.waitingCountFor('b-2', 7)).toBe(1);
+        expect(service.waitingCountFor('b-3', null)).toBe(0);
+
+        // Taking over keeps the wait and moves it into the holder's Mine count.
+        source.emit('conversation.updated', waiting('c-1', { mode: 'human', assigned_operator_id: 7 }), '5');
+        expect(service.waitingCountFor(null, 7)).toBe(3);
+        expect(service.waitingCountFor('b-1', null)).toBe(2);
     });
 
     it('never counts a test conversation as waiting', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage([]));
-        source.emit('conversation.updated', conversation({ id: 'c-9', mode: 'awaiting_human', is_test: true }), '5');
-        expect(service.awaitingCount()).toBe(0);
-        expect(service.awaitingByBinding()).toEqual({});
+        httpMock.expectOne(badgesUrl).flush(badges([]));
+        source.emit('conversation.updated', waiting('c-9', { is_test: true }), '5');
+        expect(service.waitingCount()).toBe(0);
+        expect(service.waitingByBinding()).toEqual({});
     });
 
     it('replays updates that arrive while the seed is in flight over the seed', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        const firstPage = httpMock.expectOne(seedUrl());
+        const seed = httpMock.expectOne(badgesUrl);
 
-        source.emit('conversation.updated', conversation({ id: 'c-1', mode: 'human' }), '5');
-        source.emit('conversation.updated', conversation({ id: 'c-8', mode: 'awaiting_human' }), '6');
-        source.emit('conversation.updated', conversation({ id: 'c-9', mode: 'awaiting_human' }), '7');
-        firstPage.flush(awaitingPage(['c-1', 'c-2'], 'cursor-2'));
-        httpMock.expectOne(seedUrl('cursor-2')).flush(awaitingPage(['c-3']));
+        source.emit('conversation.updated', answered('c-1'), '5');
+        source.emit('conversation.updated', waiting('c-8'), '6');
+        source.emit('conversation.updated', waiting('c-9'), '7');
+        source.emit('conversation.updated', waiting('c-2', { mode: 'human', assigned_operator_id: 7 }), '8');
+        seed.flush(badges(['c-1', 'c-2', 'c-3']));
 
-        // c-1 left awaiting after the snapshot listed it; c-8 and c-9 entered without being on any page.
-        // Without the replay the badge would read 3 (pages only); a plain union would read 5.
-        expect(service.awaitingCount()).toBe(4);
-    });
-
-    it('ends the seed when the server repeats the cursor it was given', () => {
-        service.start(1);
-        const source = openStream();
-        source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1'], 'cursor-2'));
-        httpMock.expectOne(seedUrl('cursor-2')).flush(awaitingPage(['c-2'], 'cursor-2'));
-
-        httpMock.expectNone(seedUrl('cursor-2'));
-        expect(service.awaitingCount()).toBe(2);
+        // c-1 stopped waiting after the snapshot listed it; c-8 and c-9 started without being in it.
+        // Without the replay the count would read 3 (snapshot only); a plain union would read 5.
+        expect(service.waitingCount()).toBe(4);
+        // The replayed after-state also wins on who holds a listed conversation.
+        expect(service.waitingCountFor(null, 7)).toBe(1);
     });
 
     it('ignores a seed from an earlier ready once a newer one starts', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        const stale = httpMock.expectOne(seedUrl());
+        const stale = httpMock.expectOne(badgesUrl);
         source.emit('ready', {}, '2');
 
         expect(stale.cancelled).toBe(true);
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1']));
-        expect(service.awaitingCount()).toBe(1);
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1']));
+        expect(service.waitingCount()).toBe(1);
     });
 
     it('ignores a seed from a previous org', () => {
         service.start(1);
         openStream('t-1').emit('ready', {}, '1');
-        const stale = httpMock.expectOne(seedUrl());
+        const stale = httpMock.expectOne(badgesUrl);
         service.start(2);
 
         expect(stale.cancelled).toBe(true);
         openStream('t-2').emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage([]));
-        expect(service.awaitingCount()).toBe(0);
+        httpMock.expectOne(badgesUrl).flush(badges([]));
+        expect(service.waitingCount()).toBe(0);
     });
 
     it('is idempotent for the same org and restarts for another org', () => {
@@ -265,16 +294,18 @@ describe('ChatInboxStreamService', () => {
         expect(seen.map((row) => row.mode)).toEqual(['human']);
     });
 
-    it('keeps the previous awaiting count when the seed fails', () => {
+    it('keeps the previous waiting count when the seed fails, and keeps applying updates', () => {
         service.start(1);
         const source = openStream();
         source.emit('ready', {}, '1');
-        httpMock.expectOne(seedUrl()).flush(awaitingPage(['c-1', 'c-2', 'c-3']));
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2', 'c-3']));
 
         source.emit('ready', {}, '2');
-        httpMock.expectOne(seedUrl()).flush('boom', { status: 500, statusText: 'Server Error' });
+        httpMock.expectOne(badgesUrl).flush('boom', { status: 500, statusText: 'Server Error' });
+        expect(service.waitingCount()).toBe(3);
 
-        expect(service.awaitingCount()).toBe(3);
+        source.emit('conversation.updated', answered('c-1'), '5');
+        expect(service.waitingCount()).toBe(2);
     });
 
     it('forwards message.created events', () => {
@@ -318,6 +349,6 @@ describe('ChatInboxStreamService', () => {
         service.stop();
         expect(source.closed).toBe(true);
         expect(service.status()).toBe('closed');
-        expect(service.awaitingCount()).toBe(0);
+        expect(service.waitingCount()).toBe(0);
     });
 });

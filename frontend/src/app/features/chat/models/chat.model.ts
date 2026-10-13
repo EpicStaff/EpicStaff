@@ -4,9 +4,11 @@ export type ChatMessageRole = 'user' | 'assistant' | 'operator' | 'system';
 export type ChatIdentityMode = 'anonymous' | 'signed';
 export type ChatBudgetExhaustedBehaviour = 'reply' | 'handoff';
 export type ChatSendState = 'processing' | 'forwarded_to_operator' | 'budget_exhausted';
-// `section` of `GET /conversations`: everything that left bot mode, the conversations the bot still runs, and
-// the test conversations (only there, whatever their mode).
-export type ChatInboxSection = 'human' | 'bot' | 'test';
+// `section` of `GET /conversations`; never share a row. Waiting: a visitor waits for a person. In progress: an
+// operator holds it and answered last. Bot: the bot still runs it. Test: operators' test conversations.
+export type ChatInboxSection = 'waiting' | 'in_progress' | 'bot' | 'test';
+// `order` of `GET /conversations`: newest or oldest activity first. Waiting ignores it (longest wait first).
+export type ChatInboxOrder = 'newest' | 'oldest';
 
 export const CHAT_MODE_LABELS: Record<ChatMode, string> = {
     bot: 'Bot',
@@ -144,6 +146,19 @@ export interface ChatConversation {
     // Since when the visitor has waited for a person: set by a hand-off or by a visitor message after the last
     // operator reply; cleared by an operator reply or a return to the bot (a take over keeps it).
     visitor_waiting_since: string | null;
+}
+
+// One conversation the Waiting count includes (`GET /inbox/badges`): its desk and holder, to count per desk and Mine.
+export interface ChatInboxBadge {
+    id: string;
+    binding_id: string;
+    assigned_operator_id: number | null;
+}
+
+// `GET /inbox/badges`: every conversation waiting for a person, org-wide; tests never wait. In progress has no count:
+// nothing closes an answered conversation, so that set would only grow.
+export interface ChatInboxBadges {
+    waiting: ChatInboxBadge[];
 }
 
 // Cursor page of `GET /conversations`; `next_cursor` is opaque and null on the last page.

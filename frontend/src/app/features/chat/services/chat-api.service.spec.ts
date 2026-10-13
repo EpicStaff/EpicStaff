@@ -26,32 +26,43 @@ describe('ChatApiService', () => {
     afterEach(() => httpMock.verify());
 
     it('builds operator URLs from the configured chat base', () => {
-        service.getConversations({ section: 'human', binding: 'b-1', cursor: 'opaque-2' }).subscribe();
+        service.getConversations({ section: 'waiting', binding: 'b-1', cursor: 'opaque-2' }).subscribe();
         const request = httpMock.expectOne((candidate) => candidate.url === '/chat/operator/v1/conversations');
-        expect(request.request.params.get('section')).toBe('human');
-        expect(request.request.params.has('mode')).toBe(false);
+        expect(request.request.params.get('section')).toBe('waiting');
         expect(request.request.params.get('binding')).toBe('b-1');
         expect(request.request.params.get('cursor')).toBe('opaque-2');
         expect(request.request.params.has('page')).toBe(false);
         request.flush({ results: [], next_cursor: null });
     });
 
-    it('omits the binding and cursor parameters when neither is set', () => {
-        service.getConversations({ section: 'bot', binding: null }).subscribe();
+    it('sends only the section when nothing else is set: no mode, binding, cursor, Mine, order or search', () => {
+        service.getConversations({ section: 'bot', binding: null, mine: false, q: '   ' }).subscribe();
         const request = httpMock.expectOne((candidate) => candidate.url === '/chat/operator/v1/conversations');
+        expect(request.request.params.keys()).toEqual(['section']);
         expect(request.request.params.get('section')).toBe('bot');
-        expect(request.request.params.has('mode')).toBe(false);
-        expect(request.request.params.has('binding')).toBe(false);
-        expect(request.request.params.has('cursor')).toBe(false);
         request.flush({ results: [], next_cursor: null });
     });
 
-    it('sends the mode filter with the human section only when it is set', () => {
-        service.getConversations({ section: 'human', mode: 'awaiting_human', binding: null }).subscribe();
+    it('sends Mine, the order and the trimmed search when they are set', () => {
+        service
+            .getConversations({ section: 'in_progress', binding: null, mine: true, order: 'oldest', q: '  #12 ' })
+            .subscribe();
         const request = httpMock.expectOne((candidate) => candidate.url === '/chat/operator/v1/conversations');
-        expect(request.request.params.get('section')).toBe('human');
-        expect(request.request.params.get('mode')).toBe('awaiting_human');
+        expect(request.request.params.get('section')).toBe('in_progress');
+        expect(request.request.params.get('mine')).toBe('true');
+        expect(request.request.params.get('order')).toBe('oldest');
+        expect(request.request.params.get('q')).toBe('#12');
         request.flush({ results: [], next_cursor: null });
+    });
+
+    it('reads the waiting set from inbox/badges', () => {
+        const badges = { waiting: [{ id: 'c-1', binding_id: 'b-1', assigned_operator_id: null }] };
+        let received: unknown = null;
+        service.getInboxBadges().subscribe((value) => (received = value));
+        const request = httpMock.expectOne('/chat/operator/v1/inbox/badges');
+        expect(request.request.method).toBe('GET');
+        request.flush(badges);
+        expect(received).toEqual(badges);
     });
 
     it('reads the budget defaults and caps from bindings/limits', () => {

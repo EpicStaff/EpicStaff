@@ -260,9 +260,9 @@ export class LeftSidebarComponent implements AfterViewInit {
                 label: 'Chat',
                 isPermitted: () =>
                     this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read),
-                badge: () => this.chatInboxStream.awaitingCount(),
+                badge: () => this.chatInboxStream.waitingCount(),
                 badgeLink: '/chat-bindings/all',
-                badgeLabel: (count) => `Chat inbox: ${count} waiting for a human`,
+                badgeLabel: (count) => `Chat inbox: ${count} waiting for a person`,
                 showTooltip: false,
             },
             {

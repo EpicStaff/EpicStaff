@@ -119,8 +119,8 @@ export class ConversationRowComponent {
     private readonly profileService = inject(ProfileService);
     private readonly locale = inject(LOCALE_ID);
 
-    focus(): void {
-        this.selectButton().nativeElement.focus();
+    focus(options?: FocusOptions): void {
+        this.selectButton().nativeElement.focus(options);
     }
 
     protected onKeydown(event: KeyboardEvent): void {

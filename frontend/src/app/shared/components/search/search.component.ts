@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, input, model, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -17,7 +17,11 @@ export class SearchComponent {
     mod = input<'default' | 'small'>('default');
     placeholder = input<string>('Search...');
     icon = input<string>('search');
+    /** The field's accessible name where no visible label names it; the placeholder is only a hint. */
+    ariaLabel = input<string | null>(null);
     searchTerm = model<string>('');
+
+    private readonly inputElement = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
 
     onSearchTermChange(value: string): void {
         const trimmedValue = value.trim();
@@ -30,5 +34,7 @@ export class SearchComponent {
 
     clearSearch(): void {
         this.searchTerm.set('');
+        // The clear button disappears with the text: keep the focus in the field rather than drop it on the page.
+        this.inputElement().nativeElement.focus();
     }
 }

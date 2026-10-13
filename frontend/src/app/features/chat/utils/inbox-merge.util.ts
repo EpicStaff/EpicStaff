@@ -1,4 +1,4 @@
-import { ChatConversation, ChatInboxSection, ChatOperatorMessage } from '../models/chat.model';
+import { ChatConversation, ChatInboxOrder, ChatInboxSection, ChatOperatorMessage } from '../models/chat.model';
 
 const ISO_FRACTION = /\.(\d+)/;
 
@@ -18,29 +18,42 @@ export type ConversationOrder = (left: ChatConversation, right: ChatConversation
 // The server orders by uuid; canonical lowercase uuids compare the same as strings.
 const compareIds = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
-/** A test conversation is only ever in Tests; any other that left bot mode (awaiting or claimed) is in human. */
-export function inboxSection(row: ChatConversation): ChatInboxSection {
-    if (row.is_test) return 'test';
-    return row.mode === 'bot' ? 'bot' : 'human';
+// The server's section filters, row for row: a conversation is in at most one section, and in none while it has no
+// message yet (outside Waiting). `!= null` also reads a field an older payload lacks as empty.
+const SECTION_FILTERS: Record<ChatInboxSection, (row: ChatConversation) => boolean> = {
+    waiting: (row) => row.visitor_waiting_since != null && !row.is_test,
+    in_progress: (row) =>
+        row.assigned_operator_id != null &&
+        row.visitor_waiting_since == null &&
+        row.last_message_at != null &&
+        !row.is_test,
+    bot: (row) => row.handoff_at == null && row.last_message_at != null && !row.is_test,
+    test: (row) => row.is_test && row.last_message_at != null,
+};
+
+/** Whether the server lists `row` in `section`; with `holderId` (Mine), only the conversations that user holds. */
+export function belongsTo(row: ChatConversation, section: ChatInboxSection, holderId: number | null): boolean {
+    if (holderId !== null && row.assigned_operator_id !== holderId) return false;
+    return SECTION_FILTERS[section](row);
 }
 
-const newestActivityFirst: ConversationOrder = (left, right) =>
-    microseconds(right.last_message_at) - microseconds(left.last_message_at) || compareIds(right.id, left.id);
+/** Waiting is a queue: always the longest wait first, whatever the chosen order. */
+export const isQueue = (section: ChatInboxSection): boolean => section === 'waiting';
 
 /**
- * The API orders, per section: human is first-come-first-served by handoff time; bot and test are newest activity
- * first.
+ * The API's order for a section: Waiting by wait start, oldest first; the others by latest message, newest or oldest
+ * first. Ties break on the id in the same direction, as the server's keyset does.
  */
-export const INBOX_ORDER: Record<ChatInboxSection, ConversationOrder> = {
-    human: (left, right) =>
-        microseconds(left.handoff_at) - microseconds(right.handoff_at) || compareIds(left.id, right.id),
-    bot: newestActivityFirst,
-    test: newestActivityFirst,
-};
+export function inboxOrder(section: ChatInboxSection, order: ChatInboxOrder): ConversationOrder {
+    const key = isQueue(section) ? 'visitor_waiting_since' : 'last_message_at';
+    const direction = isQueue(section) || order === 'oldest' ? 1 : -1;
+    return (left, right) =>
+        direction * (microseconds(left[key]) - microseconds(right[key]) || compareIds(left.id, right.id));
+}
 
 /**
  * Replaces or inserts a row in a sorted section list. `boundary` is the last row fetched while more pages remain:
- * a row sorting after it belongs to an unfetched page, so it is dropped here and arrives with Load more.
+ * a row sorting after it belongs to an unfetched page, so it is dropped here and arrives with that page.
  */
 export function placeRow(
     list: ChatConversation[],
