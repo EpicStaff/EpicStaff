@@ -4049,9 +4049,9 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-12T15:05:15Z UTC -->
-<!-- commit: f0a7b5fbbfbe268fc76e295dc7c35dc794f31e1d -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, crew:eb515289157f26b4, django_app:268d9f50d803127b, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:6db6900f51e81e02, webhook:74291d202daa2b3f -->
+<!-- generated: 2026-10-13T11:33:33Z UTC -->
+<!-- commit: f2e428ccf6df7160d1ed36b51798da0e4b9c4f05 -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, crew:eb515289157f26b4, django_app:19ab4d2b5dac52cb, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:6db6900f51e81e02, webhook:74291d202daa2b3f -->
 
 ## Backend (Python)
 
@@ -4062,10 +4062,10 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | License | Packages |
 |---|---|
 | MIT | 75 |
-| MIT License | 73 |
+| MIT License | 71 |
 | Apache Software License | 29 |
-| BSD-3-Clause | 26 |
-| BSD License | 25 |
+| BSD-3-Clause | 27 |
+| BSD License | 24 |
 | Apache-2.0 | 22 |
 | BSD-2-Clause | 6 |
 | Apache Software License; MIT License | 4 |
@@ -4075,7 +4075,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | Apache Software License; BSD License | 2 |
 | Apache-2.0 AND CNRI-Python | 2 |
 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 2 |
-| BSD-3-Clause, Apache-2.0, dependency licenses | 2 |
 | ISC License (ISCL) | 2 |
 | MIT AND PSF-2.0 | 2 |
 | Python Software Foundation License | 2 |
@@ -4087,6 +4086,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | BSD | 1 |
 | BSD 3-Clause OR Apache-2.0 | 1 |
 | BSD License; Public Domain | 1 |
+| BSD-3-Clause, Apache-2.0, dependency licenses | 1 |
 | GNU Library or Lesser General Public License (LGPL) | 1 |
 | ISC | 1 |
 | LGPL-3.0-only | 1 |
@@ -4096,7 +4096,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **298** |
+| **Total** | **295** |
 
 ### Python package index
 
@@ -4164,7 +4164,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `django-filter` | 24.3 | BSD License | Copyright (c) Alex Gaynor and individual contributors. |
 | `django-health-check` | 3.18.3 | MIT License | Copyright (C) 2011-2019 Kristian Øllegaard and contributors |
 | `django-redis` | 5.4.0 | BSD License | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
-| `djangorestframework` | 3.16.0 | BSD License | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
+| `djangorestframework` | 3.17.2 | BSD-3-Clause | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
 | `djangorestframework_simplejwt` | 5.4.0 | MIT License | Copyright 2017 David Sanders |
 | `dnspython` | 2.8.0 | ISC License (ISCL) | Copyright (C) Dnspython Contributors |
 | `docstring_parser` | 0.18.0 | MIT License | Copyright (c) 2018 Marcin Kurczewski |
@@ -4295,10 +4295,8 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pandas` | 3.0.5 | BSD License | Copyright (c) 2008-2011, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team |
 | `pathable` | 0.6.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `pathspec` | 1.1.1 | Mozilla Public License 2.0 (MPL 2.0) | Copyright (c) "Caleb P. Burns" <cpburnz@gmail.com> |
-| `pdfminer.six` | 20231228 | MIT License | Copyright (c) 2004-2016  Yusuke Shinyama <yusuke at shinyama dot jp> |
 | `pdfminer.six` | 20260107 | MIT | Copyright (c) 2004-2016  Yusuke Shinyama <yusuke at shinyama dot jp> |
 | `pdfplumber` | 0.11.10 | MIT License | Copyright (c) 2015, Jeremy Singer-Vine |
-| `pdfplumber` | 0.11.5 | MIT License | Copyright (c) 2015, Jeremy Singer-Vine |
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `pillow` | 12.3.0 | MIT-CMU | Copyright © 1997-2011 by Secret Labs AB |
@@ -4326,7 +4324,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `PyJWT` | 2.13.0 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
 | `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
-| `pypdfium2` | 5.13.0 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
 | `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
 | `python-dateutil` | 2.9.0.post0 | Apache Software License; BSD License | Copyright 2017- Paul Ganssle <paul@ganssle.io> |
 | `python-docx` | 1.1.2 | MIT License | Copyright (c) 2013 Steve Canny, https://github.com/scanny |
@@ -9388,10 +9385,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > No NOTICE file shipped by upstream.
 
-#### djangorestframework@3.16.0
+#### djangorestframework@3.17.2
 
-- **License:** BSD License
-- **Author:** Tom Christie
+- **License:** BSD-3-Clause
+- **Author:** Tom Christie <tom@tomchristie.com>
 
 <details><summary>License text</summary>
 
@@ -22515,42 +22512,6 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 > No NOTICE file shipped by upstream.
 
-#### pdfminer.six@20231228
-
-- **License:** MIT License
-- **Author:** Yusuke Shinyama + Philippe Guglielmetti
-
-<details><summary>License text</summary>
-
-<pre>
-Copyright (c) 2004-2016  Yusuke Shinyama &lt;yusuke at shinyama dot jp&gt;
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
-KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-</pre>
-
-</details>
-
-> No NOTICE file shipped by upstream.
-
 #### pdfminer.six@20260107
 
 - **License:** MIT
@@ -22588,41 +22549,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 > No NOTICE file shipped by upstream.
 
 #### pdfplumber@0.11.10
-
-- **License:** MIT License
-- **Author:** Jeremy Singer-Vine
-
-<details><summary>License text</summary>
-
-<pre>
-The MIT License (MIT)
-
-Copyright (c) 2015, Jeremy Singer-Vine
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-</pre>
-
-</details>
-
-> No NOTICE file shipped by upstream.
-
-#### pdfplumber@0.11.5
 
 - **License:** MIT License
 - **Author:** Jeremy Singer-Vine
@@ -28124,14 +28050,6 @@ SOFTWARE.
 > No NOTICE file shipped by upstream.
 
 #### pypdfium2@5.12.1
-
-- **License:** BSD-3-Clause, Apache-2.0, dependency licenses
-- **Author:** pypdfium2-team
-
-> No LICENSE file shipped by upstream wheel.
-> No NOTICE file shipped by upstream.
-
-#### pypdfium2@5.13.0
 
 - **License:** BSD-3-Clause, Apache-2.0, dependency licenses
 - **Author:** pypdfium2-team

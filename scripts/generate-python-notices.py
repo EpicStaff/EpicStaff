@@ -57,11 +57,19 @@ NOTICES_SKELETON_FILE = SCRIPTS_DIR / "notices-skeleton.md"
 BACKEND_BEGIN_MARKER = "<!-- BEGIN GENERATED: backend -->"
 BACKEND_END_MARKER = "<!-- END GENERATED: backend -->"
 
-# Every backend service with a pyproject.toml, discovered the same way as the
-# Makefile's uv_services so a new or renamed service is never silently skipped.
+# Every backend service whose pyproject.toml is tracked by git, so a new or
+# renamed service is never silently skipped. Asking git rather than globbing
+# the filesystem keeps an untracked local service directory out of the notices;
+# CI's checkout never has one, so a glob made local output disagree with --check.
 SERVICES = sorted(
-    pyproject.parent.relative_to(REPO_ROOT).as_posix()
-    for pyproject in REPO_ROOT.glob("src/*/pyproject.toml")
+    Path(pyproject).parent.as_posix()
+    for pyproject in subprocess.run(
+        ["git", "ls-files", "--", ":(glob)src/*/pyproject.toml"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
 )
 
 BOOTSTRAP_PACKAGES = {
