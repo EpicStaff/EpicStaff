@@ -21,12 +21,10 @@ export type RecycleBinAction = 'restore' | 'delete';
  */
 export function restoreSuccessMessage(outcome: RecycleBinRestoreOutcome): string {
     if (outcome.renamedFrom === null) return `"${outcome.name}" restored. ${linksNote([outcome], 'it', 'Its')}`;
-    const restored = `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken.`;
-    // Tools stay linked to a renamed secret, but their code still asks for it by the old name.
-    if (isRenamedSecret(outcome)) {
-        return `${restored} Tools that read it as "${outcome.renamedFrom}" in their code need to use the new name.`;
-    }
-    return `${restored} ${linksNote([outcome], 'it', 'Its')}`;
+    // Tools stay linked to a renamed secret, but their code still asks for it by the old name. The toast shows
+    // about 90 characters, so the instruction comes first and a long new name is what gets cut.
+    if (isRenamedSecret(outcome)) return `Update tools that read the old name. It's now "${outcome.name}".`;
+    return `"${outcome.renamedFrom}" restored as "${outcome.name}", because that name was taken. ${linksNote([outcome], 'it', 'Its')}`;
 }
 
 function isRenamedSecret(outcome: RecycleBinRestoreOutcome): boolean {
@@ -151,14 +149,16 @@ export function restoreResultMessage(result: RecycleBinRestoreResult): string | 
     const renamed = restored.filter((outcome) => outcome.renamedFrom !== null);
     const renames = renamed.slice(0, LISTED_NAMES).map((outcome) => `${outcome.renamedFrom} → ${outcome.name}`);
     const moreRenames = renamed.length - renames.length;
-    const renameNote =
-        renamed.length === 0
-            ? ''
-            : `, ${renamed.length} renamed: ${renames.join(', ')}${moreRenames > 0 ? ` and ${moreRenames} more` : ''}`;
-    const secretNote = restored.some(isRenamedSecret)
-        ? ' Tools that read a renamed secret by its old name in their code need to use the new name.'
-        : '';
-    return `${restored.length} restored${renameNote}. ${linksNote(restored, 'them', 'Their')}${secretNote}`;
+    const renameList = `${renames.join(', ')}${moreRenames > 0 ? ` and ${moreRenames} more` : ''}`;
+    const links = linksNote(restored, 'them', 'Their');
+    // A bulk restore is one tab, so these are all secrets. The toast shows about 90 characters: the instruction
+    // goes before the list, so a long list is what gets cut.
+    if (restored.some(isRenamedSecret)) {
+        const oldNames = renamed.length === 1 ? 'the old name' : 'the old names';
+        return `${restored.length} restored. Update tools that read ${oldNames}: ${renameList}. ${links}`;
+    }
+    const renameNote = renamed.length === 0 ? '' : `, ${renamed.length} renamed: ${renameList}`;
+    return `${restored.length} restored${renameNote}. ${links}`;
 }
 
 /** Success toast of a permanent delete; `itemName` for a single row. `null` when nothing was deleted. */

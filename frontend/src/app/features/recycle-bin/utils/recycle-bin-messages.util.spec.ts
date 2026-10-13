@@ -86,10 +86,7 @@ describe('recycle bin messages', () => {
                 renamedFrom: 'OPENAI_KEY',
                 linksRestored: true,
             })
-        ).toBe(
-            `"OPENAI_KEY" restored as "OPENAI_KEY #2", because that name was taken. ` +
-                `Tools that read it as "OPENAI_KEY" in their code need to use the new name.`
-        );
+        ).toBe(`Update tools that read the old name. It's now "OPENAI_KEY #2".`);
         expect(
             restoreResultMessage({
                 restored: [
@@ -99,8 +96,8 @@ describe('recycle bin messages', () => {
                 failed: [],
             })
         ).toBe(
-            `2 restored, 1 renamed: OPENAI_KEY → OPENAI_KEY #2. Everything that used them is connected again. ` +
-                `Tools that read a renamed secret by its old name in their code need to use the new name.`
+            `2 restored. Update tools that read the old name: OPENAI_KEY → OPENAI_KEY #2. ` +
+                `Everything that used them is connected again.`
         );
     });
 
