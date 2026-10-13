@@ -1,106 +1,109 @@
-<div class="chat-page">
-    <div class="sticky-header">
-        <header class="header">
-            <div
-                class="header-titles"
-                appHideInlineSubtitleOnOverflow
-            >
-                <h1 class="title">
-                    <a
-                        class="title__crumb"
-                        routerLink="/chat-bindings"
-                        >Chat</a
+<!-- The one main landmark: the open desk's toolbar with the conversations and the thread. -->
+<main class="chat-page">
+    <!-- Beneath the page header, lighter than it: what is open, and the desk's own actions. -->
+    <div class="desk-toolbar">
+        <div class="desk-toolbar__titles">
+            @if (title(); as text) {
+                <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
+            }
+            <!-- Beside the title, not part of it. -->
+            @if (routeBinding(); as binding) {
+                <app-chat-binding-status
+                    class="desk-toolbar__status"
+                    [binding]="binding"
+                />
+            }
+        </div>
+        @if (routeBinding()) {
+            <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
+            <div class="header-actions">
+                @if (canUpdate()) {
+                    <button
+                        type="button"
+                        class="header-action header-action--ghost"
+                        aria-label="Settings"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".btn-label"
+                        collapseOnOverflowClass="btn--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                        (click)="openSettings()"
                     >
-                    @if (title()) {
-                        <span
-                            class="title__separator"
-                            aria-hidden="true"
-                            >/</span
-                        >
-                        {{ title() }}
-                    }
-                </h1>
-                <!-- Beside the title, not part of it. -->
-                @if (routeBinding(); as binding) {
-                    <app-chat-binding-status
-                        class="title__status"
-                        [binding]="binding"
-                    />
+                        <app-svg-icon
+                            icon="settings"
+                            size="1.25rem"
+                        />
+                        <span class="btn-label">Settings</span>
+                    </button>
                 }
-            </div>
-            @if (routeBinding()) {
-                <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
-                <div class="header-actions">
-                    @if (canUpdate()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--ghost"
-                            aria-label="Settings"
-                            [appCollapseOnOverflow]="true"
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="openSettings()"
-                        >
-                            <app-svg-icon
-                                icon="settings"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Settings</span>
-                        </button>
-                    }
-                    <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
+                @if (canDelete()) {
+                    <button
+                        type="button"
+                        class="header-action header-action--ghost"
+                        aria-label="Delete"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".btn-label"
+                        collapseOnOverflowClass="btn--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                        (click)="deleteDesk()"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="1.25rem"
+                        />
+                        <span class="btn-label">Delete</span>
+                    </button>
+                }
+                <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
+                <button
+                    type="button"
+                    class="header-action header-action--outline"
+                    aria-label="Get snippet"
+                    (click)="copySnippet()"
+                >
+                    <span class="btn-label">Get snippet</span>
+                </button>
+                @if (canUpdate()) {
                     <button
                         type="button"
                         class="header-action header-action--outline"
-                        aria-label="Get snippet"
-                        (click)="copySnippet()"
+                        [attr.aria-label]="pauseLabel()"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".btn-label"
+                        collapseOnOverflowClass="btn--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                        (click)="togglePause()"
                     >
-                        <span class="btn-label">Get snippet</span>
+                        <app-svg-icon
+                            [icon]="pauseIcon()"
+                            size="1.25rem"
+                        />
+                        <span class="btn-label">{{ pauseLabel() }}</span>
                     </button>
-                    @if (canUpdate()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--outline"
-                            [attr.aria-label]="pauseLabel()"
-                            [appCollapseOnOverflow]="true"
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            (click)="togglePause()"
-                        >
-                            <app-svg-icon
-                                [icon]="pauseIcon()"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">{{ pauseLabel() }}</span>
-                        </button>
-                    }
-                    @if (canUse()) {
-                        <button
-                            type="button"
-                            class="header-action header-action--primary"
-                            aria-label="Test"
-                            [appCollapseOnOverflow]="true"
-                            collapseOnOverflowTarget=".btn-label"
-                            collapseOnOverflowClass="btn--icon-only"
-                            collapseOnOverflowRequireSelector="app-svg-icon"
-                            [disabled]="!canStartTest()"
-                            (click)="startTest()"
-                        >
-                            <app-svg-icon
-                                icon="player-play-filled"
-                                size="1.25rem"
-                            />
-                            <span class="btn-label">Test</span>
-                        </button>
-                    }
-                </div>
-            }
-        </header>
+                }
+                @if (canUse()) {
+                    <button
+                        type="button"
+                        class="header-action header-action--primary"
+                        aria-label="Test"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".btn-label"
+                        collapseOnOverflowClass="btn--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                        [disabled]="!canStartTest()"
+                        (click)="startTest()"
+                    >
+                        <app-svg-icon
+                            icon="player-play-filled"
+                            size="1.25rem"
+                        />
+                        <span class="btn-label">Test</span>
+                    </button>
+                }
+            </div>
+        }
     </div>
 
-    <main class="inbox">
+    <div class="inbox">
         <aside class="inbox__sidebar">
             <div class="inbox__sections">
                 @for (item of sectionLayout(); track item.section.id) {
@@ -209,7 +212,7 @@
                             {{ modeLabel(conversation.mode) }}
                         </span>
                         <span class="thread-header__title"
-                            >{{ selectedBinding()?.name ?? 'Binding' }} · {{ conversation.id.slice(0, 8) }}</span
+                            >{{ selectedBinding()?.name ?? 'Desk' }} · {{ conversation.id.slice(0, 8) }}</span
                         >
                         @if (conversation.is_test) {
                             <span class="test-chip">Test</span>
@@ -398,5 +401,5 @@
                 <div class="inbox__placeholder">Select a conversation</div>
             }
         </section>
-    </main>
-</div>
+    </div>
+</main>

@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { ConfirmationDialogService } from '@shared/components';
@@ -5,26 +6,46 @@ import { copyWithFeedback, escapeHtml, extractHttpErrorMessage } from '@shared/u
 import { catchError, EMPTY, filter, firstValueFrom, map, Observable, of, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
+import {
+    ChatBindingsDialogComponent,
+    ChatBindingsDialogData,
+} from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
 import { ChatBinding, ChatErrorBody } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
 
 /**
- * The binding actions offered on the bindings list and in a binding's workspace, with their confirmations and
- * error toasts. Each returns an observable that emits `true` once the server changed the binding (the caller then
- * reloads it) and completes without emitting when the user cancelled or the request failed.
+ * The desk actions offered by the desk rail and a desk's header, with their confirmations and error toasts. Pause,
+ * resume and delete return an observable that emits `true` once the server changed the desk (the caller then reloads
+ * it) and completes without emitting when the user cancelled or the request failed. The dialog actions emit once,
+ * when the dialog closes.
  */
 @Injectable({ providedIn: 'root' })
 export class ChatBindingActionsService {
     private readonly chatApi = inject(ChatApiService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
+    private readonly dialog = inject(Dialog);
+
+    /**
+     * Opens the dialog that creates a desk. Emits once when it closes: the created desk, or null when none was
+     * created. Reload on every close all the same: Escape or a backdrop click after a create that showed an identity
+     * secret closes without a result.
+     */
+    create(): Observable<ChatBinding | null> {
+        return this.openDialog(null);
+    }
+
+    /** Opens a desk's settings. Emits once when the dialog closes; the caller reloads, as edits may have been saved. */
+    openSettings(binding: ChatBinding): Observable<void> {
+        return this.openDialog(binding).pipe(map(() => undefined));
+    }
 
     pause(binding: ChatBinding): Observable<boolean> {
         return this.confirmationDialogService
             .confirm({
-                title: 'Pause the binding?',
+                title: 'Pause the desk?',
                 message: `The widget for <strong>${escapeHtml(binding.name)}</strong> stops answering. Test conversations keep working.`,
                 confirmText: 'Pause',
                 cancelText: 'Cancel',
@@ -68,6 +89,15 @@ export class ChatBindingActionsService {
             firstValueFrom(this.chatApi.getSnippet(binding.id)).then(({ snippet }) => snippet),
             this.toastService
         );
+    }
+
+    private openDialog(binding: ChatBinding | null): Observable<ChatBinding | null> {
+        return this.dialog
+            .open<
+                ChatBinding,
+                ChatBindingsDialogData
+            >(ChatBindingsDialogComponent, { width: '720px', data: { binding } })
+            .closed.pipe(map((saved) => saved ?? null));
     }
 
     private fail(error: HttpErrorResponse): Observable<never> {

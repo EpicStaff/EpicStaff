@@ -1,5 +1,4 @@
 import { A11yModule } from '@angular/cdk/a11y';
-import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -29,7 +28,7 @@ import {
     SectionHeaderComponent,
     SpinnerComponent,
 } from '@shared/components';
-import { CollapseOnOverflowDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, Observable, Subscription, switchMap } from 'rxjs';
@@ -40,17 +39,12 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { ChatBindingStatusComponent } from '../../components/chat-binding-status/chat-binding-status.component';
 import {
-    ChatBindingsDialogComponent,
-    ChatBindingsDialogData,
-} from '../../components/chat-bindings-dialog/chat-bindings-dialog.component';
-import {
     ChatOperatorReplySent,
     ChatThreadComposerComponent,
 } from '../../components/chat-thread-composer/chat-thread-composer.component';
 import { ChatUsageRingComponent } from '../../components/chat-usage-ring/chat-usage-ring.component';
 import {
     CHAT_MODE_LABELS,
-    ChatBinding,
     ChatConversation,
     ChatErrorBody,
     ChatInboxSection,
@@ -59,11 +53,13 @@ import {
 } from '../../models/chat.model';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
+import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { actionLabel } from '../../utils/action-label.util';
 import { INBOX_ORDER, inboxSection, placeRow, upsertMessage } from '../../utils/inbox-merge.util';
 
 const ALL_BINDINGS = '';
+const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
 // Pinned to the top of the sidebar; every other collapsed section rests at the bottom.
 const TOP_SECTION: ChatInboxSection = 'human';
 
@@ -103,7 +99,7 @@ const INBOX_SECTIONS: InboxSectionView[] = [
         label: 'Tests',
         icon: 'player-play-filled',
         emptyTitle: 'No test conversations',
-        emptyDescription: 'Start one with Test in a binding.',
+        emptyDescription: 'Start one with Test on a desk.',
     },
 ];
 
@@ -127,7 +123,6 @@ const belongsTo = (row: ChatConversation, section: ChatInboxSection): boolean =>
         ChatBindingStatusComponent,
         ChatThreadComposerComponent,
         CollapseOnOverflowDirective,
-        HideInlineSubtitleOnOverflowDirective,
         ListComponent,
         SectionHeaderComponent,
         SpinnerComponent,
@@ -143,7 +138,6 @@ export class ChatPageComponent {
     private readonly threadScroller = viewChild<ElementRef<HTMLElement>>('threadScroller');
     private readonly olderSentinel = viewChild<ElementRef<HTMLElement>>('olderSentinel');
 
-    readonly bindings = signal<ChatBinding[]>([]);
     readonly inbox = signal<Record<ChatInboxSection, InboxSectionState>>({
         human: emptySection(),
         bot: emptySection(),
@@ -163,19 +157,19 @@ export class ChatPageComponent {
     readonly visitorTokenPendingFor = signal<string | null>(null);
     readonly visitorTokenErrors = signal<Record<string, string>>({});
     private readonly selectedRow = signal<ChatConversation | null>(null);
-    // The route binding the last bindings response was requested for.
-    private readonly bindingsLoadedFor = signal<string | undefined | null>(null);
+    // The desk list asked for once the route moved to a desk the list lacked: only that list can say it is gone.
+    private readonly deskListRequestedFor = signal<{ bindingId: string; request: number } | null>(null);
     // The filter whose first human page last landed: until then the human rows still belong to the previous filter.
     private readonly humanLoadedFor = signal<string | null>(null);
 
     // The conversation list's `binding` filter: the route binding, or every binding.
     readonly bindingFilter = computed(() => this.bindingId() ?? ALL_BINDINGS);
     readonly isAllBindings = computed(() => !this.bindingId());
-    // Null until the bindings load; an id they do not list sends the user back to the bindings list.
-    readonly routeBinding = computed(() => this.bindings().find((binding) => binding.id === this.bindingId()) ?? null);
-    readonly title = computed(() =>
-        this.isAllBindings() ? 'Inbox · all bindings' : (this.routeBinding()?.name ?? '')
+    // Null until the desks load; an id they do not list sends the user back to All desks.
+    readonly routeBinding = computed(
+        () => this.desksStorage.desks().find((binding) => binding.id === this.bindingId()) ?? null
     );
+    readonly title = computed(() => (this.isAllBindings() ? 'All desks' : (this.routeBinding()?.name ?? '')));
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
     readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
     readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
@@ -186,10 +180,11 @@ export class ChatPageComponent {
         return this.findRow(id) ?? (fallback?.id === id ? fallback : null);
     });
     readonly selectedBinding = computed(
-        () => this.bindings().find((binding) => binding.id === this.selected()?.binding_id) ?? null
+        () => this.desksStorage.desks().find((binding) => binding.id === this.selected()?.binding_id) ?? null
     );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
+    readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
     readonly isClaimedByMe = computed(() => {
         const conversation = this.selected();
         const me = this.profileService.currentUserSignal();
@@ -213,7 +208,7 @@ export class ChatPageComponent {
     >({
         source: () => {
             const bindingId = this.bindingFilter();
-            const binding = this.bindings().find((item) => item.id === bindingId);
+            const binding = this.desksStorage.desks().find((item) => item.id === bindingId);
             return {
                 bindingId,
                 handoffEnabled: binding?.handoff_enabled !== false,
@@ -248,27 +243,33 @@ export class ChatPageComponent {
         this.bindingFilter();
         untracked(() => this.reloadInbox());
     });
-    // A route move to another binding reloads too: the list may predate that binding.
-    private readonly reloadBindings = effect(() => {
-        this.chatInboxStream.readyEpoch();
-        this.bindingId();
-        untracked(() => this.loadBindings());
-    });
-    // Decided only on a list loaded for the current route binding, so a binding created meanwhile is not refused.
+    /**
+     * A route desk the list lacks may be newer than the list (created in another tab): once no list is loading, ask for
+     * a fresh one, and leave only if that list, or a later one, still lacks it.
+     */
     private readonly leaveUnknownBinding = effect(() => {
         const bindingId = this.bindingId();
-        const bindings = this.bindings();
-        if (!bindingId || this.bindingsLoadedFor() !== bindingId) return;
-        if (bindings.some((binding) => binding.id === bindingId)) return;
+        const desks = this.desksStorage.desks();
+        const landedRequest = this.desksStorage.landedRequest();
+        if (!bindingId || desks.some((binding) => binding.id === bindingId)) return;
+        if (this.desksStorage.isLoading() || this.desksStorage.loadFailed()) return;
         untracked(() => {
+            const requested = this.deskListRequestedFor();
+            if (requested?.bindingId !== bindingId) {
+                const request = this.desksStorage.reload();
+                // None sent: no active org (a logout), so nothing to decide either.
+                if (request !== null) this.deskListRequestedFor.set({ bindingId, request });
+                return;
+            }
+            if (landedRequest < requested.request) return;
             // An org switch the org effect has not handled yet is not a deleted binding either.
             const orgSwitched = this.orgId !== undefined && this.activeOrgService.activeOrgId() !== this.orgId;
             if (this.isLeavingForOrgSwitch || orgSwitched) return;
-            this.toastService.error('This chat binding does not exist anymore.');
-            void this.router.navigate(['/chat-bindings']);
+            this.toastService.error('This desk no longer exists.');
+            void this.router.navigate(ALL_DESKS_ROUTE);
         });
     });
-    // A binding belongs to one org: after an org switch its page has nothing to show, so it goes back to the list
+    // A binding belongs to one org: after an org switch its page has nothing to show, so it goes back to All desks
     // without a message (the binding was not deleted). The all-bindings inbox simply reloads for the new org.
     private readonly leaveOnOrgSwitch = effect(() => {
         const orgId = this.activeOrgService.activeOrgId();
@@ -276,7 +277,7 @@ export class ChatPageComponent {
             // null is a logout: the auth flow navigates away itself.
             if (this.orgId !== undefined && orgId !== null && orgId !== this.orgId && this.bindingId()) {
                 this.isLeavingForOrgSwitch = true;
-                void this.router.navigate(['/chat-bindings']).finally(() => (this.isLeavingForOrgSwitch = false));
+                void this.router.navigate(ALL_DESKS_ROUTE).finally(() => (this.isLeavingForOrgSwitch = false));
             }
             this.orgId = orgId;
         });
@@ -330,10 +331,10 @@ export class ChatPageComponent {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly dialog = inject(Dialog);
     private readonly router = inject(Router);
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly bindingActions = inject(ChatBindingActionsService);
+    private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly injector = inject(Injector);
     private readonly listRequests: Partial<Record<ChatInboxSection, Subscription>> = {};
     // Rows streamed since the last reload: newer than any page fetched meanwhile, so they win over the first
@@ -347,7 +348,6 @@ export class ChatPageComponent {
     private scope: string | null = null;
     private orgId: number | null | undefined = undefined;
     private isLeavingForOrgSwitch = false;
-    private bindingsRequest: Subscription | null = null;
 
     constructor() {
         this.chatInboxStream.conversationUpdated$
@@ -502,14 +502,28 @@ export class ChatPageComponent {
     openSettings(): void {
         const binding = this.routeBinding();
         if (!binding) return;
-        this.dialog
-            .open<unknown, ChatBindingsDialogData>(ChatBindingsDialogComponent, { width: '720px', data: { binding } })
-            .closed.pipe(takeUntilDestroyed(this.destroyRef))
-            // The dialog closes without a result; edits may have happened, so reload on every close.
-            .subscribe(() => this.loadBindings());
+        this.bindingActions
+            .openSettings(binding)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.desksStorage.reload());
     }
 
-    // The same path as the bindings list's Copy snippet.
+    /**
+     * Still on the deleted desk's page, it leaves for All desks before the desks reload: a list without the desk would
+     * otherwise read as "no longer exists". Moved on to another desk meanwhile, it only reloads.
+     */
+    deleteDesk(): void {
+        const binding = this.routeBinding();
+        if (!binding) return;
+        this.bindingActions
+            .delete(binding)
+            .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                if (this.bindingId() !== binding.id) this.desksStorage.reload();
+                else void this.router.navigate(ALL_DESKS_ROUTE).finally(() => this.desksStorage.reload());
+            });
+    }
+
     copySnippet(): void {
         const binding = this.routeBinding();
         if (binding) this.bindingActions.copySnippet(binding);
@@ -520,7 +534,7 @@ export class ChatPageComponent {
         if (!binding) return;
         (binding.is_active ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
             .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.loadBindings());
+            .subscribe(() => this.desksStorage.reload());
     }
 
     protected modeLabel(mode: ChatMode): string {
@@ -701,21 +715,5 @@ export class ChatPageComponent {
         const sentinelBox = sentinel.getBoundingClientRect();
         const rootBox = root.getBoundingClientRect();
         if (sentinelBox.bottom > rootBox.top && sentinelBox.top < rootBox.bottom) this.loadOlderMessages();
-    }
-
-    private loadBindings(): void {
-        const requestedFor = this.bindingId();
-        // Only the latest list may land: an older one could drop a binding the route just moved to.
-        this.bindingsRequest?.unsubscribe();
-        this.bindingsRequest = this.chatApi
-            .getBindings()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (bindings) => {
-                    this.bindings.set(bindings);
-                    this.bindingsLoadedFor.set(requestedFor);
-                },
-                error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
-            });
     }
 }

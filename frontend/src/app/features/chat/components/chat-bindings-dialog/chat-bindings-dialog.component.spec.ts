@@ -230,6 +230,31 @@ describe('ChatBindingsDialogComponent', () => {
         expect(TestBed.inject(DialogRef).close).toHaveBeenCalled();
     });
 
+    it('closes with the binding it created, without the identity secret, and with nothing when nothing was saved', () => {
+        const close = vi.mocked(TestBed.inject(DialogRef).close);
+        const component = open(null);
+        component.close();
+        expect(close).toHaveBeenLastCalledWith(undefined);
+
+        chatApi.createBinding.mockReturnValue(
+            of({ ...binding({ id: 'b-2', identity_mode: 'signed' }), identity_secret: 'shh' })
+        );
+        component.form.patchValue({ name: 'Portal', graph_id: 5, identity_mode: 'signed' });
+        component.submit();
+        component.close();
+        const result = close.mock.lastCall?.[0] as ChatBinding;
+        expect(result.id).toBe('b-2');
+        expect('identity_secret' in result).toBe(false);
+    });
+
+    it('closes with the created binding at once when no secret is issued', () => {
+        chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-3' }), identity_secret: null }));
+        const component = open(null);
+        component.form.patchValue({ name: 'Portal', graph_id: 5 });
+        component.submit();
+        expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-3' }));
+    });
+
     it('prefills the budgets on create from the server defaults and posts them', () => {
         chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
         const component = open(null);
@@ -403,11 +428,11 @@ describe('ChatBindingsDialogComponent', () => {
 
     it('titles the dialog by mode and offers Rotate key only for an existing binding', () => {
         open(null);
-        expect(text('.bindings-dialog__title')).toEqual(['New chat binding']);
+        expect(text('.bindings-dialog__title')).toEqual(['New desk']);
         expect(text('.bindings-dialog__actions app-button')).not.toContain('Rotate key');
 
         open(binding({}));
-        expect(text('.bindings-dialog__title')).toEqual(['Edit chat binding']);
+        expect(text('.bindings-dialog__title')).toEqual(['Desk settings']);
         expect(text('.bindings-dialog__actions app-button')).toContain('Rotate key');
     });
 
@@ -423,5 +448,8 @@ describe('ChatBindingsDialogComponent', () => {
         expect(chatApi.rotateKey).toHaveBeenCalledWith('b-1');
         expect(component.binding()?.public_key).toBe('pk-2');
         expect(TestBed.inject(ToastService).success).toHaveBeenCalledWith('Public key rotated');
+
+        component.close();
+        expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(expect.objectContaining({ public_key: 'pk-2' }));
     });
 });

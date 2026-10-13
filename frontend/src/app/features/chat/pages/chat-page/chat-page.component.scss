@@ -1,103 +1,75 @@
 @use '../../../../../styles/status-chip';
 @use '../../../../../styles/row-more-menu';
 @use '../../../../../styles/header-action-buttons';
-@use '../../../../../styles/header-layout' as header;
 
 .chat-page {
-    @include header.headerLayout();
     display: flex;
     flex-direction: column;
     height: 100%;
     color: var(--color-text-primary);
+}
 
-    // Same as the flows list page header; flex-shrink keeps it in this page's column layout.
-    .sticky-header {
-        position: sticky;
-        top: 0;
-        z-index: 5;
-        width: 100%;
-        box-sizing: border-box;
-        background-color: var(--color-background-body);
-        border-bottom: 1px solid var(--color-divider-subtle);
+// Under the shell's page header and lighter than it: smaller type, no 80px box. As tall as the rail's header
+// (the shell sets the height), so their bottom lines meet.
+.desk-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+    height: var(--desk-toolbar-height, 52px);
+    padding: 0 16px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    background-color: var(--color-background-body);
+
+    // The desk status sits beside the title, which gives way first.
+    &__titles {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+    }
+
+    &__title {
+        margin: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-primary);
+    }
+
+    &__status {
         flex-shrink: 0;
+    }
 
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1.75rem 3.75rem 1rem 2.5rem;
-            height: 80px;
-            border-bottom: 1px solid var(--color-divider-subtle);
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+        margin-left: auto;
+    }
 
-            // A row, unlike the flows header: the binding status sits beside the title.
-            .header-titles {
-                display: flex;
-                align-items: center;
-                gap: 0.75rem;
+    @media (max-width: 1100px) {
+        .header-actions {
+            @include header-action-buttons.narrow-actions;
+        }
+    }
 
-                .title {
-                    font-size: var(--text-h1-size);
-                    font-weight: var(--text-h1-weight);
-                    color: var(--color-text-primary);
-                }
+    .header-action {
+        @include header-action-buttons.button;
 
-                .subtitle-inline {
-                    margin-left: 0.7rem;
-                    font-size: var(--text-body-medium-size);
-                    font-weight: var(--text-body-medium-weight);
-                    color: var(--text-secondary-60);
-                    display: inline-block;
-                    white-space: normal;
-                }
-            }
+        &--ghost {
+            @include header-action-buttons.ghost;
+        }
 
-            .header-actions {
-                display: flex;
-                align-items: center;
-                margin-left: auto;
-                gap: 0.75rem;
-            }
+        &--outline {
+            @include header-action-buttons.outline;
+        }
 
-            @media (max-width: 1100px) {
-                .header-actions {
-                    @include header-action-buttons.narrow-actions;
-                }
-            }
-
-            .header-action {
-                @include header-action-buttons.button;
-
-                &--ghost {
-                    @include header-action-buttons.ghost;
-                }
-
-                &--outline {
-                    @include header-action-buttons.outline;
-                }
-
-                &--primary {
-                    @include header-action-buttons.primary;
-                }
-            }
-
-            .title__crumb {
-                color: var(--color-text-secondary);
-                text-decoration: none;
-
-                &:hover,
-                &:focus-visible {
-                    color: var(--color-text-primary);
-                }
-            }
-
-            .title__separator {
-                margin: 0 0.5rem;
-                color: var(--color-text-secondary);
-            }
-
-            .title__status {
-                flex-shrink: 0;
-            }
+        &--primary {
+            @include header-action-buttons.primary;
         }
     }
 }

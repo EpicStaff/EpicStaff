@@ -1,0 +1,31 @@
+@use '../../../../../styles/header-layout' as header;
+
+// The page header across the whole width; below it the rail and the routed page, each scrolling inside itself.
+:host {
+    @include header.headerLayout();
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    // The rail's header and the page's desk toolbar share it, so their bottom lines meet.
+    --desk-toolbar-height: 52px;
+
+    // Nested beside `headerLayout()`, as on the Agents page, so the two cascade the same way.
+    .header {
+        @include header.pageHeader();
+    }
+}
+
+.desks-shell__body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.desks-shell__page {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}

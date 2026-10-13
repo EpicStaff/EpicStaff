@@ -1,0 +1,20 @@
+<header class="header">
+    <div
+        class="header-titles"
+        appHideInlineSubtitleOnOverflow
+    >
+        <h1 class="title">
+            Chat
+            <span class="subtitle-inline">
+                Publish flows as website chats and step in when a visitor needs a person.
+            </span>
+        </h1>
+    </div>
+</header>
+
+<div class="desks-shell__body">
+    <app-desk-rail [waitingByDesk]="waitingByDesk()" />
+    <div class="desks-shell__page">
+        <router-outlet />
+    </div>
+</div>

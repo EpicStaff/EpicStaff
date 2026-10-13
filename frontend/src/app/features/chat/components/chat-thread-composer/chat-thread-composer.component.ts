@@ -46,7 +46,7 @@ export interface ChatOperatorReplySent {
 const SEND_STATE_NOTICES: Record<ChatSendState, string | null> = {
     processing: null,
     forwarded_to_operator: 'Forwarded to an operator: no run was started.',
-    budget_exhausted: 'Budget exhausted: the binding answered with its fixed message or handed off.',
+    budget_exhausted: 'Budget exhausted: the desk answered with its fixed message or handed off.',
 };
 
 let nextComposerId = 0;

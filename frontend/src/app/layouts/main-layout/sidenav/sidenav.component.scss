@@ -1,3 +1,5 @@
+@use '../../../../styles/count-badge';
+
 :host {
     display: block;
     height: 100%;
@@ -132,22 +134,10 @@
             justify-content: center;
 
             .sidenav-badge {
+                @include count-badge.pill;
                 position: absolute;
                 top: 2px;
                 right: 2px;
-                min-width: 16px;
-                height: 16px;
-                padding: 0 4px;
-                border-radius: 8px;
-                background-color: var(--color-ks-status-warning);
-                color: var(--color-background-body);
-                font-size: var(--text-caption-size);
-                font-weight: var(--text-caption-weight);
-                line-height: var(--text-caption-line-height);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-sizing: border-box;
             }
 
             // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's

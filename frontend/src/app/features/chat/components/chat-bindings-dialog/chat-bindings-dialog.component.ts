@@ -60,7 +60,7 @@ const BUDGET_FIELDS: BudgetField[] = ['token_budget_per_conversation', 'daily_to
 const BUDGET_DESCRIPTIONS: Record<BudgetField, string> = {
     token_budget_per_conversation:
         'No run starts once a conversation has spent this many tokens in the current UTC day.',
-    daily_token_budget: 'Across every conversation of this binding, per UTC day.',
+    daily_token_budget: 'Across every conversation of this desk, per UTC day.',
 };
 
 type TextField = 'name' | 'bot_display_name' | 'operator_display_name';
@@ -103,8 +103,9 @@ export interface ChatBindingsDialogData {
 }
 
 /**
- * Creates a chat binding or edits one's settings. Closes without a result: callers reload their bindings on every
- * close. An identity secret the server issues on save is shown here once before the dialog closes.
+ * Creates a chat binding or edits one's settings. Closes with the binding as it last saved it (without the identity
+ * secret), or without a result when it saved nothing; Escape and a backdrop click always close without one. An
+ * identity secret the server issues on save is shown here once before the dialog closes.
  */
 @Component({
     selector: 'app-chat-bindings-dialog',
@@ -142,7 +143,7 @@ export class ChatBindingsDialogComponent {
         { initialValue: [] }
     );
     readonly isCreating = computed(() => this.binding() === null);
-    readonly formTitle = computed(() => (this.isCreating() ? 'New chat binding' : 'Edit chat binding'));
+    readonly formTitle = computed(() => (this.isCreating() ? 'New desk' : 'Desk settings'));
     readonly budgetTooltips = computed((): Record<BudgetField, string> => {
         const limits = this.limits();
         const describe = (field: BudgetField): string =>
@@ -202,11 +203,13 @@ export class ChatBindingsDialogComponent {
 
     private readonly chatApi = inject(ChatApiService);
     private readonly permissionsService = inject(PermissionsService);
-    private readonly dialogRef = inject(DialogRef);
+    private readonly dialogRef = inject<DialogRef<ChatBinding>>(DialogRef);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly locale = inject(LOCALE_ID);
+    // What this dialog last saved, handed to the opener on close.
+    private saved: ChatBinding | null = null;
     /** The server's budget defaults and caps; null until loaded (or on failure), leaving the budgets to type in. */
     // Declared after the injected fields on purpose: its initializer uses chatApi and toastService.
     readonly limits = toSignal(
@@ -269,6 +272,7 @@ export class ChatBindingsDialogComponent {
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (binding) => {
                 this.isSubmitting.set(false);
+                this.remember(binding);
                 if (!binding.is_active && binding.contract_errors.length)
                     this.toastService.warning(PAUSED_ON_SAVE_MESSAGE);
                 const secret = 'identity_secret' in binding ? binding.identity_secret : null;
@@ -310,6 +314,7 @@ export class ChatBindingsDialogComponent {
             .subscribe({
                 next: (updated) => {
                     this.binding.set(updated);
+                    this.remember(updated);
                     this.toastService.success('Public key rotated');
                 },
                 error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
@@ -317,7 +322,7 @@ export class ChatBindingsDialogComponent {
     }
 
     close(): void {
-        this.dialogRef.close();
+        this.dialogRef.close(this.saved ?? undefined);
     }
 
     textFieldError(field: TextField): string {
@@ -331,6 +336,13 @@ export class ChatBindingsDialogComponent {
     budgetCapMessage(field: BudgetField): string {
         const max: unknown = this.form.controls[field].errors?.['budgetAboveCap'];
         return typeof max === 'number' ? `At most ${formatNumber(max, this.locale)} on this deployment` : '';
+    }
+
+    // The secret is shown once, here: the opener gets the binding without it.
+    private remember(binding: ChatBinding | ChatBindingWithSecret): void {
+        const saved: Partial<ChatBindingWithSecret> = { ...binding };
+        delete saved.identity_secret;
+        this.saved = saved as ChatBinding;
     }
 
     // A field on a hidden tab would block Save without the user seeing why.

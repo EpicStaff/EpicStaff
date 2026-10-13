@@ -1,0 +1,187 @@
+@use '../../../../../styles/count-badge';
+
+:host {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 240px;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    border-right: 1px solid var(--color-divider-regular);
+    background-color: var(--color-background-body);
+    color: var(--color-text-primary);
+}
+
+:host(.desk-rail--compact) {
+    width: 64px;
+}
+
+// As tall as the desk toolbar beside it (set by the desks shell), so their bottom lines meet.
+.desk-rail__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    height: var(--desk-toolbar-height, 52px);
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    :host(.desk-rail--compact) & {
+        justify-content: center;
+        padding: 0;
+    }
+}
+
+.desk-rail__title {
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+// Same look as the tools list sidebar toggle.
+.desk-rail__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--accent-color);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.desk-rail__entries {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 8px;
+    list-style: none;
+    overflow-y: auto;
+}
+
+.desk-rail__entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
+    &--selected {
+        background-color: var(--color-ghost-btn-active);
+    }
+
+    :host(.desk-rail--compact) & {
+        justify-content: center;
+        padding: 6px 0;
+    }
+}
+
+// Compact: the selected desk is ringed instead of filled, as the squares stand alone.
+:host(.desk-rail--compact) .desk-rail__entry--selected {
+    background-color: transparent;
+
+    .desk-rail__avatar {
+        border-radius: 8px;
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.desk-rail__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desk-rail__badge {
+    @include count-badge.pill;
+}
+
+// The loading and failed states stand where the desks will be listed.
+.desk-rail__state {
+    display: flex;
+    justify-content: center;
+}
+
+// Compact failed state: the column is too narrow for the error message.
+.desk-rail__retry {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin: 6px 0;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-status-failed);
+    border-radius: 8px;
+    color: var(--color-status-failed);
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.desk-rail__new {
+    color: var(--color-text-secondary);
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+}
+
+.desk-rail__new-picture {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    box-sizing: border-box;
+    border: 1px dashed var(--color-divider-regular);
+    border-radius: 8px;
+}

@@ -267,14 +267,14 @@ export const routes: Routes = [
                         path: 'chat-bindings',
                         canActivate: [chatEnabledGuard, permissionGuard],
                         data: { permission: [ResourceCode.Chats, ActionCode.Read] },
+                        // The desk rail lives here, so moving between the pages below keeps it (and its focus).
+                        loadComponent: () =>
+                            import('./features/chat/pages/desks-shell/desks-shell.component').then(
+                                (m) => m.DesksShellComponent
+                            ),
                         children: [
-                            {
-                                path: '',
-                                loadComponent: () =>
-                                    import('./features/chat/pages/chat-bindings-page/chat-bindings-page.component').then(
-                                        (m) => m.ChatBindingsPageComponent
-                                    ),
-                            },
+                            // The desk rail lists every desk, so the bare path opens All desks.
+                            { path: '', redirectTo: 'all', pathMatch: 'full' },
                             {
                                 // The inbox across every binding: the workspace without a binding.
                                 path: 'all',
@@ -292,7 +292,7 @@ export const routes: Routes = [
                             },
                         ],
                     },
-                    // The page lived here before the bindings list; `/chat` itself still reaches the SPA.
+                    // The page lived here before `/chat-bindings`; `/chat` itself still reaches the SPA.
                     { path: 'chat', redirectTo: 'chat-bindings', pathMatch: 'full' },
                     {
                         path: 'sessions',

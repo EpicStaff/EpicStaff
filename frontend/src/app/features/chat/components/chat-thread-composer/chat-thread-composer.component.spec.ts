@@ -191,7 +191,7 @@ describe('ChatThreadComposerComponent', () => {
         pressEnter();
         response$.next({ message_id: 'm-1', state: 'budget_exhausted' });
         fixture.detectChanges();
-        expect(notice()).toBe('Budget exhausted: the binding answered with its fixed message or handed off.');
+        expect(notice()).toBe('Budget exhausted: the desk answered with its fixed message or handed off.');
 
         chatApi.sendAsVisitor.mockReturnValue(of({ message_id: 'm-2', state: 'processing' }));
         type('again');

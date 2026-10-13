@@ -1,4 +1,3 @@
-import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -7,13 +6,12 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { Observable, of, Subject, throwError } from 'rxjs';
+import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
-import { ChatBindingsDialogComponent } from '../../components/chat-bindings-dialog/chat-bindings-dialog.component';
 import {
     CHAT_BINDING_DEFAULTS,
     ChatBinding,
@@ -25,6 +23,7 @@ import {
 } from '../../models/chat.model';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService, ConversationListParams } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
+import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatPageComponent } from './chat-page.component';
 
@@ -105,7 +104,7 @@ const binding: ChatBinding = {
 };
 
 describe('ChatPageComponent', () => {
-    // What the bindings endpoint returns; the page reloads it on every ready and on every route binding.
+    // What the bindings endpoint returns; the desks storage loads it (the page only for a route desk it lacks).
     let serverBindings: ChatBinding[] = [];
     let fixture: ComponentFixture<ChatPageComponent>;
     let navigate: ReturnType<typeof vi.spyOn>;
@@ -121,7 +120,8 @@ describe('ChatPageComponent', () => {
         ),
         getMessages: vi.fn(() => of([] as ChatOperatorMessage[])),
         createTestConversation: vi.fn(),
-        issueVisitorToken: vi.fn(),
+        // Selecting a test conversation fetches its visitor token: by default the request has not answered yet.
+        issueVisitorToken: vi.fn((): Observable<{ visitor_token: string }> => NEVER),
         sendAsVisitor: vi.fn(),
         claim: vi.fn(),
         release: vi.fn(),
@@ -131,8 +131,13 @@ describe('ChatPageComponent', () => {
     const permissions: { can: (resource: ResourceCode, action: ActionCode) => boolean } = {
         can: (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use,
     };
-    const dialog = { open: vi.fn() };
-    const bindingActions = { pause: vi.fn(), resume: vi.fn(), copySnippet: vi.fn() };
+    const bindingActions = {
+        pause: vi.fn(),
+        resume: vi.fn(),
+        delete: vi.fn(),
+        copySnippet: vi.fn(),
+        openSettings: vi.fn(),
+    };
 
     function text(selector: string): string[] {
         const host: HTMLElement = fixture.nativeElement;
@@ -172,9 +177,10 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
+    /** The server lists these desks and the storage has loaded them, as the desks shell does around the page. */
     function listBindings(bindings: ChatBinding[]): void {
         serverBindings = bindings;
-        fixture.componentInstance.bindings.set(bindings);
+        TestBed.inject(ChatDesksStorageService).reload();
     }
 
     function expandBot(): void {
@@ -202,15 +208,19 @@ describe('ChatPageComponent', () => {
                 { provide: PermissionsService, useValue: permissions },
                 { provide: ConfirmationDialogService, useValue: confirmation },
                 { provide: ToastService, useValue: { error: vi.fn(), success: vi.fn() } },
-                { provide: Dialog, useValue: dialog },
             ],
         });
+        // Signed in to an org: the desks storage asks for nothing without one.
+        TestBed.inject(ActiveOrgService).set(1);
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
         fixture = TestBed.createComponent(ChatPageComponent);
         fixture.detectChanges();
     });
 
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        localStorage.clear();
+    });
 
     it('loads every section without waiting for the stream and reloads them all when the stream becomes ready', () => {
         const sections = () => chatApi.getConversations.mock.calls.map(([params]) => params.section);
@@ -266,8 +276,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
         expect(text('.header__label')).toEqual(['Bot', 'Tests']);
 
-        // Handed off before handoff was turned off: still reachable. A stream ready also reloads the bindings.
-        chatApi.getBindings.mockReturnValueOnce(of(bindings));
+        // Handed off before handoff was turned off: still reachable.
         reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z', { binding_id: 'b-2' })]), page([]));
         expect(component.bindingFilter()).toBe('b-2');
         expect(text('.header__label')).toEqual(['Needs a human', 'Bot', 'Tests']);
@@ -299,7 +308,6 @@ describe('ChatPageComponent', () => {
     it('decides on Needs a human only once the human page of the new filter has landed', () => {
         // Rows of the previous filter are still listed while the new one loads.
         reloadWith(page([handedOff('h-1', '2026-10-10T08:00:00Z')]), page([]));
-        // After the reload: a stream ready also reloads the bindings, which the stub returns empty.
         listBindings([
             { ...binding, id: 'b-2', handoff_enabled: false },
             { ...binding, id: 'b-3', handoff_enabled: false },
@@ -516,9 +524,9 @@ describe('ChatPageComponent', () => {
         scopeTo('b-2');
         const host: HTMLElement = fixture.nativeElement;
         // The separator is aria-hidden and spaced by CSS.
-        expect(text('.title')).toEqual(['Chat/ Sales']);
-        expect(text('.header-titles app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h1 app-chat-binding-status')).toBeNull();
+        expect(text('.desk-toolbar__title')).toEqual(['Sales']);
+        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
         expect(host.querySelector('.inbox__toolbar, app-select')).toBeNull();
 
         headerButton('Test')!.click();
@@ -545,7 +553,7 @@ describe('ChatPageComponent', () => {
     it('shows the all-bindings inbox unscoped, without Settings, Get snippet, Pause or Test', () => {
         listBindings([binding]);
         fixture.detectChanges();
-        expect(text('.title')).toEqual(['Chat/ Inbox · all bindings']);
+        expect(text('.desk-toolbar__title')).toEqual(['All desks']);
         expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual([null, null, null]);
         expect(fixture.nativeElement.querySelector('.header-actions')).toBeNull();
     });
@@ -569,12 +577,9 @@ describe('ChatPageComponent', () => {
             expect(bindingActions.resume).toHaveBeenCalled();
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
 
-            dialog.open.mockReturnValue({ closed: of(undefined) });
+            bindingActions.openSettings.mockReturnValue(of(undefined));
             headerButton('Settings')!.click();
-            expect(dialog.open).toHaveBeenCalledWith(
-                ChatBindingsDialogComponent,
-                expect.objectContaining({ data: { binding: { ...binding, is_active: false } } })
-            );
+            expect(bindingActions.openSettings).toHaveBeenCalledWith({ ...binding, is_active: false });
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 2);
         } finally {
             permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
@@ -596,6 +601,7 @@ describe('ChatPageComponent', () => {
                 ])
             ).toEqual([
                 ['header-action header-action--ghost', 'Settings'],
+                ['header-action header-action--ghost', 'Delete'],
                 ['header-action header-action--outline', 'Get snippet'],
                 ['header-action header-action--outline', 'Pause'],
                 ['header-action header-action--primary', 'Test'],
@@ -612,12 +618,60 @@ describe('ChatPageComponent', () => {
         expect(bindingActions.copySnippet).toHaveBeenCalledWith(binding);
     });
 
-    it('hides Pause and Settings without chats:update and Test without chats:use', () => {
+    it('deletes the route binding after its confirmation, goes to All desks, then reloads the desks; a cancel stays', async () => {
+        permissions.can = () => true;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            const callsBefore = chatApi.getBindings.mock.calls.length;
+            let finishNavigation: (navigated: boolean) => void = () => undefined;
+            navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
+            bindingActions.delete.mockReturnValueOnce(of(true));
+            headerButton('Delete')!.click();
+            expect(bindingActions.delete).toHaveBeenCalledWith(binding);
+            expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
+            // Only once the page has left: a list without the desk must not read as "no longer exists".
+            expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
+            finishNavigation(true);
+            await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+
+            navigate.mockClear();
+            // The shared action completes without emitting when the confirm is cancelled or the delete fails.
+            bindingActions.delete.mockReturnValueOnce(of());
+            headerButton('Delete')!.click();
+            expect(navigate).not.toHaveBeenCalled();
+        } finally {
+            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+        }
+    });
+
+    it('only reloads the desks when the route moved to another desk before the delete finished', () => {
+        permissions.can = () => true;
+        try {
+            listBindings([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
+            scopeTo('b-1');
+            const deleted$ = new Subject<boolean>();
+            bindingActions.delete.mockReturnValueOnce(deleted$);
+            headerButton('Delete')!.click();
+            scopeTo('b-2');
+            const callsBefore = chatApi.getBindings.mock.calls.length;
+
+            deleted$.next(true);
+            expect(navigate).not.toHaveBeenCalled();
+            expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
+        } finally {
+            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+        }
+    });
+
+    it('hides Pause and Settings without chats:update, Delete without chats:delete and Test without chats:use', () => {
         listBindings([binding]);
         scopeTo('b-1');
         expect(headerButton('Test')).toBeDefined();
         expect(headerButton('Pause')).toBeUndefined();
         expect(headerButton('Settings')).toBeUndefined();
+        expect(headerButton('Delete')).toBeUndefined();
 
         const can = permissions.can;
         permissions.can = () => false;
@@ -631,40 +685,70 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('sends a binding the route moves to and the server does not list back to the bindings list', () => {
+    it('sends a binding the route moves to and the server does not list back to All desks', () => {
         serverBindings = [binding];
         scopeTo('b-1');
         expect(navigate).not.toHaveBeenCalled();
-        expect(text('.title')).toEqual(['Chat/ Support']);
+        expect(text('.desk-toolbar__title')).toEqual(['Support']);
 
         scopeTo('gone');
-        expect(navigate).toHaveBeenCalledWith(['/chat-bindings']);
-        expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith('This chat binding does not exist anymore.');
+        expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith('This desk no longer exists.');
     });
 
     it('follows the route to another binding: its title, status and actions', () => {
         serverBindings = [binding, { ...binding, id: 'b-2', name: 'Sales', is_active: false }];
         scopeTo('b-1');
-        expect(text('.title')).toEqual(['Chat/ Support']);
+        expect(text('.desk-toolbar__title')).toEqual(['Support']);
         scopeTo('b-2');
-        expect(text('.title')).toEqual(['Chat/ Sales']);
-        expect(text('.header-titles app-chat-binding-status')).toEqual(['Paused']);
+        expect(text('.desk-toolbar__title')).toEqual(['Sales']);
+        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Paused']);
         expect(navigate).not.toHaveBeenCalled();
     });
 
-    it('lets only the latest bindings list land when two loads answer out of order', () => {
-        const first$ = new Subject<ChatBinding[]>();
-        const second$ = new Subject<ChatBinding[]>();
-        chatApi.getBindings.mockReturnValueOnce(first$).mockReturnValueOnce(second$);
-        scopeTo('b-1');
-        scopeTo('b-2');
-        second$.next([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
-        first$.next([binding]);
-        fixture.detectChanges();
-        expect(text('.title')).toEqual(['Chat/ Sales']);
-        expect(text('.header-titles app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h1 app-chat-binding-status')).toBeNull();
+    it('asks for a fresh list once for a desk the list lacks, and stays when that list has it', () => {
+        listBindings([binding]);
+        const callsBefore = chatApi.getBindings.mock.calls.length;
+        serverBindings = [binding, { ...binding, id: 'b-9', name: 'Created elsewhere' }];
+        scopeTo('b-9');
+        expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
+        expect(text('.desk-toolbar__title')).toEqual(['Created elsewhere']);
         expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('waits for a desk list already loading before it decides anything about the route desk', () => {
+        const pending$ = new Subject<ChatBinding[]>();
+        chatApi.getBindings.mockReturnValueOnce(pending$);
+        // The desks shell's first load, still in flight when the page opens on a desk.
+        TestBed.inject(ChatDesksStorageService).reload();
+        scopeTo('b-2');
+        expect(chatApi.getBindings).toHaveBeenCalledTimes(1);
+
+        pending$.next([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
+        fixture.detectChanges();
+        expect(text('.desk-toolbar__title')).toEqual(['Sales']);
+        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
+        expect(chatApi.getBindings).toHaveBeenCalledTimes(1);
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('sends no desk request on a logout from a desk page, and neither warns nor leaves', () => {
+        listBindings([binding]);
+        scopeTo('b-1');
+        const desksStorage = TestBed.inject(ChatDesksStorageService);
+        const callsBefore = chatApi.getBindings.mock.calls.length;
+
+        // What a logout does before its request returns: every storage cleared, the active org gone.
+        desksStorage.clear();
+        TestBed.inject(ActiveOrgService).set(null);
+        fixture.detectChanges();
+
+        expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
+        expect(desksStorage.desks()).toEqual([]);
+        expect(desksStorage.isLoaded()).toBe(false);
+        expect(navigate).not.toHaveBeenCalled();
+        expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
     });
 
     it('stays on a binding page when the org is cleared by a logout', () => {
@@ -683,24 +767,53 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('hides the breadcrumb separator until the binding name is known', () => {
+    it('puts the desk toolbar, its actions and the conversations inside the one main landmark', () => {
+        listBindings([binding]);
         scopeTo('b-1');
-        expect(text('.title')).toEqual(['Chat']);
-        expect(fixture.nativeElement.querySelector('.title__separator')).toBeNull();
+        const host: HTMLElement = fixture.nativeElement;
+        const mains = host.querySelectorAll('main, [role="main"]');
+        expect(mains.length).toBe(1);
+        expect(mains[0].querySelector('.desk-toolbar h2')?.textContent?.trim()).toBe('Support');
+        expect(mains[0].querySelector('.desk-toolbar .header-actions')).not.toBeNull();
+        expect(mains[0].querySelector('.inbox .inbox__thread')).not.toBeNull();
+        expect(mains[0].classList).toContain('chat-page');
     });
 
-    it('goes back to the bindings list without a message when the org changes on a binding page', () => {
+    it('shows no desk title until the desk name is known', () => {
+        scopeTo('b-1');
+        expect(fixture.nativeElement.querySelector('.desk-toolbar h2')).toBeNull();
+    });
+
+    it('is headed by a desk toolbar, not a page title: the desk name or All desks in an h2, never an h1', () => {
+        listBindings([binding]);
+        fixture.detectChanges();
+        const host: HTMLElement = fixture.nativeElement;
+        // The one h1 is the desks shell's page header.
+        expect(host.querySelectorAll('h1').length).toBe(0);
+        expect(text('.desk-toolbar h2')).toEqual(['All desks']);
+        expect(host.querySelector('.desk-toolbar a')).toBeNull();
+
+        scopeTo('b-1');
+        expect(host.querySelectorAll('h1').length).toBe(0);
+        expect(text('.desk-toolbar h2')).toEqual(['Support']);
+        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
+    });
+
+    it('goes back to All desks without a message when the org changes on a binding page', () => {
         const activeOrg = TestBed.inject(ActiveOrgService);
         const previousOrg = activeOrg.activeOrgId();
         serverBindings = [binding];
         scopeTo('b-1');
         try {
+            // As an org switch does: the storages are cleared, the org changes, the desks shell reloads the desks.
+            const desksStorage = TestBed.inject(ChatDesksStorageService);
+            desksStorage.clear();
             activeOrg.set((previousOrg ?? 0) + 1);
             // The new org's list does not have the binding.
             serverBindings = [];
-            readyEpoch.update((value) => value + 1);
+            desksStorage.reload();
             fixture.detectChanges();
-            expect(navigate).toHaveBeenCalledWith(['/chat-bindings']);
+            expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
             expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
         } finally {
             activeOrg.set(previousOrg);

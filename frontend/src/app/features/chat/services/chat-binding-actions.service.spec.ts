@@ -1,9 +1,11 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { of, throwError } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
+import { ChatBindingsDialogComponent } from '../components/chat-bindings-dialog/chat-bindings-dialog.component';
 import { CHAT_BINDING_DEFAULTS, ChatBinding } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 import { ChatBindingActionsService } from './chat-binding-actions.service';
@@ -30,6 +32,7 @@ describe('ChatBindingActionsService', () => {
     const chatApi = { pauseBinding: vi.fn(), resumeBinding: vi.fn(), deleteBinding: vi.fn(), getSnippet: vi.fn() };
     const confirmation = { confirm: vi.fn(), confirmDelete: vi.fn() };
     const toast = { error: vi.fn(), success: vi.fn() };
+    const dialog = { open: vi.fn() };
 
     function collect(source: ReturnType<ChatBindingActionsService['pause']>): boolean[] {
         const values: boolean[] = [];
@@ -44,9 +47,35 @@ describe('ChatBindingActionsService', () => {
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ConfirmationDialogService, useValue: confirmation },
                 { provide: ToastService, useValue: toast },
+                { provide: Dialog, useValue: dialog },
             ],
         });
         service = TestBed.inject(ChatBindingActionsService);
+    });
+
+    it('opens the create dialog and emits the created desk, or null when the dialog closed without one', () => {
+        const results: (ChatBinding | null)[] = [];
+        dialog.open.mockReturnValueOnce({ closed: of(binding) });
+        service.create().subscribe((created) => results.push(created));
+        expect(dialog.open).toHaveBeenCalledWith(
+            ChatBindingsDialogComponent,
+            expect.objectContaining({ data: { binding: null } })
+        );
+
+        dialog.open.mockReturnValueOnce({ closed: of(undefined) });
+        service.create().subscribe((created) => results.push(created));
+        expect(results).toEqual([binding, null]);
+    });
+
+    it("opens a desk's settings and emits once the dialog closes, saved or not", () => {
+        let closes = 0;
+        dialog.open.mockReturnValueOnce({ closed: of(undefined) });
+        service.openSettings(binding).subscribe(() => closes++);
+        expect(dialog.open).toHaveBeenCalledWith(
+            ChatBindingsDialogComponent,
+            expect.objectContaining({ data: { binding } })
+        );
+        expect(closes).toBe(1);
     });
 
     it('pauses only after a danger confirm naming the escaped binding, and sends nothing when cancelled', () => {
@@ -60,7 +89,7 @@ describe('ChatBindingActionsService', () => {
         expect(chatApi.pauseBinding).toHaveBeenCalledWith('b-1');
         expect(confirmation.confirm.mock.calls[1][0]).toEqual(
             expect.objectContaining({
-                title: 'Pause the binding?',
+                title: 'Pause the desk?',
                 confirmText: 'Pause',
                 type: 'danger',
                 message: expect.stringContaining('Q&amp;A'),

@@ -12,4 +12,10 @@
     &--broken {
         @include status-chip.error;
     }
+
+    // Focusable only while it has a reason to show.
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
 }

@@ -58,3 +58,44 @@
         flex: 0 1 20rem;
     }
 }
+
+// The 80px header box of a top-level page, copied as is from the Agents page: an `h1.title` with an inline
+// `.subtitle-inline` that `appHideInlineSubtitleOnOverflow` hides when it does not fit. Include it on the page's
+// `.header`, nested in the block that includes `headerLayout()`, as Agents does, so both cascade as they do there:
+// `headerLayout()`'s more specific `.header .header-titles .title` rule (ellipsis) wins over the title's three overflow
+// lines below, and `.header-titles`' `min-width: 50px` wins over its `min-width: 0`. One deliberate difference: the
+// subtitle uses the semantic `--color-text-secondary`, the same colour in the dark theme as Agents' legacy
+// `--text-secondary-60`. Older pages (Agents, flows, tools, files) still carry their own copy.
+@mixin pageHeader() {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    height: 80px;
+    padding: 1.75rem 3.75rem 1rem 2.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    background-color: var(--color-background-body);
+
+    .header-titles {
+        display: flex;
+        align-items: center;
+        min-width: 50px;
+    }
+
+    .title {
+        margin: 0;
+        font-size: var(--text-h1-size);
+        font-weight: var(--text-h1-weight);
+        color: var(--color-text-primary);
+        overflow: visible;
+        text-overflow: clip;
+        max-width: none;
+    }
+
+    .subtitle-inline {
+        margin-left: 1rem;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        color: var(--color-text-secondary);
+    }
+}
