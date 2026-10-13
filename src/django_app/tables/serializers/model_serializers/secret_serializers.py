@@ -13,11 +13,9 @@ _permission_resolver = PermissionResolver()
 
 
 def _effective_for(*, context):
-    """The requesting user's permissions in the active org, reusing the gate's resolution."""
+    """The requesting user's resolved permissions in the active org."""
     request = context["request"]
-    return _permission_resolver.resolve_cached(
-        request=request, org_id=resolve_active_org_id(request)
-    )
+    return _permission_resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
 
 
 class SecretUsageCountListSerializer(serializers.ListSerializer):

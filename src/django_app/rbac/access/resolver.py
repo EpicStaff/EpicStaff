@@ -31,25 +31,3 @@ class PermissionResolver:
             raise OrgMembershipRequiredError()
 
         return EffectivePermissions.from_role(membership.role)
-
-    def resolve_cached(self, request, org_id: int) -> EffectivePermissions:
-        """Per-request memoization of `resolve` for the request's principal in `org_id`.
-
-        The verb gate and later readers in the same request (serializers, actions)
-        need the same permissions; caching them on the request resolves them once.
-        Keyed by org, so permissions resolved for one org are never reused for
-        another. Stored on the request object, so nothing outlives the request.
-        `request.user` is the principal the authenticator chose (the key owner for
-        a user API key, the system principal for a system key), as with `resolve`.
-
-        NOTE: the cache is never invalidated. Code that changes the caller's own
-        membership or role and then reads permissions in the same request must
-        call `resolve`, not this.
-        """
-        cache = getattr(request, "_rbac_effective_by_org", None)
-        if cache is None:
-            cache = {}
-            request._rbac_effective_by_org = cache
-        if org_id not in cache:
-            cache[org_id] = self.resolve(user=request.user, org_id=org_id)
-        return cache[org_id]

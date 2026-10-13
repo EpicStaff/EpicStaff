@@ -107,7 +107,7 @@ class HasOrgPermission(BaseRbacPermission):
 
     def _authorize(self, request, view, resource_type, required) -> bool:
         org_id = self._org_context.resolve(request=request, view_kwargs=view.kwargs)
-        effective = self._resolver.resolve_cached(request=request, org_id=org_id)
+        effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
         if not effective.can(resource_type, required):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value

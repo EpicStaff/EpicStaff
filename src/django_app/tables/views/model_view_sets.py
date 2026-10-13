@@ -934,7 +934,7 @@ class GraphViewSet(
 
         graph = self.get_object()
         org_id = self.get_active_org_id()
-        effective_permissions = PermissionResolver().resolve_cached(request=request, org_id=org_id)
+        effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
         id_mapper = partial_import_service.import_data(
             export_data=data,
@@ -2635,9 +2635,7 @@ class SecretViewSet(
     def usage(self, request, pk=None):
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
-        effective = PermissionResolver().resolve_cached(
-            request=request, org_id=self.get_active_org_id()
-        )
+        effective = PermissionResolver().resolve(user=request.user, org_id=self.get_active_org_id())
         return Response(secret_usage_service.summary(secret=secret, effective=effective))
 
 

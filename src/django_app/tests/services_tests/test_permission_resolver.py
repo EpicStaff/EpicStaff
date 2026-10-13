@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from rbac.access.bitmask import (
@@ -14,8 +14,6 @@ from rbac.exceptions import (
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission
-from rest_framework.request import Request
-from rest_framework.test import APIRequestFactory
 
 
 def test_actions_to_bitmask_empty():
@@ -186,82 +184,6 @@ def test_resolver_inactive_org_allowed_for_superadmin(
     org_acme.save(update_fields=["is_active"])
     effective = resolver.resolve(user=superadmin_user, org_id=org_acme.id)
     assert effective.is_superadmin is True
-
-
-# ---- Per-request cache ----
-
-
-def _drf_request(user):
-    request = Request(APIRequestFactory().get("/"))
-    request.user = user
-    return request
-
-
-@pytest.mark.django_db
-def test_resolve_cached_resolves_once_per_org(resolver, org_admin_user, org_acme):
-    request = _drf_request(org_admin_user)
-
-    with patch.object(resolver, "resolve", wraps=resolver.resolve) as resolve:
-        first = resolver.resolve_cached(request=request, org_id=org_acme.id)
-        second = resolver.resolve_cached(request=request, org_id=org_acme.id)
-
-    assert resolve.call_count == 1
-    assert second is first
-
-
-@pytest.mark.django_db
-def test_resolve_cached_never_reuses_another_orgs_permissions(
-    resolver, org_admin_user, org_acme, role_member
-):
-    """Org Admin in one org, Member in another: each org gets its own resolution."""
-    org_beta = Organization.objects.create(name="Beta Inc (resolver tests)")
-    OrganizationUser.objects.create(user=org_admin_user, org=org_beta, role=role_member)
-    request = _drf_request(org_admin_user)
-
-    with patch.object(resolver, "resolve", wraps=resolver.resolve) as resolve:
-        in_acme = resolver.resolve_cached(request=request, org_id=org_acme.id)
-        in_beta = resolver.resolve_cached(request=request, org_id=org_beta.id)
-        in_acme_again = resolver.resolve_cached(request=request, org_id=org_acme.id)
-
-    assert resolve.call_count == 2
-    assert in_acme.role.name == BuiltInRole.ORG_ADMIN
-    assert in_beta.role.name == BuiltInRole.MEMBER
-    assert in_acme_again is in_acme
-
-
-@pytest.mark.django_db
-def test_resolve_cached_non_member_org_raises_every_time(resolver, member_user, org_acme):
-    """A failed resolution is not cached, and does not disturb the member's own org."""
-    other_org = Organization.objects.create(name="Other Inc (resolver cache tests)")
-    request = _drf_request(member_user)
-
-    for _ in range(2):
-        with pytest.raises(OrgMembershipRequiredError):
-            resolver.resolve_cached(request=request, org_id=other_org.id)
-
-    own = resolver.resolve_cached(request=request, org_id=org_acme.id)
-    assert own.role.name == BuiltInRole.MEMBER
-
-
-@pytest.mark.django_db
-def test_resolve_cached_superadmin_bypass_needs_no_queries(
-    resolver, superadmin_user, org_acme, django_assert_num_queries
-):
-    request = _drf_request(superadmin_user)
-
-    with django_assert_num_queries(0):
-        effective = resolver.resolve_cached(request=request, org_id=org_acme.id)
-
-    assert effective.is_superadmin is True
-
-
-@pytest.mark.django_db
-def test_resolve_cached_does_not_outlive_the_request(resolver, org_admin_user, org_acme):
-    with patch.object(resolver, "resolve", wraps=resolver.resolve) as resolve:
-        resolver.resolve_cached(request=_drf_request(org_admin_user), org_id=org_acme.id)
-        resolver.resolve_cached(request=_drf_request(org_admin_user), org_id=org_acme.id)
-
-    assert resolve.call_count == 2
 
 
 # ---- OrgContextService ----

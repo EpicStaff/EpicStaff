@@ -6,12 +6,9 @@ fixture return 403 for everything. Pattern follows
 tests/api_tests/test_secret_selection_cross_org.py.
 """
 
-from unittest.mock import patch
-
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from rbac.access.resolver import PermissionResolver
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rest_framework.test import APIClient
@@ -184,22 +181,6 @@ class TestUsageCountOnList:
             if "UNION" in query["sql"].upper()
         ]
         assert len(unions) == 1, f"{len(unions)} union queries for 6 secrets"
-
-
-@pytest.mark.django_db
-class TestPermissionsResolveOncePerRequest:
-    """The gate's resolution is reused by the serializer and the usage action."""
-
-    @pytest.mark.parametrize("path", ["/api/secrets/", "/api/secrets/{pk}/usage/"])
-    def test_one_resolution_per_request(self, admin_client, used_secret, path):
-        original_resolve = PermissionResolver.resolve
-        with patch.object(
-            PermissionResolver, "resolve", autospec=True, side_effect=original_resolve
-        ) as resolve:
-            resp = admin_client.get(path.format(pk=used_secret.pk))
-
-        assert resp.status_code == 200, resp.content
-        assert resolve.call_count == 1
 
 
 def _unions(captured):
