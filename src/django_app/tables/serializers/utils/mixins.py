@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
@@ -147,3 +148,31 @@ class WebhookCreationMixin:
             ngrok_conf = None
 
         return WebhookTrigger.objects.get_or_create(path=path, ngrok_webhook_config=ngrok_conf)
+
+
+class ExecutionTimeoutSerializerMixin:
+    """Accept a node's `execution_timeout` (minutes), lowering a value above the sandbox ceiling.
+
+    One rule for every write path (node endpoints, graph bulk save, import and version
+    restore): a value above the ceiling is clamped to it rather than rejected, because the
+    ceiling is deployment configuration that can be lowered after a flow was saved or
+    exported. The field is injected in `get_fields` because this mixin is not a
+    `Serializer`, so a class-level field declaration would not be collected into
+    `_declared_fields`. The clamp reads the ceiling on each call. Optional on input: an
+    omitted value keeps the stored one, or takes the model default (the ceiling) on create.
+    """
+
+    def get_fields(self):
+        fields = super().get_fields()
+        fields["execution_timeout"] = serializers.IntegerField(
+            required=False,
+            min_value=1,
+            help_text=(
+                "Minutes a single code execution of this node may run. A value above the "
+                "sandbox limit (GET /api/sandbox-limits/) is saved as that limit."
+            ),
+        )
+        return fields
+
+    def validate_execution_timeout(self, value: int) -> int:
+        return min(value, settings.SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES)

@@ -22,7 +22,10 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.utils.mixins import assert_node_ref_in_graph
+from tables.serializers.utils.mixins import (
+    ExecutionTimeoutSerializerMixin,
+    assert_node_ref_in_graph,
+)
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -223,7 +226,10 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ExecutionTimeoutSerializerMixin,
+    serializers.ModelSerializer,
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
@@ -249,6 +255,7 @@ class ClassificationDecisionTableNodeSerializer(
             "post_output_variable_path",
             "pre_use_storage",
             "post_use_storage",
+            "execution_timeout",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",

@@ -10,6 +10,7 @@ from tables.models.graph_models import (
     ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
 )
+from tables.serializers.utils.mixins import ExecutionTimeoutSerializerMixin
 
 
 class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
@@ -51,7 +52,9 @@ class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSeriali
         ]
 
 
-class ClassificationDecisionTableNodeImportSerializer(serializers.ModelSerializer):
+class ClassificationDecisionTableNodeImportSerializer(
+    ExecutionTimeoutSerializerMixin, serializers.ModelSerializer
+):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     condition_groups = ClassificationConditionGroupImportSerializer(

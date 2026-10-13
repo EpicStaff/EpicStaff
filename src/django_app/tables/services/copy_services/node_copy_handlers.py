@@ -74,6 +74,7 @@ def copy_file_extractor_node(graph: Graph, node: FileExtractorNode, user) -> Fil
     return FileExtractorNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
+        execution_timeout=node.execution_timeout,
         **get_base_node_fields(node),
     )
 
@@ -103,6 +104,7 @@ def copy_audio_transcription_node(
     return AudioTranscriptionNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
+        execution_timeout=node.execution_timeout,
         **get_base_node_fields(node),
     )
 
@@ -122,6 +124,7 @@ def copy_python_node(graph: Graph, node: PythonNode, user) -> PythonNode:
         graph=graph,
         created_by=resolve_author(user),
         python_code=new_code,
+        execution_timeout=node.execution_timeout,
         **get_base_node_fields(node),
     )
 
@@ -135,6 +138,7 @@ def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode, user) -> W
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
         use_storage=node.use_storage,
+        execution_timeout=node.execution_timeout,
         metadata=node.metadata,
         test_payload=node.test_payload,
     )
@@ -264,6 +268,7 @@ def copy_classification_decision_table_node(
         metadata=node.metadata,
         pre_use_storage=node.pre_use_storage,
         post_use_storage=node.post_use_storage,
+        execution_timeout=node.execution_timeout,
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
