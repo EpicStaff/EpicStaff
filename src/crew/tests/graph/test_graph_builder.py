@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import Mock
+from fakeredis import FakeAsyncRedis
 from dotdict import DotDict
 from clients.key_value import KeyValueClient
 from services.agent_task_service import AgentTaskService
@@ -191,117 +192,64 @@ def mock_session_data() -> SessionData:
     )
 
 
-def test_compile_from_schema(mock_services, mock_session_data):
-    builder = SessionGraphBuilder(
-        session_id=mock_session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
+def _builder(services, session_id=123, **overrides) -> SessionGraphBuilder:
+    return SessionGraphBuilder(
+        session_id=session_id,
+        redis_service=services["redis_service"],
+        python_code_executor_service=services["python_code_executor_service"],
+        knowledge_search_service=services["knowledge_search_service"],
         stop_event=StopEvent(),
+        **overrides,
     )
 
-    compiled_graph = builder.compile_from_schema(mock_session_data)
 
-    assert compiled_graph is not None
-    assert hasattr(compiled_graph, "invoke") or callable(compiled_graph.invoke)
-
-
-def test_compile_run(mock_services, mock_session_data):
-    builder = SessionGraphBuilder(
-        session_id=mock_session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-    )
-
-    state = {
-        "state_history": [],
-        "variables": DotDict({"test1": 1, "test2": [2, {"test3": "secret_value"}]}),
-        "system_variables": {},
-    }
-    compiled_graph = builder.compile_from_schema(mock_session_data)
-
-    async def run_graph():
-        asyncio.create_task(mock_services["redis_service"].connect())
-        async for stream_mode, chunk in compiled_graph.astream(
-            state, stream_mode=["values", "custom"]
-        ):
-            print(f"Mode: {stream_mode}. Chunk: {chunk}")
-
-    asyncio.run(run_graph())
-
-
-def test_run_decision_table_node_with_error(mock_services, mock_session_data):
-    builder = SessionGraphBuilder(
-        session_id=mock_session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-    )
-
-    state = {
-        "state_history": [],
-        "variables": DotDict({"test1": 4, "test2": [999, {"test3": "secret_value"}]}),
-        "system_variables": {},
-    }
-    compiled_graph = builder.compile_from_schema(mock_session_data)
-
-    async def run_graph():
-        asyncio.create_task(mock_services["redis_service"].connect())
-        last_chunk = None
-        async for stream_mode, chunk in compiled_graph.astream(
-            state, stream_mode=["values", "custom"]
-        ):
-            last_chunk = chunk
-            print(f"Mode: {stream_mode}. Chunk: {chunk}")
-        assert last_chunk is not None
-        assert last_chunk["variables"]["end_output"] == "ERROR HANDELED"
-
-    asyncio.run(run_graph())
-
-
-def test_run_decision_table_node_routes_to_default_branch(mock_services, mock_session_data):
-    session_data = mock_session_data.model_copy(deep=True)
-    session_data.graph.decision_table_node_list = [
-        DecisionTableNodeData(
-            node_name="decision_table_node_1",
-            conditional_group_list=[
-                ConditionGroupData(
-                    group_name="never_matches",
-                    group_type="simple",
-                    expression="True",
-                    manipulation=None,
-                    next_node="error_node",
-                    condition_list=[ConditionData(condition="variables.test1 == 2")],
-                ),
-            ],
-            default_next_node="end_node",
-            next_error_node="error_node",
-        )
-    ]
-    builder = SessionGraphBuilder(
-        session_id=session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-    )
-    state = {
-        "state_history": [],
-        "variables": DotDict({"test1": 1}),
-        "system_variables": {},
-    }
-    compiled_graph = builder.compile_from_schema(session_data)
-
+def _final_variables(compiled_graph, variables: dict) -> dict:
     async def run_graph():
         last_chunk = None
-        async for _, chunk in compiled_graph.astream(state, stream_mode=["values", "custom"]):
+        async for _, chunk in compiled_graph.astream(
+            {"state_history": [], "variables": DotDict(variables), "system_variables": {}},
+            stream_mode=["values"],
+        ):
             last_chunk = chunk
-        assert last_chunk["variables"]["end_output"] == "end"
+        return last_chunk["variables"]
 
-    asyncio.run(run_graph())
+    return asyncio.run(run_graph())
+
+
+NEVER_MATCHING_TABLE = DecisionTableNodeData(
+    node_name="decision_table_node_1",
+    conditional_group_list=[
+        ConditionGroupData(
+            group_name="never_matches",
+            group_type="simple",
+            expression="True",
+            manipulation=None,
+            next_node="error_node",
+            condition_list=[ConditionData(condition="variables.test1 == 2")],
+        ),
+    ],
+    default_next_node="end_node",
+    next_error_node="error_node",
+)
+
+
+@pytest.mark.parametrize(
+    ("variables", "decision_table", "expected_end_output"),
+    [
+        pytest.param({"test1": 1, "test2": [2, {"test3": "secret"}]}, None, "end", id="matching-row-routes"),
+        pytest.param({"test1": 4, "test2": [999, {"test3": "secret"}]}, None, "ERROR HANDELED", id="failing-condition-routes-to-error-node"),
+        pytest.param({"test1": 1}, NEVER_MATCHING_TABLE, "end", id="no-match-routes-to-default"),
+    ],
+)
+def test_compiled_graph_runs_the_flow_and_routes_through_the_decision_table(
+    mock_services, mock_session_data, variables, decision_table, expected_end_output
+):
+    if decision_table is not None:
+        mock_session_data.graph.decision_table_node_list = [decision_table]
+
+    compiled_graph = _builder(mock_services).compile_from_schema(mock_session_data)
+
+    assert _final_variables(compiled_graph, variables)["end_output"] == expected_end_output
 
 
 def _task_node_session_data(mock_llm_data) -> SessionData:
@@ -329,37 +277,6 @@ def _task_node_session_data(mock_llm_data) -> SessionData:
             end_node=None,
         ),
     )
-
-
-def test_compile_from_schema_with_task_node(mock_services, mock_llm_data):
-    builder = SessionGraphBuilder(
-        session_id=456,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-        agent_task_service=mock_services["agent_task_service"],
-    )
-
-    compiled_graph = builder.compile_from_schema(_task_node_session_data(mock_llm_data))
-
-    assert compiled_graph is not None
-
-
-def test_compile_from_schema_with_task_node_raises_without_service(
-    mock_llm_data, mock_services
-):
-    builder = SessionGraphBuilder(
-        session_id=456,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-        agent_task_service=None,
-    )
-
-    with pytest.raises(RuntimeError):
-        builder.compile_from_schema(_task_node_session_data(mock_llm_data))
 
 
 def _agent_node_session_data(mock_llm_data) -> SessionData:
@@ -393,39 +310,6 @@ def _agent_node_session_data(mock_llm_data) -> SessionData:
     )
 
 
-def test_compile_from_schema_with_agent_node(mock_services, mock_llm_data):
-    builder = SessionGraphBuilder(
-        session_id=789,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-        agent_task_service=mock_services["agent_task_service"],
-    )
-
-    compiled_graph = builder.compile_from_schema(
-        _agent_node_session_data(mock_llm_data)
-    )
-
-    assert compiled_graph is not None
-
-
-def test_compile_from_schema_with_agent_node_raises_without_service(
-    mock_llm_data, mock_services
-):
-    builder = SessionGraphBuilder(
-        session_id=789,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-        agent_task_service=None,
-    )
-
-    with pytest.raises(RuntimeError):
-        builder.compile_from_schema(_agent_node_session_data(mock_llm_data))
-
-
 def _key_value_node_data() -> KeyValueNodeData:
     return KeyValueNodeData(
         node_name="persist_1",
@@ -436,20 +320,6 @@ def _key_value_node_data() -> KeyValueNodeData:
         # Saved by older node data; the builder must not hand it to the node.
         output_variable_path="variables.stale",
     )
-
-
-def test_compile_registers_key_value_node(mock_services, mock_session_data):
-    mock_session_data.graph.key_value_node_list = [_key_value_node_data()]
-    builder = SessionGraphBuilder(
-        session_id=mock_session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
-        key_value_client=mock_services["key_value_client"],
-    )
-    compiled_graph = builder.compile_from_schema(mock_session_data)
-    assert "persist_1" in compiled_graph.get_graph().nodes
 
 
 class FakeStorageAwarePythonCodeExecutorService(FakePythonCodeExecutorService):
@@ -629,7 +499,6 @@ def _two_level_storage_subgraph_session_data(
 
 def _run_compiled_graph(compiled_graph, redis_service):
     async def run_graph():
-        asyncio.create_task(redis_service.connect())
         last_chunk = None
         async for _stream_mode, chunk in compiled_graph.astream(
             {"state_history": [], "variables": DotDict({}), "system_variables": {}},
@@ -720,14 +589,69 @@ def test_storage_node_two_levels_deep_receives_session_credentials(mock_services
     assert executor.received_storage_credentials == [storage_credentials]
 
 
-def test_compile_without_key_value_client_raises(mock_services, mock_session_data):
-    mock_session_data.graph.key_value_node_list = [_key_value_node_data()]
-    builder = SessionGraphBuilder(
-        session_id=mock_session_data.id,
-        redis_service=mock_services["redis_service"],
-        python_code_executor_service=mock_services["python_code_executor_service"],
-        knowledge_search_service=mock_services["knowledge_search_service"],
-        stop_event=StopEvent(),
+class FakeAgentService:
+    async def run_task(self, node_data, stop_event, on_event=None, storage_credentials=None):
+        return {"final_text": f"answer to: {node_data.instructions}"}
+
+    async def run_agent_node(self, node_data, stop_event, on_event=None, storage_credentials=None):
+        return {"final_text": f"answer to: {node_data.tasks[0].instructions}"}
+
+
+class FakeKeyValueClient:
+    async def read(self, session_id, table_id, keys):
+        return {"values": {key: f"stored {key}" for key in keys}, "table_name": "Customers"}
+
+
+@pytest.mark.parametrize(
+    ("session_data", "expected_result"),
+    [
+        pytest.param(_task_node_session_data, "answer to: Summarize the findings.", id="task-node"),
+        pytest.param(_agent_node_session_data, "answer to: Write draft.", id="agent-node"),
+    ],
+)
+def test_agent_backed_nodes_store_the_agents_answer(
+    mock_services, mock_llm_data, monkeypatch, session_data, expected_result
+):
+    # Task nodes read earlier remembered outputs from Redis.
+    monkeypatch.setattr(
+        mock_services["redis_service"], "aioredis_client", FakeAsyncRedis(decode_responses=True)
     )
-    with pytest.raises(RuntimeError, match="key_value_client"):
-        builder.compile_from_schema(mock_session_data)
+    data = session_data(mock_llm_data)
+    compiled_graph = _builder(
+        mock_services, session_id=data.id, agent_task_service=FakeAgentService()
+    ).compile_from_schema(data)
+
+    assert _final_variables(compiled_graph, {})["result"] == expected_result
+
+
+def test_key_value_node_reads_into_its_entries_not_a_stale_output_path(
+    mock_services, mock_session_data
+):
+    mock_session_data.graph.python_node_list = []
+    mock_session_data.graph.decision_table_node_list = []
+    mock_session_data.graph.key_value_node_list = [_key_value_node_data()]
+    mock_session_data.graph.edge_list = [EdgeData(start_key="__start__", end_key="persist_1")]
+    mock_session_data.graph.entrypoint = "persist_1"
+
+    compiled_graph = _builder(mock_services, key_value_client=FakeKeyValueClient()).compile_from_schema(
+        mock_session_data
+    )
+
+    assert _final_variables(compiled_graph, {}) == {"out": "stored k"}
+
+
+@pytest.mark.parametrize(
+    ("add_nodes", "missing"),
+    [
+        pytest.param(lambda graph, llm: setattr(graph, "task_node_list", _task_node_session_data(llm).graph.task_node_list), "agent_task_service", id="task-node"),
+        pytest.param(lambda graph, llm: setattr(graph, "agent_node_list", _agent_node_session_data(llm).graph.agent_node_list), "agent_task_service", id="agent-node"),
+        pytest.param(lambda graph, llm: setattr(graph, "key_value_node_list", [_key_value_node_data()]), "key_value_client", id="key-value-node"),
+    ],
+)
+def test_compile_refuses_a_node_whose_service_was_not_provided(
+    mock_services, mock_session_data, mock_llm_data, add_nodes, missing
+):
+    add_nodes(mock_session_data.graph, mock_llm_data)
+
+    with pytest.raises(RuntimeError, match=missing):
+        _builder(mock_services).compile_from_schema(mock_session_data)
