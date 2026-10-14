@@ -77,6 +77,15 @@ function presetCount(count: number): string {
     return `${count} preset${count === 1 ? '' : 's'}`;
 }
 
+// The backend skips a preset with the same search as one already in My or Shared Presets and reports it as reused.
+function importSummaryMessage(created: number, reused: number): string {
+    if (created === 0 && reused > 0) {
+        return `No new presets — ${presetCount(reused)} already existed`;
+    }
+    const imported = `Imported ${presetCount(created)} to My Presets`;
+    return reused === 0 ? imported : `${imported}, ${presetCount(reused)} already existed`;
+}
+
 function modeLabel(state: AuditFilterState | null): string {
     if (state === null) {
         return 'API';
@@ -373,11 +382,7 @@ export class AuditPresetsComponent implements OnInit {
                 next: (summary) => {
                     const created = summary[PRESET_IMPORT_ENTITY]?.created.count ?? 0;
                     const reused = summary[PRESET_IMPORT_ENTITY]?.reused.count ?? 0;
-                    this.toastService.success(
-                        created === 0 && reused > 0
-                            ? `No new presets — ${presetCount(reused)} already existed`
-                            : `Imported ${presetCount(created)} to My Presets`
-                    );
+                    this.toastService.success(importSummaryMessage(created, reused));
                 },
                 error: (error: HttpErrorResponse) => this.toastError(error, 'Could not import presets.'),
             });
