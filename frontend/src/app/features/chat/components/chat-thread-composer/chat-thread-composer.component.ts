@@ -33,7 +33,9 @@ import {
     ChatVisitorMessageExtras,
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
+import { isConversationClosed } from '../../utils/conversation-close.util';
 
 export type ChatComposerRole = 'visitor' | 'operator';
 
@@ -185,6 +187,7 @@ export class ChatThreadComposerComponent {
 
     private readonly chatApi = inject(ChatApiService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly conversationActions = inject(ChatConversationActionsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -228,6 +231,8 @@ export class ChatThreadComposerComponent {
                     this.notice.set(fieldError ?? body?.message ?? extractHttpErrorMessage(error));
                     const streamSpoke = this.conversation() !== sentOn;
                     if (body?.code === 'run_in_progress' && !streamSpoke) this.isAwaitingRun.set(true);
+                    // Closed meanwhile, and the stream missed it: fetched again, the thread turns read-only.
+                    if (isConversationClosed(error)) this.conversationActions.refresh(sentOn.id);
                 },
             });
     }
@@ -248,6 +253,8 @@ export class ChatThreadComposerComponent {
                 error: (error: HttpErrorResponse) => {
                     this.endSend(sentOn);
                     this.toastService.error(extractHttpErrorMessage(error));
+                    // Closed meanwhile, and the stream missed it: fetched again, the thread turns read-only.
+                    if (isConversationClosed(error)) this.conversationActions.refresh(sentOn);
                 },
             });
     }

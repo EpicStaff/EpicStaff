@@ -135,12 +135,13 @@ describe('ConversationListToolbarComponent', () => {
             expect(button('Oldest first')?.getAttribute('aria-label')).toBe('Sort: oldest first');
         });
 
-        it('says which sections it sorts, and that Waiting is always longest wait first', () => {
+        it('says which sections it sorts, and that Waiting and Closed keep their own order', () => {
             const sort = fixture.debugElement
                 .queryAll(By.directive(MatTooltip))
                 .find((element) => element.nativeElement.textContent?.trim() === 'Newest first')!;
             expect(sort.injector.get(MatTooltip).message).toBe(
-                'Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first.'
+                'Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first, Closed most ' +
+                    'recently closed first.'
             );
         });
     });

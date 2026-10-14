@@ -1,11 +1,12 @@
 import { Location } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { provideLocationMocks, SpyLocation } from '@angular/common/testing';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { NEVER, Observable, of, Subject } from 'rxjs';
+import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
@@ -65,11 +66,20 @@ const row = (id: string, overrides: Partial<ChatConversation> = {}): ChatConvers
     last_message_author_user_id: null,
     last_message_author_name: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
 const binding: ChatBinding = {
     ...CHAT_BINDING_DEFAULTS,
+    response_time_seconds: 600,
+    on_response_timeout: 'handback',
+    handback_message: 'Back to the bot.',
+    close_after_seconds: 86_400,
     id: 'b-1',
     org_id: 1,
     graph_id: 5,
@@ -100,6 +110,7 @@ describe('ChatPageComponent and the URL', () => {
     const isPhone = signal(false);
     let respond: (params: ConversationListParams) => Observable<ChatConversationPage> = () => NEVER;
     const conversationUpdated$ = new Subject<ChatConversation>();
+    const readyEpoch = signal(0);
     const chatApi = {
         getBindings: vi.fn(() => of(DESKS)),
         getMyAliases: vi.fn(() => of([])),
@@ -107,6 +118,10 @@ describe('ChatPageComponent and the URL', () => {
         getMessages: vi.fn(() => of([] as ChatOperatorMessage[])),
         issueVisitorToken: vi.fn(() => NEVER),
         createTestConversation: vi.fn(),
+        // By default the server does not know the id either.
+        getConversation: vi.fn(
+            (): Observable<ChatConversation> => throwError(() => new HttpErrorResponse({ status: 404 }))
+        ),
     };
     const toast = { error: vi.fn(), success: vi.fn() };
     let harness: RouterTestingHarness;
@@ -212,7 +227,7 @@ describe('ChatPageComponent and the URL', () => {
                     useValue: {
                         conversationUpdated$,
                         messageCreated$: new Subject<ChatInboxMessageEvent>(),
-                        readyEpoch: signal(0),
+                        readyEpoch,
                         status: signal('open'),
                         waitingCountFor: () => 0,
                     },
@@ -287,12 +302,12 @@ describe('ChatPageComponent and the URL', () => {
         // For this column only: Mine and the collapsed Tests stay remembered.
         const preferences = TestBed.inject(ConversationListPreferencesService);
         expect(preferences.isMineOnly()).toBe(true);
-        expect([...preferences.collapsed()]).toEqual(['test']);
+        expect([...preferences.collapsed()]).toEqual(['test', 'closed']);
     });
 
     it('reopens a conversation while every section is collapsed: the column opens them first', async () => {
         const preferences = TestBed.inject(ConversationListPreferencesService);
-        for (const section of ['waiting', 'in_progress', 'test', 'bot'] as const)
+        for (const section of ['waiting', 'in_progress', 'test', 'closed', 'bot'] as const)
             preferences.setCollapsed(section, true);
 
         const remembered = localStorage.getItem(PREFERENCES_KEY);
@@ -309,9 +324,51 @@ describe('ChatPageComponent and the URL', () => {
 
         await open(`${LIST}?conversation=c-gone`);
 
+        expect(chatApi.getConversation).toHaveBeenCalledWith('c-gone');
         expect(toast.error).toHaveBeenCalledWith("Couldn't open that conversation.");
         expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
-        expect([...TestBed.inject(ConversationListPreferencesService).collapsed()]).toEqual(['test']);
+        expect([...TestBed.inject(ConversationListPreferencesService).collapsed()]).toEqual(['test', 'closed']);
+    });
+
+    describe('a closed conversation', () => {
+        const closed = (id: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
+            row(id, {
+                status: 'closed',
+                close_reason: 'resolved',
+                closed_at: '2026-10-10T12:00:00Z',
+                closed_by_user_id: 7,
+                closed_by_name: 'Mike',
+                ...overrides,
+            });
+
+        it('reopens on a reload through the collapsed Closed section, read-only, the remembered sections untouched', async () => {
+            listing(BOT_ROWS, (section) => (section === 'closed' ? [closed('c-8')] : undefined));
+            const remembered = localStorage.getItem(PREFERENCES_KEY);
+
+            await open(`${LIST}?conversation=c-8`);
+
+            expect(page().selected()?.id).toBe('c-8');
+            expect(chatApi.getConversation).not.toHaveBeenCalled();
+            expect(toast.error).not.toHaveBeenCalled();
+            expect(host().querySelector('.thread-closed')?.textContent).toContain('Resolved by Mike');
+            expect(host().querySelector('app-chat-thread-composer')).toBeNull();
+            expect(localStorage.getItem(PREFERENCES_KEY)).toBe(remembered);
+            expect([...TestBed.inject(ConversationListPreferencesService).collapsed()]).toEqual(['test', 'closed']);
+        });
+
+        // The lookup's own rules (another desk's answer, a 404, other failures) are `open-conversation-sync.service.spec.ts`.
+        it("asks the server for one past Closed's first page before dropping its id, and opens it", async () => {
+            chatApi.getConversation.mockReturnValueOnce(of(closed('c-old')));
+
+            await open(`${LIST}?conversation=c-old`);
+
+            expect(chatApi.getConversation).toHaveBeenCalledTimes(1);
+            expect(chatApi.getConversation).toHaveBeenCalledWith('c-old');
+            expect(page().selected()?.id).toBe('c-old');
+            expect(location.path()).toBe(`${LIST}?conversation=c-old`);
+            expect(toast.error).not.toHaveBeenCalled();
+            expect(chatApi.getMessages).toHaveBeenCalledWith('c-old');
+        });
     });
 
     it('drops, with a message, an id that nothing the column can list has', async () => {

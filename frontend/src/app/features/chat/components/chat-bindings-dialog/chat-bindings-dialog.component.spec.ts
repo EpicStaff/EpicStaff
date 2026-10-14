@@ -1,8 +1,9 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormControl } from '@angular/forms';
 import { By } from '@angular/platform-browser';
-import { ConfirmationDialogService } from '@shared/components';
+import { ConfirmationDialogService, InputNumberComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { of, Subject, throwError } from 'rxjs';
 
@@ -32,14 +33,33 @@ const binding = (overrides: Partial<ChatBinding>): ChatBinding => ({
     created_at: '',
     updated_at: '',
     ...CHAT_BINDING_DEFAULTS,
+    response_time_seconds: 600,
+    on_response_timeout: 'handback',
+    handback_message: 'Back to the bot.',
+    close_after_seconds: 86_400,
     token_budget_per_conversation: 200_000,
     daily_token_budget: 1_000_000,
     ...overrides,
 });
 
 const LIMITS: ChatBindingLimits = {
-    defaults: { token_budget_per_conversation: 50_000, daily_token_budget: 1_000_000 },
-    caps: { token_budget_per_conversation: 200_000, daily_token_budget: 5_000_000 },
+    defaults: {
+        token_budget_per_conversation: 50_000,
+        daily_token_budget: 1_000_000,
+        // 10 minutes, then hand back; close after 24 hours.
+        response_time_seconds: 600,
+        on_response_timeout: 'handback',
+        handback_message: 'Nobody could answer in time. The bot is back.',
+        close_after_seconds: 86_400,
+        style: 'support',
+    },
+    // One day; 30 days.
+    caps: {
+        token_budget_per_conversation: 200_000,
+        daily_token_budget: 5_000_000,
+        response_time_seconds: 86_400,
+        close_after_seconds: 2_592_000,
+    },
 };
 
 describe('ChatBindingsDialogComponent', () => {
@@ -355,12 +375,12 @@ describe('ChatBindingsDialogComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         const visibleTabs = () =>
             Array.from(host.querySelectorAll<HTMLElement>('.bindings-dialog__tab')).map((tab) => !tab.hidden);
-        expect(text('app-tab-button')).toEqual(['General', 'Limits', 'Handoff']);
-        expect(visibleTabs()).toEqual([true, false, false]);
+        expect(text('app-tab-button')).toEqual(['General', 'Limits', 'Handoff', 'Inactivity']);
+        expect(visibleTabs()).toEqual([true, false, false, false]);
 
         (host.querySelectorAll('app-tab-button button')[2] as HTMLButtonElement).click();
         fixture.detectChanges();
-        expect(visibleTabs()).toEqual([false, false, true]);
+        expect(visibleTabs()).toEqual([false, false, true, false]);
 
         // The name is still empty: Save stays clickable so it can lead the user to it.
         const save = Array.from(host.querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
@@ -370,7 +390,408 @@ describe('ChatBindingsDialogComponent', () => {
         save.click();
         fixture.detectChanges();
         expect(chatApi.createBinding).not.toHaveBeenCalled();
-        expect(visibleTabs()).toEqual([true, false, false]);
+        expect(visibleTabs()).toEqual([true, false, false, false]);
+    });
+
+    describe('style and inactivity rules', () => {
+        const radios = (): HTMLInputElement[] =>
+            Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('input[type="radio"]')
+            );
+        const inputNumber = (label: string) =>
+            fixture.debugElement
+                .queryAll(By.css('app-input-number'))
+                .map((element) => element.componentInstance as InputNumberComponent)
+                .find((input) => input.label() === label);
+        const showInactivity = (component: ChatBindingsDialogComponent): void => {
+            component.activeTab.set('inactivity');
+            fixture.detectChanges();
+        };
+
+        it('asks for the style on create as two native radios in a group, Support preselected, and sends it', () => {
+            chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+            const component = open(null);
+            fixture.detectChanges();
+            const fieldset = (fixture.nativeElement as HTMLElement).querySelector('fieldset.bindings-dialog__style')!;
+            expect(fieldset.querySelector('legend')?.textContent?.trim()).toBe('Style');
+            const textOf = (id: string | null): string | undefined =>
+                id ? document.getElementById(id)?.textContent?.trim() : undefined;
+            // Named by the title alone, described by the line: the line is read once.
+            expect(radios().map((radio) => [textOf(radio.getAttribute('aria-labelledby')), radio.checked])).toEqual([
+                ['Support', true],
+                ['Ongoing', false],
+            ]);
+            expect(textOf(radios()[1].getAttribute('aria-describedby'))).toContain('never closes by itself');
+            // One group: the same name in the same form, so the browser gives it one Tab stop and the arrow keys
+            // (which jsdom does not move between radios, so they are not pressed here).
+            expect(radios().map((radio) => radio.name)).toEqual(['style', 'style']);
+            expect(radios()[0].form).not.toBeNull();
+            expect(radios()[1].form).toBe(radios()[0].form);
+
+            component.form.patchValue({ name: 'Portal', graph_id: 5 });
+            component.submit();
+            expect(chatApi.createBinding).toHaveBeenCalledWith(expect.objectContaining({ style: 'support' }));
+
+            radios()[1].click();
+            fixture.detectChanges();
+            expect(component.form.controls.style.value).toBe('ongoing');
+        });
+
+        it("fills the rules on create from the server's defaults, typed in minutes and hours, and posts them in seconds", () => {
+            chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+            const component = open(null);
+            const controls = component.form.controls;
+            expect(controls.response_time_minutes.value).toBe(10);
+            expect(controls.on_response_timeout.value).toBe('handback');
+            expect(controls.handback_message.value).toBe('Nobody could answer in time. The bot is back.');
+            expect(controls.close_after_hours.value).toBe(24);
+
+            component.form.patchValue({ name: 'Portal', graph_id: 5 });
+            component.submit();
+            expect(chatApi.createBinding).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    response_time_seconds: 600,
+                    on_response_timeout: 'handback',
+                    handback_message: 'Nobody could answer in time. The bot is back.',
+                    close_after_seconds: 86_400,
+                })
+            );
+            const body = chatApi.createBinding.mock.calls[0][0];
+            expect(body).not.toHaveProperty('response_time_minutes');
+            expect(body).not.toHaveProperty('close_after_hours');
+        });
+
+        it('names the default and the cap of each duration in its tooltip and caps its input', () => {
+            open(null);
+            showInactivity(fixture.componentInstance);
+            const responseTime = inputNumber('Response time (minutes)')!;
+            expect(responseTime.max()).toBe(1440);
+            expect(responseTime.tooltipText()).toContain('Default 10, at most 1,440 on this deployment.');
+            const closeAfter = inputNumber('Close after (hours)')!;
+            expect(closeAfter.max()).toBe(720);
+            expect(closeAfter.tooltipText()).toContain('Default 24, at most 720 on this deployment.');
+        });
+
+        it('keeps untouched durations out of the PATCH, even a stored one that is no whole number of minutes', () => {
+            chatApi.updateBinding.mockReturnValue(of(binding({ name: 'Sales' })));
+            const component = open(binding({ response_time_seconds: 90, close_after_seconds: 5400 }));
+            expect(component.form.controls.response_time_minutes.value).toBe(2);
+            expect(component.form.controls.close_after_hours.value).toBe(2);
+            component.form.controls.name.setValue('Sales');
+            component.submit();
+            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { name: 'Sales' });
+        });
+
+        it('sends a typed duration in seconds, and a changed action and notice', () => {
+            chatApi.updateBinding.mockReturnValue(of(binding({})));
+            const component = open(binding({}));
+            const controls = component.form.controls;
+            controls.response_time_minutes.markAsDirty();
+            controls.response_time_minutes.setValue(5);
+            controls.close_after_hours.markAsDirty();
+            controls.close_after_hours.setValue(48);
+            controls.on_response_timeout.setValue('overdue');
+            controls.handback_message.setValue('');
+            component.submit();
+            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', {
+                response_time_seconds: 300,
+                close_after_seconds: 172_800,
+                on_response_timeout: 'overdue',
+                handback_message: '',
+            });
+        });
+
+        it('shows the hand-back notice only for hand back', () => {
+            const component = open(binding({}));
+            showInactivity(component);
+            const notice = (): Element | undefined =>
+                Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('app-textarea')).find((element) =>
+                    element.textContent?.includes('Hand-back notice')
+                );
+            expect(notice()).toBeDefined();
+
+            component.form.controls.on_response_timeout.setValue('overdue');
+            fixture.detectChanges();
+            expect(notice()).toBeUndefined();
+        });
+
+        it('shows close after as Never on Ongoing, out of the checks and the PATCH, and back on Support', () => {
+            chatApi.updateBinding.mockReturnValue(of(binding({ style: 'ongoing' })));
+            const component = open(binding({}));
+            showInactivity(component);
+            component.form.controls.style.setValue('ongoing');
+            fixture.detectChanges();
+
+            const never = inputNumber('Close after (hours)')!;
+            expect(never.placeholder()).toBe('Never');
+            expect(never.isDisabled()).toBe(true);
+            expect(never.value()).toBeNull();
+            expect(component.form.controls.close_after_hours.disabled).toBe(true);
+
+            component.submit();
+            expect(chatApi.updateBinding).toHaveBeenCalledWith('b-1', { style: 'ongoing' });
+
+            component.form.controls.style.setValue('support');
+            fixture.detectChanges();
+            expect(component.form.controls.close_after_hours.enabled).toBe(true);
+            expect(inputNumber('Close after (hours)')!.value()).toBe(24);
+        });
+
+        it('opens an Ongoing desk with close after as Never', () => {
+            const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
+            expect(component.form.controls.close_after_hours.disabled).toBe(true);
+            expect(component.isOngoing()).toBe(true);
+        });
+
+        it('warns that an Ongoing desk with Keep waiting can leave a visitor waiting for ever', () => {
+            const component = open(binding({}));
+            showInactivity(component);
+            const hint = (): string => text('app-hint-message').join(' ');
+            component.form.controls.on_response_timeout.setValue('wait');
+            fixture.detectChanges();
+            expect(hint()).toBe('');
+
+            component.form.controls.style.setValue('ongoing');
+            fixture.detectChanges();
+            expect(hint()).toContain('they can wait for a person for ever');
+
+            component.form.controls.on_response_timeout.setValue('handback');
+            fixture.detectChanges();
+            expect(hint()).toBe('');
+        });
+
+        it('leaves the notice out of a create while the limits failed to load, so the server default stands', () => {
+            chatApi.getBindingLimits.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+            chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+            const component = open(null);
+            component.form.patchValue({
+                name: 'Portal',
+                graph_id: 5,
+                token_budget_per_conversation: 50_000,
+                daily_token_budget: 1_000_000,
+                response_time_minutes: 10,
+                on_response_timeout: 'handback',
+                close_after_hours: 24,
+            });
+            component.submit();
+            const body = chatApi.createBinding.mock.calls[0][0];
+            expect(body).not.toHaveProperty('handback_message');
+            expect(body).toEqual(expect.objectContaining({ response_time_seconds: 600, close_after_seconds: 86_400 }));
+
+            // Typed empty, it is sent empty: post nothing.
+            component.form.controls.handback_message.setValue('');
+            component.submit();
+            expect(chatApi.createBinding.mock.calls[1][0]).toEqual(expect.objectContaining({ handback_message: '' }));
+        });
+
+        it("preselects the server's default style on a new desk, and the client's only when the limits failed", () => {
+            chatApi.getBindingLimits.mockReturnValue(
+                of({ ...LIMITS, defaults: { ...LIMITS.defaults, style: 'ongoing' } })
+            );
+            chatApi.createBinding.mockReturnValue(of({ ...binding({ id: 'b-2' }), identity_secret: null }));
+            const component = open(null);
+            expect(component.form.controls.style.value).toBe('ongoing');
+            expect(component.form.controls.close_after_hours.disabled).toBe(true);
+            component.form.patchValue({ name: 'Portal', graph_id: 5 });
+            component.submit();
+            expect(chatApi.createBinding).toHaveBeenCalledWith(expect.objectContaining({ style: 'ongoing' }));
+
+            chatApi.getBindingLimits.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+            expect(open(null).form.controls.style.value).toBe('support');
+        });
+
+        it("keeps a style picked before the limits arrived, and an existing desk's own style", () => {
+            const limits$ = new Subject<ChatBindingLimits>();
+            chatApi.getBindingLimits.mockReturnValue(limits$);
+            const component = open(null);
+            fixture.detectChanges();
+            radios()[1].click();
+            limits$.next({ ...LIMITS, defaults: { ...LIMITS.defaults, style: 'support' } });
+            expect(component.form.controls.style.value).toBe('ongoing');
+
+            chatApi.getBindingLimits.mockReturnValue(
+                of({ ...LIMITS, defaults: { ...LIMITS.defaults, style: 'ongoing' } })
+            );
+            expect(open(binding({})).form.controls.style.value).toBe('support');
+        });
+
+        describe('the warning about existing conversations', () => {
+            /** The effects listed on the tab shown. */
+            const shownEffects = (): string[] =>
+                text('.bindings-dialog__tab:not([hidden]) .bindings-dialog__backlog li');
+
+            /** Edits as the user would, then renders. */
+            function edit(change: () => void): void {
+                change();
+                fixture.detectChanges();
+            }
+
+            /** As typing does: a duration control counts once dirty. */
+            function type(control: FormControl<number | null>, units: number): void {
+                control.markAsDirty();
+                control.setValue(units);
+            }
+
+            it('says nothing on create, whatever the rules', () => {
+                const component = open(null);
+                edit(() => {
+                    component.form.controls.style.setValue('ongoing');
+                    component.form.controls.style.setValue('support');
+                    type(component.form.controls.response_time_minutes, 1);
+                    type(component.form.controls.close_after_hours, 1);
+                });
+                showInactivity(component);
+                expect(component.backlogEffects()).toEqual([]);
+                expect((fixture.nativeElement as HTMLElement).querySelector('.bindings-dialog__backlog')).toBeNull();
+            });
+
+            it('says nothing when no change acts on existing conversations', () => {
+                const component = open(binding({}));
+                const controls = component.form.controls;
+                showInactivity(component);
+                edit(() => {
+                    controls.name.setValue('Sales');
+                    type(controls.response_time_minutes, 20);
+                    type(controls.close_after_hours, 48);
+                    controls.handback_message.setValue('Back to the bot, sorry.');
+                });
+                expect(shownEffects()).toEqual([]);
+
+                // A shorter response time that only marks overdue, or keeps waiting, reaches no visitor.
+                edit(() => {
+                    type(controls.response_time_minutes, 1);
+                    controls.on_response_timeout.setValue('overdue');
+                });
+                expect(shownEffects()).toEqual([]);
+                edit(() => controls.on_response_timeout.setValue('wait'));
+                expect(shownEffects()).toEqual([]);
+            });
+
+            it('warns that switching to Support closes the conversations silent for longer, on General too', () => {
+                const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
+                edit(() => component.form.controls.style.setValue('support'));
+                expect(component.activeTab()).toBe('general');
+                expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
+                expect(
+                    (fixture.nativeElement as HTMLElement)
+                        .querySelector('.bindings-dialog__backlog .hint-message')
+                        ?.classList.contains('hint-message--warning')
+                ).toBe(true);
+
+                showInactivity(component);
+                expect(shownEffects()).toEqual(['Conversations with no message for more than 24 hours close.']);
+            });
+
+            it('describes Save by the warning while it applies, so it is read before saving from any tab', () => {
+                const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+                const saveButton = (): HTMLButtonElement =>
+                    Array.from(host().querySelectorAll<HTMLButtonElement>('.bindings-dialog__actions button')).find(
+                        (button) => button.textContent?.trim() === 'Save'
+                    )!;
+                const component = open(binding({ style: 'ongoing', on_response_timeout: 'wait' }));
+                expect(saveButton().hasAttribute('aria-describedby')).toBe(false);
+
+                edit(() => component.form.controls.style.setValue('support'));
+                // On General, where the switch was made; the copy it points at is the Inactivity tab's, hidden here.
+                expect(component.activeTab()).toBe('general');
+                const description = document.getElementById(saveButton().getAttribute('aria-describedby')!);
+                expect(description?.textContent).toContain('Applies to this desk');
+                expect(description?.textContent).toContain(
+                    'Conversations with no message for more than 24 hours close.'
+                );
+                // One id only, though the warning shows on both tabs.
+                expect(host().querySelectorAll(`[id="${description?.id}"]`)).toHaveLength(1);
+
+                edit(() => component.form.controls.style.setValue('ongoing'));
+                expect(saveButton().hasAttribute('aria-describedby')).toBe(false);
+            });
+
+            it('warns that a shorter close after closes the conversations silent for longer, on Inactivity only', () => {
+                const component = open(binding({}));
+                edit(() => type(component.form.controls.close_after_hours, 1));
+                expect(shownEffects()).toEqual([]);
+                showInactivity(component);
+                expect(shownEffects()).toEqual(['Conversations with no message for more than 1 hour close.']);
+            });
+
+            it('warns that switching to hand back hands back the visitors who waited longer, with the notice if any', () => {
+                const component = open(binding({ on_response_timeout: 'wait' }));
+                showInactivity(component);
+                edit(() => component.form.controls.on_response_timeout.setValue('handback'));
+                expect(shownEffects()).toEqual([
+                    'Visitors who have waited for a person for more than 10 minutes go back to the bot, including ' +
+                        'ones an operator has taken over, with the hand-back notice.',
+                ]);
+
+                edit(() => component.form.controls.handback_message.setValue('  '));
+                expect(shownEffects()).toEqual([
+                    'Visitors who have waited for a person for more than 10 minutes go back to the bot, including ' +
+                        'ones an operator has taken over.',
+                ]);
+            });
+
+            it('warns that a shorter response time with hand back hands back more visitors, both effects listed', () => {
+                const component = open(binding({ style: 'ongoing' }));
+                showInactivity(component);
+                edit(() => {
+                    type(component.form.controls.response_time_minutes, 1);
+                    component.form.controls.style.setValue('support');
+                });
+                expect(shownEffects()).toEqual([
+                    'Conversations with no message for more than 24 hours close.',
+                    'Visitors who have waited for a person for more than 1 minute go back to the bot, including ' +
+                        'ones an operator has taken over, with the hand-back notice.',
+                ]);
+            });
+        });
+
+        it('opens the Inactivity tab on Save when a rule is invalid there', () => {
+            const component = open(binding({}));
+            component.form.controls.response_time_minutes.setValue(null);
+            component.submit();
+            expect(chatApi.updateBinding).not.toHaveBeenCalled();
+            expect(component.activeTab()).toBe('inactivity');
+        });
+
+        it('blocks a typed duration above the deployment cap locally, in its unit', () => {
+            const component = open(binding({}));
+            showInactivity(component);
+            component.form.controls.response_time_minutes.markAsDirty();
+            component.form.controls.response_time_minutes.setValue(1441);
+            fixture.detectChanges();
+            expect(component.durationCapMessage('response_time_seconds')).toBe(
+                'At most 1,440 minutes on this deployment'
+            );
+            expect(text('.input__message--error')).toEqual(['At most 1,440 minutes on this deployment']);
+            component.submit();
+            expect(chatApi.updateBinding).not.toHaveBeenCalled();
+        });
+
+        it('shows duration_above_cap on the refused duration, in its unit, on its tab', () => {
+            chatApi.updateBinding.mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 400,
+                            error: {
+                                code: 'duration_above_cap',
+                                message: 'Above the cap.',
+                                field: 'close_after_seconds',
+                                max: 172_800,
+                            },
+                        })
+                )
+            );
+            const component = open(binding({}));
+            fixture.detectChanges();
+            component.form.controls.close_after_hours.markAsDirty();
+            component.form.controls.close_after_hours.setValue(72);
+            component.submit();
+            fixture.detectChanges();
+            expect(component.durationCapMessage('close_after_seconds')).toBe('At most 48 hours on this deployment');
+            expect(component.errorMessage()).toBeNull();
+            expect(component.activeTab()).toBe('inactivity');
+        });
     });
 
     it('caps each budget input at the deployment cap and names the default and cap in its tooltip', () => {

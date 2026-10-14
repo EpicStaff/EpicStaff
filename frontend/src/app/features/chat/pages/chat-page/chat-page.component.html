@@ -253,15 +253,16 @@
                             </div>
                         }
                         <div class="thread-header__row">
+                            <!-- Closed replaces the mode: whatever it was, nobody is on it any more. -->
                             <span
                                 class="mode-badge"
-                                [class]="'mode-badge--' + conversation.mode"
+                                [class]="'mode-badge--' + (isClosed() ? 'closed' : conversation.mode)"
                                 [attr.tabindex]="holderLabel() ? 0 : null"
                                 [matTooltip]="holderLabel() ? 'Held by ' + holderLabel() : ''"
                                 [matTooltipDisabled]="!holderLabel()"
                                 matTooltipPosition="below"
                             >
-                                {{ modeLabel(conversation.mode) }}
+                                {{ isClosed() ? 'Closed' : modeLabel(conversation.mode) }}
                             </span>
                             <!-- The visitor number is not unique: the full conversation id is one hover or focus away. -->
                             @if (!isPhone()) {
@@ -297,17 +298,18 @@
                                 />
                             </div>
                             @if (!isPhone()) {
-                                @if (canUse() && isClaimedByMe()) {
+                                <!-- The holder's main action: Resolve, or Done on an Ongoing desk. -->
+                                @if (primaryAction(); as action) {
                                     <app-button
                                         type="ghost"
                                         mod="small"
                                         [disabled]="isActionPending()"
-                                        (click)="release(conversation)"
+                                        (click)="runConversationAction(action.id)"
                                     >
-                                        Release
+                                        {{ action.label }}
                                     </app-button>
                                 }
-                                <!-- Only with something besides Release: the holder releases with the button above. -->
+                                <!-- Only with something besides the main action, which has the button above. -->
                                 @if (conversationMenuItems().length) {
                                     <app-chat-action-menu
                                         class="thread-header__menu"
@@ -318,7 +320,7 @@
                                 }
                             }
                         </div>
-                        @if (conversation.handoff_reason && conversation.mode !== 'bot') {
+                        @if (conversation.handoff_reason && conversation.mode !== 'bot' && !isClosed()) {
                             <div class="thread-header__reason text-body-small">{{ conversation.handoff_reason }}</div>
                         }
                     </header>
@@ -395,7 +397,21 @@
                         </div>
                     </div>
 
-                    @if (canUse()) {
+                    @if (isClosed()) {
+                        <!-- Read-only from here: why it closed, where the composer was. A close moves the focus here. -->
+                        <div
+                            #closedBannerElement
+                            class="thread-closed text-body-small"
+                            role="status"
+                            tabindex="-1"
+                        >
+                            <app-svg-icon
+                                icon="circle-check"
+                                size="1rem"
+                            />
+                            <span>{{ closedBanner() }}</span>
+                        </div>
+                    } @else if (canUse()) {
                         <app-chat-thread-composer
                             [conversation]="conversation"
                             [visitorToken]="visitorTokens()[conversation.id] ?? null"

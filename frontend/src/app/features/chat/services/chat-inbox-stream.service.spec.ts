@@ -54,6 +54,11 @@ const conversation = (overrides: Partial<ChatConversation>): ChatConversation =>
     last_message_author_user_id: null,
     last_message_author_name: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
@@ -153,6 +158,27 @@ describe('ChatInboxStreamService', () => {
         expect(service.waitingCount()).toBe(0);
         // An older snapshot is deduped before it can touch the count.
         source.emit('conversation.updated', waiting('c-1'), '4');
+        expect(service.waitingCount()).toBe(0);
+    });
+
+    it('drops a closed conversation from the waiting set', () => {
+        service.start(1);
+        const source = openStream();
+        source.emit('ready', {}, '1');
+        httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2']));
+
+        source.emit(
+            'conversation.updated',
+            waiting('c-1', { status: 'closed', close_reason: 'ended', closed_at: at, visitor_waiting_since: null }),
+            '5'
+        );
+        expect(service.waitingCount()).toBe(1);
+        // Closed whatever the row still says: a closed conversation never waits.
+        source.emit(
+            'conversation.updated',
+            waiting('c-2', { status: 'closed', close_reason: 'inactive', closed_at: at }),
+            '6'
+        );
         expect(service.waitingCount()).toBe(0);
     });
 

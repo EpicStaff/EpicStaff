@@ -94,6 +94,11 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_author_user_id: null,
     last_message_author_name: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
@@ -112,6 +117,10 @@ const page = (results: ChatConversation[], next_cursor: string | null = null): O
 
 const binding: ChatBinding = {
     ...CHAT_BINDING_DEFAULTS,
+    response_time_seconds: 600,
+    on_response_timeout: 'handback',
+    handback_message: 'Back to the bot.',
+    close_after_seconds: 86_400,
     id: 'b-1',
     org_id: 1,
     graph_id: 5,
@@ -153,6 +162,9 @@ describe('ChatPageComponent', () => {
         sendAsVisitor: vi.fn(),
         claim: vi.fn(),
         release: vi.fn(),
+        close: vi.fn(),
+        // The open conversation, fetched again on every ready after the first: by default it has not answered yet.
+        getConversation: vi.fn((): Observable<ChatConversation> => NEVER),
         reply: vi.fn(),
     };
     const confirmation = { confirm: vi.fn() };
@@ -218,6 +230,14 @@ describe('ChatPageComponent', () => {
     const headerButton = (label: string): HTMLButtonElement | undefined =>
         Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.header-actions button')
+        ).find((button) => button.textContent?.trim() === label);
+
+    /** A button beside the open conversation's title (the holder's main action). */
+    const threadAction = (label: string): HTMLButtonElement | undefined =>
+        Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+                '.thread-header app-button button'
+            )
         ).find((button) => button.textContent?.trim() === label);
 
     /** The route's binding id, as the router binds it; '' is the all-bindings inbox. */
@@ -306,10 +326,10 @@ describe('ChatPageComponent', () => {
         expect(list().selectedId()).toBe('c-4');
     });
 
-    it('expands Tests, not Bot, in the conversations column when a test conversation starts', () => {
-        expect(collapsedSections()).toEqual(['test']);
+    it('expands Tests, not Bot or Closed, in the conversations column when a test conversation starts', () => {
+        expect(collapsedSections()).toEqual(['test', 'closed']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
-        expect(collapsedSections()).toEqual([]);
+        expect(collapsedSections()).toEqual(['closed']);
     });
 
     it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
@@ -1358,11 +1378,12 @@ describe('ChatPageComponent', () => {
             const labels = Array.from(header().querySelectorAll('button')).map((button) => button.textContent?.trim());
             expect(labels).not.toContain('Claim');
             expect(labels).not.toContain('Take over');
-            expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
+            // The bot's conversation on a Support desk: Resolve is all the ⋯ menu has.
+            expect(fixture.componentInstance.conversationMenuItems().map(({ label }) => label)).toEqual(['Resolve']);
             expect(text('.composer app-button')).toContain('Claim to reply');
         });
 
-        it('offers Take over and Release to bot in the ⋯ menu when another operator holds it', () => {
+        it('offers Take over, Release to bot and Resolve in the ⋯ menu when another operator holds it', () => {
             open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 7 }));
             chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
             (header().querySelector('.chat-action-menu__trigger') as HTMLButtonElement).click();
@@ -1372,21 +1393,21 @@ describe('ChatPageComponent', () => {
                     (button) => button.textContent?.trim() === label
                 );
             expect(item('Release to bot')).toBeDefined();
+            expect(item('Resolve')).toBeDefined();
             item('Take over')!.click();
             expect(chatApi.claim).toHaveBeenCalledWith('c-1');
             fixture.detectChanges();
             expect(document.querySelector('.chat-action-menu')).toBeNull();
         });
 
-        it('offers Release next to the menu when the current user holds it, and it releases', () => {
-            open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 }));
-            chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
-            const release = Array.from(header().querySelectorAll<HTMLButtonElement>('app-button button')).find(
-                (button) => button.textContent?.trim() === 'Release'
-            )!;
-            // The holder's only other action would be Release again: no ⋯ menu.
+        it('offers Release beside the title while the desk is not known, and no ⋯ menu besides it', () => {
+            open(
+                handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3, binding_id: 'b-9' })
+            );
+            chatApi.release.mockReturnValue(of(row({ id: 'c-1', binding_id: 'b-9' })));
+            expect(text('.thread-header app-button')).toEqual(['Release']);
             expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
-            release.click();
+            threadAction('Release')!.click();
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
 
@@ -1401,6 +1422,234 @@ describe('ChatPageComponent', () => {
             } finally {
                 permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
             }
+        });
+    });
+
+    describe('the actions by desk style', () => {
+        const ongoing: ChatBinding = { ...binding, style: 'ongoing' };
+        const at = '2026-10-10T09:00:00Z';
+        const mine = handedOff('c-1', at, { mode: 'human', assigned_operator_id: 3 });
+        const others = handedOff('c-1', at, { mode: 'human', assigned_operator_id: 7 });
+        const unclaimed = handedOff('c-1', at);
+        const bots = row({ id: 'c-1' });
+        const closed = row({
+            id: 'c-1',
+            mode: 'human',
+            assigned_operator_id: 3,
+            status: 'closed',
+            close_reason: 'resolved',
+            closed_at: at,
+            closed_by_user_id: 3,
+        });
+
+        /** Opens `conversation` on a desk of `desk`'s style; null: its desk is not known. */
+        function openOn(desk: ChatBinding | null, conversation: ChatConversation): void {
+            listBindings(desk ? [desk] : []);
+            conversationUpdated$.next(conversation);
+            fixture.componentInstance.selectConversation(conversation);
+            fixture.detectChanges();
+        }
+
+        const actions = (): { primary: string | null; menu: string[] } => ({
+            primary: fixture.componentInstance.primaryAction()?.label ?? null,
+            menu: fixture.componentInstance.conversationMenuItems().map(({ label }) => label),
+        });
+
+        // The table itself is `conversation-actions.util.spec.ts`; these prove the page feeds it.
+        it("feeds the desk's style, who holds it, whether it is closed and the width into the actions", () => {
+            openOn(binding, mine);
+            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Release to bot'] });
+            openOn(ongoing, others);
+            expect(actions()).toEqual({ primary: null, menu: ['Take over', 'Release to bot', 'Close conversation'] });
+            openOn(null, bots);
+            expect(actions()).toEqual({ primary: null, menu: [] });
+            openOn(binding, unclaimed);
+            expect(actions()).toEqual({ primary: null, menu: ['Resolve'] });
+            openOn(binding, closed);
+            expect(actions()).toEqual({ primary: null, menu: [] });
+            expect(fixture.componentInstance.isClaimedByMe()).toBe(false);
+
+            isPhone.set(true);
+            openOn(ongoing, mine);
+            expect(actions()).toEqual({ primary: 'Done', menu: ['Done', 'Close conversation'] });
+        });
+
+        it('disables the menu items while an action runs', () => {
+            openOn(binding, others);
+            chatApi.claim.mockReturnValueOnce(NEVER);
+            fixture.componentInstance.runConversationAction('take-over');
+            fixture.detectChanges();
+            expect(fixture.componentInstance.conversationMenuItems().every(({ disabled }) => disabled)).toBe(true);
+        });
+
+        it('resolves from the button beside the title at once, without asking', () => {
+            openOn(binding, mine);
+            chatApi.close.mockReturnValue(of(closed));
+            threadAction('Resolve')!.click();
+            expect(chatApi.close).toHaveBeenCalledWith('c-1');
+            expect(confirmation.confirm).not.toHaveBeenCalled();
+        });
+
+        it('hands the conversation back to the bot with Done, and it stays open', () => {
+            openOn(ongoing, mine);
+            chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
+            threadAction('Done')!.click();
+            fixture.detectChanges();
+            expect(chatApi.release).toHaveBeenCalledWith('c-1');
+            expect(chatApi.close).not.toHaveBeenCalled();
+            expect(fixture.componentInstance.isClosed()).toBe(false);
+        });
+
+        it('asks before Close conversation from the ⋯ menu', () => {
+            openOn(ongoing, mine);
+            confirmation.confirm.mockReturnValue(of(true));
+            chatApi.close.mockReturnValue(of(closed));
+            fixture.componentInstance.runConversationAction('close');
+            expect(confirmation.confirm).toHaveBeenCalledWith(
+                expect.objectContaining({ title: 'Close conversation', type: 'danger' })
+            );
+            expect(chatApi.close).toHaveBeenCalledWith('c-1', false);
+        });
+    });
+
+    describe('a closed conversation', () => {
+        const at = '2026-10-10T09:00:00Z';
+        const mine = handedOff('c-1', at, {
+            mode: 'human',
+            assigned_operator_id: 3,
+            handoff_reason: 'Asked for a human',
+        });
+        const closedVersion = (overrides: Partial<ChatConversation> = {}): ChatConversation => ({
+            ...mine,
+            visitor_waiting_since: null,
+            status: 'closed',
+            close_reason: 'resolved',
+            closed_at: new Date().toISOString(),
+            closed_by_user_id: 3,
+            ...overrides,
+        });
+        const banner = (): HTMLElement | null => fixture.nativeElement.querySelector('.thread-closed');
+
+        function openMine(): void {
+            listBindings([binding]);
+            conversationUpdated$.next(mine);
+            fixture.componentInstance.selectConversation(mine);
+            fixture.detectChanges();
+        }
+
+        it('turns read-only as it closes: a banner instead of the composer, Closed instead of the mode', () => {
+            openMine();
+            expect(composerInput()).not.toBeNull();
+            expect(text('.thread-header__reason')).toEqual(['Asked for a human']);
+
+            conversationUpdated$.next(closedVersion({ close_reason: 'ended', closed_by_user_id: null }));
+            fixture.detectChanges();
+            expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
+            expect(banner()?.getAttribute('role')).toBe('status');
+            expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
+            expect(text('.thread-header .mode-badge')).toEqual(['Closed']);
+            expect(fixture.nativeElement.querySelector('.mode-badge')?.className).toContain('mode-badge--closed');
+            expect(fixture.nativeElement.querySelector('.thread-header__reason')).toBeNull();
+            expect(fixture.nativeElement.querySelector('.thread-header .chat-action-menu__trigger')).toBeNull();
+            expect(fixture.nativeElement.querySelector('.thread-header app-button')).toBeNull();
+        });
+
+        it('names who resolved it, by the desk style', () => {
+            openMine();
+            conversationUpdated$.next(closedVersion());
+            fixture.detectChanges();
+            expect(text('.thread-closed')[0]).toMatch(/^Closed · Resolved by you · /);
+
+            listBindings([{ ...binding, style: 'ongoing' }]);
+            conversationUpdated$.next(closedVersion({ closed_by_user_id: 7, closed_by_name: 'Mike' }));
+            fixture.detectChanges();
+            expect(text('.thread-closed')[0]).toMatch(/^Closed by Mike · /);
+        });
+
+        it('moves the focus to the banner once a close took the control it was on', async () => {
+            openMine();
+            composerInput().focus();
+            expect(document.activeElement).toBe(composerInput());
+
+            conversationUpdated$.next(closedVersion({ close_reason: 'inactive', closed_by_user_id: null }));
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement).toBe(banner());
+        });
+
+        it('moves the focus to the banner after Resolve, whose button goes', async () => {
+            openMine();
+            chatApi.close.mockReturnValue(of(closedVersion()));
+            const resolve = threadAction('Resolve')!;
+            resolve.focus();
+            resolve.click();
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement).toBe(banner());
+        });
+
+        it('leaves the focus where it is when it is elsewhere on the page, and on opening a closed one', async () => {
+            openMine();
+            const search = fixture.nativeElement.querySelector(
+                'app-conversation-list-toolbar input'
+            ) as HTMLInputElement;
+            search.focus();
+            conversationUpdated$.next(closedVersion());
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement).toBe(search);
+
+            fixture.componentInstance.selectConversation(closedVersion({ id: 'c-2' }));
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(document.activeElement).toBe(search);
+        });
+
+        // The sync's own rules (first ready, newer live rows, desk changes) are `open-conversation-sync.service.spec.ts`.
+        it('follows the server after a reconnect: one closed while the stream was down turns read-only', () => {
+            openMine();
+            expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).not.toBeNull();
+            chatApi.getConversation.mockReturnValueOnce(
+                of(closedVersion({ close_reason: 'inactive', closed_by_user_id: null }))
+            );
+
+            // The close never reached the stream, and the reload lists the conversation in no open section.
+            reloadWith(page([]), page([]));
+
+            expect(chatApi.getConversation).toHaveBeenCalledWith('c-1');
+            expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
+            expect(text('.thread-closed')[0]).toMatch(/^Closed after inactivity · /);
+            expect(fixture.componentInstance.primaryAction()).toBeNull();
+        });
+
+        it('moves the banner time on as the clock ticks, to the date once the close is no longer today', () => {
+            vi.useFakeTimers();
+            try {
+                vi.setSystemTime(new Date(2026, 9, 12, 23, 58));
+                fixture = TestBed.createComponent(ChatPageComponent);
+                fixture.detectChanges();
+                listBindings([binding]);
+                const closed = closedVersion({ closed_at: new Date(2026, 9, 12, 23, 50).toISOString() });
+                conversationUpdated$.next(closed);
+                fixture.componentInstance.selectConversation(closed);
+                fixture.detectChanges();
+                expect(text('.thread-closed')[0]).toBe('Closed · Resolved by you · 11:50 PM');
+
+                vi.advanceTimersByTime(3 * 60_000);
+                fixture.detectChanges();
+                expect(text('.thread-closed')[0]).toBe('Closed · Resolved by you · Oct 12, 11:50 PM');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('fetches no visitor token for a closed test conversation: it takes no more messages', () => {
+            const closedTest = closedVersion({ id: 't-1', is_test: true });
+            conversationUpdated$.next(closedTest);
+            fixture.componentInstance.selectConversation(closedTest);
+            fixture.detectChanges();
+            expect(chatApi.issueVisitorToken).not.toHaveBeenCalled();
+            expect(banner()).not.toBeNull();
         });
     });
 
@@ -1524,7 +1773,7 @@ describe('ChatPageComponent', () => {
             expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
         });
 
-        it("heads the thread with Back to the list, the visitor and the conversation's actions, Release included", () => {
+        it("heads the thread with Back to the list, the visitor and the conversation's actions, Resolve included", () => {
             scopeTo('b-1');
             conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
             fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
@@ -1534,13 +1783,43 @@ describe('ChatPageComponent', () => {
             expect(back().getAttribute('aria-label')).toBe('Back to Support');
             expect(text('.thread-header__back-label')).toEqual(['Support']);
             expect(text('.thread-header__title')).toEqual(['Visitor 1']);
-            // No Release button beside the title: it is in the menu.
+            // No Resolve button beside the title: it leads the menu.
             expect(host().querySelector('.thread-header app-button')).toBeNull();
 
             openMenu('.thread-header__nav');
-            expect(menuItems()).toEqual(['Release']);
-            chooseInMenu('Release');
+            expect(menuItems()).toEqual(['Resolve', 'Release to bot']);
+            chooseInMenu('Release to bot');
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
+        });
+
+        it('offers Done and Close conversation in the thread menu on an Ongoing desk', () => {
+            listBindings([{ ...binding, style: 'ongoing' }]);
+            scopeTo('b-1');
+            conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+            fixture.componentInstance.selectConversation(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
+            fixture.detectChanges();
+            chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
+
+            openMenu('.thread-header__nav');
+            expect(menuItems()).toEqual(['Done', 'Close conversation']);
+            chooseInMenu('Done');
+            expect(chatApi.release).toHaveBeenCalledWith('c-1');
+        });
+
+        it('replaces the composer with the banner and empties the thread menu once closed', () => {
+            scopeTo('b-1');
+            const closed = row({
+                id: 'c-1',
+                status: 'closed',
+                close_reason: 'ended',
+                closed_at: '2026-10-10T10:00:00Z',
+            });
+            conversationUpdated$.next(closed);
+            fixture.componentInstance.selectConversation(closed);
+            fixture.detectChanges();
+            expect(host().querySelector('.thread-header__nav app-chat-action-menu')).toBeNull();
+            expect(host().querySelector('app-chat-thread-composer')).toBeNull();
+            expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
         });
     });
 });

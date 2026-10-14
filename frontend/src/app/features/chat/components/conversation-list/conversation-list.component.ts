@@ -9,7 +9,6 @@ import {
     Injector,
     input,
     linkedSignal,
-    NgZone,
     output,
     signal,
     untracked,
@@ -19,7 +18,6 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SpinnerComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { interval } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -28,7 +26,8 @@ import { ChatConversationActionsService } from '../../services/chat-conversation
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
-import { visitorName } from '../../utils/conversation-row.util';
+import { ConversationDeskRules, deskRulesOf, visitorName } from '../../utils/conversation-row.util';
+import { tickingNow } from '../../utils/ticking-now.util';
 import { ConversationListToolbarComponent } from '../conversation-list-toolbar/conversation-list-toolbar.component';
 import { ConversationRowComponent, ConversationRowMove } from '../conversation-row/conversation-row.component';
 import { ConversationSectionHeaderComponent } from '../conversation-section-header/conversation-section-header.component';
@@ -52,7 +51,7 @@ export type ConversationLookup = ChatConversation | 'loading' | 'hidden' | 'miss
 
 /**
  * The conversations column: a toolbar (search, Mine, sort) over one scroll with a section per inbox section (Waiting
- * for a person, In progress, Tests, Bot), each under a sticky header that collapses it. Loads, pages as each section's
+ * for a person, In progress, Tests, Closed, Bot), each under a sticky header that collapses it. Loads, pages as each section's
  * end scrolls into view, keeps the rows live, and moves the selection with ↑/↓ (one row is the Tab stop).
  */
 @Component({
@@ -85,7 +84,7 @@ export class ConversationListComponent {
     readonly selectedRow = computed(() => this.store.findRow(this.selectedId()));
     /** The desk whose conversations the column holds (null: every desk); the `bindingId` input until it has reloaded. */
     readonly listedBindingId = computed(() => this.store.query().bindingId);
-    protected readonly now = signal(Date.now());
+    protected readonly now = tickingNow(NOW_TICK_MS);
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
     /** The search as applied: trimmed, once typing settles. Never remembered. */
@@ -111,6 +110,11 @@ export class ConversationListComponent {
     /** Every desk's name by id, on All desks only: each row says which desk it came in on. */
     protected readonly deskNames = computed((): ReadonlyMap<string, string> | null =>
         this.bindingId() ? null : new Map(this.desksStorage.desks().map((desk) => [desk.id, desk.name]))
+    );
+    /** Each desk's rules for its rows (how a close is worded, when a wait turns overdue), by desk id. */
+    protected readonly deskRules = computed(
+        (): ReadonlyMap<string, ConversationDeskRules> =>
+            new Map(this.desksStorage.desks().map((desk) => [desk.id, deskRulesOf(desk)]))
     );
     /** The row Tab lands on: the selected one when it is shown, else the first. */
     protected readonly tabStopId = computed(() => {
@@ -194,12 +198,6 @@ export class ConversationListComponent {
             afterNextRender({ read: () => this.motion.play(this.rowElements()) }, { injector: this.injector });
         });
         inject(DestroyRef).onDestroy(() => this.motion.destroy());
-        // Outside the zone: a pending interval would keep the app from ever being stable. The signal still re-renders.
-        inject(NgZone).runOutsideAngular(() =>
-            interval(NOW_TICK_MS)
-                .pipe(takeUntilDestroyed())
-                .subscribe(() => this.now.set(Date.now()))
-        );
     }
 
     /**

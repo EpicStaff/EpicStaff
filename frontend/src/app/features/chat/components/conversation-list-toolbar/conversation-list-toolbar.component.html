@@ -29,12 +29,12 @@
             Mine
         </button>
     }
-    <!-- Waiting is a queue and ignores this; its section says so. -->
+    <!-- Waiting is a queue and Closed a record, and both ignore this; their sections say so. -->
     <button
         type="button"
         class="conversation-list-toolbar__button conversation-list-toolbar__sort"
         [attr.aria-label]="sortName()"
-        matTooltip="Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first."
+        matTooltip="Sorts In progress, Tests and Bot. Waiting for a person is always longest wait first, Closed most recently closed first."
         (click)="toggleOrder()"
     >
         <app-svg-icon

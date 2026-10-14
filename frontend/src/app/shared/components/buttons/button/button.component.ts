@@ -27,6 +27,8 @@ export class ButtonComponent {
     @Input() rightIcon?: string;
     @Input() rightIconColor?: string;
     @Input() ariaLabel?: string;
+    /** The id of what describes the button (read when it gets the focus); null for none. */
+    readonly ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
 
     public shouldCollapseToIcon = false;

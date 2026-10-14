@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
@@ -10,6 +10,7 @@ import {
     inject,
     Injector,
     input,
+    LOCALE_ID,
     signal,
     untracked,
     viewChild,
@@ -21,7 +22,7 @@ import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/
 import { CollapseOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { filter, merge, Subscription } from 'rxjs';
+import { filter, Subscription } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
@@ -49,19 +50,32 @@ import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
+import { OpenConversationSyncService } from '../../services/open-conversation-sync.service';
 import { actionLabel } from '../../utils/action-label.util';
+import {
+    ConversationAction,
+    ConversationActionContext,
+    conversationHolder,
+    conversationMenuItems,
+    primaryConversationAction,
+} from '../../utils/conversation-actions.util';
+import { closedSummary, isClosed } from '../../utils/conversation-close.util';
 import { operatorName, visitorName } from '../../utils/conversation-row.util';
 import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
 import { upsertMessage } from '../../utils/inbox-merge.util';
+import { tickingNow } from '../../utils/ticking-now.util';
 
 const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
+// The closed banner's time changes form at midnight only ("14:05", then "Oct 5, 14:05"): a minute is close enough.
+const CLOCK_TICK_MS = 60_000;
 
 type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
-type ConversationAction = 'take-over' | 'release';
 
 /**
  * A desk's workspace (or All desks): the desk toolbar over the conversations and the open conversation's thread. The
- * open conversation is in the URL (`OpenConversationService`), so a reload or a link reopens it. On phones the
+ * open conversation is in the URL (`OpenConversationService`), so a reload or a link reopens it, and its row follows the
+ * server (`OpenConversationSyncService`). A closed conversation
+ * opens read-only: a banner says why it closed where the composer was. On phones the
  * conversations and the thread are a navigation stack, as on iOS: the thread pushes in from the right over the list,
  * and Back (the thread's own, Safari's edge swipe, Android's back) pops it.
  */
@@ -82,7 +96,7 @@ type ConversationAction = 'take-over' | 'release';
         DeskAvatarComponent,
         SpinnerComponent,
     ],
-    providers: [OpenConversationService],
+    providers: [OpenConversationService, OpenConversationSyncService],
     templateUrl: './chat-page.component.html',
     styleUrls: ['./chat-page.component.scss'],
 })
@@ -96,6 +110,7 @@ export class ChatPageComponent {
     private readonly olderSentinel = viewChild<ElementRef<HTMLElement>>('olderSentinel');
     private readonly deskSwitcher = viewChild<ElementRef<HTMLButtonElement>>('deskSwitcher');
     private readonly threadBack = viewChild<ElementRef<HTMLButtonElement>>('threadBack');
+    private readonly closedBannerElement = viewChild<ElementRef<HTMLElement>>('closedBannerElement');
 
     readonly messages = signal<ChatOperatorMessage[]>([]);
     readonly hasOlderMessages = signal(false);
@@ -146,6 +161,19 @@ export class ChatPageComponent {
         () => this.desksStorage.desks().find((binding) => binding.id === this.selected()?.binding_id) ?? null
     );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
+    /** The open conversation is closed: read-only, with no actions, and a banner where the composer was. */
+    readonly isClosed = computed(() => isClosed(this.selected()));
+    /** The open conversation's desk style, which words its actions; null while that desk is not known. */
+    readonly selectedStyle = computed(() => this.selectedBinding()?.style ?? null);
+    // The current time, for the banner's: it shows a date once the close is no longer today.
+    private readonly now = tickingNow(CLOCK_TICK_MS);
+    /** Why and when the open conversation closed: "Closed · Resolved by Mike · 14:05"; empty while it is open. */
+    readonly closedBanner = computed(() => {
+        const conversation = this.selected();
+        if (!conversation || !isClosed(conversation)) return '';
+        const myUserId = this.profileService.currentUserSignal()?.id ?? null;
+        return closedSummary(conversation, this.selectedStyle(), myUserId, this.now(), this.locale);
+    });
     /**
      * The name visitors see on the user's replies on the open desk: their alias there, else its operator name. Null
      * while not known: the My name action then names no one rather than a name that may be wrong.
@@ -169,16 +197,23 @@ export class ChatPageComponent {
     });
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
     readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
+    /** The user holds the open conversation, which is still open: a closed one is nobody's to work on. */
     readonly isClaimedByMe = computed(() => {
         const conversation = this.selected();
         const me = this.profileService.currentUserSignal();
-        return conversation?.mode === 'human' && !!me && conversation.assigned_operator_id === me.id;
+        return (
+            conversation?.mode === 'human' &&
+            !isClosed(conversation) &&
+            !!me &&
+            conversation.assigned_operator_id === me.id
+        );
     });
-    // Who holds the open conversation, for the mode pill's tooltip: "you", their name or "Operator #7"; null while nobody does.
+    // Who holds the open conversation, for the mode pill's tooltip: "you", their name or "Operator #7"; null while
+    // nobody does, and once it is closed.
     readonly holderLabel = computed(() => {
         const conversation = this.selected();
         const operatorId = conversation?.assigned_operator_id ?? null;
-        if (operatorId === null) return null;
+        if (operatorId === null || isClosed(conversation)) return null;
         if (operatorId === this.profileService.currentUserSignal()?.id) return 'you';
         return operatorName(operatorId, conversation?.assigned_operator_name ?? null);
     });
@@ -195,20 +230,28 @@ export class ChatPageComponent {
         ];
         return items.filter((item) => item !== false);
     });
-    /**
-     * The open conversation's actions in its ⋯ menu: Take over and Release to bot while another operator holds it.
-     * The holder releases with a button beside the title, which phones have no room for: Release is in the menu there.
-     */
-    readonly conversationMenuItems = computed((): ChatActionMenuItem<ConversationAction>[] => {
+    /** What the open conversation's actions depend on; null while none is open. */
+    private readonly actionContext = computed((): ConversationActionContext | null => {
         const conversation = this.selected();
-        if (!conversation || !this.canUse()) return [];
-        const disabled = this.isActionPending();
-        if (this.isClaimedByMe()) return this.isPhone() ? [{ id: 'release', label: 'Release', disabled }] : [];
-        if (conversation.mode !== 'human') return [];
-        return [
-            { id: 'take-over', label: 'Take over', disabled },
-            { id: 'release', label: 'Release to bot', disabled },
-        ];
+        if (!conversation) return null;
+        return {
+            style: this.selectedStyle(),
+            holder: conversationHolder(conversation, this.profileService.currentUserSignal()?.id ?? null),
+            isClosed: isClosed(conversation),
+            isPhone: this.isPhone(),
+            canUse: this.canUse(),
+            isPending: this.isActionPending(),
+        };
+    });
+    /** The holder's main action, a button beside the title (see `primaryConversationAction`). */
+    readonly primaryAction = computed(() => {
+        const context = this.actionContext();
+        return context ? primaryConversationAction(context) : null;
+    });
+    /** The open conversation's other actions, in its ⋯ menu (see `conversationMenuItems`). */
+    readonly conversationMenuItems = computed((): ChatActionMenuItem<ConversationAction>[] => {
+        const context = this.actionContext();
+        return context ? conversationMenuItems(context) : [];
     });
 
     /**
@@ -248,6 +291,7 @@ export class ChatPageComponent {
         const orgId = this.activeOrgService.activeOrgId();
         untracked(() => {
             if (this.orgId !== undefined && orgId !== this.orgId) {
+                this.openConversationSync.cancelRefresh();
                 // null is a logout: the auth flow navigates away itself.
                 if (orgId === null) {
                     this.openConversation.forget();
@@ -265,10 +309,12 @@ export class ChatPageComponent {
     /**
      * Another desk's conversation must not stay open when the route moves to a different scope. A link to another desk
      * leaves the id out of its URL by itself; a move through history brings that desk's own id along, which stays.
+     * The sync takes that desk's rows only from now on.
      */
     private readonly clearSelectionOnScope = effect(() => {
         const scope = this.bindingId() ?? null;
         untracked(() => {
+            this.openConversationSync.setScope(scope);
             if (this.scope !== undefined && scope !== this.scope) this.openConversation.forget();
             this.scope = scope;
         });
@@ -276,8 +322,8 @@ export class ChatPageComponent {
     /**
      * An id the page did not open itself (a reload, a link, history) takes its row from the conversations column, once
      * the column holds the route's desk (until then its rows are another desk's). A column that hides rows (Mine, a
-     * search, a collapsed section) shows everything first; the chat service cannot fetch one conversation by id, so an
-     * id that everything the column can list does not have leaves the URL, with a message.
+     * search, a collapsed section) shows everything first; what it then finds, or that it lacks the id, goes to the sync
+     * (`OpenConversationSyncService.resolve`).
      */
     private readonly openConversationFromUrl = effect(() => {
         const id = this.openConversation.id();
@@ -286,14 +332,30 @@ export class ChatPageComponent {
         if (list.listedBindingId() !== (this.bindingId() ?? null)) return;
         const lookup = list.lookUp(id);
         untracked(() => {
-            if (typeof lookup !== 'string') {
-                if (this.isOfThisPage(lookup)) this.openConversation.remember(lookup);
-                else this.dropMissing();
-            } else if (lookup === 'hidden') {
-                list.showEverything();
-            } else if (lookup === 'missing') {
-                this.dropMissing();
-            }
+            if (lookup === 'hidden') list.showEverything();
+            else if (lookup !== 'loading') this.openConversationSync.resolve(id, lookup);
+        });
+    });
+    /**
+     * A close takes away what the user was on (the composer, Resolve, the ⋯ menu): once the open conversation turns
+     * closed, the focus moves to the banner that says so, unless it is still somewhere on the page.
+     */
+    private readonly focusBannerOnClose = effect(() => {
+        const id = this.shownConversationId();
+        const closed = this.isClosed();
+        untracked(() => {
+            const turnedClosed = closed && this.openState?.id === id && !this.openState.closed;
+            this.openState = { id, closed };
+            if (!turnedClosed) return;
+            afterNextRender(
+                () => {
+                    const active = this.document.activeElement;
+                    if (!active || active === this.document.body || !active.isConnected) {
+                        this.closedBannerElement()?.nativeElement.focus();
+                    }
+                },
+                { injector: this.injector }
+            );
         });
     });
     // Phones: the focus goes with the screen the user moved to: the thread's Back, or the row the thread was opened from.
@@ -341,9 +403,10 @@ export class ChatPageComponent {
         onCleanup(() => observer.disconnect());
     });
     // A test conversation started elsewhere (or before a reload) has no token here yet: get one to write as its visitor.
+    // A closed one takes no more messages.
     private readonly fetchVisitorToken = effect(() => {
         const conversation = this.selected();
-        if (!conversation?.is_test || !this.canUse()) return;
+        if (!conversation?.is_test || !this.canUse() || isClosed(conversation)) return;
         untracked(() => this.ensureVisitorToken(conversation.id));
     });
     private readonly loadThreadOnSelect = effect(() => {
@@ -372,7 +435,10 @@ export class ChatPageComponent {
     private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly myAliasesStorage = inject(ChatMyAliasesStorageService);
     private readonly conversationActions = inject(ChatConversationActionsService);
+    private readonly openConversationSync = inject(OpenConversationSyncService);
     private readonly injector = inject(Injector);
+    private readonly document = inject(DOCUMENT);
+    private readonly locale = inject(LOCALE_ID);
     private threadId: string | null = null;
     private hasUserScrolled = false;
     // Bumped whenever another thread opens; an older page lands only in the thread it was requested for.
@@ -383,14 +449,10 @@ export class ChatPageComponent {
     private stackOpenId: string | null | undefined = undefined;
     private orgId: number | null | undefined = undefined;
     private isLeavingForOrgSwitch = false;
+    // The conversation shown last and whether it was closed, to tell a close from opening a closed conversation.
+    private openState: { id: string | null; closed: boolean } | null = null;
 
     constructor() {
-        // The newest state of the open conversation, streamed or returned by an action, keeps the thread current.
-        merge(this.chatInboxStream.conversationUpdated$, this.conversationActions.changed$)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((row) => {
-                if (this.isOfThisPage(row)) this.openConversation.remember(row);
-            });
         this.chatInboxStream.messageCreated$
             .pipe(
                 filter((event) => event.conversation_id === this.shownConversationId()),
@@ -456,8 +518,13 @@ export class ChatPageComponent {
     runConversationAction(action: ConversationAction): void {
         const conversation = this.selected();
         if (!conversation) return;
-        if (action === 'take-over') this.claim(conversation);
-        else this.release(conversation);
+        const run: Record<ConversationAction, () => void> = {
+            'take-over': () => this.claim(conversation),
+            release: () => this.release(conversation),
+            resolve: () => this.conversationActions.resolve(conversation),
+            close: () => this.conversationActions.closeConversation(conversation),
+        };
+        run[action]();
     }
 
     /** Tests this workspace's binding; works on a paused one too (a test skips the active and origin checks). */
@@ -601,20 +668,6 @@ export class ChatPageComponent {
     sessionLink(message: ChatOperatorMessage): unknown[] | null {
         const graphId = this.selectedBinding()?.graph_id;
         return message.session_id && graphId ? ['/graph', graphId, 'session', message.session_id] : null;
-    }
-
-    /**
-     * A desk's page shows that desk's conversations only. The stream and the actions report every desk's rows, so an
-     * id in the URL of another desk's conversation (a hand-made link) must not open it here from a live update.
-     */
-    private isOfThisPage(row: ChatConversation): boolean {
-        const bindingId = this.bindingId();
-        return !bindingId || row.binding_id === bindingId;
-    }
-
-    private dropMissing(): void {
-        this.toastService.error("Couldn't open that conversation.");
-        this.openConversation.drop();
     }
 
     // A reload of the same thread merges into what is shown; only a different selection starts empty.

@@ -72,6 +72,7 @@
                                                     [conversation]="conversation"
                                                     [now]="now()"
                                                     [deskName]="deskNames()?.get(conversation.binding_id) ?? null"
+                                                    [rules]="deskRules().get(conversation.binding_id) ?? null"
                                                     [isSelected]="conversation.id === selectedId()"
                                                     [isTabStop]="conversation.id === tabStopId()"
                                                     [canTakeOver]="canUse()"

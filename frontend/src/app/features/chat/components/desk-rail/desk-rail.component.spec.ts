@@ -15,6 +15,10 @@ const STORAGE_KEY = 'chat:deskRailMode';
 
 const desk = (overrides: Partial<ChatBinding>): ChatBinding => ({
     ...CHAT_BINDING_DEFAULTS,
+    response_time_seconds: 600,
+    on_response_timeout: 'handback',
+    handback_message: 'Back to the bot.',
+    close_after_seconds: 86_400,
     id: 'b-1',
     org_id: 1,
     graph_id: 5,

@@ -135,6 +135,20 @@
         border-radius: 50%;
         background-color: var(--accent-color);
     }
+
+    // Past the desk's response time: the error colour, with an alert icon where the dot was.
+    &__waiting--overdue {
+        color: var(--color-error);
+    }
+
+    // Why a closed conversation closed, muted: it needs nobody.
+    &__closed {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
 }
 
 // Over the time and the dot, only while the row is hovered or holds the keyboard focus.

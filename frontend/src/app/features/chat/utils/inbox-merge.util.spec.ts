@@ -23,6 +23,11 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_author_user_id: null,
     last_message_author_name: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
@@ -51,7 +56,17 @@ const waiting = (id: string, waitingSince: string, overrides: Partial<ChatConver
         ...overrides,
     });
 const bot = (id: string, lastMessageAt: string): ChatConversation => row({ id, last_message_at: lastMessageAt });
-const SECTIONS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'bot', 'test'];
+const closed = (id: string, closedAt: string, overrides: Partial<ChatConversation> = {}): ChatConversation =>
+    row({
+        id,
+        last_message_at: '2026-10-10T08:00:00Z',
+        status: 'closed',
+        close_reason: 'resolved',
+        closed_at: closedAt,
+        closed_by_user_id: 7,
+        ...overrides,
+    });
+const SECTIONS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'bot', 'test', 'closed'];
 const sectionsOf = (conversation: ChatConversation, holderId: number | null = null): ChatInboxSection[] =>
     SECTIONS.filter((section) => belongsTo(conversation, section, holderId));
 
@@ -86,6 +101,28 @@ describe('belongsTo', () => {
     it('reads a missing wait field as no wait', () => {
         const legacy = row(held) as Partial<ChatConversation>;
         delete legacy.visitor_waiting_since;
+        expect(sectionsOf(legacy as ChatConversation)).toEqual(['in_progress']);
+    });
+
+    it('lists a closed conversation under Closed only, whatever its mode or holder was', () => {
+        expect(sectionsOf(closed('a', at))).toEqual(['closed']);
+        expect(sectionsOf(closed('a', at, held))).toEqual(['closed']);
+        expect(sectionsOf(closed('a', at, { mode: 'awaiting_human', handoff_at: at }))).toEqual(['closed']);
+        // The server clears the wait on a close; a row that still had one is closed all the same.
+        expect(sectionsOf(closed('a', at, { visitor_waiting_since: at }))).toEqual(['closed']);
+    });
+
+    it('keeps a closed test conversation in Tests, never in Closed', () => {
+        expect(sectionsOf(closed('t', at, { is_test: true }))).toEqual(['test']);
+    });
+
+    it('lists a closed conversation without a message nowhere', () => {
+        expect(sectionsOf(closed('a', at, { last_message_at: null }))).toEqual([]);
+    });
+
+    it('reads a row without a status as open', () => {
+        const legacy = row(held) as Partial<ChatConversation>;
+        delete legacy.status;
         expect(sectionsOf(legacy as ChatConversation)).toEqual(['in_progress']);
     });
 
@@ -132,6 +169,19 @@ describe('inboxOrder', () => {
             expect(ids([...latest].sort(inboxOrder(section, 'oldest')))).toEqual(['b', 'a', 'c']);
         });
     }
+});
+
+describe('inboxOrder for Closed', () => {
+    const rows = [
+        closed('a', '2026-10-10T10:00:00Z', { last_message_at: '2026-10-10T07:00:00Z' }),
+        closed('b', '2026-10-10T09:00:00Z', { last_message_at: '2026-10-10T09:30:00Z' }),
+        closed('c', '2026-10-10T10:00:00Z'),
+    ];
+
+    it('orders Closed most recently closed first, then by id descending, in either order', () => {
+        expect(ids([...rows].sort(inboxOrder('closed', 'newest')))).toEqual(['c', 'a', 'b']);
+        expect(ids([...rows].sort(inboxOrder('closed', 'oldest')))).toEqual(['c', 'a', 'b']);
+    });
 });
 
 describe('microseconds', () => {

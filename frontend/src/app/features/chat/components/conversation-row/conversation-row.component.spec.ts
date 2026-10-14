@@ -18,6 +18,7 @@ class ResizeObserverStub {
 const NOW = new Date(2026, 9, 12, 14, 30).getTime();
 const SIX_MINUTES_AGO = new Date(2026, 9, 12, 14, 24).toISOString();
 const TEN_MINUTES_AGO = new Date(2026, 9, 12, 14, 20).toISOString();
+const TWENTY_FIVE_MINUTES_AGO = new Date(2026, 9, 12, 14, 5).toISOString();
 // Angular's en-US time format may put a narrow no-break space before AM/PM.
 const plain = (text: string | null | undefined): string => (text ?? '').replace(/\s+/g, ' ').trim();
 
@@ -43,6 +44,11 @@ const conversation = (overrides: Partial<ChatConversation> = {}): ChatConversati
     handoff_reason: '',
     handoff_at: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
@@ -52,6 +58,11 @@ const waiting = (overrides: Partial<ChatConversation> = {}): ChatConversation =>
         mode: 'awaiting_human',
         handoff_at: TEN_MINUTES_AGO,
         visitor_waiting_since: TEN_MINUTES_AGO,
+        status: 'open',
+        close_reason: null,
+        closed_at: null,
+        closed_by_user_id: null,
+        closed_by_name: null,
         ...overrides,
     });
 
@@ -219,6 +230,101 @@ describe('ConversationRowComponent', () => {
         it('marks a test with its chip', () => {
             render(conversation({ is_test: true }));
             expect(textOf('.conversation-row__test-chip')).toBe('Test');
+        });
+    });
+
+    describe('overdue', () => {
+        // A desk whose response time is 10 minutes, then "mark overdue".
+        const marksAfterTenMinutes = { style: 'support', overdueAfterMs: 10 * 60_000 } as const;
+        const overdueMark = (): Element | null =>
+            host().querySelector('.conversation-row__waiting--overdue use[href="#icon-alert-circle"]');
+
+        it('turns the wait into an alert icon in the error colour once past the response time, as the clock ticks', () => {
+            render(waiting(), { rules: marksAfterTenMinutes });
+            expect(overdueMark()).toBeNull();
+            expect(host().querySelector('.conversation-row__waiting-dot')).not.toBeNull();
+            expect(accessibleName()).not.toContain('overdue');
+
+            fixture.componentRef.setInput('now', NOW + 60_000);
+            fixture.detectChanges();
+            expect(overdueMark()).not.toBeNull();
+            expect(host().querySelector('.conversation-row__waiting-dot')).toBeNull();
+            expect(textOf('.conversation-row__waiting')).toBe('11m');
+            expect(tooltipOf('.conversation-row__waiting').disabled).toBe(false);
+            expect(tooltipOf('.conversation-row__waiting').message).toBe(
+                "Overdue: waiting longer than the desk's response time"
+            );
+            expect(accessibleName()).toBe(
+                'Visitor 1, last message today at 2:24 PM, waiting for a person since today at 2:20 PM, overdue'
+            );
+        });
+
+        it('marks no one on a desk that does not mark overdue, a desk not known yet, or a test', () => {
+            render(waiting({ visitor_waiting_since: TWENTY_FIVE_MINUTES_AGO }), {
+                rules: { style: 'support', overdueAfterMs: null },
+            });
+            expect(overdueMark()).toBeNull();
+
+            render(waiting({ visitor_waiting_since: TWENTY_FIVE_MINUTES_AGO }));
+            expect(overdueMark()).toBeNull();
+
+            render(waiting({ visitor_waiting_since: TWENTY_FIVE_MINUTES_AGO, is_test: true }), {
+                rules: marksAfterTenMinutes,
+            });
+            expect(overdueMark()).toBeNull();
+        });
+    });
+
+    describe('closed', () => {
+        const resolved = (overrides: Partial<ChatConversation> = {}): ChatConversation =>
+            conversation({
+                mode: 'human',
+                assigned_operator_id: 7,
+                assigned_operator_name: 'Grace Hopper',
+                status: 'closed',
+                close_reason: 'resolved',
+                closed_at: TEN_MINUTES_AGO,
+                closed_by_user_id: 7,
+                closed_by_name: 'Grace Hopper',
+                ...overrides,
+            });
+
+        it('says why it closed, muted, with who in a tooltip, and shows the close as its time', () => {
+            render(resolved(), { rules: { style: 'support', overdueAfterMs: null } });
+            expect(textOf('.conversation-row__closed')).toBe('Resolved');
+            expect(tooltipOf('.conversation-row__closed').message).toBe('Resolved by Grace Hopper');
+            expect(textOf('.conversation-row__time')).toBe('10m');
+            expect(accessibleName()).toBe('Visitor 1, closed today at 2:20 PM, resolved by Grace Hopper');
+
+            render(resolved(), { rules: { style: 'ongoing', overdueAfterMs: null } });
+            expect(textOf('.conversation-row__closed')).toBe('Closed');
+
+            render(resolved({ close_reason: 'ended', closed_by_user_id: null, closed_by_name: null }));
+            expect(textOf('.conversation-row__closed')).toBe('Ended');
+            expect(accessibleName()).toContain('ended by the visitor');
+
+            render(resolved({ close_reason: 'inactive', closed_by_user_id: null, closed_by_name: null }));
+            expect(textOf('.conversation-row__closed')).toBe('Inactive');
+        });
+
+        it('shows no holder, no wait, no Take over and no replying state: nobody is on it', () => {
+            render(resolved({ visitor_waiting_since: TEN_MINUTES_AGO, state: 'processing' }), {
+                canTakeOver: true,
+                rules: { style: 'support', overdueAfterMs: 60_000 },
+            });
+            expect(host().querySelector('app-user-avatar')).toBeNull();
+            expect(host().querySelector('.conversation-row__waiting')).toBeNull();
+            expect(takeOverButton()).toBeNull();
+            expect(textOf('.conversation-row__preview')).toBe('Where is my order?');
+            expect(accessibleName()).not.toContain('taken by');
+        });
+
+        it('marks a closed test as closed beside its Test chip, timed by its last message as Tests sorts it', () => {
+            render(resolved({ is_test: true }), { rules: { style: 'support', overdueAfterMs: null } });
+            expect(textOf('.conversation-row__test-chip')).toBe('Test');
+            expect(textOf('.conversation-row__closed')).toBe('Resolved');
+            expect(textOf('.conversation-row__time')).toBe('6m');
+            expect(accessibleName()).toBe('Visitor 1, last message today at 2:24 PM, test, resolved by Grace Hopper');
         });
     });
 

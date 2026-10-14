@@ -1,6 +1,6 @@
 import { formatDate } from '@angular/common';
 
-import { ChatConversation } from '../models/chat.model';
+import { ChatBinding, ChatConversation, ChatConversationStyle } from '../models/chat.model';
 import { deskInitials } from './desk-avatar.util';
 
 const MINUTE = 60_000;
@@ -20,10 +20,27 @@ type TimeBucket =
     | { kind: 'older'; date: Date; showYear: boolean };
 
 type VisitorIdentity = Pick<ChatConversation, 'visitor_number' | 'chat_user_id'>;
+
+/** What a row takes from its desk: the style, which words a close, and when a wait turns overdue. */
+export interface ConversationDeskRules {
+    style: ChatConversationStyle;
+    // How long a visitor may wait before the row marks them overdue; null on a desk whose rule is not to mark.
+    overdueAfterMs: number | null;
+}
 type LastAuthor = Pick<
     ChatConversation,
     'last_message_role' | 'last_message_author_user_id' | 'last_message_author_name'
 >;
+
+/** A desk's rules for its rows: only a desk whose response time ends in "mark overdue" marks anyone overdue. */
+export function deskRulesOf(
+    desk: Pick<ChatBinding, 'style' | 'on_response_timeout' | 'response_time_seconds'>
+): ConversationDeskRules {
+    return {
+        style: desk.style,
+        overdueAfterMs: desk.on_response_timeout === 'overdue' ? desk.response_time_seconds * 1000 : null,
+    };
+}
 
 /** A signed visitor by the customer id the desk's backend vouched for; anyone else as "Visitor 12" (numbered per desk). */
 export function visitorName(row: VisitorIdentity): string {
@@ -111,6 +128,20 @@ export function waitDuration(sinceIso: string | null | undefined, now: number): 
         return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
     }
     return `${Math.floor(waited / DAY)}d`;
+}
+
+/**
+ * Whether a visitor has waited longer than `overdueAfterMs` (null: the desk marks no one overdue). Exactly the response
+ * time is not overdue yet; a missing or unusable time never is.
+ */
+export function isOverdue(
+    waitingSinceIso: string | null | undefined,
+    overdueAfterMs: number | null,
+    now: number
+): boolean {
+    if (overdueAfterMs === null) return false;
+    const since = waitingSinceIso ? Date.parse(waitingSinceIso) : NaN;
+    return !Number.isNaN(since) && now - since > overdueAfterMs;
 }
 
 function timeBucket(iso: string, now: number): TimeBucket {

@@ -51,9 +51,31 @@
                     [matTooltip]="'Taken by ' + taker.label"
                 />
             }
+            @if (closeWord(); as word) {
+                <span
+                    class="conversation-row__closed"
+                    matTooltipPosition="above"
+                    [matTooltip]="closeReason()"
+                    >{{ word }}</span
+                >
+            }
             @if (isWaiting()) {
-                <span class="conversation-row__waiting">
-                    <span class="conversation-row__waiting-dot"></span>
+                <!-- Overdue is said by the icon too, not by the colour alone. -->
+                <span
+                    class="conversation-row__waiting"
+                    matTooltipPosition="above"
+                    matTooltip="Overdue: waiting longer than the desk's response time"
+                    [class.conversation-row__waiting--overdue]="isOverdue()"
+                    [matTooltipDisabled]="!isOverdue()"
+                >
+                    @if (isOverdue()) {
+                        <app-svg-icon
+                            icon="alert-circle"
+                            size="14px"
+                        />
+                    } @else {
+                        <span class="conversation-row__waiting-dot"></span>
+                    }
                     {{ waitedFor() }}
                 </span>
             }

@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ConversationListPreferencesService } from './conversation-list-preferences.service';
 
 const STORAGE_KEY = 'chat:conversationList';
+const KNOWN = ['waiting', 'in_progress', 'test', 'closed', 'bot'];
 
 describe('ConversationListPreferencesService', () => {
     const preferences = (): ConversationListPreferencesService => TestBed.inject(ConversationListPreferencesService);
@@ -15,45 +16,73 @@ describe('ConversationListPreferencesService', () => {
         localStorage.clear();
     });
 
-    it("collapses Tests, sorts newest first and shows everyone's conversations by default", () => {
-        expect(collapsed()).toEqual(['test']);
+    it("collapses Tests and Closed, sorts newest first and shows everyone's conversations by default", () => {
+        expect(collapsed()).toEqual(['test', 'closed']);
         expect(preferences().order()).toBe('newest');
         expect(preferences().isMineOnly()).toBe(false);
     });
 
-    it('remembers a collapse and an expand per browser', () => {
+    it('remembers a collapse and an expand per browser, with the sections it knew of', () => {
         preferences().setCollapsed('bot', true);
         preferences().setCollapsed('test', false);
+        preferences().setCollapsed('closed', false);
         expect(collapsed()).toEqual(['bot']);
         expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
             collapsed: ['bot'],
             order: 'newest',
             isMineOnly: false,
+            known: KNOWN,
         });
 
         TestBed.resetTestingModule();
         expect(collapsed()).toEqual(['bot']);
+    });
+
+    it('collapses Closed for a value saved before Closed existed, and keeps every choice it made', () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ collapsed: ['bot'], order: 'oldest', isMineOnly: true }));
+        expect(collapsed()).toEqual(['closed', 'bot']);
+        expect(preferences().order()).toBe('oldest');
+        expect(preferences().isMineOnly()).toBe(true);
+
+        // Tests expanded then stays expanded; the next save knows of Closed.
+        preferences().setOrder('newest');
+        expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toMatchObject({
+            collapsed: ['closed', 'bot'],
+            known: KNOWN,
+        });
+    });
+
+    it('keeps Closed open once the user opened it: the stored value knows of it', () => {
+        preferences().setCollapsed('closed', false);
+        TestBed.resetTestingModule();
+        expect(collapsed()).toEqual(['test']);
     });
 
     it('remembers the sort order and Mine per browser, alongside the collapsed sections', () => {
         preferences().setOrder('oldest');
         preferences().setMineOnly(true);
         expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
-            collapsed: ['test'],
+            collapsed: ['test', 'closed'],
             order: 'oldest',
             isMineOnly: true,
+            known: KNOWN,
         });
 
         TestBed.resetTestingModule();
         expect(preferences().order()).toBe('oldest');
         expect(preferences().isMineOnly()).toBe(true);
-        expect(collapsed()).toEqual(['test']);
+        expect(collapsed()).toEqual(['test', 'closed']);
     });
 
     it('reads only known sections and values, each falling back to its own default', () => {
         localStorage.setItem(
             STORAGE_KEY,
-            JSON.stringify({ collapsed: ['bot', 'gone', 'waiting', 'bot'], order: 'sideways', isMineOnly: 'yes' })
+            JSON.stringify({
+                collapsed: ['bot', 'gone', 'waiting', 'bot'],
+                order: 'sideways',
+                isMineOnly: 'yes',
+                known: KNOWN,
+            })
         );
         expect(collapsed()).toEqual(['waiting', 'bot']);
         expect(preferences().order()).toBe('newest');
@@ -61,7 +90,7 @@ describe('ConversationListPreferencesService', () => {
 
         TestBed.resetTestingModule();
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ collapsed: 'bot', order: 'oldest' }));
-        expect(collapsed()).toEqual(['test']);
+        expect(collapsed()).toEqual(['test', 'closed']);
         expect(preferences().order()).toBe('oldest');
     });
 
@@ -69,7 +98,7 @@ describe('ConversationListPreferencesService', () => {
         for (const stored of ['{not json', 'null', '"collapsed"', '[]']) {
             TestBed.resetTestingModule();
             localStorage.setItem(STORAGE_KEY, stored);
-            expect(collapsed()).toEqual(['test']);
+            expect(collapsed()).toEqual(['test', 'closed']);
             expect(preferences().order()).toBe('newest');
             expect(preferences().isMineOnly()).toBe(false);
         }
@@ -82,12 +111,12 @@ describe('ConversationListPreferencesService', () => {
         vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
             throw new Error('denied');
         });
-        expect(collapsed()).toEqual(['test']);
+        expect(collapsed()).toEqual(['test', 'closed']);
 
         preferences().setCollapsed('waiting', true);
         preferences().setOrder('oldest');
         preferences().setMineOnly(true);
-        expect(collapsed()).toEqual(['waiting', 'test']);
+        expect(collapsed()).toEqual(['waiting', 'test', 'closed']);
         expect(preferences().order()).toBe('oldest');
         expect(preferences().isMineOnly()).toBe(true);
     });

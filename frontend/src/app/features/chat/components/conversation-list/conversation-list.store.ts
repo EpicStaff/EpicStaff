@@ -51,11 +51,13 @@ export interface ConversationSectionView {
     mineEmptyTitle?: string;
     // Above the rows of a section that ignores the sort order.
     orderNote?: string;
+    // A search opens it for the column while it is collapsed: what it holds is otherwise out of sight.
+    opensForSearch?: boolean;
 }
 
 /**
- * Top to bottom: the queue first, then what operators are on, Tests (collapsed by default), and Bot last — the only
- * endless section, so anything below it would be out of reach.
+ * Top to bottom: the queue first, then what operators are on, Tests and Closed (both collapsed by default: there to
+ * look into, not to work through), and Bot last — always live and endless, so anything below it would be out of reach.
  */
 export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
     {
@@ -83,6 +85,15 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
         emptyDescription: 'Start one with Test on a desk.',
     },
     {
+        id: 'closed',
+        label: 'Closed',
+        icon: 'circle-check',
+        emptyTitle: 'Nothing closed yet',
+        emptyDescription: 'Conversations an operator resolved, the visitor ended or that went quiet end up here.',
+        orderNote: 'Most recently closed first',
+        opensForSearch: true,
+    },
+    {
         id: 'bot',
         label: 'Bot',
         icon: 'robot',
@@ -91,10 +102,11 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
     },
 ];
 
-// Mine lists what the user holds: the bot holds nothing, and tests are not work to pick up.
+// Mine lists what the user holds: the bot holds nothing, tests are not work to pick up, and closed conversations are
+// done.
 const MINE_SECTIONS: ReadonlySet<ChatInboxSection> = new Set(['waiting', 'in_progress']);
 
-/** Whether a query lists a section at all: Mine hides Bot and Tests. */
+/** Whether a query lists a section at all: Mine hides Bot, Tests and Closed. */
 export const listsSection = (query: ConversationListQuery, section: ChatInboxSection): boolean =>
     query.holderId === null || MINE_SECTIONS.has(section);
 
@@ -117,6 +129,7 @@ export class ConversationListStore {
         waiting: emptySection(),
         in_progress: emptySection(),
         test: emptySection(),
+        closed: emptySection(),
         bot: emptySection(),
     });
     private readonly querySignal = signal(EVERYTHING);
@@ -132,10 +145,15 @@ export class ConversationListStore {
      * to open. The user's own toggle of one replaces it with a remembered choice again.
      */
     private readonly openedForColumn = signal<ReadonlySet<ChatInboxSection>>(new Set());
-    // Collapsed as shown: the remembered choice, unless opened for this column.
+    /**
+     * Sections a search opened for this column only (Closed): the search starting opens them while collapsed, and
+     * clearing it folds back those the user has not toggled since. Nothing of it is remembered.
+     */
+    private readonly openedForSearch = signal<ReadonlySet<ChatInboxSection>>(new Set());
+    // Collapsed as shown: the remembered choice, unless opened for this column or for its search.
     private readonly collapsed = computed(() => {
-        const openedForColumn = this.openedForColumn();
-        return new Set([...this.preferences.collapsed()].filter((section) => !openedForColumn.has(section)));
+        const opened = new Set([...this.openedForColumn(), ...this.openedForSearch()]);
+        return new Set([...this.preferences.collapsed()].filter((section) => !opened.has(section)));
     });
     /** Each section the query lists, in column order, with its state and whether it is open. */
     readonly view = computed(() => {
@@ -196,9 +214,13 @@ export class ConversationListStore {
 
     /**
      * Lists `query` from the start: every section starts over. Open sections keep their rows on screen until their
-     * first pages land; a collapsed section, or one the query does not list, is emptied and loads only once shown.
+     * first pages land; a collapsed section, or one the query does not list, is emptied and loads only once shown. A
+     * search starting opens the collapsed sections that open for one; clearing it folds them back.
      */
     load(query: ConversationListQuery): void {
+        const wasSearching = !!this.query().search;
+        if (!query.search) this.openedForSearch.set(new Set());
+        else if (!wasSearching) this.openedForSearch.set(this.sectionsOpeningForSearch());
         this.querySignal.set(query);
         this.generation.update((generation) => generation + 1);
         this.rowsSinceReload = new Map();
@@ -226,11 +248,12 @@ export class ConversationListStore {
     }
 
     /**
-     * The user's choice, remembered per browser (it ends an opening for this column); opening a listed section that
-     * has not loaded for this query loads its first page.
+     * The user's choice, remembered per browser (it ends an opening for this column or for its search); opening a
+     * listed section that has not loaded for this query loads its first page.
      */
     setCollapsed(section: ChatInboxSection, collapsed: boolean): void {
         this.openedForColumn.update((sections) => withoutSection(sections, section));
+        this.openedForSearch.update((sections) => withoutSection(sections, section));
         this.preferences.setCollapsed(section, collapsed);
         this.showChange(section);
     }
@@ -247,6 +270,16 @@ export class ConversationListStore {
         return (
             CONVERSATION_SECTIONS.flatMap(({ id: section }) => sections[section].rows).find((row) => row.id === id) ??
             null
+        );
+    }
+
+    // The collapsed sections a search shows: those whose rows would otherwise stay out of sight while searching.
+    private sectionsOpeningForSearch(): ReadonlySet<ChatInboxSection> {
+        const collapsed = this.collapsed();
+        return new Set(
+            CONVERSATION_SECTIONS.filter(({ id, opensForSearch }) => opensForSearch && collapsed.has(id)).map(
+                ({ id }) => id
+            )
         );
     }
 

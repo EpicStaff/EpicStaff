@@ -35,7 +35,7 @@ export interface ConversationListParams {
     cursor?: string | null;
     // Only the conversations the caller holds; the server lists none in Bot.
     mine?: boolean;
-    // In progress, Tests and Bot; Waiting is always longest wait first.
+    // In progress, Tests and Bot; Waiting is always longest wait first, Closed most recently closed first.
     order?: ChatInboxOrder;
     // Visitor number, a signed visitor's id prefix or the holder's name; a blank one is not sent.
     q?: string | null;
@@ -150,6 +150,14 @@ export class ChatApiService {
         return this.http.get<ChatConversationPage>(`${this.operatorUrl}conversations`, { params: httpParams });
     }
 
+    /**
+     * One conversation, closed or open: what a link to one beyond the listed pages opens. 404 for an unknown id and for
+     * another org's.
+     */
+    getConversation(conversationId: string): Observable<ChatConversation> {
+        return this.http.get<ChatConversation>(`${this.operatorUrl}conversations/${conversationId}`);
+    }
+
     /** Every conversation waiting for a person, org-wide; the inbox stream keeps the set current. */
     getInboxBadges(): Observable<ChatInboxBadges> {
         return this.http.get<ChatInboxBadges>(`${this.operatorUrl}inbox/badges`);
@@ -170,6 +178,14 @@ export class ChatApiService {
 
     release(conversationId: string): Observable<ChatConversation> {
         return this.http.post<ChatConversation>(`${this.operatorUrl}conversations/${conversationId}/release`, {});
+    }
+
+    /**
+     * Closes a conversation for good, as resolved (the UI says Resolve or Close conversation by the desk's style).
+     * Idempotent; 409 `claimed_by_other` while another operator holds it, unless `force`.
+     */
+    close(conversationId: string, force = false): Observable<ChatConversation> {
+        return this.http.post<ChatConversation>(`${this.operatorUrl}conversations/${conversationId}/close`, { force });
     }
 
     reply(conversationId: string, content: string): Observable<ChatOperatorMessage> {

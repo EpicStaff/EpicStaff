@@ -98,6 +98,45 @@
                 @for (contractError of contractErrors(); track contractError) {
                     <div class="bindings-dialog__contract-error">{{ contractError }}</div>
                 }
+                <!--
+                    Native radios sharing a name, so the pair is one group: one Tab stop, the arrow keys move between
+                    them. The forms API does not set the DOM name, hence `name`. The whole card is the click target; each
+                    radio is named by its title only and described by its line, so the line is read once.
+                -->
+                <fieldset class="bindings-dialog__style">
+                    <legend class="bindings-dialog__style-legend">Style</legend>
+                    @for (option of styleOptions; track option.value) {
+                        <label class="bindings-dialog__style-card">
+                            <input
+                                type="radio"
+                                class="bindings-dialog__style-radio"
+                                name="style"
+                                formControlName="style"
+                                [value]="option.value"
+                                [attr.aria-labelledby]="styleTextId(option.value, 'name')"
+                                [attr.aria-describedby]="styleTextId(option.value, 'description')"
+                            />
+                            <span class="bindings-dialog__style-text">
+                                <span
+                                    class="text-body-medium"
+                                    [id]="styleTextId(option.value, 'name')"
+                                    >{{ option.label }}</span
+                                >
+                                <span
+                                    class="bindings-dialog__style-description text-body-small"
+                                    [id]="styleTextId(option.value, 'description')"
+                                    >{{ option.description }}</span
+                                >
+                            </span>
+                        </label>
+                    }
+                </fieldset>
+                @if (isSwitchingToSupport() && backlogEffects().length) {
+                    <ng-container
+                        [ngTemplateOutlet]="backlogWarning"
+                        [ngTemplateOutletContext]="{ id: null }"
+                    />
+                }
                 <app-chips-input
                     label="Allowed origins"
                     formControlName="allowed_origins"
@@ -198,6 +237,92 @@
                     tooltipText="Shown to visitors in the chat widget."
                 />
             </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'inactivity'"
+            >
+                <app-input-number
+                    label="Response time (minutes)"
+                    formControlName="response_time_minutes"
+                    [required]="true"
+                    [min]="1"
+                    [max]="durationCaps().response_time_seconds"
+                    [invalid]="!!durationCapMessage('response_time_seconds')"
+                    [errorMessage]="durationCapMessage('response_time_seconds')"
+                    [tooltipText]="durationTooltips().response_time_seconds"
+                />
+                <app-select
+                    label="Then"
+                    formControlName="on_response_timeout"
+                    [items]="onResponseTimeoutItems"
+                    [required]="true"
+                    tooltipText="What happens once a visitor has waited for a person longer than the response time."
+                />
+                @if (responseTimeoutAction() === 'handback') {
+                    <app-textarea
+                        label="Hand-back notice"
+                        formControlName="handback_message"
+                        [rows]="2"
+                        tooltipText="The bot's message to the visitor when the conversation goes back to it. Leave it empty to post nothing."
+                    />
+                }
+                @if (isOngoing()) {
+                    <!-- Ongoing conversations never close by themselves: the stored value stays for a switch to Support. -->
+                    <app-input-number
+                        label="Close after (hours)"
+                        placeholder="Never"
+                        tooltipText="Ongoing conversations never close by themselves."
+                        [disabled]="true"
+                    />
+                    @if (responseTimeoutAction() === 'wait') {
+                        <app-hint-message tone="warning">
+                            Nothing ends a visitor's wait on an Ongoing desk with Keep waiting: they can wait for a
+                            person for ever.
+                        </app-hint-message>
+                    }
+                } @else {
+                    <app-input-number
+                        label="Close after (hours)"
+                        formControlName="close_after_hours"
+                        [required]="true"
+                        [min]="1"
+                        [max]="durationCaps().close_after_seconds"
+                        [invalid]="!!durationCapMessage('close_after_seconds')"
+                        [errorMessage]="durationCapMessage('close_after_seconds')"
+                        [tooltipText]="durationTooltips().close_after_seconds"
+                    />
+                }
+                <!-- Always there while the warning applies, so Save can point at it from any tab. -->
+                @if (backlogEffects().length) {
+                    <ng-container
+                        [ngTemplateOutlet]="backlogWarning"
+                        [ngTemplateOutletContext]="{ id: backlogWarningId() }"
+                    />
+                }
+            </div>
+            <!--
+                What a save does to the desk's existing conversations, on the tab where the change was made. Only one
+                copy has the id (ids are unique), which Save's description points at.
+            -->
+            <ng-template
+                #backlogWarning
+                let-id="id"
+            >
+                <app-hint-message
+                    class="bindings-dialog__backlog"
+                    tone="warning"
+                    [attr.id]="id"
+                >
+                    <p class="bindings-dialog__backlog-lead">
+                        Applies to this desk's existing conversations too, once you save:
+                    </p>
+                    <ul class="bindings-dialog__backlog-effects">
+                        @for (effect of backlogEffects(); track effect) {
+                            <li>{{ effect }}</li>
+                        }
+                    </ul>
+                </app-hint-message>
+            </ng-template>
         </form>
 
         <div class="bindings-dialog__actions">
@@ -215,9 +340,11 @@
                 (click)="close()"
                 >Cancel</app-button
             >
+            <!-- Read on focus: a save that closes or hands back existing conversations cannot be undone. -->
             <app-button
                 type="primary-white"
                 [disabled]="isSubmitting()"
+                [ariaDescribedby]="backlogEffects().length ? backlogWarningId() : null"
                 (click)="submit()"
             >
                 {{ isSubmitting() ? 'Saving...' : 'Save' }}

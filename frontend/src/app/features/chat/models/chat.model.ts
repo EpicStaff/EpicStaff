@@ -4,10 +4,23 @@ export type ChatMessageRole = 'user' | 'assistant' | 'operator' | 'system';
 export type ChatIdentityMode = 'anonymous' | 'signed';
 export type ChatBudgetExhaustedBehaviour = 'reply' | 'handoff';
 export type ChatSendState = 'processing' | 'forwarded_to_operator' | 'budget_exhausted';
+// Whether anyone is still on a conversation, whatever its mode. A closed one is read-only and never reopens: a message
+// to it starts a new conversation.
+export type ChatConversationStatus = 'open' | 'closed';
+// Why a conversation closed: an operator closed it (Resolve, Close conversation), the visitor started a new chat, or
+// it stayed silent past the desk's close after.
+export type ChatCloseReason = 'resolved' | 'ended' | 'inactive';
+// A desk's style. Support: a conversation closes on Resolve, on the visitor's "Start a new chat" or after inactivity.
+// Ongoing: one long-lived thread per visitor, closed only on request.
+export type ChatConversationStyle = 'support' | 'ongoing';
+// What happens once a visitor has waited for a person longer than the desk's response time.
+export type ChatResponseTimeoutAction = 'handback' | 'overdue' | 'wait';
 // `section` of `GET /conversations`; never share a row. Waiting: a visitor waits for a person. In progress: an
-// operator holds it and answered last. Bot: the bot still runs it. Test: operators' test conversations.
-export type ChatInboxSection = 'waiting' | 'in_progress' | 'bot' | 'test';
-// `order` of `GET /conversations`: newest or oldest activity first. Waiting ignores it (longest wait first).
+// operator holds it and answered last. Bot: the bot still runs it. Those three list open conversations only. Test:
+// operators' test conversations, closed ones included. Closed: every other closed conversation with a message.
+export type ChatInboxSection = 'waiting' | 'in_progress' | 'bot' | 'test' | 'closed';
+// `order` of `GET /conversations`: newest or oldest activity first. Waiting (longest wait first) and Closed (most
+// recently closed first) ignore it.
 export type ChatInboxOrder = 'newest' | 'oldest';
 
 export const CHAT_MODE_LABELS: Record<ChatMode, string> = {
@@ -38,6 +51,14 @@ export interface ChatBinding {
     on_budget_exhausted: ChatBudgetExhaustedBehaviour;
     budget_exhausted_message: string;
     handoff_enabled: boolean;
+    style: ChatConversationStyle;
+    // Inactivity rules: how long a visitor may wait for a person and what happens then; and, on Support desks, how
+    // long a conversation may stay silent before it closes.
+    response_time_seconds: number;
+    on_response_timeout: ChatResponseTimeoutAction;
+    // Posted to the visitor as the bot's message on a hand back; an empty one posts nothing.
+    handback_message: string;
+    close_after_seconds: number;
     broken_reason: string | null;
     contract_errors: string[];
     created_at: string;
@@ -65,22 +86,41 @@ export type ChatBindingInput = Pick<
     | 'handoff_enabled'
     | 'token_budget_per_conversation'
     | 'daily_token_budget'
->;
+    | 'style'
+    | 'response_time_seconds'
+    | 'on_response_timeout'
+> &
+    // Left out only on a create that knows nothing for them, while the limits failed to load (close after: on an
+    // Ongoing desk, which never uses it): the server's defaults stand. An empty notice would post nothing.
+    Partial<Pick<ChatBinding, 'handback_message' | 'close_after_seconds'>>;
 
 // PATCH body: only the keys that changed; the server applies `exclude_unset`.
 export type ChatBindingPatch = Partial<ChatBindingInput>;
 
-type ChatBindingBudgets = Pick<ChatBinding, 'token_budget_per_conversation' | 'daily_token_budget'>;
+// What a deployment caps: the token budgets and the inactivity durations.
+type ChatBindingCapped = Pick<
+    ChatBinding,
+    'token_budget_per_conversation' | 'daily_token_budget' | 'response_time_seconds' | 'close_after_seconds'
+>;
 
 // `GET /bindings/limits`: the server's create defaults and the caps a binding may not exceed.
 export interface ChatBindingLimits {
-    defaults: ChatBindingBudgets;
-    caps: ChatBindingBudgets;
+    defaults: ChatBindingCapped & Pick<ChatBinding, 'on_response_timeout' | 'handback_message' | 'style'>;
+    caps: ChatBindingCapped;
 }
 
+// Every other create default comes from the server (`GET /bindings/limits`).
 export const CHAT_BINDING_DEFAULTS: Omit<
     ChatBindingInput,
-    'name' | 'bot_display_name' | 'graph_id' | 'token_budget_per_conversation' | 'daily_token_budget'
+    | 'name'
+    | 'bot_display_name'
+    | 'graph_id'
+    | 'token_budget_per_conversation'
+    | 'daily_token_budget'
+    | 'response_time_seconds'
+    | 'on_response_timeout'
+    | 'handback_message'
+    | 'close_after_seconds'
 > = {
     operator_display_name: 'Support',
     allowed_origins: [],
@@ -92,6 +132,9 @@ export const CHAT_BINDING_DEFAULTS: Omit<
     on_budget_exhausted: 'reply',
     budget_exhausted_message: 'This conversation has reached its limit.',
     handoff_enabled: true,
+    // Asked on create, preselected so that setting up a desk stays name + flow: the server's default once the limits
+    // load, this one until then and when they fail to.
+    style: 'support',
 };
 
 // Both display names and an operator's alias; the server refuses longer ones (counted in characters, after trimming).
@@ -128,7 +171,8 @@ export interface ChatTestConversation {
     conversation: ChatConversation;
 }
 
-// One row of `GET /conversations` and the payload of the inbox `conversation.updated` event.
+// One row of `GET /conversations` (and of `GET /conversations/{id}`), the payload of the inbox `conversation.updated`
+// event and the answer to claim, release and close.
 export interface ChatConversation {
     id: string;
     binding_id: string;
@@ -158,8 +202,15 @@ export interface ChatConversation {
     // When the conversation left bot mode; null while the bot runs it. The human section's FIFO key.
     handoff_at: string | null;
     // Since when the visitor has waited for a person: set by a hand-off or by a visitor message after the last
-    // operator reply; cleared by an operator reply or a return to the bot (a take over keeps it).
+    // operator reply; cleared by an operator reply, a return to the bot or a close (a take over keeps it).
     visitor_waiting_since: string | null;
+    status: ChatConversationStatus;
+    // Set by the close; null while open. A close keeps the mode and the holder as they were.
+    close_reason: ChatCloseReason | null;
+    closed_at: string | null;
+    // The operator who closed it (a `resolved` close only) and their display name, null when not known yet.
+    closed_by_user_id: number | null;
+    closed_by_name: string | null;
 }
 
 // One conversation the Waiting count includes (`GET /inbox/badges`): its desk and holder, to count per desk and Mine.
@@ -169,8 +220,9 @@ export interface ChatInboxBadge {
     assigned_operator_id: number | null;
 }
 
-// `GET /inbox/badges`: every conversation waiting for a person, org-wide; tests never wait. In progress has no count:
-// nothing closes an answered conversation, so that set would only grow.
+// `GET /inbox/badges`: every open conversation waiting for a person, org-wide; tests never wait, closed conversations
+// never count. In progress has no count: nothing closes an answered conversation on an Ongoing desk, so that set
+// could only grow.
 export interface ChatInboxBadges {
     waiting: ChatInboxBadge[];
 }
@@ -230,7 +282,8 @@ export interface ChatTicket {
 }
 
 // Every chat service error body; `retry_after` on 429, `contract_errors` on 400 `contract_failed` (resume),
-// `field` and `max` on 400 `budget_above_cap`.
+// `field` and `max` on 400 `budget_above_cap` and `duration_above_cap` (`max` in the field's own unit: tokens,
+// seconds), `close_reason` on 409 `conversation_closed`.
 export interface ChatErrorBody {
     code: string;
     message: string;
@@ -238,6 +291,7 @@ export interface ChatErrorBody {
     contract_errors?: string[];
     field?: string;
     max?: number;
+    close_reason?: ChatCloseReason;
     // On 400 `validation_error`: what was refused, one entry per problem; `key` names a refused body field.
     errors?: { message: string; key?: string }[];
 }

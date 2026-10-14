@@ -10,6 +10,7 @@ import { of, Subject, throwError } from 'rxjs';
 import { ToastService } from '../../../../services/notifications';
 import { ChatConversation, ChatOperatorMessage, ChatSendResult } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatThreadComposerComponent } from './chat-thread-composer.component';
 
@@ -41,6 +42,11 @@ const row = (overrides: Partial<ChatConversation> = {}): ChatConversation => ({
     last_message_author_user_id: null,
     last_message_author_name: null,
     visitor_waiting_since: null,
+    status: 'open',
+    close_reason: null,
+    closed_at: null,
+    closed_by_user_id: null,
+    closed_by_name: null,
     ...overrides,
 });
 
@@ -48,6 +54,7 @@ describe('ChatThreadComposerComponent', () => {
     let fixture: ComponentFixture<ChatThreadComposerComponent>;
     const readyEpoch = signal(0);
     const chatApi = { sendAsVisitor: vi.fn(), reply: vi.fn() };
+    const conversationActions = { refresh: vi.fn() };
 
     const host = (): HTMLElement => fixture.nativeElement;
     const input = (): HTMLInputElement => host().querySelector('input') as HTMLInputElement;
@@ -103,6 +110,7 @@ describe('ChatThreadComposerComponent', () => {
                 { provide: ChatApiService, useValue: chatApi },
                 { provide: ChatInboxStreamService, useValue: { readyEpoch } },
                 { provide: ToastService, useValue: { error: vi.fn() } },
+                { provide: ChatConversationActionsService, useValue: conversationActions },
             ],
         });
         // Monaco does not run in jsdom: as in the editor's own spec, its host renders as an unknown element.
@@ -418,5 +426,45 @@ describe('ChatThreadComposerComponent', () => {
         setInputs({ conversation: row({ id: 'c-2' }), visitorToken: null });
         expect(roleButtons()[0].disabled).toBe(true);
         expect(fixture.componentInstance.role()).toBe('operator');
+    });
+
+    describe('on a conversation closed meanwhile', () => {
+        const closedRefusal = () =>
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 409,
+                        error: {
+                            code: 'conversation_closed',
+                            message: 'Conversation is closed',
+                            close_reason: 'ended',
+                        },
+                    })
+            );
+
+        it('has the conversation fetched again when the reply is refused, so the thread turns read-only', () => {
+            chatApi.reply.mockReturnValueOnce(closedRefusal());
+            setInputs({ conversation: row({ is_test: false, mode: 'human' }), isClaimedByMe: true });
+            type('hi');
+            pressEnter();
+            expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith('Conversation is closed');
+            expect(conversationActions.refresh).toHaveBeenCalledWith('c-1');
+        });
+
+        it('does the same for a visitor message on a closed test conversation', () => {
+            chatApi.sendAsVisitor.mockReturnValueOnce(closedRefusal());
+            setInputs({ conversation: row(), visitorToken: 'vt-1' });
+            type('hi');
+            pressEnter();
+            expect(conversationActions.refresh).toHaveBeenCalledWith('c-1');
+        });
+
+        it('fetches nothing again for any other refusal', () => {
+            chatApi.reply.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
+            setInputs({ conversation: row({ is_test: false, mode: 'human' }), isClaimedByMe: true });
+            type('hi');
+            pressEnter();
+            expect(conversationActions.refresh).not.toHaveBeenCalled();
+        });
     });
 });

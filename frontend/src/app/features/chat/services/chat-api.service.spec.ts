@@ -85,10 +85,23 @@ describe('ChatApiService', () => {
         expect(received).toEqual(badges);
     });
 
-    it('reads the budget defaults and caps from bindings/limits', () => {
+    it('reads the budget and inactivity defaults and caps from bindings/limits', () => {
         const limits = {
-            defaults: { token_budget_per_conversation: 50000, daily_token_budget: 1000000 },
-            caps: { token_budget_per_conversation: 200000, daily_token_budget: 5000000 },
+            defaults: {
+                token_budget_per_conversation: 50000,
+                daily_token_budget: 1000000,
+                response_time_seconds: 600,
+                on_response_timeout: 'handback',
+                handback_message: 'The bot is back.',
+                close_after_seconds: 86400,
+                style: 'support',
+            },
+            caps: {
+                token_budget_per_conversation: 200000,
+                daily_token_budget: 5000000,
+                response_time_seconds: 86400,
+                close_after_seconds: 2592000,
+            },
         };
         let received: unknown = null;
         service.getBindingLimits().subscribe((value) => (received = value));
@@ -174,5 +187,25 @@ describe('ChatApiService', () => {
         expect(httpMock.expectOne('/chat/operator/v1/conversations/c-1/claim').request.body).toEqual({ force: false });
         service.claim('c-1', true).subscribe();
         expect(httpMock.expectOne('/chat/operator/v1/conversations/c-1/claim').request.body).toEqual({ force: true });
+    });
+
+    it('closes a conversation, posting the force flag only when asked', () => {
+        service.close('c-1').subscribe();
+        const close = httpMock.expectOne('/chat/operator/v1/conversations/c-1/close');
+        expect(close.request.method).toBe('POST');
+        expect(close.request.body).toEqual({ force: false });
+        close.flush({});
+
+        service.close('c-1', true).subscribe();
+        expect(httpMock.expectOne('/chat/operator/v1/conversations/c-1/close').request.body).toEqual({ force: true });
+    });
+
+    it('reads one conversation by id', () => {
+        let received: unknown = null;
+        service.getConversation('c-7').subscribe((value) => (received = value));
+        const request = httpMock.expectOne('/chat/operator/v1/conversations/c-7');
+        expect(request.request.method).toBe('GET');
+        request.flush({ id: 'c-7', status: 'closed' });
+        expect(received).toEqual({ id: 'c-7', status: 'closed' });
     });
 });

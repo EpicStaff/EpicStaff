@@ -1,6 +1,8 @@
 import {
     conversationTime,
     conversationTimeLabel,
+    deskRulesOf,
+    isOverdue,
     operatorName,
     senderPrefix,
     visitorAvatarText,
@@ -158,5 +160,38 @@ describe('waitDuration', () => {
         expect(waitDuration(null, NOW)).toBe('');
         expect(waitDuration(undefined, NOW)).toBe('');
         expect(waitDuration('not a time', NOW)).toBe('');
+    });
+});
+
+describe('isOverdue', () => {
+    const tenMinutes = 10 * 60_000;
+    const since = iso(at(2026, 10, 12, 14, 20));
+
+    it('marks a wait past the response time, not one that has just reached it', () => {
+        expect(isOverdue(since, tenMinutes, NOW - 1)).toBe(false);
+        expect(isOverdue(since, tenMinutes, NOW)).toBe(false);
+        expect(isOverdue(since, tenMinutes, NOW + 1)).toBe(true);
+    });
+
+    it('marks nothing on a desk that does not mark overdue, nor without a usable wait', () => {
+        expect(isOverdue(since, null, NOW + 60 * 60_000)).toBe(false);
+        expect(isOverdue(null, tenMinutes, NOW)).toBe(false);
+        expect(isOverdue(undefined, tenMinutes, NOW)).toBe(false);
+        expect(isOverdue('not a time', tenMinutes, NOW)).toBe(false);
+    });
+});
+
+describe('deskRulesOf', () => {
+    it('turns a wait overdue after the response time only on a desk whose rule is to mark it', () => {
+        const desk = { style: 'support', response_time_seconds: 600 } as const;
+        expect(deskRulesOf({ ...desk, on_response_timeout: 'overdue' })).toEqual({
+            style: 'support',
+            overdueAfterMs: 600_000,
+        });
+        expect(deskRulesOf({ ...desk, on_response_timeout: 'handback' }).overdueAfterMs).toBeNull();
+        expect(deskRulesOf({ ...desk, style: 'ongoing', on_response_timeout: 'wait' })).toEqual({
+            style: 'ongoing',
+            overdueAfterMs: null,
+        });
     });
 });

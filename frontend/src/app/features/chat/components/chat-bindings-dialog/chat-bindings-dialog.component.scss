@@ -128,6 +128,76 @@
     color: var(--color-error);
 }
 
+// The desk style: two cards, each a native radio with its name and one line on what it does.
+.bindings-dialog__style {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+// As the other fields' labels (the shared tooltip label).
+.bindings-dialog__style-legend {
+    padding: 0;
+    margin-bottom: 8px;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+}
+
+.bindings-dialog__style-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:has(:checked) {
+        border-color: var(--accent-color);
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &:has(:focus-visible) {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+.bindings-dialog__style-radio {
+    flex-shrink: 0;
+    margin: 3px 0 0;
+    accent-color: var(--accent-color);
+}
+
+.bindings-dialog__style-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.bindings-dialog__style-description {
+    color: var(--color-text-secondary);
+}
+
+.bindings-dialog__backlog-lead {
+    margin: 0;
+}
+
+.bindings-dialog__backlog-effects {
+    margin: 4px 0 0;
+    padding-left: 20px;
+}
+
 // Phones: a sheet from the bottom edge (see `ChatBindingActionsService`), the screen's width, rounded on top only, the
 // form scrolling inside it and the actions clear of the home indicator.
 @include bp.phone {

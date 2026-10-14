@@ -132,7 +132,7 @@
 
 // A test conversation, in the thread header.
 // The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
-// Bot = pending, Awaiting human = waiting, Human = running.
+// Bot = pending, Awaiting human = waiting, Human = running, Closed = expired.
 .test-chip {
     @include status-chip.chip;
     @include status-chip.expired;
@@ -150,6 +150,10 @@
 
     &--human {
         @include status-chip.running;
+    }
+
+    &--closed {
+        @include status-chip.expired;
     }
 }
 
@@ -206,6 +210,23 @@
     .mode-badge:focus-visible {
         outline: 1px solid var(--accent-color);
         outline-offset: 2px;
+    }
+}
+
+// Where the composer was, once the conversation is closed: why and when, read-only from here.
+.thread-closed {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-divider-regular);
+    color: var(--color-text-secondary);
+    text-align: center;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
     }
 }
 
@@ -374,6 +395,12 @@
 
     .thread {
         padding: 12px max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
+    }
+
+    // Clear of the home indicator, as the composer it replaces.
+    .thread-closed {
+        padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px))
+            max(12px, env(safe-area-inset-left, 0px));
     }
 }
 
