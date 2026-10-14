@@ -344,12 +344,14 @@ async def test_write_value_default_applies_when_path_is_missing():
 
 
 @pytest.mark.asyncio
-async def test_write_value_null_default_raises():
+async def test_write_value_null_default_writes_null_when_path_is_missing():
     client = make_client()
     node = make_node("write", [{"key": "count", "value": "variables.count|null"}], client)
-    with pytest.raises(KeyValueNodeError, match="variables.count"):
-        await run(node, {})
-    client.write.assert_not_awaited()
+
+    result = await run(node, {})
+
+    client.write.assert_awaited_once_with(7, 3, {"count": None})
+    assert result == {"count": None}
 
 
 @pytest.mark.asyncio
@@ -464,12 +466,141 @@ async def test_write_with_missing_value_path_raises():
 
 
 @pytest.mark.asyncio
-async def test_write_with_null_value_raises():
-    client = make_client()
+async def test_write_with_null_value_writes_null():
+    client = make_client(created=["k"])
     node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
-    with pytest.raises(KeyValueNodeError, match="null"):
-        await run(node, {"profile": None})
+    writer = MagicMock()
+
+    result = await node.execute(
+        state=make_state({"profile": None}), writer=writer, execution_order=0, input_={}
+    )
+
+    client.write.assert_awaited_once_with(7, 3, {"k": None})
+    assert result == {"k": None}
+    [message] = key_value_messages(writer)
+    assert message["entries"] == [
+        {"key": "k", "path": "variables.profile", "found": None, "created": True,
+         "value": None, "truncated": False},
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("value_path", "variables"),
+    [
+        ("variables.user.middle_name", {"user": {"middle_name": None}}),
+        ("variables.users[1].middle_name", {"users": [{}, {"middle_name": None}]}),
+        ("variables.middle_names[0]", {"middle_names": [None]}),
+    ],
+)
+async def test_write_with_nested_null_value_writes_null(value_path, variables):
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+
+    await run(node, variables)
+
+    client.write.assert_awaited_once_with(7, 3, {"k": None})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("value_path", "variables"),
+    [
+        ("variables.user.middle_name", {"user": {"name": "Ann"}}),
+        ("variables.users[0].middle_name", {"users": [{"name": "Ann"}]}),
+        ("variables.user.profile.middle_name", {"user": {}}),
+    ],
+)
+async def test_write_with_missing_nested_value_path_raises(value_path, variables):
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+    with pytest.raises(
+        KeyValueNodeError,
+        match=f"persist_1.*'{re.escape(value_path)}' is missing from the flow state",
+    ):
+        await run(node, variables)
     client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("value_path", "variables", "method"),
+    [
+        ("variables.values.total", {"values": {"total": 5}}, "values"),
+        ("variables.items.count", {"items": {"count": 5}}, "items"),
+        ("variables.order.items.count", {"order": {"items": {"count": 5}}}, "items"),
+        ("variables.values.total|0", {"values": {"total": 5}}, "values"),
+        ("variables.values.total|null", {"values": {"total": 5}}, "values"),
+    ],
+)
+async def test_write_source_through_a_method_name_raises_instead_of_overwriting(
+    value_path, variables, method
+):
+    """getattr on a DotDict finds a dict method before a stored key of the same name, so
+    the resolver cannot read past such a segment: it must raise rather than store null or
+    the default over the real value."""
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+    with pytest.raises(
+        KeyValueNodeError, match=f"persist_1.*uses '{method}', the name of a built-in method"
+    ):
+        await run(node, variables)
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value_path", ["variables.name.upper", "variables.tags.count"])
+async def test_write_value_resolving_to_a_method_of_a_string_or_list_raises(value_path):
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+    with pytest.raises(
+        KeyValueNodeError,
+        match=f"persist_1.*'{re.escape(value_path)}' resolves to a built-in method",
+    ):
+        await run(node, {"name": "Ann", "tags": ["x"]})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_render_key_rejects_placeholder_through_a_method_name():
+    client = make_client()
+    node = make_node("read", [{"value": "variables.out", "key": "k_{variables.values.id}"}], client)
+    with pytest.raises(
+        KeyValueNodeError, match="persist_1.*uses 'values', the name of a built-in method"
+    ):
+        await run(node, {"values": {"id": 1}})
+    client.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_value_default_does_not_apply_when_path_holds_null():
+    client = make_client()
+    node = make_node("write", [{"key": "count", "value": "variables.count|0"}], client)
+
+    await run(node, {"count": None})
+
+    client.write.assert_awaited_once_with(7, 3, {"count": None})
+
+
+@pytest.mark.asyncio
+async def test_write_value_inside_a_null_variable_raises():
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": "variables.nothing.first"}], client)
+    with pytest.raises(
+        KeyValueNodeError, match="persist_1.*'variables.nothing' is null, so it cannot hold 'first'"
+    ):
+        await run(node, {"nothing": None})
+    client.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_value_inside_a_null_variable_with_default_writes_the_default():
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": "variables.nothing.first|0"}], client)
+
+    await run(node, {"nothing": None})
+
+    client.write.assert_awaited_once_with(7, 3, {"k": 0})
 
 
 @pytest.mark.asyncio
@@ -484,7 +615,7 @@ async def test_write_value_outside_variables_raises():
 @pytest.mark.asyncio
 async def test_run_raises_when_value_path_does_not_resolve():
     """Regression: the resolver returns None (logging only a warning) for a path that is
-    not in the state, so the node's own null check is what stops it writing a null over a
+    not in the state, so the node's own presence check is what stops it writing a null over a
     previously stored value. Goes through the real `run()` path."""
     client = make_client()
     node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
