@@ -66,6 +66,7 @@ import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directiv
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { getPortPosition } from '../core/geometry/port-position';
+import { isStacked } from '../core/geometry/wire-direction';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
@@ -89,7 +90,7 @@ import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { CurvedPathBuilder, curveHitsObstacle } from '../core/routing/curved.path-builder';
-import { routingObstacles } from '../core/routing/obstacles';
+import { obstacleRect, routingObstacles } from '../core/routing/obstacles';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
@@ -1245,7 +1246,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 if (ends) {
                     const source = getPortPosition(ends.sourceNode, ends.sourcePort);
                     const target = getPortPosition(ends.targetNode, ends.targetPort);
-                    targetWaypoints = curveHitsObstacle(source, target, obstacleRects) ? routePoints : [];
+                    const sourceBox = obstacleRect(ends.sourceNode);
+                    const targetBox = obstacleRect(ends.targetNode);
+                    const backwardReturnWire = target.x < source.x && !isStacked(sourceBox, targetBox);
+                    targetWaypoints =
+                        backwardReturnWire || curveHitsObstacle(source, target, obstacleRects) ? routePoints : [];
                 }
             }
 

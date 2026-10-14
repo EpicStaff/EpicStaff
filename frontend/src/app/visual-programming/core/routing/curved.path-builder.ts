@@ -163,7 +163,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
 
         // R < absGap/4 guarantees the tangent line goes "\" direction.
         const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
-        if (maxRadiusForSlash < MIN_ARC_RADIUS || horizontalGap > 740) {
+        if (maxRadiusForSlash < MIN_ARC_RADIUS) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
 
