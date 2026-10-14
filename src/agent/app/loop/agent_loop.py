@@ -76,14 +76,6 @@ def _safe_context_window(model_str: str) -> int | None:
         return None
 
 
-def _safe_token_count(model_str: str, messages: list[dict]) -> int | None:
-    """Return token count for messages, or None if counting fails."""
-    try:
-        return litellm.token_counter(model=model_str, messages=messages)
-    except Exception:
-        return None
-
-
 def _build_model_config(context: AgentContext) -> dict:
     """Build the litellm-compatible model_config dict from the agent's LLM spec.
 
@@ -220,15 +212,6 @@ class DefaultAgentLoop(AgentLoop):
         context_window = _safe_context_window(model_str) if ratio and ratio > 0 else None
 
         while True:
-            if context_window and ratio and not state.context_warned:
-                input_tokens = _safe_token_count(model_str, context.messages)
-                if input_tokens is not None and input_tokens >= ratio * context_window:
-                    await emitter.on_warning(
-                        f"input context >= {int(ratio * 100)}% of model context window "
-                        f"({context_window} tokens) for '{model_str}'; approaching limit"
-                    )
-                    state.context_warned = True
-
             _iter = state.iterations
             _corr_id = context.correlation_id
             _msg_count = len(context.messages)
@@ -246,6 +229,7 @@ class DefaultAgentLoop(AgentLoop):
             text_buf = ""
             tool_buf: dict[str, dict] = {}
             chunks: list[LLMChunk] = []
+            prompt_tokens = 0
 
             async for chunk in self._llm.chat(
                 messages=context.messages,
@@ -270,6 +254,19 @@ class DefaultAgentLoop(AgentLoop):
 
                 if chunk.usage:
                     state.usage.add(chunk.usage)
+                    prompt_tokens = int(chunk.usage.get("prompt_tokens", 0))
+
+            # Provider-reported input size; avoids re-tokenising the history each iteration.
+            if (
+                context_window
+                and not state.context_warned
+                and prompt_tokens >= ratio * context_window
+            ):
+                await emitter.on_warning(
+                    f"input context >= {int(ratio * 100)}% of model context window "
+                    f"({context_window} tokens) for '{model_str}'; approaching limit"
+                )
+                state.context_warned = True
 
             # Only append the assistant message when there is content to record.
             # An iteration with neither text nor tool calls still counts toward

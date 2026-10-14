@@ -799,10 +799,10 @@ async def test_context_window_warning(monkeypatch, ratio, get_model_info, prompt
     import litellm
 
     monkeypatch.setattr(litellm, "get_model_info", get_model_info)
-    monkeypatch.setattr(litellm, "token_counter", lambda model, messages: prompt_tokens)
     emitter = RecordingEmitter()
+    usage = LLMChunk(usage={"prompt_tokens": prompt_tokens, "completion_tokens": 1})
     # Two iterations, so a warning that is not de-duplicated would appear twice.
-    llm = FakeLLMClient([tool_chunks("c1", "ping", "{}"), text_chunks("done")])
+    llm = FakeLLMClient([[*tool_chunks("c1", "ping", "{}"), usage], [*text_chunks("done"), usage]])
 
     result = await DefaultAgentLoop(llm, context_warning_ratio=ratio).run(
         make_context(), StubToolRegistry({"ping": lambda args: "pong"}), emitter, MaxIterAndNoToolCalls(max_iter=5)
