@@ -4,8 +4,14 @@
 Triggered by cla.yml on `pull_request_target` (opened/closed/synchronize) and on
 `issue_comment` (created) for PR comments. Records a signature in Google Drive
 when the commenter posts the sign phrase, then always re-evaluates the CLA
-status of every commit author on the PR, posts/updates a single tracking
-comment, and sets a `CLA` commit status on the PR head SHA.
+status of every commit author on the PR and of the PR opener, posts/updates a
+single tracking comment, and sets a `CLA` commit status on the PR head SHA.
+
+The opener is checked because commit authors are matched by git email, which
+anyone can forge. The opener comes from the GitHub API and cannot be forged, so
+a real person always gives the licence grant. Only allow-listed bots (Bot
+account type and login in `CLA_ALLOWLIST`) are exempt, as commit authors and as
+the opener.
 
 Always exits 0 — the commit status carries the actual verdict, `pr.yml` is what
 enforces it.
@@ -28,7 +34,9 @@ from cla_common import (
     drive_service,
     get_or_create_version_folder,
     get_signature,
+    is_allowlisted_bot,
     list_signature_filenames,
+    load_bot_allowlist,
     parse_cla_version,
     put_signature,
     resolve_pr_authors,
@@ -48,15 +56,42 @@ def _github_headers(token: str) -> dict[str, str]:
     }
 
 
-def get_pr_head_sha(repo: str, pr_no: int, token: str) -> str:
-    """Fetch the current head SHA of a PR by number."""
+def get_pull_request(repo: str, pr_no: int, token: str) -> tuple[str, dict[str, Any]]:
+    """Fetch a PR by number and return (head_sha, opener).
+
+    The opener is a {"login", "id", "type"} dict taken from the API rather than
+    the event payload, so it always reflects the PR as GitHub stores it.
+    """
     response = requests.get(
         f"{GH}/repos/{repo}/pulls/{pr_no}",
         headers=_github_headers(token),
         timeout=30,
     )
     response.raise_for_status()
-    return response.json()["head"]["sha"]
+    pull_request = response.json()
+    user = pull_request["user"]
+    opener = {"login": user["login"], "id": user["id"], "type": user.get("type")}
+
+    return pull_request["head"]["sha"], opener
+
+
+def add_opener_to_signers(
+    authors: list[dict[str, Any]],
+    opener: dict[str, Any],
+    allowlist: set[str],
+) -> list[dict[str, Any]]:
+    """Return the people who must sign: the commit authors plus the PR opener.
+
+    The opener is skipped only when it is an allow-listed bot, and is listed
+    once when it is also a commit author.
+    """
+    if is_allowlisted_bot(opener, allowlist):
+        return list(authors)
+
+    if any(author["id"] == opener["id"] for author in authors):
+        return list(authors)
+
+    return [*authors, {"login": opener["login"], "id": opener["id"]}]
 
 
 def find_bot_comment_id(repo: str, pr_no: int, token: str) -> tuple[int | None, str | None]:
@@ -135,7 +170,7 @@ def set_commit_status(
 def build_comment_body(version: str, unsigned: list[dict[str, Any]], unresolved: list[str]) -> str:
     """Build the tracking-comment markdown for the current CLA status."""
     if not unsigned and not unresolved:
-        return f"All contributors have signed CLA v{version}. ✅"
+        return f"Everyone on this PR has signed CLA v{version} or is an allow-listed bot. ✅"
 
     lines = [
         (
@@ -143,7 +178,8 @@ def build_comment_body(version: str, unsigned: list[dict[str, Any]], unresolved:
             "source-available project maintained by HYS Enterprise B.V. and "
             "distributed under the PolyForm Perimeter License 1.0.0. Before we can "
             "accept your contribution, we ask that you read and sign our Individual "
-            "Contributor License Agreement (CLA). You can sign the CLA by posting a "
+            "Contributor License Agreement (CLA). The person who opens the pull "
+            "request must also sign the CLA. You can sign the CLA by posting a "
             "Pull Request comment in the same format as below."
         ),
         "",
@@ -268,9 +304,11 @@ def main() -> int:
             print("Comment is neither the sign phrase nor 'recheck', nothing to do.")
             return 0
 
-    head_sha = get_pr_head_sha(repo, pr_no, token)
+    allowlist = load_bot_allowlist()
+    head_sha, opener = get_pull_request(repo, pr_no, token)
     authors, unresolved = resolve_pr_authors(repo, pr_no, token)
-    unsigned = evaluate_signatures(drive_svc, folder_id, sha, authors)
+    signers = add_opener_to_signers(authors, opener, allowlist)
+    unsigned = evaluate_signatures(drive_svc, folder_id, sha, signers)
 
     comment_body_out = build_comment_body(version, unsigned, unresolved)
     comment_url = upsert_pr_comment(repo, pr_no, token, comment_body_out)
@@ -281,9 +319,9 @@ def main() -> int:
         head_sha,
         token,
         state="success" if is_signed else "failure",
-        description=f"CLA v{version} signed by all contributors"
+        description=f"CLA v{version} signed by everyone required"
         if is_signed
-        else "CLA not signed by all contributors",
+        else f"CLA v{version} not signed by everyone required",
         target_url=comment_url,
     )
 
