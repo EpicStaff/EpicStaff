@@ -13,8 +13,10 @@ from tables.services.storage_service.dataclasses import (
     FileListItem,
     TreeNode,
 )
+from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
 from tables.services.storage_service.quota import record_files_within_quota
+from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from tables.services.storage_service.s3_backend import S3StorageBackend
 
 MODIFIED = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -666,7 +668,12 @@ def seed_file(backend, org_id: int, path: str, content: bytes) -> None:
     """Store a file of the org and record its row within the quota, as a finished
     upload leaves it."""
     backend.put_bytes(storage_key(org_id, path), content)
-    record_files_within_quota(org_id, [(path, len(content))])
+    record_files_within_quota(
+        org_id,
+        [(path, len(content))],
+        recycle_bin=StorageRecycleBinService(StorageManager(backend)),
+        bin_purge=None,
+    )
 
 
 async def async_chunks(*chunks: bytes):

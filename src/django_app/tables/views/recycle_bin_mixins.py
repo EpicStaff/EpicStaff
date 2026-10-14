@@ -40,8 +40,10 @@ RECYCLE_BIN_ACTION_MAP = {
     "restore": Permission.CREATE,
     "bulk_restore": Permission.CREATE,
 }
-# Purging is the one bin action that can't be undone, so only a superadmin may do
-# it, and only from a user session.
+# Purging is the one bin action that can't be undone, so only a superadmin may ask
+# for it, and only from a user session. A file write over the storage quota is the
+# one other way in: it purges the oldest storage entries for a session user with
+# FILES:DELETE (StorageBinPurgeAccess), because the bin's bytes count toward the quota.
 PURGE_ACTIONS = frozenset({"purge", "bulk_purge"})
 
 

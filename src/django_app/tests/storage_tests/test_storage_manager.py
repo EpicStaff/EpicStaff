@@ -1,3 +1,5 @@
+from unittest.mock import ANY
+
 import pytest
 
 from tables.models import StorageFile
@@ -93,6 +95,8 @@ class TestDelegation:
             org.id,
             [("dest/src/a.txt", 1), ("dest/src/b.txt", 2)],
             ["dest/src/"],
+            recycle_bin=ANY,
+            bin_purge=None,
             user=org_user.user,
             authors_by_path=None,
         )
@@ -140,6 +144,8 @@ class TestCrossOrg:
             second_org.id,
             [("inbox/src.txt", 3)],
             [],
+            recycle_bin=ANY,
+            bin_purge=None,
             user=org_user.user,
             authors_by_path=None,
         )
@@ -162,6 +168,8 @@ class TestCrossOrg:
             second_org.id,
             [("inbox/src.txt", 3)],
             [],
+            recycle_bin=ANY,
+            bin_purge=None,
             user=org_user.user,
             authors_by_path={"inbox/src.txt": None},
         )

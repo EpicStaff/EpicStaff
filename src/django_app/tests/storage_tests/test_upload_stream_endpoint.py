@@ -3,6 +3,7 @@ import io
 import json
 import lzma
 import tarfile
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import httpx
@@ -10,12 +11,17 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.core import signals
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework_simplejwt.tokens import AccessToken
 
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
 from tables.models import StorageFile
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.base import StorageUnreachable
+from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.path_utils import trash_batch_prefix
 from tables.services.storage_service.upload import admission as admission_module
 from tables.services.storage_service.upload import archive_upload, file_upload
 from tables.services.storage_service.upload.admission import UploadAdmission
@@ -23,6 +29,7 @@ from tests.storage_tests.in_memory_backend import (
     FakeS3Client,
     InMemoryStorageBackend,
     make_s3_backend,
+    seed_file,
     zip_bytes,
 )
 from utils import exception_handler
@@ -62,7 +69,7 @@ def storage(monkeypatch, fake_backend):
 
 @pytest.fixture
 def stubbed_upload(monkeypatch):
-    upload = AsyncMock(return_value={"path": "a.txt", "size": 1})
+    upload = AsyncMock(return_value={"path": "a.txt", "size": 1, "recycle_bin_purged": []})
     monkeypatch.setattr(upload_service, "upload_file", upload)
     return upload
 
@@ -83,7 +90,12 @@ async def test_a_plain_file_is_stored_end_to_end(org_user, storage):
         )
 
     assert response.status_code == 200, response.text
-    assert response.json() == {"status": "DONE", "path": "docs/note.txt", "size": 21}
+    assert response.json() == {
+        "status": "DONE",
+        "path": "docs/note.txt",
+        "size": 21,
+        "recycle_bin_purged": [],
+    }
     assert storage._objects[f"org_{org_user.org_id}/docs/note.txt"][0] == b"hello streaming world"
     assert (await StorageFile.objects.aget(org_id=org_user.org_id, path="docs/note.txt")).size == 21
 
@@ -104,6 +116,183 @@ async def test_an_archive_is_unpacked_end_to_end(org_user, storage):
     assert response.json()["path"] == "bundle"
     assert sorted(response.json()["extracted"]) == ["bundle/a.txt", "bundle/sub/b.txt"]
     assert await StorageFile.objects.filter(org_id=org_user.org_id, path="bundle/a.txt").aexists()
+
+
+@sync_to_async
+def _bin_old_file(storage, org_id: int, path: str, size: int) -> str:
+    """Store a file, delete it into the bin a day back and return its batch."""
+    manager = StorageManager(storage)
+    seed_file(storage, org_id, path, b"x" * size)
+    batch = manager.delete(org_id, path, user=None)
+    StorageFile.deleted_objects.filter(soft_delete_batch=batch).update(
+        soft_deleted_at=timezone.now() - timedelta(days=1)
+    )
+    return batch
+
+
+def _trash_keys(storage, org_id: int, batch) -> list[str]:
+    prefix = trash_batch_prefix(org_id, batch)
+    return [key for key in storage._objects if key.startswith(prefix)]
+
+
+@sync_to_async
+def _org_member_with_files_bits(org_id: int, bits: Permission):
+    """A member of the org whose custom role grants exactly `bits` on FILES."""
+    from django.contrib.auth import get_user_model
+
+    role = Role.objects.create(name=f"Files {int(bits)}", org_id=org_id, is_built_in=False)
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.FILES.value, permissions=int(bits)
+    )
+    user = get_user_model().objects.create_user(
+        email=f"files-{int(bits)}@example.com", password="TestPass123!"
+    )
+    return OrganizationUser.objects.create(user=user, org_id=org_id, role=role)
+
+
+async def _binned_paths(org_id: int) -> set[str]:
+    return {
+        path
+        async for path in StorageFile.deleted_objects.filter(org_id=org_id).values_list(
+            "path", flat=True
+        )
+    }
+
+
+async def test_a_plain_file_past_the_quota_purges_the_bin_and_reports_it(
+    org_user, storage, settings
+):
+    batch = await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = 25
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    token = await _token(org_user)
+    async with _client() as client:
+        response = await _post(
+            client, "filename=note.txt", token=token, org_id=org_user.org_id, body=b"y" * 20
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "status": "DONE",
+        "path": "note.txt",
+        "size": 20,
+        "recycle_bin_purged": [{"name": "old.txt", "size": 10}],
+    }
+    assert not await StorageFile.all_objects.filter(org_id=org_user.org_id, path="old.txt").aexists()
+    assert _trash_keys(storage, org_user.org_id, batch) == []
+
+
+async def test_an_archive_past_the_quota_purges_the_bin_and_reports_it(
+    org_user, storage, settings
+):
+    batch = await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = 15
+    token = await _token(org_user)
+    async with _client() as client:
+        response = await _post(
+            client,
+            "filename=bundle.zip",
+            token=token,
+            org_id=org_user.org_id,
+            body=zip_bytes({"a.txt": b"hello", "b.txt": b"world"}),
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["extracted"] == ["bundle/a.txt", "bundle/b.txt"]
+    assert response.json()["recycle_bin_purged"] == [{"name": "old.txt", "size": 10}]
+    assert _trash_keys(storage, org_user.org_id, batch) == []
+
+
+async def test_an_upload_past_the_whole_bin_is_a_413_and_purges_nothing(
+    org_user, storage, settings
+):
+    batch = await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = 25
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    token = await _token(org_user)
+    async with _client() as client:
+        response = await _post(
+            client, "filename=note.txt", token=token, org_id=org_user.org_id, body=b"y" * 26
+        )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "storage_quota_exceeded"
+    assert await StorageFile.deleted_objects.filter(org_id=org_user.org_id, path="old.txt").aexists()
+    assert _trash_keys(storage, org_user.org_id, batch) != []
+
+
+# Each upload fits only once the binned old.txt (10 bytes) is purged.
+@pytest.mark.parametrize(
+    ("filename", "body", "quota"),
+    [
+        ("note.txt", b"y" * 20, 25),
+        ("bundle.zip", zip_bytes({"a.txt": b"hello", "b.txt": b"world"}), 15),
+    ],
+    ids=["plain", "archive"],
+)
+async def test_a_member_without_files_delete_gets_a_413_and_the_bin_stays_whole(
+    org_user, storage, settings, filename, body, quota
+):
+    batch = await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = quota
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    # What the built-in Member role holds on FILES: everything but delete.
+    member = await _org_member_with_files_bits(
+        org_user.org_id,
+        Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.EXPORT,
+    )
+    token = await _token(member)
+    async with _client() as client:
+        response = await _post(
+            client, f"filename={filename}", token=token, org_id=org_user.org_id, body=body
+        )
+
+    assert response.status_code == 413, response.text
+    assert response.json()["code"] == "storage_quota_exceeded"
+    assert await _binned_paths(org_user.org_id) == {"old.txt"}
+    assert _trash_keys(storage, org_user.org_id, batch) != []
+
+
+async def test_an_api_key_gets_a_413_and_the_bin_stays_whole(
+    org_user, storage, settings, issue_api_key
+):
+    batch = await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = 25
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    # The key's owner is an Org Admin, who holds FILES:DELETE: the key still may not purge.
+    raw_key, _ = await sync_to_async(issue_api_key)(user=org_user.user)
+    async with _client() as client:
+        response = await _post(
+            client,
+            "filename=note.txt",
+            org_id=org_user.org_id,
+            body=b"y" * 20,
+            headers={"X-API-Key": raw_key},
+        )
+
+    assert response.status_code == 413, response.text
+    assert await _binned_paths(org_user.org_id) == {"old.txt"}
+    assert _trash_keys(storage, org_user.org_id, batch) != []
+
+
+async def test_a_caller_without_files_read_gets_the_sizes_but_no_names(
+    org_user, storage, settings
+):
+    await _bin_old_file(storage, org_user.org_id, "old.txt", 10)
+    settings.ORG_STORAGE_QUOTA = 25
+    settings.MAX_STREAM_UPLOAD_FILE_SIZE = None
+    writer = await _org_member_with_files_bits(
+        org_user.org_id, Permission.CREATE | Permission.DELETE
+    )
+    token = await _token(writer)
+    async with _client() as client:
+        response = await _post(
+            client, "filename=note.txt", token=token, org_id=org_user.org_id, body=b"y" * 20
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["recycle_bin_purged"] == [{"name": None, "size": 10}]
+    assert await _binned_paths(org_user.org_id) == set()
 
 
 # --- auth, RBAC and org scoping ---------------------------------------------------

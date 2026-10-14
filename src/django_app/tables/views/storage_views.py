@@ -76,6 +76,7 @@ from tables.views.recycle_bin_mixins import (
     purge_permissions,
     request_actor,
 )
+from tables.views.storage_bin_purge_access import StorageBinPurgeAccess
 
 _USER_ID_KEYS = ("created_by", "last_edited_by")
 
@@ -100,6 +101,15 @@ def _with_descendants(entries: list[dict]) -> Iterator[dict]:
     for entry in entries:
         yield entry
         yield from _with_descendants(entry.get("children") or [])
+
+
+def _transfer_response(from_path: str, to_path: str, recycle_bin_purged: list[dict]) -> dict:
+    return {
+        "from": from_path,
+        "to": to_path,
+        "success": True,
+        "recycle_bin_purged": recycle_bin_purged,
+    }
 
 
 class StorageRecycleBinPagination(LimitOffsetPagination):
@@ -309,19 +319,28 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         src_org_id = serializer.validated_data.get("source_org_id")
         dst_org_id = serializer.validated_data.get("destination_org_id")
 
+        recycle_bin_purged = []
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.move_cross_org(
-                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+                purged = self.manager.move_cross_org(
+                    int(src_org_id),
+                    from_path,
+                    int(dst_org_id),
+                    to_path,
+                    user=request.user,
+                    bin_purge=bin_access.grant,
                 )
+                recycle_bin_purged = bin_access.render(purged)
             else:
+                # Within one org a move adds no bytes, so it never purges.
                 self.manager.move(org_id, from_path, to_path, user=request.user)
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
 
-        return Response({"from": from_path, "to": to_path, "success": True})
+        return Response(_transfer_response(from_path, to_path, recycle_bin_purged))
 
     @extend_schema(**STORAGE_COPY_SWAGGER)
     @action(detail=False, methods=["post"], url_path="copy")
@@ -336,17 +355,26 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                self.manager.copy_cross_org(
-                    int(src_org_id), from_path, int(dst_org_id), to_path, user=request.user
+                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+                purged = self.manager.copy_cross_org(
+                    int(src_org_id),
+                    from_path,
+                    int(dst_org_id),
+                    to_path,
+                    user=request.user,
+                    bin_purge=bin_access.grant,
                 )
             else:
-                self.manager.copy(org_id, from_path, to_path, user=request.user)
+                bin_access = StorageBinPurgeAccess.for_request(request, org_id)
+                purged = self.manager.copy(
+                    org_id, from_path, to_path, user=request.user, bin_purge=bin_access.grant
+                )
         except FileNotFoundError as e:
             raise ValidationError({"from": f"Source path does not exist: {from_path}"}) from e
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
 
-        return Response({"from": from_path, "to": to_path, "success": True})
+        return Response(_transfer_response(from_path, to_path, bin_access.render(purged)))
 
     @extend_schema(**STORAGE_ADD_TO_GRAPH_SWAGGER)
     @action(detail=False, methods=["post"], url_path="add-to-graph")

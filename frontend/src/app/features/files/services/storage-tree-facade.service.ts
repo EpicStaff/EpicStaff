@@ -25,6 +25,7 @@ import {
 } from '../components/create-folder-dialog/create-folder-dialog.component';
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo } from '../models/storage.models';
+import { recycleBinPurgeMessage } from '../utils/recycle-bin-purge.utils';
 import { getFileExtension } from '../utils/storage-file.utils';
 import { toStorageItems } from '../utils/storage-tree.utils';
 import { describeUploadFailures } from '../utils/upload-error.utils';
@@ -468,8 +469,10 @@ export class StorageTreeFacade {
                 .copy(item.path, result.toPath)
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
-                    next: () => {
+                    next: (response) => {
                         this.toastService.success(`"${item.name}" copied`);
+                        const purgeMessage = recycleBinPurgeMessage(response.recycle_bin_purged);
+                        if (purgeMessage) this.toastService.warning(purgeMessage);
                         this.reloadTreePreservingExpansion(result.toPath ? [result.toPath] : []);
                     },
                     error: () => this.toastService.error(`Failed to copy "${item.name}"`),

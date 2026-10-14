@@ -217,6 +217,29 @@ class StorageFromToResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField(help_text="Operation succeeded")
 
 
+class StorageRecycleBinPurgedSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "Org-relative path of the purged recycle bin entry; a folder's ends in '/'. "
+            "Null unless the caller has FILES:READ in the organization"
+        ),
+    )
+    size = serializers.IntegerField(
+        help_text="Bytes freed: a folder's counts everything deleted with it"
+    )
+
+
+class StorageTransferResponseSerializer(StorageFromToResponseSerializer):
+    recycle_bin_purged = StorageRecycleBinPurgedSerializer(
+        many=True,
+        help_text=(
+            "Recycle bin entries of the destination organization purged, oldest first, "
+            "to make room for the copy; empty when it fit or nothing could be purged"
+        ),
+    )
+
+
 class StorageMkdirResponseSerializer(serializers.Serializer):
     path = serializers.CharField(help_text="Created folder path")
     created = serializers.BooleanField(help_text="Whether the folder was created")

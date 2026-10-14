@@ -2,14 +2,31 @@
 
 import time
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q, QuerySet
+from django.db.models import (
+    BigIntegerField,
+    Case,
+    Exists,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Sum,
+    When,
+)
+from django.db.models.functions import Coalesce
 from rbac.models import Organization
 from rest_framework.exceptions import APIException
-from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
+from tables.exceptions import (
+    NotInRecycleBinError,
+    StorageQuotaExceeded,
+    StorageRestoreConflictError,
+)
 from tables.models import StorageFile
 from tables.services.recycle_bin.authorship import BinEntryAuthorship, authorship_details
 from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, SHOW_ALL_LIMIT
@@ -17,10 +34,14 @@ from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_results import BulkFailure, BulkPurgeResult, BulkRestoreResult
 from tables.services.recycle_bin.presentation import BinContent, BinDetail
 from tables.services.recycle_bin.restore_service import RestoreResult
+from tables.services.storage_service.dataclasses import PurgedBinEntry
 from tables.services.storage_service.db_sync import _ancestor_paths, _name_of, _parent_of
-from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.naming import ensure_unique_file_name, split_file_name
 from utils.logger import logger
+
+if TYPE_CHECKING:
+    # Only a type here: the manager imports the quota module, which imports this one.
+    from tables.services.storage_service.manager import StorageManager
 
 _REACTIVATED_FIELDS = [
     "path",
@@ -64,7 +85,7 @@ class StorageRecycleBinEntry:
 
 
 class StorageRecycleBinService:
-    def __init__(self, manager: StorageManager):
+    def __init__(self, manager: "StorageManager"):
         self._manager = manager
 
     @staticmethod
@@ -429,6 +450,145 @@ class StorageRecycleBinService:
             actor=actor,
         )
         return len(locked)
+
+    @classmethod
+    def binned_bytes(cls, org_id: int) -> int:
+        """Bytes the org's storage bin holds: what purging all of it would free."""
+        return cls.binned(org_id).aggregate(total=Sum("size"))["total"] or 0
+
+    def make_room(self, org_id: int, needed_bytes: int, *, actor: str) -> list[PurgedBinEntry]:
+        """Purge the org's oldest storage bin entries, just enough of them to free `needed_bytes`.
+
+        Entries go oldest deletion first, a folder whole with what was deleted with it;
+        an entry that frees no bytes is kept. Only the org's bin rows are touched, never a
+        live file. The caller holds the org row lock in its transaction (see
+        record_files_within_quota), so writers of one org pick and use freed bytes one
+        at a time; the rows picked are locked too, against a user or retention purge.
+
+        Rows are deleted now, their trash objects only once the transaction commits. A
+        rollback then leaves every binned row with its objects, and an object delete that
+        fails after the commit leaves only trash nothing points at, which is logged.
+        Each purged entry is logged once the transaction commits, with `actor` (who caused
+        the write) as the manual purge logs it.
+
+        Raises:
+            StorageQuotaExceeded: the whole bin frees less than `needed_bytes`; nothing is purged.
+        """
+        # (pk, batch) of each top-level entry picked.
+        chosen = self._oldest_entries_freeing(org_id, needed_bytes)
+        rows_by_batch: dict[uuid.UUID, list[StorageFile]] = defaultdict(list)
+        # One ordered statement, as _lock_batch_of locks a batch: no lock-order deadlock.
+        for row in (
+            StorageFile.deleted_objects.select_for_update()
+            .filter(org_id=org_id, soft_delete_batch__in={batch for _, batch in chosen})
+            .order_by("path", "pk")
+        ):
+            rows_by_batch[row.soft_delete_batch].append(row)
+
+        purged: list[PurgedBinEntry] = []
+        doomed_ids: list[int] = []
+        trash: list[tuple[uuid.UUID, str | None]] = []
+        doomed_in_batch: dict[uuid.UUID, int] = defaultdict(int)
+        for entry_id, batch in chosen:
+            batch_rows = rows_by_batch[batch]
+            root = next((row for row in batch_rows if row.pk == entry_id), None)
+            if root is None:
+                continue  # purged by someone else since it was picked
+            entry_rows = (
+                [row for row in batch_rows if row.path.startswith(root.path)]
+                if root.item_type == "folder"
+                else [root]
+            )
+            doomed_ids += [row.pk for row in entry_rows]
+            doomed_in_batch[batch] += len(entry_rows)
+            purged.append(
+                PurgedBinEntry(name=root.path, size=sum(row.size or 0 for row in entry_rows))
+            )
+            trash.append((batch, root.path))
+        # A batch left with no rows goes with its whole trash prefix, as in purge().
+        emptied = {
+            batch for batch, count in doomed_in_batch.items() if count == len(rows_by_batch[batch])
+        }
+        trash = [(batch, path) for batch, path in trash if batch not in emptied]
+        trash += [(batch, None) for batch in emptied]
+
+        StorageFile.all_objects.filter(pk__in=doomed_ids).delete()
+        transaction.on_commit(lambda: self._finish_quota_purge(org_id, purged, trash, actor))
+        return purged
+
+    @classmethod
+    def _oldest_entries_freeing(cls, org_id: int, needed_bytes: int) -> list[tuple[int, uuid.UUID]]:
+        """(pk, batch) of the fewest oldest top-level entries freeing `needed_bytes`, read unlocked.
+
+        Raises:
+            StorageQuotaExceeded: the whole bin frees less.
+        """
+        deleted_with_folder = (
+            StorageFile.deleted_objects.filter(
+                org_id=OuterRef("org_id"),
+                soft_delete_batch=OuterRef("soft_delete_batch"),
+                path__startswith=OuterRef("path"),
+            )
+            .order_by()
+            .values("soft_delete_batch")
+            .annotate(total=Sum("size"))
+            .values("total")
+        )
+        entries = (
+            cls.top_level(org_id)
+            .annotate(
+                freed=Case(
+                    When(item_type="folder", then=Coalesce(Subquery(deleted_with_folder), 0)),
+                    default=Coalesce("size", 0),
+                    output_field=BigIntegerField(),
+                )
+            )
+            .filter(freed__gt=0)
+            .order_by("soft_deleted_at", "path", "pk")
+            .values_list("pk", "soft_delete_batch", "freed")
+        )
+        chosen: list[tuple[int, uuid.UUID]] = []
+        freed = 0
+        for pk, batch, size in entries.iterator(chunk_size=200):
+            chosen.append((pk, batch))
+            freed += size
+            if freed >= needed_bytes:
+                return chosen
+        raise StorageQuotaExceeded()
+
+    def _finish_quota_purge(
+        self,
+        org_id: int,
+        purged: list[PurgedBinEntry],
+        trash: list[tuple[uuid.UUID, str | None]],
+        actor: str,
+    ) -> None:
+        """Log the committed quota purge and delete its trash objects: a whole batch for None."""
+        for entry in purged:
+            logger.info(
+                "Purged storage bin entry {path} ({size} bytes) of org {org_id} by {actor}, "
+                "reason: storage quota",
+                path=entry.name,
+                size=entry.size,
+                org_id=org_id,
+                actor=actor,
+            )
+        for batch, path in trash:
+            try:
+                if path is None:
+                    self._manager.delete_trash_batch(org_id, batch)
+                else:
+                    self._manager.delete_trash_path(org_id, batch, path)
+            except Exception:
+                # The rows are gone and committed: what is left is trash nothing points
+                # at. Another write must not fail over it.
+                logger.exception(
+                    "Trash objects of {path} in batch {batch} of org {org_id} were left behind "
+                    "after a storage quota purge",
+                    path=path or "(whole batch)",
+                    batch=batch,
+                    org_id=org_id,
+                )
 
     def _check_all_binned(self, org_id: int, row_ids: list[int]) -> None:
         unique_ids = set(row_ids)

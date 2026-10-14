@@ -88,8 +88,27 @@ export interface StorageUploadBatchResult {
     failed: UploadFailure[];
 }
 
+/** A recycle-bin entry (a file, or a folder whose path ends with "/") the server permanently deleted to make room for a write. */
+export interface RecycleBinPurgedEntry {
+    /** Path of the purged bin entry; null when the user isn't allowed to read files. */
+    name: string | null;
+    /** Bytes freed. */
+    size: number;
+}
+
+/**
+ * Part of every storage write that can hit the quota: when the write didn't fit, the server purges
+ * the oldest recycle-bin entries and lists them here (empty when nothing was purged).
+ */
+export interface StorageWriteResponse {
+    recycle_bin_purged: RecycleBinPurgedEntry[];
+}
+
+/** Response of POST storage/copy/. */
+export type StorageCopyResponse = StorageWriteResponse;
+
 /** Response of POST storage/upload/stream: `size` for a file, `extracted` for an unpacked archive. */
-export interface StorageStreamUploadResponse {
+export interface StorageStreamUploadResponse extends StorageWriteResponse {
     status: 'DONE';
     path: string;
     size?: number;

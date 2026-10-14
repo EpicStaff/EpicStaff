@@ -51,7 +51,13 @@ describe('StorageApiService', () => {
     }
 
     function succeed(request: TestRequest): void {
-        request.flush({ status: 'DONE', path: (request.request.body as File).name, size: 7 });
+        const response: StorageStreamUploadResponse = {
+            status: 'DONE',
+            path: (request.request.body as File).name,
+            size: 7,
+            recycle_bin_purged: [],
+        };
+        request.flush(response);
     }
 
     /** Starts one upload and records how it ended. */
