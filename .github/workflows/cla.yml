@@ -32,13 +32,16 @@ jobs:
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
         run: pip install google-api-python-client google-auth requests
 
+      # The Actions cache is read-only in this event context, so the fake
+      # signatures live on the `cla-fake-drive` branch of the fork instead.
       - name: Restore fake Drive
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: actions/cache/restore@v4
-        with:
-          path: .cla-fake-drive
-          key: cla-fake-drive-${{ github.run_id }}
-          restore-keys: cla-fake-drive-
+        run: |
+          if git fetch --depth=1 origin cla-fake-drive:cla-fake-drive; then
+            git worktree add .cla-fake-drive cla-fake-drive
+          else
+            git worktree add --orphan -b cla-fake-drive .cla-fake-drive
+          fi
 
       - name: "CLA Assistant"
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
@@ -57,8 +60,15 @@ jobs:
         run: find .cla-fake-drive -name '*.json' -print -exec cat {} \; || true
 
       - name: Save fake Drive
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .cla-fake-drive
-          key: cla-fake-drive-${{ github.run_id }}
+        if: always() && ((github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
+        working-directory: .cla-fake-drive
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No new signatures."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "Fake CLA signatures from run ${{ github.run_id }}"
+          git push origin cla-fake-drive
