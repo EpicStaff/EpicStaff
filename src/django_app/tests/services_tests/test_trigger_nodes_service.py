@@ -145,6 +145,93 @@ class TestAttachedToWebhookTrigger:
         assert not TriggerNodeInspector.has_any_attached_to_webhook_trigger(trigger)
 
 
+def _webhook_node(graph, trigger):
+    return WebhookTriggerNode.objects.create(
+        graph=graph,
+        node_name="w",
+        webhook_trigger=trigger,
+        python_code=PythonCode.objects.create(code="x"),
+    )
+
+
+@pytest.mark.django_db
+class TestGraphsAttachedToWebhookTrigger:
+    def test_each_flow_once_whatever_its_trigger_nodes(self, acme):
+        trigger = WebhookTrigger.objects.create(path="graphs-attached", org=acme)
+        both = Graph.objects.create(name="both kinds", org=acme)
+        _webhook_node(both, trigger)
+        _webhook_node(both, trigger)
+        TelegramTriggerNode.objects.create(graph=both, node_name="t", webhook_trigger=trigger)
+        telegram_only = Graph.objects.create(name="telegram only", org=acme)
+        TelegramTriggerNode.objects.create(
+            graph=telegram_only, node_name="t", webhook_trigger=trigger
+        )
+
+        graphs = TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger)
+
+        assert sorted(graphs.values_list("id", flat=True)) == sorted([both.id, telegram_only.id])
+        assert graphs.count() == 2
+
+    def test_only_flows_on_this_trigger(self, acme):
+        trigger = WebhookTrigger.objects.create(path="graphs-mine", org=acme)
+        other_trigger = WebhookTrigger.objects.create(path="graphs-other", org=acme)
+        _webhook_node(Graph.objects.create(name="other trigger", org=acme), other_trigger)
+        Graph.objects.create(name="no triggers", org=acme)
+        ScheduleTriggerNode.objects.create(
+            graph=Graph.objects.create(name="schedule", org=acme), node_name="s"
+        )
+
+        assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
+
+    def test_soft_deleted_nodes_and_flows_do_not_count(self, acme):
+        trigger = WebhookTrigger.objects.create(path="graphs-soft-deleted", org=acme)
+        node = _webhook_node(Graph.objects.create(name="node deleted", org=acme), trigger)
+        WebhookTriggerNode.all_objects.filter(pk=node.pk).update(
+            is_soft_deleted=True, soft_deleted_at=timezone.now()
+        )
+        deleted_graph = Graph.objects.create(name="graph deleted", org=acme)
+        TelegramTriggerNode.objects.create(
+            graph=deleted_graph, node_name="t", webhook_trigger=trigger
+        )
+        Graph.all_objects.filter(pk=deleted_graph.pk).update(
+            is_soft_deleted=True, soft_deleted_at=timezone.now()
+        )
+
+        assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
+
+    def test_only_flows_of_the_triggers_org(self, acme, beta):
+        trigger = WebhookTrigger.objects.create(path="graphs-org", org=acme)
+        _webhook_node(Graph.objects.create(name="beta flow", org=beta), trigger)
+
+        assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
+
+    def test_no_trigger_node_fields_matches_no_flow(self, acme, monkeypatch):
+        trigger = WebhookTrigger.objects.create(path="graphs-no-fields", org=acme)
+        _webhook_node(Graph.objects.create(name="attached", org=acme), trigger)
+        Graph.objects.create(name="plain", org=acme)
+        monkeypatch.setattr(
+            "tables.services.trigger_nodes._TRIGGER_NODE_WEBHOOK_TRIGGER_FIELDS", ()
+        )
+
+        assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
+
+    def test_one_query(self, acme, django_assert_num_queries):
+        trigger = WebhookTrigger.objects.create(path="graphs-one-query", org=acme)
+        for index in range(3):
+            graph = Graph.objects.create(name=f"flow {index}", org=acme)
+            _webhook_node(graph, trigger)
+            TelegramTriggerNode.objects.create(graph=graph, node_name="t", webhook_trigger=trigger)
+
+        with django_assert_num_queries(1):
+            names = list(
+                TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).values_list(
+                    "name", flat=True
+                )
+            )
+
+        assert sorted(names) == ["flow 0", "flow 1", "flow 2"]
+
+
 # ── TriggerNodeAccess ────────────────────────────────────────────────────────
 
 

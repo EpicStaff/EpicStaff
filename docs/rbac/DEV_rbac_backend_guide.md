@@ -345,7 +345,10 @@ derives everything else from them:
   Updating a `WebhookTrigger` that a live trigger node is attached to
   (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
   check in `WebhookTriggerViewSet.update`, since re-keying, re-pathing or re-tunnelling
-  it can bring those nodes live.
+  it can bring those nodes live. `GET /api/webhook-triggers/{id}/flows/`
+  (`flows_using_trigger`, webhooks READ) names those flows in advance, from
+  `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
+  when the caller also holds READ on flows, and always returns the count.
 - Recreating trigger nodes by copy, import, partial import or version create-graph /
   restore raises `FlowWithTriggerNodesRequiresRunPermissionError`
   (403 `flow_with_trigger_nodes_requires_run_permission`) through

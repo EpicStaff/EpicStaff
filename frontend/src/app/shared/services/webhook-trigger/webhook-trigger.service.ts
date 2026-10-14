@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { WebhookTriggerModel, WebhookTriggerPayload } from '@shared/models';
+import { WebhookTriggerFlowsResponse, WebhookTriggerModel, WebhookTriggerPayload } from '@shared/models';
 import { map, Observable, Subject, tap } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
@@ -30,6 +30,10 @@ export class WebhookTriggerService {
 
     getById(id: number): Observable<WebhookTriggerModel> {
         return this.http.get<WebhookTriggerModel>(`${this.apiUrl}${id}/`, { headers: this.headers });
+    }
+
+    getFlows(id: number): Observable<WebhookTriggerFlowsResponse> {
+        return this.http.get<WebhookTriggerFlowsResponse>(`${this.apiUrl}${id}/flows/`, { headers: this.headers });
     }
 
     create(trigger: WebhookTriggerModel): Observable<WebhookTriggerModel> {

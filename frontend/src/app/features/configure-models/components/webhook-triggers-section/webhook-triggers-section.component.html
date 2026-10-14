@@ -85,6 +85,7 @@
                                 type="button"
                                 class="trigger-card__action"
                                 title="Edit"
+                                [disabled]="isEditCheckPending()"
                                 (click)="onEdit(trigger)"
                             >
                                 <i

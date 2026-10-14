@@ -5,12 +5,14 @@ NODE_TYPE_REGISTRY; everything here derives from it. A trigger node starts flow 
 by itself, so writing one — directly, or by copying, importing or restoring a flow
 that holds one — requires RUN on flows (`TriggerNodeAccess`, shared as
 `trigger_node_access`). `TriggerNodeInspector` answers whether a source holds a
-trigger node. The module-level functions answer whether running a piece of code needs
-RUN because a trigger node owns it.
+trigger node, and which flows hold one on a webhook trigger. The module-level
+functions answer whether running a piece of code needs RUN because a trigger node
+owns it.
 """
 
 from collections.abc import Iterable
 
+from django.db.models import Q, QuerySet
 from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
@@ -92,7 +94,8 @@ class TriggerNodeInspector:
     """Whether a source holds a trigger node, one question per source shape.
 
     Stateless: a stored flow, a stored webhook trigger, a list of exported node
-    entries, one exported flow or version snapshot, or a full import file.
+    entries, one exported flow or version snapshot, or a full import file. For a
+    webhook trigger it also names the flows holding those nodes.
     """
 
     @staticmethod
@@ -118,6 +121,23 @@ class TriggerNodeInspector:
             model.objects.filter(**{field_name: webhook_trigger}).exists()
             for model, field_name in _TRIGGER_NODE_WEBHOOK_TRIGGER_FIELDS
         )
+
+    @staticmethod
+    def graphs_attached_to_webhook_trigger(webhook_trigger: WebhookTrigger) -> QuerySet[Graph]:
+        """Return the live flows of the trigger's org with a live trigger node on this trigger.
+
+        Each flow appears once, however many of its trigger nodes use the trigger.
+        Soft-deleted flows and nodes don't count. Unevaluated and unordered: one
+        query per evaluation, each node type joined in as an `IN` subquery.
+        """
+        # Starts as match-nothing: an empty Q() would match every flow of the org if no
+        # trigger node type pointed at a webhook trigger.
+        attached_to_trigger = Q(pk__in=[])
+        for model, field_name in _TRIGGER_NODE_WEBHOOK_TRIGGER_FIELDS:
+            attached_to_trigger |= Q(
+                id__in=model.objects.filter(**{field_name: webhook_trigger}).values("graph_id")
+            )
+        return Graph.objects.filter(attached_to_trigger, org_id=webhook_trigger.org_id)
 
     @staticmethod
     def has_any_in_node_entries(node_entries: Iterable[dict]) -> bool:

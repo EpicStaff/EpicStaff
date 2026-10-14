@@ -39,6 +39,18 @@ export interface WebhookTriggerModel extends Partial<AuthorshipFields> {
     created_at?: string | null;
 }
 
+export interface WebhookTriggerFlowReference {
+    id: number;
+    name: string;
+}
+
+// `GET /webhook-triggers/{id}/flows/`: the flows whose trigger nodes use the trigger. `flow_count` is the
+// true number of them; `flows` lists up to 50 by name and is empty when the caller cannot read flows.
+export interface WebhookTriggerFlowsResponse {
+    flow_count: number;
+    flows: WebhookTriggerFlowReference[];
+}
+
 // Body of `POST`/`PATCH /webhook-triggers/`: only the writable fields. The read-only ones
 // (`id`, `live_url`, `auth`, the author, the creation time, the last edit) are never sent back.
 export type WebhookTriggerPayload = Pick<

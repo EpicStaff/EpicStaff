@@ -1,6 +1,9 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-from tables.serializers.model_serializers import TelegramWebhookInfoSerializer
+from tables.serializers.model_serializers import (
+    TelegramWebhookInfoSerializer,
+    WebhookTriggerFlowsSerializer,
+)
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION = (
@@ -66,6 +69,46 @@ WEBHOOK_TRIGGER_UPDATE = {
 
 WEBHOOK_TRIGGER_PARTIAL_UPDATE = {
     "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_RUN_DESCRIPTION
+}
+
+WEBHOOK_TRIGGER_FLOWS_GET = {
+    "summary": "List the flows that hold a trigger node on this webhook trigger.",
+    "description": (
+        "The live flows of the active organization with at least one live webhook or "
+        "Telegram trigger node attached to this trigger -- the trigger nodes that make "
+        "updating the trigger require RUN on flows. `flow_count` is the number of such "
+        "flows, each counted once. `flows` lists them by name, then id, at most 50; it "
+        "is empty when the caller lacks READ on flows, while `flow_count` stays the "
+        "true total."
+    ),
+    "responses": {
+        200: OpenApiResponse(
+            response=WebhookTriggerFlowsSerializer,
+            examples=[
+                OpenApiExample(
+                    "Used by two flows",
+                    value={
+                        "flow_count": 2,
+                        "flows": [
+                            {"id": 12, "name": "Inbound orders"},
+                            {"id": 7, "name": "Support bot"},
+                        ],
+                    },
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+                OpenApiExample(
+                    "Caller cannot read flows",
+                    value={"flow_count": 2, "flows": []},
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(description="The caller lacks read permission on webhooks."),
+        404: OpenApiResponse(description="No such webhook trigger in the active organization."),
+    },
 }
 
 

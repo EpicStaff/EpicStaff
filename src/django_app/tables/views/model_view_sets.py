@@ -229,6 +229,7 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
     TwilioChannelSerializer,
+    WebhookTriggerFlowsSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -327,6 +328,7 @@ from tables.swagger_schemas.webhook_schemas import (
     TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET,
     TELEGRAM_TRIGGER_NODE_WRITE,
     WEBHOOK_TRIGGER_CREATE,
+    WEBHOOK_TRIGGER_FLOWS_GET,
     WEBHOOK_TRIGGER_NODE_CREATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
     WEBHOOK_TRIGGER_NODE_UPDATE,
@@ -2435,13 +2437,15 @@ class WebhookTriggerNodeViewSet(
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ}
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
     ).prefetch_related(*authorship_prefetches())
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
+    # The flows action names at most this many flows; `flow_count` is always the total.
+    flows_using_trigger_limit = 50
 
     def _wait_for_tunnel_url(self, trigger):
         service = WebhookTriggerService()
@@ -2480,6 +2484,25 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
+
+    @extend_schema(**WEBHOOK_TRIGGER_FLOWS_GET)
+    @action(detail=True, methods=["get"], url_path="flows")
+    def flows_using_trigger(self, request, pk=None):
+        """Return the flows whose trigger nodes make updating this trigger need flows:RUN."""
+        graphs = TriggerNodeInspector.graphs_attached_to_webhook_trigger(self.get_object())
+        effective_permissions = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        # Names only for callers who could list these flows anyway; the count is safe
+        # for anyone who may read the trigger.
+        if effective_permissions.can(ResourceType.FLOWS, Permission.READ):
+            flows = list(
+                graphs.order_by("name", "id").values("id", "name")[: self.flows_using_trigger_limit]
+            )
+        else:
+            flows = []
+        payload = {"flow_count": graphs.count(), "flows": flows}
+        return Response(WebhookTriggerFlowsSerializer(payload).data)
 
 
 @extend_schema_view(

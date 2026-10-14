@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { WebhookTriggerModel } from '@shared/models';
+import { WebhookTriggerFlowsResponse, WebhookTriggerModel } from '@shared/models';
 
 import { ConfigService } from '../../../services/config';
 import { WebhookTriggerService } from './webhook-trigger.service';
@@ -90,5 +90,46 @@ describe('WebhookTriggerService payloads', () => {
         expect(request.request.body).toHaveProperty('auth_secret_id', 12);
         expect(request.request.body).not.toHaveProperty('auth_kind');
         request.flush(LOADED_TRIGGER);
+    });
+});
+
+describe('WebhookTriggerService flows using a trigger', () => {
+    let service: WebhookTriggerService;
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
+        service = TestBed.inject(WebhookTriggerService);
+        httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => httpMock.verify());
+
+    it("asks for the trigger's flows and returns the response as-is", () => {
+        const usage: WebhookTriggerFlowsResponse = { flow_count: 2, flows: [{ id: 7, name: 'Orders' }] };
+        let received: WebhookTriggerFlowsResponse | undefined;
+
+        service.getFlows(5).subscribe((response) => (received = response));
+
+        const request = httpMock.expectOne('/api/webhook-triggers/5/flows/');
+        expect(request.request.method).toBe('GET');
+        request.flush(usage);
+        expect(received).toEqual(usage);
+    });
+
+    it('does not announce a change, since nothing was written', () => {
+        const changed = vi.fn();
+        service.changed$.subscribe(changed);
+
+        service.getFlows(5).subscribe();
+        httpMock.expectOne('/api/webhook-triggers/5/flows/').flush({ flow_count: 0, flows: [] });
+
+        expect(changed).not.toHaveBeenCalled();
     });
 });
