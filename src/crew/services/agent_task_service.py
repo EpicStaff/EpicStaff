@@ -128,7 +128,9 @@ class AgentTaskService:
             correlation_id=correlation_id,
             payload={"request_key": request_key},
         )
-        await client.xadd(self.request_stream, envelope.to_fields())
+        await client.xadd(
+            self.request_stream, envelope.to_fields(), maxlen=100_000, approximate=True
+        )
         logger.info("published agent.run correlation_id={}", correlation_id)
 
         deadline = time.monotonic() + timeout_s

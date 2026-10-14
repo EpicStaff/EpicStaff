@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import jsonschema
 import pytest
 from app.exceptions import InvalidOutputSchemaError
-from app.output.schema import add_usage, as_object_schema, validate_output
+from app.output.schema import _validator, add_usage, as_object_schema, validate_output
 from shared.models.agent_service import TokenUsage
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,20 @@ def test_validate_output_raises_invalid_output_schema_error_for_meta_invalid_sch
 
     with pytest.raises(InvalidOutputSchemaError):
         validate_output({"x": 1}, schema)
+
+
+@pytest.mark.parametrize("obj", [{"x": "a", "y": 1}, {}, {"x": 1, "y": 2}], ids=["two-errors", "missing", "y-wrong"])
+def test_validate_output_reuses_validator_and_matches_jsonschema_message(obj):
+    schema = {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "string"}}, "required": ["x"]}
+    with pytest.raises(jsonschema.ValidationError) as expected:
+        jsonschema.validate(obj, schema)
+    validate_output({"x": 1}, dict(schema))
+    hits = _validator.cache_info().hits
+
+    outcome = validate_output(obj, dict(schema))
+
+    assert outcome.error == expected.value.message
+    assert _validator.cache_info().hits == hits + 1
 
 
 # ---------------------------------------------------------------------------

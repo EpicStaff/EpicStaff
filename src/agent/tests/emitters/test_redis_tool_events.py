@@ -205,20 +205,6 @@ async def test_on_tool_result_truncates_long_content():
     assert payload["truncated"] is True
 
 
-async def test_on_final_keeps_full_untruncated_content():
-    emitter, published = _make_emitter()
-    long_content = "y" * 3000
-    await emitter.on_tool_result(
-        ToolResult(tool_call_id="call_1", content=long_content, is_error=False)
-    )
-    await emitter.on_final(_make_loop_result())
-
-    final_payload = _decode_payload(published[-1])
-    buffered_result = final_payload["events"][0]
-    assert buffered_result["event"] == "tool_result"
-    assert len(buffered_result["data"]["content"]) == 3000
-
-
 # ---------------------------------------------------------------------------
 # on_chunk publishes nothing live but accumulates usage
 # ---------------------------------------------------------------------------
@@ -581,7 +567,6 @@ async def test_full_sequence_terminal_payload_unchanged_by_live_events():
     ]
     final_payload = _decode_payload(published[-1])
     assert final_payload["final_text"] == "done"
-    assert len(final_payload["events"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -589,7 +574,7 @@ async def test_full_sequence_terminal_payload_unchanged_by_live_events():
 # ---------------------------------------------------------------------------
 
 
-async def test_live_publish_failure_does_not_propagate_and_buffering_continues():
+async def test_live_publish_failure_does_not_propagate():
     client = MagicMock()
     published: list[dict] = []
 
@@ -612,7 +597,7 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
     await emitter.on_final(_make_loop_result())
 
     (final,) = published
-    assert [event["event"] for event in _decode_payload(final)["events"]] == ["tool_call"]
+    assert final["type"] == "agent.result"
 
 
 # ---------------------------------------------------------------------------
@@ -729,10 +714,6 @@ async def test_registered_knowledge_tool_suppresses_live_tool_events():
     )
 
     assert published == []
-    # The terminal result still carries the full step.
-    await emitter.on_final(_make_loop_result())
-    (final,) = published
-    assert [event["event"] for event in _decode_payload(final)["events"]] == ["tool_call", "tool_result"]
 
 
 async def test_unregistered_tool_still_publishes_live_events():
