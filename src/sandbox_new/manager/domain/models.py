@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -63,6 +64,9 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # Assigned by the database, never by the domain: unset until the venv is stored.
+    created_at: datetime | None = Field(default=None, frozen=True)
+    updated_at: datetime | None = Field(default=None, frozen=True)
 
     def rename(self, value: str, /):
         self.name = value

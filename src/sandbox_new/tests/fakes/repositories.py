@@ -4,9 +4,14 @@ Subclasses the real port, so a change to ``AbstractVenvRepository`` breaks this 
 import time instead of drifting away from it silently. Every read hands out a copy and
 every write stores a copy, so a caller that mutates what it read without calling
 ``update`` does not change the stored row -- a real repository would behave the same way.
+
+Inserting fills ``created_at``/``updated_at`` the way the database does, so a stored row
+always carries both.
 """
 
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 from manager.domain.enums import VenvStatus
 from manager.domain.models import DEFAULT_VENV_NAME, Venv
@@ -27,13 +32,25 @@ class FakeVenvRepository(AbstractVenvRepository):
             if venv.id is None:
                 stored.append(self._insert(venv))
             else:
-                self.rows[venv.id] = venv.model_copy(deep=True)
+                self.rows[venv.id] = venv.model_copy(
+                    deep=True, update=self._stored_timestamps(venv)
+                )
                 self._next_id = max(self._next_id, venv.id + 1)
                 stored.append(self.rows[venv.id].model_copy(deep=True))
         return stored
 
+    @staticmethod
+    def _stored_timestamps(venv: Venv) -> dict[str, datetime]:
+        moment = datetime.now(UTC)
+        return {
+            "created_at": venv.created_at or moment,
+            "updated_at": venv.updated_at or moment,
+        }
+
     def _insert(self, venv: Venv) -> Venv:
-        stored = venv.model_copy(deep=True, update={"id": self._next_id})
+        stored = venv.model_copy(
+            deep=True, update={"id": self._next_id, **self._stored_timestamps(venv)}
+        )
         self.rows[self._next_id] = stored
         self._next_id += 1
         return stored.model_copy(deep=True)

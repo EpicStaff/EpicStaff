@@ -8,7 +8,6 @@ from manager.infrastructure.database.venvs.tables import VenvTable
 class VenvMapper:
     @staticmethod
     def to_domain(row: VenvTable) -> Venv:
-        # JSONB may come back as a str depending on Piccolo config; handle both.
         raw_libs = row.libs if isinstance(row.libs, list) else json.loads(row.libs or "[]")
         return Venv(
             id=row.id,
@@ -17,6 +16,8 @@ class VenvMapper:
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
 
     @staticmethod

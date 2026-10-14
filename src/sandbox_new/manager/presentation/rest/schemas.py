@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Self
 
 from foundation.base import Schema
@@ -71,6 +72,8 @@ class VenvRetrieveSchema(Schema):
     libs: list[LibraryRetrieveSchema]
     status: VenvStatus
     error: str | None = None
+    created_at: datetime
+    updated_at: datetime
 
     @classmethod
     def from_domain(cls, venv: Venv) -> Self:
@@ -80,6 +83,8 @@ class VenvRetrieveSchema(Schema):
             libs=[LibraryRetrieveSchema.from_domain(lib) for lib in venv.libs],
             status=venv.status,
             error=venv.error,
+            created_at=venv.created_at,
+            updated_at=venv.updated_at,
         )
 
 

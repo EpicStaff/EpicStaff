@@ -5,6 +5,8 @@ live HTTP test server. The one rejection covered here is the library invariant, 
 it is the only validation that happens after the body has already been parsed.
 """
 
+from datetime import UTC, datetime
+
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
@@ -168,3 +170,22 @@ def test_update_without_libraries_leaves_them_alone(client, venv_repository):
 
     assert response.status_code == status_codes.HTTP_200_OK
     assert [lib["name"] for lib in response.json()["libs"]] == ["pandas"]
+
+
+def test_retrieve_carries_the_database_timestamps(client, venv_repository):
+    moment = datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC)
+    stored = venv_repository.seed(make_venv(created_at=moment, updated_at=moment))[0]
+
+    response = client.get(f"/venvs/{stored.id}")
+
+    body = response.json()
+    assert datetime.fromisoformat(body["created_at"]) == moment
+    assert datetime.fromisoformat(body["updated_at"]) == moment
+
+
+def test_a_venv_created_through_the_api_comes_back_stamped(client):
+    response = client.post("/venvs", json={"name": "data", "libs": []})
+
+    body = response.json()
+    assert datetime.fromisoformat(body["created_at"]).tzinfo is not None
+    assert datetime.fromisoformat(body["updated_at"]).tzinfo is not None

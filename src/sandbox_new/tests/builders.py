@@ -4,6 +4,7 @@ Each builder fills in a plausible default for every required field and takes key
 overrides, so a test states only the field it is about.
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,8 @@ def make_venv(
     hash: str | None = None,
     status: VenvStatus = VenvStatus.DECLARED,
     error: str | None = None,
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> Venv:
     return Venv(
         id=id,
@@ -44,6 +47,8 @@ def make_venv(
         hash=hash,
         status=status,
         error=error,
+        created_at=created_at,
+        updated_at=updated_at,
     )
 
 
