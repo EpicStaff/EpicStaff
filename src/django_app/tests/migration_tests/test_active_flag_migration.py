@@ -1,4 +1,4 @@
-"""tables 0258/0259 and agents 0010/0011 copy is_soft_deleted into active and back."""
+"""tables 0269/0270 and agents 0015/0016 copy is_soft_deleted into active and back."""
 
 import pytest
 from django.db import connection
@@ -6,12 +6,12 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 BEFORE = [
-    ("tables", "0257_backfill_openai_realtime_model_names"),
-    ("agents", "0009_alter_agentdefinition_organization_and_more"),
+    ("tables", "0268_merge_20261013_1631"),
+    ("agents", "0014_merge_20261009_0941"),
 ]
 AFTER = [
-    ("tables", "0259_drop_is_soft_deleted"),
-    ("agents", "0011_drop_is_soft_deleted"),
+    ("tables", "0270_recycle_bin_soft_delete"),
+    ("agents", "0016_recycle_bin_soft_delete"),
 ]
 
 
