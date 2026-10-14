@@ -1,4 +1,3 @@
-import { DatePipe, DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
@@ -10,93 +9,66 @@ import {
     inject,
     Injector,
     input,
-    LOCALE_ID,
     signal,
     untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/components';
+import { Router } from '@angular/router';
+import { AppSvgIconComponent } from '@shared/components';
 import { CollapseOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { filter, Subscription } from 'rxjs';
+import { filter } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import {
     ChatActionMenuComponent,
     ChatActionMenuItem,
 } from '../../components/chat-action-menu/chat-action-menu.component';
 import { ChatBindingStatusComponent } from '../../components/chat-binding-status/chat-binding-status.component';
-import {
-    ChatOperatorReplySent,
-    ChatThreadComposerComponent,
-} from '../../components/chat-thread-composer/chat-thread-composer.component';
-import { ChatUsageRingComponent } from '../../components/chat-usage-ring/chat-usage-ring.component';
+import { ChatThreadComponent } from '../../components/chat-thread/chat-thread.component';
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
 import { DeskAvatarComponent } from '../../components/desk-avatar/desk-avatar.component';
-import { CHAT_MODE_LABELS, ChatConversation, ChatMode, ChatOperatorMessage } from '../../models/chat.model';
-import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService } from '../../services/chat-api.service';
+import { ChatConversation } from '../../models/chat.model';
+import { ChatApiService } from '../../services/chat-api.service';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
-import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
-import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
+import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
 import { OpenConversationSyncService } from '../../services/open-conversation-sync.service';
-import { actionLabel } from '../../utils/action-label.util';
-import {
-    ConversationAction,
-    ConversationActionContext,
-    conversationHolder,
-    conversationMenuItems,
-    primaryConversationAction,
-} from '../../utils/conversation-actions.util';
-import { closedSummary, isClosed } from '../../utils/conversation-close.util';
-import { operatorName, visitorName } from '../../utils/conversation-row.util';
 import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
-import { upsertMessage } from '../../utils/inbox-merge.util';
-import { tickingNow } from '../../utils/ticking-now.util';
 
 const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
-// The closed banner's time changes form at midnight only ("14:05", then "Oct 5, 14:05"): a minute is close enough.
-const CLOCK_TICK_MS = 60_000;
 
 type DeskAction = 'my-name' | 'settings' | 'snippet' | 'pause' | 'delete';
 
 /**
- * A desk's workspace (or All desks): the desk toolbar over the conversations and the open conversation's thread. The
- * open conversation is in the URL (`OpenConversationService`), so a reload or a link reopens it, and its row follows the
- * server (`OpenConversationSyncService`). A closed conversation
- * opens read-only: a banner says why it closed where the composer was. On phones the
- * conversations and the thread are a navigation stack, as on iOS: the thread pushes in from the right over the list,
- * and Back (the thread's own, Safari's edge swipe, Android's back) pops it.
+ * A desk's workspace (or All desks): the desk toolbar over the conversations and the open conversation's thread
+ * (`ChatThreadComponent`). The open conversation is in the URL (`OpenConversationService`), so a reload or a link
+ * reopens it, and its row follows the server (`OpenConversationSyncService`). On phones the conversations and the
+ * thread are a navigation stack, as on iOS: the thread pushes in from the right over the list, and Back (the thread's
+ * own, Safari's edge swipe, Android's back) pops it.
  */
 @Component({
     selector: 'app-chat-page',
     imports: [
-        DatePipe,
         MatTooltipModule,
-        RouterLink,
-        ChatUsageRingComponent,
         AppSvgIconComponent,
-        ButtonComponent,
         ChatActionMenuComponent,
         ChatBindingStatusComponent,
-        ChatThreadComposerComponent,
+        ChatThreadComponent,
         CollapseOnOverflowDirective,
         ConversationListComponent,
         DeskAvatarComponent,
-        SpinnerComponent,
     ],
-    providers: [OpenConversationService, OpenConversationSyncService],
+    providers: [OpenConversationService, OpenConversationSyncService, ChatVisitorTokensStore],
     templateUrl: './chat-page.component.html',
     styleUrls: ['./chat-page.component.scss'],
 })
@@ -104,23 +76,11 @@ export class ChatPageComponent {
     /** From the route: the binding this workspace is scoped to; absent on the all-bindings inbox. */
     readonly bindingId = input<string>();
 
-    private readonly composer = viewChild(ChatThreadComposerComponent);
+    private readonly thread = viewChild(ChatThreadComponent);
     private readonly conversationList = viewChild(ConversationListComponent);
-    private readonly threadScroller = viewChild<ElementRef<HTMLElement>>('threadScroller');
-    private readonly olderSentinel = viewChild<ElementRef<HTMLElement>>('olderSentinel');
     private readonly deskSwitcher = viewChild<ElementRef<HTMLButtonElement>>('deskSwitcher');
-    private readonly threadBack = viewChild<ElementRef<HTMLButtonElement>>('threadBack');
-    private readonly closedBannerElement = viewChild<ElementRef<HTMLElement>>('closedBannerElement');
 
-    readonly messages = signal<ChatOperatorMessage[]>([]);
-    readonly hasOlderMessages = signal(false);
-    readonly isLoadingOlder = signal(false);
     readonly isStartingTest = signal(false);
-    /** Visitor tokens of the test conversations started on this page; the server issues one only on create. */
-    readonly visitorTokens = signal<Record<string, string>>({});
-    // The test conversation a visitor token is being fetched for, and the ones whose fetch failed (until reselected).
-    readonly visitorTokenPendingFor = signal<string | null>(null);
-    readonly visitorTokenErrors = signal<Record<string, string>>({});
     // The desk list asked for once the route moved to a desk the list lacked: only that list can say it is gone.
     private readonly deskListRequestedFor = signal<{ bindingId: string; request: number } | null>(null);
 
@@ -136,7 +96,7 @@ export class ChatPageComponent {
         const listed = this.conversationList()?.selectedRow();
         return row && listed?.id === row.id ? listed : row;
     });
-    // The thread's messages follow the conversation shown, not an id that has no row yet.
+    // The thread follows the conversation shown, not an id that has no row yet.
     private readonly shownConversationId = computed(() => this.selected()?.id ?? null);
     readonly isAllBindings = computed(() => !this.bindingId());
     // Null until the desks load; an id they do not list sends the user back to All desks.
@@ -148,32 +108,10 @@ export class ChatPageComponent {
         const title = this.title();
         return title ? `Switch desk, current: ${title}` : 'Switch desk';
     });
-    /** The thread's Back on phones, named after the list it returns to. */
-    readonly backText = computed(() => this.title() || 'Back');
-    readonly backLabel = computed(() => {
-        const title = this.title();
-        return title ? `Back to ${title}` : 'Back';
-    });
     readonly pauseLabel = computed(() => (this.routeBinding()?.is_active ? 'Pause' : 'Resume'));
     readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
     readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
-    readonly selectedBinding = computed(
-        () => this.desksStorage.desks().find((binding) => binding.id === this.selected()?.binding_id) ?? null
-    );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
-    /** The open conversation is closed: read-only, with no actions, and a banner where the composer was. */
-    readonly isClosed = computed(() => isClosed(this.selected()));
-    /** The open conversation's desk style, which words its actions; null while that desk is not known. */
-    readonly selectedStyle = computed(() => this.selectedBinding()?.style ?? null);
-    // The current time, for the banner's: it shows a date once the close is no longer today.
-    private readonly now = tickingNow(CLOCK_TICK_MS);
-    /** Why and when the open conversation closed: "Closed · Resolved by Mike · 14:05"; empty while it is open. */
-    readonly closedBanner = computed(() => {
-        const conversation = this.selected();
-        if (!conversation || !isClosed(conversation)) return '';
-        const myUserId = this.profileService.currentUserSignal()?.id ?? null;
-        return closedSummary(conversation, this.selectedStyle(), myUserId, this.now(), this.locale);
-    });
     /**
      * The name visitors see on the user's replies on the open desk: their alias there, else its operator name. Null
      * while not known: the My name action then names no one rather than a name that may be wrong.
@@ -190,33 +128,8 @@ export class ChatPageComponent {
         const name = this.myNameOnDesk();
         return name ? `Visitors see you as ${name}` : '';
     });
-    /** The same on the open conversation's desk, for the composer; null until that desk is known. */
-    readonly myNameOnConversationDesk = computed(() => {
-        const binding = this.selectedBinding();
-        return binding ? this.myAliasesStorage.visibleNameOn(binding) : null;
-    });
     readonly canUpdate = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Update));
     readonly canDelete = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Delete));
-    /** The user holds the open conversation, which is still open: a closed one is nobody's to work on. */
-    readonly isClaimedByMe = computed(() => {
-        const conversation = this.selected();
-        const me = this.profileService.currentUserSignal();
-        return (
-            conversation?.mode === 'human' &&
-            !isClosed(conversation) &&
-            !!me &&
-            conversation.assigned_operator_id === me.id
-        );
-    });
-    // Who holds the open conversation, for the mode pill's tooltip: "you", their name or "Operator #7"; null while
-    // nobody does, and once it is closed.
-    readonly holderLabel = computed(() => {
-        const conversation = this.selected();
-        const operatorId = conversation?.assigned_operator_id ?? null;
-        if (operatorId === null || isClosed(conversation)) return null;
-        if (operatorId === this.profileService.currentUserSignal()?.id) return 'you';
-        return operatorName(operatorId, conversation?.assigned_operator_name ?? null);
-    });
     /** Phones put every desk action except Test in the list screen's ⋯ menu; the same permissions as the toolbar's. */
     readonly deskMenuItems = computed((): ChatActionMenuItem<DeskAction>[] => {
         if (!this.routeBinding()) return [];
@@ -229,29 +142,6 @@ export class ChatPageComponent {
             this.canDelete() && { id: 'delete', label: 'Delete' },
         ];
         return items.filter((item) => item !== false);
-    });
-    /** What the open conversation's actions depend on; null while none is open. */
-    private readonly actionContext = computed((): ConversationActionContext | null => {
-        const conversation = this.selected();
-        if (!conversation) return null;
-        return {
-            style: this.selectedStyle(),
-            holder: conversationHolder(conversation, this.profileService.currentUserSignal()?.id ?? null),
-            isClosed: isClosed(conversation),
-            isPhone: this.isPhone(),
-            canUse: this.canUse(),
-            isPending: this.isActionPending(),
-        };
-    });
-    /** The holder's main action, a button beside the title (see `primaryConversationAction`). */
-    readonly primaryAction = computed(() => {
-        const context = this.actionContext();
-        return context ? primaryConversationAction(context) : null;
-    });
-    /** The open conversation's other actions, in its ⋯ menu (see `conversationMenuItems`). */
-    readonly conversationMenuItems = computed((): ChatActionMenuItem<ConversationAction>[] => {
-        const context = this.actionContext();
-        return context ? conversationMenuItems(context) : [];
     });
 
     /**
@@ -336,28 +226,6 @@ export class ChatPageComponent {
             else if (lookup !== 'loading') this.openConversationSync.resolve(id, lookup);
         });
     });
-    /**
-     * A close takes away what the user was on (the composer, Resolve, the ⋯ menu): once the open conversation turns
-     * closed, the focus moves to the banner that says so, unless it is still somewhere on the page.
-     */
-    private readonly focusBannerOnClose = effect(() => {
-        const id = this.shownConversationId();
-        const closed = this.isClosed();
-        untracked(() => {
-            const turnedClosed = closed && this.openState?.id === id && !this.openState.closed;
-            this.openState = { id, closed };
-            if (!turnedClosed) return;
-            afterNextRender(
-                () => {
-                    const active = this.document.activeElement;
-                    if (!active || active === this.document.body || !active.isConnected) {
-                        this.closedBannerElement()?.nativeElement.focus();
-                    }
-                },
-                { injector: this.injector }
-            );
-        });
-    });
     // Phones: the focus goes with the screen the user moved to: the thread's Back, or the row the thread was opened from.
     private readonly moveFocusWithStack = effect(() => {
         const openId = this.isPhone() ? this.shownConversationId() : undefined;
@@ -365,12 +233,10 @@ export class ChatPageComponent {
             const previousId = this.stackOpenId;
             this.stackOpenId = openId;
             if (openId === undefined || previousId === undefined) return;
-            // Without scrolling: a pane still sliding in may be past the edge, and the browser would scroll to it.
             if (openId && !previousId) {
-                afterNextRender(() => this.threadBack()?.nativeElement.focus({ preventScroll: true }), {
-                    injector: this.injector,
-                });
+                afterNextRender(() => this.thread()?.focusBack(), { injector: this.injector });
             } else if (!openId && previousId) {
+                // Without scrolling: a pane still sliding may be past the edge, and the browser would scroll to it.
                 afterNextRender(() => this.conversationList()?.focusRow(previousId, { preventScroll: true }), {
                     injector: this.injector,
                 });
@@ -384,48 +250,13 @@ export class ChatPageComponent {
         this.deskDrawer.registerSwitcher(switcher);
         onCleanup(() => this.deskDrawer.unregisterSwitcher(switcher));
     });
-    /**
-     * Infinite scroll up: the sentinel row entering the thread viewport loads the next older page. Only after the
-     * user scrolled this thread, so the first render (anchored at the bottom) does not page by itself. The thread
-     * is a column-reverse scroller anchored at its end, so prepended messages leave the view where it was.
-     */
-    private readonly loadOlderOnSentinel = effect((onCleanup) => {
-        const sentinel = this.olderSentinel()?.nativeElement;
-        const root = this.threadScroller()?.nativeElement;
-        if (!sentinel || !root || typeof IntersectionObserver === 'undefined') return;
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (this.hasUserScrolled && entries.some((entry) => entry.isIntersecting)) this.loadOlderMessages();
-            },
-            { root }
-        );
-        observer.observe(sentinel);
-        onCleanup(() => observer.disconnect());
-    });
-    // A test conversation started elsewhere (or before a reload) has no token here yet: get one to write as its visitor.
-    // A closed one takes no more messages.
-    private readonly fetchVisitorToken = effect(() => {
-        const conversation = this.selected();
-        if (!conversation?.is_test || !this.canUse() || isClosed(conversation)) return;
-        untracked(() => this.ensureVisitorToken(conversation.id));
-    });
-    private readonly loadThreadOnSelect = effect(() => {
-        const id = this.shownConversationId();
-        this.chatInboxStream.readyEpoch();
-        untracked(() => this.loadThread(id));
-    });
 
-    protected readonly isActionPending = inject(ChatConversationActionsService).isPending;
-    protected readonly actionLabel = actionLabel;
-    protected readonly visitorName = visitorName;
     protected readonly allDesksIcon = ALL_DESKS_ICON;
     protected readonly deskDrawer = inject(DeskDrawerService);
     protected readonly openConversation = inject(OpenConversationService);
     protected readonly isPhone = inject(PhoneLayoutService).isPhone;
 
     private readonly chatApi = inject(ChatApiService);
-    private readonly chatInboxStream = inject(ChatInboxStreamService);
-    private readonly profileService = inject(ProfileService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -434,62 +265,20 @@ export class ChatPageComponent {
     private readonly bindingActions = inject(ChatBindingActionsService);
     private readonly desksStorage = inject(ChatDesksStorageService);
     private readonly myAliasesStorage = inject(ChatMyAliasesStorageService);
-    private readonly conversationActions = inject(ChatConversationActionsService);
+    private readonly visitorTokens = inject(ChatVisitorTokensStore);
     private readonly openConversationSync = inject(OpenConversationSyncService);
     private readonly injector = inject(Injector);
-    private readonly document = inject(DOCUMENT);
-    private readonly locale = inject(LOCALE_ID);
-    private threadId: string | null = null;
-    private hasUserScrolled = false;
-    // Bumped whenever another thread opens; an older page lands only in the thread it was requested for.
-    private threadEpoch = 0;
-    private olderRequest: Subscription | null = null;
     private scope: string | null | undefined = undefined;
     // Phones: the conversation the stack showed last (null: the list); undefined off phones and before the first look.
     private stackOpenId: string | null | undefined = undefined;
     private orgId: number | null | undefined = undefined;
     private isLeavingForOrgSwitch = false;
-    // The conversation shown last and whether it was closed, to tell a close from opening a closed conversation.
-    private openState: { id: string | null; closed: boolean } | null = null;
-
-    constructor() {
-        this.chatInboxStream.messageCreated$
-            .pipe(
-                filter((event) => event.conversation_id === this.shownConversationId()),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((event) =>
-                this.messages.update((list) =>
-                    upsertMessage(list, {
-                        id: event.id,
-                        role: event.role,
-                        content: event.content,
-                        actions: event.actions,
-                        action: event.action,
-                        created_at: event.created_at,
-                        // The inbox event carries no run id; the next page of messages fills it in.
-                        session_id: null,
-                        author_user_id: event.author_user_id,
-                        author_name: event.author_name,
-                        visible_name: event.visible_name,
-                    })
-                )
-            );
-    }
 
     selectConversation(conversation: ChatConversation): void {
-        const id = conversation.id;
         // Selecting again retries a failed visitor token.
-        const hadFailed = !!this.visitorTokenErrors()[id];
-        if (hadFailed) {
-            this.visitorTokenErrors.update((errors) => {
-                const rest = { ...errors };
-                delete rest[id];
-                return rest;
-            });
-        }
+        const hadFailed = this.visitorTokens.clearError(conversation.id);
         this.openConversation.open(conversation);
-        if (hadFailed && conversation.is_test && this.canUse()) this.ensureVisitorToken(id);
+        if (hadFailed && conversation.is_test && this.canUse()) this.visitorTokens.ensure(conversation.id);
     }
 
     // The created row seeds the header: its stream event may already have passed, before it was selected.
@@ -515,18 +304,6 @@ export class ChatPageComponent {
         run[action]();
     }
 
-    runConversationAction(action: ConversationAction): void {
-        const conversation = this.selected();
-        if (!conversation) return;
-        const run: Record<ConversationAction, () => void> = {
-            'take-over': () => this.claim(conversation),
-            release: () => this.release(conversation),
-            resolve: () => this.conversationActions.resolve(conversation),
-            close: () => this.conversationActions.closeConversation(conversation),
-        };
-        run[action]();
-    }
-
     /** Tests this workspace's binding; works on a paused one too (a test skips the active and origin checks). */
     startTest(): void {
         const bindingId = this.routeBinding()?.id;
@@ -538,66 +315,15 @@ export class ChatPageComponent {
             .subscribe({
                 next: ({ conversation, visitor_token }) => {
                     this.isStartingTest.set(false);
-                    this.visitorTokens.update((tokens) => ({ ...tokens, [conversation.id]: visitor_token }));
+                    this.visitorTokens.remember(conversation.id, visitor_token);
                     this.onTestConversationStarted(conversation);
-                    afterNextRender(() => this.composer()?.focus(), { injector: this.injector });
+                    afterNextRender(() => this.thread()?.focusComposer(), { injector: this.injector });
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isStartingTest.set(false);
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
-    }
-
-    onOperatorMessageSent({ conversationId, message }: ChatOperatorReplySent): void {
-        if (this.selectedId() === conversationId) this.messages.update((list) => upsertMessage(list, message));
-    }
-
-    // At the bottom a column-reverse scroller sits at 0: a scroll event there (a browser clamp when the thread
-    // changes) is not the user scrolling up.
-    onThreadScroll(): void {
-        this.hasUserScrolled ||= (this.threadScroller()?.nativeElement.scrollTop ?? 0) !== 0;
-    }
-
-    loadOlderMessages(): void {
-        const id = this.selectedId();
-        const oldest = this.messages()[0];
-        if (!id || !oldest || this.isLoadingOlder()) return;
-        this.isLoadingOlder.set(true);
-        // Another thread opened meanwhile (even A → B → A) must not get this page prepended to its fresh start.
-        const epoch = this.threadEpoch;
-        let landed = false;
-        this.olderRequest = this.chatApi
-            .getMessages(id, oldest.id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (page) => {
-                    if (epoch !== this.threadEpoch) return;
-                    landed = true;
-                    this.messages.update((list) => page.reduce(upsertMessage, list));
-                    this.hasOlderMessages.set(page.length === CHAT_MESSAGES_PAGE_SIZE);
-                },
-                error: (error: HttpErrorResponse) => {
-                    this.isLoadingOlder.set(false);
-                    this.toastService.error(extractHttpErrorMessage(error));
-                },
-                complete: () => {
-                    this.isLoadingOlder.set(false);
-                    // A page too short to push the sentinel out of view gets no new intersection: check after render.
-                    // A page that added nothing older (all already listed) ends the chain.
-                    if (landed && this.messages()[0]?.id !== oldest.id) {
-                        afterNextRender(() => this.loadOlderIfSentinelInView(), { injector: this.injector });
-                    }
-                },
-            });
-    }
-
-    claim(conversation: ChatConversation): void {
-        this.conversationActions.takeOver(conversation);
-    }
-
-    release(conversation: ChatConversation): void {
-        this.conversationActions.release(conversation);
     }
 
     openSettings(): void {
@@ -642,92 +368,5 @@ export class ChatPageComponent {
         (binding.is_active ? this.bindingActions.pause(binding) : this.bindingActions.resume(binding))
             .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.desksStorage.reload());
-    }
-
-    protected modeLabel(mode: ChatMode): string {
-        return CHAT_MODE_LABELS[mode];
-    }
-
-    /**
-     * Who wrote an operator message: "You", their name, or "Operator #7" while the name is not known; then the name
-     * visitors saw on it when that was another one: "Bea Agent · as Mike". Operators only see this line.
-     */
-    operatorLabel(message: ChatOperatorMessage): string {
-        const author = this.operatorAuthor(message);
-        const visibleName = message.visible_name;
-        return visibleName && visibleName !== message.author_name ? `${author} · as ${visibleName}` : author;
-    }
-
-    private operatorAuthor(message: ChatOperatorMessage): string {
-        const authorId = message.author_user_id;
-        if (authorId === null) return message.author_name || '—';
-        if (authorId === this.profileService.currentUserSignal()?.id) return 'You';
-        return operatorName(authorId, message.author_name);
-    }
-
-    sessionLink(message: ChatOperatorMessage): unknown[] | null {
-        const graphId = this.selectedBinding()?.graph_id;
-        return message.session_id && graphId ? ['/graph', graphId, 'session', message.session_id] : null;
-    }
-
-    // A reload of the same thread merges into what is shown; only a different selection starts empty.
-    private loadThread(id: string | null): void {
-        if (id !== this.threadId) {
-            this.threadId = id;
-            this.threadEpoch++;
-            this.olderRequest?.unsubscribe();
-            this.olderRequest = null;
-            this.isLoadingOlder.set(false);
-            this.hasUserScrolled = false;
-            this.messages.set([]);
-            this.hasOlderMessages.set(false);
-        }
-        if (!id) return;
-        this.chatApi
-            .getMessages(id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (page) => {
-                    if (this.shownConversationId() !== id) return;
-                    this.messages.update((list) => page.reduce(upsertMessage, list));
-                    this.hasOlderMessages.set(page.length === CHAT_MESSAGES_PAGE_SIZE);
-                },
-                error: (error: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(error)),
-            });
-    }
-
-    private ensureVisitorToken(conversationId: string): void {
-        if (this.visitorTokens()[conversationId] || this.visitorTokenErrors()[conversationId]) return;
-        if (this.visitorTokenPendingFor() === conversationId) return;
-        this.visitorTokenPendingFor.set(conversationId);
-        this.chatApi
-            .issueVisitorToken(conversationId)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                // Kept even after the operator moved on: it stays valid for its conversation, so returning to it
-                // mints nothing new. The composer only shows the open conversation's token.
-                next: ({ visitor_token }) =>
-                    this.visitorTokens.update((tokens) => ({ ...tokens, [conversationId]: visitor_token })),
-                error: () => {
-                    if (this.visitorTokenPendingFor() === conversationId) this.visitorTokenPendingFor.set(null);
-                    if (this.selectedId() !== conversationId) return;
-                    this.visitorTokenErrors.update((errors) => ({
-                        ...errors,
-                        [conversationId]: "Couldn't get a visitor token. Select the conversation again to retry.",
-                    }));
-                },
-                complete: () => {
-                    if (this.visitorTokenPendingFor() === conversationId) this.visitorTokenPendingFor.set(null);
-                },
-            });
-    }
-
-    private loadOlderIfSentinelInView(): void {
-        const sentinel = this.olderSentinel()?.nativeElement;
-        const root = this.threadScroller()?.nativeElement;
-        if (!sentinel || !root || !this.hasUserScrolled || !this.hasOlderMessages()) return;
-        const sentinelBox = sentinel.getBoundingClientRect();
-        const rootBox = root.getBoundingClientRect();
-        if (sentinelBox.bottom > rootBox.top && sentinelBox.top < rootBox.bottom) this.loadOlderMessages();
     }
 }

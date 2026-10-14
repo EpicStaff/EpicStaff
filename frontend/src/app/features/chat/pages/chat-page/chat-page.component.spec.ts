@@ -14,6 +14,8 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { ChatThreadComponent } from '../../components/chat-thread/chat-thread.component';
+import { ChatThreadHeaderComponent } from '../../components/chat-thread-header/chat-thread-header.component';
 import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
 import {
     CHAT_BINDING_DEFAULTS,
@@ -29,6 +31,7 @@ import { ChatBindingActionsService } from '../../services/chat-binding-actions.s
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
+import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
@@ -239,6 +242,13 @@ describe('ChatPageComponent', () => {
                 '.thread-header app-button button'
             )
         ).find((button) => button.textContent?.trim() === label);
+
+    /** The open conversation's thread; there is one only while a conversation is open. */
+    const threadView = (): ChatThreadComponent =>
+        fixture.debugElement.query(By.directive(ChatThreadComponent)).componentInstance;
+    const threadHeader = (): ChatThreadHeaderComponent =>
+        fixture.debugElement.query(By.directive(ChatThreadHeaderComponent)).componentInstance;
+    const visitorTokens = (): ChatVisitorTokensStore => fixture.debugElement.injector.get(ChatVisitorTokensStore);
 
     /** The route's binding id, as the router binds it; '' is the all-bindings inbox. */
     function scopeTo(bindingId: string): void {
@@ -612,7 +622,7 @@ describe('ChatPageComponent', () => {
             messageCreated$.next(streamed);
             messageCreated$.next({ ...streamed, visible_name: null });
             fixture.detectChanges();
-            expect(fixture.componentInstance.messages()).toEqual([expect.objectContaining({ visible_name: 'Mike' })]);
+            expect(threadView().messages()).toEqual([expect.objectContaining({ visible_name: 'Mike' })]);
             expect(text('.message__author')).toEqual(['Bea Agent · as Mike']);
         });
     });
@@ -760,7 +770,7 @@ describe('ChatPageComponent', () => {
 
         scopeTo('b-2');
         expect(component.selectedId()).toBeNull();
-        expect(component.messages()).toEqual([]);
+        expect(fixture.nativeElement.querySelector('app-chat-thread')).toBeNull();
     });
 
     it('keeps the operator-only composer without a Visitor / Operator switch on a real conversation', () => {
@@ -777,10 +787,10 @@ describe('ChatPageComponent', () => {
         component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
         const message = { id: 'm-a', role: 'operator', content: 'for A' } as ChatOperatorMessage;
-        component.onOperatorMessageSent({ conversationId: 'c-a', message });
-        expect(component.messages()).toEqual([]);
-        component.onOperatorMessageSent({ conversationId: 'c-1', message });
-        expect(component.messages()).toEqual([message]);
+        threadView().onOperatorMessageSent({ conversationId: 'c-a', message });
+        expect(threadView().messages()).toEqual([]);
+        threadView().onOperatorMessageSent({ conversationId: 'c-1', message });
+        expect(threadView().messages()).toEqual([message]);
     });
 
     it('names who wrote each operator message: you, their name, or their number while it is not known', () => {
@@ -824,7 +834,7 @@ describe('ChatPageComponent', () => {
             visible_name: null,
         });
         fixture.detectChanges();
-        expect(fixture.componentInstance.messages()[0]).toEqual(
+        expect(threadView().messages()[0]).toEqual(
             expect.objectContaining({ author_user_id: 7, author_name: 'Grace Hopper' })
         );
         expect(text('.message__author')).toEqual(['Grace Hopper']);
@@ -877,7 +887,7 @@ describe('ChatPageComponent', () => {
         });
         fixture.detectChanges();
 
-        expect(fixture.componentInstance.messages()[0].action).toEqual({ type: 'button', label: '<b>Yes</b>' });
+        expect(threadView().messages()[0].action).toEqual({ type: 'button', label: '<b>Yes</b>' });
         expect(text('.message__content')).toEqual(['<i>why</i>']);
         expect(text('.message__action')).toEqual(['Action: <b>Yes</b>', 'Action: {"id":"more"}']);
         expect(fixture.nativeElement.querySelector('.message b, .message i')).toBeNull();
@@ -940,7 +950,7 @@ describe('ChatPageComponent', () => {
             page$.complete();
             fixture.detectChanges();
             expect(
-                fixture.componentInstance
+                threadView()
                     .messages()
                     .slice(0, 3)
                     .map((message) => message.id)
@@ -1034,7 +1044,7 @@ describe('ChatPageComponent', () => {
 
             openFullThread('c-2');
             expect(stale$.observed).toBe(false);
-            expect(fixture.componentInstance.isLoadingOlder()).toBe(false);
+            expect(threadView().isLoadingOlder()).toBe(false);
             expect(text('.thread__older button')).toEqual(['Load older messages']);
             chatApi.getMessages.mockClear();
             chatApi.getMessages.mockReturnValueOnce(of([]));
@@ -1054,7 +1064,11 @@ describe('ChatPageComponent', () => {
             stale$.next(thread(3, 'old'));
             stale$.complete();
             fixture.detectChanges();
-            expect(fixture.componentInstance.messages().some((message) => message.id.startsWith('old-'))).toBe(false);
+            expect(
+                threadView()
+                    .messages()
+                    .some((message) => message.id.startsWith('old-'))
+            ).toBe(false);
         });
 
         it('stops chaining when a landed page added nothing older', () => {
@@ -1078,6 +1092,56 @@ describe('ChatPageComponent', () => {
             chatApi.getMessages.mockReturnValueOnce(of([]));
             (fixture.nativeElement.querySelector('.thread__older button') as HTMLButtonElement).click();
             expect(chatApi.getMessages).toHaveBeenCalledWith('c-1', 'm-0');
+        });
+
+        describe('after a reconnect', () => {
+            // Written an hour after the open thread's messages.
+            const newer = (count: number): ChatOperatorMessage[] =>
+                thread(count, 'new').map((message) => ({
+                    ...message,
+                    created_at: message.created_at.replace('T10:', 'T11:'),
+                }));
+            const olderButton = (): HTMLButtonElement =>
+                fixture.nativeElement.querySelector('.thread__older button') as HTMLButtonElement;
+
+            function reconnectWith(newestPage: ChatOperatorMessage[]): void {
+                chatApi.getMessages.mockReturnValueOnce(of(newestPage));
+                readyEpoch.update((value) => value + 1);
+                fixture.detectChanges();
+            }
+
+            it('merges a newest page that overlaps the thread', () => {
+                openFullThread();
+                reconnectWith([...thread(CHAT_MESSAGES_PAGE_SIZE).slice(10), ...newer(10)]);
+                const shown = text('.message__content');
+                expect(shown).toHaveLength(CHAT_MESSAGES_PAGE_SIZE + 10);
+                expect([shown[0], shown.at(-1)]).toEqual(['m 0', 'new 9']);
+            });
+
+            it('shows the newest page alone when more than a page arrived meanwhile, and pages back from it', () => {
+                openFullThread();
+                reconnectWith(newer(CHAT_MESSAGES_PAGE_SIZE));
+                const shown = text('.message__content');
+                expect(shown).toHaveLength(CHAT_MESSAGES_PAGE_SIZE);
+                expect([shown[0], shown.at(-1)]).toEqual(['new 0', 'new 49']);
+
+                chatApi.getMessages.mockClear();
+                chatApi.getMessages.mockReturnValueOnce(of([]));
+                olderButton().click();
+                expect(chatApi.getMessages).toHaveBeenCalledWith('c-1', 'new-0');
+            });
+
+            it('drops an older page still loading when the newest page replaces the thread', () => {
+                openFullThread();
+                const stale$ = new Subject<ChatOperatorMessage[]>();
+                chatApi.getMessages.mockReturnValueOnce(stale$);
+                olderButton().click();
+                expect(stale$.observed).toBe(true);
+
+                reconnectWith(newer(CHAT_MESSAGES_PAGE_SIZE));
+                expect(stale$.observed).toBe(false);
+                expect(text('.thread__older button')).toEqual(['Load older messages']);
+            });
         });
 
         it('starts over on another conversation: no paging until the user scrolls that thread', () => {
@@ -1185,14 +1249,14 @@ describe('ChatPageComponent', () => {
         reloadWith(page([mine]), page([]));
         component.selectConversation(mine);
         fixture.detectChanges();
-        expect(component.isClaimedByMe()).toBe(true);
+        expect(threadView().isClaimedByMe()).toBe(true);
         expect(composerInput().disabled).toBe(false);
 
         // The stream dropped meanwhile, and another operator took the conversation with force: no event reached us.
         reloadWith(page([{ ...mine, assigned_operator_id: 7 }]), page([]));
 
         expect(component.selected()?.assigned_operator_id).toBe(7);
-        expect(component.isClaimedByMe()).toBe(false);
+        expect(threadView().isClaimedByMe()).toBe(false);
         expect(fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message).toBe(
             'Held by Operator #7'
         );
@@ -1224,11 +1288,11 @@ describe('ChatPageComponent', () => {
         chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
         component.selectConversation(row({ id: 'c-1' }));
         fixture.detectChanges();
-        expect(component.isClaimedByMe()).toBe(false);
+        expect(threadView().isClaimedByMe()).toBe(false);
 
-        component.claim(row({ id: 'c-1' }));
+        threadView().claim(row({ id: 'c-1' }));
         fixture.detectChanges();
-        expect(component.isClaimedByMe()).toBe(true);
+        expect(threadView().isClaimedByMe()).toBe(true);
         expect(composerInput().disabled).toBe(false);
     });
 
@@ -1260,7 +1324,7 @@ describe('ChatPageComponent', () => {
             token$.next({ visitor_token: 'vt-1' });
             token$.complete();
             fixture.detectChanges();
-            expect(fixture.componentInstance.visitorTokens()).toEqual({ 't-1': 'vt-1' });
+            expect(visitorTokens().tokens()).toEqual({ 't-1': 'vt-1' });
             expect(visitorButton().disabled).toBe(false);
             expect(visitorButton().getAttribute('aria-pressed')).toBe('true');
         });
@@ -1287,8 +1351,8 @@ describe('ChatPageComponent', () => {
             token$.next({ visitor_token: 'vt-late' });
             token$.complete();
             fixture.detectChanges();
-            expect(fixture.componentInstance.visitorTokens()).toEqual({ 't-1': 'vt-late' });
-            expect(fixture.componentInstance.visitorTokenPendingFor()).toBeNull();
+            expect(visitorTokens().tokens()).toEqual({ 't-1': 'vt-late' });
+            expect(visitorTokens().pendingFor()).toBeNull();
             // The open conversation is a real one: still no visitor switch.
             expect(fixture.nativeElement.querySelector('.composer__roles')).toBeNull();
 
@@ -1379,7 +1443,11 @@ describe('ChatPageComponent', () => {
             expect(labels).not.toContain('Claim');
             expect(labels).not.toContain('Take over');
             // The bot's conversation on a Support desk: Resolve is all the ⋯ menu has.
-            expect(fixture.componentInstance.conversationMenuItems().map(({ label }) => label)).toEqual(['Resolve']);
+            expect(
+                threadHeader()
+                    .conversationMenuItems()
+                    .map(({ label }) => label)
+            ).toEqual(['Resolve']);
             expect(text('.composer app-button')).toContain('Claim to reply');
         });
 
@@ -1451,8 +1519,10 @@ describe('ChatPageComponent', () => {
         }
 
         const actions = (): { primary: string | null; menu: string[] } => ({
-            primary: fixture.componentInstance.primaryAction()?.label ?? null,
-            menu: fixture.componentInstance.conversationMenuItems().map(({ label }) => label),
+            primary: threadHeader().primaryAction()?.label ?? null,
+            menu: threadHeader()
+                .conversationMenuItems()
+                .map(({ label }) => label),
         });
 
         // The table itself is `conversation-actions.util.spec.ts`; these prove the page feeds it.
@@ -1467,7 +1537,7 @@ describe('ChatPageComponent', () => {
             expect(actions()).toEqual({ primary: null, menu: ['Resolve'] });
             openOn(binding, closed);
             expect(actions()).toEqual({ primary: null, menu: [] });
-            expect(fixture.componentInstance.isClaimedByMe()).toBe(false);
+            expect(threadView().isClaimedByMe()).toBe(false);
 
             isPhone.set(true);
             openOn(ongoing, mine);
@@ -1477,9 +1547,13 @@ describe('ChatPageComponent', () => {
         it('disables the menu items while an action runs', () => {
             openOn(binding, others);
             chatApi.claim.mockReturnValueOnce(NEVER);
-            fixture.componentInstance.runConversationAction('take-over');
+            threadHeader().runConversationAction('take-over');
             fixture.detectChanges();
-            expect(fixture.componentInstance.conversationMenuItems().every(({ disabled }) => disabled)).toBe(true);
+            expect(
+                threadHeader()
+                    .conversationMenuItems()
+                    .every(({ disabled }) => disabled)
+            ).toBe(true);
         });
 
         it('resolves from the button beside the title at once, without asking', () => {
@@ -1497,14 +1571,14 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
             expect(chatApi.close).not.toHaveBeenCalled();
-            expect(fixture.componentInstance.isClosed()).toBe(false);
+            expect(threadHeader().isClosed()).toBe(false);
         });
 
         it('asks before Close conversation from the ⋯ menu', () => {
             openOn(ongoing, mine);
             confirmation.confirm.mockReturnValue(of(true));
             chatApi.close.mockReturnValue(of(closed));
-            fixture.componentInstance.runConversationAction('close');
+            threadHeader().runConversationAction('close');
             expect(confirmation.confirm).toHaveBeenCalledWith(
                 expect.objectContaining({ title: 'Close conversation', type: 'danger' })
             );
@@ -1619,7 +1693,7 @@ describe('ChatPageComponent', () => {
             expect(chatApi.getConversation).toHaveBeenCalledWith('c-1');
             expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
             expect(text('.thread-closed')[0]).toMatch(/^Closed after inactivity · /);
-            expect(fixture.componentInstance.primaryAction()).toBeNull();
+            expect(threadHeader().primaryAction()).toBeNull();
         });
 
         it('moves the banner time on as the clock ticks, to the date once the close is no longer today', () => {

@@ -1,4 +1,3 @@
-@use '../../../../../styles/status-chip';
 @use '../../../../../styles/header-action-buttons';
 @use '../../../../../styles/touch';
 
@@ -102,7 +101,6 @@
         min-width: 0;
     }
 
-    &__empty,
     &__placeholder {
         padding: 24px;
         font-size: var(--text-body-size);
@@ -110,9 +108,6 @@
         line-height: var(--text-body-line-height);
         color: var(--color-text-secondary);
         text-align: center;
-    }
-
-    &__placeholder {
         margin: auto;
     }
 }
@@ -128,218 +123,6 @@
 // A closed conversation's view goes at once; only the phone stack keeps it while it slides out (below).
 .thread-view--leaving {
     display: none;
-}
-
-// A test conversation, in the thread header.
-// The flow sessions' status chip, so chat chips match every other status chip. Looks: Test = expired,
-// Bot = pending, Awaiting human = waiting, Human = running, Closed = expired.
-.test-chip {
-    @include status-chip.chip;
-    @include status-chip.expired;
-    margin-left: 6px;
-}
-
-.mode-badge {
-    @include status-chip.chip;
-    @include status-chip.pending;
-    flex-shrink: 0;
-
-    &--awaiting_human {
-        @include status-chip.waiting;
-    }
-
-    &--human {
-        @include status-chip.running;
-    }
-
-    &--closed {
-        @include status-chip.expired;
-    }
-}
-
-// One compact row: mode pill, title, Test chip, today's usage rings and the operator's actions; the handoff
-// reason, when there is one, on a muted second line.
-.thread-header {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-    min-height: 48px;
-    padding: 6px 16px;
-    box-sizing: border-box;
-    border-bottom: 1px solid var(--color-divider-regular);
-
-    &__row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 0;
-    }
-
-    &__title {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: var(--text-body-medium-size);
-        font-weight: var(--text-body-medium-weight);
-        line-height: var(--text-body-medium-line-height);
-
-        // Focusable for its tooltip (the full conversation id).
-        &:focus-visible {
-            outline: 1px solid var(--accent-color);
-            outline-offset: 2px;
-        }
-    }
-
-    &__usage {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-left: auto;
-        flex-shrink: 0;
-    }
-
-    &__reason {
-        color: var(--color-text-secondary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .mode-badge:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: 2px;
-    }
-}
-
-// Where the composer was, once the conversation is closed: why and when, read-only from here.
-.thread-closed {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--color-divider-regular);
-    color: var(--color-text-secondary);
-    text-align: center;
-
-    &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
-    }
-}
-
-// column-reverse anchors the scroll at the bottom, so new messages stay in view as the stream appends.
-.thread {
-    flex: 1;
-    display: flex;
-    flex-direction: column-reverse;
-    overflow-y: auto;
-    padding: 16px;
-
-    &__messages {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    &__older {
-        align-self: center;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-}
-
-.message {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-width: 70%;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: var(--text-body-size);
-    font-weight: var(--text-body-weight);
-    line-height: var(--text-body-line-height);
-
-    &__author {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: var(--text-body-small-large-size);
-        font-weight: var(--text-body-small-large-weight);
-        line-height: var(--text-body-small-large-line-height);
-        text-transform: capitalize;
-        color: var(--color-text-secondary);
-    }
-
-    &__content {
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-
-    &__actions {
-        margin: 4px 0 0;
-        padding-left: 16px;
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        color: var(--color-ks-transparent-text-80);
-    }
-
-    &__session {
-        color: var(--accent-color);
-    }
-
-    // The widget's action reply on a user message.
-    &__action {
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        color: var(--color-ks-transparent-text-80);
-        word-break: break-word;
-    }
-
-    &__time {
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        color: var(--color-text-secondary);
-    }
-
-    &--user {
-        align-self: flex-start;
-        background-color: var(--color-input-background);
-    }
-
-    &--assistant {
-        align-self: flex-end;
-        background-color: var(--color-ghost-btn-active);
-    }
-
-    &--operator {
-        align-self: flex-end;
-        background-color: color-mix(in srgb, var(--color-ks-status-new) 18%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-ks-status-new) 50%, transparent);
-
-        .message__author {
-            color: var(--color-ks-status-new);
-            text-transform: none;
-        }
-    }
-
-    &--system {
-        align-self: center;
-        max-width: 90%;
-        padding: 4px 8px;
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        text-align: center;
-        color: var(--color-text-secondary);
-        border: 1px dashed var(--color-divider-regular);
-    }
 }
 
 // Phones: the conversations and the thread on top of each other, one screen at a time. The thread waits past the
@@ -387,20 +170,6 @@
     .thread-view--leaving {
         position: absolute;
         inset: 0;
-    }
-
-    .message {
-        max-width: 85%;
-    }
-
-    .thread {
-        padding: 12px max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
-    }
-
-    // Clear of the home indicator, as the composer it replaces.
-    .thread-closed {
-        padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px))
-            max(12px, env(safe-area-inset-left, 0px));
     }
 }
 
@@ -549,83 +318,4 @@
             outline-offset: -1px;
         }
     }
-}
-
-// The thread screen's header on phones: a nav bar (Back, the visitor centred, ⋯), then the mode, Test and today's
-// usage centred under it, then the handoff reason.
-.inbox--stack .thread-header {
-    gap: 4px;
-    padding: 0 max(4px, env(safe-area-inset-right, 0px)) 8px max(4px, env(safe-area-inset-left, 0px));
-
-    .thread-header__row {
-        flex-wrap: wrap;
-        justify-content: center;
-        padding: 0 8px;
-    }
-
-    .thread-header__usage {
-        margin-left: 0;
-    }
-
-    .thread-header__reason {
-        padding: 0 8px;
-        text-align: center;
-    }
-}
-
-.thread-header__nav {
-    display: grid;
-    grid-template-columns: minmax(touch.$target-size, 1fr) minmax(0, max-content) minmax(touch.$target-size, 1fr);
-    align-items: center;
-    gap: 4px;
-    min-height: touch.$target-size;
-
-    .thread-header__title {
-        text-align: center;
-    }
-}
-
-.thread-header__back {
-    justify-self: start;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 0;
-    max-width: 100%;
-    min-height: touch.$target-size;
-    padding: 0 8px 0 0;
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    color: var(--accent-color);
-    font-size: var(--text-body-size);
-    font-weight: var(--text-body-weight);
-    line-height: var(--text-body-line-height);
-    cursor: pointer;
-
-    &:focus-visible {
-        outline: 1px solid var(--accent-color);
-        outline-offset: -1px;
-    }
-}
-
-.thread-header__back-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.thread-header__nav-end {
-    justify-self: end;
-    display: flex;
-}
-
-// On All desks, which desk the conversation came in on (Back only says All desks).
-.thread-header__desk {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--color-text-secondary);
 }
