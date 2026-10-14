@@ -1,25 +1,29 @@
 """Map exception types to Litestar responses via ``@registry``, in one error shape.
 
 Importing this module registers the handlers every Litestar service needs regardless of
-what it does: a payload that fails model validation, and the catch-all that turns
-anything unhandled into a 500. A service adds handlers for its own domain errors and
-nothing else.
+what it does: the framework's own refusals, a payload that fails model validation, and
+the catch-all that turns anything unhandled into a 500. A service adds handlers for its
+own domain errors and nothing else.
 
-They are prefixed ``foundation_`` so that a service writing `handle_not_found` of its
-own cannot shadow one by accident, and so that the duplicate-registration error names
-which of the two it already had.
+Those four are prefixed ``foundation_`` so that a service writing `handle_not_found` of
+its own cannot shadow one by accident, and so that the duplicate-registration error
+names which of the two it already had.
 """
 
 from collections.abc import Callable
+from http import HTTPStatus
 
 import pydantic
 from litestar import Request, Response, status_codes
+from litestar.exceptions import HTTPException, ValidationException
 
 from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
 
 __all__ = [
     "create_response",
+    "foundation_handle_http_exception",
     "foundation_handle_payload_validation_error",
+    "foundation_handle_request_validation_error",
     "foundation_handle_server_error",
     "get_handlers",
     "registry",
@@ -82,6 +86,41 @@ def foundation_handle_payload_validation_error(
             )
             for entry in error.errors()
         ],
+    )
+
+
+@registry(ValidationException)
+def foundation_handle_request_validation_error(
+    request: Request, error: ValidationException
+) -> Response:
+    """A request Litestar refused to parse: a missing field, a value of the wrong type.
+
+    Litestar puts one `{message, key}` mapping per offending field in `extra`, and `key`
+    is absent when the failure belongs to no field. Raised without `extra`, which is
+    allowed, the exception's own message is all there is to report.
+    """
+    reported = error.extra if isinstance(error.extra, list) else []
+    details = [
+        ErrorDetailSchema(code="validation_error", detail=item["message"], attr=item.get("key"))
+        for item in reported
+    ]
+    return create_response(
+        status_code=error.status_code,
+        errors=details or [ErrorDetailSchema(code="invalid", detail=error.detail)],
+    )
+
+
+@registry(HTTPException)
+def foundation_handle_http_exception(request: Request, error: HTTPException) -> Response:
+    """Litestar's other refusals, such as an unknown route or a method that is not allowed.
+
+    Registered so they keep the status code the framework already chose; without it the
+    catch-all below would answer 500 to something Litestar judged to be the caller's fault.
+    """
+    code = HTTPStatus(error.status_code).phrase.lower().replace(" ", "_")
+    return create_response(
+        status_code=error.status_code,
+        errors=[ErrorDetailSchema(code=code, detail=error.detail)],
     )
 
 

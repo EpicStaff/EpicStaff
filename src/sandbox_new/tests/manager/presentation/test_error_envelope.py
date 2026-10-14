@@ -58,6 +58,36 @@ def test_a_body_wrong_in_two_places_reports_both(client):
     assert [error["attr"] for error in response.json()["errors"]] == ["name", "version"]
 
 
+def test_a_body_litestar_cannot_parse_names_the_field_too(client):
+    """A body rejected before it reaches the handler reports fields like any other.
+
+    Litestar raises its own exception here, with its own 400 attached, so this is the
+    case that proves the catch-all does not relabel a caller's mistake as ours.
+    """
+    response = client.post("/venvs", json={"libs": []})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    body = response.json()
+    assert body["type"] == "client_error"
+    assert [(error["code"], error["attr"]) for error in body["errors"]] == [
+        ("validation_error", "name")
+    ]
+
+
+def test_a_body_wrong_in_two_fields_before_parsing_reports_both(client):
+    response = client.post("/venvs", json={"name": 1, "libs": "nope"})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert [error["attr"] for error in response.json()["errors"]] == ["name", "libs"]
+
+
+def test_an_unknown_route_is_a_client_error(client):
+    response = client.get("/venvs/1/nothing-here")
+
+    assert response.status_code == status_codes.HTTP_404_NOT_FOUND
+    assert response.json()["type"] == "client_error"
+
+
 def test_a_failure_inside_the_service_is_a_server_error(client, venv_repository):
     async def explode(*args, **kwargs):
         raise RuntimeError("the database went away")
