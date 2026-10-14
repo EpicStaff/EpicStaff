@@ -3,6 +3,7 @@
 Tests the issuance and persistence of temporary storage credentials for sessions.
 """
 
+import re
 from datetime import timedelta
 from unittest import mock
 
@@ -453,32 +454,19 @@ class TestTemporaryCredentialExpiration(TestCase):
             org_id=self.org.id,
         )
 
-    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=0)
-    def test_zero_ttl_mints_without_expiration(self, mock_gateway_class, mock_org_store):
+    def test_ttl_sets_the_lifetime_and_zero_or_less_means_none(self, mock_gateway_class, mock_org_store):
         self._stub_org_credentials(mock_org_store)
-        gateway = _stub_gateway(mock_gateway_class, "no_expiry_key")
+        for ttl_hours, expected in ((0, None), (-1, None), (6, timedelta(hours=6))):
+            with self.subTest(ttl_hours=ttl_hours), override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=ttl_hours):
+                gateway = _stub_gateway(mock_gateway_class, f"key_{ttl_hours}")
+                # A run gets one temporary account, so each row is its own run.
+                self.python_code_result = PythonCodeResult.objects.create(
+                    execution_id=f"exec-ttl-{ttl_hours}", org=self.org
+                )
 
-        self._issue()
+                self._issue()
 
-        assert _minted_expiration(gateway) is None
-
-    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=-1)
-    def test_negative_ttl_mints_without_expiration(self, mock_gateway_class, mock_org_store):
-        self._stub_org_credentials(mock_org_store)
-        gateway = _stub_gateway(mock_gateway_class, "negative_ttl_key")
-
-        self._issue()
-
-        assert _minted_expiration(gateway) is None
-
-    @override_settings(STORAGE_TEMP_CREDENTIALS_TTL_HOURS=6)
-    def test_positive_ttl_mints_with_that_lifetime(self, mock_gateway_class, mock_org_store):
-        self._stub_org_credentials(mock_org_store)
-        gateway = _stub_gateway(mock_gateway_class, "six_hour_key")
-
-        self._issue()
-
-        assert _minted_expiration(gateway) == timedelta(hours=6)
+                assert _minted_expiration(gateway) == expected
 
 
 @mock.patch("storage_credentials.services.session_credential_service.org_credential_store")
@@ -501,37 +489,21 @@ class TestScopeValidationRejectsBadPaths(TestCase):
             org_id=self.org.id,
         )
 
-    def test_parent_traversal_path_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="isn't allowed"):
-            self._issue(["../org_999/secrets/"])
+    def test_bad_paths_are_rejected_before_storage_is_contacted(self, mock_gateway_class, mock_org_store):
+        for paths, message in (
+            (["../org_999/secrets/"], "isn't allowed"),
+            (["reports/../../org_999/"], "isn't allowed"),
+            ([], CredentialScopeValidationError.default_detail),
+            (["   "], "is empty"),
+        ):
+            with self.subTest(paths=paths):
+                with pytest.raises(CredentialScopeValidationError, match=re.escape(message)):
+                    self._issue(paths)
 
-        mock_gateway_class.assert_not_called()
-        assert not TemporaryStorageAccount.objects.filter(
-            python_code_result=self.python_code_result
-        ).exists()
-
-    def test_nested_traversal_segment_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="isn't allowed"):
-            self._issue(["reports/../../org_999/"])
-
-        mock_gateway_class.assert_not_called()
-
-    def test_empty_allowed_paths_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError) as exc_info:
-            self._issue([])
-
-        assert str(exc_info.value) == CredentialScopeValidationError.default_detail
-
-        mock_gateway_class.assert_not_called()
-        assert not TemporaryStorageAccount.objects.filter(
-            python_code_result=self.python_code_result
-        ).exists()
-
-    def test_blank_path_entry_is_rejected(self, mock_gateway_class, mock_org_store):
-        with pytest.raises(CredentialScopeValidationError, match="is empty"):
-            self._issue(["   "])
-
-        mock_gateway_class.assert_not_called()
+                mock_gateway_class.assert_not_called()
+                assert not TemporaryStorageAccount.objects.filter(
+                    python_code_result=self.python_code_result
+                ).exists()
 
     def test_absolute_path_is_confined_to_the_org_prefix(
         self, mock_gateway_class, mock_org_store

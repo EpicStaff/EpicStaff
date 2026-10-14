@@ -1,13 +1,21 @@
+"""VoiceCallService bridges a Twilio media stream to a realtime provider.
+
+Every test runs `execute()`: a scripted Twilio socket feeds frames, a fake provider
+records what it is sent and pushes provider events through the callback the factory
+gave it, and Django's recording/end API sits behind an httpx MockTransport.
+"""
+
 import asyncio
 import base64
 import json
+
 import httpx
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from fastapi import WebSocket
+
+from application.voice_call_service import MIN_CHUNK_SIZE, VoiceCallService
 from src.shared.models import RealtimeAgentChatData
-from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
-from application.voice_call_service import VoiceCallService, MIN_CHUNK_SIZE
+
+pytestmark = pytest.mark.asyncio
 
 
 def _make_chat_data() -> RealtimeAgentChatData:
@@ -33,295 +41,81 @@ def _make_chat_data() -> RealtimeAgentChatData:
     )
 
 
-@pytest.fixture
-def twilio_ws():
-    ws = AsyncMock()
-    ws.send_json = AsyncMock()
-    ws.iter_text = AsyncMock(return_value=iter([]))
-    return ws
+class FakeProvider:
+    """A realtime provider client: records audio and stream starts; emits events via `emit`."""
+
+    def __init__(self, on_server_event, handle_messages=None):
+        self.emit = on_server_event
+        self.stream_sid = None
+        self.is_twilio = True
+        self.stream_starts = 0
+        self.sent_audio: list[bytes] = []
+        self.closed = False
+        self._handle_messages = handle_messages
+
+    async def connect(self):
+        pass
+
+    async def handle_messages(self):
+        if self._handle_messages is not None:
+            await self._handle_messages()
+        else:
+            await asyncio.Event().wait()
+
+    async def on_stream_start(self):
+        self.stream_starts += 1
+
+    async def send_audio(self, audio_b64: str):
+        self.sent_audio.append(base64.b64decode(audio_b64))
+
+    async def close(self):
+        self.closed = True
+
+
+class FakeFactory:
+    def __init__(self, handle_messages=None):
+        self.handle_messages = handle_messages
+        self.provider: FakeProvider | None = None
+
+    def create(self, *, on_server_event, is_twilio, **kwargs):
+        self.provider = FakeProvider(on_server_event, self.handle_messages)
+        return self.provider
+
+
+class FakeToolManager:
+    def register_tools_from_rt_agent_chat_data(self, **kwargs):
+        pass
+
+    async def get_realtime_tool_models(self, connection_key):
+        return []
+
+
+class ScriptedTwilio:
+    """Twilio's media-stream socket. A script step is a frame dict, a raw string, or an
+    async callable run between frames (e.g. a provider event)."""
+
+    def __init__(self, script):
+        self.script = script
+        self.sent: list[dict] = []
+        self.events: list[str] = []
+
+    async def iter_text(self):
+        for step in self.script:
+            if callable(step):
+                await step()
+            else:
+                yield step if isinstance(step, str) else json.dumps(step)
+
+    async def send_json(self, data):
+        self.sent.append(data)
+
+    async def close(self):
+        self.events.append("close")
 
 
 @pytest.fixture
-def rt_client():
-    client = AsyncMock(spec=IRealtimeAgentClient)
-    client.stream_sid = None
-    client.is_twilio = True
-    return client
-
-
-@pytest.fixture
-def service(twilio_ws):
-    return VoiceCallService(
-        twilio_ws=twilio_ws,
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="You are a helpful assistant",
-        tool_manager_service=MagicMock(),
-        connections={},
-        factory=MagicMock(),
-        initial_message=None,
-        django_api_base_url="http://django_app:8000/api",
-    )
-
-
-# ---------------------------------------------------------------------------
-# _handle_twilio_message — start event
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_start_event_sets_stream_sid(service, rt_client):
-    await service._handle_twilio_message(
-        {"event": "start", "start": {"streamSid": "MZ123"}},
-        rt_client,
-    )
-    assert service.stream_sid == "MZ123"
-
-
-@pytest.mark.asyncio
-async def test_start_event_sets_client_stream_sid(service, rt_client):
-    await service._handle_twilio_message(
-        {"event": "start", "start": {"streamSid": "MZ456"}},
-        rt_client,
-    )
-    assert rt_client.stream_sid == "MZ456"
-
-
-@pytest.mark.asyncio
-async def test_start_event_calls_on_stream_start(service, rt_client):
-    await service._handle_twilio_message(
-        {"event": "start", "start": {"streamSid": "MZ789"}},
-        rt_client,
-    )
-    rt_client.on_stream_start.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# _handle_twilio_message — media event
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_media_event_accumulates_audio(service, rt_client):
-    raw_bytes = b"\x00\x01\x02"
-    payload = base64.b64encode(raw_bytes).decode()
-    await service._handle_twilio_message(
-        {"event": "media", "media": {"payload": payload}},
-        rt_client,
-    )
-    assert bytes(service.audio_accumulator) == raw_bytes
-
-
-@pytest.mark.asyncio
-async def test_media_event_accumulates_across_multiple_messages(service, rt_client):
-    chunk = b"\xff" * 100
-    payload = base64.b64encode(chunk).decode()
-    # Send multiple small chunks — none should flush yet
-    for _ in range(5):
-        await service._handle_twilio_message(
-            {"event": "media", "media": {"payload": payload}},
-            rt_client,
-        )
-    assert len(service.audio_accumulator) == 500
-    rt_client.send_audio.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_media_flushes_when_threshold_reached(service, rt_client):
-    # One chunk of exactly MIN_CHUNK_SIZE bytes triggers a flush
-    big_chunk = b"\xaa" * MIN_CHUNK_SIZE
-    payload = base64.b64encode(big_chunk).decode()
-    await service._handle_twilio_message(
-        {"event": "media", "media": {"payload": payload}},
-        rt_client,
-    )
-    rt_client.send_audio.assert_awaited_once()
-    # accumulator cleared after flush
-    assert len(service.audio_accumulator) == 0
-
-
-# ---------------------------------------------------------------------------
-# _flush_audio
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_flush_audio_sends_b64_encoded_audio(service, rt_client):
-    service.audio_accumulator.extend(b"\x01\x02\x03")
-    await service._flush_audio(rt_client)
-    expected_b64 = base64.b64encode(b"\x01\x02\x03").decode()
-    rt_client.send_audio.assert_awaited_once_with(expected_b64)
-
-
-@pytest.mark.asyncio
-async def test_flush_audio_clears_accumulator(service, rt_client):
-    service.audio_accumulator.extend(b"\x01\x02\x03")
-    await service._flush_audio(rt_client)
-    assert len(service.audio_accumulator) == 0
-
-
-@pytest.mark.asyncio
-async def test_flush_audio_noop_when_empty(service, rt_client):
-    await service._flush_audio(rt_client)
-    rt_client.send_audio.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# _handle_provider_event
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_provider_event_audio_delta_sends_to_twilio(service, twilio_ws):
-    service.stream_sid = "MZ123"
-    audio = b"\xaa\xbb\xcc"
-    delta_b64 = base64.b64encode(audio).decode()
-    await service._handle_provider_event({"type": "response.audio.delta", "delta": delta_b64})
-    twilio_ws.send_json.assert_awaited_once()
-    call_kwargs = twilio_ws.send_json.call_args[0][0]
-    assert call_kwargs["event"] == "media"
-    assert call_kwargs["streamSid"] == "MZ123"
-
-
-@pytest.mark.asyncio
-async def test_provider_event_interruption_sends_clear(service, twilio_ws):
-    service.stream_sid = "MZ123"
-    await service._handle_provider_event({"type": "interruption"})
-    twilio_ws.send_json.assert_awaited_once()
-    call_kwargs = twilio_ws.send_json.call_args[0][0]
-    assert call_kwargs["event"] == "clear"
-    assert call_kwargs["streamSid"] == "MZ123"
-
-
-@pytest.mark.asyncio
-async def test_provider_event_speech_started_sends_clear(service, twilio_ws):
-    service.stream_sid = "MZ123"
-    await service._handle_provider_event({"type": "input_audio_buffer.speech_started"})
-    twilio_ws.send_json.assert_awaited_once()
-    call_kwargs = twilio_ws.send_json.call_args[0][0]
-    assert call_kwargs["event"] == "clear"
-
-
-@pytest.mark.asyncio
-async def test_provider_event_unknown_type_does_nothing(service, twilio_ws):
-    service.stream_sid = "MZ123"
-    await service._handle_provider_event({"type": "unknown_event"})
-    twilio_ws.send_json.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# _send_audio_to_twilio
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_send_audio_to_twilio_requires_stream_sid(service, twilio_ws):
-    service.stream_sid = None  # no stream_sid set
-    await service._send_audio_to_twilio(b"\x01\x02")
-    twilio_ws.send_json.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_send_audio_to_twilio_sends_correct_payload(service, twilio_ws):
-    service.stream_sid = "MZabc"
-    audio = b"\xde\xad\xbe\xef"
-    await service._send_audio_to_twilio(audio)
-    twilio_ws.send_json.assert_awaited_once()
-    payload = twilio_ws.send_json.call_args[0][0]
-    assert payload["event"] == "media"
-    assert payload["streamSid"] == "MZabc"
-    assert payload["media"]["payload"] == base64.b64encode(audio).decode()
-
-
-# ---------------------------------------------------------------------------
-# _clear_twilio_buffer
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_clear_twilio_buffer_sends_clear_event(service, twilio_ws):
-    service.stream_sid = "MZxyz"
-    await service._clear_twilio_buffer()
-    twilio_ws.send_json.assert_awaited_once_with(
-        {"event": "clear", "streamSid": "MZxyz"}
-    )
-
-
-@pytest.mark.asyncio
-async def test_clear_twilio_buffer_skipped_without_stream_sid(service, twilio_ws):
-    service.stream_sid = None
-    await service._clear_twilio_buffer()
-    twilio_ws.send_json.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# execute() — max call duration ceiling (defense-in-depth metering cap for a
-# leaked/stolen stream_token, since VoiceCallService already tracks duration
-# via time.monotonic() for recordings).
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_execute_ends_session_after_max_call_duration(monkeypatch):
-    import application.voice_call_service as voice_call_service_module
-
-    fake_time = {"now": 1000.0}
-    monkeypatch.setattr(
-        voice_call_service_module.time, "monotonic", lambda: fake_time["now"]
-    )
-
-    async def message_gen():
-        yield json.dumps({"event": "start", "start": {"streamSid": "MZ1"}})
-        # Simulate wall-clock time crossing the max_call_duration ceiling
-        # between Twilio frames.
-        fake_time["now"] += 100
-        yield json.dumps(
-            {
-                "event": "media",
-                "media": {"payload": base64.b64encode(b"\x00").decode()},
-            }
-        )
-        # A well-behaved test double should never be read past the break.
-        raise AssertionError("iter_text consumed past the max-duration break")
-
-    twilio_ws = AsyncMock()
-    twilio_ws.iter_text = lambda: message_gen()
-    twilio_ws.send_json = AsyncMock()
-    twilio_ws.close = AsyncMock()
-
-    rt_client = AsyncMock(spec=IRealtimeAgentClient)
-    rt_client.stream_sid = None
-
-    factory = MagicMock()
-    factory.create = MagicMock(return_value=rt_client)
-
-    tool_manager_service = MagicMock()
-    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
-
-    service = VoiceCallService(
-        twilio_ws=twilio_ws,
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="You are a helpful assistant",
-        tool_manager_service=tool_manager_service,
-        connections={},
-        factory=factory,
-        django_api_base_url="http://django_app:8000/api",
-        django_api_key="test-key",
-        initial_message=None,
-        max_call_duration_seconds=10,
-    )
-    service._save_recordings = AsyncMock()
-
-    await service.execute()
-
-    assert service._end_reason == "max_duration_exceeded"
-    twilio_ws.close.assert_awaited_once()
-    service._save_recordings.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_execute_completes_both_recording_uploads_and_end_write_before_returning(
-    monkeypatch,
-):
+def django(monkeypatch):
+    """Django's recording and call-end API; returns the requests it received."""
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -333,136 +127,186 @@ async def test_execute_completes_both_recording_uploads_and_end_write_before_ret
         "application.voice_call_service.httpx.AsyncClient",
         lambda **kwargs: real_async_client(transport=httpx.MockTransport(handler), **kwargs),
     )
+    return requests
 
-    async def message_gen():
-        yield json.dumps({"event": "start", "start": {"streamSid": "MZ1"}})
-        yield json.dumps(
-            {"event": "media", "media": {"payload": base64.b64encode(b"\x00").decode()}}
-        )
 
-    twilio_ws = AsyncMock()
-    twilio_ws.iter_text = lambda: message_gen()
-    rt_client = AsyncMock(spec=IRealtimeAgentClient)
-    factory = MagicMock()
-    factory.create = MagicMock(return_value=rt_client)
-    tool_manager_service = MagicMock()
-    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
-
+def _service(twilio, factory=None, **overrides) -> tuple[VoiceCallService, FakeFactory]:
+    factory = factory or FakeFactory()
     service = VoiceCallService(
-        twilio_ws=twilio_ws,
+        twilio_ws=twilio,
         realtime_agent_chat_data=_make_chat_data(),
         instructions="You are a helpful assistant",
-        tool_manager_service=tool_manager_service,
+        tool_manager_service=FakeToolManager(),
         connections={},
         factory=factory,
         django_api_base_url="http://django_app:8000/api",
         django_api_key="test-key",
         initial_message=None,
-        max_call_duration_seconds=10,
+        **{"max_call_duration_seconds": 10, **overrides},
     )
-    await service._handle_provider_event(
-        {"type": "response.audio.delta", "delta": base64.b64encode(b"\x01").decode()}
-    )
+    return service, factory
+
+
+def _start(stream_sid="MZ1") -> dict:
+    return {"event": "start", "start": {"streamSid": stream_sid}}
+
+
+def _media(audio: bytes) -> dict:
+    return {"event": "media", "media": {"payload": base64.b64encode(audio).decode()}}
+
+
+def _end_call(requests) -> dict:
+    (end,) = [request for request in requests if request.url.path.endswith("/realtime-agent-chats/end/")]
+    return json.loads(end.content)
+
+
+async def test_caller_audio_reaches_the_provider_in_chunks_after_the_stream_starts(django):
+    half = MIN_CHUNK_SIZE // 2
+    twilio = ScriptedTwilio([_start("MZ123"), _media(b"\x01" * half), _media(b"\x02" * half), _media(b"\x03" * 10)])
+    service, factory = _service(twilio)
 
     await service.execute()
 
-    posted_paths = [request.url.path for request in requests]
-    assert posted_paths == [
+    provider = factory.provider
+    assert (provider.stream_sid, provider.stream_starts) == ("MZ123", 1)
+    # Audio is batched until MIN_CHUNK_SIZE; the short tail never filled a chunk.
+    assert provider.sent_audio == [b"\x01" * half + b"\x02" * half]
+
+
+@pytest.mark.parametrize(
+    ("event", "expected_frames"),
+    [
+        (
+            {"type": "response.audio.delta", "delta": base64.b64encode(b"\xaa\xbb").decode()},
+            [{"event": "media", "streamSid": "MZ1", "media": {"payload": base64.b64encode(b"\xaa\xbb").decode()}}],
+        ),
+        # The caller started talking: stop playing the agent's audio.
+        ({"type": "input_audio_buffer.speech_started"}, [{"event": "clear", "streamSid": "MZ1"}]),
+        ({"type": "interruption"}, [{"event": "clear", "streamSid": "MZ1"}]),
+        ({"type": "unknown_event"}, []),
+        ({"type": "error", "error": {"message": "boom"}}, []),
+    ],
+    ids=["audio", "speech-started", "interruption", "unknown", "provider-error"],
+)
+async def test_provider_events_are_played_or_cleared_on_the_call(django, event, expected_frames):
+    factory = FakeFactory()
+    twilio = ScriptedTwilio([_start("MZ1"), lambda: factory.provider.emit(event)])
+    service, _ = _service(twilio, factory)
+
+    await service.execute()
+
+    assert twilio.sent == expected_frames
+
+
+async def test_provider_output_before_the_stream_starts_is_not_sent(django):
+    factory = FakeFactory()
+    audio = {"type": "response.audio.delta", "delta": base64.b64encode(b"\xaa").decode()}
+    twilio = ScriptedTwilio([
+        lambda: factory.provider.emit(audio),
+        lambda: factory.provider.emit({"type": "interruption"}),
+    ])
+    service, _ = _service(twilio, factory)
+
+    await service.execute()
+
+    assert twilio.sent == []
+
+
+async def test_both_recordings_and_the_call_end_are_saved_before_execute_returns(django):
+    factory = FakeFactory()
+    agent_audio = {"type": "response.audio.delta", "delta": base64.b64encode(b"\x01").decode()}
+    twilio = ScriptedTwilio([_start(), _media(b"\x00"), lambda: factory.provider.emit(agent_audio)])
+    service, _ = _service(twilio, factory)
+
+    await service.execute()
+
+    assert [request.url.path for request in django] == [
         "/api/conversation-recordings/",
         "/api/conversation-recordings/",
         "/api/realtime-agent-chats/end/",
     ]
-    end_payload = json.loads(requests[-1].content)
-    assert end_payload["connection_key"] == service.realtime_agent_chat_data.connection_key
-    assert end_payload["end_reason"] == service._end_reason
+    assert _end_call(django)["connection_key"] == "test_key"
+    assert _end_call(django)["end_reason"] == "completed"
 
 
-@pytest.mark.asyncio
-async def test_execute_closes_twilio_socket_before_saving_after_internal_error():
-    events: list[str] = []
+async def test_call_is_ended_after_the_max_duration(django, monkeypatch):
+    """Defense in depth: a leaked stream token cannot meter provider costs forever."""
+    import application.voice_call_service as voice_call_service_module
 
-    async def message_gen():
-        yield "not valid json"
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(voice_call_service_module.time, "monotonic", lambda: clock["now"])
 
-    twilio_ws = AsyncMock()
-    twilio_ws.iter_text = lambda: message_gen()
-    twilio_ws.close = AsyncMock(side_effect=lambda: events.append("close"))
-    rt_client = AsyncMock(spec=IRealtimeAgentClient)
-    factory = MagicMock()
-    factory.create = MagicMock(return_value=rt_client)
-    tool_manager_service = MagicMock()
-    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
+    async def time_passes():
+        clock["now"] += 100
 
-    service = VoiceCallService(
-        twilio_ws=twilio_ws,
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="You are a helpful assistant",
-        tool_manager_service=tool_manager_service,
-        connections={},
-        factory=factory,
-        django_api_base_url="http://django_app:8000/api",
-        django_api_key="test-key",
-        initial_message=None,
-        max_call_duration_seconds=10,
-    )
-    service._save_recordings = AsyncMock(side_effect=lambda duration: events.append("save"))
+    async def must_not_be_reached():
+        raise AssertionError("Twilio frames were read past the max-duration break")
+
+    twilio = ScriptedTwilio([_start(), time_passes, _media(b"\x00"), must_not_be_reached])
+    service, factory = _service(twilio)
 
     await service.execute()
 
-    assert service._end_reason == "error"
-    assert events == ["close", "save"]
+    assert _end_call(django)["end_reason"] == "max_duration_exceeded"
+    # We stopped reading ourselves, so the call is hung up actively.
+    assert twilio.events == ["close"]
+    assert factory.provider.closed
 
 
-def _make_service_with_message_handler(handle_messages, message_handler_started):
+async def test_internal_error_hangs_up_before_saving(django):
+    twilio = ScriptedTwilio(["not valid json"])
+    service, _ = _service(twilio)
+    django_requests_at_close = []
+    real_close = twilio.close
+
+    async def close():
+        django_requests_at_close.append(len(django))
+        await real_close()
+
+    twilio.close = close
+
+    await service.execute()
+
+    assert _end_call(django)["end_reason"] == "error"
+    # The caller is not left on a dead line while the recording uploads.
+    assert django_requests_at_close == [0]
+
+
+def _service_with_message_handler(handle_messages, message_handler_started):
     # The stream must not end before the message task has started: a task
     # cancelled before its first step never runs its body at all.
-    async def no_frames_once_messages_flow():
-        await message_handler_started.wait()
-        return
-        yield
-
-    twilio_ws = AsyncMock()
-    twilio_ws.iter_text = lambda: no_frames_once_messages_flow()
-    rt_client = AsyncMock(spec=IRealtimeAgentClient)
-    rt_client.handle_messages = handle_messages
-    factory = MagicMock()
-    factory.create = MagicMock(return_value=rt_client)
-    tool_manager_service = MagicMock()
-    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
-
-    service = VoiceCallService(
-        twilio_ws=twilio_ws,
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="You are a helpful assistant",
-        tool_manager_service=tool_manager_service,
-        connections={},
-        factory=factory,
-        django_api_base_url="http://django_app:8000/api",
-        django_api_key="test-key",
-        initial_message=None,
-        max_call_duration_seconds=10,
-    )
-    service._save_recordings = AsyncMock()
-    return service, rt_client
+    twilio = ScriptedTwilio([message_handler_started.wait])
+    return _service(twilio, FakeFactory(handle_messages))
 
 
-@pytest.mark.asyncio
-async def test_cancelling_execute_while_stopping_the_message_task_is_not_swallowed():
-    started = asyncio.Event()
-    stopping = asyncio.Event()
+async def _slow_to_stop(started, stopping):
+    started.set()
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        stopping.set()
+        # execute() is awaiting this task, so cancelling execute() forwards the cancel here.
+        await asyncio.Event().wait()
+        raise
 
-    async def slow_to_stop():
-        started.set()
+
+async def _swallows_cancellation(started, stopping):
+    # Mirrors providers whose handle_messages catches CancelledError and returns normally.
+    started.set()
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        stopping.set()
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
-            stopping.set()
-            # execute() is awaiting this task, so cancelling execute() forwards
-            # the cancel here and interrupts this wait.
-            await asyncio.Event().wait()
-            raise
+            return
 
-    service, rt_client = _make_service_with_message_handler(slow_to_stop, started)
+
+@pytest.mark.parametrize("handle_messages", [_slow_to_stop, _swallows_cancellation], ids=["slow-to-stop", "swallows-cancel"])
+async def test_cancelling_execute_still_tears_down_saves_and_reraises(django, handle_messages):
+    started, stopping = asyncio.Event(), asyncio.Event()
+    service, factory = _service_with_message_handler(lambda: handle_messages(started, stopping), started)
 
     execute_task = asyncio.create_task(service.execute())
     async with asyncio.timeout(5):
@@ -472,55 +316,21 @@ async def test_cancelling_execute_while_stopping_the_message_task_is_not_swallow
     with pytest.raises(asyncio.CancelledError):
         async with asyncio.timeout(5):
             await execute_task
-    # Cancellation still lets the call be torn down and its recording saved.
-    rt_client.close.assert_awaited_once()
-    service._save_recordings.assert_awaited_once()
+    assert factory.provider.closed
+    assert _end_call(django)
 
 
-@pytest.mark.asyncio
-async def test_cancelling_execute_is_not_lost_when_the_message_task_swallows_cancellation():
-    started = asyncio.Event()
-    stopping = asyncio.Event()
-
-    # Mirrors providers whose handle_messages catches CancelledError and returns
-    # normally, so awaiting the message task never raises.
-    async def swallows_cancellation():
-        started.set()
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            stopping.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                return
-
-    service, rt_client = _make_service_with_message_handler(swallows_cancellation, started)
-
-    execute_task = asyncio.create_task(service.execute())
-    async with asyncio.timeout(5):
-        await stopping.wait()
-    execute_task.cancel()
-
-    with pytest.raises(asyncio.CancelledError):
-        async with asyncio.timeout(5):
-            await execute_task
-    rt_client.close.assert_awaited_once()
-    service._save_recordings.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_execute_still_tears_down_and_saves_when_the_message_task_crashes():
+async def test_provider_crash_still_tears_down_and_saves(django):
     started = asyncio.Event()
 
     async def crashes():
         started.set()
         raise RuntimeError("re-provisioning failed")
 
-    service, rt_client = _make_service_with_message_handler(crashes, started)
+    service, factory = _service_with_message_handler(crashes, started)
 
     async with asyncio.timeout(5):
         await service.execute()
 
-    rt_client.close.assert_awaited_once()
-    service._save_recordings.assert_awaited_once()
+    assert factory.provider.closed
+    assert _end_call(django)

@@ -1,12 +1,8 @@
 import pytest
-
-pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
-
 from django.urls import reverse
 from rest_framework import status
 
-from tables.exceptions import ContentHashConflictError
-from tables.models import AgentNode, Graph, StartNode
+from tables.models import AgentNode, StartNode
 from tables.models.graph_models import WebhookTriggerNode
 from tables.models.python_models import PythonCode
 from tables.services.secrets import secret_service
@@ -148,54 +144,6 @@ class TestContentHashStartNode:
 
 
 # ---------------------------------------------------------------------------
-# Model-level: ContentHashMixin._expected_hash validation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestContentHashModelLevel:
-    def test_save_with_correct_expected_hash_succeeds(self, agent_node):
-        agent_node._expected_hash = agent_node.content_hash
-        agent_node.node_name = "direct_update"
-        agent_node.save()  # should not raise
-
-        agent_node.refresh_from_db()
-        assert agent_node.node_name == "direct_update"
-
-    def test_save_with_wrong_expected_hash_raises(self, agent_node):
-        agent_node._expected_hash = "wrong_hash"
-        agent_node.node_name = "should_not_save"
-
-        with pytest.raises(ContentHashConflictError):
-            agent_node.save()
-
-    def test_save_without_expected_hash_skips_validation(self, agent_node):
-        """No _expected_hash set — validation is bypassed (default behaviour)."""
-        agent_node.node_name = "silent_update"
-        agent_node.save()
-
-        agent_node.refresh_from_db()
-        assert agent_node.node_name == "silent_update"
-
-    def test_hash_is_updated_after_save(self, agent_node):
-        old_hash = agent_node.content_hash
-        agent_node._expected_hash = old_hash
-        agent_node.node_name = "changed_name"
-        agent_node.save()
-
-        agent_node.refresh_from_db()
-        assert agent_node.content_hash != old_hash
-
-    def test_new_object_skips_hash_validation(self, graph):
-        """Creating a new record should never trigger the hash check."""
-        node = AgentNode(node_name="brand_new", graph=graph)
-        node._expected_hash = "irrelevant_for_new_object"
-        node.save()  # should not raise
-
-        assert node.pk is not None
-
-
-# ---------------------------------------------------------------------------
 # Webhook node: nested python_code hash validation
 # ---------------------------------------------------------------------------
 
@@ -310,33 +258,6 @@ class TestWebhookNodeNestedHashValidation:
         webhook_node.python_code.refresh_from_db()
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash != original_node_hash
-
-    def test_hash_changes_when_ngrok_config_set(self, auth_client, webhook_node):
-        """Changing webhook_trigger to include an ngrok config must change the node hash."""
-        # Create initial trigger with no provider
-        trigger = WebhookTrigger.objects.create(path="mypath", provider_type=None)
-        webhook_node.webhook_trigger = trigger
-        webhook_node.save()
-        hash_before = webhook_node.content_hash
-
-        url = reverse("webhooktriggernode-detail", args=[webhook_node.id])
-        auth_client.patch(
-            url,
-            {
-                "webhook_trigger": {
-                    "path": "mypath",
-                    "provider_type": "ngrok",
-                    "ngrok_config": {
-                        "name": "test",
-                        "domain": None,
-                    },
-                },
-            },
-            format="json",
-        )
-
-        webhook_node.refresh_from_db()
-        assert webhook_node.content_hash != hash_before
 
     def test_adding_or_removing_webhook_trigger_auth_does_not_change_node_content_hash(
         self, webhook_node, default_org

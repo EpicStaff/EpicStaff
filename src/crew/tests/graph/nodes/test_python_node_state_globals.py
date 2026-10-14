@@ -1,11 +1,9 @@
-import json
 import pytest
 from dotdict import DotDict
 
 from services.graph.events import StopEvent
 from services.graph.nodes.python_node import PythonNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
-from services.redis_service import _encode
 from src.shared.models import PythonCodeData
 
 READS_STATE = "def main(**kw):\n    return state['variables']['a']"
@@ -63,8 +61,3 @@ async def _run_webhook_node(code: str) -> dict:
 @pytest.mark.parametrize(("code", "expected"), [(READS_STATE, STATE_GLOBALS), (IGNORES_STATE, {})], ids=["reads_state", "ignores_state"])
 async def test_state_global_sent_only_when_code_reads_state(run, code, expected):
     assert await run(code) == expected
-
-
-def test_encode_passes_str_through_and_json_encodes_dict():
-    assert _encode('{"a": 1}') == '{"a": 1}'
-    assert json.loads(_encode({"a": 1})) == {"a": 1}

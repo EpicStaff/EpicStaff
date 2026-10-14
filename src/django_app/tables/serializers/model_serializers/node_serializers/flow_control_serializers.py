@@ -37,6 +37,7 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
+from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
 
 
 class StartNodeSerializer(
@@ -226,6 +227,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
+    CdtExplanationsSanitizingMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ExecutionTimeoutSerializerMixin,

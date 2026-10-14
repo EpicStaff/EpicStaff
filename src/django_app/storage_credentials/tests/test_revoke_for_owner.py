@@ -87,94 +87,80 @@ def realtime_chat(org, db):
     )
 
 
-@pytest.mark.django_db
-class TestRevokeForSession:
-    def test_revokes_and_deletes_row(self, org, gateway):
-        graph = Graph.objects.create(org=org, name="Revoke Graph")
-        session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
-        account = TemporaryStorageAccount.objects.create(
-            session=session, access_key="session-key"
-        )
+def _session_owner(org, request):
+    session = Session.objects.create(
+        graph=Graph.objects.create(org=org, name="Revoke Graph"), status=Session.SessionStatus.END
+    )
+    return {"session": session}, lambda: session_credential_service.revoke_for_session(session.id)
 
-        session_credential_service.revoke_for_session(session.id)
 
-        gateway.delete_service_account.assert_awaited_once_with("session-key")
-        gateway.store_get.assert_called_once_with(org_id=org.id)
-        assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
+def _test_run_owner(org, request):
+    result = PythonCodeResult.objects.create(
+        execution_id="exec-revoke-1", org_id=org.id, status=PythonCodeResult.Status.COMPLETED
+    )
+    return {"python_code_result": result}, lambda: session_credential_service.revoke_for_test_run(
+        result.execution_id
+    )
 
-    def test_null_graph_logs_error_and_keeps_row(self, gateway, error_logs):
-        """A session with no graph has no reachable org: revoke must not be
-        attempted silently, and the row must survive for the cleanup job."""
-        session = Session.objects.create(graph=None, status=Session.SessionStatus.END)
-        account = TemporaryStorageAccount.objects.create(
-            session=session, access_key="orphan-key"
-        )
 
-        session_credential_service.revoke_for_session(session.id)
+def _realtime_chat_owner(org, request):
+    chat = request.getfixturevalue("realtime_chat")
+    return {"realtime_agent_chat": chat}, lambda: session_credential_service.revoke_for_realtime_chat(chat.id)
 
-        gateway.delete_service_account.assert_not_awaited()
-        assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
-        assert any(f"session {session.id}" in message for message in error_logs)
 
-    def test_missing_account_is_noop(self, org, gateway):
-        graph = Graph.objects.create(org=org, name="Revoke Graph")
-        session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
-
-        session_credential_service.revoke_for_session(session.id)
-
-        gateway.delete_service_account.assert_not_awaited()
-
-    def test_backend_failure_keeps_row(self, org, gateway):
-        graph = Graph.objects.create(org=org, name="Revoke Graph")
-        session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
-        account = TemporaryStorageAccount.objects.create(
-            session=session, access_key="failing-key"
-        )
-        gateway.delete_service_account.side_effect = Exception("backend down")
-
-        session_credential_service.revoke_for_session(session.id)
-
-        assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
+OWNERS = pytest.mark.parametrize(
+    "make_owner",
+    [_session_owner, _test_run_owner, _realtime_chat_owner],
+    ids=["session", "test-run", "realtime-chat"],
+)
 
 
 @pytest.mark.django_db
-class TestRevokeForTestRun:
-    def test_revokes_and_deletes_row(self, org, gateway):
-        result = PythonCodeResult.objects.create(
-            execution_id="exec-revoke-1",
-            org_id=org.id,
-            status=PythonCodeResult.Status.COMPLETED,
-        )
-        account = TemporaryStorageAccount.objects.create(
-            python_code_result=result, access_key="test-run-key"
-        )
+@OWNERS
+def test_revoking_an_owner_deletes_its_service_account_and_row(org, gateway, request, make_owner):
+    owner, revoke = make_owner(org, request)
+    account = TemporaryStorageAccount.objects.create(access_key="owner-key", **owner)
 
-        session_credential_service.revoke_for_test_run(result.execution_id)
+    revoke()
 
-        gateway.delete_service_account.assert_awaited_once_with("test-run-key")
-        gateway.store_get.assert_called_once_with(org_id=org.id)
-        assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
-
-    def test_missing_account_is_noop(self, gateway):
-        session_credential_service.revoke_for_test_run("exec-that-never-stored-anything")
-
-        gateway.delete_service_account.assert_not_awaited()
+    gateway.delete_service_account.assert_awaited_once_with("owner-key")
+    # The org's own admin credentials are the ones that may delete the account.
+    gateway.store_get.assert_called_once_with(org_id=org.id)
+    assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
 
 
 @pytest.mark.django_db
-class TestRevokeForRealtimeChat:
-    def test_revokes_and_deletes_row(self, org, realtime_chat, gateway):
-        account = TemporaryStorageAccount.objects.create(
-            realtime_agent_chat=realtime_chat, access_key="realtime-key"
-        )
+@OWNERS
+def test_revoking_an_owner_without_an_account_contacts_no_storage(org, gateway, request, make_owner):
+    _, revoke = make_owner(org, request)
 
-        session_credential_service.revoke_for_realtime_chat(realtime_chat.id)
+    revoke()
 
-        gateway.delete_service_account.assert_awaited_once_with("realtime-key")
-        gateway.store_get.assert_called_once_with(org_id=org.id)
-        assert not TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
+    gateway.delete_service_account.assert_not_awaited()
 
-    def test_missing_account_is_noop(self, realtime_chat, gateway):
-        session_credential_service.revoke_for_realtime_chat(realtime_chat.id)
 
-        gateway.delete_service_account.assert_not_awaited()
+@pytest.mark.django_db
+def test_a_session_without_a_graph_keeps_its_row_and_logs(gateway, error_logs):
+    """No graph means no reachable org: revoke must not be attempted silently, and
+    the row must survive for the cleanup job."""
+    session = Session.objects.create(graph=None, status=Session.SessionStatus.END)
+    account = TemporaryStorageAccount.objects.create(session=session, access_key="orphan-key")
+
+    session_credential_service.revoke_for_session(session.id)
+
+    gateway.delete_service_account.assert_not_awaited()
+    assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()
+    assert any(f"session {session.id}" in message for message in error_logs)
+
+
+@pytest.mark.django_db
+def test_a_storage_failure_keeps_the_row_for_a_retry(org, gateway):
+    session = Session.objects.create(
+        graph=Graph.objects.create(org=org, name="Revoke Graph"), status=Session.SessionStatus.END
+    )
+    account = TemporaryStorageAccount.objects.create(session=session, access_key="failing-key")
+    gateway.delete_service_account.side_effect = Exception("backend down")
+
+    session_credential_service.revoke_for_session(session.id)
+
+    assert TemporaryStorageAccount.objects.filter(pk=account.pk).exists()

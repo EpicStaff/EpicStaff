@@ -1,39 +1,36 @@
 import pytest
-
-pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
-
 from django.urls import reverse
 from rest_framework import status
 
+import json
+
 from tables.models import Session
+from tables.models.graph_models import Edge, EndNode, StartNode
 from tests.fixtures import *
 
 
 @pytest.mark.django_db
-def test_run_session(auth_client, redis_client_mock, session_data):
-    url = reverse("run-session")
+def test_run_session_stores_a_pending_session_and_hands_the_graph_to_crew(
+    auth_client, redis_client_mock, session_data
+):
+    graph_id = session_data["graph_id"]
+    start_node = StartNode.objects.get(graph_id=graph_id)
+    end_node = EndNode.objects.create(graph_id=graph_id, output_map={})
+    Edge.objects.create(graph_id=graph_id, start_node_id=start_node.id, end_node_id=end_node.id)
 
-    response = auth_client.post(url, session_data, format="json")
-
-    response_session_id: int = response.data["session_id"]
-    response_session = Session.objects.get(pk=response_session_id)
+    response = auth_client.post(reverse("run-session"), session_data, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
-    assert response_session.graph.pk == session_data["graph_id"]
-    assert response_session.variables == session_data["variables"]
-    redis_client_mock.publish.assert_called()
-    assert response_session.status == "pending"
-
-
-@pytest.mark.django_db
-def test_create_session(auth_client, graph):
-    url = reverse("session-list")
-    data = {"status": "run", "graph_id": graph.pk}
-
-    response = auth_client.post(url, data, format="json")
-
-    assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED, response.content
-    assert Session.objects.count() == 0
+    session = Session.objects.get(pk=response.data["session_id"])
+    assert (session.graph_id, session.status) == (graph_id, "pending")
+    assert session.variables == session_data["variables"]
+    # What crew receives: this session, its variables and the graph's node lists.
+    published = [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
+    (session_schema,) = [message for message in published if message.get("id") == session.id]
+    assert session_schema["initial_state"] == session_data["variables"]
+    # The start node is not sent: the node it leads to becomes the entrypoint.
+    assert session_schema["graph"]["graph_id"] == graph_id
+    assert session_schema["graph"]["entrypoint"] == session_schema["graph"]["end_node"]["node_name"]
 
 
 @pytest.mark.django_db

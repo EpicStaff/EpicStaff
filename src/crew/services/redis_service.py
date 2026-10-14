@@ -54,8 +54,14 @@ class AsyncPubSubGroup:
                 if msg is None:
                     continue
 
+                # A failing callback must not count as a disconnect: reconnecting
+                # drops this message for the other subscribers and every message
+                # published during the reconnect.
                 for sub in self._subscribers:
-                    await sub.update(msg)
+                    try:
+                        await sub.update(msg)
+                    except Exception:
+                        logger.exception("Subscriber callback failed on channel {}", self._channel)
             except Exception as e:
                 logger.error(f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}")
                 with contextlib.suppress(Exception):

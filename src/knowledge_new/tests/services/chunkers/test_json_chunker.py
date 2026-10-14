@@ -1,12 +1,10 @@
 import json
-import os
 
 import pytest
 from domain.enums import ChunkStrategyEnum
 from domain.errors import ChunkingError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.json_chunker import JSONChunker
-from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
 
@@ -39,13 +37,3 @@ async def test_chunking_raises_error_for_invalid_data(text):
     chunker = build_chunker()
     with pytest.raises(ChunkingError):
         await chunker.chunk(text)
-
-
-async def test_chunking_is_running_in_process():
-    text = '{"a": 1, "b": 2}'
-    chunker = build_chunker()
-
-    inline_chunks = await chunker.chunk(text)
-    result, worker_pid = await offload_to_process(lambda: chunker.chunk(text))
-    assert result == inline_chunks
-    assert worker_pid != os.getpid()

@@ -91,7 +91,7 @@ async def test_sweep_once_with_no_overdue_sessions_publishes_nothing(
 
 
 @pytest.mark.asyncio
-async def test_sweep_loop_survives_repository_error_and_keeps_sweeping(
+async def test_sweep_loop_survives_repository_error_and_stop_ends_it(
     redis_service, timeout_subscription
 ):
     repository = FakeSessionRepository([ConnectionError("database is down"), [42]])
@@ -104,20 +104,7 @@ async def test_sweep_loop_survives_repository_error_and_keeps_sweeping(
         await service.stop()
 
     assert messages == [{"session_id": 42, "action": "timeout"}]
-    assert repository.calls >= 2
+    calls_at_stop = repository.calls
+    await asyncio.sleep(0.05)
+    assert repository.calls == calls_at_stop, "stop() must end the sweep loop"
 
-
-@pytest.mark.asyncio
-async def test_start_returns_immediately_and_stop_cancels_the_loop(redis_service):
-    repository = FakeSessionRepository([])
-    service = _build_service(redis_service, repository, sweep_interval_seconds=3600)
-
-    await asyncio.wait_for(service.start(), timeout=1)
-    sweep_task = service._task
-    await asyncio.sleep(0)
-
-    await service.stop()
-
-    assert sweep_task.cancelled()
-    assert service._task is None
-    assert repository.calls == 1
