@@ -7,8 +7,8 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 export const FLOW_ACTIONS_WITHOUT_RUN: ActionCode[] = [ActionCode.Read, ActionCode.Update];
 /** Flows actions of a role that may change and run a flow. */
 export const FLOW_ACTIONS_WITH_RUN: ActionCode[] = [ActionCode.Read, ActionCode.Update, ActionCode.Run];
-/** Flows actions of a viewer that may run but not change a flow. */
-export const FLOW_ACTIONS_VIEWER: ActionCode[] = [ActionCode.Read, ActionCode.Run];
+/** Flows actions of a custom role that may run but not change a flow. */
+export const FLOW_ACTIONS_RUN_WITHOUT_UPDATE: ActionCode[] = [ActionCode.Read, ActionCode.Run];
 
 /**
  * Gives the signed-in user exactly these permissions in the active org, through the real PermissionsService

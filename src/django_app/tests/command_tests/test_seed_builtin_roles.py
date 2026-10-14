@@ -117,12 +117,12 @@ def test_granting_creates_a_row_and_widens_a_mask(seeded, roles_file):
 def test_a_dead_bit_in_the_database_is_cleared(seeded):
     RolePermission.objects.filter(
         role__name=BuiltInRole.VIEWER, role__is_built_in=True, resource_type="flows"
-    ).update(permissions=int(Permission.READ | Permission.USE | Permission.RUN))
+    ).update(permissions=66)
 
     result = BuiltInRoleSeeder().seed()
 
-    assert _mask(BuiltInRole.VIEWER, "flows") == Permission.READ | Permission.RUN
-    assert result.changes == ["Viewer.flows: read, run (322) -> read, run (258)"]
+    assert _mask(BuiltInRole.VIEWER, "flows") == Permission.READ
+    assert result.changes == ["Viewer.flows: read (66) -> read (2)"]
 
 
 @pytest.mark.django_db
@@ -133,7 +133,7 @@ def test_a_missing_role_is_created_with_its_permissions(seeded):
 
     role = Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
     assert role.description == SHIPPED[BuiltInRole.VIEWER]["description"]
-    assert _mask(BuiltInRole.VIEWER, "flows") == Permission.READ | Permission.RUN
+    assert _mask(BuiltInRole.VIEWER, "flows") == Permission.READ
     assert result.changes[0] == "Viewer: created"
 
 

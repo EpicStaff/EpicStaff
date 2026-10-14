@@ -6,7 +6,7 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import {
-    FLOW_ACTIONS_VIEWER,
+    FLOW_ACTIONS_RUN_WITHOUT_UPDATE,
     FLOW_ACTIONS_WITH_RUN,
     FLOW_ACTIONS_WITHOUT_RUN,
     grantPermissions,
@@ -101,7 +101,7 @@ describe('FlowReadOnlyService', () => {
             {
                 user: 'may run but not update flows',
                 isPreview: false,
-                flowActions: FLOW_ACTIONS_VIEWER,
+                flowActions: FLOW_ACTIONS_RUN_WITHOUT_UPDATE,
                 triggerReadOnly: true,
                 otherReadOnly: true,
             },

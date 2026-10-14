@@ -965,9 +965,11 @@ nodes, or with `flows:run`, these endpoints work as before; restoring a snapshot
 has no trigger nodes needs no `flows:run` even when it removes the flow's current
 ones. Another organization's flow or version is still a 404.
 
-Built-in roles: Org Admin, Member and Viewer all hold `flows:run`. On upgrade,
-migration `rbac/0007_flows_run_permission` grants `flows:run` to every custom role
-that already held `flows:read`, so no role loses the ability to run flows it had.
+Built-in roles: Org Admin and Member hold `flows:run`; Viewer is read-only and does
+not, so a Viewer can no longer run or stop flows. On upgrade, migration
+`rbac/0007_flows_run_permission` grants `flows:run` to every custom role that already
+held `flows:read`, so no custom role loses the ability to run flows it had. Built-in
+roles are not touched by the migration; the built-in role seeder applies the change.
 
 ---
 

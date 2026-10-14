@@ -42,9 +42,9 @@
     }
   },
   "Viewer": {
-    "description": "Read-only access to workspace resources; can run flows.",
+    "description": "Read-only access to workspace resources.",
     "permissions": {
-      "flows": [ "read", "run" ],
+      "flows": [ "read" ],
       "agents": [ "read" ],
       "tools": [ "read" ],
       "surfaces": [ "read" ],

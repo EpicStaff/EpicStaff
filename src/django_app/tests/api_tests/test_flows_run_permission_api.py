@@ -132,7 +132,7 @@ def test_run_session_on_foreign_flow_gets_404(
 
 
 @pytest.mark.django_db
-def test_run_session_built_in_viewer_can_run(
+def test_run_session_built_in_viewer_cannot_run(
     client_as, django_user_model, acme, role_viewer, acme_graph, redis_client_mock  # noqa: F811
 ):
     viewer = django_user_model.objects.create_user(
@@ -142,7 +142,10 @@ def test_run_session_built_in_viewer_can_run(
 
     response = _run(client_as(viewer), acme_graph)
 
-    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+    assert response.data["code"] == "permission_denied"
+    assert not Session.objects.filter(graph=acme_graph).exists()
+    redis_client_mock.publish.assert_not_called()
 
 
 # ── POST /api/sessions/<id>/stop/ ────────────────────────────────────────────
