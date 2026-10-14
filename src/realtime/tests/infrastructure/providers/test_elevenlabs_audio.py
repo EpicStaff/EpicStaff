@@ -1,195 +1,80 @@
-"""
-Tests for ElevenLabs audio format conversion logic.
+"""ElevenLabs audio formats on a Twilio call: caller µ-law 8 kHz goes up as PCM 16 kHz,
+and the agent's PCM 16 kHz comes back as µ-law 8 kHz.
 
-Three pure conversion paths:
-  - ElevenLabsRealtimeAgentClient._ulaw_to_pcm16k   : µ-law 8kHz  → PCM 16kHz  (Twilio input)
-  - ElevenLabsServerEventHandler._pcm16k_to_ulaw8k  : PCM 16kHz   → µ-law 8kHz (Twilio output)
-  - ElevenLabsServerEventHandler._pcm16k_to_pcm24k  : PCM 16kHz   → PCM 24kHz  (browser output)
-
-No network calls — the methods are called directly on constructed objects.
+The provider websocket (`send_server`) and the frontend side (`send_client`) are recorders.
 """
+
 import audioop
 import base64
 import struct
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import MagicMock
 
-from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import (
-    ElevenLabsRealtimeAgentClient,
-)
-from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler import (
-    ElevenLabsServerEventHandler,
-)
+from infrastructure.providers.elevenlabs.elevenlabs_realtime_agent_client import ElevenLabsRealtimeAgentClient
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _silence_ulaw(n_samples: int) -> bytes:
-    """Generate n_samples of silence encoded as µ-law (0xFF = silence)."""
-    return bytes([0xFF] * n_samples)
-
-
-def _silence_pcm16(n_samples: int) -> bytes:
-    """Generate n_samples of silence as 16-bit signed PCM."""
-    return struct.pack(f"<{n_samples}h", *([0] * n_samples))
-
-
-def _b64_silence_pcm16(n_samples: int) -> str:
-    return base64.b64encode(_silence_pcm16(n_samples)).decode()
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def el_client():
-    """Minimal ElevenLabsRealtimeAgentClient with no network dependencies."""
-    return ElevenLabsRealtimeAgentClient(api_key="test_key", connection_key="test_conn")
+pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def mock_client_for_handler():
-    """Mock client passed to ElevenLabsServerEventHandler."""
-    client = MagicMock()
-    client.connection_key = "test_conn"
-    client.is_twilio = False
-    client._down_resample_state = None
+def client():
+    client = ElevenLabsRealtimeAgentClient(api_key="test_key", connection_key="test_conn")
+    client.send_server = AsyncMock()
+    client.send_client = AsyncMock()
+    client.is_twilio = True
     return client
 
 
-@pytest.fixture
-def server_handler(mock_client_for_handler):
-    return ElevenLabsServerEventHandler(mock_client_for_handler)
+def _tone(samples: int) -> bytes:
+    return struct.pack(f"<{samples}h", *[(index % 50) * 400 - 10000 for index in range(samples)])
 
 
-# ---------------------------------------------------------------------------
-# _ulaw_to_pcm16k  (Twilio input path: ElevenLabsRealtimeAgentClient)
-# ---------------------------------------------------------------------------
-
-def test_ulaw_to_pcm16k_returns_bytes(el_client):
-    ulaw = _silence_ulaw(160)
-    result = el_client._ulaw_to_pcm16k(ulaw)
-    assert isinstance(result, bytes)
+async def _upload(client, ulaw: bytes) -> bytes:
+    client.send_server.reset_mock()
+    await client.send_audio(base64.b64encode(ulaw).decode())
+    (call,) = client.send_server.await_args_list
+    return base64.b64decode(call.args[0]["user_audio_chunk"])
 
 
-def test_ulaw_to_pcm16k_doubles_sample_count(el_client):
-    """8 kHz → 16 kHz resampling should roughly double the byte count."""
-    ulaw = _silence_ulaw(160)          # 160 samples at 8kHz = 20ms
-    result = el_client._ulaw_to_pcm16k(ulaw)
-    # Each sample is 2 bytes (int16); expect ~2x byte count after resampling
-    expected_bytes = 160 * 2 * 2      # 160 samples x 2 bytes x 2x upsample
-    assert abs(len(result) - expected_bytes) <= 8  # small rounding tolerance
+async def test_caller_audio_is_sent_as_16k_pcm_continuously_across_chunks(client):
+    ulaw = audioop.lin2ulaw(_tone(320), 2)
+    whole = ElevenLabsRealtimeAgentClient(api_key="k", connection_key="c")
+    whole.send_server = AsyncMock()
+
+    halves = await _upload(client, ulaw[:160]) + await _upload(client, ulaw[160:])
+
+    # 320 samples at 8 kHz are about 640 at 16 kHz; resampling state carries across
+    # chunks, so a stream split into frames sounds the same as one long frame.
+    assert len(halves) // 2 == pytest.approx(640, abs=4)
+    assert halves == await _upload(whole, ulaw)
 
 
-def test_ulaw_to_pcm16k_updates_resample_state(el_client):
-    """Stateful resampling: _up_resample_state must be updated after first call."""
-    assert el_client._up_resample_state is None
-    el_client._ulaw_to_pcm16k(_silence_ulaw(160))
-    assert el_client._up_resample_state is not None
+async def test_agent_audio_round_trip_keeps_silence_silent(client):
+    pcm16k = await _upload(client, b"\xff" * 160)
+
+    with patch(
+        "infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler.save_realtime_session_item_to_db",
+        new_callable=AsyncMock,
+    ):
+        await client.server_event_handler.handle_event(
+            {"type": "audio", "audio_event": {"audio_base_64": base64.b64encode(pcm16k).decode()}}
+        )
+
+    delta = next(call.args[0] for call in client.send_client.await_args_list if call.args[0]["type"] == "response.audio.delta")
+    pcm_out = audioop.ulaw2lin(base64.b64decode(delta["delta"]), 2)
+    assert max(abs(sample) for sample in struct.unpack(f"<{len(pcm_out) // 2}h", pcm_out)) < 500
 
 
-def test_ulaw_to_pcm16k_state_is_consistent_across_chunks(el_client):
-    """Two consecutive chunks should produce the same byte count as one merged chunk."""
-    chunk = _silence_ulaw(160)
-    r1 = el_client._ulaw_to_pcm16k(chunk)
-    r2 = el_client._ulaw_to_pcm16k(chunk)
-    assert len(r1) > 0
-    assert len(r2) > 0
+async def test_unreadable_browser_audio_is_passed_on_rather_than_dropped(client):
+    """An odd byte count can't be read as 16-bit PCM; the frame is forwarded unchanged."""
+    client.is_twilio = False
+    odd = base64.b64encode(b"\x01").decode()
 
+    with patch(
+        "infrastructure.providers.elevenlabs.event_handlers.elevenlabs_server_event_handler.save_realtime_session_item_to_db",
+        new_callable=AsyncMock,
+    ):
+        await client.server_event_handler.handle_event({"type": "audio", "audio_event": {"audio_base_64": odd}})
 
-# ---------------------------------------------------------------------------
-# _pcm16k_to_ulaw8k  (Twilio output path: ElevenLabsServerEventHandler)
-# ---------------------------------------------------------------------------
-
-def test_pcm16k_to_ulaw8k_returns_string(server_handler):
-    b64_in = _b64_silence_pcm16(320)  # 320 samples = 20ms at 16kHz
-    result = server_handler._pcm16k_to_ulaw8k(b64_in)
-    assert isinstance(result, str)
-
-
-def test_pcm16k_to_ulaw8k_is_valid_base64(server_handler):
-    b64_in = _b64_silence_pcm16(320)
-    result = server_handler._pcm16k_to_ulaw8k(b64_in)
-    decoded = base64.b64decode(result)
-    assert len(decoded) > 0
-
-
-def test_pcm16k_to_ulaw8k_halves_sample_count(server_handler):
-    """16kHz → 8kHz resampling should roughly halve the sample count."""
-    n_in = 320   # 320 samples at 16kHz = 20ms
-    b64_in = _b64_silence_pcm16(n_in)
-    result_bytes = base64.b64decode(server_handler._pcm16k_to_ulaw8k(b64_in))
-    # µ-law is 1 byte per sample; expect ~160 samples (n_in / 2)
-    assert abs(len(result_bytes) - n_in // 2) <= 4
-
-
-def test_pcm16k_to_ulaw8k_updates_client_resample_state(server_handler, mock_client_for_handler):
-    assert mock_client_for_handler._down_resample_state is None
-    server_handler._pcm16k_to_ulaw8k(_b64_silence_pcm16(320))
-    assert mock_client_for_handler._down_resample_state is not None
-
-
-# ---------------------------------------------------------------------------
-# _pcm16k_to_pcm24k  (browser output path: ElevenLabsServerEventHandler)
-# ---------------------------------------------------------------------------
-
-def test_pcm16k_to_pcm24k_returns_string(server_handler):
-    b64_in = _b64_silence_pcm16(160)
-    result = server_handler._pcm16k_to_pcm24k(b64_in)
-    assert isinstance(result, str)
-
-
-def test_pcm16k_to_pcm24k_is_valid_base64(server_handler):
-    b64_in = _b64_silence_pcm16(160)
-    result = server_handler._pcm16k_to_pcm24k(b64_in)
-    decoded = base64.b64decode(result)
-    assert len(decoded) > 0
-
-
-def test_pcm16k_to_pcm24k_upsamples_to_1_5x(server_handler):
-    """16kHz → 24kHz: output should have 1.5x the number of samples."""
-    n_in = 100
-    b64_in = _b64_silence_pcm16(n_in)
-    result_bytes = base64.b64decode(server_handler._pcm16k_to_pcm24k(b64_in))
-    n_out = len(result_bytes) // 2   # int16 = 2 bytes
-    expected = int(n_in * 1.5)
-    assert abs(n_out - expected) <= 2
-
-
-def test_pcm16k_to_pcm24k_empty_input_returns_same_b64(server_handler):
-    """Empty base64 PCM should be returned unchanged (guard clause)."""
-    empty_b64 = base64.b64encode(b"").decode()
-    result = server_handler._pcm16k_to_pcm24k(empty_b64)
-    assert result == empty_b64
-
-
-def test_pcm16k_to_pcm24k_invalid_input_returns_original(server_handler):
-    """Garbage input should be returned unchanged (exception guard)."""
-    bad_b64 = base64.b64encode(b"\x01").decode()  # odd byte count → numpy can't parse
-    result = server_handler._pcm16k_to_pcm24k(bad_b64)
-    # Should either succeed or return the original without raising
-    assert isinstance(result, str)
-
-
-# ---------------------------------------------------------------------------
-# Round-trip: ulaw8k → pcm16k → ulaw8k  (sanity)
-# ---------------------------------------------------------------------------
-
-def test_round_trip_silence_stays_silent(el_client, server_handler):
-    """Silence through ulaw→pcm16k→ulaw8k should decode back to near-zero PCM."""
-    ulaw_in = _silence_ulaw(160)
-    pcm16k = el_client._ulaw_to_pcm16k(ulaw_in)
-
-    # Re-encode to base64 and convert back through server handler
-    b64_pcm16k = base64.b64encode(pcm16k).decode()
-    b64_ulaw_out = server_handler._pcm16k_to_ulaw8k(b64_pcm16k)
-    ulaw_out = base64.b64decode(b64_ulaw_out)
-
-    # Decode back to PCM and check amplitude is low (silence)
-    pcm_out = audioop.ulaw2lin(ulaw_out, 2)
-    samples = struct.unpack(f"<{len(pcm_out)//2}h", pcm_out)
-    max_amplitude = max(abs(s) for s in samples)
-    assert max_amplitude < 500   # silence should have very low amplitude
+    delta = next(call.args[0] for call in client.send_client.await_args_list if call.args[0]["type"] == "response.audio.delta")
+    assert delta["delta"] == odd

@@ -73,6 +73,7 @@ export * from './select/select-trigger.directive';
 export * from './select-dropdown/select-dropdown.component';
 export * from './select-dropdown/select-dropdown.model';
 export * from './select-dropdown/select-dropdown-trigger.directive';
+export * from './sidebar-toggle-button/sidebar-toggle-button.component';
 export * from './slider-with-stepper/slider-with-stepper.component';
 export * from './spinner/spinner.component';
 export * from './spinner-type2/spinner.component';

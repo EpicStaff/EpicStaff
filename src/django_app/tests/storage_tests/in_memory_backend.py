@@ -554,7 +554,11 @@ class _Paginator:
         self._client = client
         self._page_size = page_size
 
-    def paginate(self, *, Bucket, Prefix):
+    def paginate(self, *, Bucket, Prefix, Delimiter=None):
+        if Delimiter is not None:
+            # One page: delimiter listings in these tests stay far below a page.
+            yield self._client.list_objects_v2(Bucket=Bucket, Prefix=Prefix, Delimiter=Delimiter)
+            return
         keys = sorted(key for key in self._client.objects if key.startswith(Prefix))
         for start in range(0, len(keys), self._page_size):
             yield {
@@ -596,14 +600,45 @@ class FakeS3Client:
         }
 
     def list_objects_v2(self, *, Bucket, Prefix, MaxKeys=1000, Delimiter=None):
-        keys = sorted(key for key in self.objects if key.startswith(Prefix))[:MaxKeys]
-        return {
-            "KeyCount": len(keys),
+        keys = sorted(key for key in self.objects if key.startswith(Prefix))
+        prefixes: list[str] = []
+        if Delimiter is not None:
+            # S3 rolls everything past the next delimiter up into one CommonPrefix.
+            direct = []
+            for key in keys:
+                rest = key[len(Prefix):]
+                if Delimiter in rest:
+                    common = Prefix + rest[: rest.index(Delimiter) + 1]
+                    if common not in prefixes:
+                        prefixes.append(common)
+                else:
+                    direct.append(key)
+            keys = direct
+        keys = keys[:MaxKeys]
+        response = {
+            "KeyCount": len(keys) + len(prefixes),
             "Contents": [
                 {"Key": key, "Size": len(self.objects[key]), "LastModified": MODIFIED}
                 for key in keys
             ],
         }
+        if prefixes:
+            response["CommonPrefixes"] = [{"Prefix": prefix} for prefix in prefixes[:MaxKeys]]
+        return response
+
+    def get_object(self, *, Bucket, Key, Range=None):
+        if Key not in self.objects:
+            raise client_error("NoSuchKey", 404, "GetObject")
+        body = self.objects[Key]
+        response = {"Body": io.BytesIO(body)}
+        if Range is not None:
+            first, _, last = Range.removeprefix("bytes=").partition("-")
+            first, last = int(first), int(last) if last else len(body) - 1
+            if first >= len(body):
+                raise client_error("InvalidRange", 416, "GetObject")
+            last = min(last, len(body) - 1)
+            response = {"Body": io.BytesIO(body[first : last + 1]), "ContentRange": f"bytes {first}-{last}/{len(body)}"}
+        return response
 
     def get_paginator(self, name):
         assert name == "list_objects_v2"

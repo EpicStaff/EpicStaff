@@ -91,6 +91,7 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     public openConfigureDialog(dialog: Dialog, tool: GetPythonCodeToolRequest): DialogRef<GetPythonCodeToolRequest> {
         return dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
             data: { selectedTool: tool },
+            autoFocus: false,
         });
     }
 

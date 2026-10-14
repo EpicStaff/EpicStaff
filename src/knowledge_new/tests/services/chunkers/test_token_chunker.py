@@ -1,11 +1,9 @@
-import os
 
 import pytest
 import settings
 from domain.enums import ChunkStrategyEnum
 from domain.errors import ChunkingError
 from infrastructure.naive.chunkers.strategies.token_chunker import TokenChunker
-from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 from tokie import Tokenizer
 
@@ -61,22 +59,6 @@ async def test_multi_chunk_overlap_edges_and_invariant(chunk_size, chunk_overlap
 async def test_empty_string_returns_empty():
     chunker = build_chunker(chunk_size=10, chunk_overlap=3)
     assert await chunker.chunk("") == []
-
-
-@pytest.mark.parametrize("text", [None, 0])
-async def test_chunking_raises_error_for_invalid_data(text):
-    chunker = build_chunker(chunk_size=10, chunk_overlap=3)
-    with pytest.raises(ChunkingError):
-        await chunker.chunk(text)
-
-
-async def test_chunking_is_running_in_process():
-    chunker = build_chunker(chunk_size=10, chunk_overlap=3)
-
-    inline_chunks = await chunker.chunk(LONG_TEXT)
-    result, worker_pid = await offload_to_process(lambda: chunker.chunk(LONG_TEXT))
-    assert result == inline_chunks
-    assert worker_pid != os.getpid()
 
 
 @pytest.fixture

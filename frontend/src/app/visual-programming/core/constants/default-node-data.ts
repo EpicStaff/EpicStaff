@@ -98,6 +98,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             entrypoint: 'main',
         },
         test_payload: {},
+        use_storage: false,
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
         telegram_bot_api_key_secret_id: null,

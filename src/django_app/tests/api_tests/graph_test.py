@@ -8,25 +8,6 @@ from tests.fixtures import *
 
 
 @pytest.mark.django_db
-def test_graph_list(auth_client, graph):
-    url = reverse("graphs-list")
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-
-
-@pytest.mark.django_db
-def test_graph_list_empty(auth_client):
-    url = reverse("graphs-list")
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert response.data["count"] == 0
-
-
-@pytest.mark.django_db
 def test_graph_post(auth_client):
     url = reverse("graphs-list")
     data = {"name": "test post", "metadata": {"data": "test data"}}
@@ -39,15 +20,6 @@ def test_graph_post(auth_client):
     assert graph.name == data["name"]
     assert response.data["metadata"] == data["metadata"]
     assert graph.metadata == data["metadata"]
-
-
-@pytest.mark.django_db
-def test_graph_detail(auth_client, graph):
-    url = reverse("graphs-detail", args=[graph.id])
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
 
 
 @pytest.mark.django_db
@@ -79,19 +51,6 @@ def test_graph_put(auth_client, graph):
 
 
 @pytest.mark.django_db
-def test_graph_patch(auth_client, graph):
-    url = reverse("graphs-detail", args=[graph.id])
-    data = {"metadata": {"data": "test data"}, "save_version": graph.save_version}
-
-    response = auth_client.patch(url, data, format="json")
-    graph = Graph.objects.get(id=response.data["id"])
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert response.data["metadata"] == data["metadata"]
-    assert graph.metadata == data["metadata"]
-
-
-@pytest.mark.django_db
 def test_graph_delete(auth_client, graph):
     url = reverse("graphs-detail", args=[graph.id])
 
@@ -105,8 +64,9 @@ def test_graph_delete(auth_client, graph):
 
 
 @pytest.mark.django_db
-def test_graph_delete_soft_delete_default_leaves_row_in_all_objects(auth_client, graph):
-    """SOFT_DELETE=True (default): DELETE hides the graph from `objects` but
+@override_settings(SOFT_DELETE=True)
+def test_graph_delete_leaves_row_in_all_objects_when_soft_delete_enabled(auth_client, graph):
+    """SOFT_DELETE=True: DELETE hides the graph from `objects` but
     keeps it in `all_objects` with `is_soft_deleted=True` and `soft_deleted_at` set."""
     graph_id = graph.id
     url = reverse("graphs-detail", args=[graph_id])

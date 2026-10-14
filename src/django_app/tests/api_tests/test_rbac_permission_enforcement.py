@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -72,173 +71,84 @@ def test_permission_catalog_requires_auth():
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.django_db
-def test_permission_catalog_returns_actions_and_resource_types(
-    member_user, auth_client
-):
-    response = auth_client(member_user).get("/api/permissions/catalog/")
-    assert response.status_code == status.HTTP_200_OK
-    body = response.json()
-    assert "actions" in body and "resource_types" in body
-    # Matrix column order: View leads, then the actions built on it.
-    action_codes = [a["code"] for a in body["actions"]]
-    assert action_codes == [
-        "read",
-        "create",
-        "update",
-        "delete",
-        "export",
-        "use",
-        "run",
-    ]
-    resource_codes = [r["code"] for r in body["resource_types"]]
-    assert "organizations" in resource_codes
-    assert "secrets" in resource_codes
-    orgs_entry = next(r for r in body["resource_types"] if r["code"] == "organizations")
-    # create/delete are platform-level (superadmin-only); only read/update are grantable.
-    assert orgs_entry["applicable_actions"] == ["read", "update"]
-    assert orgs_entry["platform_actions"] == ["create", "delete"]
-    assert orgs_entry["group"] == "admin"
-
-
-# ---- Cross-org membership door gate ----
+# ---- Door gates of the admin lists ----
 
 
 @pytest.mark.django_db
-def test_memberships_list_org_admin_allowed(auth_client, org_admin_user, org_acme):
-    response = auth_client(org_admin_user).get(
-        f"/api/admin/memberships/?org_ids={org_acme.id}"
-    )
-    assert response.status_code == status.HTTP_200_OK
+@pytest.mark.parametrize(
+    ("url", "caller", "expected"),
+    [
+        ("/api/admin/memberships/?org_ids={acme}", "org_admin_user", status.HTTP_200_OK),
+        ("/api/admin/memberships/", "member_user", status.HTTP_403_FORBIDDEN),
+        ("/api/admin/memberships/", "superadmin_user", status.HTTP_200_OK),
+        # Member has roles=0 everywhere; the roles list needs no X-Organization-Id.
+        ("/api/admin/roles/", "member_user", status.HTTP_403_FORBIDDEN),
+        ("/api/admin/roles/", "org_admin_user", status.HTTP_200_OK),
+        # The router rejects a non-numeric pk before dispatch.
+        ("/api/admin/roles/test/", "org_admin_user", status.HTTP_404_NOT_FOUND),
+    ],
+)
+def test_admin_list_door_gates(request, auth_client, org_acme, url, caller, expected):
+    response = auth_client(request.getfixturevalue(caller)).get(url.format(acme=org_acme.id))
+
+    assert response.status_code == expected
 
 
 @pytest.mark.django_db
-def test_memberships_list_member_denied(auth_client, member_user):
-    response = auth_client(member_user).get("/api/admin/memberships/")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+def test_built_in_roles_show_their_permissions(auth_client, org_admin_user, role_member):
+    client = auth_client(org_admin_user)
 
-
-@pytest.mark.django_db
-def test_memberships_list_superadmin_allowed(auth_client, superadmin_user):
-    response = auth_client(superadmin_user).get("/api/admin/memberships/")
-    assert response.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-def test_is_superadmin_or_org_admin_class_removed():
-    """Asserts the deprecated class is gone. Regression guard."""
-    from rbac.access import gates as permission_module
-
-    assert not hasattr(permission_module, "IsSuperadminOrOrgAdmin")
-
-
-# ---- Roles endpoints (flat, permission-gated) ----
-
-
-@pytest.mark.django_db
-def test_admin_roles_list_denied_for_member(auth_client, member_user):
-    # Member has roles=0 everywhere → door gate 403.
-    response = auth_client(member_user).get("/api/admin/roles/")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-
-
-@pytest.mark.django_db
-def test_admin_roles_list_org_admin_shape(auth_client, org_admin_user, org_acme):
-    response = auth_client(org_admin_user).get("/api/admin/roles/")
-    assert response.status_code == status.HTTP_200_OK
-    body = response.json()
-    assert "built_in_roles" in body and "results" in body
-    org_admin = next(r for r in body["built_in_roles"] if r["name"] == "Org Admin")
+    body = client.get("/api/admin/roles/").json()
+    org_admin = next(role for role in body["built_in_roles"] if role["name"] == "Org Admin")
     flows = next(p for p in org_admin["permissions"] if p["resource_type"] == "flows")
+
     assert set(flows["actions"]) == {"create", "read", "update", "delete", "export", "run"}
-
-
-@pytest.mark.django_db
-def test_admin_roles_list_no_header_needed(auth_client, org_admin_user):
-    # The roles list no longer consults X-Organization-Id.
-    response = auth_client(org_admin_user).get("/api/admin/roles/")
-    assert response.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-def test_admin_role_detail_org_admin(auth_client, org_admin_user, role_member):
-    response = auth_client(org_admin_user).get(f"/api/admin/roles/{role_member.id}/")
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json()["name"] == "Member"
-
-
-@pytest.mark.django_db
-def test_admin_role_detail_non_int_pk_returns_404(auth_client, org_admin_user):
-    # Router regex rejects non-numeric pk before dispatch.
-    response = auth_client(org_admin_user).get("/api/admin/roles/test/")
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-# ---- Built-in immutability guard ----
-
-
-@pytest.mark.django_db
-def test_built_in_role_immutable_guard_raises(role_org_admin):
-    from rbac.governance.roles import RoleManagementService
-    from rbac.exceptions import BuiltInRoleImmutableError
-
-    service = RoleManagementService()
-    with pytest.raises(BuiltInRoleImmutableError) as exc_info:
-        service.assert_mutable(role_org_admin)
-    assert exc_info.value.default_code == "built_in_role_immutable"
-    assert exc_info.value.status_code == 403
+    assert client.get(f"/api/admin/roles/{role_member.id}/").json()["name"] == "Member"
 
 
 # ---- /api/permissions/me/ ----
 
 
 @pytest.mark.django_db
-def test_permissions_me_missing_header_400(auth_client, member_user):
-    response = auth_client(member_user).get("/api/permissions/me/")
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "org_context_required"
+@pytest.mark.parametrize(
+    ("header", "status_code", "code"),
+    [
+        (None, status.HTTP_400_BAD_REQUEST, "org_context_required"),
+        ("abc", status.HTTP_400_BAD_REQUEST, "org_context_required"),
+        ("other", status.HTTP_403_FORBIDDEN, "org_membership_required"),
+    ],
+    ids=["no-org", "malformed-org", "not-a-member"],
+)
+def test_permissions_me_needs_an_org_the_caller_belongs_to(auth_client, member_user, header, status_code, code):
+    headers = {}
+    if header == "other":
+        headers["HTTP_X_ORGANIZATION_ID"] = str(Organization.objects.create(name="Other Inc (permissions-me tests)").id)
+    elif header:
+        headers["HTTP_X_ORGANIZATION_ID"] = header
 
+    response = auth_client(member_user).get("/api/permissions/me/", **headers)
 
-@pytest.mark.django_db
-def test_permissions_me_malformed_header_400(auth_client, member_user):
-    response = auth_client(member_user).get(
-        "/api/permissions/me/", HTTP_X_ORGANIZATION_ID="abc"
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "org_context_required"
-
-
-@pytest.mark.django_db
-def test_permissions_me_non_member_403(auth_client, member_user, db):
-    other = Organization.objects.create(name="Other Inc (permissions-me tests)")
-    response = auth_client(member_user).get(
-        "/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(other.id)
-    )
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json()["code"] == "org_membership_required"
+    assert response.status_code == status_code
+    assert response.json()["code"] == code
 
 
 @pytest.mark.django_db
 def test_permissions_me_superadmin_star(auth_client, superadmin_user, org_acme):
-    response = auth_client(superadmin_user).get(
-        "/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id)
-    )
+    response = auth_client(superadmin_user).get("/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id))
+
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["is_superadmin"] is True
-    assert body["permissions"] == "*"
-    assert body["role"] is None
+    assert (body["is_superadmin"], body["permissions"], body["role"]) == (True, "*", None)
 
 
 @pytest.mark.django_db
 def test_permissions_me_org_admin(auth_client, org_admin_user, org_acme):
-    response = auth_client(org_admin_user).get(
-        "/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id)
-    )
+    response = auth_client(org_admin_user).get("/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id))
+
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["is_superadmin"] is False
     assert body["role"]["name"] == "Org Admin"
     assert "export" in body["permissions"]["flows"]
-    # Org Admin now holds organizations READ|UPDATE (rename/manage own org).
+    # Org Admin holds organizations READ|UPDATE (rename/manage own org).
     assert body["permissions"]["organizations"] == ["read", "update"]

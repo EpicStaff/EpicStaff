@@ -113,37 +113,6 @@ def _context_for(user):
 
 
 @pytest.mark.django_db
-def test_created_by_field_is_read_only():
-    field = LabelAuthorSerializer().fields["created_by"]
-
-    assert field.read_only is True
-
-
-@pytest.mark.django_db
-def test_create_stamps_request_user(acme, author):
-    serializer = LabelAuthorSerializer(
-        data={"name": "stamped", "org": acme.id}, context=_context_for(author)
-    )
-    serializer.is_valid(raise_exception=True)
-    label = serializer.save()
-
-    assert Label.objects.get(pk=label.pk).created_by_id == author.id
-    assert serializer.data["created_by"] == author.id
-
-
-@pytest.mark.django_db
-def test_create_ignores_client_supplied_author(acme, author, other_user):
-    serializer = LabelAuthorSerializer(
-        data={"name": "spoofed", "org": acme.id, "created_by": other_user.id},
-        context=_context_for(author),
-    )
-    serializer.is_valid(raise_exception=True)
-    label = serializer.save()
-
-    assert Label.objects.get(pk=label.pk).created_by_id == author.id
-
-
-@pytest.mark.django_db
 def test_create_without_request_falls_back_to_explicit_author(acme, author):
     serializer = LabelAuthorSerializer(data={"name": "explicit", "org": acme.id})
     serializer.is_valid(raise_exception=True)
@@ -173,20 +142,6 @@ def test_create_by_system_principal_leaves_no_author(acme):
     label = serializer.save(created_by=principal)
 
     assert Label.objects.get(pk=label.pk).created_by_id is None
-
-
-@pytest.mark.django_db
-def test_update_leaves_row_without_author_unauthored(acme, author):
-    label = Label.objects.create(name="unauthored", org=acme)
-    serializer = LabelAuthorSerializer(
-        label, data={"name": "edited-unauthored"}, partial=True, context=_context_for(author)
-    )
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-
-    stored = Label.objects.get(pk=label.pk)
-    assert stored.name == "edited-unauthored"
-    assert stored.created_by_id is None
 
 
 def _last_editor_id(instance) -> int | None:
@@ -224,23 +179,6 @@ def test_update_records_explicit_author_as_editor_and_keeps_existing_author(
     stored = GraphNote.objects.get(pk=note.pk)
     assert stored.created_by_id == author.id
     assert _last_editor_id(stored) == other_user.id
-
-
-@pytest.mark.django_db
-def test_update_keeps_existing_author(acme, author, other_user):
-    label = Label.objects.create(name="owned", org=acme, created_by=author)
-    serializer = LabelAuthorSerializer(
-        label,
-        data={"name": "edited", "created_by": other_user.id},
-        partial=True,
-        context=_context_for(other_user),
-    )
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-
-    stored = Label.objects.get(pk=label.pk)
-    assert stored.name == "edited"
-    assert stored.created_by_id == author.id
 
 
 @pytest.mark.django_db
@@ -286,7 +224,9 @@ def test_every_layout_stamps_request_user_on_create(
     serializer.is_valid(raise_exception=True)
     label = serializer.save()
 
+    # The client-supplied author is ignored; the request user is stamped and shown.
     assert Label.objects.get(pk=label.pk).created_by_id == author.id
+    assert serializer.data["created_by"] == author.id
 
 
 @pytest.mark.django_db

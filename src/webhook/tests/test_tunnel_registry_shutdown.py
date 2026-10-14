@@ -1,28 +1,31 @@
 import asyncio
 import threading
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app import main as main_module
 from app.core.settings import settings
 from app.main import lifespan
-from app.providers.provider_factory import get_provider
-from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
-from app.services.tunnel_registry import TunnelRegistry
+from app.services.tunnel_registry import TunnelRegistry, UnregisteredWebhookPathError
 from src.shared.models import LocalhostConfigData, NgrokConfigData
 
 
 class _FakeTunnel:
-    def __init__(self, fail=False, release: asyncio.Event | None = None):
+    """Tunnel whose disconnect can fail or hang until released."""
+
+    def __init__(self, url="http://tunnel", fail=False, release: asyncio.Event | None = None):
+        self.url = url
         self.disconnect_started = asyncio.Event()
         self.disconnect_finished = asyncio.Event()
         self.disconnected = False
         self._fail = fail
         self._release = release
+        self._on_url_set = None
 
     async def connect(self):
-        pass
+        if self._on_url_set is not None:
+            await self._on_url_set(self.url)
 
     async def disconnect(self):
         self.disconnect_started.set()
@@ -37,30 +40,49 @@ class _FakeTunnel:
 
 
 class _ConnectBlockedUntilKilled:
-    """ngrok.connect stand-in that blocks like pyngrok's startup read until the process is killed."""
+    """ngrok.connect stand-in that blocks like pyngrok's startup read until the process
+    is killed; with `fail_first`, the first start fails at once and the retry blocks."""
 
-    def __init__(self, environment):
+    def __init__(self, environment, fail_first=False):
         self.started = threading.Event()
         self.killed = threading.Event()
+        self._fail_next = fail_first
         environment.ngrok.connect.side_effect = self.connect
         environment.process.kill_process.side_effect = lambda *args: self.killed.set()
 
     def connect(self, *args, **kwargs):
+        if self._fail_next:
+            self._fail_next = False
+            raise RuntimeError("ngrok failed to start")
         self.started.set()
         assert self.killed.wait(timeout=5), "ngrok process was never killed"
         raise RuntimeError("ngrok process was killed")
 
 
-def _registry_with(*tunnels, redis_service=None):
+async def _register_fake(registry, tunnel, name):
+    config = LocalhostConfigData(name=name, org_id=1)
+    with patch("app.services.tunnel_registry.get_provider", return_value=tunnel):
+        await registry.register(config)
+    return config
+
+
+async def _registry_with(*tunnels, redis_service=None):
     registry = TunnelRegistry(redis_service=redis_service)
     for index, tunnel in enumerate(tunnels):
-        config = LocalhostConfigData(name=f"hook-{index}", org_id=1)
-        registry._tunnel_pool[config.unique_id] = (tunnel, config)
+        await _register_fake(registry, tunnel, f"hook-{index}")
     return registry
 
 
-def _make_ngrok_provider() -> NgrokTunnel:
-    return NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token")
+async def _published_tunnel_urls(redis_service) -> dict[str, str]:
+    return await redis_service.client.hgetall(settings.TUNNEL_URLS_HASH_KEY)
+
+
+async def _is_registered(registry, path) -> bool:
+    try:
+        await registry.resolve_by_path(path)
+    except UnregisteredWebhookPathError:
+        return False
+    return True
 
 
 async def _run_lifespan(registry, timeout=3, while_running=None):
@@ -73,25 +95,25 @@ async def _run_lifespan(registry, timeout=3, while_running=None):
         await asyncio.wait_for(run(), timeout=timeout)
 
 
-async def test_failing_disconnect_still_deletes_its_url_and_unregisters_the_others():
-    redis_service = AsyncMock()
+async def test_failing_disconnect_still_deletes_its_url_and_unregisters_the_others(
+    redis_service,
+):
     failing = _FakeTunnel(fail=True)
     healthy = _FakeTunnel()
-    registry = _registry_with(failing, healthy, redis_service=redis_service)
-    unique_ids = list(registry._tunnel_pool)
+    registry = await _registry_with(failing, healthy, redis_service=redis_service)
+    assert len(await _published_tunnel_urls(redis_service)) == 2
 
     await registry.unregister_all()
 
     assert healthy.disconnected
-    assert registry._tunnel_pool == {}
-    deleted_ids = [call.args[0] for call in redis_service.delete_tunnel_url.await_args_list]
-    assert sorted(deleted_ids) == sorted(unique_ids)
+    assert await _published_tunnel_urls(redis_service) == {}
+    assert not await _is_registered(registry, "hook-0")
 
 
 async def test_unregister_all_does_not_swallow_cancellation():
     release = asyncio.Event()
     hanging = _FakeTunnel(release=release)
-    registry = _registry_with(hanging)
+    registry = await _registry_with(hanging)
     unregister_task = asyncio.create_task(registry.unregister_all())
     await asyncio.wait_for(hanging.disconnect_started.wait(), timeout=3)
 
@@ -104,15 +126,13 @@ async def test_unregister_all_does_not_swallow_cancellation():
 
 
 async def test_lifespan_shutdown_is_bounded_and_deletes_urls_when_a_tunnel_hangs(
-    lifespan_dependencies, monkeypatch
+    lifespan_dependencies, redis_service, monkeypatch
 ):
     monkeypatch.setattr(main_module, "TUNNEL_SHUTDOWN_TIMEOUT_SECONDS", 0.2)
-    redis_service = AsyncMock()
     release = asyncio.Event()
     hanging = _FakeTunnel(release=release)
     healthy = _FakeTunnel()
-    registry = _registry_with(hanging, healthy, redis_service=redis_service)
-    unique_ids = list(registry._tunnel_pool)
+    registry = await _registry_with(hanging, healthy, redis_service=redis_service)
 
     try:
         await _run_lifespan(registry)
@@ -122,59 +142,54 @@ async def test_lifespan_shutdown_is_bounded_and_deletes_urls_when_a_tunnel_hangs
     assert healthy.disconnected
     assert not hanging.disconnected
     # The hung tunnel's URL is deleted even though its disconnect never finished.
-    deleted_ids = [call.args[0] for call in redis_service.delete_tunnel_url.await_args_list]
-    assert sorted(deleted_ids) == sorted(unique_ids)
+    assert await _published_tunnel_urls(redis_service) == {}
     lifespan_dependencies.assert_awaited_once()
     await asyncio.wait_for(hanging.disconnect_finished.wait(), timeout=3)
 
 
 async def test_lifespan_shutdown_deletes_every_tunnel_url_before_closing_redis(
-    lifespan_dependencies,
+    lifespan_dependencies, redis_service
 ):
-    events: list[str] = []
-    redis_service = AsyncMock()
-    redis_service.delete_tunnel_url.side_effect = lambda unique_id: events.append(unique_id)
-    lifespan_dependencies.side_effect = lambda: events.append("close redis")
-    registry = _registry_with(_FakeTunnel(), _FakeTunnel(), redis_service=redis_service)
-    unique_ids = list(registry._tunnel_pool)
+    urls_when_redis_closed = []
+
+    async def close_redis():
+        urls_when_redis_closed.append(await _published_tunnel_urls(redis_service))
+
+    lifespan_dependencies.side_effect = close_redis
+    registry = await _registry_with(_FakeTunnel(), _FakeTunnel(), redis_service=redis_service)
 
     await _run_lifespan(registry)
 
-    assert sorted(events[:-1]) == sorted(unique_ids)
-    assert events[-1] == "close redis"
+    assert urls_when_redis_closed == [{}]
 
 
 async def test_lifespan_shutdown_disconnects_every_tunnel_and_removes_working_directories(
     ngrok_environment, lifespan_dependencies
 ):
     registry = TunnelRegistry()
-    providers = []
     for index in range(2):
-        config = NgrokConfigData(name=f"hook-{index}", org_id=1, auth_token="test-token")
-        provider = _make_ngrok_provider()
-        await provider.connect()
-        registry._tunnel_pool[config.unique_id] = (provider, config)
-        providers.append(provider)
+        await registry.register(
+            NgrokConfigData(name=f"hook-{index}", org_id=1, auth_token="test-token")
+        )
     assert len(list(ngrok_environment.temp_root.iterdir())) == 2
 
     await _run_lifespan(registry)
 
-    assert registry._tunnel_pool == {}
-    assert all(provider.public_url is None for provider in providers)
+    assert not await _is_registered(registry, "hook-0")
+    assert not await _is_registered(registry, "hook-1")
     assert ngrok_environment.ngrok.disconnect.call_count == 2
     assert ngrok_environment.process.kill_process.call_count == 2
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
-async def test_lifespan_shutdown_kills_a_start_blocked_mid_connect(
-    ngrok_environment, lifespan_dependencies
+async def test_lifespan_shutdown_kills_a_start_blocked_mid_reconnect(
+    ngrok_environment, lifespan_dependencies, monkeypatch
 ):
-    blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment)
-    provider = _make_ngrok_provider()
-    config = NgrokConfigData(name="hook", org_id=1, auth_token="test-token")
+    monkeypatch.setattr(settings, "WEBHOOK_TUNNEL_RECONNECT_TIMEOUT", 0)
+    blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment, fail_first=True)
     registry = TunnelRegistry()
-    registry._tunnel_pool[config.unique_id] = (provider, config)
-    connect_task = asyncio.create_task(provider.connect())
+    # The first start fails, so the tunnel is registered and its monitor retries.
+    await registry.register(NgrokConfigData(name="hook", org_id=1, auth_token="test-token"))
     assert await asyncio.to_thread(blocked_connect.started.wait, 5)
 
     try:
@@ -182,9 +197,7 @@ async def test_lifespan_shutdown_kills_a_start_blocked_mid_connect(
         await _run_lifespan(registry, timeout=2)
     finally:
         blocked_connect.killed.set()
-        await asyncio.wait_for(connect_task, timeout=5)
 
-    assert provider._tunnel is None
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
@@ -224,47 +237,37 @@ async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_regist
     lifespan_dependencies.assert_awaited_once()
     # The interrupted register() still disconnects its tunnel once the start ends.
     await asyncio.wait_for(listener_finished.wait(), timeout=5)
-    assert registry._tunnel_pool == {}
+    assert not await _is_registered(registry, "hook")
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
 async def test_register_cancelled_mid_connect_leaves_no_live_tunnel(ngrok_environment):
     blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment)
-    created_tunnels = []
-
-    def create_provider(config):
-        tunnel = get_provider(config)
-        created_tunnels.append(tunnel)
-        return tunnel
-
     registry = TunnelRegistry()
     config = NgrokConfigData(name="hook", org_id=1, auth_token="test-token")
-    with patch("app.services.tunnel_registry.get_provider", side_effect=create_provider):
-        register_task = asyncio.create_task(registry.register(config))
-        assert await asyncio.to_thread(blocked_connect.started.wait, 5)
+    register_task = asyncio.create_task(registry.register(config))
+    assert await asyncio.to_thread(blocked_connect.started.wait, 5)
 
-        register_task.cancel()
-        try:
-            with pytest.raises(asyncio.CancelledError):
-                await asyncio.wait_for(register_task, timeout=3)
-        finally:
-            blocked_connect.killed.set()
+    register_task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(register_task, timeout=3)
+    finally:
+        blocked_connect.killed.set()
 
-    (tunnel,) = created_tunnels
-    assert registry._tunnel_pool == {}
-    assert not tunnel.is_active
-    assert tunnel._start_task is None
-    assert tunnel._tunnel is None
+    assert not await _is_registered(registry, "hook")
+    ngrok_environment.ngrok.disconnect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
-async def test_register_cancelled_while_replacing_still_disconnects_the_old_tunnel():
+async def test_register_cancelled_while_replacing_still_disconnects_the_old_tunnel(
+    redis_service,
+):
     release = asyncio.Event()
-    old_tunnel = _FakeTunnel(release=release)
-    new_tunnel = _FakeTunnel()
-    config = LocalhostConfigData(name="hook", org_id=1)
-    registry = TunnelRegistry()
-    registry._tunnel_pool[config.unique_id] = (old_tunnel, config)
+    old_tunnel = _FakeTunnel(url="http://old", release=release)
+    new_tunnel = _FakeTunnel(url="http://new")
+    registry = TunnelRegistry(redis_service=redis_service)
+    config = await _register_fake(registry, old_tunnel, "hook")
 
     with patch("app.services.tunnel_registry.get_provider", return_value=new_tunnel):
         register_task = asyncio.create_task(registry.register(config))
@@ -277,4 +280,4 @@ async def test_register_cancelled_while_replacing_still_disconnects_the_old_tunn
     await asyncio.wait_for(old_tunnel.disconnect_finished.wait(), timeout=3)
 
     assert old_tunnel.disconnected
-    assert registry._tunnel_pool[config.unique_id][0] is new_tunnel
+    assert await _published_tunnel_urls(redis_service) == {config.unique_id: "http://new"}

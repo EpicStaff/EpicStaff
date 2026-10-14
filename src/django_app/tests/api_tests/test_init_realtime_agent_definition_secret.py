@@ -25,11 +25,13 @@ from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
 from rbac.models import Organization
-from tables.models.realtime_models import RealtimeAgentDefinition
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 from tables.services.secrets import secret_service
 from tests.fixtures import *  # noqa: F401,F403
 
 FOREIGN_PLAINTEXT = "sk-FOREIGN-must-never-be-decrypted-9c02"
+REALTIME_PLAINTEXT = "sk-rt-definition-realtime-key"
+TRANSCRIPTION_PLAINTEXT = "sk-rt-definition-transcription-key"
 
 
 @pytest.fixture
@@ -43,9 +45,24 @@ def default_org_client(regular_user, default_org):
 
 
 @pytest.fixture
-def rt_agent_definition(
-    default_org, llm_config, openai_realtime_model_config, realtime_transcription_config
-):
+def openai_config(default_org):
+    # Distinct plaintexts, so the payload proves each key came from its own secret.
+    return OpenAIRealtimeConfig.objects.create(
+        custom_name="rt-definition-openai-config",
+        api_key_secret=secret_service.create(
+            text=REALTIME_PLAINTEXT, org=default_org, name="rt-definition-key"
+        ),
+        transcription_api_key_secret=secret_service.create(
+            text=TRANSCRIPTION_PLAINTEXT,
+            org=default_org,
+            name="rt-definition-transcription-key",
+        ),
+        org=default_org,
+    )
+
+
+@pytest.fixture
+def rt_agent_definition(default_org, llm_config, openai_config):
     agent_definition = AgentDefinition.objects.create(
         org=default_org,
         name="voice-agent",
@@ -55,8 +72,7 @@ def rt_agent_definition(
     )
     return RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_config,
     )
 
 
@@ -79,10 +95,9 @@ def test_agent_definition_realtime_keys_are_resolved_to_plaintext(
     assert resp.status_code == 201, resp.data
 
     payload = _published_payload(redis_client_mock)
-    # Plaintext values come from the `openai_realtime_model_config` /
-    # `realtime_transcription_config` fixture secrets.
-    assert payload["rt_api_key"] == "test"
-    assert payload["transcript_api_key"] == "mock key"
+    # Plaintext values come from the `openai_config` fixture secrets.
+    assert payload["rt_api_key"] == REALTIME_PLAINTEXT
+    assert payload["transcript_api_key"] == TRANSCRIPTION_PLAINTEXT
     # Carriers are `exclude=True` — the id must never ride along to the consumer.
     assert "rt_api_key_secret_id" not in payload
     assert "transcript_api_key_secret_id" not in payload

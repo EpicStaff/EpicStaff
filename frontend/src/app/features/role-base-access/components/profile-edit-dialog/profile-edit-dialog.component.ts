@@ -11,6 +11,7 @@ import {
     HelpTooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { of, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -28,13 +29,14 @@ export interface ProfileEditDialogData {
     templateUrl: './profile-edit-dialog.component.html',
     styleUrls: ['./profile-edit-dialog.component.scss'],
     imports: [
-        ReactiveFormsModule,
         AppSvgIconComponent,
+        AvatarUploadComponent,
         ButtonComponent,
         CustomInputComponent,
-        ValidationErrorsComponent,
+        EnterSubmitDirective,
         HelpTooltipComponent,
-        AvatarUploadComponent,
+        ReactiveFormsModule,
+        ValidationErrorsComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

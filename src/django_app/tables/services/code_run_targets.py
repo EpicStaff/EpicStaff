@@ -76,12 +76,15 @@ def _build_python_node_payload(python_node: PythonNode, storage_path: str) -> Py
 
 
 def _build_webhook_trigger_node_payload(
-    webhook_trigger_node: WebhookTriggerNode, _storage_path: str
+    webhook_trigger_node: WebhookTriggerNode, storage_path: str
 ) -> PythonCodeData:
-    # Real runs give webhook trigger code no storage, so test mode has none either.
     return (
         ConverterService()
-        .convert_webhook_trigger_node_to_pydantic(webhook_trigger_node=webhook_trigger_node)
+        .convert_webhook_trigger_node_to_pydantic(
+            webhook_trigger_node=webhook_trigger_node,
+            graph_id=webhook_trigger_node.graph_id,
+            extra_storage_paths=[storage_path],
+        )
         .python_code
     )
 

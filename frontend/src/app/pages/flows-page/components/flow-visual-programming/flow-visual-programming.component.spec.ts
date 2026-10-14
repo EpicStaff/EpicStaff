@@ -1,3 +1,4 @@
+import { Dialog as CdkDialog, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, forwardRef, inject, input, output, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -33,24 +34,39 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { AgentNode, AgentNodeTaskUi } from '../../../../visual-programming/core/models/agent-node.model';
+import {
+    CdtExplanation,
+    CdtExplanations,
+} from '../../../../visual-programming/core/models/classification-decision-table.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../../visual-programming/core/models/classification-decision-table-node.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
+    AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
+    GraphNoteModel,
+    NodeModel,
     ScheduleTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
+import { SubGraphNode } from '../../../../visual-programming/core/models/subgraph-node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../../visual-programming/core/models/webhook-trigger';
 import { FLOW_EDITOR_STATE_PROVIDERS } from '../../../../visual-programming/core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
+import { CdtExplanationStoreService } from '../../../../visual-programming/services/cdt-explanation-store.service';
+import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
 import { liveGraph, livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
 import {
+    extractParentNotUpdatedMessage,
     FlowVisualProgrammingComponent,
     REMOTE_SAVE_RELOAD_FAILED_MESSAGE,
     RUN_WHILE_SAVING_MESSAGE,
@@ -59,9 +75,18 @@ import {
     TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE,
 } from './flow-visual-programming.component';
 
+/** Past the page's private 1.5 s explanation-save debounce. */
+const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
 const VERSION_A: GraphVersionDto = { id: 11, graph_id: 1, name: 'Version A', description: '', created_at: '' };
 const VERSION_B: GraphVersionDto = { id: 12, graph_id: 1, name: 'Version B', description: '', created_at: '' };
+/** The authorship the backend renders on a node nobody has edited since it was created. */
+const UNEDITED_NODE = {
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
+};
 
 function graphDto(overrides: Partial<GraphDto> = {}): GraphDto {
     return { id: 1, uuid: 'graph-uuid', name: 'Flow', description: '', save_version: 1, ...overrides } as GraphDto;
@@ -196,22 +221,33 @@ describe('FlowVisualProgrammingComponent', () => {
     let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
     let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
+    let canUpdateFlows: WritableSignal<boolean>;
     let runGraph: Record<string, ReturnType<typeof vi.fn>>;
     let runSessionSse: { stopStream: ReturnType<typeof vi.fn>; startStream: ReturnType<typeof vi.fn> };
     let isStreaming: ReturnType<typeof signal<boolean>>;
     let sessionStatus: ReturnType<typeof signal<GraphSessionStatus>>;
     // A signal, so FlowReadOnlyService's computed permissions follow a change made inside a test.
     let canRunFlows: WritableSignal<boolean>;
+    let explanationsApi: { saveExplanations: ReturnType<typeof vi.fn> };
+    let flowsStorage: { deleteFlow: ReturnType<typeof vi.fn> };
+    let epicChat: { requestCreateAgent: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
+        explanationsApi = { saveExplanations: vi.fn() };
         FlowGraphStubComponent.instances = [];
+        canUpdateFlows = signal(true);
         flowsApi = {
             getGraphById: vi.fn().mockReturnValue(of(graphDto())),
             getGraphsLight: vi.fn().mockReturnValue(of([])),
             bulkSaveGraph: vi.fn().mockReturnValue(of(graphDto({ save_version: 2 }))),
             restoreGraphVersion: vi.fn().mockReturnValue(of({ restored: true, graph_id: 1, warnings: [] })),
             saveGraphVersion: vi.fn(),
+            patchGraph: vi.fn(),
+            getSubflowUsage: vi.fn(),
         };
+        flowsStorage = { deleteFlow: vi.fn().mockReturnValue(of(undefined)) };
+        epicChat = { requestCreateAgent: vi.fn() };
         unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedChanges: vi.fn() };
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         runGraph = { runGraph: vi.fn(), runTestSession: vi.fn() };
@@ -236,11 +272,11 @@ describe('FlowVisualProgrammingComponent', () => {
                 },
                 { provide: Router, useValue: { navigate: vi.fn() } },
                 { provide: FlowsApiService, useValue: flowsApi },
-                { provide: FlowsStorageService, useValue: {} },
+                { provide: FlowsStorageService, useValue: flowsStorage },
                 { provide: ToastService, useValue: toast },
                 { provide: RunGraphService, useValue: runGraph },
                 { provide: ConfigService, useValue: { isEpicChatEnabled: false, apiUrl: '/api/' } },
-                { provide: EpicChatService, useValue: {} },
+                { provide: EpicChatService, useValue: epicChat },
                 { provide: UnsavedChangesDialogService, useValue: unsavedChangesDialog },
                 { provide: CreateGraphWarningsService, useValue: { readPending: () => [] } },
                 {
@@ -250,8 +286,9 @@ describe('FlowVisualProgrammingComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
+                        // Run follows its own signal; the other actions follow the update signal.
                         can: (_resource: ResourceCode, action: ActionCode) =>
-                            action !== ActionCode.Run || canRunFlows(),
+                            action === ActionCode.Run ? canRunFlows() : canUpdateFlows(),
                         canAny: () => true,
                     },
                 },
@@ -269,6 +306,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 },
                 { provide: ProfileService, useValue: { currentUserSignal: signal(null) } },
                 { provide: FlowAssistantService, useValue: { isOpen: signal(false), toggle: vi.fn() } },
+                { provide: CdtExplanationsApiService, useValue: explanationsApi },
             ],
         });
         TestBed.overrideComponent(FlowVisualProgrammingComponent, {
@@ -690,6 +728,7 @@ describe('FlowVisualProgrammingComponent', () => {
             metadata: {},
             webhook_trigger: null,
             test_payload: {},
+            use_storage: false,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,
@@ -799,7 +838,9 @@ describe('FlowVisualProgrammingComponent', () => {
         });
 
         it('starts neither run while the flow is being saved, and says why', () => {
-            component.isSaving.set(true);
+            flowsApi['bulkSaveGraph'].mockReturnValue(new Subject<GraphDto>());
+            component.onGraphSave(flowService.getFlowState());
+            expect(component.isSaving()).toBe(true);
 
             testRun.request('webhook-trigger', webhookNode.id, {});
             component.handleRunFlow();
@@ -889,6 +930,7 @@ describe('FlowVisualProgrammingComponent', () => {
                                 metadata: {},
                                 webhook_trigger: null,
                                 test_payload: {},
+                                use_storage: false,
                                 created_at: '2026-01-01T00:00:00Z',
                                 created_by: null,
                                 last_edited_by: null,
@@ -915,12 +957,12 @@ describe('FlowVisualProgrammingComponent', () => {
         it('gives the editor the stored webhook code and its id of the loaded flow, until the page goes away', () => {
             loadFlowWithWebhookNode(2);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
 
             fixture.destroy();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
         });
 
         it('drops it when another user saves a flow with unsaved edits, until the graph is loaded again', () => {
@@ -932,11 +974,11 @@ describe('FlowVisualProgrammingComponent', () => {
             fixture.detectChanges();
 
             expect(flowService.hasSavedGraph()).toBe(false);
-            expect(flowService.savedWebhookPythonCode(21)).toBeNull();
+            expect(flowService.savedWebhookTriggerNode(21)).toBeNull();
 
             loadFlowWithWebhookNode(3);
 
-            expect(flowService.savedWebhookPythonCode(21)).toEqual(STORED_PYTHON_CODE);
+            expect(flowService.savedWebhookTriggerNode(21)?.python_code).toEqual(STORED_PYTHON_CODE);
         });
     });
 
@@ -1506,6 +1548,828 @@ describe('FlowVisualProgrammingComponent', () => {
                     'bottom-right'
                 );
             });
+        });
+    });
+
+    describe('single-node save', () => {
+        const READ_ONLY_MESSAGE = 'You have read-only access to this flow.';
+        let sidePanelService: SidePanelService;
+        let note: GraphNoteModel;
+
+        beforeEach(() => {
+            sidePanelService = TestBed.inject(SidePanelService);
+            note = mapGraphNoteToModel(RESTORED_GRAPH.graph_note_list![0]);
+            flowService.setFlow({ nodes: [note], connections: [] });
+        });
+
+        afterEach(() => vi.useRealTimers());
+
+        it('saves the node when the editor may change the flow', () => {
+            sidePanelService.requestSaveNode(note);
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            expect(sidePanelService.savingNodeId()).toBeNull();
+            expect(toast['success']).toHaveBeenCalledWith('Node saved');
+        });
+
+        it('sends nothing for a requested save in a read-only editor, says why and clears the saving state', () => {
+            canUpdateFlows.set(false);
+            const updateNode = vi.spyOn(flowService, 'updateNode');
+
+            sidePanelService.requestSaveNode(note);
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(updateNode).not.toHaveBeenCalled();
+            expect(sidePanelService.savingNodeId()).toBeNull();
+            expect(toast['info']).toHaveBeenCalledWith(READ_ONLY_MESSAGE);
+        });
+
+        describe('queued behind a full save', () => {
+            const SAVED_NOTE = RESTORED_GRAPH.graph_note_list![0];
+            let fullSave: Subject<GraphDto>;
+            let unsavedNote: GraphNoteModel;
+
+            beforeEach(() => {
+                // Added since the last save: the full save below is what creates it on the server.
+                unsavedNote = { ...note, backendId: null };
+                flowService.setFlow({ nodes: [unsavedNote], connections: [] });
+                fullSave = new Subject<GraphDto>();
+                flowsApi['bulkSaveGraph']
+                    .mockReturnValueOnce(fullSave)
+                    .mockReturnValueOnce(of(graphDto({ save_version: 3, graph_note_list: [SAVED_NOTE] })));
+                component.onGraphSave(flowService.getFlowState());
+            });
+
+            function answerFullSave(): void {
+                fullSave.next(graphDto({ save_version: 2, graph_note_list: [SAVED_NOTE] }));
+                fullSave.complete();
+            }
+
+            it('sends a node the full save created as an update with its new id, never a second create', () => {
+                sidePanelService.requestSaveNode({ ...unsavedNote, node_name: 'Renamed note' });
+                expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+
+                answerFullSave();
+
+                expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(2);
+                const payload = flowsApi['bulkSaveGraph'].mock.calls[1][1] as Record<string, unknown>;
+                expect(payload).toEqual(expect.objectContaining({ save_version: 2 }));
+                expect(payload['graph_note_list']).toEqual([
+                    expect.objectContaining({ id: SAVED_NOTE.id, node_name: 'Renamed note' }),
+                ]);
+                expect(JSON.stringify(payload)).not.toContain('temp_id');
+                expect(flowService.nodes()[0].backendId).toBe(SAVED_NOTE.id);
+            });
+
+            it('sends nothing for a node deleted while its save waited, and clears the saving state', () => {
+                sidePanelService.requestSaveNode({ ...unsavedNote, node_name: 'Renamed note' });
+                flowService.setFlow({ nodes: [], connections: [] });
+
+                answerFullSave();
+
+                expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+                expect(sidePanelService.savingNodeId()).toBeNull();
+                expect(toast['success']).not.toHaveBeenCalledWith('Node saved');
+                expect(flowService.nodes()).toEqual([]);
+            });
+
+            it('puts the node on the canvas at once, then sends it as the canvas holds it, reverting no later edit', () => {
+                sidePanelService.requestSaveNode({ ...unsavedNote, node_name: 'Renamed note' });
+                expect(flowService.nodes()[0].node_name).toBe('Renamed note');
+
+                // Edited again while its save waits behind the full save.
+                flowService.updateNode({ ...flowService.nodes()[0], node_name: 'Renamed again' });
+                answerFullSave();
+
+                const payload = flowsApi['bulkSaveGraph'].mock.calls[1][1] as Record<string, unknown>;
+                expect(payload['graph_note_list']).toEqual([
+                    expect.objectContaining({ id: SAVED_NOTE.id, node_name: 'Renamed again' }),
+                ]);
+                expect(flowService.nodes()[0].node_name).toBe('Renamed again');
+            });
+        });
+    });
+
+    describe('full save of an agent node', () => {
+        const SAVED_AGENT: AgentNode = {
+            ...UNEDITED_NODE,
+            id: 50,
+            metadata: {},
+            node_name: 'Agent #1',
+            input_map: {},
+            output_variable_path: null,
+            agent_definition: 3,
+            surface_list: [],
+            inline_surface: null,
+            tasks: [
+                { id: 500, name: 'Existing', order: 0, instructions: 'Do it', output_schema: {}, context_tasks: [] },
+            ],
+        };
+
+        function agent(): AgentNodeModel {
+            return flowService.nodes().find((node): node is AgentNodeModel => node.backendId === SAVED_AGENT.id)!;
+        }
+
+        function setTasks(tasks: AgentNodeTaskUi[]): void {
+            flowService.updateNode({ ...agent(), data: { ...agent().data, tasks } });
+        }
+
+        function newTask(tempId: string): AgentNodeTaskUi {
+            return { tempId, name: tempId, instructions: `Run ${tempId}`, output_schema: {}, contextRefs: [] };
+        }
+
+        it('hands the ids the save assigned to the right tasks, even after a task was inserted while it was in flight', () => {
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ agent_node_list: [SAVED_AGENT] })));
+            component.refreshCurrentFlow();
+            const [existing] = agent().data.tasks;
+            setTasks([existing, newTask('added')]);
+            const fullSave = new Subject<GraphDto>();
+            flowsApi['bulkSaveGraph'].mockReturnValue(fullSave);
+            component.onGraphSave(flowService.getFlowState());
+
+            setTasks([newTask('inserted'), ...agent().data.tasks]);
+            fullSave.next(
+                graphDto({
+                    save_version: 2,
+                    agent_node_list: [
+                        {
+                            ...SAVED_AGENT,
+                            tasks: [
+                                ...SAVED_AGENT.tasks,
+                                {
+                                    id: 501,
+                                    name: 'added',
+                                    order: 1,
+                                    instructions: 'Run added',
+                                    output_schema: {},
+                                    context_tasks: [],
+                                },
+                            ],
+                        },
+                    ],
+                })
+            );
+            fullSave.complete();
+
+            expect(agent().data.tasks.map(({ tempId, id }) => ({ tempId, id }))).toEqual([
+                { tempId: 'inserted', id: undefined },
+                { tempId: existing.tempId, id: 500 },
+                { tempId: 'added', id: 501 },
+            ]);
+        });
+    });
+
+    // Nested here for the shared TestBed setup; nothing below involves a preview.
+    describe('save queue and explanation saves', () => {
+        const SPAM = { text: 'Bins spam', fingerprint: 'f-spam', generatedBy: 'gpt-4o-mini' };
+        const SPAM_AGAIN = { text: 'Bins spam, take two', fingerprint: 'f-spam', generatedBy: 'gpt-4o-mini' };
+        const REFUND = { text: 'Routes refunds', fingerprint: 'f-refund', generatedBy: 'gpt-4o-mini' };
+
+        let sidePanelService: SidePanelService;
+        let store: CdtExplanationStoreService;
+
+        function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
+            return {
+                ...UNEDITED_NODE,
+                id,
+                graph: 1,
+                node_name: name,
+                pre_python_code: null,
+                pre_input_map: {},
+                pre_output_variable_path: null,
+                pre_use_storage: false,
+                post_python_code: null,
+                post_input_map: {},
+                post_output_variable_path: null,
+                post_use_storage: false,
+                prompt_configs: [],
+                default_llm_config: null,
+                default_next_node_id: null,
+                next_error_node_id: null,
+                condition_groups: [
+                    {
+                        id: id * 10,
+                        classification_decision_table_node: id,
+                        group_name: name,
+                        order: 1,
+                        expression: 'score > 0.9',
+                        prompt: null,
+                        manipulation: null,
+                        continue_flag: false,
+                        route_code: routeCode,
+                        dock_visible: true,
+                        field_expressions: {},
+                        field_manipulations: {},
+                    },
+                ],
+                metadata: { position: { x: 0, y: 0 } },
+            };
+        }
+
+        const CDT_GRAPH = graphDto({
+            save_version: 1,
+            classification_decision_table_node_list: [cdtDto(21, 'Triage', 'spam'), cdtDto(22, 'Refunds', 'refund')],
+        });
+
+        beforeEach(() => {
+            localStorage.clear();
+            sidePanelService = TestBed.inject(SidePanelService);
+            store = TestBed.inject(CdtExplanationStoreService);
+            flowsApi['getGraphById'].mockReturnValue(of(CDT_GRAPH));
+            component.refreshCurrentFlow();
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+            localStorage.clear();
+        });
+
+        function table(backendId: number): ClassificationDecisionTableNodeModel {
+            const node = flowService.nodes().find((candidate) => candidate.backendId === backendId);
+            if (node?.type !== NodeType.CLASSIFICATION_TABLE) throw new Error(`no table ${backendId}`);
+            return node;
+        }
+
+        /** What the decision-tree dialog does when an explanation arrives. */
+        function explain(backendId: number, stepKey: string, explanation: CdtExplanation): void {
+            const node = table(backendId);
+            store
+                .forNode({
+                    nodeId: node.id,
+                    backendId,
+                    retainedStepKeys: new Set(['rule:route:spam', 'rule:route:refund']),
+                })
+                .set(stepKey, explanation);
+        }
+
+        /** An unsaved grid edit: the rule's expression changed in the panel. */
+        function editExpression(backendId: number, expression: string): void {
+            const node = table(backendId);
+            const rows = node.data.table.condition_groups.map((row) => ({ ...row, expression }));
+            flowService.updateNode({
+                ...node,
+                data: { ...node.data, table: { ...node.data.table, condition_groups: rows } },
+            });
+        }
+
+        function waitOutDebounce(): void {
+            vi.advanceTimersByTime(NODE_AUTOSAVE_WAIT_MS);
+        }
+
+        it('persists only the explanations, never unsaved table edits on the same node', () => {
+            explanationsApi.saveExplanations.mockReturnValue(
+                of({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 })
+            );
+            editExpression(21, 'score > 0.5');
+
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledExactlyOnceWith(21, {
+                save_version: 1,
+                explanations: { 'rule:route:spam': SPAM },
+            });
+            // The edit is still on the canvas, and still unsaved.
+            expect(table(21).data.table.condition_groups[0].expression).toBe('score > 0.5');
+            expect(component.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('leaves the canvas clean when the explanations were the only change', () => {
+            explanationsApi.saveExplanations.mockReturnValue(
+                of({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 })
+            );
+
+            explain(21, 'rule:route:spam', SPAM);
+            expect(component.hasUnsavedChanges()).toBe(true);
+            waitOutDebounce();
+
+            expect(component.hasUnsavedChanges()).toBe(false);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(2);
+        });
+
+        it('collapses a burst on one table into one request carrying the latest explanation', () => {
+            explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 2 }));
+
+            explain(21, 'rule:route:spam', SPAM);
+            vi.advanceTimersByTime(500);
+            explain(21, 'rule:route:spam', SPAM_AGAIN);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledExactlyOnceWith(21, {
+                save_version: 1,
+                explanations: { 'rule:route:spam': SPAM_AGAIN },
+            });
+        });
+
+        it('does not let one table swallow another table’s request', () => {
+            explanationsApi.saveExplanations
+                .mockReturnValueOnce(of({ explanations: {}, save_version: 2 }))
+                .mockReturnValueOnce(of({ explanations: {}, save_version: 3 }));
+
+            explain(21, 'rule:route:spam', SPAM);
+            vi.advanceTimersByTime(500);
+            explain(22, 'rule:route:refund', REFUND);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations.mock.calls.map(([nodeId]) => nodeId)).toEqual([21, 22]);
+        });
+
+        it('sends the next save only once the previous one answered, with the save_version it returned', () => {
+            const first = new Subject<{ explanations: CdtExplanations; save_version: number }>();
+            explanationsApi.saveExplanations
+                .mockReturnValueOnce(first)
+                .mockReturnValueOnce(of({ explanations: {}, save_version: 3 }));
+
+            explain(21, 'rule:route:spam', SPAM);
+            explain(22, 'rule:route:refund', REFUND);
+            waitOutDebounce();
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledTimes(1);
+
+            first.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+            first.complete();
+
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledTimes(2);
+            expect(explanationsApi.saveExplanations.mock.calls[1]).toEqual([
+                22,
+                { save_version: 2, explanations: { 'rule:route:refund': REFUND } },
+            ]);
+        });
+
+        it('holds a full save until an in-flight explanation save answers, then sends its save_version', () => {
+            const explanationSave = new Subject<{ explanations: CdtExplanations; save_version: number }>();
+            explanationsApi.saveExplanations.mockReturnValue(explanationSave);
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            component.onGraphSave(flowService.getFlowState());
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(component.isSaving()).toBe(true);
+
+            explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+            explanationSave.complete();
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            expect(flowsApi['bulkSaveGraph'].mock.calls[0][1]).toEqual(expect.objectContaining({ save_version: 2 }));
+            expect(toast['warning']).not.toHaveBeenCalled();
+        });
+
+        it('skips a pending explanation save that a full save already carried', () => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(of({ ...CDT_GRAPH, save_version: 2 }));
+            explain(21, 'rule:route:spam', SPAM);
+
+            component.onGraphSave(flowService.getFlowState());
+            waitOutDebounce();
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+            expect(component.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('sends an explanation that arrived during a full save after it, with the new save_version', () => {
+            const fullSave = new Subject<GraphDto>();
+            flowsApi['bulkSaveGraph'].mockReturnValue(fullSave);
+            explanationsApi.saveExplanations.mockReturnValue(
+                of({ explanations: { 'rule:route:spam': SPAM }, save_version: 3 })
+            );
+
+            component.onGraphSave(flowService.getFlowState());
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+            expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+
+            fullSave.next({ ...CDT_GRAPH, save_version: 2 });
+            fullSave.complete();
+
+            // The full save did not carry it, and did not wipe it off the canvas either.
+            expect(table(21).explanations).toEqual({ 'rule:route:spam': SPAM });
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledExactlyOnceWith(21, {
+                save_version: 2,
+                explanations: { 'rule:route:spam': SPAM },
+            });
+            expect(component.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('fails silently and keeps the canvas dirty for the next full save', () => {
+            explanationsApi.saveExplanations.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledTimes(1);
+            expect(toast['warning']).not.toHaveBeenCalled();
+            expect(toast['error']).not.toHaveBeenCalled();
+            expect(component.hasUnsavedChanges()).toBe(true);
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+
+        it('sends nothing for a read-only editor', () => {
+            canUpdateFlows.set(false);
+            const node = table(21);
+            flowService.updateNode({ ...node, explanations: { 'rule:route:spam': SPAM } });
+
+            sidePanelService.requestCdtExplanationsSave(node.id);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+        });
+
+        function deleteTable(backendId: number): void {
+            const deleted = table(backendId);
+            flowService.setFlow({
+                ...flowService.getFlowState(),
+                nodes: flowService.nodes().filter((node) => node.id !== deleted.id),
+            });
+        }
+
+        it('skips the save of a table deleted before its turn came', () => {
+            explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 2 }));
+            explain(21, 'rule:route:spam', SPAM);
+
+            deleteTable(21);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+        });
+
+        it('skips the save of a table deleted while its save waited in the queue, never sending a copy', () => {
+            const fullSave = new Subject<GraphDto>();
+            flowsApi['bulkSaveGraph'].mockReturnValue(fullSave);
+            explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 3 }));
+            component.onGraphSave(flowService.getFlowState());
+
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+            deleteTable(21);
+            fullSave.next({ ...CDT_GRAPH, save_version: 2 });
+            fullSave.complete();
+
+            expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+        });
+
+        function announceOtherUsersSave(saveVersion: number): void {
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 1,
+                new_save_version: saveVersion,
+                saved_by: { user_id: 7, display_name: 'Another user' },
+                saved_at: '',
+            });
+        }
+
+        it('sends the version it loaded once another user has saved, so the server refuses instead of overwriting', () => {
+            explanationsApi.saveExplanations.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+            announceOtherUsersSave(3);
+            expect(flowService.hasSavedGraph()).toBe(false);
+
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            expect(explanationsApi.saveExplanations).toHaveBeenCalledWith(
+                21,
+                expect.objectContaining({ save_version: 1 })
+            );
+            expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+            expect(component.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('keeps the graph outdated when another user saved while its own save was in flight', () => {
+            const explanationSave = new Subject<{ explanations: CdtExplanations; save_version: number }>();
+            explanationsApi.saveExplanations.mockReturnValue(explanationSave);
+            explain(21, 'rule:route:spam', SPAM);
+            waitOutDebounce();
+
+            announceOtherUsersSave(3);
+            explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+            explanationSave.complete();
+
+            expect(component.versionHistoryGraphSaveVersion()).toBe(2);
+            // Its node lists still lack what the other user saved.
+            expect(flowService.hasSavedGraph()).toBe(false);
+        });
+
+        describe('every other graph write waits its turn too', () => {
+            let explanationSave: Subject<{ explanations: CdtExplanations; save_version: number }>;
+
+            /** An explanation save that has been sent and not answered yet. */
+            function explanationSaveInFlight(): void {
+                explanationSave = new Subject();
+                explanationsApi.saveExplanations.mockReturnValueOnce(explanationSave);
+                explain(21, 'rule:route:spam', SPAM);
+                waitOutDebounce();
+                expect(explanationsApi.saveExplanations).toHaveBeenCalledTimes(1);
+            }
+
+            function answerExplanationSave(): void {
+                explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+                explanationSave.complete();
+            }
+
+            it('sends the Epic Chat flag once the save before it answered, and takes over the version it returns', () => {
+                flowsApi['patchGraph'].mockReturnValue(of({ ...CDT_GRAPH, epicchat_enabled: true, save_version: 3 }));
+                explanationSaveInFlight();
+
+                component.connectToEpicChat();
+                expect(flowsApi['patchGraph']).not.toHaveBeenCalled();
+
+                answerExplanationSave();
+
+                expect(flowsApi['patchGraph']).toHaveBeenCalledExactlyOnceWith(1, {
+                    epicchat_enabled: true,
+                    save_version: 2,
+                });
+                expect(component.versionHistoryGraphSaveVersion()).toBe(3);
+                expect(component.graph.epicchat_enabled).toBe(true);
+                expect(epicChat.requestCreateAgent).toHaveBeenCalledTimes(1);
+            });
+
+            it('sends a version restore once the save before it answered, with the version it returned', () => {
+                unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+                explanationSaveInFlight();
+
+                component.onVersionRestoreRequested(VERSION_A);
+                expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
+
+                answerExplanationSave();
+
+                expect(flowsApi['restoreGraphVersion']).toHaveBeenCalledExactlyOnceWith(VERSION_A.id, false, 2);
+            });
+        });
+
+        // `flows/:id` reuses the page: a write queued for one flow must neither be sent for, nor
+        // land on, the next one.
+        describe('another flow loads while a write waits or is in flight', () => {
+            const OTHER_GRAPH = graphDto({
+                id: 2,
+                save_version: 7,
+                classification_decision_table_node_list: [cdtDto(31, 'Other', 'other')],
+            });
+            let explanationSave: Subject<{ explanations: CdtExplanations; save_version: number }>;
+
+            function openOtherFlow(): void {
+                flowsApi['getGraphById'].mockReturnValue(of(OTHER_GRAPH));
+                paramMap$.next(convertToParamMap({ id: '2' }));
+                fixture.detectChanges();
+            }
+
+            function otherFlowIsShownUntouched(): void {
+                const backendIds = flowService.nodes().map((node) => node.backendId);
+                expect(component.versionHistoryGraphSaveVersion()).toBe(OTHER_GRAPH.save_version);
+                expect(backendIds).toContain(31);
+                expect(backendIds).not.toContain(21);
+            }
+
+            function explanationSaveInFlight(): void {
+                explanationSave = new Subject();
+                explanationsApi.saveExplanations.mockReturnValueOnce(explanationSave);
+                explain(21, 'rule:route:spam', SPAM);
+                waitOutDebounce();
+            }
+
+            function answerExplanationSave(): void {
+                explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+                explanationSave.complete();
+            }
+
+            it('drops a full save queued for the flow that was shown, and ignores the answer before it', () => {
+                explanationSaveInFlight();
+                component.onGraphSave(flowService.getFlowState());
+                expect(component.isSaving()).toBe(true);
+
+                openOtherFlow();
+                answerExplanationSave();
+
+                expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+                expect(component.isSaving()).toBe(false);
+                otherFlowIsShownUntouched();
+            });
+
+            it('ignores the answer to a full save sent for the flow that was shown', () => {
+                const fullSave = new Subject<GraphDto>();
+                flowsApi['bulkSaveGraph'].mockReturnValue(fullSave);
+                component.onGraphSave(flowService.getFlowState());
+
+                openOtherFlow();
+                fullSave.next({ ...CDT_GRAPH, save_version: 2 });
+                fullSave.complete();
+
+                otherFlowIsShownUntouched();
+                expect(component.isSaving()).toBe(false);
+                expect(toast['success']).not.toHaveBeenCalledWith('Graph saved successfully');
+            });
+
+            it('drops an explanation save queued for the flow that was shown', () => {
+                const fullSave = new Subject<GraphDto>();
+                flowsApi['bulkSaveGraph'].mockReturnValue(fullSave);
+                component.onGraphSave(flowService.getFlowState());
+                explain(21, 'rule:route:spam', SPAM);
+                waitOutDebounce();
+
+                openOtherFlow();
+                fullSave.next({ ...CDT_GRAPH, save_version: 2 });
+                fullSave.complete();
+
+                expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+                otherFlowIsShownUntouched();
+            });
+
+            it('drops a version restore queued for the flow that was shown', () => {
+                unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+                explanationSaveInFlight();
+                component.onVersionRestoreRequested(VERSION_A);
+
+                openOtherFlow();
+                answerExplanationSave();
+
+                expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
+                expect(component.isSaving()).toBe(false);
+                otherFlowIsShownUntouched();
+            });
+
+            it('does not load a restored version over the flow opened while it reloaded', () => {
+                unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+                const reload = new Subject<GraphDto>();
+                flowsApi['getGraphById'].mockImplementation((graphId: number) =>
+                    graphId === 1 ? reload : of(OTHER_GRAPH)
+                );
+                component.onVersionRestoreRequested(VERSION_A);
+                expect(component.isCanvasReloading()).toBe(true);
+
+                paramMap$.next(convertToParamMap({ id: '2' }));
+                fixture.detectChanges();
+                reload.next(RESTORED_GRAPH);
+                reload.complete();
+
+                otherFlowIsShownUntouched();
+                expect(component.isCanvasReloading()).toBe(false);
+                expect(component.isSaving()).toBe(false);
+                expect(toast['error']).not.toHaveBeenCalled();
+            });
+
+            it('leaves the other flow’s canvas alone when it loads while an extraction saves the subflow', () => {
+                const subflow = graphDto({ id: 5, uuid: 'subflow-uuid', name: 'Spam handling', save_version: 1 });
+                vi.spyOn(TestBed.inject(CdkDialog), 'open').mockReturnValue({
+                    closed: of(subflow),
+                } as unknown as DialogRef<unknown, unknown>);
+                const subflowSave = new Subject<GraphDto>();
+                flowsApi['bulkSaveGraph'].mockImplementation((graphId: number) =>
+                    graphId === subflow.id ? subflowSave : of({ ...CDT_GRAPH, save_version: 2 })
+                );
+                component.onExtractToSubflow(new Set([table(21).id]));
+
+                openOtherFlow();
+                subflowSave.next({ ...subflow, save_version: 2 });
+                subflowSave.complete();
+
+                expect(flowsApi['bulkSaveGraph'].mock.calls.map(([graphId]) => graphId)).toEqual([1, subflow.id]);
+                expect(component.isSaving()).toBe(false);
+                otherFlowIsShownUntouched();
+                // The subflow exists now; the user is told the original flow kept its nodes.
+                expect(toast['warning']).toHaveBeenCalledExactlyOnceWith(
+                    extractParentNotUpdatedMessage('Spam handling')
+                );
+                expect(toast['success']).not.toHaveBeenCalledWith(expect.stringContaining('Extracted selection'));
+            });
+        });
+
+        describe('extract to subflow', () => {
+            const SUBFLOW = graphDto({ id: 5, uuid: 'subflow-uuid', name: 'Spam handling', save_version: 1 });
+            let subflowSave: Subject<GraphDto>;
+
+            beforeEach(() => {
+                vi.spyOn(TestBed.inject(CdkDialog), 'open').mockReturnValue({
+                    closed: of(SUBFLOW),
+                } as unknown as DialogRef<unknown, unknown>);
+                subflowSave = new Subject<GraphDto>();
+                let parentSaves = 0;
+                flowsApi['bulkSaveGraph'].mockImplementation((graphId: number) => {
+                    if (graphId === SUBFLOW.id) return subflowSave;
+                    parentSaves++;
+                    return of(
+                        parentSaves === 1
+                            ? { ...CDT_GRAPH, save_version: 2 }
+                            : graphDto({
+                                  save_version: 3,
+                                  classification_decision_table_node_list: [cdtDto(22, 'Refunds', 'refund')],
+                              })
+                    );
+                });
+            });
+
+            function answerSubflowSave(): void {
+                subflowSave.next({ ...SUBFLOW, save_version: 2 });
+                subflowSave.complete();
+            }
+
+            it('saves the subflow and then the parent as one queued save', () => {
+                component.onExtractToSubflow(new Set([table(21).id]));
+
+                expect(flowsApi['bulkSaveGraph'].mock.calls.map(([graphId]) => graphId)).toEqual([1, SUBFLOW.id]);
+                expect(component.isSaving()).toBe(true);
+                // The parent still shows the table until the subflow has it.
+                expect(table(21)).toBeDefined();
+
+                answerSubflowSave();
+
+                expect(flowsApi['bulkSaveGraph'].mock.calls.map(([graphId]) => graphId)).toEqual([1, SUBFLOW.id, 1]);
+                expect(flowsApi['bulkSaveGraph'].mock.calls[2][1]).toEqual(
+                    expect.objectContaining({ save_version: 2 })
+                );
+                expect(flowService.nodes().some((node) => node.backendId === 21)).toBe(false);
+                expect(component.isSaving()).toBe(false);
+                expect(toast['success']).toHaveBeenCalledWith('Extracted selection into subflow "Spam handling"');
+            });
+
+            it('holds an explanation save until it is done, and then sends nothing for the extracted table', () => {
+                explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 4 }));
+                component.onExtractToSubflow(new Set([table(21).id]));
+
+                // Explained while the subflow is being saved: the table is still on the canvas.
+                explain(21, 'rule:route:spam', SPAM);
+                waitOutDebounce();
+                expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+
+                answerSubflowSave();
+                waitOutDebounce();
+
+                expect(flowService.nodes().some((node) => node.backendId === 21)).toBe(false);
+                expect(explanationsApi.saveExplanations).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('unpack a subflow', () => {
+            const SUBGRAPH_NODE: SubGraphNode = {
+                ...UNEDITED_NODE,
+                id: 41,
+                node_name: 'Inner flow',
+                graph: 1,
+                subgraph: 9,
+                subgraph_detail: { id: 9, uuid: 'inner-uuid', name: 'Inner flow', description: '', tags: [] },
+                input_map: {},
+                output_variable_path: null,
+                metadata: {},
+            };
+            const INNER_FLOW = graphDto({
+                id: 9,
+                name: 'Inner flow',
+                classification_decision_table_node_list: [cdtDto(31, 'Inner', 'inner')],
+            });
+
+            function subgraphNodeOnCanvas(): NodeModel | undefined {
+                return flowService.nodes().find((node) => node.backendId === SUBGRAPH_NODE.id);
+            }
+
+            beforeEach(() => {
+                flowsApi['getGraphById'].mockReturnValue(of({ ...CDT_GRAPH, subgraph_node_list: [SUBGRAPH_NODE] }));
+                component.refreshCurrentFlow();
+                flowsApi['getGraphById'].mockReturnValue(of(INNER_FLOW));
+                flowsApi['getSubflowUsage'].mockReturnValue(of({ parent_flow_ids: [1] }));
+            });
+
+            it('changes the canvas only once an explanation save in flight has answered, then saves with its version', () => {
+                const explanationSave = new Subject<{ explanations: CdtExplanations; save_version: number }>();
+                explanationsApi.saveExplanations.mockReturnValueOnce(explanationSave);
+                explain(21, 'rule:route:spam', SPAM);
+                waitOutDebounce();
+
+                component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
+
+                expect(subgraphNodeOnCanvas()).toBeDefined();
+                expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+                expect(component.isSaving()).toBe(true);
+
+                explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
+                explanationSave.complete();
+
+                expect(subgraphNodeOnCanvas()).toBeUndefined();
+                expect(flowService.nodes().some((node) => node.node_name === 'Inner')).toBe(true);
+                expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+                expect(flowsApi['bulkSaveGraph'].mock.calls[0][1]).toEqual(
+                    expect.objectContaining({ save_version: 2 })
+                );
+                expect(flowsStorage.deleteFlow).toHaveBeenCalledWith(9);
+                expect(component.isSaving()).toBe(false);
+            });
+        });
+
+        it('resolves a single-node save’s references to neighbours by backend id, never a temp id', () => {
+            vi.useRealTimers();
+            const triage = table(21);
+            const refunds = table(22);
+            const rows = triage.data.table.condition_groups.map((row) => ({ ...row, next_node: refunds.id }));
+            const edited = {
+                ...triage,
+                data: { ...triage.data, table: { ...triage.data.table, condition_groups: rows } },
+            };
+
+            sidePanelService.requestSaveNode(edited);
+
+            const payload = flowsApi['bulkSaveGraph'].mock.calls[0][1] as Record<string, Record<string, unknown>[]>;
+            const [sent] = payload['classification_decision_table_node_list'];
+            const [group] = sent['condition_groups'] as Record<string, unknown>[];
+            expect(group['next_node_id']).toBe(22);
+            expect(group).not.toHaveProperty('next_node_temp_id');
         });
     });
 });

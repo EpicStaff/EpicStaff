@@ -1,4 +1,5 @@
 import pytest
+from src.shared.models import GraphData, SessionData
 from django.db import IntegrityError
 
 from tables.models.graph_models import (
@@ -17,13 +18,10 @@ from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data() -> SessionData:
+    """Real session data with an empty graph: only the session's own records are under
+    test, and a hand-made stand-in breaks as soon as production reads a new field."""
+    return SessionData(id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
@@ -31,7 +29,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     don't need a fully built graph or a live Redis connection."""
     sm = session_manager or SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
