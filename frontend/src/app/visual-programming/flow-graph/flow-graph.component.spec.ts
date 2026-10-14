@@ -49,6 +49,7 @@ import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-n
 import { createFlowConnection } from '../utils/connection.factory';
 import { createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
+import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../utils/save';
 import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_RUN,
@@ -526,6 +527,46 @@ describe('FlowGraphComponent', () => {
             }
         }
 
+        function pythonNode(id: string, position: { x: number; y: number }): NodeModel {
+            return {
+                id,
+                backendId: null,
+                type: NodeType.PYTHON,
+                node_name: id,
+                data: {},
+                position,
+                ports: generatePortsForNode(id, NodeType.PYTHON),
+                color: '',
+                icon: '',
+                size: { width: 200, height: 100 },
+                input_map: {},
+                output_variable_path: null,
+            } as unknown as NodeModel;
+        }
+
+        function autoArrangeButton(): HTMLButtonElement {
+            return (fixture.nativeElement as HTMLElement)
+                .querySelector('app-svg-icon[icon="auto-arrange"]')!
+                .closest('button')!;
+        }
+
+        /** Clicks Auto arrange and lets its animation and the rerouting after it run to the end. */
+        function autoArrange(): void {
+            vi.useFakeTimers();
+            autoArrangeButton().click();
+            vi.advanceTimersByTime(1000);
+            fixture.detectChanges();
+        }
+
+        function boxesOverlap(first: NodeModel, second: NodeModel): boolean {
+            return (
+                first.position.x < second.position.x + second.size.width &&
+                second.position.x < first.position.x + first.size.width &&
+                first.position.y < second.position.y + second.size.height &&
+                second.position.y < first.position.y + first.size.height
+            );
+        }
+
         describe.each([WITH_RUN, WITHOUT_RUN])('for a user who $user', ({ flowActions, blocked }) => {
             it(`disables dragging on the trigger node only: ${blocked}`, () => {
                 mountCanvas(flowActions);
@@ -618,19 +659,31 @@ describe('FlowGraphComponent', () => {
                 }
             });
 
-            it(`makes auto arrange unavailable while there is a trigger node, saying why: ${blocked}`, () => {
-                mountCanvas(flowActions);
+            it(`auto arranges the flow, leaving the trigger node where it is only without Run: ${blocked}`, () => {
+                // The trigger node sits where auto arrange starts laying nodes out.
+                const trigger = { ...scheduleTriggerNode(), position: { x: 100, y: 100 } };
+                mountCanvas(flowActions, [
+                    pythonNode('python-1', { x: 600, y: 0 }),
+                    pythonNode('python-2', { x: 600, y: 300 }),
+                    trigger,
+                ]);
+                const before = cloneFlowState(flowService.getFlowState());
+                expect(autoArrangeButton().disabled).toBe(false);
+                expect(autoArrangeButton().title).toBe('Auto arrange');
 
-                const autoArrange = (fixture.nativeElement as HTMLElement)
-                    .querySelector('app-svg-icon[icon="auto-arrange"]')!
-                    .closest('button')!;
+                autoArrange();
 
-                expect(autoArrange.title).toBe(
-                    blocked
-                        ? 'Auto arrange would move trigger nodes, which needs the Run permission on flows.'
-                        : 'Auto arrange'
-                );
-                if (blocked) expect(autoArrange.disabled).toBe(true);
+                const stayedPut = (id: string): boolean => {
+                    const { x, y } = before.nodes.find((node) => node.id === id)!.position;
+                    return flowNode(id)!.position.x === x && flowNode(id)!.position.y === y;
+                };
+                expect(stayedPut('schedule-1')).toBe(blocked);
+                for (const id of ['python-1', 'python-2']) {
+                    expect(stayedPut(id)).toBe(false);
+                    expect(boxesOverlap(flowNode(id)!, flowNode('schedule-1')!)).toBe(false);
+                }
+                // What the flows page checks before saving: moving a trigger node needs Run.
+                expect(hasTriggerNodeWrites(getNodeDiff(before, flowService.getFlowState()))).toBe(!blocked);
             });
 
             it(`does not extract a selection with a trigger node into a subflow: ${blocked}`, () => {
@@ -666,6 +719,24 @@ describe('FlowGraphComponent', () => {
                 expect(flowNode('schedule-1')).toBeUndefined();
             });
         });
+
+        // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Run.
+        it.each([
+            { flow: 'one other node and a trigger node', run: false, otherNodes: 1, disabled: true },
+            { flow: 'one other node and a trigger node', run: true, otherNodes: 1, disabled: false },
+            { flow: 'two other nodes and a trigger node', run: false, otherNodes: 2, disabled: false },
+            { flow: 'only a trigger node', run: false, otherNodes: 0, disabled: true },
+        ])(
+            'Auto arrange on $flow, for a user with Run: $run, is disabled: $disabled',
+            ({ run, otherNodes, disabled }) => {
+                const others = Array.from({ length: otherNodes }, (_, index) =>
+                    pythonNode(`python-${index}`, { x: 400 * index, y: 0 })
+                );
+                mountCanvas(run ? FLOW_ACTIONS_WITH_RUN : FLOW_ACTIONS_WITHOUT_RUN, [...others, scheduleTriggerNode()]);
+
+                expect(autoArrangeButton().disabled).toBe(disabled);
+            }
+        );
 
         it('leaves a trigger node in place when a saved decision table grows over it, but moves the others', () => {
             const table = mapGraphDtoToFlowModel(liveGraph).nodes.find((node) => node.type === NodeType.TABLE)!;

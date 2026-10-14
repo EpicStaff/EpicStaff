@@ -106,8 +106,6 @@ import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
 import { normalizeFlowPorts } from '../utils/load';
 
-const AUTO_ARRANGE_BLOCKED_MESSAGE = 'Auto arrange would move trigger nodes, which needs the Run permission on flows.';
-
 interface ConnectionEndGrab {
     connection: ConnectionModel;
     group: ConnectionModel[];
@@ -270,23 +268,23 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
 
     /**
-     * Auto arrange moves every node, and moving a trigger node is a change of it, which needs Flows:Run.
-     * Rather than arranging around nodes that must stay put, it is unavailable while there is one.
+     * Nodes auto arrange leaves where they are: moving a trigger node is a change of it, which needs
+     * Flows:Run. The others are arranged around them.
      */
-    protected readonly isAutoArrangeBlockedByReadOnlyNodes = computed(
+    private readonly pinnedNodeIds = computed<ReadonlySet<string>>(
         () =>
-            !this.flowReadOnly.isReadOnly() &&
-            this.flowService.nodes().some((node) => this.flowReadOnly.isNodeTypeReadOnly(node.type))
+            new Set(
+                this.flowService
+                    .nodes()
+                    .filter((node) => this.flowReadOnly.isNodeTypeReadOnly(node.type))
+                    .map((node) => node.id)
+            )
     );
     protected readonly isAutoArrangeDisabled = computed(
         () =>
             this.isArranging() ||
-            this.isAutoArrangeBlockedByReadOnlyNodes() ||
-            this.flowService.nodes().length < 2 ||
+            this.flowService.nodes().length - this.pinnedNodeIds().size < 2 ||
             !this.hasUnarrangedChanges()
-    );
-    protected readonly autoArrangeTooltip = computed(() =>
-        this.isAutoArrangeBlockedByReadOnlyNodes() ? AUTO_ARRANGE_BLOCKED_MESSAGE : 'Auto arrange'
     );
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
@@ -1428,10 +1426,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onAutoArrange(): void {
         if (this._arrangingLock || this.flowReadOnly.isReadOnly()) return;
-        if (this.isAutoArrangeBlockedByReadOnlyNodes()) {
-            this.toastService.info(AUTO_ARRANGE_BLOCKED_MESSAGE, 5000, 'bottom-right');
-            return;
-        }
         this._arrangingLock = true;
         this.isArranging.set(true);
         if (this.arrangeBtnRef) {
@@ -1449,7 +1443,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const connections = this.flowService.connections();
-        const newPositions = computeLayout(nodes, connections);
+        // Pinned nodes are left out of newPositions, so only the nodes it moves count below.
+        const newPositions = computeLayout(nodes, connections, this.pinnedNodeIds());
 
         const alreadyArranged = nodes.every((n) => {
             const target = newPositions.get(n.id);
