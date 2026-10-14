@@ -338,6 +338,12 @@ def test_shared_python_code_survives_until_last_owner_deleted(
             reverse("pythonnode-detail", args=[node.id])
         )
     assert second_response.status_code == status.HTTP_204_NO_CONTENT
+    # The binned tool still owns the code: its restore needs it.
+    assert PythonCode.objects.filter(id=python_code_id).exists()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        PythonCodeTool.all_objects.get(id=tool.id).purge()
+
     assert not PythonCode.objects.filter(id=python_code_id).exists()
 
 
