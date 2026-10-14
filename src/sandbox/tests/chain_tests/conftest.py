@@ -54,6 +54,8 @@ def _ensure_src_shared_stub() -> None:
         stderr: str = ""
         stdout: str = ""
         returncode: int = 0
+        timed_out: bool = False
+        effective_timeout_seconds: float | None = None
 
     @dataclasses.dataclass
     class CodeTaskData:
@@ -65,6 +67,7 @@ def _ensure_src_shared_stub() -> None:
         func_kwargs: dict = dataclasses.field(default_factory=dict)
         global_kwargs: dict = dataclasses.field(default_factory=dict)
         secrets: dict = dataclasses.field(default_factory=dict)
+        timeout: float | None = None
 
     # src.shared must be a real package pointing at the actual shared/ directory
     # so that src.shared.envtools (and its `from . import humanize`) resolves.
