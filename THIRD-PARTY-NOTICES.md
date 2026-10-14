@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Mon, 05 Oct 2026 16:24:17 GMT -->
-<!-- commit: 360b38e5f5baa2015e1f6a5d665135c2c3ed0642 -->
-<!-- package-lock.json sha256: 63bbfa2440bac456 -->
+<!-- generated: Wed, 14 Oct 2026 13:55:50 GMT -->
+<!-- commit: 583846a0455cb9f2b59c745104e2e4ea44882957 -->
+<!-- package-lock.json sha256: c2d8878ddc7c5f09 -->
 
 ## Frontend license summary
 
@@ -61,7 +61,7 @@ Production npm dependencies of the Angular frontend. Assets embedded in the preb
 | `ag-stack` | 36.1.0 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
-| `dompurify` | 3.4.16 | (MPL-2.0 OR Apache-2.0) |
+| `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
 | `entities` | 8.0.0 | BSD-2-Clause |
 | `fflate` | 0.8.3 | MIT |
 | `graceful-fs` | 4.2.11 | ISC |
@@ -1557,7 +1557,7 @@ Apache License
 
 </details>
 
-### dompurify@3.4.16
+### dompurify@3.4.17
 
 - **License:** (MPL-2.0 OR Apache-2.0)
 - **Publisher:** Dr.-Ing. Mario Heiderich, Cure53 <mario@cure53.de>

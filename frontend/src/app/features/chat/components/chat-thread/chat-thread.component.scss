@@ -79,6 +79,72 @@
     &__content {
         white-space: pre-wrap;
         word-break: break-word;
+
+        // Bot and operator Markdown: the rendered HTML carries its own line breaks, and gets no encapsulation
+        // attributes, hence ::ng-deep under this block only. Tight margins keep a bubble as compact as plain text.
+        &--markdown {
+            white-space: normal;
+
+            ::ng-deep {
+                p,
+                ul,
+                ol,
+                pre,
+                blockquote {
+                    margin: 0;
+                }
+
+                // A heading in a reply is a bold line, not a page title.
+                h1,
+                h2,
+                h3,
+                h4,
+                h5,
+                h6 {
+                    margin: 0;
+                    font-size: var(--text-body-bold-size);
+                    font-weight: var(--text-body-bold-weight);
+                    line-height: var(--text-body-bold-line-height);
+                }
+
+                * + :is(p, ul, ol, pre, blockquote, h1, h2, h3, h4, h5, h6) {
+                    margin-top: 8px;
+                }
+
+                ul,
+                ol {
+                    padding-left: 20px;
+                }
+
+                a {
+                    color: var(--accent-color);
+                }
+
+                code {
+                    padding: 0 4px;
+                    border-radius: 4px;
+                    background-color: var(--color-input-background);
+                }
+
+                pre {
+                    padding: 8px;
+                    border-radius: 4px;
+                    background-color: var(--color-input-background);
+                    overflow-x: auto;
+                    white-space: pre;
+
+                    code {
+                        padding: 0;
+                    }
+                }
+
+                blockquote {
+                    padding-left: 8px;
+                    border-left: 2px solid var(--color-divider-regular);
+                    color: var(--color-text-secondary);
+                }
+            }
+        }
     }
 
     &__actions {

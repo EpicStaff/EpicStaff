@@ -27,6 +27,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { ChatConversation, ChatOperatorMessage } from '../../models/chat.model';
+import { ChatMarkdownPipe } from '../../pipes/chat-markdown.pipe';
 import { CHAT_MESSAGES_PAGE_SIZE, ChatApiService } from '../../services/chat-api.service';
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
@@ -59,6 +60,7 @@ const CLOCK_TICK_MS = 60_000;
         RouterLink,
         AppSvgIconComponent,
         ButtonComponent,
+        ChatMarkdownPipe,
         ChatThreadComposerComponent,
         ChatThreadHeaderComponent,
         SpinnerComponent,

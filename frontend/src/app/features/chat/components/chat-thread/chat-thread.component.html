@@ -47,7 +47,14 @@
                     </div>
                 }
                 @if (message.content) {
-                    <div class="message__content">{{ message.content }}</div>
+                    @if (message.role === 'assistant' || message.role === 'operator') {
+                        <div
+                            class="message__content message__content--markdown"
+                            [innerHTML]="message.content | chatMarkdown"
+                        ></div>
+                    } @else {
+                        <div class="message__content">{{ message.content }}</div>
+                    }
                 }
                 @if (message.action) {
                     <div class="message__action">Action: {{ actionLabel(message.action) }}</div>
