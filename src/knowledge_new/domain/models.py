@@ -33,6 +33,7 @@ __all__ = [
     "EmbeddingConfig",
     "FoundChunk",
     "GraphEstimateConfig",
+    "GraphEstimateOverrides",
     "GraphSearchConfig",
     "IndexRequest",
     "IndexedChunk",
@@ -161,3 +162,15 @@ class GraphEstimateConfig(ValueObject):
     chunk_size: int
     chunk_overlap: int
     max_gleanings: int
+
+
+class GraphEstimateOverrides(ValueObject):
+    """Unsaved index settings an estimate is computed with instead of the stored ones."""
+
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    max_gleanings: int | None = None
+
+    def apply_to(self, config: GraphEstimateConfig) -> GraphEstimateConfig:
+        """Return `config` with every field set on these overrides replaced."""
+        return config.model_copy(update=self.model_dump(exclude_none=True))

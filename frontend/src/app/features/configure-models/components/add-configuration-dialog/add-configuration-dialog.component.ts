@@ -112,6 +112,20 @@ export class AddConfigurationDialogComponent implements OnInit {
         { requireSync: true }
     );
 
+    private readonly isLlmHeadersInvalid = signal(false);
+    private readonly isEmbeddingHeadersInvalid = signal(false);
+
+    readonly hasInvalidHeaders = computed(() => {
+        switch (this.activeTab()) {
+            case 'llm':
+                return this.isLlmHeadersInvalid();
+            case 'embedding':
+                return this.isEmbeddingHeadersInvalid();
+            default:
+                return false;
+        }
+    });
+
     readonly hasIncompletePricePair = computed(() => this.activeTab() === 'llm' && this.isPricePairIncomplete());
 
     openaiForm = this.fb.nonNullable.group({
@@ -178,6 +192,14 @@ export class AddConfigurationDialogComponent implements OnInit {
             is_visible: [true],
             pricing: this.pricingGroup,
         });
+
+        this.llmForm
+            .get('extra_headers')
+            ?.statusChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isLlmHeadersInvalid.set(status === 'INVALID'));
+        this.embeddingForm.controls.extra_headers.statusChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isEmbeddingHeadersInvalid.set(status === 'INVALID'));
 
         this.pricingGroup.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             if (this.pricingGroup.dirty) this.pricingGroup.markAsTouched();

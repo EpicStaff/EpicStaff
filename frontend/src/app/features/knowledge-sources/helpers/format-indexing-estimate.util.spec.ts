@@ -1,6 +1,7 @@
+import { formatCostUsd } from '@shared/utils';
+
 import { IndexingEstimate } from '../models/base-rag.model';
 import {
-    formatCostUsd,
     formatEmbeddingEstimate,
     formatLlmEstimate,
     getIndexingEstimateHtml,
@@ -85,11 +86,6 @@ describe('format-indexing-estimate.util', () => {
         expect(html).toContain('Embedding: ≈ 12,345 tokens · ≈ $0.50');
         expect(html).toContain('LLM extraction (rough estimate): 1,000–3,000 tokens');
         expect(html).not.toContain('$0.10');
-    });
-
-    it('adds the saved-settings note only when asked', () => {
-        expect(getIndexingEstimateHtml(NAIVE_ESTIMATE)).not.toContain('last saved settings');
-        expect(getIndexingEstimateHtml(NAIVE_ESTIMATE, true)).toContain('Based on the last saved settings.');
     });
 
     it('skips invalid values instead of throwing on a malformed estimate', () => {

@@ -122,6 +122,17 @@ async def test_config_headers_sent_without_env_headers(litellm_api, no_endpoint_
     assert litellm_api.await_args.kwargs["extra_headers"] == {"X-Config": "from-config"}
 
 
+async def test_numeric_env_header_values_are_sent_as_strings(litellm_api, monkeypatch):
+    # KNOWLEDGE_EMBEDDING_HEADERS is parsed as JSON, so a value can arrive as a number.
+    _set_env_endpoint(monkeypatch, None, {"X-Tenant-Id": 42, "X-Flag": True})
+
+    await _embedder(extra_headers={"X-Config": "c"}).embed("hi")
+
+    sent = litellm_api.await_args.kwargs["extra_headers"]
+    assert sent == {"X-Tenant-Id": "42", "X-Flag": "True", "X-Config": "c"}
+    assert all(isinstance(value, str) for value in sent.values())
+
+
 async def test_config_headers_merge_with_env_headers_and_win_on_collision(
     litellm_api, monkeypatch
 ):

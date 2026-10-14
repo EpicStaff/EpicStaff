@@ -110,6 +110,13 @@ export interface RagSearchConfig {
     };
 }
 
+export interface KnowledgeSearchTokenUsage {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    total_cost_usd?: number | null;
+}
+
 export interface ExtractedChunksMessageData {
     /** CrewAI leftover the backend still stamps on knowledge-search payloads. */
     crew_id?: number;
@@ -123,6 +130,8 @@ export interface ExtractedChunksMessageData {
     chunks: RawExtractedChunk[];
     /** graph: the answer, `""` when the grounding guard found nothing; naive: null. */
     answer?: string | null;
+    /** Missing or `{}` on old saved messages. */
+    token_usage?: KnowledgeSearchTokenUsage;
     message_type: MessageType.EXTRACTED_CHUNKS;
     rag_search_config: RagSearchConfig;
 }

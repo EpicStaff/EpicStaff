@@ -17,7 +17,8 @@ def _endpoint_overrides(config: EmbeddingConfig) -> dict:
     user who can set a model's `base_url` could send the gateway key to a host
     of their choosing. Where both apply, headers merge with the config's value
     winning on a name both define; HTTP header names are case-insensitive, so
-    `ApiKey` in the config replaces `apikey` from the env.
+    `ApiKey` in the config replaces `apikey` from the env. The env headers are
+    parsed from JSON, so a numeric value is coerced to `str` as HTTP requires.
 
     `api_base` is the OpenAI-style base that litellm appends `/embeddings` to,
     not the full embeddings URL.
@@ -30,7 +31,7 @@ def _endpoint_overrides(config: EmbeddingConfig) -> dict:
     if _targets_env_endpoint(config.base_url):
         config_header_names = {name.lower() for name in config.extra_headers}
         env_headers = {
-            name: value
+            name: str(value)
             for name, value in (settings.EMBEDDING_HEADERS or {}).items()
             if name.lower() not in config_header_names
         }

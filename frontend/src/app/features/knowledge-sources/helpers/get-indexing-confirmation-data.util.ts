@@ -71,18 +71,13 @@ export function getIndexingConfirmationData(
  */
 export function getIndexingConfirmationDataWithEstimate(
     documents: IndexingDocumentInfo[],
-    estimate$: Observable<IndexingEstimate | null>,
-    isBasedOnSavedSettings = false
+    estimate$: Observable<IndexingEstimate | null>
 ): ConfirmationDialogData {
     return {
         ...getIndexingConfirmationData(documents, ESTIMATING_USAGE_HTML),
         messageUpdates: estimate$.pipe(
             catchError(() => of(null)),
-            map(
-                (estimate) =>
-                    getIndexingConfirmationData(documents, getIndexingEstimateHtml(estimate, isBasedOnSavedSettings))
-                        .message
-            )
+            map((estimate) => getIndexingConfirmationData(documents, getIndexingEstimateHtml(estimate)).message)
         ),
     };
 }

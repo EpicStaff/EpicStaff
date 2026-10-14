@@ -14,13 +14,21 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import {
+    ControlValueAccessor,
+    FormsModule,
+    NG_VALIDATORS,
+    NG_VALUE_ACCESSOR,
+    ValidationErrors,
+    Validator,
+} from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SecretsStorageService } from '@shared/services';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { SelectItem } from '../select/select.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
+import { getHeaderRowError } from './header-validation.util';
 
 interface KeyValueItem {
     name: string;
@@ -31,6 +39,7 @@ type SecretPickerTarget = number | 'draft';
 
 /** Whole value is exactly an `epicstaff_secret(<name>)` marker — see secret_resolver.py. */
 const SECRET_MARKER_RE = /^epicstaff_secret\(([^)]*)\)$/;
+const DRAFT_PENDING_ERROR = 'Add or clear this header first';
 const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
 
 @Component({
@@ -44,10 +53,15 @@ const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
             useExisting: forwardRef(() => KeyValueListComponent),
             multi: true,
         },
+        {
+            provide: NG_VALIDATORS,
+            useExisting: forwardRef(() => KeyValueListComponent),
+            multi: true,
+        },
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class KeyValueListComponent implements ControlValueAccessor {
+export class KeyValueListComponent implements ControlValueAccessor, Validator {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly overlay = inject(Overlay);
@@ -109,15 +123,41 @@ export class KeyValueListComponent implements ControlValueAccessor {
         return this.secretNameOf(value) ?? value;
     }
 
-    isDuplicateName = computed<boolean>(() => {
-        const name = this.draftName().trim().toLowerCase();
-        if (!name) return false;
-
-        return this.items().some((item) => item.name.trim().toLowerCase() === name);
+    /** Error text per saved row, null when the row is valid. */
+    rowErrors = computed<(string | null)[]>(() => {
+        const items = this.items();
+        return items.map((item, index) =>
+            getHeaderRowError(
+                item.name,
+                item.value,
+                items.filter((_, other) => other !== index).map((other) => other.name)
+            )
+        );
     });
+
+    /** Format/duplicate problem with the draft row; an untouched, empty draft has none. */
+    protected readonly draftRowError = computed<string | null>(() =>
+        getHeaderRowError(
+            this.draftName(),
+            this.draftValue(),
+            this.items().map((item) => item.name)
+        )
+    );
+
+    /** Any non-empty draft that has not been confirmed blocks validity, so typed input is never silently dropped. */
+    draftError = computed<string | null>(() => {
+        const rowError = this.draftRowError();
+        if (rowError) return rowError;
+        return this.draftName().trim() || this.draftValue().trim() ? DRAFT_PENDING_ERROR : null;
+    });
+
+    private readonly hasErrors = computed<boolean>(
+        () => this.draftError() !== null || this.rowErrors().some((error) => error !== null)
+    );
 
     private onChange: (value: Record<string, string>) => void = () => {};
     private onTouched: () => void = () => {};
+    private onValidatorChange: () => void = () => {};
 
     constructor() {
         this.secretsStorageService
@@ -130,7 +170,7 @@ export class KeyValueListComponent implements ControlValueAccessor {
 
     confirm(): void {
         const name = this.draftName().trim();
-        if (!name || this.isDuplicateName()) return;
+        if (!name || this.draftRowError()) return;
 
         const value = this.draftValue();
         this.items.update((items) => [...items, { name, value }]);
@@ -140,11 +180,14 @@ export class KeyValueListComponent implements ControlValueAccessor {
         this.emit();
     }
 
-    isRowDuplicate(index: number): boolean {
-        const name = this.items()[index]?.name.trim().toLowerCase();
-        if (!name) return false;
+    updateDraftName(name: string): void {
+        this.draftName.set(name);
+        this.onValidatorChange();
+    }
 
-        return this.items().some((item, i) => i !== index && item.name.trim().toLowerCase() === name);
+    updateDraftValue(value: string): void {
+        this.draftValue.set(value);
+        this.onValidatorChange();
     }
 
     updateName(index: number, name: string): void {
@@ -177,6 +220,7 @@ export class KeyValueListComponent implements ControlValueAccessor {
         if (event.key === 'Escape') {
             this.draftName.set('');
             this.draftValue.set('');
+            this.onValidatorChange();
         }
     }
 
@@ -192,7 +236,7 @@ export class KeyValueListComponent implements ControlValueAccessor {
 
         const marker = toSecretMarker(item.value);
         if (target === 'draft') {
-            this.draftValue.set(marker);
+            this.updateDraftValue(marker);
         } else {
             this.updateValue(target, marker);
         }
@@ -261,7 +305,11 @@ export class KeyValueListComponent implements ControlValueAccessor {
     }
 
     private emit(): void {
-        const record = Object.fromEntries(this.items().map((i) => [i.name, i.value]));
+        const record = Object.fromEntries(
+            this.items()
+                .filter((item) => item.name.trim() || item.value.trim())
+                .map((item) => [item.name, item.value])
+        );
         this.onChange(record);
         this.onTouched();
     }
@@ -278,6 +326,14 @@ export class KeyValueListComponent implements ControlValueAccessor {
 
     registerOnTouched(fn: () => void): void {
         this.onTouched = fn;
+    }
+
+    validate(): ValidationErrors | null {
+        return this.hasErrors() ? { keyValueList: true } : null;
+    }
+
+    registerOnValidatorChange(fn: () => void): void {
+        this.onValidatorChange = fn;
     }
 
     setDisabledState(isDisabled: boolean): void {

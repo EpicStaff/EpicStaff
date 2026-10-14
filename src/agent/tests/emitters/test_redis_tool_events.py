@@ -821,6 +821,7 @@ async def test_on_knowledge_search_reports_embedding_usage_as_token_usage():
 
     assert _decode_payload(published[0])["token_usage"] == {
         "prompt_tokens": 12,
+        "completion_tokens": 0,
         "total_tokens": 12,
         "total_cost_usd": 0.0001,
     }

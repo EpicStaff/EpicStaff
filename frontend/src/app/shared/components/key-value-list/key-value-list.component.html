@@ -12,10 +12,10 @@
         <input
             class="kv-list__input"
             type="text"
-            [class.kv-list__input--error]="isDuplicateName()"
+            [class.kv-list__input--error]="draftError()"
             [placeholder]="namePlaceholder()"
             [ngModel]="draftName()"
-            (ngModelChange)="draftName.set($event)"
+            (ngModelChange)="updateDraftName($event)"
             (keydown)="handleKeydown($event)"
             [disabled]="isDisabled()"
         />
@@ -25,7 +25,7 @@
                 type="text"
                 [placeholder]="valuePlaceholder()"
                 [ngModel]="displayValue(draftValue())"
-                (ngModelChange)="draftValue.set($event)"
+                (ngModelChange)="updateDraftValue($event)"
                 (keydown)="handleKeydown($event)"
                 (keydown.escape)="closeSuggestions()"
                 (focus)="onValueFocus($event, 'draft')"
@@ -38,14 +38,14 @@
             matTooltip="Add"
             matTooltipPosition="above"
             (click)="confirm()"
-            [disabled]="isDisabled() || !draftName().trim() || isDuplicateName()"
+            [disabled]="isDisabled() || !draftName().trim() || draftRowError() !== null"
         >
             <i class="ti ti-plus"></i>
         </button>
     </div>
 
-    @if (isDuplicateName()) {
-        <div class="kv-list__error-message">A header with this name already exists.</div>
+    @if (draftError(); as error) {
+        <div class="kv-list__error-message">{{ error }}</div>
     }
 
     @for (item of items(); track $index; let i = $index) {
@@ -53,7 +53,7 @@
             <input
                 class="kv-list__input"
                 type="text"
-                [class.kv-list__input--error]="isRowDuplicate(i)"
+                [class.kv-list__input--error]="rowErrors()[i]"
                 [ngModel]="item.name"
                 (ngModelChange)="updateName(i, $event)"
                 (blur)="onNameBlur(i)"
@@ -91,8 +91,8 @@
                 <i class="ti ti-x"></i>
             </button>
         </div>
-        @if (isRowDuplicate(i)) {
-            <div class="kv-list__error-message">A header with this name already exists.</div>
+        @if (rowErrors()[i]; as error) {
+            <div class="kv-list__error-message">{{ error }}</div>
         }
     }
 </div>

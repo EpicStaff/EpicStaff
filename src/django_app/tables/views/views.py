@@ -32,7 +32,11 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
+from tables.exceptions import (
+    CodeRunTargetNotFoundError,
+    InvalidChunkParametersException,
+    SessionNotFoundError,
+)
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -53,7 +57,7 @@ from tables.models.graph_models import (
     GraphSessionMessage,
     PythonNode,
 )
-from tables.models.knowledge_models import GraphRag, NaiveRag
+from tables.models.knowledge_models import GraphRag, GraphRagIndexConfig, NaiveRag
 from tables.serializers.model_serializers import (
     SessionLightSerializer,
     SessionSerializer,
@@ -68,6 +72,7 @@ from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
+    ProcessRagIndexingEstimateSerializer,
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
@@ -77,6 +82,7 @@ from tables.serializers.serializers import (
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.indexing_service import IndexingService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
@@ -1003,18 +1009,27 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
 
     # Chunking whole documents in memory is slower than the indexing hand-off call.
     _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
+    # The only index settings knowledge_new accepts as estimate overrides
+    # (`IndexConfigOverridesSchema` forbids any other key).
+    _ESTIMATE_INDEX_CONFIG_KEYS = ("chunk_size", "chunk_overlap", "max_gleanings")
 
-    @extend_schema(request=ProcessRagIndexingSerializer, responses={200: OpenApiTypes.OBJECT})
+    @extend_schema(
+        request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
     def post(self, request):
-        serializer = ProcessRagIndexingSerializer(data=request.data)
+        serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
         document_config_ids = serializer.validated_data["document_config_ids"]
+        # Only GraphRAG indexing has settings that change the estimate.
+        index_config = (
+            serializer.validated_data.get("index_config") if rag_type == "graph" else None
+        )
 
         model = self._RAG_MODELS[rag_type]
-        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
@@ -1022,12 +1037,31 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
             Permission.UPDATE,
         )
 
+        if index_config:
+            # A rag without a stored config is estimated against the model defaults.
+            try:
+                GraphRagService.validate_merged_chunk_params(
+                    rag.index_config or GraphRagIndexConfig(), index_config
+                )
+            except InvalidChunkParametersException as e:
+                reasons = [error["reason"] for error in e.errors]
+                return Response(
+                    {"index_config": {"chunk_overlap": reasons}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            index_config = {
+                key: index_config[key]
+                for key in self._ESTIMATE_INDEX_CONFIG_KEYS
+                if key in index_config
+            }
+
         try:
             with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
                 estimate = client.index_estimate(
                     strategy=RAGStrategy(rag_type),
                     rag_id=rag_id,
                     document_ids=frozenset(document_config_ids),
+                    index_config=index_config,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)

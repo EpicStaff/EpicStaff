@@ -18,6 +18,7 @@ from domain.models import (
     Document,
     EmbeddingConfig,
     GraphEstimateConfig,
+    GraphEstimateOverrides,
     PreviewChunk,
     Rag,
 )
@@ -262,6 +263,52 @@ async def test_graph_returns_llm_block_with_custom_prices():
     assert result.llm.tokens_min > result.embedding.tokens
     assert result.llm.cost_usd_max == pytest.approx(result.llm.cost_usd_min * 2)
     assert result.llm.cost_usd_min > 0
+
+
+async def test_graph_index_config_overrides_apply_on_top_of_stored_config():
+    text = "word " * 500
+    stored = _graph_config(chunk_size=200, chunk_overlap=10, max_gleanings=0)
+    repo = FakeGraphRepo([_text_document(1, text)], stored, _rag())
+    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
+    document_ids = frozenset({1})
+
+    baseline = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=document_ids))
+    overridden = await orchestrator.execute(
+        GetIndexEstimate(
+            rag_id=1,
+            document_ids=document_ids,
+            index_config=GraphEstimateOverrides(chunk_size=50, max_gleanings=2),
+        )
+    )
+
+    assert overridden.chunk_count > baseline.chunk_count
+    assert baseline.llm.calls == baseline.chunk_count
+    assert overridden.llm.calls == overridden.chunk_count * 3
+    assert repo.config == stored
+
+
+def test_graph_estimate_overrides_leave_unset_fields_alone():
+    config = _graph_config(chunk_size=100, chunk_overlap=10, max_gleanings=1)
+
+    applied = GraphEstimateOverrides(chunk_overlap=20).apply_to(config)
+
+    assert (applied.chunk_size, applied.chunk_overlap, applied.max_gleanings) == (100, 20, 1)
+
+
+async def test_naive_ignores_index_config_overrides():
+    orchestrator, _ = _naive([_document(1)])
+    document_ids = frozenset({1})
+
+    plain = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=document_ids))
+    with_overrides = await orchestrator.execute(
+        GetIndexEstimate(
+            rag_id=1,
+            document_ids=document_ids,
+            index_config=GraphEstimateOverrides(chunk_size=5),
+        )
+    )
+
+    assert with_overrides == plain
 
 
 async def test_graph_llm_cost_is_null_for_unpriced_model_without_custom_prices():

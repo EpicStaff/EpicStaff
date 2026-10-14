@@ -38,21 +38,4 @@ describe('getIndexingConfirmationDataWithEstimate', () => {
         expect(messages).toHaveLength(2);
         messages.forEach((message) => expect(message).not.toContain('Estimating usage'));
     });
-
-    it('adds the saved-settings note only when based on saved settings', () => {
-        const messagesFor = (isBasedOnSavedSettings: boolean): string[] => {
-            const estimate$ = new Subject<IndexingEstimate | null>();
-            const messages: string[] = [];
-            getIndexingConfirmationDataWithEstimate(
-                DOCUMENTS,
-                estimate$,
-                isBasedOnSavedSettings
-            ).messageUpdates?.subscribe((message) => messages.push(message));
-            estimate$.next(ESTIMATE);
-            return messages;
-        };
-
-        expect(messagesFor(true)[0]).toContain('Based on the last saved settings.');
-        expect(messagesFor(false)[0]).not.toContain('Based on the last saved settings.');
-    });
 });

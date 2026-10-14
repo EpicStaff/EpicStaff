@@ -1,5 +1,6 @@
+import { formatCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
+
 import { IndexingUsage, IndexingUsageTotals } from '../models/base-rag.model';
-import { formatCostUsd, formatTokens, toFiniteNumber } from './format-indexing-estimate.util';
 
 const COMPACT_TOKEN_FORMATTER = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const PART_SEPARATOR = ' · ';

@@ -101,15 +101,21 @@ export class GraphRagStrategy implements RagCreationStrategy {
         );
     }
 
-    estimateIndexing(configIds: number[]): Observable<IndexingEstimate | null> {
+    estimateIndexing(
+        configIds: number[],
+        indexConfig?: CreateGraphRagIndexConfigRequest
+    ): Observable<IndexingEstimate | null> {
         const ragId = this.graphRagSignal()?.graph_rag_id;
         if (!ragId || !configIds.length) return of(null);
 
-        return this.ragIndexingService.estimateIndexingOrNull({
-            rag_id: ragId,
-            rag_type: 'graph',
-            document_config_ids: configIds,
-        });
+        return this.ragIndexingService.estimateIndexingOrNull(
+            {
+                rag_id: ragId,
+                rag_type: 'graph',
+                document_config_ids: configIds,
+            },
+            indexConfig
+        );
     }
 
     stopIndexing() {

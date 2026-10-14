@@ -20,6 +20,8 @@ from application.orchestrators.searching.strategies.graph_search import (
 from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import UnsupportedError
+from domain.models import EmbeddingConfig, GraphEstimateConfig, SearchUsage
+from infrastructure.graphrag import usage_metrics
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from src.shared.models.knowledge_new import (
     GraphBasicSearchConfig,
@@ -48,8 +50,12 @@ def _make_graph_rag_config() -> GraphRagConfig:
 
 
 class FakeGraphRagRepo:
-    def __init__(self):
+    def __init__(self, estimate_config: GraphEstimateConfig | None = None):
         self.requested_rag_ids: list[int] = []
+        self.estimate_config = estimate_config
+
+    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig | None:
+        return self.estimate_config
 
     async def get_config(self, rag_id: int) -> GraphRagConfig:
         self.requested_rag_ids.append(rag_id)
@@ -208,7 +214,7 @@ async def test_search_runs_the_method_with_its_settings_tables_and_answer(
 
     response = await orchestrator.execute(_request(search_config))
 
-    assert response == SearchResult(result="the answer")
+    assert response.result == "the answer"
     assert repo.requested_rag_ids == [42]
     (call,) = calls
     assert call["query"] == "what is the meaning?"
@@ -327,3 +333,101 @@ async def test_no_extra_headers_leaves_call_args_without_headers(
     config = calls[0]["config"]
     assert "extra_headers" not in config.embedding_models["default_embedding_model"].call_args
     assert "extra_headers" not in config.completion_models["default_completion_model"].call_args
+
+
+def _pricing(**overrides) -> GraphEstimateConfig:
+    values = dict(
+        embedding=EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
+        llm_provider="openai",
+        llm_model="no-such-model-x",
+        chunk_size=100,
+        chunk_overlap=10,
+        max_gleanings=1,
+    )
+    return GraphEstimateConfig(**{**values, **overrides})
+
+
+def _install_metered_searcher(monkeypatch, *, embedding=0, input_tokens=0, output_tokens=0):
+    """A searcher that reports usage the way graphrag's metrics store does."""
+
+    async def metered_searcher(**kwargs):
+        tally = usage_metrics._current_tally.get()
+        tally.embedding_tokens += embedding
+        tally.llm_input_tokens += input_tokens
+        tally.llm_output_tokens += output_tokens
+        return "answer", None
+
+    method = GraphSearchMethodEnum.LOCAL
+    real_spec = GraphSearchOrchestrator._SEARCH_MAP[method]
+    monkeypatch.setitem(
+        GraphSearchOrchestrator._SEARCH_MAP,
+        method,
+        SearchSpecification(
+            searcher=metered_searcher,
+            config_field=real_spec.config_field,
+            config_model=real_spec.config_model,
+            required_files=real_spec.required_files,
+            optional_files=real_spec.optional_files,
+            extra_kwargs=real_spec.extra_kwargs,
+        ),
+    )
+
+
+async def test_search_reports_metered_embedding_and_llm_usage_with_custom_llm_prices(
+    monkeypatch, index_tables
+):
+    _install_metered_searcher(monkeypatch, embedding=10, input_tokens=100, output_tokens=20)
+    pricing = _pricing(input_cost_per_token=0.001, output_cost_per_token=0.002)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(pricing)))
+
+    result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
+
+    usage = result.usage
+    assert (usage.embedding_tokens, usage.llm_input_tokens, usage.llm_output_tokens) == (
+        10,
+        100,
+        20,
+    )
+    assert usage.llm_cost_usd == pytest.approx(100 * 0.001 + 20 * 0.002)
+    assert usage.embedding_cost_usd is not None
+
+
+async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, index_tables):
+    _install_metered_searcher(monkeypatch, input_tokens=100, output_tokens=20)
+
+    async def metered_guard(query, response, context, config, method):
+        tally = usage_metrics._current_tally.get()
+        tally.llm_input_tokens += 7
+        tally.llm_output_tokens += 1
+        return response
+
+    monkeypatch.setattr(graph_search, "apply_grounding_guard", metered_guard)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())))
+
+    result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
+
+    assert (result.usage.llm_input_tokens, result.usage.llm_output_tokens) == (107, 21)
+
+
+async def test_search_cost_is_unknown_for_an_unpriced_llm(monkeypatch, index_tables):
+    _install_metered_searcher(monkeypatch, input_tokens=5, output_tokens=5)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())))
+
+    result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
+
+    assert result.usage.llm_cost_usd is None
+    assert result.usage.to_token_usage()["total_tokens"] == 10
+
+
+async def test_search_still_returns_tokens_when_pricing_cannot_be_resolved(
+    monkeypatch, index_tables
+):
+    _install_metered_searcher(monkeypatch, embedding=3, input_tokens=5, output_tokens=2)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(None)))
+
+    result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
+
+    assert result.usage == SearchUsage(
+        embedding_tokens=3, llm_input_tokens=5, llm_output_tokens=2
+    )
+

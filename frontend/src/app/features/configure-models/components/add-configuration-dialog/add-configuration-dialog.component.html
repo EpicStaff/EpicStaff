@@ -510,7 +510,7 @@
         <app-button
             type="primary"
             (click)="onSubmit()"
-            [disabled]="isSubmitting() || hasIncompletePricePair()"
+            [disabled]="isSubmitting() || hasIncompletePricePair() || hasInvalidHeaders()"
         >
             @if (isSubmitting()) {
                 Creating…

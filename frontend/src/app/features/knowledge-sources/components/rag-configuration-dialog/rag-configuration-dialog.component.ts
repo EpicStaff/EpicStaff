@@ -11,6 +11,7 @@ import {
     IndexingDocumentInfo,
 } from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
+import { CreateGraphRagIndexConfigRequest } from '../../models/graph-rag.model';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../services/rag-indexing.service';
 
@@ -63,18 +64,19 @@ export abstract class RagConfigurationDialogComponent {
     protected confirmIndexing(
         documents: IndexingDocumentInfo[],
         configIds: number[],
-        hasUnsavedIndexConfig = false
+        indexConfig?: CreateGraphRagIndexConfigRequest
     ): Observable<ConfirmationResult> {
         const estimate$ = configIds.length
-            ? this.ragIndexingService.estimateIndexingOrNull({
-                  rag_id: this.data.ragId,
-                  rag_type: this.data.ragType,
-                  document_config_ids: configIds,
-              })
+            ? this.ragIndexingService.estimateIndexingOrNull(
+                  {
+                      rag_id: this.data.ragId,
+                      rag_type: this.data.ragType,
+                      document_config_ids: configIds,
+                  },
+                  indexConfig
+              )
             : of(null);
 
-        return this.confirmation.confirm(
-            getIndexingConfirmationDataWithEstimate(documents, estimate$, hasUnsavedIndexConfig)
-        );
+        return this.confirmation.confirm(getIndexingConfirmationDataWithEstimate(documents, estimate$));
     }
 }

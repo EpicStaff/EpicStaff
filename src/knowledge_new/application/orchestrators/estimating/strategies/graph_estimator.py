@@ -33,6 +33,8 @@ class GraphEstimateOrchestrator(AbstractEstimateOrchestrator):
             config = await self.uow.graph_rag_repo.get_estimate_config(rag_id=rag.id)
             if config is None:
                 raise GraphRagConfigNotFoundError(rag_id=rag.id)
+            if command.index_config is not None:
+                config = command.index_config.apply_to(config)
             selected = await self.uow.graph_rag_repo.get_documents(
                 rag_id=rag.id, ids=command.document_ids
             )

@@ -327,28 +327,37 @@ class SearchResponse(ValueObject):
 
 
 class SearchUsage(ValueObject):
-    """Embedding usage one search consumed, as reported by knowledge_new.
+    """Embedding and LLM usage one search consumed, as reported by knowledge_new.
 
-    `embedding_cost_usd` is None when the embedding model has no price in litellm's
-    price map; the tokens are reported either way. Graph searches report zero: their
-    LLM and embedding calls are not metered.
+    Naive search embeds the query, so it reports only the embedding fields and leaves
+    the `llm_*` fields None. Graph search also makes LLM calls (the answer and the
+    grounding judge), reported in the `llm_*` fields. A cost is None when its model has
+    no price, neither custom on the LLM config nor in litellm's price map; the tokens
+    are reported either way.
     """
 
     embedding_tokens: int = 0
     embedding_cost_usd: float | None = None
+    llm_input_tokens: int | None = None
+    llm_output_tokens: int | None = None
+    llm_cost_usd: float | None = None
 
     def to_token_usage(self) -> dict:
         """Return this usage as the `token_usage` dict of a graph message, `{}` if none.
 
         The session's token total adds up the top-level `token_usage` of every graph
-        message. The cost is 0.0 when the embedding model is unpriced, as for LLM calls.
+        message. Prompt tokens are the embedding plus the LLM input tokens. An unknown
+        cost counts as 0.0, as for LLM calls.
         """
-        if not self.embedding_tokens:
+        prompt_tokens = self.embedding_tokens + (self.llm_input_tokens or 0)
+        completion_tokens = self.llm_output_tokens or 0
+        if not (prompt_tokens or completion_tokens):
             return {}
         return {
-            "prompt_tokens": self.embedding_tokens,
-            "total_tokens": self.embedding_tokens,
-            "total_cost_usd": self.embedding_cost_usd or 0.0,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "total_cost_usd": (self.embedding_cost_usd or 0.0) + (self.llm_cost_usd or 0.0),
         }
 
 

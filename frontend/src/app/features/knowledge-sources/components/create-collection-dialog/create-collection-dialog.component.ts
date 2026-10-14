@@ -252,7 +252,10 @@ export class CreateCollectionDialogComponent {
 
         return this.confirmation
             .confirm(
-                getIndexingConfirmationDataWithEstimate(indexingDocs, strategy.estimateIndexing(configIds), shouldSave)
+                getIndexingConfirmationDataWithEstimate(
+                    indexingDocs,
+                    strategy.estimateIndexing(configIds, shouldSave ? componentData : undefined)
+                )
             )
             .pipe(
                 takeUntilDestroyed(this.destroyRef),

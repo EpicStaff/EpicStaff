@@ -59,6 +59,22 @@ describe('RagIndexingService estimate', () => {
         expect(result).toBeNull();
     });
 
+    it('sends index_config only when provided', () => {
+        const indexConfig = {
+            file_type: 'text',
+            chunk_size: 300,
+            chunk_overlap: 50,
+            chunk_strategy: 'tokens',
+            entity_types: ['person'],
+            max_gleanings: 1,
+            max_cluster_size: 10,
+        } as const;
+        service.estimateIndexing(REQUEST, { ...indexConfig, entity_types: ['person'] }).subscribe();
+        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual({ ...REQUEST, index_config: indexConfig });
+        service.estimateIndexing(REQUEST).subscribe();
+        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual(REQUEST);
+    });
+
     it('estimateIndexing propagates errors', () => {
         let error: unknown;
         service.estimateIndexing(REQUEST).subscribe({ error: (err: unknown) => (error = err) });
