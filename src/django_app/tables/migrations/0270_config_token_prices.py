@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('rbac', '0006_merge_20261009_0941'),
-        ('tables', '0264_embeddingconfig_extra_headers'),
+        ('tables', '0269_embeddingconfig_extra_headers'),
     ]
 
     operations = [

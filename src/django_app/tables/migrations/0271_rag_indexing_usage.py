@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0265_config_token_prices'),
+        ('tables', '0270_config_token_prices'),
     ]
 
     operations = [
