@@ -291,3 +291,6 @@ benchmark/.flow-cache.json
 
 # .env backup the benchmark keeps while a run overrides settings
 src/.env.bench-backup
+
+# Host-specific compose settings such as container limits (loaded by compose and the benchmark)
+src/docker-compose.override.yaml

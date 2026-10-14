@@ -399,7 +399,7 @@ python3 benchmark/bench.py run server --graph complex=<id> --note "<branch>: <wh
 
 (For the payload-only case use `~/bench-cases/server-payload.toml` instead of `server` and drop `--graph`.)
 
-1. **preflight**: host, `.env` and stack checks, no load. Exit 0 and `preflight ok` (or only `⚠` warnings) before you continue. The `no container memory limit` warning is expected today (see B10).
+1. **preflight**: host, `.env` and stack checks, no load. Exit 0 and `preflight ok` (or only `⚠` warnings) before you continue. The `no container memory limit` warning means a container has no memory limit (see B10).
 2. **plan**: prints the levels per phase and the worst-case duration. Make sure you can leave the server alone that long.
 3. **run** inside tmux. The run order per variant: pre-flight, `.env` override and `docker compose up -d --build`, flow import if needed, the smoke step, then per phase the ladder and bisect, cleanup, analysis, `Run folder: ...`, and the final re-apply.
    - Detach: `Ctrl+B`, then `D`. The run continues.
@@ -409,9 +409,11 @@ python3 benchmark/bench.py run server --graph complex=<id> --note "<branch>: <wh
 
 ### B10. Safety
 
-- **No container CPU or memory limits exist yet.** A level that overloads the stack can push the whole host into OOM, and the kernel may kill anything, including Docker or sshd. Do not run a high ladder on a machine you cannot afford to reboot.
+- **The compose file sets no container limits** (only the sandbox has 2 GB). Without the two layers below, a level that overloads the stack can push the whole host into OOM, and the kernel may kill anything, including Docker or sshd.
+  - **Cap Docker as a whole** with a systemd slice, so the kernel kills containers, never sshd or the OS. Create `/etc/systemd/system/docker-limited.slice` with `[Slice]` `MemoryMax=40G` (`MemoryHigh` a little lower, `CPUQuota` one core below the host's), set `"cgroup-parent": "docker-limited.slice"` in `/etc/docker/daemon.json`, then `sudo systemctl daemon-reload && sudo systemctl restart docker` and `docker compose up -d`. Size it to leave the OS a few GB and one core.
+  - **Cap each container** in `src/docker-compose.override.yaml` (gitignored, host-specific): `services: <name>: mem_limit: 4g`. Plain `docker compose` loads that file on its own and the benchmark adds it to every compose call, so both run with the same limits; the run's `meta.json` records them under `container_limits`. Use memory limits only: a CPU limit changes what the run measures (the bottleneck becomes the limit).
 - **Host-RAM guard.** If available host RAM drops below `abort.host_min_available_ram_pct` (5 %) during a level, the level stops sending and fails. Sessions already running continue until they end or hit `session_timeout_s` (900 s) in the drain; the guard does not kill them. Other aborts: any container restart or OOM kill, and an error rate of 5 % or more over 30 s.
-- Check limits (today every value is 0):
+- Check limits (0 = no limit):
 
   ```bash
   docker inspect -f '{{.Name}} mem={{.HostConfig.Memory}} cpus={{.HostConfig.NanoCpus}}' $(docker ps -q)

@@ -22,6 +22,9 @@ RESTARTED = (*INSTRUMENTED, "knowledge_new")
 # that `up` recreates can come back on a new IP, and nginx would keep proxying to the old one
 # (502), so every `up` restarts nginx.
 PROXY_SERVICE = "epicstaff-nginx"
+# Host-specific compose settings (e.g. container memory limits). Plain `docker compose` loads it
+# on its own, but an explicit -f turns that off, so cmd() adds it to keep both runs alike.
+OVERRIDE_FILE = "docker-compose.override.yaml"
 BACKUP_SUFFIX = ".bench-backup"
 # the main checkout's src/.env, which is also every Compose's env_file
 ENV_FILE = Path(__file__).resolve().parent.parent / "src" / ".env"
@@ -171,6 +174,10 @@ class Compose:
     project: str
 
     def cmd(self, *args: str) -> list[str]:
+        # The override lives next to the main checkout's .env, so a worktree variant
+        # (whose src_dir has none) runs with the same host limits.
+        override = self.env_file.parent / OVERRIDE_FILE
+        files = [self.src_dir / "docker-compose.yaml", *([override] if override.is_file() else [])]
         return [
             "docker",
             "compose",
@@ -178,8 +185,7 @@ class Compose:
             self.project,
             "--project-directory",
             str(self.src_dir),
-            "-f",
-            str(self.src_dir / "docker-compose.yaml"),
+            *[option for file in files for option in ("-f", str(file))],
             "--env-file",
             str(self.env_file),
             *args,

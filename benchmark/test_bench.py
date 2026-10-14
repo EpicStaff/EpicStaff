@@ -238,6 +238,24 @@ class ComposeUpTest(unittest.TestCase):
     def test_up_restarts_nginx_so_it_resolves_recreated_containers_again(self):
         self.assertEqual(self.run_up(build=False), [["up", "-d"], ["restart", stack.PROXY_SERVICE]])
 
+    def test_override_file_next_to_env_is_loaded_when_present(self):
+        with tempfile.TemporaryDirectory() as folder:
+            env_file = Path(folder) / ".env"
+            compose = stack.Compose(Path("worktree/src"), env_file, "src")
+
+            def files() -> list[str]:
+                return [arg for flag, arg in itertools.pairwise(compose.cmd()) if flag == "-f"]
+
+            self.assertEqual(files(), [str(Path("worktree/src/docker-compose.yaml"))])
+            (Path(folder) / stack.OVERRIDE_FILE).write_text("services: {}\n", encoding="utf-8")
+            self.assertEqual(
+                files(),
+                [
+                    str(Path("worktree/src/docker-compose.yaml")),
+                    str(Path(folder) / stack.OVERRIDE_FILE),
+                ],
+            )
+
     def test_build_is_passed_before_the_nginx_restart(self):
         self.assertEqual(
             self.run_up(build=True), [["up", "-d", "--build"], ["restart", stack.PROXY_SERVICE]]
