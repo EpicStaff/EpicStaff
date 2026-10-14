@@ -32,6 +32,68 @@ class FakeEventSource {
     }
 }
 
+/** One BroadcastChannel per tab; like the real one it delivers asynchronously, to every other open channel of its name. */
+class FakeBroadcastChannel {
+    static open: FakeBroadcastChannel[] = [];
+    onmessage: ((event: MessageEvent) => void) | null = null;
+
+    constructor(readonly name: string) {
+        FakeBroadcastChannel.open.push(this);
+    }
+
+    postMessage(data: unknown): void {
+        const copy: unknown = structuredClone(data);
+        for (const other of FakeBroadcastChannel.open) {
+            if (other === this || other.name !== this.name) continue;
+            queueMicrotask(() => {
+                if (FakeBroadcastChannel.open.includes(other))
+                    other.onmessage?.(new MessageEvent('message', { data: copy }));
+            });
+        }
+    }
+
+    close(): void {
+        FakeBroadcastChannel.open = FakeBroadcastChannel.open.filter((channel) => channel !== this);
+    }
+}
+
+/** Exclusive Web Locks shared by every tab of the test: one holder per name, the rest queued in order. */
+class FakeLockManager {
+    private readonly held = new Set<string>();
+    private readonly queues = new Map<string, (() => void)[]>();
+
+    request(name: string, options: { signal?: AbortSignal }, callback: () => unknown): Promise<unknown> {
+        return new Promise((resolve, reject) => {
+            const grant = (): void => {
+                this.held.add(name);
+                void Promise.resolve()
+                    .then(callback)
+                    .then(resolve, reject)
+                    .finally(() => {
+                        this.held.delete(name);
+                        this.queue(name).shift()?.();
+                    });
+            };
+            if (!this.held.has(name)) return grant();
+            this.queue(name).push(grant);
+            options.signal?.addEventListener('abort', () => {
+                const queue = this.queue(name);
+                if (!queue.includes(grant)) return;
+                queue.splice(queue.indexOf(grant), 1);
+                reject(new DOMException('Aborted', 'AbortError'));
+            });
+        });
+    }
+
+    private queue(name: string): (() => void)[] {
+        if (!this.queues.has(name)) this.queues.set(name, []);
+        return this.queues.get(name)!;
+    }
+}
+
+/** Lets queued lock grants and channel messages run. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve));
+
 const conversation = (overrides: Partial<ChatConversation>): ChatConversation => ({
     id: 'c-1',
     binding_id: 'b-1',
@@ -99,6 +161,8 @@ describe('ChatInboxStreamService', () => {
     beforeEach(() => {
         FakeEventSource.instances = [];
         vi.stubGlobal('EventSource', FakeEventSource);
+        // A browser without cross-tab APIs: every tab runs its own stream, which is what most tests here pin down.
+        vi.stubGlobal('BroadcastChannel', undefined);
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
@@ -118,7 +182,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('mints a ticket, opens the stream, bumps the ready epoch and seeds the waiting count on ready', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         expect(source.url).toBe('/chat/operator/v1/inbox/stream?ticket=t-1');
         expect(service.status()).toBe('open');
@@ -131,7 +195,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('seeds with one badges request per ready', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges(['c-1']));
@@ -143,7 +207,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('adds and removes waiting ids from the after-state of conversation updates', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges(['c-1']));
@@ -162,7 +226,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('drops a closed conversation from the waiting set', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2']));
@@ -183,7 +247,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('counts a taken conversation whose visitor wrote again as waiting', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges([]));
@@ -196,7 +260,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('counts waiting conversations per desk from the seed and from updates', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush({ waiting: [badge('c-1', 'b-1'), badge('c-2', 'b-2')] });
@@ -212,7 +276,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('counts per desk, across desks and for Mine by the holder, following take over live', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush({
@@ -232,7 +296,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('never counts a test conversation as waiting', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges([]));
@@ -242,7 +306,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('replays updates that arrive while the seed is in flight over the seed', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         const seed = httpMock.expectOne(badgesUrl);
@@ -261,7 +325,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('ignores a seed from an earlier ready once a newer one starts', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         const stale = httpMock.expectOne(badgesUrl);
@@ -273,10 +337,10 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('ignores a seed from a previous org', () => {
-        service.start(1);
+        service.start(1, 7);
         openStream('t-1').emit('ready', {}, '1');
         const stale = httpMock.expectOne(badgesUrl);
-        service.start(2);
+        service.start(2, 7);
 
         expect(stale.cancelled).toBe(true);
         openStream('t-2').emit('ready', {}, '1');
@@ -285,12 +349,12 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('is idempotent for the same org and restarts for another org', () => {
-        service.start(1);
+        service.start(1, 7);
         const first = openStream('t-1');
-        service.start(1);
+        service.start(1, 7);
         expect(FakeEventSource.instances).toHaveLength(1);
 
-        service.start(2);
+        service.start(2, 7);
         expect(first.closed).toBe(true);
         openStream('t-2');
         expect(FakeEventSource.instances).toHaveLength(2);
@@ -299,7 +363,7 @@ describe('ChatInboxStreamService', () => {
     it('drops a conversation snapshot older than one already seen for that conversation', () => {
         const seen: ChatConversation[] = [];
         service.conversationUpdated$.subscribe((row) => seen.push(row));
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
 
         source.emit('conversation.updated', conversation({ id: 'c-1', mode: 'human' }), '10');
@@ -312,7 +376,7 @@ describe('ChatInboxStreamService', () => {
     it('forwards a conversation snapshot that carries no usable event id', () => {
         const seen: ChatConversation[] = [];
         service.conversationUpdated$.subscribe((row) => seen.push(row));
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
 
         source.emit('conversation.updated', conversation({ id: 'c-1', mode: 'human' }), '');
@@ -321,7 +385,7 @@ describe('ChatInboxStreamService', () => {
     });
 
     it('keeps the previous waiting count when the seed fails, and keeps applying updates', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         source.emit('ready', {}, '1');
         httpMock.expectOne(badgesUrl).flush(badges(['c-1', 'c-2', 'c-3']));
@@ -337,7 +401,7 @@ describe('ChatInboxStreamService', () => {
     it('forwards message.created events', () => {
         const seen: ChatInboxMessageEvent[] = [];
         service.messageCreated$.subscribe((event) => seen.push(event));
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         const event: ChatInboxMessageEvent = {
             conversation_id: 'c-1',
@@ -357,7 +421,7 @@ describe('ChatInboxStreamService', () => {
 
     it('reconnects with a fresh ticket after a backoff when the stream errors', () => {
         vi.useFakeTimers();
-        service.start(1);
+        service.start(1, 7);
         const source = openStream('t-1');
         source.onerror?.();
         expect(source.closed).toBe(true);
@@ -370,12 +434,161 @@ describe('ChatInboxStreamService', () => {
         expect(service.status()).toBe('open');
     });
 
+    it.each([
+        { status: 401, statusText: 'Unauthorized' },
+        { status: 403, statusText: 'Forbidden' },
+    ])('retries only after the longest delay when the chat service refuses the ticket with $status', (refusal) => {
+        vi.useFakeTimers();
+        service.start(1, 7);
+        httpMock.expectOne(ticketUrl).flush(null, refusal);
+        expect(service.status()).toBe('reconnecting');
+
+        vi.advanceTimersByTime(29000);
+        httpMock.expectNone(ticketUrl);
+        vi.advanceTimersByTime(1000);
+        openStream();
+        expect(service.status()).toBe('open');
+    });
+
+    it('retries with backoff when minting the ticket fails for another reason', () => {
+        vi.useFakeTimers();
+        service.start(1, 7);
+        httpMock.expectOne(ticketUrl).flush(null, { status: 503, statusText: 'Service Unavailable' });
+        expect(service.status()).toBe('reconnecting');
+
+        vi.advanceTimersByTime(1100);
+        openStream();
+        expect(service.status()).toBe('open');
+    });
+
     it('stop closes the stream and resets the count', () => {
-        service.start(1);
+        service.start(1, 7);
         const source = openStream();
         service.stop();
         expect(source.closed).toBe(true);
         expect(service.status()).toBe('closed');
         expect(service.waitingCount()).toBe(0);
+    });
+    describe('across tabs', () => {
+        let tabs: ChatInboxStreamService[];
+
+        const openTab = (orgId: number, userId = 7): ChatInboxStreamService => {
+            const tab = TestBed.runInInjectionContext(() => new ChatInboxStreamService());
+            tabs.push(tab);
+            tab.start(orgId, userId);
+            return tab;
+        };
+        const flushSeeds = (ids: string[]): void => {
+            for (const request of httpMock.match(badgesUrl)) request.flush(badges(ids));
+        };
+
+        beforeEach(() => {
+            tabs = [];
+            FakeBroadcastChannel.open = [];
+            vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+            Object.defineProperty(navigator, 'locks', { value: new FakeLockManager(), configurable: true });
+        });
+
+        afterEach(() => {
+            tabs.forEach((tab) => tab.stop());
+            Reflect.deleteProperty(navigator, 'locks');
+        });
+
+        it('opens one stream per org and relays its events to the other tabs', async () => {
+            const leader = openTab(1);
+            await settle();
+            const source = openStream();
+            const follower = openTab(1);
+            await settle();
+
+            httpMock.expectNone(ticketUrl);
+            expect(FakeEventSource.instances).toHaveLength(1);
+            // Joining behind an open stream counts as a ready of its own: the tab loads its state and seeds the count.
+            expect(follower.status()).toBe('open');
+            expect(follower.readyEpoch()).toBe(1);
+            flushSeeds(['c-1']);
+            expect(follower.waitingCount()).toBe(1);
+
+            const messages: ChatInboxMessageEvent[] = [];
+            follower.messageCreated$.subscribe((event) => messages.push(event));
+            source.emit('ready', {}, '1');
+            await settle();
+            expect(leader.readyEpoch()).toBe(1);
+            expect(follower.readyEpoch()).toBeGreaterThan(1);
+            flushSeeds(['c-1']);
+
+            source.emit('conversation.updated', waiting('c-2'), '5');
+            source.emit('conversation.updated', answered('c-1'), '6');
+            source.emit('message.created', { conversation_id: 'c-2', id: 'm-1' }, '7');
+            await settle();
+            expect([leader.waitingCount(), follower.waitingCount()]).toEqual([1, 1]);
+            expect(messages.map((event) => event.id)).toEqual(['m-1']);
+        });
+
+        it('relays the leader reconnecting to the other tabs', async () => {
+            openTab(1);
+            await settle();
+            const source = openStream();
+            const follower = openTab(1);
+            await settle();
+            flushSeeds([]);
+
+            source.onerror?.();
+            await settle();
+            expect(follower.status()).toBe('reconnecting');
+        });
+
+        it('hands the stream to the next tab when the leader goes, and its ready reloads that tab', async () => {
+            const leader = openTab(1);
+            await settle();
+            const first = openStream('t-1');
+            const follower = openTab(1);
+            await settle();
+            flushSeeds([]);
+
+            leader.stop();
+            await settle();
+            expect(first.closed).toBe(true);
+            const second = openStream('t-2');
+            second.emit('ready', {}, '1');
+            expect(follower.status()).toBe('open');
+            expect(follower.readyEpoch()).toBe(2);
+            flushSeeds(['c-1']);
+            expect(follower.waitingCount()).toBe(1);
+        });
+
+        it('keeps the streams of different users on the same org apart', async () => {
+            const firstUser = openTab(1, 7);
+            await settle();
+            const firstSource = openStream('t-1');
+            const secondUser = openTab(1, 8);
+            await settle();
+
+            const secondSource = openStream('t-2');
+            firstSource.emit('conversation.updated', waiting('c-1'), '5');
+            await settle();
+            expect([firstUser.waitingCount(), secondUser.waitingCount()]).toEqual([1, 0]);
+            expect(secondSource.closed).toBe(false);
+        });
+
+        it('keeps the streams of different orgs apart, also after a tab switches org', async () => {
+            const orgOne = openTab(1);
+            await settle();
+            const orgOneSource = openStream('t-1');
+            const switching = openTab(1);
+            await settle();
+            flushSeeds([]);
+
+            switching.start(2, 7);
+            await settle();
+            const orgTwoSource = openStream('t-2');
+            expect(orgOneSource.closed).toBe(false);
+
+            orgOneSource.emit('conversation.updated', waiting('c-1'), '5');
+            orgTwoSource.emit('conversation.updated', waiting('c-2'), '5');
+            orgTwoSource.emit('conversation.updated', waiting('c-3'), '6');
+            await settle();
+            expect([orgOne.waitingCount(), switching.waitingCount()]).toEqual([1, 2]);
+        });
     });
 });

@@ -1,9 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Subject, Subscription } from 'rxjs';
 
 import { ChatConversation, ChatInboxBadge, ChatInboxMessageEvent } from '../models/chat.model';
 import { belongsTo } from '../utils/inbox-merge.util';
 import { ChatApiService } from './chat-api.service';
+import { TabLeadership } from './tab-leadership';
 
 export type ChatStreamStatus = 'closed' | 'connecting' | 'open' | 'reconnecting';
 
@@ -13,6 +15,19 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 /** Where a waiting conversation waits and who holds it, so the count can be taken per desk and for Mine. */
 type WaitingPlacement = Omit<ChatInboxBadge, 'id'>;
 
+/** A stream event, as every tab applies it. */
+type InboxStreamEvent =
+    | { kind: 'ready' }
+    | { kind: 'conversation.updated'; row: ChatConversation; lastEventId: string }
+    | { kind: 'message.created'; event: ChatInboxMessageEvent };
+
+/** What the leader tab relays to the other tabs on the same org, plus the handshake of a tab that joins. */
+type InboxRelayMessage =
+    | InboxStreamEvent
+    | { kind: 'status'; status: ChatStreamStatus }
+    | { kind: 'hello' }
+    | { kind: 'welcome'; status: ChatStreamStatus };
+
 /**
  * The org-wide inbox stream (`GET /chat/operator/v1/inbox/stream`). Started by the sidenav for the active org,
  * so the waiting badge is live on every page; the chat page reads the same stream.
@@ -21,6 +36,11 @@ type WaitingPlacement = Omit<ChatInboxBadge, 'id'>;
  * `Last-Event-ID` from a header `EventSource` cannot set once the ticket is consumed. Consumers therefore
  * refetch their REST state whenever `readyEpoch` changes, which is the `ready` event the server sends after
  * each open.
+ *
+ * One tab per browser and org holds the stream (see `TabLeadership`): an open `EventSource` per tab would use up the
+ * browser's six HTTP/1.1 connections per origin and stall every other request. The leader relays each event to the
+ * other tabs, which apply it exactly as the leader does; when the leader closes, the next tab opens the stream and
+ * its `ready` reaches them all.
  */
 @Injectable({ providedIn: 'root' })
 export class ChatInboxStreamService {
@@ -40,7 +60,11 @@ export class ChatInboxStreamService {
     readonly messageCreated$ = new Subject<ChatInboxMessageEvent>();
 
     private readonly chatApi = inject(ChatApiService);
-    private orgId: number | null = null;
+    private readonly tabs = new TabLeadership<InboxRelayMessage>();
+    /** A tab that joined behind a leader, until the leader answers with its status. */
+    private awaitingWelcome = false;
+    /** The user and org whose stream this tab follows, which is also its group among the tabs; null when stopped. */
+    private groupName: string | null = null;
     private eventSource: EventSource | null = null;
     private ticketSubscription: Subscription | null = null;
     private seedSubscription: Subscription | null = null;
@@ -70,14 +94,30 @@ export class ChatInboxStreamService {
         return count;
     }
 
-    start(orgId: number): void {
-        if (this.orgId === orgId && this.status() !== 'closed') return;
+    /**
+     * Follows the stream for `userId` in `orgId`; a different user (a logout and login in another tab) or org restarts
+     * it, so tabs never share one user's stream with another.
+     */
+    start(orgId: number, userId: number): void {
+        const groupName = `epicstaff-chat-inbox:${userId}:${orgId}`;
+        if (this.groupName === groupName && this.status() !== 'closed') return;
         this.stop();
-        this.orgId = orgId;
-        this.connect();
+        this.groupName = groupName;
+        this.status.set('connecting');
+        this.tabs.join(
+            groupName,
+            () => this.lead(),
+            (message) => this.receive(message)
+        );
+        if (!this.tabs.isLeader) {
+            this.awaitingWelcome = true;
+            this.tabs.post({ kind: 'hello' });
+        }
     }
 
     stop(): void {
+        this.tabs.leave();
+        this.awaitingWelcome = false;
         this.connectEpoch++;
         this.ticketSubscription?.unsubscribe();
         this.ticketSubscription = null;
@@ -88,15 +128,20 @@ export class ChatInboxStreamService {
         this.reconnectTimer = null;
         this.eventSource?.close();
         this.eventSource = null;
-        this.orgId = null;
+        this.groupName = null;
         this.reconnectAttempts = 0;
         this.highestSeqByConversation.clear();
         this.waiting.set(new Map());
         this.status.set('closed');
     }
 
+    private lead(): void {
+        this.awaitingWelcome = false;
+        this.connect();
+    }
+
     private connect(): void {
-        this.status.set(this.reconnectAttempts ? 'reconnecting' : 'connecting');
+        this.setStatus(this.reconnectAttempts ? 'reconnecting' : 'connecting');
         const epoch = ++this.connectEpoch;
         this.ticketSubscription?.unsubscribe();
         this.ticketSubscription = this.chatApi.getInboxTicket().subscribe({
@@ -104,8 +149,12 @@ export class ChatInboxStreamService {
                 if (epoch !== this.connectEpoch) return;
                 this.open(ticket, epoch);
             },
-            error: () => {
-                if (epoch === this.connectEpoch) this.scheduleReconnect();
+            error: (error: unknown) => {
+                if (epoch !== this.connectEpoch) return;
+                // A 401 that outlived the token refresh, or a 403: the chat service refuses this user, which a restart or
+                // a key rotation there can cause for a while. Retry slowly rather than give up until a page reload.
+                const isRefused = error instanceof HttpErrorResponse && (error.status === 401 || error.status === 403);
+                this.scheduleReconnect(isRefused ? MAX_RECONNECT_DELAY_MS : null);
             },
         });
     }
@@ -118,33 +167,19 @@ export class ChatInboxStreamService {
         source.onopen = () => {
             if (!live()) return;
             this.reconnectAttempts = 0;
-            this.status.set('open');
+            this.setStatus('open');
         };
         source.addEventListener('ready', () => {
-            if (!live()) return;
-            this.readyEpoch.update((value) => value + 1);
-            this.seedWaiting(epoch);
+            if (live()) this.relay({ kind: 'ready' });
         });
         source.addEventListener('conversation.updated', (event: MessageEvent<string>) => {
             if (!live()) return;
             const row = JSON.parse(event.data) as ChatConversation;
-            const seq = Number(event.lastEventId);
-            // An unusable id (missing or non-numeric) cannot be ordered: pass the update through unrecorded.
-            if (Number.isFinite(seq) && event.lastEventId !== '') {
-                if (seq <= (this.highestSeqByConversation.get(row.id) ?? 0)) return;
-                this.highestSeqByConversation.set(row.id, seq);
-            }
-            this.conversationUpdated$.next(row);
-            // The after-state decides, by the Waiting section's own rule: tests never wait.
-            const placement: WaitingPlacement | null = belongsTo(row, 'waiting', null)
-                ? { binding_id: row.binding_id, assigned_operator_id: row.assigned_operator_id }
-                : null;
-            this.updatesDuringSeed?.set(row.id, placement);
-            this.place(row.id, placement);
+            this.relay({ kind: 'conversation.updated', row, lastEventId: event.lastEventId });
         });
         source.addEventListener('message.created', (event: MessageEvent<string>) => {
             if (!live()) return;
-            this.messageCreated$.next(JSON.parse(event.data) as ChatInboxMessageEvent);
+            this.relay({ kind: 'message.created', event: JSON.parse(event.data) as ChatInboxMessageEvent });
         });
         source.addEventListener('reset', () => {
             // Only possible with a cursor, which this client never sends; `ready` follows and triggers the refetch.
@@ -160,15 +195,82 @@ export class ChatInboxStreamService {
         };
     }
 
-    private scheduleReconnect(): void {
-        this.status.set('reconnecting');
+    private scheduleReconnect(fixedDelay: number | null = null): void {
+        this.setStatus('reconnecting');
         const exponential = BASE_RECONNECT_DELAY_MS * 2 ** this.reconnectAttempts;
-        const delay = Math.min(exponential + Math.random() * 0.1 * exponential, MAX_RECONNECT_DELAY_MS);
+        const delay = fixedDelay ?? Math.min(exponential + Math.random() * 0.1 * exponential, MAX_RECONNECT_DELAY_MS);
         this.reconnectAttempts++;
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
-            if (this.orgId !== null) this.connect();
+            if (this.groupName !== null) this.connect();
         }, delay);
+    }
+
+    /** The leader applies each stream event here and hands it to the other tabs. */
+    private relay(message: InboxStreamEvent): void {
+        this.tabs.post(message);
+        this.apply(message);
+    }
+
+    private setStatus(status: ChatStreamStatus): void {
+        this.status.set(status);
+        if (this.tabs.isLeader) this.tabs.post({ kind: 'status', status });
+    }
+
+    private receive(message: InboxRelayMessage): void {
+        if (this.tabs.isLeader) {
+            if (message.kind === 'hello') this.tabs.post({ kind: 'welcome', status: this.status() });
+            // Anything else is from a leader that has since let go: this tab's own stream supersedes it.
+            return;
+        }
+        switch (message.kind) {
+            case 'hello':
+                return;
+            case 'welcome':
+                if (!this.awaitingWelcome) return;
+                this.awaitingWelcome = false;
+                this.status.set(message.status);
+                // The stream is live for this tab from now: the same as a `ready` of its own.
+                if (message.status === 'open') this.apply({ kind: 'ready' });
+                return;
+            case 'status':
+                this.status.set(message.status);
+                return;
+            default:
+                this.apply(message);
+        }
+    }
+
+    /** One stream event, the same in the leader and in the tabs it relays to. */
+    private apply(message: InboxStreamEvent): void {
+        switch (message.kind) {
+            case 'ready':
+                this.awaitingWelcome = false;
+                this.readyEpoch.update((value) => value + 1);
+                this.seedWaiting(this.connectEpoch);
+                return;
+            case 'conversation.updated':
+                this.applyConversationUpdate(message.row, message.lastEventId);
+                return;
+            case 'message.created':
+                this.messageCreated$.next(message.event);
+        }
+    }
+
+    private applyConversationUpdate(row: ChatConversation, lastEventId: string): void {
+        const seq = Number(lastEventId);
+        // An unusable id (missing or non-numeric) cannot be ordered: pass the update through unrecorded.
+        if (Number.isFinite(seq) && lastEventId !== '') {
+            if (seq <= (this.highestSeqByConversation.get(row.id) ?? 0)) return;
+            this.highestSeqByConversation.set(row.id, seq);
+        }
+        this.conversationUpdated$.next(row);
+        // The after-state decides, by the Waiting section's own rule: tests never wait.
+        const placement: WaitingPlacement | null = belongsTo(row, 'waiting', null)
+            ? { binding_id: row.binding_id, assigned_operator_id: row.assigned_operator_id }
+            : null;
+        this.updatesDuringSeed?.set(row.id, placement);
+        this.place(row.id, placement);
     }
 
     /**

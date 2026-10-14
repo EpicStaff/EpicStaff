@@ -170,12 +170,18 @@ export class LeftSidebarComponent implements AfterViewInit {
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
     });
 
-    /** The inbox stream follows the active org and the `chats:read` permission; it stops with the layout (logout). */
+    /**
+     * The inbox stream follows the signed-in user, the active org and the `chats:read` permission; it stops with the
+     * layout (logout).
+     */
     private readonly chatStreamEffect = effect(() => {
         const orgId = this.activeOrgService.activeOrgId();
+        const userId = this.user()?.id;
         const permitted =
             this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read);
-        untracked(() => (permitted && orgId ? this.chatInboxStream.start(orgId) : this.chatInboxStream.stop()));
+        untracked(() =>
+            permitted && orgId && userId ? this.chatInboxStream.start(orgId, userId) : this.chatInboxStream.stop()
+        );
     });
 
     @ViewChild('epicChat', { static: false })
