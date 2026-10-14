@@ -253,21 +253,21 @@ class TestPayloadAndInProcessConsumers:
 
     def test_litellm_client_build_kwargs_includes_supplied_api_key(self, org):
         from tables.models import LLMModel
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        from tables.services.llm_clients import get_llm_client
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
         config = LLMConfig.objects.create(custom_name="lite-test", model=model, org=org)
 
-        kwargs = LiteLLMClient(
-            llm_config=config, api_key="sk-litellm-resolved"
+        kwargs = get_llm_client(
+            config, api_key="sk-litellm-resolved"
         )._build_kwargs(messages=[], tools=[])
 
         assert kwargs["api_key"] == "sk-litellm-resolved"
 
     def test_litellm_client_omits_api_key_when_none(self, org):
         from tables.models import LLMModel
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        from tables.services.llm_clients import get_llm_client
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-nokey", llm_provider=provider)
@@ -275,7 +275,7 @@ class TestPayloadAndInProcessConsumers:
             custom_name="lite-no-key", model=model, org=org
         )
 
-        kwargs = LiteLLMClient(llm_config=config, api_key=None)._build_kwargs(
+        kwargs = get_llm_client(config, api_key=None)._build_kwargs(
             messages=[], tools=[]
         )
 

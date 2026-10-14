@@ -568,23 +568,33 @@ class ConverterService(metaclass=SingletonMeta):
 
         return LLMData(
             provider=config.model.llm_provider.name,
-            config=LLMConfigData(
-                model=config.model.name,
-                timeout=config.timeout,
-                temperature=config.temperature,
-                top_p=config.top_p,
-                stop=config.stop,
-                max_tokens=config.max_tokens,
-                presence_penalty=config.presence_penalty,
-                frequency_penalty=config.frequency_penalty,
-                logit_bias=config.logit_bias,
-                seed=config.seed,
-                base_url=config.model.base_url,
-                api_version=config.model.api_version,
-                api_key_secret_id=config.api_key_secret_id,
-                deployment_id=config.model.deployment_id,
-                extra_headers=config.extra_headers,
-            ),
+            config=self.convert_llm_config_data(config),
+        )
+
+    def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
+        """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
+
+        Reads only the config and its model, never `model.llm_provider`, so a model
+        whose provider was deleted (NULL) converts without raising. Issues no query
+        when the caller selected `model`.
+        """
+        return LLMConfigData(
+            model=config.model.name,
+            timeout=config.timeout,
+            temperature=config.temperature,
+            top_p=config.top_p,
+            stop=config.stop,
+            max_tokens=config.max_tokens,
+            presence_penalty=config.presence_penalty,
+            frequency_penalty=config.frequency_penalty,
+            logit_bias=config.logit_bias,
+            seed=config.seed,
+            reasoning_effort=config.reasoning_effort,
+            base_url=config.model.base_url,
+            api_version=config.model.api_version,
+            api_key_secret_id=config.api_key_secret_id,
+            deployment_id=config.model.deployment_id,
+            extra_headers=config.extra_headers,
         )
 
     def convert_embedding_config_to_pydantic(

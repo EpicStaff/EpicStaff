@@ -1,6 +1,16 @@
 import { AuthorshipFields } from '../authorship.model';
 import { Tag } from '../tag.model';
 
+/** How hard a reasoning model thinks before answering. `null` on a config means the provider's own default. */
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high';
+
+export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+    none: 'None',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+};
+
 export interface GetLlmConfigRequest extends AuthorshipFields {
     id: number;
     custom_name: string;
@@ -15,6 +25,7 @@ export interface GetLlmConfigRequest extends AuthorshipFields {
     logit_bias: Record<string, number> | null;
     seed: number | null;
     timeout: number | null;
+    reasoning_effort: ReasoningEffort | null;
     is_visible: boolean;
     extra_headers?: Record<string, string>;
     tags: Tag[];
@@ -35,6 +46,7 @@ export interface CreateLLMConfigRequest {
     logit_bias?: Record<string, number> | null;
     seed?: number | null;
     timeout?: number | null;
+    reasoning_effort?: ReasoningEffort | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
     tags?: Tag[];
@@ -54,6 +66,7 @@ export interface UpdateLLMConfigRequest {
     logit_bias?: Record<string, number> | null;
     seed?: number | null;
     timeout?: number | null;
+    reasoning_effort?: ReasoningEffort | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
     tags?: Tag[];

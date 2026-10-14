@@ -1,6 +1,25 @@
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
+
+ReasoningEffort = Literal["none", "low", "medium", "high"]
+REASONING_EFFORT_VALUES: tuple[str, ...] = get_args(ReasoningEffort)
+
+# Allowlist, not denylist: a transport field added to LLMConfigData later
+# (credentials, endpoints, headers) must never leak into generation kwargs.
+# A tuple keeps the kwargs order stable across processes.
+LITELLM_GENERATION_FIELDS = (
+    "temperature",
+    "top_p",
+    "stop",
+    "max_tokens",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "timeout",
+    "reasoning_effort",
+)
 
 
 class LLMConfigData(BaseModel):
@@ -22,8 +41,27 @@ class LLMConfigData(BaseModel):
     Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
+    reasoning_effort: ReasoningEffort | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    def to_litellm_kwargs(self, exclude: set[str] | None = None) -> dict:
+        """Return the generation parameters to pass to litellm, omitting unset ones.
+
+        Generation params only. The model string, auth, base_url/api_version,
+        deployment_id, extra_headers, store, response_format and tools stay with
+        each caller.
+
+        Args:
+            exclude: Generation fields the caller must not send (e.g. a client
+                that sets its own stop sequences or timeout).
+        """
+        excluded = exclude or set()
+        return {
+            name: value
+            for name in LITELLM_GENERATION_FIELDS
+            if name not in excluded and (value := getattr(self, name)) is not None
+        }
 
 
 class EmbedderConfigData(BaseModel):

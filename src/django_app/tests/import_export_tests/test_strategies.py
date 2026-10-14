@@ -771,6 +771,58 @@ class TestLLMConfigStrategy:
         new_config.refresh_from_db()
         assert new_config.created_at is not None
 
+    def test_reasoning_effort_round_trips(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        # The source model (gpt-4o) is not a reasoning model: the import keeps the
+        # value as exported and leaves the model check to the API serializer.
+        source_config = exportable_agent_definition.llm_config
+        LLMConfig.objects.filter(pk=source_config.pk).update(reasoning_effort="high")
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        assert config_data["reasoning_effort"] == "high"
+
+        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.pk != source_config.pk
+        assert new_config.reasoning_effort == "high"
+
+    def test_create_entity_rejects_malformed_extra_headers(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["extra_headers"] = {"X-Retry": 3}
+
+        with pytest.raises(ValidationError) as excinfo:
+            _get_strategy(EntityType.LLM_CONFIG).create_entity(
+                config_data, _build_identity_mapper(export_data), org_id=default_org.id
+            )
+
+        assert "extra_headers" in excinfo.value.detail
+
+    def test_find_existing_misses_on_reasoning_effort(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["reasoning_effort"] = "low"
+
+        found = _get_strategy(EntityType.LLM_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is None
+
     @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service

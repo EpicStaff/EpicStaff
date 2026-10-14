@@ -26,6 +26,8 @@ import json
 import logging
 import os
 import tempfile
+import threading
+from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -45,6 +47,15 @@ litellm.set_verbose = False
 litellm.suppress_debug_info = True
 
 FALLBACK_CONTEXT_WINDOW = 16_000
+
+# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
+# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
+PROVIDER_ALIASES = {
+    "google_ai": "gemini",
+    "novita_ai": "novita",
+    "aws_sagemaker": "sagemaker",
+    "featherless-ai": "featherless_ai",
+}
 
 LITELLM_MODEL_PRICES_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
@@ -154,6 +165,99 @@ def resolve_context_window(
         ),
         False,
     )
+
+
+def litellm_lookup_name(provider_name: str | None, model_name: str) -> str:
+    """Return the `<provider>/<model>` key litellm's model map knows this model by.
+
+    Azure rows are looked up by the model name, never the deployment id: a deployment
+    is a user-chosen label litellm has no metadata for.
+    """
+    model_name = model_name.strip()
+    provider = (provider_name or "").lower().strip()
+    if not provider:
+        return model_name
+    provider = PROVIDER_ALIASES.get(provider, provider)
+    if model_name.startswith(f"{provider}/"):
+        return model_name
+    return f"{provider}/{model_name}"
+
+
+# Providers for which litellm 1.100.x answers capability questions over HTTP:
+# Ollama/Ollama Chat ask the Ollama server (`/api/show`) for models missing from the
+# map, Lemonade asks its server for every model, and Hugging Face fetches the model's
+# config from the Hub for every model. Their answers come from the static map only.
+REMOTE_LOOKUP_PROVIDERS = frozenset({"ollama", "ollama_chat", "lemonade", "huggingface"})
+
+# Answers per litellm lookup name (least recently used first), and litellm.model_cost
+# keys by lowercase name, both valid for the snapshot they were built from. Model names
+# are user input, so the answer cache is bounded in entries and in key length; the
+# key index holds litellm.model_cost keys only.
+REASONING_SUPPORT_CACHE_SIZE = 2048
+MAX_CACHED_LOOKUP_LENGTH = 512
+_reasoning_support_cache: OrderedDict[str, bool] = OrderedDict()
+_reasoning_support_cache_lock = threading.Lock()
+_model_cost_key_index: dict[str, str] = {}
+_reasoning_support_cache_snapshot_mtime: float | None = None
+
+
+def supports_reasoning(provider_name: str | None, model_name: str) -> bool:
+    """Return whether litellm reports that the model accepts `reasoning_effort`.
+
+    Reads the daily snapshot when one exists, litellm's bundled map otherwise. An
+    unknown model, or any litellm failure, answers False: the caller then refuses a
+    reasoning effort rather than sending one the provider may reject. Never does
+    network I/O: models of REMOTE_LOOKUP_PROVIDERS are answered from the static map
+    alone. Answers are cached (bounded LRU) until a newer snapshot is loaded.
+    """
+    global _reasoning_support_cache_snapshot_mtime
+    _ensure_snapshot_loaded()
+    lookup = litellm_lookup_name(provider_name, model_name)
+    with _reasoning_support_cache_lock:
+        if _reasoning_support_cache_snapshot_mtime != _loaded_snapshot_mtime:
+            _reasoning_support_cache.clear()
+            _model_cost_key_index.clear()
+            _reasoning_support_cache_snapshot_mtime = _loaded_snapshot_mtime
+        if lookup in _reasoning_support_cache:
+            _reasoning_support_cache.move_to_end(lookup)
+            return _reasoning_support_cache[lookup]
+
+    # Computed outside the lock: litellm's fallback lookups are not instant.
+    if lookup.split("/", 1)[0].lower() in REMOTE_LOOKUP_PROVIDERS:
+        answer = _static_map_supports_reasoning(lookup)
+    else:
+        answer = _ask_litellm_supports_reasoning(lookup)
+
+    if len(lookup) <= MAX_CACHED_LOOKUP_LENGTH:
+        with _reasoning_support_cache_lock:
+            _reasoning_support_cache[lookup] = answer
+            _reasoning_support_cache.move_to_end(lookup)
+            while len(_reasoning_support_cache) > REASONING_SUPPORT_CACHE_SIZE:
+                _reasoning_support_cache.popitem(last=False)
+    return answer
+
+
+def _static_map_supports_reasoning(lookup: str) -> bool:
+    # Read the entry directly rather than through litellm: for Hugging Face and
+    # Lemonade litellm goes remote even when the model is in the map.
+    entry = litellm.model_cost.get(lookup)
+    if entry is None:
+        with _reasoning_support_cache_lock:
+            if not _model_cost_key_index:
+                # list() copies the keys in one step: the daily refresh thread may
+                # update litellm.model_cost while this runs.
+                _model_cost_key_index.update((key.lower(), key) for key in list(litellm.model_cost))
+            key = _model_cost_key_index.get(lookup.lower())
+        entry = litellm.model_cost.get(key) if key else None
+    return bool(entry and entry.get("supports_reasoning") is True)
+
+
+def _ask_litellm_supports_reasoning(lookup: str) -> bool:
+    try:
+        return bool(litellm.supports_reasoning(model=lookup))
+    except Exception as exc:
+        logger.debug("litellm.supports_reasoning({!r}) failed: {!r}", lookup, exc)
+        return False
 
 
 def refresh_litellm_model_cost() -> None:

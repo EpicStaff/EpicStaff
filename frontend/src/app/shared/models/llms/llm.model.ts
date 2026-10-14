@@ -8,6 +8,8 @@ export interface LLMModel {
     is_visible: boolean;
     is_custom: boolean;
     predefined: boolean; // seeded catalog row; drives the "Deprecated" badge and list sort order
+    /** Read-only: whether a config on this model may set `reasoning_effort`. */
+    supports_reasoning: boolean;
 
     llm_provider: number;
 }
@@ -22,6 +24,7 @@ export interface GetLlmModelRequest {
     is_visible: boolean;
     is_custom: boolean;
     predefined: boolean;
+    supports_reasoning: boolean;
 
     llm_provider: number;
 }

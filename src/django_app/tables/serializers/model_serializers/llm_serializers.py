@@ -24,7 +24,9 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
+from tables.utils.litellm_model_info import supports_reasoning
 
+from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
@@ -103,6 +105,7 @@ class RealtimeTranscriptionConfigSerializer(
 
 
 class LLMConfigSerializer(
+    LLMConfigDataFieldsValidationMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
@@ -137,12 +140,46 @@ class LLMConfigSerializer(
         exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
 
+    def validate(self, attrs):
+        """Reject a reasoning effort the effective model cannot take.
+
+        Checked only when the request touches `model` or `reasoning_effort`, so
+        editing another field of a config never fails because litellm's model map
+        changed since the config was saved.
+        """
+        attrs = super().validate(attrs)
+        if "model" not in attrs and "reasoning_effort" not in attrs:
+            return attrs
+
+        model = attrs.get("model", self.instance.model if self.instance else None)
+        reasoning_effort = attrs.get(
+            "reasoning_effort", self.instance.reasoning_effort if self.instance else None
+        )
+        if reasoning_effort is None:
+            return attrs
+        if model is None:
+            raise serializers.ValidationError(
+                {"reasoning_effort": "A reasoning effort needs a model; select one or clear it."}
+            )
+        provider = model.llm_provider
+        if not supports_reasoning(provider.name if provider else None, model.name):
+            raise serializers.ValidationError(
+                {
+                    "reasoning_effort": (
+                        f"Model '{model.name}' does not support a reasoning effort; "
+                        "clear it or select a reasoning model."
+                    )
+                }
+            )
+        return attrs
+
 
 class LLMModelSerializer(
     AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
 ):
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
+    supports_reasoning = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMModel
@@ -161,6 +198,7 @@ class LLMModelSerializer(
             "tags",
             "org",
             "created_by",
+            "supports_reasoning",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
         validators = [
@@ -170,3 +208,7 @@ class LLMModelSerializer(
                 message="A model with this name already exists for this provider.",
             )
         ]
+
+    def get_supports_reasoning(self, model: LLMModel) -> bool:
+        provider = model.llm_provider
+        return supports_reasoning(provider.name if provider else None, model.name)

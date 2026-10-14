@@ -645,6 +645,13 @@ class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
         )
 
 
+class CdtExplainLLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config holds a value no client can send."""
+
+    status_code = 400
+    default_code = "cdt_explain_llm_config_invalid"
+
+
 class CdtExplainUpstreamError(CustomAPIExeption):
     """Raised when every batch of the explain request failed upstream."""
 

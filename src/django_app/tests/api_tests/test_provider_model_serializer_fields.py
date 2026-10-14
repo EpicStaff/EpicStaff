@@ -27,6 +27,7 @@ EXPECTED_FIELDS = {
         "created_by",
         "llm_provider",
         "tags",
+        "supports_reasoning",
     ],
     RealtimeModelSerializer: [
         "id",

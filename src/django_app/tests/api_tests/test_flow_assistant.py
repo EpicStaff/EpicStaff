@@ -634,6 +634,34 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_stream_reply_rejects_stored_config_with_malformed_extra_headers(
+    graph, gpt4_model, user_a, org_a, default_role, db
+):
+    # Rows saved before the API validated these JSON fields can still hold them.
+    from asgiref.sync import sync_to_async
+
+    from tables.exceptions import LLMConfigInvalidError
+
+    malformed_config = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="malformed-headers",
+        model=gpt4_model,
+        org=org_a,
+        extra_headers={"X-Retry": 3},
+    )
+    user_message = "hi"
+    conversation = await _create_conversation_for_stream(
+        graph, malformed_config, user_a, org_a, default_role, user_message
+    )
+
+    with pytest.raises(LLMConfigInvalidError) as excinfo:
+        async for _event in FlowAssistantService().stream_reply(conversation, user_message):
+            pass
+
+    assert "extra_headers" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_stream_yields_tokens_and_done(
     graph, llm_config, user_a, org_a, default_role, db
 ):
@@ -3005,22 +3033,22 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
 def test_litellm_client_prefixes_provider_only_when_missing(
     org_a, provider_name, model_name, expected_model
 ):
-    from tables.services.llm_clients.litellm_client import LiteLLMClient
+    from tables.services.llm_clients import get_llm_client
 
     provider = Provider.objects.create(name=provider_name)
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+    kwargs = get_llm_client(config, api_key=None)._build_kwargs([], [])
 
     assert kwargs["model"] == expected_model
 
 
 @pytest.mark.django_db
 def test_litellm_client_drops_provider_unsupported_params(llm_config):
-    from tables.services.llm_clients.litellm_client import LiteLLMClient
+    from tables.services.llm_clients import get_llm_client
 
-    kwargs = LiteLLMClient(llm_config, api_key=None)._build_kwargs([], [])
+    kwargs = get_llm_client(llm_config, api_key=None)._build_kwargs([], [])
 
     assert kwargs["drop_params"] is True
 
@@ -3040,13 +3068,13 @@ def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
     org_a, provider_name, model_name, expected_store
 ):
     """OpenAI/Azure calls send store=False; other providers never get the key."""
-    from tables.services.llm_clients.litellm_client import LiteLLMClient
+    from tables.services.llm_clients import get_llm_client
 
     provider = Provider.objects.create(name=provider_name)
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+    kwargs = get_llm_client(config, api_key=None)._build_kwargs([], [])
 
     assert kwargs.get("store") == expected_store
     assert ("store" in kwargs) is (expected_store is not None)

@@ -16,6 +16,9 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
+from tables.serializers.utils.llm_config_data_validation import (
+    LLMConfigDataFieldsValidationMixin,
+)
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -40,7 +43,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
-class LLMConfigImportSerializer(BaseConfigImportSerializer):
+class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
     model_fk_field = "model"

@@ -251,6 +251,72 @@ def test_build_model_config_opts_out_of_provider_storage_for_openai_and_azure(
     assert ("store" in config) is (expected_store is not None)
 
 
+def _context_for_llm_config(provider: str, llm_config: LLMConfigData) -> AgentContext:
+    agent = AgentSpec(
+        id=1,
+        name="a",
+        instructions="i",
+        llm=LLMData(provider=provider, config=llm_config),
+    )
+    return AgentContext(agent=agent, attachments=[], correlation_id="c")
+
+
+def test_build_model_config_forwards_every_set_field():
+    from app.loop.agent_loop import _build_model_config
+
+    llm_config = LLMConfigData(
+        model="my-deployment",
+        timeout=30,
+        temperature=0.3,
+        top_p=0.9,
+        stop=["END"],
+        max_tokens=512,
+        presence_penalty=0.1,
+        frequency_penalty=0.2,
+        logit_bias={50256: -100.0},
+        seed=7,
+        base_url="https://example.openai.azure.com",
+        api_version="2025-01-01-preview",
+        api_key="sk-test",
+        api_key_secret_id=99,
+        deployment_id="my-deployment",
+        extra_headers={"X-Team": "core"},
+        reasoning_effort="medium",
+    )
+
+    config = _build_model_config(_context_for_llm_config("azure", llm_config))
+
+    assert config == {
+        "model": "azure/my-deployment",
+        "timeout": 30,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stop": ["END"],
+        "max_tokens": 512,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0.2,
+        "logit_bias": {50256: -100.0},
+        "seed": 7,
+        "base_url": "https://example.openai.azure.com",
+        "api_version": "2025-01-01-preview",
+        "api_key": "sk-test",
+        "deployment_id": "my-deployment",
+        "extra_headers": {"X-Team": "core"},
+        "reasoning_effort": "medium",
+        "store": False,
+    }
+
+
+def test_build_model_config_omits_unset_fields():
+    from app.loop.agent_loop import _build_model_config
+
+    config = _build_model_config(
+        _context_for_llm_config("anthropic", LLMConfigData(model="claude-sonnet-4-5"))
+    )
+
+    assert config == {"model": "anthropic/claude-sonnet-4-5"}
+
+
 # ---------------------------------------------------------------------------
 # Tests: loop behaviour
 # ---------------------------------------------------------------------------
