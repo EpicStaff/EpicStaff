@@ -257,7 +257,6 @@ class ClassificationDecisionTableNodeSerializer(
             "post_output_variable_path",
             "pre_use_storage",
             "post_use_storage",
-            "execution_timeout",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",

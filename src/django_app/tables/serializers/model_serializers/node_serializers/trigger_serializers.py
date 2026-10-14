@@ -94,7 +94,6 @@ class WebhookTriggerNodeSerializer(
             "python_code",
             "webhook_trigger",
             "use_storage",
-            "execution_timeout",
             "created_by",
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,

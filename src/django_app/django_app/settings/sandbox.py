@@ -4,7 +4,10 @@ from django.core.exceptions import ImproperlyConfigured
 
 from django_app.settings import env
 
-_SECONDS_PER_MINUTE = 60
+# The package settings module star-imports this one; only the setting itself belongs there.
+__all__ = ["SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES"]
+
+SECONDS_PER_MINUTE = 60
 
 
 def max_execution_timeout_minutes(ceiling_seconds: float | None) -> int:
@@ -22,11 +25,11 @@ def max_execution_timeout_minutes(ceiling_seconds: float | None) -> int:
             "SANDBOX_EXECUTION_TIMEOUT=none is not supported: per-node execution timeouts "
             "need a finite ceiling of at least 1 minute."
         )
-    if ceiling_seconds < _SECONDS_PER_MINUTE:
+    if ceiling_seconds < SECONDS_PER_MINUTE:
         raise ImproperlyConfigured(
             f"SANDBOX_EXECUTION_TIMEOUT must be at least 1 minute, got {ceiling_seconds:g} seconds."
         )
-    return math.floor(ceiling_seconds / _SECONDS_PER_MINUTE)
+    return math.floor(ceiling_seconds / SECONDS_PER_MINUTE)
 
 
 SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES = max_execution_timeout_minutes(

@@ -150,6 +150,8 @@ async def fake_run_code_error(
         "result_data": "null",
         "stderr": "boom",
         "execution_id": "test",
+        "timed_out": False,
+        "effective_timeout_seconds": None,
     }
 
 

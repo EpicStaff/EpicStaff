@@ -72,6 +72,8 @@ class FakePythonCodeExecutorService:
                 "returncode": 1,
                 "stderr": str(e),
                 "result_data": "null",
+                "timed_out": False,
+                "effective_timeout_seconds": None,
             }
 
 

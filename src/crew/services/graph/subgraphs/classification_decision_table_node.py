@@ -147,8 +147,8 @@ class ClassificationDecisionTableNodeSubgraph:
     @staticmethod
     def _sandbox_failure_reason(result: dict) -> str:
         """Return why a failed sandbox run failed, naming the timeout when it killed the run."""
-        if result.get("timed_out", False):
-            return timeout_message(result.get("effective_timeout_seconds"))
+        if result["timed_out"]:
+            return timeout_message(result["effective_timeout_seconds"])
         return result["stderr"]
 
     def _publish_message(self, graph_message: GraphMessage):

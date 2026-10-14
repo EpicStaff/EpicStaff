@@ -2,12 +2,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.db.models import Model
+from django_app.settings.sandbox import SECONDS_PER_MINUTE
 from src.shared.models import PythonCodeData
 from tables.models import PythonCode
 from tables.models.graph_models import PythonNode, WebhookTriggerNode
 from tables.services.converter_service import ConverterService
-
-SECONDS_PER_MINUTE = 60
 
 
 @dataclass(frozen=True)

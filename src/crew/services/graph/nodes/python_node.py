@@ -79,9 +79,9 @@ class PythonNode(BaseNode):
         writer(graph_message)
 
         if python_code_execution_data["returncode"] != 0:
-            if python_code_execution_data.get("timed_out", False):
+            if python_code_execution_data["timed_out"]:
                 raise PythonCodeTimeoutError(
-                    python_code_execution_data.get("effective_timeout_seconds")
+                    python_code_execution_data["effective_timeout_seconds"]
                 )
             raise ReturnCodeError(python_code_execution_data["stderr"])
 
