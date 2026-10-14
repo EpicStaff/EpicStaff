@@ -1,21 +1,27 @@
 import functools
 
+import settings
 from application.ports import AbstractChunker
 from chonkie import TokenChunker as ChonkieTokenChunker
-from chonkie.tokenizer import AutoTokenizer
 from domain.models import PreviewChunk
 from infrastructure.processing_run import run_in_process
+from tokie import Tokenizer
 
 
 @functools.cache
-def load_gpt2_tokenizer() -> AutoTokenizer:
+def load_gpt2_tokenizer() -> Tokenizer | str:
     """Load the GPT-2 tokenizer once per process.
 
-    Building it costs ~0.3 s even when its files are cached on disk, so it is loaded
-    at startup and reused. Process-pool workers inherit it only when the pool forks
-    after startup; with spawn each worker loads it once itself.
+    tokie resolves a tokenizer name through $HOME/.cache and downloads from
+    huggingface.co when it is cold, ignoring HF_HOME and HF_HUB_OFFLINE. Loading
+    the file the image bakes bypasses that cache entirely. Building the tokenizer
+    costs ~0.3 s, so it is loaded at startup and reused. Process-pool workers
+    inherit it only when the pool forks after startup; with spawn each worker
+    loads it once itself.
     """
-    return AutoTokenizer("gpt2")
+    if settings.TOKENIZER_PATH:
+        return Tokenizer.from_file(settings.TOKENIZER_PATH)
+    return "gpt2"
 
 
 class TokenChunker(AbstractChunker):

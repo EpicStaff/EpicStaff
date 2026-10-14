@@ -225,6 +225,14 @@ class SessionExportAllSerializer(serializers.Serializer):
     )
     node_name = serializers.CharField(required=False)
     is_error_cause = serializers.BooleanField(required=False)
+    id_search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text=(
+            "Keep sessions whose id contains this value (`12` matches 12, 112, 1203). "
+            "Blank means no filtering; a value with non-digits matches nothing."
+        ),
+    )
     created_at_after = serializers.DateTimeField(required=False)
     created_at_before = serializers.DateTimeField(required=False)
     finished_at_after = serializers.DateTimeField(required=False)

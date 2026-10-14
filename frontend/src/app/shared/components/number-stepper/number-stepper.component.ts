@@ -33,6 +33,11 @@ export class NumberStepperComponent implements ControlValueAccessor {
     control = input<FormControl | null>(null);
     integer = input<boolean>(false);
     readonly = input<boolean>(false);
+    /** Integer mode only: keep a cleared field empty on blur instead of filling in `min` (or 0). */
+    allowEmpty = input<boolean>(false);
+    ariaLabel = input<string | null>(null);
+    /** Show the −/+ buttons at every size, not only on hover (`lg` always shows them). */
+    alwaysShowButtons = input<boolean>(false);
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -41,6 +46,9 @@ export class NumberStepperComponent implements ControlValueAccessor {
     onTouched: () => void = () => {};
     isDisabled = signal(false);
     hovered = signal(false);
+    showButtons = computed(
+        () => !this.readonly() && (this.hovered() || this.size() === 'lg' || this.alwaysShowButtons())
+    );
 
     hasError = computed(() => {
         const val = this.value();
@@ -182,8 +190,12 @@ export class NumberStepperComponent implements ControlValueAccessor {
             const minVal = this.min();
             const maxVal = this.max() ?? Number.MAX_SAFE_INTEGER;
             const val = this.value();
-            if (val === null || (minVal !== null && val < minVal)) {
-                this.updateValue(minVal ?? 0);
+            if (val === null) {
+                if (!this.allowEmpty()) {
+                    this.updateValue(minVal ?? 0);
+                }
+            } else if (minVal !== null && val < minVal) {
+                this.updateValue(minVal);
             } else if (val > maxVal) {
                 this.updateValue(maxVal);
             }

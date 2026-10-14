@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
+import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import { GetLlmConfigRequest, ModelTypes } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
@@ -42,6 +43,7 @@ interface DialogData {
         JsonEditorFormFieldComponent,
         SelectComponent,
         HintMessageComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

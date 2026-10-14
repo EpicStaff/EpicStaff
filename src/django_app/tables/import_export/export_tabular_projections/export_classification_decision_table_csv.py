@@ -6,6 +6,7 @@ from tables.import_export.export_tabular_projections._csv_helpers import (
     _llm_config_label,
     _neutralize_formula,
     _node_label,
+    _node_labels,
     _yes_no,
 )
 from tables.models.graph_models import (
@@ -72,7 +73,14 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
     groups = list(
         node.condition_groups.select_related("prompt__llm_config__model").order_by("order")
     )
-    node_names: dict[int, str] = {}
+    node_names = _node_labels(
+        [
+            node.default_next_node_id,
+            node.next_error_node_id,
+            *(group.next_node_id for group in groups),
+        ],
+        node.graph_id,
+    )
 
     buf = io.StringIO()
     writer = csv.writer(buf)

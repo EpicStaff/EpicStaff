@@ -384,23 +384,33 @@ async def test_runtime_config_max_rpm_passed_to_pool():
 # ---------------------------------------------------------------------------
 
 
-async def test_usage_chunk_yielded():
-    """Chunk with usage attribute emits a LLMChunk(usage=...)."""
-    chunks_in = [
-        _chunk(content="hi"),
-        _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}),
-    ]
+@pytest.mark.parametrize(
+    ("chunks_in", "expected"),
+    [
+        (
+            [_chunk(content="hi"), _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3})],
+            (5, 3, 8),
+        ),
+        (
+            # A terminal usage-only chunk arrives with no choices.
+            [
+                _chunk(content="hello"),
+                SimpleNamespace(choices=[], usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14)),
+                _chunk(finish_reason="stop"),
+            ],
+            (10, 4, 14),
+        ),
+    ],
+    ids=["usage-on-finish-chunk", "usage-only-chunk"],
+)
+async def test_usage_is_yielded_once(chunks_in, expected):
     router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
 
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+    result = await collect(LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router)), MESSAGES, [], MODEL_CONFIG)
 
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["prompt_tokens"] == 5
-    assert usage_chunks[0].usage["completion_tokens"] == 3
-    assert usage_chunks[0].usage["total_tokens"] == 8
+    (usage_chunk,) = [chunk for chunk in result if chunk.usage is not None]
+    usage = usage_chunk.usage
+    assert (usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]) == expected
 
 
 async def test_stream_options_include_usage_passed_to_acompletion():
@@ -422,121 +432,29 @@ async def test_stream_options_include_usage_passed_to_acompletion():
     assert recorded_calls[0]["stream_options"] == {"include_usage": True}
 
 
-async def test_usage_only_chunk_with_empty_choices_does_not_crash():
-    """Terminal usage chunk with empty choices yields one LLMChunk(usage=...) and no crash."""
-    usage_chunk = SimpleNamespace(
-        choices=[],
-        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14),
-    )
-    chunks_in = [
-        _chunk(content="hello"),
-        usage_chunk,
-        _chunk(finish_reason="stop"),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["prompt_tokens"] == 10
-    assert usage_chunks[0].usage["completion_tokens"] == 4
-    assert usage_chunks[0].usage["total_tokens"] == 14
-
-
 # ---------------------------------------------------------------------------
 # Tests — cached_prompt_tokens extraction
 # ---------------------------------------------------------------------------
 
 
-async def test_cached_prompt_tokens_extracted_from_dict_details():
-    """usage.prompt_tokens_details as a dict yields cached_prompt_tokens."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "prompt_tokens_details": {"cached_tokens": 40},
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
+@pytest.mark.parametrize(
+    ("usage", "expected_cached"),
+    [
+        ({"prompt_tokens_details": {"cached_tokens": 40}}, 40),
+        ({"prompt_tokens_details": SimpleNamespace(cached_tokens=25)}, 25),
+        # Anthropic reports cache reads as a top-level field.
+        ({"cache_read_input_tokens": 15}, 15),
+        ({}, 0),
+    ],
+    ids=["details-dict", "details-object", "anthropic-top-level", "none"],
+)
+async def test_cached_prompt_tokens_are_read_from_any_provider_shape(usage, expected_cached):
+    router = make_router([_chunk(finish_reason="stop", usage={"prompt_tokens": 100, "completion_tokens": 20, **usage})])
 
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+    result = await collect(LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router)), MESSAGES, [], MODEL_CONFIG)
 
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 40
-
-
-async def test_cached_prompt_tokens_extracted_from_object_details():
-    """usage.prompt_tokens_details as a SimpleNamespace object yields cached_prompt_tokens."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "prompt_tokens_details": SimpleNamespace(cached_tokens=25),
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 25
-
-
-async def test_cached_prompt_tokens_falls_back_to_anthropic_style_top_level_field():
-    """No prompt_tokens_details, but cache_read_input_tokens top-level field present."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "cache_read_input_tokens": 15,
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 15
-
-
-async def test_cached_prompt_tokens_defaults_to_zero_without_details():
-    """No prompt_tokens_details and no top-level fallback field: cached_prompt_tokens is 0."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={"prompt_tokens": 100, "completion_tokens": 20},
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 0
+    (usage_chunk,) = [chunk for chunk in result if chunk.usage is not None]
+    assert usage_chunk.usage["cached_prompt_tokens"] == expected_cached
 
 
 # ---------------------------------------------------------------------------

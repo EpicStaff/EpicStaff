@@ -18,6 +18,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
+import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
@@ -54,6 +55,7 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         InputNumberComponent,
         JsonEditorFormFieldComponent,
         LlmModelSelectorComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

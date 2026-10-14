@@ -72,6 +72,11 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from storage_credentials.services.session_credential_service import session_credential_service
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
 from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
@@ -108,7 +113,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    ConditionalEdge,
     Edge,
     EmbeddingConfig,
     EmbeddingModel,
@@ -175,6 +179,8 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.cdt_explain_serializers import (
     CdtExplainRequestSerializer,
     CdtExplainResponseSerializer,
+    CdtExplanationsSaveRequestSerializer,
+    CdtExplanationsSaveResponseSerializer,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.model_serializers import (
@@ -185,7 +191,6 @@ from tables.serializers.model_serializers import (
     AuditFilterPresetImportFileSerializer,
     AuditFilterPresetSerializer,
     ClassificationDecisionTableNodeSerializer,
-    ConditionalEdgeSerializer,
     ConversationRecordingSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
@@ -243,6 +248,9 @@ from tables.serializers.model_serializers.key_value_serializers import (
 from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
     LLMModelSerializer,
+)
+from tables.serializers.model_serializers.realtime_serializers import (
+    TwilioAuthTokenSecretSerializer,
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
@@ -752,12 +760,6 @@ class GraphViewSet(
                     queryset=AudioTranscriptionNode.objects.all(),
                 ),
                 Prefetch("edge_list", queryset=Edge.objects.all()),
-                Prefetch(
-                    "conditional_edge_list",
-                    queryset=ConditionalEdge.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
-                    ),
-                ),
                 Prefetch(
                     "webhook_trigger_node_list",
                     queryset=WebhookTriggerNode.objects.select_related(
@@ -1495,19 +1497,6 @@ class EdgeViewSet(
     serializer_class = EdgeSerializer
 
 
-class ConditionalEdgeViewSet(
-    OrgScopedChildViewSetMixin,
-    LastEditDestroyViewSetMixin,
-    ContentHashPreconditionMixin,
-    viewsets.ModelViewSet,
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = ConditionalEdge.objects.all()
-    serializer_class = ConditionalEdgeSerializer
-
-
 class GraphSessionMessageFilter(FilterSet):
     session_id = NumberFilter(field_name="session_id", lookup_expr="exact")
     parent_subgraph_execution_id = filters.UUIDFilter(
@@ -1686,6 +1675,9 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         chat.duration_seconds = request.data.get("duration_seconds")
         chat.end_reason = request.data.get("end_reason", "completed")
         chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+
+        session_credential_service.revoke_for_realtime_chat(chat.id)
+
         return Response({"detail": "Updated"})
 
 
@@ -1803,7 +1795,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
-        """Return this channel's Twilio incoming phone numbers."""
+        """Return the incoming phone numbers of the Twilio account named by `sid`."""
 
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
@@ -1816,8 +1808,25 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
 
         try:
             TwilioService().validate_account_sid(sid)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+
+        # The id is client input: validate it against the active org first, so a
+        # foreign or unknown id is a 400 rather than a failed stored-reference
+        # resolution (500).
+        secret_input = TwilioAuthTokenSecretSerializer(
+            data={"auth_token_secret_id": auth_token_secret_id},
+            context={"request": request},
+        )
+        if not secret_input.is_valid():
+            return Response(
+                {"error": str(secret_input.errors["auth_token_secret_id"][0])},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
             auth_token = secret_resolver.resolve(
-                secret_id=auth_token_secret_id,
+                secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
                 org_id=resolve_active_org_id(request),
                 context="TwilioChannel.auth_token",
             )
@@ -2079,23 +2088,18 @@ class DecisionTableNodeModelViewSet(
     def _create_condition_groups(self, node: DecisionTableNode, groups_data: list[dict]):
         """
         Create ConditionGroups and nested Conditions for a DecisionTableNode.
-        Uses bulk_create for efficiency.
         """
         for group_data in groups_data:
-            copy_group_data = group_data.copy()
-            conditions_data = copy_group_data.pop("conditions", [])
-            copy_group_data.pop("decision_table_node", None)
-            copy_group_data.pop("content_hash", None)
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            group = ConditionGroup.objects.create(decision_table_node=node, **group_fields)
 
-            group = ConditionGroup.objects.create(decision_table_node=node, **copy_group_data)
-
-            for cond_data in conditions_data:
-                cond_data = {
-                    k: v
-                    for k, v in cond_data.items()
-                    if k not in ("condition_group", "content_hash")
+            for cond_data in group_data.get("conditions", []):
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
                 }
-                Condition.objects.create(condition_group=group, **cond_data)
+                Condition.objects.create(condition_group=group, **condition_fields)
 
             # Re-save group so its hash includes the newly created conditions
             group.save()
@@ -2113,6 +2117,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         **DEFAULT_ACTION_MAP,
         "export": Permission.EXPORT,
         "explain": Permission.READ,
+        "explanations": Permission.UPDATE,
     }
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.select_related(
@@ -2197,6 +2202,33 @@ class ClassificationDecisionTableNodeModelViewSet(
         )
         return Response(
             {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=CdtExplanationsSaveRequestSerializer,
+        responses={200: CdtExplanationsSaveResponseSerializer},
+        description=(
+            "Replace this node's stored step explanations (`metadata.explanations`) and "
+            "nothing else on it. `{}` clears them. Versioned like the flow bulk save: a "
+            "stale `save_version` is a 409 with the bulk-save conflict body, and a "
+            "success returns the flow's new `save_version`."
+        ),
+    )
+    @action(detail=True, methods=["put"], url_path="explanations")
+    def explanations(self, request, pk=None):
+        serializer = CdtExplanationsSaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._node_service.save_explanations(
+            self.get_object(),
+            explanations=data["explanations"],
+            expected_save_version=data["save_version"],
+            user=request.user,
+        )
+        return Response(
+            {"explanations": result.explanations, "save_version": result.save_version},
             status=status.HTTP_200_OK,
         )
 
@@ -2629,7 +2661,11 @@ class SecretViewSet(
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
-    queryset = Secret.objects.prefetch_related(*authorship_prefetches(last_edit=False))
+    # system=True rows (e.g. org-level MinIO credentials) are internal to
+    # storage_credentials and must never be visible through this API — not
+    # even their existence. `Secret.objects` (the default manager) already
+    # excludes them by construction; no explicit filter is needed here.
+    queryset = Secret.objects.all().prefetch_related(*authorship_prefetches(last_edit=False))
     serializer_class = SecretSerializer
 
     @extend_schema(**SECRET_USAGE_GET)
@@ -2643,17 +2679,20 @@ class SecretViewSet(
 
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
-    A user's own saved audit-search filters - owner-only (see get_queryset):
-    every action, including an Org Admin's, is scoped to `created_by=request.
-    user` on top of the usual org scoping, so another user's preset id 404s
-    rather than 403s (it isn't visible enough to even name as "forbidden").
+    Saved audit-search filters of the active org, each private to its author
+    or shared with the org. list, retrieve, export, bulk_export and copy see
+    the caller's own presets plus every shared one; a colleague's private
+    preset 404s there exactly like a preset of another org (bulk_export 400s).
+    Only the author can update or delete - for those actions get_queryset
+    narrows to `created_by=request.user`. A copy belongs to whoever made it.
+    The author may share a preset (`is_shared: true`); un-sharing is rejected
+    by the serializer.
 
     Gated entirely on AUDIT:read, same as browsing itself - presets are a
-    personal convenience over audit data, not audit data or an org-wide
-    setting, so every action (including create/update/destroy/duplicate/
-    overwrite/export/import) maps to READ rather than the CREATE/UPDATE/
-    DELETE bits DEFAULT_ACTION_MAP would otherwise require - which were
-    never granted for the `audit` resource type (see
+    convenience over audit data, not audit data itself, so every action
+    (including create/update/destroy/copy/export/import) maps to READ rather
+    than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
+    require - which were never granted for the `audit` resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
@@ -2676,7 +2715,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "bulk_export": Permission.READ,
         "import_presets": Permission.READ,
     }
-    queryset = AuditFilterPreset.objects.all()
+    queryset = AuditFilterPreset.objects.select_related("created_by")
     serializer_class = AuditFilterPresetSerializer
 
     def __init__(self, *args, **kwargs):
@@ -2687,8 +2726,13 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             filename_attr="name",
         )
 
+    _author_only_actions = frozenset({"update", "partial_update", "destroy"})
+
     def get_queryset(self):
-        return super().get_queryset().filter(created_by=self.request.user)
+        queryset = super().get_queryset()
+        if self.action in self._author_only_actions:
+            return queryset.filter(created_by=self.request.user)
+        return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
 
     @extend_schema(**AUDIT_FILTER_PRESET_COPY)
     @action(detail=True, methods=["post"])
@@ -2701,8 +2745,9 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             name=serializer.validated_data.get("name"),
             org_id=self.get_active_org_id(),
             created_by=request.user,
+            is_shared=serializer.validated_data["is_shared"],
         )
-        return Response(AuditFilterPresetSerializer(clone).data, status=201)
+        return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
     @action(detail=True, methods=["get"])

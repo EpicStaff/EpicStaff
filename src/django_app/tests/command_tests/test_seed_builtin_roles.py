@@ -202,29 +202,23 @@ def test_an_invalid_file_is_rejected_without_writing(seeded, roles_file, edit):
     assert _snapshot() == before
 
 
-def test_malformed_json_is_rejected(roles_file):
-    with pytest.raises(ImproperlyConfigured, match="Cannot read"):
-        BuiltInRoleSeeder(roles_file(raw="{not json")).seed()
-
-
-def test_a_non_object_top_level_is_rejected(roles_file):
-    with pytest.raises(ImproperlyConfigured, match="expected an object"):
-        BuiltInRoleSeeder(roles_file(raw="[]")).seed()
-
-
-def test_duplicate_keys_are_rejected(roles_file):
-    raw = json.dumps(SHIPPED)[:-1] + ', "Viewer": {"description": "x", "permissions": {}}}'
-
-    with pytest.raises(ImproperlyConfigured, match="duplicate key 'Viewer'"):
-        BuiltInRoleSeeder(roles_file(raw=raw)).seed()
-
-
-def test_duplicate_nested_key_is_rejected(roles_file):
+def _duplicated_member_permission():
     member_permissions = json.dumps(SHIPPED[BuiltInRole.MEMBER]["permissions"])
-    duplicated = member_permissions[:-1] + ', "flows": ["read"]}'
-    raw = json.dumps(SHIPPED).replace(member_permissions, duplicated, 1)
+    return json.dumps(SHIPPED).replace(member_permissions, member_permissions[:-1] + ', "flows": ["read"]}', 1)
 
-    with pytest.raises(ImproperlyConfigured, match="duplicate key 'flows'"):
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("{not json", "Cannot read"),
+        ("[]", "expected an object"),
+        (json.dumps(SHIPPED)[:-1] + ', "Viewer": {"description": "x", "permissions": {}}}', "duplicate key 'Viewer'"),
+        (_duplicated_member_permission(), "duplicate key 'flows'"),
+    ],
+    ids=["not-json", "not-an-object", "duplicate-role", "duplicate-resource"],
+)
+def test_an_unreadable_file_is_rejected(roles_file, raw, message):
+    with pytest.raises(ImproperlyConfigured, match=message):
         BuiltInRoleSeeder(roles_file(raw=raw)).seed()
 
 

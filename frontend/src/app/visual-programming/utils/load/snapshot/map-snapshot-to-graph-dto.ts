@@ -49,11 +49,11 @@ export const SNAPSHOT_NODE_LIST_KEY = {
 
 type AssertNever<T extends never> = T;
 /**
- * Must stay `never`: a GraphDto node list that no snapshot type fills. `llm_node_list` is a
- * frontend-only leftover — no backend model or export produces it.
+ * Must stay `never`: every GraphDto node list has to be filled by some snapshot type. A new
+ * node list without a matching SNAPSHOT_NODE_LIST_KEY entry fails to compile here.
  */
 export type UnmappedGraphDtoNodeList = AssertNever<
-    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType] | 'llm_node_list'>
+    Exclude<GraphDtoNodeListKey, (typeof SNAPSHOT_NODE_LIST_KEY)[SnapshotNodeType]>
 >;
 
 type SnapshotNodeOfType<TNodeType extends SnapshotNodeType> = Extract<SnapshotNode, { node_type: TNodeType }>;
@@ -114,6 +114,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         webhook_trigger_path: '',
         webhook_trigger: node.webhook_trigger,
         test_payload: node.test_payload ?? {},
+        use_storage: node.use_storage ?? false,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TelegramTriggerNode: (node, context) => ({
@@ -209,19 +210,6 @@ export function mapSnapshotToGraphDto(
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
         ...nodeLists,
         edge_list: (snapshot.edge_list ?? []).map((edge) => ({ ...edge, graph: 0 })),
-        conditional_edge_list: (snapshot.conditional_edge_list ?? []).map((edge) => ({
-            ...edge,
-            graph: 0,
-            python_code: toLivePythonCode(
-                edge.python_code,
-                resolveDeclaredSecrets(
-                    snapshot.secret_declarations?.conditional_edges?.find(
-                        (declaration) => declaration.source_node_id === edge.source_node_id
-                    )?.names,
-                    secretsByName
-                )
-            ),
-        })),
     };
 }
 
@@ -285,7 +273,6 @@ function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphD
         python_node_list: [],
         task_node_list: [],
         agent_node_list: [],
-        llm_node_list: [],
         file_extractor_node_list: [],
         audio_transcription_node_list: [],
         subgraph_node_list: [],

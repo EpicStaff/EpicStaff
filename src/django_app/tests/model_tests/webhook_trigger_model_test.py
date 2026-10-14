@@ -36,55 +36,29 @@ def other_org(db):
     return Organization.objects.create(name="Other Organization For Webhook Test")
 
 
+@pytest.mark.parametrize(
+    ("provider_type", "make_config"),
+    [
+        (ProviderType.NGROK, None),
+        (ProviderType.LOCALHOST, None),
+        (None, None),
+        (
+            ProviderType.NGROK,
+            lambda trigger, org: NgrokWebhookConfig.objects.create(
+                name="cfg", auth_token_secret=secret_service.create(text="tok", org=org, name="cfg-secret"), trigger=trigger
+            ),
+        ),
+        (ProviderType.LOCALHOST, lambda trigger, org: LocalhostWebhookConfig.objects.create(name="cfg", trigger=trigger)),
+    ],
+    ids=["ngrok-without-config-yet", "localhost-without-config-yet", "no-provider", "ngrok-config", "localhost-config"],
+)
 @pytest.mark.django_db
-class TestGetActiveConfigMissingChildRow:
-    def test_returns_none_when_ngrok_provider_type_set_without_child_row(
-        self, default_org
-    ):
-        trigger = WebhookTrigger.objects.create(
-            path="pending-ngrok", provider_type=ProviderType.NGROK, org=default_org
-        )
+def test_active_config_is_the_providers_config_or_none_until_it_exists(default_org, provider_type, make_config):
+    """Reachable mid-way through the configure-webhook flow: provider stamped, config not yet created."""
+    trigger = WebhookTrigger.objects.create(path="hook", provider_type=provider_type, org=default_org)
+    config = make_config(trigger, default_org) if make_config else None
 
-        assert trigger.get_active_config() is None
-
-    def test_returns_none_when_localhost_provider_type_set_without_child_row(
-        self, default_org
-    ):
-        trigger = WebhookTrigger.objects.create(
-            path="pending-localhost",
-            provider_type=ProviderType.LOCALHOST,
-            org=default_org,
-        )
-
-        assert trigger.get_active_config() is None
-
-    def test_returns_config_when_ngrok_child_row_exists(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="ready-ngrok", provider_type=ProviderType.NGROK, org=default_org
-        )
-        secret = secret_service.create(text="tok", org=default_org, name="cfg-secret")
-        config = NgrokWebhookConfig.objects.create(
-            name="cfg", auth_token_secret=secret, trigger=trigger
-        )
-
-        assert trigger.get_active_config() == config
-
-    def test_returns_config_when_localhost_child_row_exists(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="ready-localhost",
-            provider_type=ProviderType.LOCALHOST,
-            org=default_org,
-        )
-        config = LocalhostWebhookConfig.objects.create(name="cfg", trigger=trigger)
-
-        assert trigger.get_active_config() == config
-
-    def test_returns_none_when_provider_type_is_unset(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="no-provider", provider_type=None, org=default_org
-        )
-
-        assert trigger.get_active_config() is None
+    assert trigger.get_active_config() == config
 
 
 @pytest.mark.django_db

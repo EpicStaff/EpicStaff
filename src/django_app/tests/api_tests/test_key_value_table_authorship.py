@@ -239,47 +239,28 @@ class TestTableAuthorship:
 
 @pytest.mark.django_db
 class TestEntryEditsAreTableEdits:
-    def test_adding_an_entry_records_a_last_edit_of_the_table(
-        self, colleague_client, colleague, edited_table
+    @pytest.mark.parametrize(
+        ("write", "expected_status"),
+        [
+            (lambda client, table, entry: client.post(
+                ENTRIES_URL, {"table": table.pk, "key": "customer_2", "value": 2}, format="json"), 201),
+            (lambda client, table, entry: client.patch(_entry_url(entry), {"value": [1, 2]}, format="json"), 200),
+            (lambda client, table, entry: client.patch(_entry_url(entry), {"key": "customer_renamed"}, format="json"), 200),
+            (lambda client, table, entry: client.delete(_entry_url(entry)), 204),
+        ],
+        ids=["add", "edit-value", "edit-key", "delete"],
+    )
+    def test_an_entry_write_is_a_last_edit_of_its_table(
+        self, colleague_client, colleague, named_admin, edited_table, entry, write, expected_status
     ):
-        response = colleague_client.post(
-            ENTRIES_URL, {"table": edited_table.pk, "key": "customer_2", "value": 2}, format="json"
-        )
+        response = write(colleague_client, edited_table, entry)
 
-        assert response.status_code == status.HTTP_201_CREATED, response.content
+        assert response.status_code == expected_status, response.content
         assert ResourceLastEdit.objects.count() == 1
         last_edit = _last_edit_of(edited_table)
         assert last_edit.edited_by_id == colleague.id
         assert last_edit.edited_at > PREVIOUS_EDIT_AT
-
-    @pytest.mark.parametrize(
-        "change", [{"value": [1, 2]}, {"key": "customer_renamed"}], ids=["value", "key"]
-    )
-    def test_editing_an_entry_records_a_last_edit_of_the_table(
-        self, colleague_client, colleague, edited_table, entry, change
-    ):
-        response = colleague_client.patch(_entry_url(entry), change, format="json")
-
-        assert response.status_code == status.HTTP_200_OK, response.content
-        assert ResourceLastEdit.objects.count() == 1
-        assert _last_edit_of(edited_table).edited_by_id == colleague.id
-
-    def test_deleting_an_entry_records_a_last_edit_of_the_table(
-        self, colleague_client, colleague, edited_table, entry
-    ):
-        response = colleague_client.delete(_entry_url(entry))
-
-        assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
-        assert ResourceLastEdit.objects.count() == 1
-        assert _last_edit_of(edited_table).edited_by_id == colleague.id
-
-    def test_table_detail_shows_the_entry_editor(
-        self, colleague_client, colleague, named_admin, edited_table, entry
-    ):
-        colleague_client.patch(_entry_url(entry), {"value": 5}, format="json")
-
         body = colleague_client.get(_table_url(edited_table)).json()
-
         assert body["created_by"] == expected_user_summary(named_admin)
         assert body["last_edited_by"] == expected_user_summary(colleague)
 

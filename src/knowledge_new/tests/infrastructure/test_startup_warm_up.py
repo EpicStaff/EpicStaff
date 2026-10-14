@@ -9,12 +9,15 @@ from infrastructure.token_estimation import _WARM_UP_MODELS, warm_up_token_count
 def test_gpt2_tokenizer_is_loaded_once_and_reused():
     load_gpt2_tokenizer.cache_clear()
     try:
-        with patch.object(token_chunker, "AutoTokenizer") as constructor:
+        with (
+            patch.object(token_chunker.settings, "TOKENIZER_PATH", "/tokenizers/gpt2.tkz"),
+            patch.object(token_chunker.Tokenizer, "from_file") as from_file,
+        ):
             first = load_gpt2_tokenizer()
             second = load_gpt2_tokenizer()
     finally:
         load_gpt2_tokenizer.cache_clear()
-    constructor.assert_called_once_with("gpt2")
+    from_file.assert_called_once_with("/tokenizers/gpt2.tkz")
     assert first is second
 
 

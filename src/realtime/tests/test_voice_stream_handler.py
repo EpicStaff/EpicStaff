@@ -98,285 +98,101 @@ def _mock_unreachable_django(monkeypatch_target: str = "api.main.httpx.AsyncClie
     return patcher
 
 
-# ---------------------------------------------------------------------------
-# _voice_stream_handler — always accepts, then gates on the `start` event
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def channel_with_agent(monkeypatch):
+    """The channel resolves to agent definition 42 (Django's channel lookup is external)."""
+
+    async def resolve(channel_token):
+        return 42, {}
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", resolve)
 
 
-@pytest.mark.asyncio
-async def test_missing_stream_token_rejected_after_accept():
-    """No token in `start.customParameters` and none in the query string ->
-    rejected. The socket is accepted (Twilio's handshake requirement) but
-    closed immediately, before any Django/provider call."""
-    from api.main import _voice_stream_handler
-
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=None)])
-    await _voice_stream_handler(
-        ws,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-1",
-    )
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
+@pytest.fixture
+def unreachable_django():
+    """The post-accept init-realtime call fails at once, so a test stops right after the gate."""
+    patcher = _mock_unreachable_django()
+    yield
+    patcher.stop()
 
 
-@pytest.mark.asyncio
-async def test_bogus_stream_token_rejected():
-    from api.main import _voice_stream_handler
-
-    ws = _make_ws(receive_payloads=[_start_event(stream_token="never-minted")])
-    await _voice_stream_handler(
-        ws,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-1",
-    )
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_token_minted_for_different_channel_rejected():
-    from api.main import _voice_stream_handler, stream_token_repository
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    await _voice_stream_handler(
-        ws,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-2",
-    )
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_expired_stream_token_rejected(monkeypatch):
+def _expired_token(monkeypatch, stream_token_repository) -> str:
     import infrastructure.persistence.stream_token_repository as repo_module
-    from api.main import _voice_stream_handler, stream_token_repository
 
-    fake_time = {"now": 1000.0}
-    monkeypatch.setattr(repo_module.time, "monotonic", lambda: fake_time["now"])
-
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(repo_module.time, "monotonic", lambda: clock["now"])
     token = stream_token_repository.mint(bound_key="chan-1")
-    fake_time["now"] += stream_token_repository.ttl_seconds + 1
-
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    await _voice_stream_handler(
-        ws,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-1",
-    )
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
+    clock["now"] += stream_token_repository.ttl_seconds + 1
+    return token
 
 
 @pytest.mark.asyncio
-async def test_stream_token_is_single_use():
-    """A stream_token must not authenticate a second WebSocket connection —
-    otherwise a leaked TwiML URL is a reusable credential."""
-    from api.main import _voice_stream_handler, stream_token_repository
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-
-    ws1 = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    patcher = _mock_unreachable_django()
-    try:
-        await _voice_stream_handler(
-            ws1,
-            agent_definition_id=1,
-            auth_token=None,
-            stream_token=None,
-            stream_bound_key="chan-1",
-        )
-    finally:
-        patcher.stop()
-    ws1.accept.assert_awaited_once()
-    _assert_not_auth_rejected(ws1)
-
-    ws2 = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    await _voice_stream_handler(
-        ws2,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-1",
-    )
-    ws2.accept.assert_awaited_once()
-    ws2.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_valid_stream_token_in_start_custom_parameters_accepts_connection():
-    """The real Twilio delivery path: token arrives via
-    `start.customParameters`, not the query string."""
-    from api.main import _voice_stream_handler, stream_token_repository
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-
-    patcher = _mock_unreachable_django()
-    try:
-        await _voice_stream_handler(
-            ws,
-            agent_definition_id=1,
-            auth_token=None,
-            stream_token=None,
-            stream_bound_key="chan-1",
-        )
-    finally:
-        patcher.stop()
-
-    ws.accept.assert_awaited_once()
-    _assert_not_auth_rejected(ws)
-
-
-@pytest.mark.asyncio
-async def test_valid_stream_token_via_query_param_fallback_still_accepted():
-    """If a caller (e.g. test tooling, or a Twilio config that does forward
-    query params) presents the token via the query string instead of
-    `start.customParameters`, it's still honoured as a fallback."""
-    from api.main import _voice_stream_handler, stream_token_repository
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=None)])
-
-    patcher = _mock_unreachable_django()
-    try:
-        await _voice_stream_handler(
-            ws,
-            agent_definition_id=1,
-            auth_token=None,
-            stream_token=token,
-            stream_bound_key="chan-1",
-        )
-    finally:
-        patcher.stop()
-
-    ws.accept.assert_awaited_once()
-    _assert_not_auth_rejected(ws)
-
-
-@pytest.mark.asyncio
-async def test_twilio_never_sending_query_param_does_not_block_valid_call():
-    """Reproduces the exact production regression: TwiML embedded the token
-    in the URL query string, but Twilio never relayed it to this WS (query
-    param arrives as None). The call must still succeed because the token
-    also travels via `start.customParameters`."""
-    from api.main import _voice_stream_handler, stream_token_repository
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-
-    patcher = _mock_unreachable_django()
-    try:
-        await _voice_stream_handler(
-            ws,
-            agent_definition_id=1,
-            auth_token=None,
-            stream_token=None,  # Twilio dropped the query param, as observed live.
-            stream_bound_key="chan-1",
-        )
-    finally:
-        patcher.stop()
-
-    ws.accept.assert_awaited_once()
-    _assert_not_auth_rejected(ws)
-
-
-@pytest.mark.asyncio
-async def test_no_start_event_received_rejected():
-    """If the socket never produces a readable `start` event at all (e.g.
-    Twilio hangs up immediately), there's no token from either source and the
-    connection must still be rejected rather than proceeding."""
-    from api.main import _voice_stream_handler
-
-    ws = _make_ws(receive_payloads=None)  # receive_text raises immediately
-    await _voice_stream_handler(
-        ws,
-        agent_definition_id=1,
-        auth_token=None,
-        stream_token=None,
-        stream_bound_key="chan-1",
-    )
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-# ---------------------------------------------------------------------------
-# /voice/{channel_token}/stream route wiring
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_voice_stream_channel_route_rejects_missing_token(monkeypatch):
-    from api.main import voice_stream_channel
-
-    async def fake_resolve(channel_token):
-        return 42, {}
-
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=None)])
-    await voice_stream_channel("chan-1", ws, stream_token=None)
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
-
-
-@pytest.mark.asyncio
-async def test_voice_stream_channel_route_accepts_matching_token_from_start_event(
-    monkeypatch,
+@pytest.mark.parametrize(
+    ("make_token", "frames"),
+    [
+        pytest.param(lambda repo, monkeypatch: None, "start", id="no-token"),
+        pytest.param(lambda repo, monkeypatch: "never-minted", "start", id="bogus-token"),
+        pytest.param(lambda repo, monkeypatch: repo.mint(bound_key="some-other-channel"), "start", id="other-channels-token"),
+        pytest.param(lambda repo, monkeypatch: _expired_token(monkeypatch, repo), "start", id="expired-token"),
+        # Twilio hung up before sending a start event: no token from either source.
+        pytest.param(lambda repo, monkeypatch: None, None, id="no-start-event"),
+    ],
+)
+async def test_stream_without_a_valid_token_is_closed_before_anything_runs(
+    channel_with_agent, monkeypatch, make_token, frames
 ):
-    from api.main import voice_stream_channel, stream_token_repository
+    """The token is only known from the first start event, so the socket is accepted
+    (Twilio's handshake requires it) and closed with 1008 before Django is called."""
+    from api.main import stream_token_repository, voice_stream_channel
 
-    async def fake_resolve(channel_token):
-        return 42, {}
+    token = make_token(stream_token_repository, monkeypatch)
+    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)] if frames else None)
 
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
-
-    token = stream_token_repository.mint(bound_key="chan-1")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-
-    patcher = _mock_unreachable_django()
-    try:
+    with patch("api.main.httpx.AsyncClient") as django_client:
         await voice_stream_channel("chan-1", ws, stream_token=None)
-    finally:
-        patcher.stop()
+
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=1008)
+    django_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "via",
+    [
+        # Twilio relays <Parameter name="stream_token"> in start.customParameters and
+        # drops the URL query string (the production regression this guards).
+        "start-custom-parameters",
+        # Tooling or a Twilio config that does forward query params still works.
+        "query-param",
+    ],
+)
+async def test_valid_stream_token_passes_the_gate(channel_with_agent, unreachable_django, via):
+    from api.main import stream_token_repository, voice_stream_channel
+
+    token = stream_token_repository.mint(bound_key="chan-1")
+    ws = _make_ws(receive_payloads=[_start_event(stream_token=token if via == "start-custom-parameters" else None)])
+
+    await voice_stream_channel("chan-1", ws, stream_token=token if via == "query-param" else None)
 
     ws.accept.assert_awaited_once()
     _assert_not_auth_rejected(ws)
 
 
 @pytest.mark.asyncio
-async def test_voice_stream_channel_route_rejects_token_minted_for_other_channel(
-    monkeypatch,
-):
-    from api.main import voice_stream_channel, stream_token_repository
+async def test_stream_token_is_single_use(channel_with_agent, unreachable_django):
+    """Otherwise a leaked TwiML URL would be a reusable credential."""
+    from api.main import stream_token_repository, voice_stream_channel
 
-    async def fake_resolve(channel_token):
-        return 42, {}
+    token = stream_token_repository.mint(bound_key="chan-1")
+    first = _make_ws(receive_payloads=[_start_event(stream_token=token)])
+    await voice_stream_channel("chan-1", first, stream_token=None)
+    _assert_not_auth_rejected(first)
 
-    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+    second = _make_ws(receive_payloads=[_start_event(stream_token=token)])
+    await voice_stream_channel("chan-1", second, stream_token=None)
 
-    token = stream_token_repository.mint(bound_key="some-other-channel")
-    ws = _make_ws(receive_payloads=[_start_event(stream_token=token)])
-    await voice_stream_channel("chan-1", ws, stream_token=None)
-
-    ws.accept.assert_awaited_once()
-    ws.close.assert_awaited_once_with(code=1008)
+    second.close.assert_awaited_once_with(code=1008)
 
 
 # ---------------------------------------------------------------------------

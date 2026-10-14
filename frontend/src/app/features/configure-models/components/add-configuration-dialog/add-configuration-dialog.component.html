@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="isSubmitting()"
+>
     <div class="header">
         <h2 class="title">Add Configuration</h2>
         <app-icon-button

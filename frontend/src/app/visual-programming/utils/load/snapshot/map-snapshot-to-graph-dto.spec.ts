@@ -125,7 +125,6 @@ const snapshot: GraphVersionSnapshot = {
         exported('KeyValueNode', { ...liveKeyValue, key_value_table_name: 'Customers' }),
     ],
     edge_list: liveEdges.map((edge) => exportedEdge(edge)),
-    conditional_edge_list: [],
     metadata: {},
     secret_declarations: {
         nodes: {
@@ -265,6 +264,35 @@ describe('buildPreviewFlowModel', () => {
         for (const node of legacyFlow.nodes.filter((item) => item.type !== NodeType.START)) {
             expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
         }
+    });
+
+    it('keeps the webhook storage flag and turns it off for versions saved without one', () => {
+        const withStorage: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    use_storage: true,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+            ],
+        };
+        const legacy: GraphVersionSnapshot = {
+            nodes: [
+                exported('WebhookTriggerNode', {
+                    ...liveWebhook,
+                    use_storage: undefined,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+                }),
+            ],
+        };
+
+        const webhookUseStorage = (version: GraphVersionSnapshot): unknown =>
+            buildPreviewFlowModel(version, secretsByName, availableFlows).flow.nodes.find(
+                (node) => node.type === NodeType.WEBHOOK_TRIGGER
+            )?.data;
+
+        expect(webhookUseStorage(withStorage)).toMatchObject({ use_storage: true });
+        expect(webhookUseStorage(legacy)).toMatchObject({ use_storage: false });
     });
 });
 

@@ -1,12 +1,10 @@
 import { BasePort } from '../models/port.model';
 import { DEFAULT_AGENT_NODE_PORTS } from './agent-ports/agent-node-default-ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from './edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from './end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from './file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from './key-value-ports/key-value-default-ports';
 import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from './knowledge-retriever-ports/knowledge-retriever-default-ports';
-import { DEFAULT_LLM_NODE_PORTS } from './llm-ports/llm-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from './python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from './schedule-trigger-ports/schedule-trigger-default-ports';
 import { DEFAULT_START_NODE_PORTS } from './start-ports/start-node-default-ports';
@@ -21,10 +19,8 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries
     [
         ...DEFAULT_TASK_NODE_PORTS,
         ...DEFAULT_AGENT_NODE_PORTS,
-        ...DEFAULT_LLM_NODE_PORTS,
         ...DEFAULT_TOOL_NODE_PORTS,
         ...DEFAULT_PYTHON_NODE_PORTS,
-        ...DEFAULT_EDGE_NODE_PORTS,
         ...DEFAULT_START_NODE_PORTS,
         ...DEFAULT_TABLE_NODE_PORTS,
         ...DEFAULT_FILE_EXTRACTOR_NODE_PORTS,

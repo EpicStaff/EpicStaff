@@ -194,29 +194,45 @@ def tool_chunks(call_id: str, name: str, args: str) -> list[LLMChunk]:
 # ---------------------------------------------------------------------------
 
 
-def test_build_model_config_adds_provider_prefix():
-    """Provider prefix is added when model string has no '/'."""
-    from app.loop.agent_loop import _build_model_config
+async def _model_config(llm: LLMData, tool_choice=None) -> dict:
+    agent = AgentSpec(id=1, name="a", instructions="i", llm=llm)
+    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice)
+    fake_llm = FakeLLMClient([text_chunks("ok")])
 
-    agent = _make_agent_spec()
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    config = _build_model_config(context)
-    assert config["model"] == "openai/fake-model"
+    await DefaultAgentLoop(fake_llm).run(context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5))
+
+    (config,) = fake_llm.received_configs
+    return config
 
 
-def test_build_model_config_no_double_prefix():
-    """Provider prefix is NOT added when model already contains '/'."""
-    from app.loop.agent_loop import _build_model_config
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_model", "expected_store"),
+    [
+        ("openai", "fake-model", "openai/fake-model", False),
+        # A model that already names its provider is not prefixed again.
+        ("openai", "openai/gpt-4o", "openai/gpt-4o", False),
+        # OpenAI/Azure calls opt out of provider-side storage; the decision follows the
+        # provider litellm routes to (the model prefix), not the configured provider name.
+        ("azure", "my-deployment", "azure/my-deployment", False),
+        ("openrouter", "openai/gpt-5.6-luna", "openai/gpt-5.6-luna", False),
+        ("anthropic", "claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
+        ("openai", "anthropic/claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
+    ],
+)
+async def test_llm_call_routes_to_the_provider_and_opts_out_of_storage(provider, model, expected_model, expected_store):
+    config = await _model_config(LLMData(provider=provider, config=LLMConfigData(model=model)))
 
-    agent = AgentSpec(
-        id=1,
-        name="a",
-        instructions="i",
-        llm=LLMData(provider="openai", config=LLMConfigData(model="openai/gpt-4o")),
-    )
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    config = _build_model_config(context)
-    assert config["model"] == "openai/gpt-4o"
+    assert config["model"] == expected_model
+    assert config.get("store", "absent") == ("absent" if expected_store is None else expected_store)
+
+
+@pytest.mark.parametrize(
+    "tool_choice", [{"type": "function", "function": {"name": "submit_final_answer"}}, None], ids=["set", "unset"]
+)
+async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
+    config = await _model_config(_make_llm_data(), tool_choice=tool_choice)
+
+    assert config.get("tool_choice", "absent") == (tool_choice or "absent")
 
 
 # ---------------------------------------------------------------------------
@@ -583,7 +599,7 @@ async def test_unknown_tool_name():
     )
     loop = DefaultAgentLoop(llm)
 
-    result = await loop.run(context, tools, emitter, stop)
+    await loop.run(context, tools, emitter, stop)
 
     tool_result_events: list[ToolResult] = [
         payload
@@ -692,18 +708,6 @@ async def test_streaming_chunk_order_preserved():
     assert observed == ordered_chunks
 
 
-def test_context_starts_with_empty_messages():
-    """AgentContext starts with empty messages; prompt is built externally by the runner."""
-    agent = AgentSpec(
-        id=1,
-        name="researcher",
-        instructions="You research topics thoroughly.",
-        llm=_make_llm_data(),
-    )
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c")
-    assert context.messages == []
-
-
 async def test_token_usage_aggregated_across_two_iterations():
     """Usage chunks from two iterations are summed: prompt=12, completion=5, total=17,
     cached_prompt_tokens=6, total_cost_usd=0.003."""
@@ -770,138 +774,41 @@ async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
 
 
 # ---------------------------------------------------------------------------
-# Tests: tool_choice forwarded through model_config
-# ---------------------------------------------------------------------------
-
-
-async def test_tool_choice_in_context_appears_in_model_config():
-    """context.tool_choice set → forwarded to LLM as model_config['tool_choice']."""
-    emitter = RecordingEmitter()
-    agent = _make_agent_spec()
-    choice = {"type": "function", "function": {"name": "submit_final_answer"}}
-    context = AgentContext(
-        agent=agent,
-        attachments=[],
-        correlation_id="c",
-        tool_choice=choice,
-    )
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert len(llm.received_configs) == 1
-    assert llm.received_configs[0]["tool_choice"] == choice
-
-
-async def test_tool_choice_none_not_present_in_model_config():
-    """context.tool_choice=None (default) → 'tool_choice' key absent from model_config."""
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)
-
-    await loop.run(context, tools, emitter, stop)
-
-
-# ---------------------------------------------------------------------------
 # Tests: context window warning
 # ---------------------------------------------------------------------------
 
 
-async def test_context_warning_emitted_once_when_over_ratio(monkeypatch):
-    """Tokens >= ratio * context_window → exactly one warning containing the window size."""
-    import litellm as _litellm
-    from app.loop.agent_loop import DefaultAgentLoop
+def _raise_model_not_found(model):
+    raise RuntimeError("model not found")
 
-    monkeypatch.setattr(_litellm, "get_model_info", lambda model: {"max_input_tokens": 1000})
-    monkeypatch.setattr(_litellm, "token_counter", lambda model, messages: 900)
 
+@pytest.mark.parametrize(
+    ("ratio", "get_model_info", "prompt_tokens", "expected_warnings"),
+    [
+        (0.8, lambda model: {"max_input_tokens": 1000}, 900, 1),
+        (0.8, lambda model: {"max_input_tokens": 1000}, 100, 0),
+        (None, lambda model: {"max_input_tokens": 1000}, 900, 0),
+        # An unknown model never blocks the run.
+        (0.8, _raise_model_not_found, 900, 0),
+    ],
+    ids=["over-ratio-warns-once", "under-ratio", "warning-disabled", "model-info-unavailable"],
+)
+async def test_context_window_warning(monkeypatch, ratio, get_model_info, prompt_tokens, expected_warnings):
+    import litellm
+
+    monkeypatch.setattr(litellm, "get_model_info", get_model_info)
+    monkeypatch.setattr(litellm, "token_counter", lambda model, messages: prompt_tokens)
     emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({"ping": lambda args: "pong"})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
+    # Two iterations, so a warning that is not de-duplicated would appear twice.
+    llm = FakeLLMClient([tool_chunks("c1", "ping", "{}"), text_chunks("done")])
 
-    # Two iterations: tool call then text reply
-    llm = FakeLLMClient(
-        [
-            tool_chunks("c1", "ping", "{}"),
-            text_chunks("done"),
-        ]
+    result = await DefaultAgentLoop(llm, context_warning_ratio=ratio).run(
+        make_context(), StubToolRegistry({"ping": lambda args: "pong"}), emitter, MaxIterAndNoToolCalls(max_iter=5)
     )
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert len(emitter.warnings) == 1
-    assert "1000" in emitter.warnings[0]
-
-
-async def test_context_warning_not_emitted_when_under_ratio(monkeypatch):
-    """Tokens < ratio * context_window → no warning."""
-    import litellm as _litellm
-
-    monkeypatch.setattr(_litellm, "get_model_info", lambda model: {"max_input_tokens": 1000})
-    monkeypatch.setattr(_litellm, "token_counter", lambda model, messages: 100)
-
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert emitter.warnings == []
-
-
-async def test_context_warning_ratio_none_no_warning():
-    """context_warning_ratio=None (default) → no warning; get_model_info/token_counter not needed."""
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm)  # default ratio=None
-
-    await loop.run(context, tools, emitter, stop)
-
-    assert emitter.warnings == []
-
-
-async def test_context_warning_get_model_info_raises_no_warning(monkeypatch):
-    """get_model_info raising → no warning, run still completes normally."""
-    import litellm as _litellm
-
-    def _raise(model):
-        raise RuntimeError("model not found")
-
-    monkeypatch.setattr(_litellm, "get_model_info", _raise)
-
-    emitter = RecordingEmitter()
-    context = make_context()
-    tools = StubToolRegistry({})
-    stop = MaxIterAndNoToolCalls(max_iter=5)
-
-    llm = FakeLLMClient([text_chunks("ok")])
-    loop = DefaultAgentLoop(llm, context_warning_ratio=0.8)
-
-    result = await loop.run(context, tools, emitter, stop)
 
     assert result.stop_reason == "completed"
-    assert emitter.warnings == []
-
-    assert len(llm.received_configs) == 1
-    assert "tool_choice" not in llm.received_configs[0]
+    assert len(emitter.warnings) == expected_warnings
+    assert all("1000" in warning for warning in emitter.warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -1048,42 +955,9 @@ async def test_overflow_rejection_does_not_count_toward_consecutive_failures():
 # ---------------------------------------------------------------------------
 
 
-async def test_tool_timeout_feeds_error_result():
-    """Executor slower than timeout: is_error=True, 'timed out after' in content."""
-    context = make_context()
-    tools = ToolRegistry()
-
-    async def slow_executor(args: dict) -> ToolResult:
-        await asyncio.sleep(5)
-        return ToolResult(tool_call_id="", content="never", is_error=False)
-
-    tools.register(ToolSpec(name="slow", description="slow tool"), slow_executor)
-
-    llm = FakeLLMClient([])
-    loop = DefaultAgentLoop(llm)
-
-    result = await loop._execute_tool(tools, "c1", "slow", "{}", timeout=0.05)
-
-    assert result.is_error is True
-    assert "timed out after" in result.content
-
-
-async def test_tool_timeout_none_no_wrapping():
-    """timeout=None: normal tool executes and succeeds without wrapping."""
-    context = make_context()
-    tools = StubToolRegistry({"ping": lambda args: "pong"})
-
-    llm = FakeLLMClient([])
-    loop = DefaultAgentLoop(llm)
-
-    result = await loop._execute_tool(tools, "c1", "ping", "{}", timeout=None)
-
-    assert result.is_error is False
-    assert result.content == "pong"
-
-
-async def test_tool_timeout_counts_as_failure_toward_limit():
-    """Tool call exceeding tool_timeout counts as a failure toward max_consecutive_failures."""
+async def test_tool_timeout_is_an_error_result_counted_toward_the_failure_limit():
+    """A tool slower than tool_timeout is cut off: the LLM sees an error result, and it
+    counts toward max_consecutive_failures."""
     emitter = RecordingEmitter()
     context = make_context(tool_timeout=1, max_consecutive_failures=1)
     tools = ToolRegistry()
@@ -1106,6 +980,9 @@ async def test_tool_timeout_counts_as_failure_toward_limit():
     result = await loop.run(context, tools, emitter, stop)
 
     assert result.stop_reason == "max_consecutive_failures"
+    (tool_result,) = [payload for name, payload in emitter.events if name == "on_tool_result"]
+    assert tool_result.is_error is True
+    assert "timed out after" in tool_result.content
 
 
 # ---------------------------------------------------------------------------

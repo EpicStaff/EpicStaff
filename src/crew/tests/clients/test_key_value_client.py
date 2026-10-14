@@ -23,60 +23,40 @@ async def _started(handler) -> KeyValueClient:
 
 
 @pytest.mark.asyncio
-async def test_read_posts_keys_with_system_key_and_returns_response():
+@pytest.mark.parametrize(
+    ("call", "path", "body", "response"),
+    [
+        (
+            lambda client: client.read(7, 3, ["a", "b"]),
+            "read", {"keys": ["a", "b"]}, {"values": {"a": 1}, "table_name": "Customers"},
+        ),
+        (
+            lambda client: client.write(7, 3, {"k": {"v": 1}}),
+            "write", {"entries": {"k": {"v": 1}}}, {"written": 1, "created": ["k"], "table_name": "Customers"},
+        ),
+        (
+            lambda client: client.delete(7, 3, ["k", "missing"]),
+            "delete", {"keys": ["k", "missing"]}, {"deleted": 1, "values": {"k": {"a": 1}}, "table_name": "Customers"},
+        ),
+    ],
+    ids=["read", "write", "delete"],
+)
+async def test_call_posts_to_the_sessions_table_route_with_the_system_key(call, path, body, response):
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        seen["api_key"] = request.headers["X-API-Key"]
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"values": {"a": 1}, "table_name": "Customers"})
+        seen.update(url=str(request.url), api_key=request.headers["X-API-Key"], body=json.loads(request.content))
+        return httpx.Response(200, json=response)
 
     client = await _started(handler)
-    assert await client.read(7, 3, ["a", "b"]) == {"values": {"a": 1}, "table_name": "Customers"}
+    assert await call(client) == response
     await client.stop()
 
-    assert seen["url"] == f"{BASE_URL}internal/sessions/7/key-value-tables/3/read/"
-    assert seen["api_key"] == "secret"
-    assert seen["body"] == {"keys": ["a", "b"]}
-
-
-@pytest.mark.asyncio
-async def test_write_sends_entries_and_returns_response():
-    seen = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"written": 1, "created": ["k"], "table_name": "Customers"})
-
-    client = await _started(handler)
-    assert await client.write(7, 3, {"k": {"v": 1}}) == {
-        "written": 1,
-        "created": ["k"],
-        "table_name": "Customers",
+    assert seen == {
+        "url": f"{BASE_URL}internal/sessions/7/key-value-tables/3/{path}/",
+        "api_key": "secret",
+        "body": body,
     }
-    assert seen["url"].endswith("/key-value-tables/3/write/")
-    assert seen["body"] == {"entries": {"k": {"v": 1}}}
-
-
-@pytest.mark.asyncio
-async def test_delete_sends_keys_and_returns_response():
-    seen = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(
-            200, json={"deleted": 1, "values": {"k": {"a": 1}}, "table_name": "Customers"}
-        )
-
-    client = await _started(handler)
-    assert await client.delete(7, 3, ["k", "missing"]) == {
-        "deleted": 1,
-        "values": {"k": {"a": 1}},
-        "table_name": "Customers",
-    }
-    assert seen["body"] == {"keys": ["k", "missing"]}
 
 
 @pytest.fixture
@@ -91,46 +71,38 @@ def waits(monkeypatch):
     yield recorded
 
 
+def _respond_404(request):
+    return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
+
+
+def _respond_500(request):
+    return httpx.Response(500, text="boom")
+
+
+def _time_out(request):
+    raise httpx.ReadTimeout("slow", request=request)
+
+
 @pytest.mark.asyncio
-async def test_4xx_raises_validation_error_with_django_message_without_retrying(waits):
+@pytest.mark.parametrize(
+    ("respond", "error", "message"),
+    [
+        (_respond_404, ClientValidationError, "Key-value table 3 not found."),
+        (_respond_500, ClientBadGatewayError, None),
+        # After a read timeout Django may still be running the request, so it is not repeated.
+        (_time_out, ClientTimeoutError, None),
+    ],
+    ids=["4xx", "5xx", "timeout"],
+)
+async def test_failure_is_reported_without_retrying(waits, respond, error, message):
     calls = []
 
     def handler(request):
         calls.append(request)
-        return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
+        return respond(request)
 
     client = await _started(handler)
-    with pytest.raises(ClientValidationError, match="Key-value table 3 not found."):
-        await client.read(7, 3, ["a"])
-    assert len(calls) == 1
-    assert waits == []
-
-
-@pytest.mark.asyncio
-async def test_5xx_raises_bad_gateway_without_retrying(waits):
-    calls = []
-
-    def handler(request):
-        calls.append(request)
-        return httpx.Response(500, text="boom")
-
-    client = await _started(handler)
-    with pytest.raises(ClientBadGatewayError):
-        await client.read(7, 3, ["a"])
-    assert len(calls) == 1
-    assert waits == []
-
-
-@pytest.mark.asyncio
-async def test_timeout_raises_client_timeout_without_retrying(waits):
-    calls = []
-
-    def handler(request):
-        calls.append(request)
-        raise httpx.ReadTimeout("slow", request=request)
-
-    client = await _started(handler)
-    with pytest.raises(ClientTimeoutError):
+    with pytest.raises(error, match=message):
         await client.read(7, 3, ["a"])
     assert len(calls) == 1
     assert waits == []

@@ -1,7 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PasswordChangeVerifyResponse } from '@shared/models';
-import { of } from 'rxjs';
+import { EMPTY, of } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -26,7 +26,7 @@ describe('PasswordChangeDialogComponent revocation notice', () => {
         TestBed.configureTestingModule({
             imports: [PasswordChangeDialogComponent],
             providers: [
-                { provide: DialogRef, useValue: { close: vi.fn() } as unknown as DialogRef },
+                { provide: DialogRef, useValue: { close: vi.fn(), keydownEvents: EMPTY } as unknown as DialogRef },
                 {
                     provide: ProfileService,
                     useValue: { requestPasswordChange: () => of(verifyResponse) } as unknown as ProfileService,

@@ -66,9 +66,9 @@ def _node_to_dict(spec: NodeTypeSpec, node) -> dict:
 
     Relations (FK / OneToOne) are skipped generically — surface them
     explicitly via the post-loop resolver blocks in `get_node` when needed.
-    `name` always comes from `spec.display_name()` so types without a real
-    `node_name` (e.g. ConditionalEdge) still get a usable display name
-    instead of being silently omitted.
+    `name` always comes from `spec.display_name()` so types whose `node_name`
+    is a property (StartNode, EndNode) or blank still get a usable display
+    name instead of being silently omitted.
     """
     result: dict = {"type": spec.label, "id": node.pk, "name": spec.display_name(node)}
 
@@ -190,29 +190,24 @@ def get_flow_overview(graph_id: int) -> dict:
 
     graph = Graph.objects.get(pk=graph_id)
 
-    node_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if not spec.is_edge]
-    edge_specs = [spec for spec in FLOW_ASSISTANT_NODE_TYPES if spec.is_edge]
-
     # One query per node-table type. node_count_by_type is derived from these
     # same rows below instead of re-reading every table a second time.
     raw_nodes: list[tuple[str, int, str]] = []
-    for spec in node_specs:
+    for spec in FLOW_ASSISTANT_NODE_TYPES:
         for node in spec.model.objects.filter(graph_id=graph_id).only(*spec.only_fields()):
             raw_nodes.append((spec.label, node.pk, spec.display_name(node)))
     raw_nodes.sort(key=lambda t: (t[0], t[1]))
 
     counts_by_label = Counter(node_type for node_type, _, _ in raw_nodes)
-    node_count_by_type = {spec.label: counts_by_label[spec.label] for spec in node_specs}
+    node_count_by_type = {
+        spec.label: counts_by_label[spec.label] for spec in FLOW_ASSISTANT_NODE_TYPES
+    }
 
     nodes: list[dict] = [
         {"id": node_id, "type": node_type, "name": name} for node_type, node_id, name in raw_nodes
     ]
 
-    # ConditionalEdge is an edge, not a node (see NodeTypeSpec.is_edge) — fold
-    # its count into edge_count instead of node_count_by_type/nodes.
     edge_count = Edge.objects.filter(graph_id=graph_id).count()
-    for spec in edge_specs:
-        edge_count += spec.model.objects.filter(graph_id=graph_id).count()
 
     subflows = [
         {
@@ -277,10 +272,6 @@ def get_node(graph_id: int, node_id: str) -> dict:
         )
     elif node_type in ("agent", "task"):
         result.update(_resolve_agent_or_task_enrichment(node_type, node))
-    elif node_type == "conditional_edge":
-        result["python_code_summary"] = _resolve_python_code_summary(
-            getattr(node, "python_code_id", None)
-        )
 
     # Phase F (Fix 16): attach python_code summary for nodes that wrap user-authored Python.
     if node_type in ("python", "webhook_trigger"):
@@ -806,15 +797,13 @@ def get_session_detail(graph_id: int, session_id: int) -> dict:
 
 
 def list_node_types(graph_id: int) -> list[str]:
-    """Return the distinct node types present in the flow (edges excluded).
+    """Return the distinct node types present in the flow.
 
     One .exists() query per type — no prefetch, since only a boolean answer
     is needed and prefetching would materialise every row for nothing.
     """
     present = []
     for spec in FLOW_ASSISTANT_NODE_TYPES:
-        if spec.is_edge:
-            continue
         if spec.model.objects.filter(graph_id=graph_id).exists():
             present.append(spec.label)
     return present
@@ -1040,11 +1029,6 @@ def build_node_index(graph_id: int) -> dict[int, dict]:
     needed.  This replaces the previous per-edge try/except loop across all
     node tables, which produced O(edges x tables) queries.
 
-    ConditionalEdge is deliberately included here even though it's an edge,
-    not a node (NodeTypeSpec.is_edge) — the index is also used to resolve
-    edge endpoints, and a ConditionalEdge can be the source/target of a plain
-    Edge, so leaving it out would break that lookup.
-
     For models where node_name is a @property (StartNode, EndNode) we fetch
     only "id" and call the property after instantiation; Django reconstructs
     a minimal instance without touching the DB again.
@@ -1116,13 +1100,9 @@ def _flow_assistant_node_type_labels() -> str:
 
     Derived from FLOW_ASSISTANT_NODE_TYPES so this description can't drift
     from the registry the way a hand-maintained literal list would.
-    ConditionalEdge is excluded — get_flow_overview folds it into edge_count,
-    not the node list (see NodeTypeSpec.is_edge).
     """
     labels = []
     for spec in FLOW_ASSISTANT_NODE_TYPES:
-        if spec.is_edge:
-            continue
         label = spec.label
         if spec.deprecated:
             label += " (deprecated, legacy graphs only)"
@@ -1136,8 +1116,7 @@ TOOL_SPECS: list[ToolSpec] = [
         description=(
             "Returns a high-level overview of the current flow: its name, description, "
             "node count by type, the full list of nodes (id + type + name only), "
-            "total edge count (includes conditional_edge routing nodes, which route "
-            "flow but are not themselves listed as nodes), and a list of direct "
+            "total edge count, and a list of direct "
             "subflows (name + description only, no internal details). Node types "
             f"include {_flow_assistant_node_type_labels()}. Canvas sticky notes are "
             "not nodes and are not included. Use this when asked to enumerate or "
@@ -1163,8 +1142,6 @@ TOOL_SPECS: list[ToolSpec] = [
             "omitted), and `knowledge_sources` (attached knowledge collections — "
             "metadata only, never document content). Agent nodes additionally include "
             "`tasks`, the ordered sub-tasks the node executes. "
-            "For conditional_edge nodes, the response includes `python_code_summary` "
-            "for the routing logic. "
             "For python and webhook_trigger nodes, the response includes "
             "`python_code_summary` with the actual code body, entrypoint, and library "
             "list — use it to answer questions about what the node does, which APIs it "

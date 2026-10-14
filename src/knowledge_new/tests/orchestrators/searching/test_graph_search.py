@@ -1,22 +1,18 @@
-"""Tests for GraphSearchOrchestrator.on_execute().
+"""Tests for GraphSearchOrchestrator.
 
-Seams used:
-- FakeGraphRagRepo / FakeUoW  — in-memory replacements for DB access.
-- monkeypatch.setitem(GraphSearchOrchestrator._SEARCH_MAP, method, spec) — the
-  _SEARCH_MAP is built at import time with direct references to graphrag functions;
-  patching the module-level names has no effect on what's already stored. Replacing
-  map entries is the only seam that actually runs our fake searchers.
-- monkeypatch.setattr(GraphSearchOrchestrator, '_resolve_files', ...) — avoids
-  filesystem / graphrag storage entirely.
-- `bypass_grounding_guard` (autouse) — `apply_grounding_guard` judges answers with a
-  real LLM completion call and rejects anything backed by empty context; these tests
-  cover GraphSearchOrchestrator's own forwarding/propagation logic, not the guard's
-  verification behavior, so it is replaced with a pass-through for every test here.
+Seams, all at external boundaries:
+- FakeUoW / FakeGraphRagRepo — the database.
+- `_SEARCH_MAP` entries — graphrag's searchers call an LLM; the map holds direct
+  references to them, so replacing the entries is the only way to run a fake searcher.
+- `FakeDataReader` — graphrag's reader of the index tables from storage.
+- `apply_grounding_guard` — judges the answer with a real LLM call; replaced with a
+  pass-through so these tests cover the orchestrator, not the guard.
 """
 
 import pandas
 import pytest
 from application.commands import RunSearch
+from application.orchestrators.searching.strategies import graph_search
 from application.orchestrators.searching.strategies.graph_search import (
     GraphSearchOrchestrator,
     SearchSpecification,
@@ -32,9 +28,16 @@ from src.shared.models.knowledge_new import (
     GraphLocalSearchConfig,
 )
 
+INDEX_TABLES = {
+    name: pandas.DataFrame({"id": [index]})
+    for index, name in enumerate(
+        ["text_units", "communities", "community_reports", "relationships", "entities"]
+    )
+}
+COVARIATES = pandas.DataFrame({"id": [99]})
+
 
 def _make_graph_rag_config() -> GraphRagConfig:
-    """Return a GraphRagConfig with the default model slots populated."""
     from graphrag_llm.config import ModelConfig
 
     config = GraphRagConfig()
@@ -45,25 +48,17 @@ def _make_graph_rag_config() -> GraphRagConfig:
 
 
 class FakeGraphRagRepo:
-    """Returns a GraphRagConfig with populated model slots; records get_config calls."""
-
     def __init__(self):
-        self.get_config_calls: list[int] = []
+        self.requested_rag_ids: list[int] = []
 
     async def get_config(self, rag_id: int) -> GraphRagConfig:
-        self.get_config_calls.append(rag_id)
+        self.requested_rag_ids.append(rag_id)
         return _make_graph_rag_config()
 
 
 class FakeUoW:
-    """Re-enterable async context manager (GraphSearch enters it once in on_execute)."""
-
     def __init__(self, repo: FakeGraphRagRepo):
-        self._repo = repo
-
-    @property
-    def graph_rag_repo(self) -> FakeGraphRagRepo:
-        return self._repo
+        self.graph_rag_repo = repo
 
     async def __aenter__(self):
         return self
@@ -72,686 +67,263 @@ class FakeUoW:
         return False
 
 
-def make_fake_searcher(return_value):
-    """Return an async searcher that records every call and returns a fixed value."""
+def _fake_data_reader(tables: dict[str, pandas.DataFrame]):
+    """A DataReader over the given tables; reading a missing one fails like graphrag does."""
 
-    async def fake_searcher(**kwargs):
-        fake_searcher.calls.append(kwargs)
-        return (return_value, None)  # searcher contract: (result, context)
+    class FakeDataReader:
+        def __init__(self, table_provider):
+            pass
 
-    fake_searcher.calls = []
-    return fake_searcher
+        def __getattr__(self, name):
+            async def read():
+                if name not in tables:
+                    raise FileNotFoundError(f"{name}.parquet")
+                return tables[name]
 
+            return read
 
-_FAKE_TEXT_UNITS = pandas.DataFrame({"id": [1], "text": ["unit-1"]})
-_FAKE_COMMUNITIES = pandas.DataFrame({"id": [10], "level": [1]})
-_FAKE_COMMUNITY_REPORTS = pandas.DataFrame({"id": [10], "summary": ["report-1"]})
-_FAKE_RELATIONSHIPS = pandas.DataFrame({"id": [20], "source": ["a"], "target": ["b"]})
-_FAKE_ENTITIES = pandas.DataFrame({"id": [30], "name": ["ent-1"]})
-_FAKE_COVARIATES = pandas.DataFrame({"id": [40], "subject_id": ["30"]})
-
-
-def _make_spec_for(method: GraphSearchMethodEnum, fake_searcher):
-    """Build a SearchSpecification whose searcher is our fake, mirroring the real spec."""
-    real_spec = GraphSearchOrchestrator._SEARCH_MAP[method]
-    return SearchSpecification(
-        searcher=fake_searcher,
-        config_field=real_spec.config_field,
-        config_model=real_spec.config_model,
-        required_files=real_spec.required_files,
-        optional_files=real_spec.optional_files,
-        extra_kwargs=real_spec.extra_kwargs,
-    )
+    return FakeDataReader
 
 
-@pytest.fixture()
+@pytest.fixture
 def repo():
     return FakeGraphRagRepo()
 
 
-@pytest.fixture()
-def uow(repo):
-    return FakeUoW(repo)
+@pytest.fixture
+def orchestrator(repo):
+    return GraphSearchOrchestrator(FakeUoW(repo))
 
 
 @pytest.fixture(autouse=True)
 def bypass_grounding_guard(monkeypatch):
-    """Replace the grounding guard with a pass-through so orchestrator tests don't
-    depend on a real LLM completion call to judge the fake searchers' answers."""
-
     async def pass_through_guard(query, response, context, config, method):
         return response
 
-    monkeypatch.setattr(
-        "application.orchestrators.searching.strategies.graph_search.apply_grounding_guard",
-        pass_through_guard,
-    )
+    monkeypatch.setattr(graph_search, "apply_grounding_guard", pass_through_guard)
 
 
-@pytest.mark.parametrize(
-    "method, search_config, expected_result",
-    [
-        (
-            GraphSearchMethodEnum.BASIC,
-            GraphBasicSearchConfig(k=7, max_context_tokens=5000),
-            "basic answer",
-        ),
-        (
-            GraphSearchMethodEnum.LOCAL,
-            GraphLocalSearchConfig(text_unit_prop=0.6, top_k_entities=5),
-            "local answer",
-        ),
-        (
-            GraphSearchMethodEnum.GLOBAL,
-            GraphGlobalSearchConfig(max_context_tokens=8000),
-            "global answer",
-        ),
-        (
-            GraphSearchMethodEnum.DRIFT,
-            GraphDriftSearchConfig(drift_k_followups=15),
-            "drift answer",
-        ),
-    ],
-)
-async def test_happy_path_correct_searcher_invoked(
-    method, search_config, expected_result, uow, monkeypatch
-):
-    fake = make_fake_searcher(expected_result)
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
-    )
+@pytest.fixture
+def index_tables(monkeypatch):
+    """The tables in the index storage; tests may add or remove entries."""
+    tables = dict(INDEX_TABLES)
+    monkeypatch.setattr(graph_search, "DataReader", _fake_data_reader(tables))
+    return tables
 
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        files = {}
-        all_fakes = {
-            "text_units": _FAKE_TEXT_UNITS,
-            "communities": _FAKE_COMMUNITIES,
-            "community_reports": _FAKE_COMMUNITY_REPORTS,
-            "relationships": _FAKE_RELATIONSHIPS,
-            "entities": _FAKE_ENTITIES,
+
+@pytest.fixture
+def searcher(monkeypatch):
+    """Install a fake searcher for a method; returns the list of its calls."""
+
+    def install(method: GraphSearchMethodEnum, answer="answer") -> list[dict]:
+        calls = []
+
+        async def fake_searcher(**kwargs):
+            calls.append(kwargs)
+            return answer, None
+
+        real_spec = GraphSearchOrchestrator._SEARCH_MAP[method]
+        monkeypatch.setitem(
+            GraphSearchOrchestrator._SEARCH_MAP,
+            method,
+            SearchSpecification(
+                searcher=fake_searcher,
+                config_field=real_spec.config_field,
+                config_model=real_spec.config_model,
+                required_files=real_spec.required_files,
+                optional_files=real_spec.optional_files,
+                extra_kwargs=real_spec.extra_kwargs,
+            ),
+        )
+        return calls
+
+    return install
+
+
+def _request(search_config, **overrides) -> RunSearch:
+    return RunSearch(
+        **{
+            "rag_id": 42,
+            "query": "what is the meaning?",
+            "search_config": search_config,
+            "embedding_api_key": "sk-emb",
+            "llm_api_key": "sk-llm",
+            **overrides,
         }
-        for name in required_files:
-            files[name] = all_fakes[name]
-        return files
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
     )
 
-    request = RunSearch(
-        rag_id=42,
-        query="what is the meaning?",
-        search_config=search_config,
-        embedding_api_key="sk-test",
-    )
 
-    response = await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert response == SearchResult(result=expected_result)
-    assert response.result == expected_result
-    assert len(fake.calls) == 1
+ALL_GRAPH_TABLES = {"communities", "community_reports", "text_units", "relationships", "entities"}
 
 
 @pytest.mark.parametrize(
-    "method, search_config",
+    ("search_config", "applied_settings", "expected_tables", "expected_extra_kwargs"),
     [
-        (GraphSearchMethodEnum.BASIC, GraphBasicSearchConfig()),
-        (GraphSearchMethodEnum.LOCAL, GraphLocalSearchConfig()),
-        (GraphSearchMethodEnum.GLOBAL, GraphGlobalSearchConfig()),
-        (GraphSearchMethodEnum.DRIFT, GraphDriftSearchConfig()),
+        (
+            GraphBasicSearchConfig(k=7, max_context_tokens=5000),
+            ("basic_search", {"k": 7, "max_context_tokens": 5000}),
+            {"text_units"},
+            {"response_type": "Multiple Paragraphs"},
+        ),
+        (
+            GraphLocalSearchConfig(top_k_entities=5, text_unit_prop=0.6, community_level=3),
+            ("local_search", {"top_k_entities": 5, "text_unit_prop": 0.6}),
+            ALL_GRAPH_TABLES,
+            {"response_type": "Multiple Paragraphs", "community_level": 3},
+        ),
+        (
+            GraphGlobalSearchConfig(
+                max_context_tokens=8000,
+                dynamic_search_max_level=4,
+                dynamic_community_selection=True,
+            ),
+            ("global_search", {"max_context_tokens": 8000}),
+            {"entities", "communities", "community_reports"},
+            {
+                "response_type": "Multiple Paragraphs",
+                "community_level": 4,
+                "dynamic_community_selection": True,
+            },
+        ),
+        (
+            GraphDriftSearchConfig(drift_k_followups=15, community_level=1),
+            ("drift_search", {"drift_k_followups": 15}),
+            ALL_GRAPH_TABLES,
+            {"response_type": "Multiple Paragraphs", "community_level": 1},
+        ),
     ],
+    ids=["basic", "local", "global", "drift"],
 )
-async def test_query_and_config_are_forwarded_to_searcher(
-    method, search_config, uow, monkeypatch
+async def test_search_runs_the_method_with_its_settings_tables_and_answer(
+    orchestrator,
+    repo,
+    index_tables,
+    searcher,
+    search_config,
+    applied_settings,
+    expected_tables,
+    expected_extra_kwargs,
 ):
-    fake = make_fake_searcher("result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
-    )
+    calls = searcher(search_config.method, answer="the answer")
 
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
+    response = await orchestrator.execute(_request(search_config))
 
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
+    assert response == SearchResult(result="the answer")
+    assert repo.requested_rag_ids == [42]
+    (call,) = calls
+    assert call["query"] == "what is the meaning?"
+    config_field, settings = applied_settings
+    method_config = getattr(call["config"], config_field)
+    assert {name: getattr(method_config, name) for name in settings} == settings
+    passed_tables = {name for name in INDEX_TABLES if name in call}
+    assert passed_tables == expected_tables
+    assert all(call[name] is index_tables[name] for name in expected_tables)
+    assert {name: call[name] for name in expected_extra_kwargs} == expected_extra_kwargs
 
-    request = RunSearch(
-        rag_id=1,
-        query="my search query",
-        search_config=search_config,
-        embedding_api_key="sk-test",
-    )
 
-    await GraphSearchOrchestrator(uow).on_execute(request)
+@pytest.mark.parametrize("has_covariates", [True, False], ids=["present", "absent"])
+async def test_local_search_passes_covariates_only_when_the_index_has_them(
+    orchestrator, index_tables, searcher, has_covariates
+):
+    if has_covariates:
+        index_tables["covariates"] = COVARIATES
+    calls = searcher(GraphSearchMethodEnum.LOCAL)
 
-    assert len(fake.calls) == 1
-    call_kwargs = fake.calls[0]
-    assert call_kwargs["query"] == "my search query"
-    assert isinstance(call_kwargs["config"], GraphRagConfig)
+    await orchestrator.execute(_request(GraphLocalSearchConfig()))
+
+    assert calls[0]["covariates"] is (COVARIATES if has_covariates else None)
+
+
+async def test_missing_required_table_fails_the_search(orchestrator, index_tables, searcher):
+    del index_tables["text_units"]
+    calls = searcher(GraphSearchMethodEnum.BASIC)
+
+    with pytest.raises(FileNotFoundError):
+        await orchestrator.execute(_request(GraphBasicSearchConfig()))
+
+    assert calls == []
 
 
 @pytest.mark.parametrize(
-    "method, search_config",
+    ("primer_folds", "drift_k_followups", "community_reports", "expected_folds"),
     [
-        (GraphSearchMethodEnum.BASIC, GraphBasicSearchConfig()),
-        (GraphSearchMethodEnum.LOCAL, GraphLocalSearchConfig()),
-        (GraphSearchMethodEnum.GLOBAL, GraphGlobalSearchConfig()),
-        (GraphSearchMethodEnum.DRIFT, GraphDriftSearchConfig()),
+        (5, 20, 10, 5),
+        (5, 20, 3, 3),
+        (5, 2, 10, 2),
+        (5, 20, 0, 1),
     ],
+    ids=["within-limits", "capped-by-reports", "capped-by-followups", "never-below-one"],
 )
-async def test_extra_kwargs_forwarded_to_searcher(
-    method, search_config, uow, monkeypatch
+async def test_drift_primer_folds_never_exceed_the_usable_community_reports(
+    orchestrator,
+    index_tables,
+    searcher,
+    primer_folds,
+    drift_k_followups,
+    community_reports,
+    expected_folds,
 ):
-    """extra_kwargs defined in the spec reach the searcher as keyword arguments."""
-    fake = make_fake_searcher("result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
+    """More folds than reports leaves empty folds, which makes the primer hallucinate."""
+    index_tables["community_reports"] = pandas.DataFrame({"id": range(community_reports)})
+    calls = searcher(GraphSearchMethodEnum.DRIFT)
+
+    await orchestrator.execute(
+        _request(
+            GraphDriftSearchConfig(primer_folds=primer_folds, drift_k_followups=drift_k_followups)
+        )
     )
 
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    # DRIFT's extra_kwargs is computed dynamically (primer_folds clamping), so only the
-    # keys common to every spec are compared against literal values here.
-    real_extra_kwargs = GraphSearchOrchestrator._SEARCH_MAP[method].extra_kwargs
-    call_kwargs = fake.calls[0]
-    if not callable(real_extra_kwargs):
-        for key, value in real_extra_kwargs.items():
-            assert call_kwargs[key] == value, f"Expected extra_kwarg {key}={value!r}"
-    assert call_kwargs["response_type"] == GraphSearchOrchestrator.DEFAULT_RESPONSE_TYPE
+    assert calls[0]["config"].drift_search.primer_folds == expected_folds
 
 
-async def test_search_config_validated_and_set_on_graphrag_config(uow, monkeypatch):
-    received_configs = []
+async def test_request_api_keys_are_used_for_the_models(orchestrator, index_tables, searcher):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
 
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
+    await orchestrator.execute(_request(GraphBasicSearchConfig()))
 
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(k=99, max_context_tokens=1234),
-        embedding_api_key="sk-test",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert len(received_configs) == 1
-    config = received_configs[0]
-    assert config.basic_search.k == 99
-    assert config.basic_search.max_context_tokens == 1234
+    config = calls[0]["config"]
+    assert config.embedding_models["default_embedding_model"].api_key == "sk-emb"
+    assert config.completion_models["default_completion_model"].api_key == "sk-llm"
 
 
-async def test_search_config_validated_and_set_on_graphrag_config_local(
-    uow, monkeypatch
-):
-    """LocalSearchConfig values are validated into LocalSearchConfig and set on the config."""
-    received_configs = []
-
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
-
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.LOCAL,
-        _make_spec_for(GraphSearchMethodEnum.LOCAL, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphLocalSearchConfig(top_k_entities=7, text_unit_prop=0.8),
-        embedding_api_key="sk-test",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    config = received_configs[0]
-    assert config.local_search.top_k_entities == 7
-    assert config.local_search.text_unit_prop == 0.8
-
-
-@pytest.mark.parametrize(
-    "method, search_config, required_file_names",
-    [
-        (
-            GraphSearchMethodEnum.BASIC,
-            GraphBasicSearchConfig(),
-            ["text_units"],
-        ),
-        (
-            GraphSearchMethodEnum.GLOBAL,
-            GraphGlobalSearchConfig(),
-            ["entities", "communities", "community_reports"],
-        ),
-        (
-            GraphSearchMethodEnum.DRIFT,
-            GraphDriftSearchConfig(),
-            [
-                "communities",
-                "community_reports",
-                "text_units",
-                "relationships",
-                "entities",
-            ],
-        ),
-    ],
-)
-async def test_required_files_forwarded_as_searcher_kwargs(
-    method, search_config, required_file_names, uow, monkeypatch
-):
-    fake = make_fake_searcher("result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP, method, _make_spec_for(method, fake)
-    )
-
-    fake_dfs = {
-        name: pandas.DataFrame({"id": [i]})
-        for i, name in enumerate(required_file_names)
-    }
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: fake_dfs[n] for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    call_kwargs = fake.calls[0]
-    for name in required_file_names:
-        assert name in call_kwargs, f"Expected file kwarg '{name}' in searcher call"
-        assert call_kwargs[name] is fake_dfs[name]
-
-
-async def test_local_search_with_covariates_present(uow, monkeypatch):
-    fake = make_fake_searcher("local result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.LOCAL,
-        _make_spec_for(GraphSearchMethodEnum.LOCAL, fake),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        files = {n: pandas.DataFrame() for n in required_files}
-        if optional_files:
-            for name in optional_files:
-                files[name] = _FAKE_COVARIATES
-        return files
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="local query",
-        search_config=GraphLocalSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    call_kwargs = fake.calls[0]
-    assert "covariates" in call_kwargs
-    assert call_kwargs["covariates"] is _FAKE_COVARIATES
-
-
-async def test_local_search_without_covariates(uow, monkeypatch):
-    fake = make_fake_searcher("local result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.LOCAL,
-        _make_spec_for(GraphSearchMethodEnum.LOCAL, fake),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="local query",
-        search_config=GraphLocalSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    response = await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert response.result == "local result"
-    assert len(fake.calls) == 1
-    # covariates is absent from the call kwargs when the fake didn't produce it
-    assert "covariates" not in fake.calls[0]
-
-
-async def test_unsupported_method_raises_unsupported_error(uow, monkeypatch):
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    class FakeSearchConfig:
+async def test_unsupported_method_raises_unsupported_error(orchestrator, index_tables):
+    class UnknownSearchConfig:
         method = "nonexistent_method"
 
         def model_dump(self):
             return {}
 
-    class FakeRequest:
-        rag_id = 1
-        query = "q"
-        search_config = FakeSearchConfig()
-        embedding_api_key = "sk-test"
-        llm_api_key = None
-        embedding_extra_headers = {}
-        llm_extra_headers = {}
-
     with pytest.raises(UnsupportedError):
-        await GraphSearchOrchestrator(uow).on_execute(FakeRequest())
+        await orchestrator.execute(_request(UnknownSearchConfig()))
 
 
-async def test_result_propagation_string(uow, monkeypatch):
-    fake = make_fake_searcher("Plain text answer.")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, fake),
-    )
+async def test_extra_headers_injected_into_both_graphrag_models(
+    orchestrator, index_tables, searcher
+):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
 
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    response = await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert isinstance(response.result, str)
-    assert response.result == "Plain text answer."
-
-
-async def test_result_propagation_structured(uow, monkeypatch):
-    from domain.models import FoundChunk
-
-    chunks = [
-        FoundChunk(order=0, similarity=0.9, text="chunk A", source="doc-1"),
-        FoundChunk(order=1, similarity=0.8, text="chunk B", source="doc-2"),
-    ]
-    fake = make_fake_searcher(chunks)
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, fake),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    response = await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert response.result == chunks
-
-
-async def test_get_config_called_with_correct_rag_id(repo, uow, monkeypatch):
-    fake = make_fake_searcher("result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.GLOBAL,
-        _make_spec_for(GraphSearchMethodEnum.GLOBAL, fake),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=77,
-        query="q",
-        search_config=GraphGlobalSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert repo.get_config_calls == [77]
-
-
-async def test_resolve_files_called_with_correct_parameters(uow, monkeypatch):
-    fake = make_fake_searcher("result")
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.LOCAL,
-        _make_spec_for(GraphSearchMethodEnum.LOCAL, fake),
-    )
-
-    resolve_calls = []
-
-    async def recording_resolve_files(config, required_files, optional_files=None):
-        resolve_calls.append(
-            {
-                "required_files": list(required_files),
-                "optional_files": list(optional_files or []),
-            }
+    await orchestrator.execute(
+        _request(
+            GraphBasicSearchConfig(),
+            embedding_extra_headers={"X-Emb": "emb-resolved"},
+            llm_extra_headers={"X-Llm": "llm-resolved"},
         )
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(recording_resolve_files)
     )
 
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphLocalSearchConfig(),
-        embedding_api_key="sk-test",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert len(resolve_calls) == 1
-    call = resolve_calls[0]
-    expected_required = set(
-        GraphSearchOrchestrator._SEARCH_MAP[GraphSearchMethodEnum.LOCAL].required_files
-    )
-    assert set(call["required_files"]) == expected_required
-    # LOCAL has covariates as optional_files
-    assert "covariates" in call["optional_files"]
+    config = calls[0]["config"]
+    embedding_call_args = config.embedding_models["default_embedding_model"].call_args
+    completion_call_args = config.completion_models["default_completion_model"].call_args
+    assert embedding_call_args["extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert completion_call_args["extra_headers"] == {"X-Llm": "llm-resolved"}
 
 
-async def test_api_keys_injected_into_graphrag_config(uow, monkeypatch):
-    received_configs: list[GraphRagConfig] = []
+async def test_no_extra_headers_leaves_call_args_without_headers(
+    orchestrator, index_tables, searcher
+):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
 
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
+    await orchestrator.execute(_request(GraphBasicSearchConfig()))
 
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(),
-        embedding_api_key="sk-emb-injected",
-        llm_api_key="sk-llm-injected",
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    assert len(received_configs) == 1
-    config = received_configs[0]
-    assert (
-        config.embedding_models["default_embedding_model"].api_key == "sk-emb-injected"
-    )
-    assert (
-        config.completion_models["default_completion_model"].api_key
-        == "sk-llm-injected"
-    )
-
-
-async def test_none_llm_api_key_sets_none_on_completion_model(uow, monkeypatch):
-    received_configs: list[GraphRagConfig] = []
-
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
-
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(),
-        embedding_api_key="sk-emb",
-        llm_api_key=None,
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    config = received_configs[0]
-    assert config.completion_models["default_completion_model"].api_key is None
-
-
-async def test_extra_headers_injected_into_both_graphrag_models(uow, monkeypatch):
-    received_configs: list[GraphRagConfig] = []
-
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
-
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=GraphBasicSearchConfig(),
-        embedding_api_key="sk-emb",
-        llm_api_key="sk-llm",
-        embedding_extra_headers={"X-Emb": "emb-resolved"},
-        llm_extra_headers={"X-Llm": "llm-resolved"},
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    config = received_configs[0]
-    assert config.embedding_models["default_embedding_model"].call_args[
-        "extra_headers"
-    ] == {"X-Emb": "emb-resolved"}
-    assert config.completion_models["default_completion_model"].call_args[
-        "extra_headers"
-    ] == {"X-Llm": "llm-resolved"}
-
-
-async def test_no_extra_headers_leaves_call_args_without_headers(uow, monkeypatch):
-    received_configs: list[GraphRagConfig] = []
-
-    async def capture_searcher(**kwargs):
-        received_configs.append(kwargs["config"])
-        return ("result", None)
-
-    monkeypatch.setitem(
-        GraphSearchOrchestrator._SEARCH_MAP,
-        GraphSearchMethodEnum.BASIC,
-        _make_spec_for(GraphSearchMethodEnum.BASIC, capture_searcher),
-    )
-
-    async def fake_resolve_files(config, required_files, optional_files=None):
-        return {n: pandas.DataFrame() for n in required_files}
-
-    monkeypatch.setattr(
-        GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files)
-    )
-
-    request = RunSearch(
-        rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk"
-    )
-    await GraphSearchOrchestrator(uow).on_execute(request)
-
-    config = received_configs[0]
+    config = calls[0]["config"]
     assert "extra_headers" not in config.embedding_models["default_embedding_model"].call_args
-    assert (
-        "extra_headers" not in config.completion_models["default_completion_model"].call_args
-    )
+    assert "extra_headers" not in config.completion_models["default_completion_model"].call_args

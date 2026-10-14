@@ -1,13 +1,16 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
 from application.commands import RunSearch
 from application.orchestrators.searching.strategies import naive_search
 from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
 from domain.enums import EmbedderProviderEnum
 from domain.models import (
-    Embedding,
     EmbeddingConfig,
     FoundChunk,
     NaiveSearchConfig,
 )
+from infrastructure.naive.embedders.strategies import litellm_embedder
 
 
 class FakeNaiveRagRepo:
@@ -48,18 +51,17 @@ class FakeUoW:
         return False
 
 
-class FakeEmbedder:
-    """Stands in for the external embedding-provider API. Returns a fixed opaque vector."""
+def _litellm_response(vector: list[float], prompt_tokens: int | None = None):
+    usage = None if prompt_tokens is None else type("Usage", (), {"prompt_tokens": prompt_tokens})()
+    return type("Resp", (), {"data": [{"embedding": vector}], "usage": usage})()
 
-    def __init__(self, vector: list[float], tokens: int = 0):
-        self._vector = vector
-        self._tokens = tokens
-        self.embedded: list[str] = []
-        self.received_api_key: str | None = None
 
-    async def embed(self, text: str) -> Embedding:
-        self.embedded.append(text)
-        return Embedding(vector=self._vector, tokens=self._tokens)
+@pytest.fixture
+def embedding_api():
+    """litellm's embedding call, the boundary to the provider's HTTP API."""
+    mock = AsyncMock(return_value=_litellm_response([0.1, 0.2, 0.3]))
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        yield mock
 
 
 _EMBEDDING_CONFIG = EmbeddingConfig(
@@ -76,6 +78,8 @@ def _make_command(
     search_config: NaiveSearchConfig | None = None,
     embedding_api_key: str = "sk-test",
     llm_api_key: str | None = None,
+    embedding_extra_headers: dict[str, str] | None = None,
+    llm_extra_headers: dict[str, str] | None = None,
 ) -> RunSearch:
     if search_config is None:
         search_config = NaiveSearchConfig(search_limit=5, similarity_threshold=0.3)
@@ -85,26 +89,28 @@ def _make_command(
         search_config=search_config,
         embedding_api_key=embedding_api_key,
         llm_api_key=llm_api_key,
+        embedding_extra_headers=embedding_extra_headers or {},
+        llm_extra_headers=llm_extra_headers or {},
     )
 
 
-async def test_search_success_returns_response_with_found_chunks(monkeypatch):
+async def test_search_embeds_the_query_and_returns_the_closest_chunks(embedding_api):
     found_chunks = [
         FoundChunk(order=0, similarity=0.91, text="first hit", source="doc-a"),
         FoundChunk(order=1, similarity=0.84, text="second hit", source="doc-b"),
     ]
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks)
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
 
-    command = _make_command(query="find me")
-
-    response = await NaiveSearchOrchestrator(uow).execute(command)
+    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(
+        _make_command(query="find me", embedding_api_key="sk-request")
+    )
 
     assert response.result == found_chunks
-    assert response.usage.embedding_tokens == 0
-    assert embedder.embedded == ["find me"]
+    embedding_request = embedding_api.await_args.kwargs
+    assert embedding_request["input"] == ["find me"]
+    # The key comes from the request, never from the stored embedding config.
+    assert embedding_request["api_key"] == "sk-request"
+    assert embedding_request["model"] == "text-embedding-3-small"
     assert repo.search_calls == [
         {
             "rag_id": 1,
@@ -115,91 +121,22 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
     ]
 
 
-async def test_search_success_returns_empty_response_when_no_chunks_match(monkeypatch):
+async def test_embedding_extra_headers_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
 
-    command = _make_command(query="no matches here")
-
-    response = await NaiveSearchOrchestrator(uow).execute(command)
-
-    assert response.result == []
-    assert embedder.embedded == ["no matches here"]
-    assert len(repo.search_calls) == 1
-
-
-async def test_embedding_api_key_forwarded_to_build_embedder(monkeypatch):
-    received: list[tuple] = []
-
-    def capturing_build_embedder(provider, api_key, config):
-        received.append((provider, api_key, config))
-        return FakeEmbedder(vector=[0.9])
-
-    monkeypatch.setattr(naive_search, "build_embedder", capturing_build_embedder)
-
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
-    uow = FakeUoW(repo)
-    command = _make_command(embedding_api_key="sk-forwarded")
-
-    await NaiveSearchOrchestrator(uow).execute(command)
-
-    assert len(received) == 1
-    provider, api_key, config = received[0]
-    assert api_key == "sk-forwarded"
-    assert provider == EmbedderProviderEnum.OPENAI
-    assert config == _EMBEDDING_CONFIG
-
-
-async def test_empty_embedding_api_key_is_forwarded(monkeypatch):
-    received_keys: list[str] = []
-
-    def capturing_build_embedder(provider, api_key, config):
-        received_keys.append(api_key)
-        return FakeEmbedder(vector=[0.1])
-
-    monkeypatch.setattr(naive_search, "build_embedder", capturing_build_embedder)
-
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
-    uow = FakeUoW(repo)
-    command = _make_command(embedding_api_key="")
-
-    await NaiveSearchOrchestrator(uow).execute(command)
-
-    assert received_keys == [""]
-
-
-async def test_embedding_extra_headers_reach_the_embedder_config(monkeypatch):
-    received_configs: list[EmbeddingConfig] = []
-
-    def capturing_build_embedder(provider, api_key, config):
-        received_configs.append(config)
-        return FakeEmbedder(vector=[0.1])
-
-    monkeypatch.setattr(naive_search, "build_embedder", capturing_build_embedder)
-
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
-    command = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
-        embedding_api_key="sk-test",
-        embedding_extra_headers={"X-Gateway-Key": "resolved-value"},
+    await NaiveSearchOrchestrator(FakeUoW(repo)).execute(
+        _make_command(embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
     )
 
-    await NaiveSearchOrchestrator(FakeUoW(repo)).execute(command)
-
-    assert received_configs[0].extra_headers == {"X-Gateway-Key": "resolved-value"}
-    assert received_configs[0].model == _EMBEDDING_CONFIG.model
+    assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
 def test_resolved_headers_are_kept_out_of_the_command_repr():
-    command = RunSearch(
-        rag_id=1,
-        query="q",
-        search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
-        embedding_api_key="sk-test",
+    command = _make_command(
         embedding_extra_headers={"X-Gateway-Key": "resolved-secret"},
         llm_extra_headers={"X-Llm-Key": "resolved-llm-secret"},
     )
@@ -208,11 +145,10 @@ def test_resolved_headers_are_kept_out_of_the_command_repr():
     assert "resolved-llm-secret" not in repr(command)
 
 
-async def test_search_reports_embedding_tokens_and_priced_cost(monkeypatch):
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
-    embedder = FakeEmbedder(vector=[0.1], tokens=250)
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
+async def test_search_reports_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
+    embedding_api.return_value = _litellm_response([0.1], prompt_tokens=250)
     monkeypatch.setattr(naive_search, "embedding_cost", lambda model, tokens: tokens * 2e-8)
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
 
     response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
 
@@ -220,11 +156,10 @@ async def test_search_reports_embedding_tokens_and_priced_cost(monkeypatch):
     assert response.usage.embedding_cost_usd == 250 * 2e-8
 
 
-async def test_search_reports_null_cost_for_unpriced_embedding_model(monkeypatch):
+async def test_search_reports_null_cost_for_unpriced_embedding_model(embedding_api):
+    embedding_api.return_value = _litellm_response([0.1], prompt_tokens=9)
     unpriced = _EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
     repo = FakeNaiveRagRepo(embedding_config=unpriced, found_chunks=[])
-    embedder = FakeEmbedder(vector=[0.1], tokens=9)
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
 
     response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
 

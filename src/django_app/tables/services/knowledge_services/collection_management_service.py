@@ -335,8 +335,10 @@ class CollectionManagementService:
             .values_list("document_content_id", flat=True)
         )
 
-        # Delete collections (cascades to DocumentMetadata)
-        deleted_count, _ = collections.delete()
+        # Delete collections (cascades to DocumentMetadata). The total delete() returns
+        # includes the cascaded rows; only the collections are reported.
+        _, deleted_per_model = collections.delete()
+        deleted_count = deleted_per_model.get(SourceCollection._meta.label, 0)
 
         # Clean up unreferenced content
         dangling_count = 0

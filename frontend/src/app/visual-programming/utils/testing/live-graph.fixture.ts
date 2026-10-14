@@ -178,6 +178,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     webhook_trigger: LIVE_WEBHOOK_TRIGGER_ID, // a bare id, in the graph response and in the export alike
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
     test_payload: { id: '104' },
+    use_storage: false,
 };
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
@@ -323,7 +324,6 @@ export const liveGraph: GraphDto = {
     python_node_list: [livePython],
     task_node_list: [liveTask],
     agent_node_list: [liveAgent],
-    llm_node_list: [],
     file_extractor_node_list: [liveFileExtractor],
     audio_transcription_node_list: [liveAudio],
     subgraph_node_list: [liveSubgraph],
@@ -335,5 +335,4 @@ export const liveGraph: GraphDto = {
     knowledge_node_list: [liveKnowledge],
     key_value_node_list: [liveKeyValue],
     edge_list: liveEdges,
-    conditional_edge_list: [],
 };

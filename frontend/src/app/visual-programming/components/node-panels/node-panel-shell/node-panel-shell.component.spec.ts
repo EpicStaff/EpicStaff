@@ -15,7 +15,6 @@ import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
-import { ConditionalEdgeNodePanelComponent } from '../conditional-edge-node-panel/conditional-edge-node-panel.component';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
 import { SubGraphNodePanelComponent } from '../subgraph-node-panel/subgraph-node-panel.component';
@@ -352,7 +351,6 @@ describe('NodePanelShellComponent', () => {
             });
             TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
             TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
-            TestBed.overrideComponent(ConditionalEdgeNodePanelComponent, { set: { template: '', imports: [] } });
             TestBed.overrideComponent(SubGraphNodePanelComponent, { set: { template: '', imports: [] } });
             // The flow page fills the store from every graph response; a version preview never does.
             if (options.loadedGraph ?? true) TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph);
@@ -398,24 +396,6 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', authorshipOfRow(liveSubgraph), detailsButton(fixture));
-        });
-
-        it('is opt-in per node type: a node type not switched on has no button', async () => {
-            const edgeNode = {
-                ...endNode,
-                type: NodeType.EDGE,
-                data: {
-                    source: 'a',
-                    then: 'b',
-                    python_code: { code: '', entrypoint: 'main', libraries: [] },
-                    input_map: {},
-                },
-            } as unknown as NodeModel;
-            const { fixture } = await mountDetails(edgeNode);
-
-            // The header itself is rendered, so the missing button is the opt-in, not an empty shell.
-            expect(fixture.nativeElement.querySelector('button[aria-label="Close dialog"]')).not.toBeNull();
-            expect(detailsButton(fixture)).toBeNull();
         });
 
         it('is shown to a viewer, since viewing details needs only flow read access', async () => {

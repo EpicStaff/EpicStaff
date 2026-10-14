@@ -23,7 +23,7 @@ import pytest
 from django.urls import reverse
 
 from agents.models import AgentDefinition
-from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
+from tables.models.realtime_models import RealtimeAgentDefinition
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -67,28 +67,14 @@ def _base_payload(rt_agent_definition, openai_config_id):
 
 
 @pytest.mark.django_db
-def test_patch_sets_new_provider_config(
-    auth_client, rt_agent_definition, openai_realtime_provider_config
+@pytest.mark.parametrize("method", ["patch", "put"])
+def test_update_sets_new_provider_config(
+    auth_client, rt_agent_definition, openai_realtime_provider_config, method
 ):
     url = reverse("realtimeagentdefinition-detail", args=[rt_agent_definition.pk])
     payload = _base_payload(rt_agent_definition, openai_realtime_provider_config.pk)
 
-    resp = auth_client.patch(url, payload, format="json")
-
-    assert resp.status_code == 200, resp.data
-    rt_agent_definition.refresh_from_db()
-    assert rt_agent_definition.openai_config_id == openai_realtime_provider_config.pk
-    assert rt_agent_definition.wake_word == "Banana Lover"
-
-
-@pytest.mark.django_db
-def test_put_sets_new_provider_config(
-    auth_client, rt_agent_definition, openai_realtime_provider_config
-):
-    url = reverse("realtimeagentdefinition-detail", args=[rt_agent_definition.pk])
-    payload = _base_payload(rt_agent_definition, openai_realtime_provider_config.pk)
-
-    resp = auth_client.put(url, payload, format="json")
+    resp = getattr(auth_client, method)(url, payload, format="json")
 
     assert resp.status_code == 200, resp.data
     rt_agent_definition.refresh_from_db()
@@ -158,13 +144,3 @@ def test_patch_voice_length_bounds(auth_client, rt_agent_definition, voice, stat
     assert resp.status_code == status_code, resp.data
     if status_code == 400:
         assert "voice" in resp.data["message"]
-
-
-@pytest.mark.django_db
-def test_realtime_agent_write_serializer_rejects_voice_over_100_characters():
-    from tables.serializers.model_serializers import RealtimeAgentWriteSerializer
-
-    serializer = RealtimeAgentWriteSerializer(data={"voice": "v" * 101}, partial=True)
-
-    assert not serializer.is_valid()
-    assert "voice" in serializer.errors

@@ -151,7 +151,7 @@ ROLES_CREATE_POST = {
                 "org_id": 10,
                 "name": "Billing Manager",
                 "description": "Manage billing secrets",
-                "permissions": [{"resource_type": "secrets", "actions": ["read", "update"]}],
+                "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
             },
             request_only=True,
         ),

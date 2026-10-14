@@ -46,6 +46,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    // accessible name for the field when it has no visible `label` (e.g. a plain text caption next to it)
+    ariaLabel = input<string>('');
     alwaysShowSteps = input<true>();
 
     mod = input<'default' | 'small'>('default');

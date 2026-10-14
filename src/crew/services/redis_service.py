@@ -49,13 +49,19 @@ class AsyncPubSubGroup:
                     self._pubsub = self._redis.pubsub()
                     await self._pubsub.subscribe(self._channel)
 
-                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=0.01)
+                # Subscribe confirmations and health-check replies come back as None.
+                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=None)
                 if msg is None:
-                    await asyncio.sleep(0.01)
                     continue
 
+                # A failing callback must not count as a disconnect: reconnecting
+                # drops this message for the other subscribers and every message
+                # published during the reconnect.
                 for sub in self._subscribers:
-                    await sub.update(msg)
+                    try:
+                        await sub.update(msg)
+                    except Exception:
+                        logger.exception("Subscriber callback failed on channel {}", self._channel)
             except Exception as e:
                 logger.error(f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}")
                 with contextlib.suppress(Exception):
@@ -141,6 +147,11 @@ class SyncPubSubGroup:
             logger.info(f"Unsubscribed from channel {self._channel}")
         else:
             logger.warning(f"Subscriber not found in channel {self._channel}")
+
+
+def _encode(message: dict | str) -> str:
+    # A str must already be JSON (e.g. from model_dump_json); it is sent as is.
+    return message if isinstance(message, str) else json.dumps(message)
 
 
 class RedisService(metaclass=SingletonMeta):
@@ -233,36 +244,37 @@ class RedisService(metaclass=SingletonMeta):
                 self._sync_pubsub_groups[channel].subscribe(subscriber)
             logger.info(f"Subscribed to channels: {', '.join(channels)}")
 
-    async def apublish(self, channel: str, message: object):
-        await self.aioredis_client.publish(channel=channel, message=json.dumps(message))
+    async def apublish(self, channel: str, message: dict | str):
+        await self.aioredis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
-    def publish(self, channel: str, message: object):
-        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
+    def publish(self, channel: str, message: dict | str):
+        self.sync_redis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
-    async def aadd_graph_message(self, message: dict) -> None:
-        """Append a graph session message to the stream django_app persists from.
+    async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:
+        """Append a graph session message, already encoded as JSON, to the stream
+        django_app persists from.
 
         Unlike a publish, the entry waits in Redis until django_app has stored it.
         """
         await self.aioredis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message),
+            graph_message_fields(message_uuid, encoded_message),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
-        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
+        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
 
-    def add_graph_message(self, message: dict) -> None:
+    def add_graph_message(self, message_uuid: str, encoded_message: str) -> None:
         """Synchronous ``aadd_graph_message`` for code without an event loop to await on."""
         self.sync_redis_client.xadd(
             GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message),
+            graph_message_fields(message_uuid, encoded_message),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
             approximate=True,
         )
-        logger.debug("Graph message {} added to {}", message["uuid"], GRAPH_MESSAGE_STREAM)
+        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
 
     async def aupdate_session_status(self, session_id: int, status: str, **kwargs):
         message = {

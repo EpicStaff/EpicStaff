@@ -10,7 +10,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     EndNode,
@@ -23,10 +22,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
-from tables.serializers.utils.mixins import (
-    NestedPythonCodeMixin,
-    assert_node_ref_in_graph,
-)
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -38,20 +34,7 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
-
-
-class ConditionalEdgeSerializer(
-    AuthorStampingSerializerMixin,
-    ContentHashWritableMixin,
-    NestedPythonCodeMixin,
-    serializers.ModelSerializer,
-):
-    python_code = PythonCodeSerializer()
-    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
-
-    class Meta(BaseGraphEntityMixin.Meta):
-        model = ConditionalEdge
-        fields = "__all__"
+from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
 
 
 class StartNodeSerializer(
@@ -169,19 +152,6 @@ class DecisionTableNodeSerializer(
         return attrs
 
 
-def validate_classification_condition_group_names(condition_groups_data) -> list[str]:
-    """Return a list of error strings for any group with a blank/null group_name."""
-    errors = []
-
-    for idx, group in enumerate(condition_groups_data or []):
-        name = group.get("group_name")
-
-        if name is None or (isinstance(name, str) and not name.strip()):
-            errors.append(f"condition_groups[{idx}]: group_name may not be blank.")
-
-    return errors
-
-
 class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     # prompt_key (preferred) links a same-payload prompt by its per-node key;
@@ -254,7 +224,10 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    CdtExplanationsSanitizingMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    serializers.ModelSerializer,
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)

@@ -48,15 +48,15 @@
     font-size: 10px;
     cursor: pointer;
 
-    &.is-disabled {
-        color: var(--color-input-text-placeholder);
-        cursor: not-allowed;
-    }
-
     &.is-fixed {
         color: var(--color-ks-transparent-text-60);
         cursor: default;
     }
+}
+
+// covered by "Full data on the same session": still ticked, but faded so the active choice stands out
+.match-scope__implied {
+    opacity: 0.16;
 }
 
 .match-scope__hint {
@@ -79,11 +79,6 @@
     &:focus-visible {
         outline: 2px solid var(--accent-color);
         outline-offset: 1px;
-    }
-
-    &:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
     }
 }
 

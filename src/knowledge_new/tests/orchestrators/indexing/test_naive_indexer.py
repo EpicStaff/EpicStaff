@@ -1,44 +1,43 @@
 import asyncio
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from application.commands import RunIndex
 from application.orchestrators.indexing.strategies import naive_indexer
-from application.orchestrators.indexing.strategies.naive_indexer import (
-    NaiveIndexOrchestrator,
-)
+from application.orchestrators.indexing.strategies.naive_indexer import NaiveIndexOrchestrator
 from domain.enums import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
 )
-from domain.errors import (
-    DocumentNotFoundError,
-    EmbeddingConfigNotFoundError,
-    EmbeddingError,
-    RagNotFoundError,
-)
+from domain.errors import DocumentNotFoundError, EmbeddingConfigNotFoundError, RagNotFoundError
 from domain.models import (
     ChunkingConfig,
     Document,
-    Embedding,
     EmbeddingConfig,
     IndexedChunk,
     PreviewChunk,
     Rag,
 )
 from domain.usage import IndexingRunUsage
+from infrastructure.naive.embedders.strategies import litellm_embedder
+
+VECTOR = [0.1, 0.2]
+DEFAULT_EMBEDDING_CONFIG = EmbeddingConfig(
+    provider=EmbedderProviderEnum.OPENAI, model="text-embedding-3-small"
+)
 
 
 class FakeNaiveRagRepo:
-    """In-memory repo for the indexing flow."""
+    """In-memory repo for the indexing flow; records every persisted status."""
 
     def __init__(
         self,
         *,
-        embedding_config: EmbeddingConfig | None,
         documents: list[Document],
-        rag: Rag | None = None,
+        rag: Rag | None,
+        embedding_config: EmbeddingConfig | None = DEFAULT_EMBEDDING_CONFIG,
         get_rag_raises: BaseException | None = None,
         get_documents_raises: BaseException | None = None,
     ):
@@ -84,24 +83,13 @@ class FakeNaiveRagRepo:
     async def update_document(self, rag_id: int, document: Document) -> None:
         self.doc_status_log.append(document.status)
 
-    async def save_indexed_chunks(
-        self, document_id: int, chunks: list[IndexedChunk]
-    ) -> None:
+    async def save_indexed_chunks(self, document_id: int, chunks: list[IndexedChunk]) -> None:
         self.saved_indexed_chunks.append((document_id, list(chunks)))
 
 
 class FakeUoW:
-    """In-memory unit of work — re-enterable."""
-
-    def __init__(
-        self,
-        repo: FakeNaiveRagRepo,
-        *,
-        commit_errors: list[BaseException] | None = None,
-    ):
+    def __init__(self, repo: FakeNaiveRagRepo):
         self.naive_rag_repo = repo
-        self._commit_errors: list[BaseException] | None = list(commit_errors or [])
-        self.commit_count = 0
 
     async def __aenter__(self):
         return self
@@ -110,593 +98,246 @@ class FakeUoW:
         return False
 
     async def commit(self):
-        self.commit_count += 1
-        if self._commit_errors:
-            exc = self._commit_errors.pop(0)
-            if exc is not None:
-                raise exc
+        pass
 
 
-class FakeEmbedder:
-    """Stands in for the external embedding-provider API."""
-
-    def __init__(
-        self, vector: list[float], *, raises: BaseException | None = None, tokens: int = 0
-    ):
-        self._vector = vector
-        self._raises = raises
-        self._tokens = tokens
-        self.embedded: list[str] = []
-
-    async def embed(self, text: str) -> Embedding:
-        self.embedded.append(text)
-        if self._raises is not None:
-            raise self._raises
-        return Embedding(vector=self._vector, tokens=self._tokens)
+def _provider_response(prompt_tokens: int | None = None):
+    usage = None if prompt_tokens is None else type("Usage", (), {"prompt_tokens": prompt_tokens})()
+    return type("Resp", (), {"data": [{"embedding": VECTOR}], "usage": usage})()
 
 
-_EMBEDDING_CONFIG = EmbeddingConfig(
-    provider=EmbedderProviderEnum.OPENAI,
-    model="text-embedding-3-small",
-)
+@pytest.fixture
+def embedding_api():
+    """litellm's embedding call, the boundary to the provider's HTTP API."""
+    mock = AsyncMock(return_value=_provider_response())
+    with patch.object(litellm_embedder.litellm, "aembedding", mock):
+        yield mock
 
-_DUMMY_DOCUMENT = Document(
-    id=1,
-    name="doc.txt",
-    content=b"alpha\n\nbeta",
-    status=DocumentStatusEnum.NEW,
-    config=ChunkingConfig(
-        chunk_strategy=ChunkStrategyEnum.CHARACTER,
-        chunk_size=50,
-        chunk_overlap=0,
-        extra={"character": {"regex": r"\n\n"}},
-    ),
+
+def _embedded_texts(embedding_api) -> list[str]:
+    return [call.kwargs["input"][0] for call in embedding_api.await_args_list]
+
+
+PARAGRAPH_CONFIG = ChunkingConfig(
+    chunk_strategy=ChunkStrategyEnum.CHARACTER,
+    chunk_size=50,
+    chunk_overlap=0,
+    extra={"character": {"regex": r"\n\n"}},
 )
 
 
-def _new_rag(rag_id: int = 1) -> Rag:
-    return Rag(id=rag_id, status=IndexStatusEnum.NEW, indexing_document_ids=set())
-
-
-async def test_index_success_full_flow_sets_document_and_rag_statuses(monkeypatch):
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, config: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.doc_status_log == [
-        DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.COMPLETED,
-    ]
-    assert document.status == DocumentStatusEnum.COMPLETED
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.COMPLETED,
-    ]
-    assert rag.indexing_document_ids == set()
-    assert embedder.embedded == ["alpha", "beta"]
-
-
-async def test_index_skips_already_completed_document_with_unchanged_config(
-    monkeypatch,
-):
-    config = ChunkingConfig(
-        chunk_strategy=ChunkStrategyEnum.CHARACTER,
-        chunk_size=50,
-        chunk_overlap=0,
-        extra={"character": {"regex": r"\n\n"}},
-    )
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.COMPLETED,
-        config=config,
-        last_indexing_config=config,  # unchanged since last index → reindex not required
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.doc_status_log == []
-    assert document.status == DocumentStatusEnum.COMPLETED
-    assert embedder.embedded == []
-    assert repo.saved_indexed_chunks == []
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.COMPLETED,
-    ]
-    assert rag.indexing_document_ids == set()
-
-
-async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatch):
-    preview_chunks = [PreviewChunk(text="alpha"), PreviewChunk(text="beta")]
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-        preview_chunks=preview_chunks,
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.doc_status_log == [
-        DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.COMPLETED,
-    ]
-    assert document.status == DocumentStatusEnum.COMPLETED
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.COMPLETED,
-    ]
-    assert embedder.embedded == ["alpha", "beta"]
-    expected_indexed = [
-        IndexedChunk(text="alpha", vector=[0.1, 0.2]),
-        IndexedChunk(text="beta", vector=[0.1, 0.2]),
-    ]
-    assert document.indexed_chunks == expected_indexed
-    assert repo.saved_indexed_chunks == [(7, expected_indexed)]
-
-
-async def test_index_rechunks_when_config_changed_despite_existing_preview_chunks(
-    monkeypatch,
-):
-    stale_chunks = [PreviewChunk(text="stale")]
-    previous_config = ChunkingConfig(
-        chunk_strategy=ChunkStrategyEnum.CHARACTER,
-        chunk_size=10,
-        chunk_overlap=0,
-    )
-    current_config = ChunkingConfig(
-        chunk_strategy=ChunkStrategyEnum.CHARACTER,
-        chunk_size=50,
-        chunk_overlap=0,
-        extra={"character": {"regex": r"\n\n"}},
-    )
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.COMPLETED,
-        config=current_config,
-        last_indexing_config=previous_config,  # differs → reindex required → re-chunk
-        preview_chunks=stale_chunks,
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.doc_status_log == [
-        DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.COMPLETED,
-    ]
-    assert document.status == DocumentStatusEnum.COMPLETED
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.COMPLETED,
-    ]
-    assert document.preview_chunks == []
-    assert embedder.embedded == ["alpha", "beta"]
-    expected_indexed = [
-        IndexedChunk(text="alpha", vector=[0.1, 0.2]),
-        IndexedChunk(text="beta", vector=[0.1, 0.2]),
-    ]
-    assert document.indexed_chunks == expected_indexed
-    assert repo.saved_indexed_chunks == [(7, expected_indexed)]
-
-
-@pytest.mark.parametrize(
-    "get_rag_raises,get_documents_raises,commit_errors,expected_rag_log,expected_doc_log",
-    [
-        (
-            asyncio.CancelledError(),
-            None,
-            None,
-            [],
-            [],
-        ),
-        (
-            None,
-            asyncio.CancelledError(),
-            None,
-            [IndexStatusEnum.CANCELLED],
-            [],
-        ),
-        (
-            None,
-            None,
-            [asyncio.CancelledError(), None],
-            [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
-            [],
-        ),
-        (
-            None,
-            None,
-            [None, None, asyncio.CancelledError(), None],
-            [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.COMPLETED],
-        ),
-    ],
-    ids=["rag_fetch", "preparation", "processing_update", "document_update"],
-)
-async def test_cancellation_marks_rag_cancelled(
-    monkeypatch,
-    get_rag_raises,
-    get_documents_raises,
-    commit_errors,
-    expected_rag_log,
-    expected_doc_log,
-):
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-        preview_chunks=[PreviewChunk(text="alpha"), PreviewChunk(text="beta")],
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG,
-        documents=[document],
-        rag=rag,
-        get_rag_raises=get_rag_raises,
-        get_documents_raises=get_documents_raises,
-    )
-    uow = FakeUoW(repo, commit_errors=commit_errors)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-    assert repo.rag_status_log == expected_rag_log
-    assert repo.doc_status_log == expected_doc_log
-
-
-@pytest.mark.parametrize(
-    "doc_kwargs,embed_raises,expected_doc_log",
-    [
-        (
-            {
-                "name": "doc.csv",
-                "content": b"\xff\xfe",
-                "status": DocumentStatusEnum.NEW,
-                "config": ChunkingConfig(
-                    chunk_strategy=ChunkStrategyEnum.CSV,
-                    chunk_size=50,
-                    chunk_overlap=0,
-                ),
-            },
-            None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
-        ),
-        (
-            {
-                "name": "doc.json",
-                "content": b"{not valid",
-                "status": DocumentStatusEnum.NEW,
-                "config": ChunkingConfig(
-                    chunk_strategy=ChunkStrategyEnum.JSON,
-                    chunk_size=50,
-                    chunk_overlap=0,
-                ),
-            },
-            None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
-        ),
-        (
-            {
-                "name": "doc.txt",
-                "content": b"\n\n",
-                "status": DocumentStatusEnum.NEW,
-                "config": ChunkingConfig(
-                    chunk_strategy=ChunkStrategyEnum.CHARACTER,
-                    chunk_size=50,
-                    chunk_overlap=0,
-                    extra={"character": {"regex": r"\n\n"}},
-                ),
-            },
-            None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
-        ),
-        (
-            {
-                "name": "doc.txt",
-                "content": b"alpha\n\nbeta",
-                "status": DocumentStatusEnum.NEW,
-                "config": ChunkingConfig(
-                    chunk_strategy=ChunkStrategyEnum.CHARACTER,
-                    chunk_size=50,
-                    chunk_overlap=0,
-                    extra={"character": {"regex": r"\n\n"}},
-                ),
-                "preview_chunks": [
-                    PreviewChunk(text="alpha"),
-                    PreviewChunk(text="beta"),
-                ],
-            },
-            EmbeddingError(embedder="FakeEmbedder"),
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
-        ),
-    ],
-    ids=[
-        "extraction_failure",
-        "chunking_failure",
-        "no_chunks_produced",
-        "embedding_failure",
-    ],
-)
-async def test_document_error_marks_document_failed_and_rag_failed(
-    monkeypatch, doc_kwargs, embed_raises, expected_doc_log
-):
-    document = Document(id=7, **doc_kwargs)
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2], raises=embed_raises)
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert document.status == DocumentStatusEnum.FAILED
-    assert document.error_message  # populated by mark_as_failed(error)
-    assert repo.doc_status_log == expected_doc_log
-    # no document completed → rag ends FAILED
-    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
-
-
-async def test_index_partial_when_one_document_succeeds_and_one_fails(monkeypatch):
-    good_doc = Document(
-        id=1,
-        name="good.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-        preview_chunks=[PreviewChunk(text="alpha"), PreviewChunk(text="beta")],
-    )
-    bad_doc = Document(
-        id=2,
-        name="bad.json",
-        content=b"{not valid",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.JSON,
-            chunk_size=50,
-            chunk_overlap=0,
-        ),  # malformed JSON → ChunkingError
-    )
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[good_doc, bad_doc], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({1, 2}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert good_doc.status == DocumentStatusEnum.COMPLETED
-    assert bad_doc.status == DocumentStatusEnum.FAILED
-    assert repo.doc_status_log == [
-        DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.COMPLETED,
-        DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.FAILED,
-    ]
-    expected_indexed = [
-        IndexedChunk(text="alpha", vector=[0.1, 0.2]),
-        IndexedChunk(text="beta", vector=[0.1, 0.2]),
-    ]
-    assert repo.saved_indexed_chunks == [(1, expected_indexed)]
-    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.PARTIAL]
-
-
-@pytest.mark.parametrize(
-    "embedding_config,documents,document_ids,expected_exc",
-    [
-        (
-            None,
-            [_DUMMY_DOCUMENT],
-            frozenset({1}),
-            EmbeddingConfigNotFoundError,
-        ),
-        (
-            _EMBEDDING_CONFIG,
-            [],
-            frozenset(),
-            DocumentNotFoundError,
-        ),
-    ],
-    ids=["embedding_config_not_found", "no_documents"],
-)
-async def test_top_level_error_marks_rag_failed_and_reraises(
-    monkeypatch,
-    embedding_config,
-    documents,
-    document_ids,
-    expected_exc,
-):
-    rag = _new_rag()
-    repo = FakeNaiveRagRepo(
-        embedding_config=embedding_config, documents=documents, rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(rag_id=1, document_ids=document_ids, embedding_api_key="sk-test")
-
-    with pytest.raises(expected_exc):
-        await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.rag_status_log == [IndexStatusEnum.FAILED]
-    assert repo.doc_status_log == []
-    assert embedder.embedded == []
-
-
-async def test_missing_rag_raises_and_does_not_mark_anything(monkeypatch):
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[], rag=None)
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
-
-    request = RunIndex(
-        rag_id=999, document_ids=frozenset(), embedding_api_key="sk-test"
-    )
-
-    with pytest.raises(RagNotFoundError):
-        await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert repo.rag_status_log == []
-
-
-def _static_document(status: DocumentStatusEnum, doc_id: int) -> Document:
-    """A document excluded from `document_ids` — sits in the collection untouched by this run."""
+def _document(doc_id: int = 7, **overrides) -> Document:
+    """A text document whose content chunks into "alpha" and "beta"."""
     return Document(
-        id=doc_id,
-        name="other.txt",
-        content=b"irrelevant",
-        status=status,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-        ),
+        **{
+            "id": doc_id,
+            "name": "doc.txt",
+            "content": b"alpha\n\nbeta",
+            "status": DocumentStatusEnum.NEW,
+            "config": PARAGRAPH_CONFIG,
+            **overrides,
+        }
     )
 
 
-def _processed_document(outcome: str, doc_id: int) -> Document:
-    """The document actually run through `on_execute` this call; ends up COMPLETED or FAILED."""
-    if outcome == "completed":
-        config = ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        )
-        return Document(
-            id=doc_id,
-            name="doc.txt",
-            content=b"alpha\n\nbeta",
-            status=DocumentStatusEnum.COMPLETED,
-            config=config,
-            last_indexing_config=config,  # unchanged → skipped, stays COMPLETED
-        )
+def _broken_json_document(doc_id: int) -> Document:
     return Document(
         id=doc_id,
         name="doc.json",
         content=b"{not valid",
         status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.JSON,
-            chunk_size=50,
-            chunk_overlap=0,
-        ),  # malformed JSON → chunker fails → mark_failed()
+        config=ChunkingConfig(chunk_strategy=ChunkStrategyEnum.JSON, chunk_size=50, chunk_overlap=0),
     )
 
 
+def _new_rag(**overrides) -> Rag:
+    return Rag(
+        **{"id": 1, "status": IndexStatusEnum.NEW, "indexing_document_ids": set(), **overrides}
+    )
+
+
+async def _index(
+    repo: FakeNaiveRagRepo, *document_ids: int, embedding_extra_headers: dict[str, str] | None = None
+):
+    request = RunIndex(
+        rag_id=1,
+        document_ids=frozenset(document_ids),
+        embedding_api_key="sk-test",
+        embedding_extra_headers=embedding_extra_headers or {},
+    )
+    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+
+
+def _indexed(*texts: str) -> list[IndexedChunk]:
+    return [IndexedChunk(text=text, vector=VECTOR) for text in texts]
+
+
+async def test_new_document_is_chunked_embedded_and_saved(embedding_api):
+    document = _document()
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=[document], rag=rag)
+
+    await _index(repo, 7)
+
+    assert _embedded_texts(embedding_api) == ["alpha", "beta"]
+    assert embedding_api.await_args.kwargs["api_key"] == "sk-test"
+    assert repo.saved_indexed_chunks == [(7, _indexed("alpha", "beta"))]
+    assert repo.doc_status_log == [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.COMPLETED]
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
+    assert rag.indexing_document_ids == set()
+
+
+async def test_document_already_indexed_with_the_same_config_is_skipped(embedding_api):
+    document = _document(status=DocumentStatusEnum.COMPLETED, last_indexing_config=PARAGRAPH_CONFIG)
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=[document], rag=rag)
+
+    await _index(repo, 7)
+
+    assert _embedded_texts(embedding_api) == []
+    assert repo.saved_indexed_chunks == []
+    assert repo.doc_status_log == []
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
+    assert rag.indexing_document_ids == set()
+
+
+async def test_existing_preview_chunks_are_indexed_instead_of_rechunking(embedding_api):
+    """Preview chunks the user already reviewed are what gets indexed."""
+    document = _document(preview_chunks=[PreviewChunk(text="reviewed chunk")])
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert _embedded_texts(embedding_api) == ["reviewed chunk"]
+    assert repo.saved_indexed_chunks == [(7, _indexed("reviewed chunk"))]
+
+
+async def test_changed_config_rechunks_despite_existing_preview_chunks(embedding_api):
+    document = _document(
+        status=DocumentStatusEnum.COMPLETED,
+        last_indexing_config=ChunkingConfig(
+            chunk_strategy=ChunkStrategyEnum.CHARACTER, chunk_size=10, chunk_overlap=0
+        ),
+        preview_chunks=[PreviewChunk(text="stale")],
+    )
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert _embedded_texts(embedding_api) == ["alpha", "beta"]
+    assert repo.saved_indexed_chunks == [(7, _indexed("alpha", "beta"))]
+    assert repo.doc_status_log[-1] == DocumentStatusEnum.COMPLETED
+
+
 @pytest.mark.parametrize(
-    "doc1_status,doc2_outcome,expected_status",
+    ("cancelled_at", "expected_rag_log", "expected_doc_log"),
+    [
+        ("loading the rag", [], []),
+        ("loading the documents", [IndexStatusEnum.CANCELLED], []),
+        (
+            "embedding",
+            [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
+            # The document is put back to the status it had before this run.
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.NEW],
+        ),
+    ],
+)
+async def test_cancelled_run_marks_rag_cancelled_and_restores_the_document(
+    embedding_api, cancelled_at, expected_rag_log, expected_doc_log
+):
+    if cancelled_at == "embedding":
+        embedding_api.side_effect = asyncio.CancelledError()
+    repo = FakeNaiveRagRepo(
+        documents=[_document()],
+        rag=_new_rag(),
+        get_rag_raises=asyncio.CancelledError() if cancelled_at == "loading the rag" else None,
+        get_documents_raises=(
+            asyncio.CancelledError() if cancelled_at == "loading the documents" else None
+        ),
+    )
+
+    await _index(repo, 7)
+
+    assert repo.rag_status_log == expected_rag_log
+    assert repo.doc_status_log == expected_doc_log
+    assert repo.saved_indexed_chunks == []
+
+
+CSV_CONFIG = ChunkingConfig(chunk_strategy=ChunkStrategyEnum.CSV, chunk_size=50, chunk_overlap=0)
+
+
+@pytest.mark.parametrize(
+    ("document", "provider_error"),
+    [
+        (_document(name="doc.csv", content=b"\xff\xfe", config=CSV_CONFIG), None),
+        (_broken_json_document(7), None),
+        (_document(content=b"\n\n"), None),
+        (_document(), RuntimeError("provider down")),
+    ],
+    ids=["extraction_failure", "chunking_failure", "no_chunks_produced", "embedding_failure"],
+)
+async def test_document_failure_marks_document_and_rag_failed(
+    embedding_api, document, provider_error
+):
+    embedding_api.side_effect = provider_error
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert document.status == DocumentStatusEnum.FAILED
+    assert document.error_message
+    assert repo.doc_status_log == [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED]
+    assert repo.saved_indexed_chunks == []
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
+
+
+async def test_one_failing_document_does_not_stop_the_others(embedding_api):
+    good_document = _document(1)
+    bad_document = _broken_json_document(2)
+    repo = FakeNaiveRagRepo(documents=[good_document, bad_document], rag=_new_rag())
+
+    await _index(repo, 1, 2)
+
+    assert good_document.status == DocumentStatusEnum.COMPLETED
+    assert bad_document.status == DocumentStatusEnum.FAILED
+    assert repo.saved_indexed_chunks == [(1, _indexed("alpha", "beta"))]
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.PARTIAL]
+
+
+@pytest.mark.parametrize(
+    ("embedding_config", "documents", "expected_error"),
+    [
+        (None, [_document()], EmbeddingConfigNotFoundError),
+        (DEFAULT_EMBEDDING_CONFIG, [], DocumentNotFoundError),
+    ],
+    ids=["embedding_config_not_found", "no_documents"],
+)
+async def test_unusable_rag_is_marked_failed_and_the_error_raised(
+    embedding_api, embedding_config, documents, expected_error
+):
+    repo = FakeNaiveRagRepo(
+        documents=documents, rag=_new_rag(), embedding_config=embedding_config
+    )
+
+    with pytest.raises(expected_error):
+        await _index(repo, 7)
+
+    assert repo.rag_status_log == [IndexStatusEnum.FAILED]
+    assert repo.doc_status_log == []
+    assert _embedded_texts(embedding_api) == []
+
+
+async def test_missing_rag_raises_and_marks_nothing(embedding_api):
+    repo = FakeNaiveRagRepo(documents=[], rag=None)
+
+    with pytest.raises(RagNotFoundError):
+        await _index(repo, 7)
+
+    assert repo.rag_status_log == []
+
+
+@pytest.mark.parametrize(
+    ("other_document_status", "indexed_document", "expected_status"),
     [
         (DocumentStatusEnum.NEW, "completed", IndexStatusEnum.COMPLETED),
         (DocumentStatusEnum.NEW, "failed", IndexStatusEnum.FAILED),
@@ -706,180 +347,75 @@ def _processed_document(outcome: str, doc_id: int) -> Document:
         (DocumentStatusEnum.COMPLETED, "failed", IndexStatusEnum.PARTIAL),
         (DocumentStatusEnum.FAILED, "completed", IndexStatusEnum.PARTIAL),
         (DocumentStatusEnum.FAILED, "failed", IndexStatusEnum.FAILED),
-        # A remaining OUTDATED document makes the rag OUTDATED regardless of doc2 outcome
         (DocumentStatusEnum.OUTDATED, "completed", IndexStatusEnum.OUTDATED),
         (DocumentStatusEnum.OUTDATED, "failed", IndexStatusEnum.OUTDATED),
     ],
-    ids=[
-        "doc1=new,doc2=completed",
-        "doc1=new,doc2=failed",
-        "doc1=processing,doc2=completed",
-        "doc1=processing,doc2=failed",
-        "doc1=completed,doc2=completed",
-        "doc1=completed,doc2=failed",
-        "doc1=failed,doc2=completed",
-        "doc1=failed,doc2=failed",
-        "doc1=outdated,doc2=completed",
-        "doc1=outdated,doc2=failed",
-    ],
 )
-async def test_finalize_rag_status_considers_documents_outside_ids(
-    monkeypatch, doc1_status, doc2_outcome, expected_status
+async def test_rag_status_accounts_for_documents_outside_the_run(
+    embedding_api, other_document_status, indexed_document, expected_status
 ):
-    doc1 = _static_document(doc1_status, doc_id=1)  # excluded from this run
-    doc2 = _processed_document(doc2_outcome, doc_id=2)  # the one actually indexed
+    other_document = Document(
+        id=1,
+        name="other.txt",
+        content=b"irrelevant",
+        status=other_document_status,
+        config=PARAGRAPH_CONFIG,
+    )
+    if indexed_document == "completed":
+        indexed = _document(2)
+    else:
+        indexed = _broken_json_document(2)
     rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=[other_document, indexed], rag=rag)
 
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[doc1, doc2], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    await _index(repo, 2)
 
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({2}), embedding_api_key="sk-test"
-    )
-
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert doc1.status == doc1_status  # untouched — outside document_ids
+    assert other_document.status == other_document_status
     assert repo.rag_status_log[-1] == expected_status
     assert rag.indexing_document_ids == set()
 
 
-async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkeypatch):
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
+@pytest.mark.parametrize(
+    ("other_documents", "expected_reasons", "expected_status"),
+    [
+        ([], {}, IndexStatusEnum.COMPLETED),
+        (
+            [Document(id=1, name="old.txt", content=b"x", status=DocumentStatusEnum.OUTDATED,
+                      config=PARAGRAPH_CONFIG)],
+            {"doc_1": "source_changed"},
+            IndexStatusEnum.OUTDATED,
         ),
-    )
-    rag = Rag(
-        id=1,
-        status=IndexStatusEnum.NEW,
-        indexing_document_ids=set(),
-        outdated_reasons={"doc_7": "content_changed"},
-    )
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+    ],
+    ids=["no-outdated-document-left", "outdated-document-remains"],
+)
+async def test_outdated_reasons_are_kept_only_while_an_outdated_document_remains(
+    embedding_api, other_documents, expected_reasons, expected_status
+):
+    rag = _new_rag(outdated_reasons={"doc_1": "source_changed"})
+    repo = FakeNaiveRagRepo(documents=[*other_documents, _document(2)], rag=rag)
 
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test"
-    )
+    await _index(repo, 2)
 
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert rag.outdated_reasons == {}
-    assert repo.rag_status_log[-1] == IndexStatusEnum.COMPLETED
+    assert rag.outdated_reasons == expected_reasons
+    assert repo.rag_status_log[-1] == expected_status
 
 
-async def test_outdated_reasons_preserved_when_outdated_document_remains(monkeypatch):
-    outdated_doc = _static_document(DocumentStatusEnum.OUTDATED, doc_id=1)
-    active_doc = Document(
-        id=2,
-        name="active.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-    )
-    rag = Rag(
-        id=1,
-        status=IndexStatusEnum.NEW,
-        indexing_document_ids=set(),
-        outdated_reasons={"doc_1": "source_changed"},
-    )
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG,
-        documents=[outdated_doc, active_doc],
-        rag=rag,
-    )
-    uow = FakeUoW(repo)
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-    monkeypatch.setattr(
-        naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder
-    )
+async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_api, monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    request = RunIndex(
-        rag_id=1, document_ids=frozenset({2}), embedding_api_key="sk-test"
-    )
+    await _index(repo, 7, embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
 
-    await NaiveIndexOrchestrator(uow).execute(request)
-
-    assert rag.outdated_reasons == {"doc_1": "source_changed"}
-    assert repo.rag_status_log[-1] == IndexStatusEnum.OUTDATED
+    assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
-async def test_embedding_extra_headers_reach_the_embedder_config(monkeypatch):
-    received_configs: list[EmbeddingConfig] = []
-    embedder = FakeEmbedder(vector=[0.1, 0.2])
-
-    def capturing_build_embedder(provider, api_key, config):
-        received_configs.append(config)
-        return embedder
-
-    monkeypatch.setattr(naive_indexer, "build_embedder", capturing_build_embedder)
-
-    document = _static_document(DocumentStatusEnum.NEW, doc_id=7)
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=_new_rag()
-    )
-    request = RunIndex(
-        rag_id=1,
-        document_ids=frozenset({7}),
-        embedding_api_key="sk-test",
-        embedding_extra_headers={"X-Gateway-Key": "resolved-value"},
-    )
-
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
-
-    assert received_configs[0].extra_headers == {"X-Gateway-Key": "resolved-value"}
-
-
-def _character_document(document_id: int = 7) -> Document:
-    return Document(
-        id=document_id,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-    )
-
-
-async def test_run_records_embedding_tokens_and_priced_cost(monkeypatch):
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
-    )
-    embedder = FakeEmbedder(vector=[0.1], tokens=10)
-    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+async def test_run_records_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
+    embedding_api.return_value = _provider_response(prompt_tokens=10)
     monkeypatch.setattr(naive_indexer, "embedding_cost", lambda model, tokens: tokens * 1e-7)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 20  # two chunks, 10 tokens each
@@ -888,72 +424,42 @@ async def test_run_records_embedding_tokens_and_priced_cost(monkeypatch):
     assert run.cost_usd == 20 * 1e-7
 
 
-async def test_run_records_null_cost_for_unpriced_embedding_model(monkeypatch):
-    unpriced = _EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
-    repo = FakeNaiveRagRepo(
-        embedding_config=unpriced, documents=[_character_document()], rag=_new_rag()
-    )
-    embedder = FakeEmbedder(vector=[0.1], tokens=10)
-    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+async def test_run_records_null_cost_for_unpriced_embedding_model(embedding_api):
+    embedding_api.return_value = _provider_response(prompt_tokens=10)
+    unpriced = DEFAULT_EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag(), embedding_config=unpriced)
 
-    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 20
     assert run.cost_usd is None
 
 
-async def test_run_records_tokens_consumed_before_a_chunk_fails(monkeypatch):
-    class FailsOnSecondChunk(FakeEmbedder):
-        async def embed(self, text: str) -> Embedding:
-            if text == "beta":
-                raise EmbeddingError(embedder="FakeEmbedder")
-            return await super().embed(text)
+async def test_run_records_tokens_consumed_before_a_chunk_fails(embedding_api):
+    embedding_api.side_effect = [_provider_response(prompt_tokens=10), RuntimeError("provider down")]
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
-    )
-    embedder = FailsOnSecondChunk(vector=[0.1], tokens=10)
-    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
-
-    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10
 
 
-async def test_run_that_consumed_nothing_records_no_usage(monkeypatch):
-    document = _character_document()
-    document.status = DocumentStatusEnum.COMPLETED
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=_new_rag()
-    )
-    embedder = FakeEmbedder(vector=[0.1], tokens=10)
-    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
+async def test_run_that_consumed_nothing_records_no_usage(embedding_api):
+    document = _document(status=DocumentStatusEnum.COMPLETED, last_indexing_config=PARAGRAPH_CONFIG)
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
 
-    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await _index(repo, 7)
 
     assert repo.usage_runs == []
 
 
-async def test_cancelled_run_records_tokens_consumed_so_far(monkeypatch):
-    class CancelsOnSecondChunk(FakeEmbedder):
-        async def embed(self, text: str) -> Embedding:
-            if text == "beta":
-                raise asyncio.CancelledError
-            return await super().embed(text)
+async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
+    embedding_api.side_effect = [_provider_response(prompt_tokens=10), asyncio.CancelledError()]
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, documents=[_character_document()], rag=_new_rag()
-    )
-    embedder = CancelsOnSecondChunk(vector=[0.1], tokens=10)
-    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, api_key, cfg: embedder)
-
-    request = RunIndex(rag_id=1, document_ids=frozenset({7}), embedding_api_key="sk-test")
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10

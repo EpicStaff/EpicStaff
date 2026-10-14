@@ -9,6 +9,7 @@ from tables.import_export.constants import DEPENDENCY_ORDER, NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
@@ -62,6 +63,7 @@ class PartialImportService:
             raise ValidationError({"detail": "No nodes found in the import file."})
 
         id_mapper = IDMapper()
+        export_data = prepare_import_data(export_data)
 
         with transaction.atomic():
             # Step 1: import non-node dependencies (LLM configs, crews, etc.)
@@ -138,11 +140,15 @@ class PartialImportService:
                 was_created = existing is None
 
                 if was_created and effective_permissions is not None:
-                    resource = ENTITY_RESOURCE_MAP.get(entity_type)
-                    if resource is not None and not effective_permissions.can(
-                        resource, Permission.CREATE
+                    for created_type in (
+                        entity_type,
+                        *strategy.nested_entity_types(entity_data),
                     ):
-                        denied_resources.add(resource)
+                        resource = ENTITY_RESOURCE_MAP.get(created_type)
+                        if resource is not None and not effective_permissions.can(
+                            resource, Permission.CREATE
+                        ):
+                            denied_resources.add(resource)
 
                 instance = strategy.import_entity(
                     entity_data, id_mapper, is_main=False, org_id=org_id, user=user

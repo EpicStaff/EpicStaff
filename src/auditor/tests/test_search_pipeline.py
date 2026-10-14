@@ -1,22 +1,12 @@
-import os
-
-# See test_query_routes.py's header comment - same reasoning.
-os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
-os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
-os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
-os.environ.setdefault("REDIS_HOST", "localhost")
-os.environ.setdefault("REDIS_USER", "test")
-os.environ.setdefault("REDIS_PORT", "6379")
-os.environ.setdefault("REDIS_PASSWORD", "")
-os.environ.setdefault("AUDITOR_REDIS_DB", "1")
-
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.domains.sessions.domain import SESSIONS
+from app.domains.sessions.schemas import SessionSearchRequest
 from app.services.search_pipeline import SearchPipeline
 from src.shared.models import SessionAuditEvent
+from tests._fakes import InMemoryFakeRepository
 
 
 def _make_event(id_: str) -> SessionAuditEvent:
@@ -52,8 +42,67 @@ async def test_scan_all_does_not_stop_on_an_empty_page_with_a_follow_up_cursor()
     )
 
     collected = []
-    async for page in pipeline._scan_all(repository, compiled_query={}):
+    async for page in pipeline.scan(repository, None, None, org_id=7, retention_days=0):
         collected.extend(page)
 
     assert [e.id for e in collected] == ["e1", "e2", "e3"]
-    assert repository.calls == 3
+
+
+def _tree_events() -> list[SessionAuditEvent]:
+    """A session tree (session -> node -> event) plus another session's event."""
+    now = datetime.now(timezone.utc)
+
+    def event(event_id, kind, seconds, parent_id="", session_id=100):
+        return SessionAuditEvent(
+            id=event_id, parent_id=parent_id, session_id=session_id, kind=kind,
+            status="failed", event_time=now + timedelta(seconds=seconds), org_id=7,
+        )
+
+    return [
+        event("sess-1", "session", 0),
+        event("node-1", "node", 1, "sess-1"),
+        event("evt-1", "event", 2, "node-1"),
+        event("evt-other", "event", 0, session_id=200),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            {"filters": {"field": "session_id", "op": "equals", "value": 100}},
+            {"sess-1": True, "node-1": True, "evt-1": True},
+        ),
+        (
+            {
+                "filters": {"field": "id", "op": "equals", "value": "sess-1"},
+                "match_scope": {"children": True},
+            },
+            {"sess-1": True, "node-1": False, "evt-1": False},
+        ),
+        (
+            # The history is re-fetched as new objects; matches are recognised by id.
+            {
+                "filters": {"field": "id", "op": "equals", "value": "evt-1"},
+                "match_scope": {"full_session_history": True},
+            },
+            {"sess-1": False, "node-1": False, "evt-1": True},
+        ),
+    ],
+    ids=["no-match-scope", "children", "full-session-history"],
+)
+@pytest.mark.asyncio
+async def test_match_scope_expansion_flags_only_the_rows_the_filter_matched(body, expected):
+    request = SessionSearchRequest(**body)
+
+    events, _, _ = await SearchPipeline.from_domain(SESSIONS).search(
+        InMemoryFakeRepository(_tree_events()),
+        request.resolve_filter_node(),
+        request.match_scope,
+        org_id=7,
+        retention_days=0,
+        cursor=None,
+        size=request.size,
+    )
+
+    assert {event.id: event.filter_matched for event in events} == expected

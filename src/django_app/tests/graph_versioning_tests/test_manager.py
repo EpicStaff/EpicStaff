@@ -3,7 +3,6 @@
 import pytest
 
 from tables.import_export.strategies.graph import GRAPH_CHILD_RELATIONS, GraphStrategy
-from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.constants import NODE_MAPPING_KEY
@@ -22,7 +21,6 @@ def test_filter_snapshot_nulls_fk_for_agent_node_when_definition_missing(
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
@@ -39,7 +37,6 @@ def test_filter_snapshot_keeps_agent_node_untouched_when_definition_available(
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {}
 
@@ -53,47 +50,69 @@ def test_filter_snapshot_keeps_agent_node_untouched_when_definition_available(
     assert warnings == []
 
 
-def test_filter_edges_drops_edge_to_skipped_node(manager, start_node_dict):
-    SKIPPED_NODE_ID = 777
-    edges = [{"start_node_id": start_node_dict["id"], "end_node_id": SKIPPED_NODE_ID}]
-
-    kept, warnings = manager._filter_edges(edges, {SKIPPED_NODE_ID})
-
-    assert kept == []
-    assert [w["type"] for w in warnings] == ["edge_dropped"]
+# A node of a type that no longer exists is always skipped on restore; every
+# reference to it must go with it.
+SKIPPED_NODE = {"id": 777, "node_type": "crew", "node_name": "removed crew node"}
 
 
-def test_filter_edges_drops_edge_from_skipped_node(manager, start_node_dict):
-    SKIPPED_NODE_ID = 777
-    edges = [{"start_node_id": SKIPPED_NODE_ID, "end_node_id": start_node_dict["id"]}]
+@pytest.mark.parametrize(
+    ("edge", "kept"),
+    [
+        ({"start_node_id": 100, "end_node_id": 777}, False),
+        ({"start_node_id": 777, "end_node_id": 100}, False),
+        ({"start_node_id": 100, "end_node_id": 200}, True),
+    ],
+    ids=["edge-to-skipped", "edge-from-skipped", "edge-between-kept"],
+)
+def test_edges_touching_a_skipped_node_are_dropped(manager, start_node_dict, edge, kept):
+    snapshot = {"nodes": [start_node_dict, SKIPPED_NODE], "edge_list": [edge]}
 
-    kept, warnings = manager._filter_edges(edges, {SKIPPED_NODE_ID})
+    filtered, warnings = manager.filter_snapshot(snapshot, {})
 
-    assert kept == []
-    assert [w["type"] for w in warnings] == ["edge_dropped"]
-
-
-def test_filter_edges_keeps_edge_between_kept_nodes(manager, start_node_dict):
-    edges = [{"start_node_id": start_node_dict["id"], "end_node_id": 1234}]
-
-    kept, warnings = manager._filter_edges(edges, set())
-
-    assert kept == edges
-    assert warnings == []
+    assert [node["id"] for node in filtered["nodes"]] == [100]
+    assert filtered["edge_list"] == ([edge] if kept else [])
+    assert ("edge_dropped" in [w["type"] for w in warnings]) is not kept
 
 
-def test_filter_conditional_edges_drops_edge_from_skipped_node(manager):
-    SKIPPED_NODE_ID = 777
-    conditional_edges = [{"source_node_id": SKIPPED_NODE_ID, "condition": "x > 0"}]
+@pytest.mark.parametrize(
+    ("node_kwargs", "field", "cleared"),
+    [
+        ({"default_next": 777}, "default_next_node_id", True),
+        ({"next_error": 777}, "next_error_node_id", True),
+        ({"default_next": 100}, "default_next_node_id", False),
+    ],
+    ids=["default-next", "next-error", "live-reference-kept"],
+)
+def test_decision_table_routes_to_a_skipped_node_are_cleared(
+    manager, start_node_dict, make_decision_table_node, node_kwargs, field, cleared
+):
+    snapshot = {"nodes": [start_node_dict, make_decision_table_node(**node_kwargs), SKIPPED_NODE], "edge_list": []}
 
-    kept, warnings = manager._filter_conditional_edges(
-        conditional_edges, {SKIPPED_NODE_ID}
-    )
+    filtered, warnings = manager.filter_snapshot(snapshot, {})
 
-    assert kept == []
-    assert len(warnings) == 1
-    assert warnings[0]["type"] == "edge_dropped"
-    assert "Conditional edge" in warnings[0]["reason"]
+    decision = next(node for node in filtered["nodes"] if node["id"] == 200)
+    assert (decision[field] is None) is cleared
+    assert ("decision_table_ref_cleared" in [w["type"] for w in warnings]) is cleared
+
+
+def test_a_condition_group_routing_to_a_skipped_node_is_cleared(manager, make_decision_table_node):
+    decision = make_decision_table_node(condition_groups=[{"group_name": "g1", "next_node_id": 777}])
+
+    filtered, warnings = manager.filter_snapshot({"nodes": [decision, SKIPPED_NODE], "edge_list": []}, {})
+
+    assert filtered["nodes"][0]["condition_groups"][0]["next_node_id"] is None
+    assert any("condition_groups[g1]" in w.get("field", "") for w in warnings)
+
+
+@pytest.mark.django_db
+def test_restoring_a_snapshot_restores_the_name_but_never_identity_or_creation_time(manager, graph):
+    original_id, original_created_at = graph.id, graph.created_at
+    snapshot = {**manager.create_snapshot(graph), "id": 9999, "created_at": "2000-01-01T00:00:00Z", "name": "restored name"}
+
+    manager.apply_snapshot_to_graph(graph, snapshot, {})
+    graph.refresh_from_db()
+
+    assert (graph.id, graph.created_at, graph.name) == (original_id, original_created_at, "restored name")
 
 
 def test_filter_snapshot_does_not_mutate_input(manager, agent_node_dict):
@@ -101,7 +120,6 @@ def test_filter_snapshot_does_not_mutate_input(manager, agent_node_dict):
     snapshot = {
         "nodes": [agent_node_dict],
         "edge_list": [],
-        "conditional_edge_list": [],
     }
     missing = {EntityType.AGENT_DEFINITION.value: [agent_node_dict["agent_definition"]]}
 
@@ -110,80 +128,9 @@ def test_filter_snapshot_does_not_mutate_input(manager, agent_node_dict):
     assert agent_node_dict["agent_definition"] == original_definition_id
 
 
-SKIPPED_NODE_ID = 777
-
-
-def test_clean_decision_table_refs_clears_default_next_node_id(
-    manager, make_decision_table_node
-):
-    decision_node = make_decision_table_node(default_next=SKIPPED_NODE_ID)
-
-    warnings = manager._clean_decision_table_refs([decision_node], {SKIPPED_NODE_ID})
-
-    assert decision_node["default_next_node_id"] is None
-    assert [w["type"] for w in warnings] == ["decision_table_ref_cleared"]
-
-
-def test_clean_decision_table_refs_clears_next_error_node_id(
-    manager, make_decision_table_node
-):
-    decision_node = make_decision_table_node(next_error=SKIPPED_NODE_ID)
-
-    warnings = manager._clean_decision_table_refs([decision_node], {SKIPPED_NODE_ID})
-
-    assert decision_node["next_error_node_id"] is None
-    assert [w["type"] for w in warnings] == ["decision_table_ref_cleared"]
-
-
-def test_clean_decision_table_refs_clears_condition_group_next_node_id(
-    manager, make_decision_table_node
-):
-    decision_node = make_decision_table_node(
-        condition_groups=[{"group_name": "g1", "next_node_id": SKIPPED_NODE_ID}]
-    )
-
-    warnings = manager._clean_decision_table_refs([decision_node], {SKIPPED_NODE_ID})
-
-    assert decision_node["condition_groups"][0]["next_node_id"] is None
-    assert len(warnings) == 1
-    assert "condition_groups[g1]" in warnings[0]["field"]
-
-
-def test_clean_decision_table_refs_keeps_live_references(
-    manager, make_decision_table_node
-):
-    decision_node = make_decision_table_node(default_next=SKIPPED_NODE_ID)
-
-    warnings = manager._clean_decision_table_refs([decision_node], set())
-
-    assert decision_node["default_next_node_id"] == SKIPPED_NODE_ID
-    assert warnings == []
-
-
 # ---------------------------------------------------------------------------
 # Group B: change_old_warnings_ids — pure logic, no DB
 # ---------------------------------------------------------------------------
-
-
-def test_change_old_warnings_ids_remaps_node_id(manager):
-    OLD_ID, NEW_ID = 10, 999
-    mapper = IDMapper()
-    mapper.map(NODE_MAPPING_KEY, OLD_ID, NEW_ID, was_created=True)
-    warnings = [{"type": "fk_nulled", "node_id": OLD_ID, "field": "llm_config"}]
-
-    manager.change_old_warnings_ids(warnings, mapper)
-
-    assert warnings[0]["node_id"] == NEW_ID
-
-
-def test_change_old_warnings_ids_skips_warning_without_node_id(manager):
-    mapper = IDMapper()
-    warnings = [{"type": "node_skipped", "reason": "Missing dependency"}]
-
-    # Should not raise
-    manager.change_old_warnings_ids(warnings, mapper)
-
-    assert "node_id" not in warnings[0]
 
 
 def test_change_old_warnings_ids_handles_multiple_warnings(manager):
@@ -212,73 +159,39 @@ def test_change_old_warnings_ids_handles_multiple_warnings(manager):
 
 
 @pytest.mark.django_db
-def test_validate_dependencies_all_available(manager, agent_definition, llm_config):
-    dependencies = {
-        EntityType.AGENT_DEFINITION.value: [agent_definition.id],
-        EntityType.LLM_CONFIG.value: [llm_config.id],
-    }
+@pytest.mark.parametrize(
+    ("requested", "available", "missing"),
+    [
+        (["definition", "llm"], ["definition", "llm"], []),
+        ([99998, 99999], [], [99998, 99999]),
+        (["definition", 99999], ["definition"], [99999]),
+        # Null references are not dependencies at all.
+        (["definition", None, None], ["definition"], []),
+    ],
+    ids=["all-available", "all-missing", "mixed", "nulls-ignored"],
+)
+def test_validate_dependencies_splits_available_from_missing(
+    manager, agent_definition, llm_config, requested, available, missing
+):
+    ids = {"definition": agent_definition.id, "llm": llm_config.id}
+    entity = {"definition": EntityType.AGENT_DEFINITION.value, "llm": EntityType.LLM_CONFIG.value}
+    dependencies: dict[str, list] = {}
+    for item in requested:
+        key = entity[item] if item in entity else EntityType.AGENT_DEFINITION.value
+        dependencies.setdefault(key, []).append(ids.get(item, item))
 
     result = manager.validate_dependencies(dependencies)
 
-    assert agent_definition.id in result["available"][EntityType.AGENT_DEFINITION.value]
-    assert llm_config.id in result["available"][EntityType.LLM_CONFIG.value]
-    assert result["missing"][EntityType.AGENT_DEFINITION.value] == []
-    assert result["missing"][EntityType.LLM_CONFIG.value] == []
-
-
-@pytest.mark.django_db
-def test_validate_dependencies_all_missing(manager):
-    dependencies = {EntityType.AGENT_DEFINITION.value: [99998, 99999]}
-
-    result = manager.validate_dependencies(dependencies)
-
-    assert result["available"][EntityType.AGENT_DEFINITION.value] == []
-    assert set(result["missing"][EntityType.AGENT_DEFINITION.value]) == {
-        99998,
-        99999,
-    }
-
-
-@pytest.mark.django_db
-def test_validate_dependencies_mixed_available_and_missing(manager, agent_definition):
-    dependencies = {EntityType.AGENT_DEFINITION.value: [agent_definition.id, 99999]}
-
-    result = manager.validate_dependencies(dependencies)
-
-    assert agent_definition.id in result["available"][EntityType.AGENT_DEFINITION.value]
-    assert 99999 in result["missing"][EntityType.AGENT_DEFINITION.value]
-
-
-@pytest.mark.django_db
-def test_validate_dependencies_filters_none_ids(manager, agent_definition):
-    dependencies = {
-        EntityType.AGENT_DEFINITION.value: [agent_definition.id, None, None]
-    }
-
-    result = manager.validate_dependencies(dependencies)
-
-    assert agent_definition.id in result["available"][EntityType.AGENT_DEFINITION.value]
-    assert result["missing"][EntityType.AGENT_DEFINITION.value] == []
-
-
-@pytest.mark.django_db
-def test_validate_dependencies_empty_input(manager):
-    result = manager.validate_dependencies({})
-
-    assert result == {"available": {}, "missing": {}}
+    found = {i for ids_ in result["available"].values() for i in ids_}
+    not_found = {i for ids_ in result["missing"].values() for i in ids_}
+    assert found == {ids.get(item, item) for item in available}
+    assert not_found == set(missing)
+    assert manager.validate_dependencies({}) == {"available": {}, "missing": {}}
 
 
 # ---------------------------------------------------------------------------
 # Group D: snapshot & dependency collection — DB tests
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_create_snapshot_returns_dict_with_nodes_key(manager, graph):
-    result = manager.create_snapshot(graph)
-
-    assert isinstance(result, dict)
-    assert "nodes" in result
 
 
 @pytest.mark.django_db
@@ -365,7 +278,7 @@ def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
 ):
     """CDT pre/post python_code columns are the gap the manual cleanup block
     in wipe_graph_children missed (it only collected PythonNode /
-    ConditionalEdge / WebhookTriggerNode ids). The generic post_delete signal
+    WebhookTriggerNode ids). The generic post_delete signal
     on ClassificationDecisionTableNode must cover both columns instead."""
     from tables.models import ClassificationDecisionTableNode, PythonCode
 
@@ -385,59 +298,9 @@ def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
     assert not PythonCode.objects.filter(id=post_code.id).exists()
 
 
-@pytest.mark.django_db
-def test_update_graph_scalars_updates_name(manager, graph):
-    snapshot = {"name": "restored name"}
-
-    manager._update_graph_scalars(graph, snapshot)
-    graph.refresh_from_db()
-
-    assert graph.name == "restored name"
-
-
-@pytest.mark.django_db
-def test_update_graph_scalars_ignores_excluded_fields(manager, graph):
-    original_id = graph.id
-    original_created_at = graph.created_at
-    snapshot = {"id": 9999, "created_at": "2000-01-01T00:00:00Z", "name": "safe name"}
-
-    manager._update_graph_scalars(graph, snapshot)
-    graph.refresh_from_db()
-
-    assert graph.id == original_id
-    assert graph.created_at == original_created_at
-
-
 # ---------------------------------------------------------------------------
-# Group F: apply_snapshot_to_graph & _build_identity_id_mapper — DB & no-DB
+# Group F: apply_snapshot_to_graph — DB
 # ---------------------------------------------------------------------------
-
-
-def test_build_identity_id_mapper_creates_identity_mappings(manager):
-    available_deps = {
-        EntityType.AGENT_DEFINITION.value: [10, 20],
-        EntityType.LLM_CONFIG.value: [5],
-    }
-
-    id_mapper = manager._build_identity_id_mapper(available_deps)
-
-    # Identity: old_id == new_id
-    assert id_mapper.get(EntityType.AGENT_DEFINITION, 10) == 10
-    assert id_mapper.get(EntityType.AGENT_DEFINITION, 20) == 20
-    assert id_mapper.get(EntityType.LLM_CONFIG, 5) == 5
-    # was_created=False because deps already existed in DB
-    assert id_mapper.was_created(EntityType.AGENT_DEFINITION, 10) is False
-
-
-def test_build_identity_id_mapper_skips_unknown_entity_types(manager):
-    available_deps = {
-        "UnknownEntityType": [1, 2, 3],
-    }
-
-    id_mapper = manager._build_identity_id_mapper(available_deps)
-
-    # No mapping should be created for unknown types
-    assert not id_mapper.has_mapping("UnknownEntityType", 1)
 
 
 @pytest.mark.django_db
