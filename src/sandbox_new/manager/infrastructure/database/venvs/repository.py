@@ -17,8 +17,6 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         limit: int | None = None,
         offset: int | None = None,
     ) -> tuple[builtins.list[Venv], int]:
-        # An empty id set can never match a row, and `IN ()` is invalid SQL --
-        # short-circuit before building the query.
         if ids is not None and not ids:
             return [], 0
 
@@ -69,16 +67,20 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         return VenvMapper.to_domain(row)
 
     async def update(self, obj: Venv) -> Venv:
-        await VenvTable.update(
-            {
-                VenvTable.name: obj.name,
-                VenvTable.libs: VenvMapper.dump_libs(obj.libs),
-                VenvTable.hash: obj.hash,
-                VenvTable.status: obj.status,
-                VenvTable.error: obj.error,
-            }
-        ).where(VenvTable.id == obj.id)
-        return obj
+        rows = (
+            await VenvTable.update(
+                {
+                    VenvTable.name: obj.name,
+                    VenvTable.libs: VenvMapper.dump_libs(obj.libs),
+                    VenvTable.hash: obj.hash,
+                    VenvTable.status: obj.status,
+                    VenvTable.error: obj.error,
+                }
+            )
+            .where(VenvTable.id == obj.id)
+            .returning(*VenvTable.all_columns())
+        )
+        return VenvMapper.to_domain(VenvTable(**rows[0]))
 
     async def remove(self, obj: Venv) -> None:
         await VenvTable.delete().where(VenvTable.id == obj.id)

@@ -189,3 +189,13 @@ def test_a_venv_created_through_the_api_comes_back_stamped(client):
     body = response.json()
     assert datetime.fromisoformat(body["created_at"]).tzinfo is not None
     assert datetime.fromisoformat(body["updated_at"]).tzinfo is not None
+
+
+def test_update_returns_the_bumped_updated_at_and_keeps_created_at(client, venv_repository):
+    stamped = datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC)
+    stored = venv_repository.seed(make_venv(name="old", created_at=stamped, updated_at=stamped))[0]
+
+    body = client.patch(f"/venvs/{stored.id}", json={"name": "new"}).json()
+
+    assert datetime.fromisoformat(body["created_at"]) == stamped
+    assert datetime.fromisoformat(body["updated_at"]) > stamped

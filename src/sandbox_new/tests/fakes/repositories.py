@@ -5,8 +5,9 @@ import time instead of drifting away from it silently. Every read hands out a co
 every write stores a copy, so a caller that mutates what it read without calling
 ``update`` does not change the stored row -- a real repository would behave the same way.
 
-Inserting fills ``created_at``/``updated_at`` the way the database does, so a stored row
-always carries both.
+Inserting fills ``created_at``/``updated_at`` the way the database does, and updating
+bumps ``updated_at`` the way the `venv_set_updated_at` trigger does, then hands back the
+stored row -- the Piccolo repository reads the row back for the same reason.
 """
 
 from __future__ import annotations
@@ -93,8 +94,16 @@ class FakeVenvRepository(AbstractVenvRepository):
         return self._insert(obj)
 
     async def update(self, obj: Venv) -> Venv:
-        self.rows[obj.id] = obj.model_copy(deep=True)
-        return obj
+        # The trigger bumps `updated_at` and the update statement never touches
+        # `created_at`, so neither is taken from the caller's copy.
+        self.rows[obj.id] = obj.model_copy(
+            deep=True,
+            update={
+                "created_at": self.rows[obj.id].created_at,
+                "updated_at": datetime.now(UTC),
+            },
+        )
+        return self.rows[obj.id].model_copy(deep=True)
 
     async def remove(self, obj: Venv) -> None:
         self.rows.pop(obj.id, None)
