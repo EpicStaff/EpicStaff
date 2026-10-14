@@ -8,6 +8,17 @@
         (mainClick)="exportAsJson()"
         (itemClick)="onExportItemSelected($event)"
     />
+
+    <app-button
+        type="outline-secondary"
+        mod="small"
+        leftIcon="decision-tree"
+        iconSize="10px"
+        matTooltip="View this table as a read-only flowchart"
+        matTooltipPosition="below"
+        (click)="openDecisionTree()"
+        >Decision Tree</app-button
+    >
 </ng-template>
 
 <div class="panel-container">
@@ -114,9 +125,12 @@
                             [llmConfigs]="llmConfigOptions()"
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
+                            [routePortIdsWithTarget]="routePortIdsWithTarget()"
                             [readonly]="isReadOnly()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                             (sectionsChange)="onSectionsChange($event)"
+                            (enableContinueRequest)="onEnableContinueRequest($event)"
+                            (ruleIdentityEdit)="onRuleIdentityEdit($event)"
                             (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"

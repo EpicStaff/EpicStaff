@@ -34,6 +34,7 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
+from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
 
 
 class StartNodeSerializer(
@@ -223,7 +224,10 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    CdtExplanationsSanitizingMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    serializers.ModelSerializer,
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)

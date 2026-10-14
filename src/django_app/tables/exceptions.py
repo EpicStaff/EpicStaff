@@ -677,6 +677,26 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     default_code = "cdt_explain_upstream_failed"
 
 
+class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):
+    """Raised instead of `CdtExplainUpstreamError` when the LLM config has no API key.
+
+    Decided after the calls, not before: keyless providers (Ollama, vLLM) are
+    legitimate, and nothing knows reliably which providers need a key — litellm
+    even reports a missing key as a different exception class per provider.
+    """
+
+    status_code = 422
+    default_code = "cdt_explain_llm_config_missing_key"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} has no API key, and no explanation could be "
+            "generated with it. Add an API key to the config, or choose another one.",
+            code=self.default_code,
+        )
+
+
 class StorageQuotaExceeded(CustomAPIExeption):
     status_code = 413
     default_detail = "Storage quota exceeded for this organization."

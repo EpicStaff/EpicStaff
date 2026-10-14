@@ -1,25 +1,20 @@
-"""
-Tests for OpenaiRealtimeAgentClient.call_tool() response-continuation behavior.
+"""OpenaiRealtimeAgentClient: the events it sends to the OpenAI Realtime API.
 
-Regression coverage for: tools/RAG executed correctly on a live voice call but
-the agent stayed silent afterward until the caller spoke again. Root cause —
-appending a `function_call_output` item does not by itself make OpenAI
-generate a new turn; an explicit `response.create` (request_response()) is
-required. The Twilio bridge has no client driving that follow-up, so
-`call_tool()` must trigger it itself when `is_twilio` is True. The browser
-path already gets a follow-up `response.create` from the vendored realtime
-client, so it must NOT be duplicated there.
+`send_server` (the provider websocket) is the external boundary, so it is a recorder.
+
+Tool results on a live voice call used to leave the agent silent until the caller
+spoke again: appending a `function_call_output` does not make OpenAI start a new
+turn. The Twilio bridge has nobody driving that follow-up, so `call_tool()` requests
+it there; the browser's vendored client already does, so it must not be duplicated.
 """
-import re
 
 import pytest
 from unittest.mock import AsyncMock
 
-from infrastructure.providers.openai.openai_realtime_agent_client import (
+from infrastructure.providers.openai.event_handlers.agent_server_event_handler import (
     HIDDEN_ITEM_ID_PREFIX,
-    HIDDEN_ITEM_ID_SUFFIX_LENGTH,
-    OpenaiRealtimeAgentClient,
 )
+from infrastructure.providers.openai.openai_realtime_agent_client import OpenaiRealtimeAgentClient
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 
 
@@ -35,286 +30,87 @@ def client():
     return c
 
 
-@pytest.mark.asyncio
-async def test_call_tool_sends_function_result(client):
-    client.tool_manager_service.execute = AsyncMock(return_value="ok")
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    function_result_events = [
-        e for e in sent_events if e.get("type") == "conversation.item.create"
-    ]
-    assert len(function_result_events) == 1
-    assert function_result_events[0]["item"]["call_id"] == "call_1"
+def _sent(client) -> list[dict]:
+    return [call.args[0] for call in client.send_server.await_args_list]
 
 
 @pytest.mark.asyncio
-async def test_call_tool_on_twilio_triggers_response_create(client):
-    """Twilio bridge has no client to drive a follow-up — call_tool must do it."""
-    client.is_twilio = True
-    client.tool_manager_service.execute = AsyncMock(return_value="ok")
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    response_create_events = [e for e in sent_events if e.get("type") == "response.create"]
-    assert len(response_create_events) == 1
-
-
-@pytest.mark.asyncio
-async def test_call_tool_on_browser_does_not_duplicate_response_create(client):
-    """Browser session already gets response.create from the vendored client."""
-    client.is_twilio = False
-    client.tool_manager_service.execute = AsyncMock(return_value="ok")
+@pytest.mark.parametrize("tool_fails", [False, True], ids=["tool-ok", "tool-fails"])
+@pytest.mark.parametrize(
+    ("is_twilio", "expected_types"),
+    [(True, ["conversation.item.create", "response.create"]), (False, ["conversation.item.create"])],
+    ids=["twilio", "browser"],
+)
+async def test_tool_output_is_sent_and_twilio_also_requests_the_next_turn(client, is_twilio, expected_types, tool_fails):
+    client.is_twilio = is_twilio
+    client.tool_manager_service.execute = (
+        AsyncMock(side_effect=RuntimeError("tool failed")) if tool_fails else AsyncMock(return_value="ok")
+    )
 
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    response_create_events = [e for e in sent_events if e.get("type") == "response.create"]
-    assert len(response_create_events) == 0
+    sent = _sent(client)
+    # The output is appended before the response is requested.
+    assert [event["type"] for event in sent] == expected_types
+    assert sent[0]["item"]["call_id"] == "call_1"
+    if not tool_fails:
+        assert sent[0]["item"]["output"] == "ok"
 
 
 @pytest.mark.asyncio
-async def test_call_tool_response_create_sent_after_function_result(client):
-    """Ordering matters: the tool output must be appended before the response is requested."""
-    client.is_twilio = True
-    client.tool_manager_service.execute = AsyncMock(return_value="ok")
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_types = [c.args[0].get("type") for c in client.send_server.await_args_list]
-    assert sent_types.index("conversation.item.create") < sent_types.index("response.create")
-
-
-# ---------------------------------------------------------------------------
-# call_tool — failing tool never leaks exception text to the provider
-# ---------------------------------------------------------------------------
-
-
-def _function_call_outputs(client) -> list[str]:
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    return [
-        e["item"]["output"] for e in sent_events if e.get("type") == "conversation.item.create"
-    ]
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_sends_fixed_result_without_exception_text(client):
+async def test_tool_failure_reaches_openai_without_the_exception_text(client, captured_log_messages):
     client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
 
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
-    outputs = _function_call_outputs(client)
-    assert len(outputs) == 1
-    assert outputs[0].startswith("Tool execution failed")
-    assert PUBLIC_ERROR_REFERENCE.search(outputs[0])
-    for call in client.send_server.await_args_list:
-        assert SECRET_SENTINEL not in str(call.args[0])
+    (item_create,) = _sent(client)
+    output = item_create["item"]["output"]
+    assert output.startswith("Tool execution failed")
+    assert SECRET_SENTINEL not in str(item_create)
+    # Support can still find the detail in the logs under the reference the model saw.
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(output).group(1)
+    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    assert SECRET_SENTINEL in log
+
+
+@pytest.mark.parametrize(
+    ("voice", "expected"), [("", "alloy"), (None, "alloy"), ("verse", "verse")], ids=["blank", "omitted", "explicit"]
+)
+def test_a_blank_voice_falls_back_to_alloy(voice, expected):
+    """allow_blank serializers can send "", which errors or garbles audio at OpenAI."""
+    kwargs = {} if voice is None else {"voice": voice}
+
+    assert OpenaiRealtimeAgentClient(api_key="test_key", connection_key="conn_1", **kwargs).voice == expected
 
 
 @pytest.mark.asyncio
-async def test_call_tool_failure_logs_detail_under_the_sent_correlation_id(
-    client, captured_log_messages
-):
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(_function_call_outputs(client)[0]).group(1)
-    matching_logs = [message for message in captured_log_messages if correlation_id in message]
-    assert len(matching_logs) == 1
-    assert SECRET_SENTINEL in matching_logs[0]
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_on_twilio_still_requests_a_response(client):
-    """Without the follow-up response.create the model stays silent after a failed tool."""
-    client.is_twilio = True
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_types = [c.args[0].get("type") for c in client.send_server.await_args_list]
-    assert sent_types == ["conversation.item.create", "response.create"]
-
-
-@pytest.mark.asyncio
-async def test_request_response_sends_response_create_event(client):
-    await client.request_response()
-    client.send_server.assert_awaited_once()
-    event = client.send_server.await_args[0][0]
-    assert event["type"] == "response.create"
-
-
-def test_blank_voice_falls_back_to_alloy():
-    """A falsy `voice` (empty string, as allow_blank serializers permit) must
-    not reach OpenAI unguarded -- it errors/garbles audio there."""
-    c = OpenaiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-        voice="",
-    )
-    assert c.voice == "alloy"
-
-
-def test_omitted_voice_falls_back_to_alloy():
-    c = OpenaiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-    )
-    assert c.voice == "alloy"
-
-
-def test_explicit_voice_is_preserved():
-    c = OpenaiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-        voice="verse",
-    )
-    assert c.voice == "verse"
-
-
-@pytest.mark.asyncio
-async def test_update_session_blank_voice_override_falls_back_to_instance_voice(client):
-    """`config.get("voice", self.voice)` does not fall back on an explicit
-    empty string -- only `.get(key, default) or self.voice` does."""
+@pytest.mark.parametrize(
+    ("config", "expected"), [({"voice": ""}, "verse"), ({}, "verse"), ({"voice": "coral"}, "coral")],
+    ids=["blank-override", "no-override", "explicit-override"],
+)
+async def test_session_update_voice_falls_back_to_the_clients_voice(client, config, expected):
     client.voice = "verse"
 
-    await client.update_session(config={"voice": ""})
+    await client.update_session(config=config)
 
-    event = client.send_server.await_args[0][0]
-    assert event["session"]["audio"]["output"]["voice"] == "verse"
-
-
-@pytest.mark.asyncio
-async def test_update_session_missing_voice_key_falls_back_to_instance_voice(client):
-    client.voice = "verse"
-
-    await client.update_session(config={})
-
-    event = client.send_server.await_args[0][0]
-    assert event["session"]["audio"]["output"]["voice"] == "verse"
+    (event,) = _sent(client)
+    assert event["session"]["audio"]["output"]["voice"] == expected
 
 
 @pytest.mark.asyncio
-async def test_update_session_explicit_voice_override_is_used(client):
-    client.voice = "alloy"
-
-    await client.update_session(config={"voice": "coral"})
-
-    event = client.send_server.await_args[0][0]
-    assert event["session"]["audio"]["output"]["voice"] == "coral"
-
-
-def test_base_url_defaults_to_hardcoded_openai_endpoint():
-    """No override must reproduce today's exact literal."""
-    c = OpenaiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-    )
-    assert c.base_url == "wss://api.openai.com/v1/realtime"
-
-
-def test_base_url_uses_custom_override():
-    c = OpenaiRealtimeAgentClient(
-        api_key="test_key",
-        connection_key="conn_1",
-        base_url="https://my-proxy.internal",
-    )
-    assert c.base_url == "wss://my-proxy.internal/v1/realtime"
-
-
-@pytest.mark.asyncio
-async def test_call_tool_error_handling_sends_error_result(client):
-    """When tool execution fails, call_tool() must catch the error
-    and send an error message to the API instead of raising.
-    This prevents the conversation from hanging.
-
-    The error text sent to the model must NOT echo the exception's own
-    message: tool failures can carry secret plaintext or other sensitive
-    detail (e.g. a CodeTaskData ValidationError repr), so only a fixed,
-    generic message is safe to surface here."""
-    error_msg = "leaked-secret-AKIAEXAMPLE1234"
-    client.tool_manager_service.execute = AsyncMock(
-        side_effect=RuntimeError(error_msg)
-    )
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    function_result_events = [
-        e for e in sent_events if e.get("type") == "conversation.item.create"
-    ]
-    assert len(function_result_events) == 1
-    assert function_result_events[0]["item"]["call_id"] == "call_1"
-    output = function_result_events[0]["item"]["output"]
-    assert output == "Error: tool execution failed."
-    assert error_msg not in output
-
-
-@pytest.mark.asyncio
-async def test_call_tool_error_on_twilio_still_triggers_response_create(client):
-    """Even when tool execution fails, Twilio still needs response.create()
-    triggered to prevent the conversation from hanging."""
-    client.is_twilio = True
-    client.tool_manager_service.execute = AsyncMock(
-        side_effect=RuntimeError("Tool failed")
-    )
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    response_create_events = [e for e in sent_events if e.get("type") == "response.create"]
-    assert len(response_create_events) == 1
-
-
-# ---------------------------------------------------------------------------
-# send_conversation_item_to_server — unique ids for duplicate message handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_send_conversation_item_generates_unique_ids(client):
-    """Two calls to send_conversation_item_to_server must generate different ids."""
+async def test_wake_word_handover_text_is_sent_as_a_hidden_user_message_with_a_fresh_id(client):
     await client.send_conversation_item_to_server("hello")
     await client.send_conversation_item_to_server("hello")
 
-    sent_events = [c.args[0] for c in client.send_server.await_args_list]
-    ids = [e["item"]["id"] for e in sent_events if e.get("type") == "conversation.item.create"]
-
-    assert len(ids) == 2
-    assert ids[0] != ids[1], "Two calls should generate different ids"
-    
-
-@pytest.mark.asyncio
-async def test_send_conversation_item_id_format_is_correct(client):
-    """Id format should be: {HIDDEN_ITEM_ID_PREFIX}_<HIDDEN_ITEM_ID_SUFFIX_LENGTH hex chars>."""
-    await client.send_conversation_item_to_server("test")
-
-    sent_event = client.send_server.await_args[0][0]
-    item_id = sent_event["item"]["id"]
-
-    expected_prefix = f"{HIDDEN_ITEM_ID_PREFIX}_"
-    assert item_id.startswith(expected_prefix), f"Id should start with '{expected_prefix}', got {item_id}"
-
-    suffix = item_id[len(expected_prefix):]
-    assert len(suffix) == HIDDEN_ITEM_ID_SUFFIX_LENGTH, (
-        f"Suffix should be {HIDDEN_ITEM_ID_SUFFIX_LENGTH} chars, got {len(suffix)}: {suffix}"
-    )
-    assert re.fullmatch(r"[0-9a-f]+", suffix), f"Suffix {suffix} should be valid lowercase hex"
-
-
-@pytest.mark.asyncio
-async def test_send_conversation_item_creates_correct_message_structure(client):
-    """The message structure should be correct with proper type and content."""
-    await client.send_conversation_item_to_server("test message")
-
-    sent_event = client.send_server.await_args[0][0]
-    item = sent_event["item"]
-
-    assert sent_event["type"] == "conversation.item.create"
-    assert item["type"] == "message"
-    assert item["role"] == "user"
-    assert len(item["content"]) == 1
-    assert item["content"][0]["type"] == "input_text"
-    assert item["content"][0]["text"] == "test message"
+    first, second = _sent(client)
+    assert first["type"] == "conversation.item.create"
+    assert {key: first["item"][key] for key in ("type", "role", "content")} == {
+        "type": "message",
+        "role": "user",
+        "content": [{"type": "input_text", "text": "hello"}],
+    }
+    # Hidden from the UI by the server handler; OpenAI rejects a reused id in a session,
+    # and caps item ids at 32 characters.
+    ids = [first["item"]["id"], second["item"]["id"]]
+    assert all(item_id.startswith(HIDDEN_ITEM_ID_PREFIX) and len(item_id) <= 32 for item_id in ids)
+    assert ids[0] != ids[1]

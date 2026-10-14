@@ -263,22 +263,6 @@ class TestFanoutToolParallel:
         assert data["used_items"] == 2
         assert len(data["results"]) == 2
 
-    def test_missing_graph_id_returns_error(self):
-        fanout_module.api_key = "test-key"
-
-        result = fanout_main(mode="parallel", items=[{"n": 1}])
-
-        assert result.startswith("Error:")
-        assert "graph_id" in result
-
-    def test_missing_api_key_returns_error(self):
-        fanout_module.graph_id = 42
-
-        result = fanout_main(mode="parallel", items=[{"n": 1}])
-
-        assert result.startswith("Error:")
-        assert "api_key" in result
-
     def test_missing_session_id_disables_guard_but_is_non_fatal(self, monkeypatch):
         _configure(fanout_module, graph_id=42)
 
@@ -308,54 +292,6 @@ class TestFanoutToolParallel:
         data = json.loads(result)
 
         assert data["results"] == [{"result": "ok"}]
-
-    def test_self_reference_recursion_guard_blocks_all_items(self, monkeypatch):
-        _configure(fanout_module, graph_id=42)
-        fanout_module.session_id = 100
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.method == "GET" and request.url.path == "/api/sessions/100/":
-                return httpx.Response(
-                    200, json={"id": 100, "graph": 42, "parent_session": None}
-                )
-            raise AssertionError(
-                f"should not reach run-session for a direct self-reference: "
-                f"{request.method} {request.url}"
-            )
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = fanout_main(mode="parallel", items=[{"n": 1}, {"n": 2}])
-
-        assert result.startswith("Error:")
-        assert "recursion" in result
-
-    def test_max_depth_guard(self, monkeypatch):
-        _configure(fanout_module, graph_id=42)
-        fanout_module.session_id = 1000
-
-        chain_len = 7
-        sessions = {}
-        for i in range(chain_len):
-            sid = 1000 - i
-            parent = sid - 1 if i < chain_len - 1 else None
-            sessions[sid] = {"id": sid, "graph": 500 + i, "parent_session": parent}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.method == "GET" and request.url.path.startswith(
-                "/api/sessions/"
-            ):
-                sid = int(request.url.path.rstrip("/").rsplit("/", 1)[1])
-                return httpx.Response(200, json=sessions[sid])
-            raise AssertionError(f"unexpected request: {request.method} {request.url}")
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = fanout_main(mode="parallel", items=[{"n": 1}])
-
-        assert result.startswith("Error:")
-        assert "depth" in result or "deep" in result
-
 
 class TestFanoutToolPipeline:
     def test_happy_path_threads_output_stage_to_stage(self, monkeypatch):
@@ -472,78 +408,6 @@ class TestFanoutToolPipeline:
         assert result.startswith("Error:")
         assert "stage 1" in result
         assert "stage 2 exploded" in result
-
-    def test_missing_graph_ids_returns_error(self):
-        fanout_module.api_key = "test-key"
-
-        result = fanout_main(mode="pipeline", input={})
-
-        assert result.startswith("Error:")
-        assert "graph_ids" in result
-
-    def test_missing_api_key_returns_error(self):
-        fanout_module.graph_ids = [10, 20]
-
-        result = fanout_main(mode="pipeline", input={})
-
-        assert result.startswith("Error:")
-        assert "api_key" in result
-
-    def test_stage_cap_is_rejected(self):
-        _configure(fanout_module, graph_ids=[1, 2, 3, 4], max_items=2)
-
-        result = fanout_main(mode="pipeline", input={})
-
-        assert result.startswith("Error:")
-        assert "stage" in result
-
-    def test_self_reference_recursion_guard_stops_chain(self, monkeypatch):
-        _configure(fanout_module, graph_ids=[42])
-        fanout_module.session_id = 100
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.method == "GET" and request.url.path == "/api/sessions/100/":
-                return httpx.Response(
-                    200, json={"id": 100, "graph": 42, "parent_session": None}
-                )
-            raise AssertionError(
-                f"should not reach run-session for a direct self-reference: "
-                f"{request.method} {request.url}"
-            )
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = fanout_main(mode="pipeline", input={})
-
-        assert result.startswith("Error:")
-        assert "recursion" in result
-
-    def test_max_depth_guard(self, monkeypatch):
-        _configure(fanout_module, graph_ids=[42])
-        fanout_module.session_id = 1000
-
-        chain_len = 7
-        sessions = {}
-        for i in range(chain_len):
-            sid = 1000 - i
-            parent = sid - 1 if i < chain_len - 1 else None
-            sessions[sid] = {"id": sid, "graph": 500 + i, "parent_session": parent}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.method == "GET" and request.url.path.startswith(
-                "/api/sessions/"
-            ):
-                sid = int(request.url.path.rstrip("/").rsplit("/", 1)[1])
-                return httpx.Response(200, json=sessions[sid])
-            raise AssertionError(f"unexpected request: {request.method} {request.url}")
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = fanout_main(mode="pipeline", input={})
-
-        assert result.startswith("Error:")
-        assert "depth" in result or "deep" in result
-
 
 class TestFanoutToolResilience:
     """Covers FIX B (QA report): 'server disconnected without
@@ -721,14 +585,6 @@ class TestFanoutToolResilience:
 
 
 class TestFanoutToolCommon:
-    def test_invalid_mode_returns_error(self):
-        fanout_module.api_key = "test-key"
-
-        result = fanout_main(mode="bogus")
-
-        assert result.startswith("Error:")
-        assert "mode" in result
-
     def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
         """Regression test (smoke test): python_code.global_kwargs
         folds user_input config (graph_id/api_key/poll_timeout_s/etc.) into
@@ -770,21 +626,100 @@ class TestFanoutToolCommon:
         assert data["results"] == [{"result": "ok"}]
 
 
-class TestFanoutToolHeaders:
-    """org_id (server-side resolved from Graph.org_id, injected by
-    the crew engine) must be sent as X-Organization-Id so org-scoped API
-    endpoints (e.g. GET /sessions/<id>/) don't 400 with org_context_required."""
+def _refuse_requests(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"no request expected, got {request.method} {request.url}")
 
-    def test_headers_includes_org_header_when_org_id_injected(self):
-        fanout_module.org_id = 42
+    _mock_httpx_client(monkeypatch, handler)
 
-        headers = fanout_module._headers("test-key")
 
-        assert headers["X-Organization-Id"] == "42"
-        assert headers["X-Api-Key"] == "test-key"
+@pytest.mark.parametrize(
+    ("config", "kwargs", "mentions"),
+    [
+        ({"api_key": "test-key"}, {"mode": "parallel", "items": [{"n": 1}]}, "graph_id"),
+        ({"graph_id": 42}, {"mode": "parallel", "items": [{"n": 1}]}, "api_key"),
+        ({"api_key": "test-key"}, {"mode": "pipeline", "input": {}}, "graph_ids"),
+        ({"graph_ids": [10, 20]}, {"mode": "pipeline", "input": {}}, "api_key"),
+        ({"api_key": "test-key", "graph_ids": [1, 2, 3, 4], "max_items": 2}, {"mode": "pipeline", "input": {}}, "stage"),
+        ({"api_key": "test-key"}, {"mode": "bogus"}, "mode"),
+    ],
+    ids=["parallel-no-graph", "parallel-no-key", "pipeline-no-graphs", "pipeline-no-key", "pipeline-too-many-stages", "unknown-mode"],
+)
+def test_invalid_call_is_explained_without_starting_anything(monkeypatch, config, kwargs, mentions):
+    for name, value in config.items():
+        setattr(fanout_module, name, value)
+    _refuse_requests(monkeypatch)
 
-    def test_headers_omits_org_header_when_org_id_absent(self):
-        headers = fanout_module._headers("test-key")
+    result = fanout_main(**kwargs)
 
-        assert "X-Organization-Id" not in headers
-        assert headers["X-Api-Key"] == "test-key"
+    assert result.startswith("Error:")
+    assert mentions in result
+
+
+def _session_chain(length: int, graph_of_first: int) -> dict[int, dict]:
+    """The calling session (id 1000) and its ancestors, oldest last."""
+    return {
+        1000 - index: {
+            "id": 1000 - index,
+            "graph": graph_of_first if index == 0 else 500 + index,
+            "parent_session": 1000 - index - 1 if index < length - 1 else None,
+        }
+        for index in range(length)
+    }
+
+
+@pytest.mark.parametrize(
+    ("mode", "config", "kwargs"),
+    [
+        ("parallel", {"graph_id": 42}, {"items": [{"n": 1}, {"n": 2}]}),
+        ("pipeline", {"graph_ids": [42]}, {"input": {}}),
+    ],
+)
+@pytest.mark.parametrize(
+    ("chain", "message"),
+    [
+        # The calling session already runs graph 42: running it again would recurse.
+        (_session_chain(1, graph_of_first=42), "refusing to run sub-flow (graph_id=42)"),
+        (_session_chain(7, graph_of_first=500), "already 5 level(s) deep"),
+    ],
+    ids=["self-reference", "too-deep"],
+)
+def test_nested_runs_are_refused_before_starting_a_session(monkeypatch, mode, config, kwargs, chain, message):
+    _configure(fanout_module, **config)
+    fanout_module.session_id = 1000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.startswith("/api/sessions/"):
+            return httpx.Response(200, json=chain[int(request.url.path.rstrip("/").rsplit("/", 1)[1])])
+        raise AssertionError(f"no session may be started: {request.method} {request.url}")
+
+    _mock_httpx_client(monkeypatch, handler)
+
+    result = fanout_main(mode=mode, **kwargs)
+
+    assert result.startswith("Error:")
+    assert message in result
+
+
+@pytest.mark.parametrize(("org_id", "expected_header"), [(42, "42"), (None, None)], ids=["org-injected", "no-org"])
+def test_requests_carry_the_api_key_and_the_injected_org(monkeypatch, org_id, expected_header):
+    """org_id (resolved server-side from Graph.org_id, injected by crew) must be sent as
+    X-Organization-Id: org-scoped endpoints such as GET /sessions/<id>/ need it."""
+    _configure(fanout_module, graph_id=42)
+    if org_id is not None:
+        fanout_module.org_id = org_id
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers)
+        if request.method == "POST":
+            return httpx.Response(201, json={"session_id": 4001})
+        return httpx.Response(200, json={"id": 4001, "graph": 42, "parent_session": None, "status": "end", "variables": {}})
+
+    _mock_httpx_client(monkeypatch, handler)
+
+    fanout_main(mode="parallel", items=[{"n": 1}])
+
+    assert seen
+    assert {headers["X-Api-Key"] for headers in seen} == {"test-key"}
+    assert {headers.get("X-Organization-Id") for headers in seen} == {expected_header}

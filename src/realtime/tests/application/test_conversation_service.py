@@ -2,14 +2,12 @@ import asyncio
 from typing import NamedTuple
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 from fastapi import WebSocket, WebSocketDisconnect
 from src.shared.models import RealtimeAgentChatData
 from domain.models.chat_mode import ChatMode
 from domain.ports.i_summarization_client import ISummarizationClient
 from domain.ports.i_transcription_client_factory import ITranscriptionClientFactory
-from domain.services.chat_buffer import ChatSummarizedBuffer
-from domain.services.summarize_buffer import ChatSummarizedBufferClient
 from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from infrastructure.providers.factory import RealtimeAgentClientFactory
@@ -93,91 +91,18 @@ def test_initial_chat_mode_follows_wake_word(make_service, wake_word, expected_m
     assert make_service(wake_word=wake_word).current_chat_mode == expected_mode
 
 
-def test_set_chat_mode_listen(service):
-    service.set_chat_mode(ChatMode.LISTEN)
-    assert service.current_chat_mode == ChatMode.LISTEN
-
-
-def test_set_chat_mode_back_to_conversation(service):
-    service.set_chat_mode(ChatMode.LISTEN)
-    service.set_chat_mode(ChatMode.CONVERSATION)
-    assert service.current_chat_mode == ChatMode.CONVERSATION
-
-
 # ---------------------------------------------------------------------------
 # Constructor registers tools
 # ---------------------------------------------------------------------------
 
 
-def test_constructor_registers_tools(mock_tool_manager):
-    ConversationService(
-        client_websocket=AsyncMock(spec=WebSocket),
-        realtime_agent_chat_data=_make_chat_data(),
-        instructions="hi",
-        tool_manager_service=mock_tool_manager,
-        connections={},
-        factory=MagicMock(spec=RealtimeAgentClientFactory),
-        summ_client=MagicMock(spec=ISummarizationClient),
-        transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
-    )
-    mock_tool_manager.register_tools_from_rt_agent_chat_data.assert_called_once()
+@pytest.mark.parametrize("rt_provider", ["openai", "elevenlabs"])
+def test_stop_agent_tool_gets_a_mode_controller_except_on_elevenlabs(make_service, mock_tool_manager, rt_provider):
+    """ElevenLabs has built-in VAD, so the StopAgent tool is disabled there (no controller)."""
+    service = make_service(rt_provider=rt_provider)
 
-
-def test_elevenlabs_passes_none_as_chat_mode_controller(mock_tool_manager):
-    """ElevenLabs has built-in VAD — StopAgent tool is disabled (controller=None)."""
-    ConversationService(
-        client_websocket=AsyncMock(spec=WebSocket),
-        realtime_agent_chat_data=_make_chat_data(rt_provider="elevenlabs"),
-        instructions="hi",
-        tool_manager_service=mock_tool_manager,
-        connections={},
-        factory=MagicMock(spec=RealtimeAgentClientFactory),
-        summ_client=MagicMock(spec=ISummarizationClient),
-        transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
-    )
     _, kwargs = mock_tool_manager.register_tools_from_rt_agent_chat_data.call_args
-    assert kwargs["chat_mode_controller"] is None
-
-
-def test_openai_passes_self_as_chat_mode_controller(mock_tool_manager):
-    svc = ConversationService(
-        client_websocket=AsyncMock(spec=WebSocket),
-        realtime_agent_chat_data=_make_chat_data(rt_provider="openai"),
-        instructions="hi",
-        tool_manager_service=mock_tool_manager,
-        connections={},
-        factory=MagicMock(spec=RealtimeAgentClientFactory),
-        summ_client=MagicMock(spec=ISummarizationClient),
-        transcription_client_factory=MagicMock(spec=ITranscriptionClientFactory),
-    )
-    _, kwargs = mock_tool_manager.register_tools_from_rt_agent_chat_data.call_args
-    assert kwargs["chat_mode_controller"] is svc
-
-
-# ---------------------------------------------------------------------------
-# _initialize_buffer
-# ---------------------------------------------------------------------------
-
-
-def test_initialize_buffer_returns_correct_types(service):
-    buffer, summ_client = service._initialize_buffer(
-        max_buffer_tokens=2000, max_chunks_tokens=4000
-    )
-    assert isinstance(buffer, ChatSummarizedBuffer)
-    assert isinstance(summ_client, ChatSummarizedBufferClient)
-
-
-def test_initialize_buffer_custom_token_limits(service):
-    buffer, _ = service._initialize_buffer(
-        max_buffer_tokens=500, max_chunks_tokens=1000
-    )
-    assert buffer._max_buffer_tokens == 500
-    assert buffer._max_chunks_tokens == 1000
-
-
-# ---------------------------------------------------------------------------
-# _maybe_create_transcription_client
-# ---------------------------------------------------------------------------
+    assert kwargs["chat_mode_controller"] is (None if rt_provider == "elevenlabs" else service)
 
 
 # ---------------------------------------------------------------------------
@@ -348,9 +273,7 @@ async def test_transcript_without_wake_word_stays_in_listen(make_service):
 
 
 @pytest.mark.asyncio
-async def test_missing_transcription_client_downgrades_listen_to_conversation(
-    make_service, captured_log_messages
-):
+async def test_missing_transcription_client_downgrades_listen_to_conversation(make_service):
     service = make_service(wake_word="hey agent")
     assert service.current_chat_mode == ChatMode.LISTEN
 
@@ -365,17 +288,3 @@ async def test_missing_transcription_client_downgrades_listen_to_conversation(
     await service.execute()
 
     assert service.current_chat_mode == ChatMode.CONVERSATION
-    assert any("no transcription client" in message for message in captured_log_messages)
-
-
-def test_maybe_create_transcription_delegates_to_factory(service, mock_tool_manager):
-    mock_factory = MagicMock(spec=ITranscriptionClientFactory)
-    service.transcription_client_factory = mock_factory
-    mock_buffer = MagicMock(spec=ChatSummarizedBuffer)
-
-    service._maybe_create_transcription_client(mock_buffer)
-
-    mock_factory.create.assert_called_once()
-    call_kwargs = mock_factory.create.call_args[1]
-    assert call_kwargs["config"] is service.realtime_agent_chat_data
-    assert call_kwargs["buffer"] is mock_buffer

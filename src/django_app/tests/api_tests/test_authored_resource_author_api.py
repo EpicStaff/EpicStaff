@@ -202,27 +202,15 @@ def test_create_with_system_api_key_leaves_author_empty_without_stamping_seriali
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("shape", [None, "id", "summary"], ids=["no-body-author", "id", "summary"])
 @pytest.mark.parametrize("resource", RESOURCES, ids=RESOURCE_IDS)
-def test_patch_of_unauthored_row_leaves_it_unauthored(resource, acme_client, acme):
-    row = resource.create_row(acme, "ownerless-row", None)
-
-    response = acme_client.patch(
-        _detail_url(resource.basename, row.pk), resource.patch_body(row), format="json"
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(resource.model, row.pk) is None
-    assert response.data["created_by"] is None
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("shape", ["id", "summary"])
-@pytest.mark.parametrize("resource", RESOURCES, ids=RESOURCE_IDS)
-def test_patch_of_unauthored_row_ignores_body_author(
+def test_patch_of_unauthored_row_leaves_it_unauthored(
     resource, shape, acme_client, member_only, acme
 ):
     row = resource.create_row(acme, "ownerless-row", None)
-    body = {**resource.patch_body(row), "created_by": _spoofed_author(member_only, shape)}
+    body = resource.patch_body(row)
+    if shape is not None:
+        body["created_by"] = _spoofed_author(member_only, shape)
 
     response = acme_client.patch(_detail_url(resource.basename, row.pk), body, format="json")
 
@@ -264,8 +252,10 @@ def test_cross_org_patch_returns_404_and_leaves_row_unauthored(resource, acme_cl
 
 
 @pytest.mark.django_db
-def test_flow_save_leaves_unauthored_graph_unauthored(acme_client, acme):
-    graph = Graph.objects.create(name="ownerless-flow", org=acme)
+@pytest.mark.parametrize("authored", [False, True], ids=["unauthored", "authored"])
+def test_flow_save_never_changes_the_graph_author(authored, acme_client, member_only, acme):
+    author = member_only if authored else None
+    graph = Graph.objects.create(name="saved-flow", org=acme, created_by=author)
     payload = {
         "save_version": graph.save_version,
         "graph_note_list": [{"graph": graph.id, "content": "note", "metadata": {}}],
@@ -274,22 +264,7 @@ def test_flow_save_leaves_unauthored_graph_unauthored(acme_client, acme):
     response = acme_client.post(reverse("graphs-save-flow", args=[graph.id]), payload, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(Graph, graph.pk) is None
-    assert GraphNote.objects.filter(graph=graph).exists()
-
-
-@pytest.mark.django_db
-def test_flow_save_keeps_graph_author(acme_client, member_only, acme):
-    graph = Graph.objects.create(name="authored-flow", org=acme, created_by=member_only)
-    payload = {
-        "save_version": graph.save_version,
-        "graph_note_list": [{"graph": graph.id, "content": "note", "metadata": {}}],
-    }
-
-    response = acme_client.post(reverse("graphs-save-flow", args=[graph.id]), payload, format="json")
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(Graph, graph.pk) == member_only.id
+    assert _author_id(Graph, graph.pk) == (author.id if author else None)
     assert GraphNote.objects.filter(graph=graph).exists()
 
 
@@ -313,73 +288,38 @@ def _write_note(client, graph, write: str):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("write", NODE_WRITES)
-def test_node_write_leaves_unauthored_graph_unauthored(write, acme_client, acme):
-    graph = Graph.objects.create(name="ownerless-node-flow", org=acme)
+@pytest.mark.parametrize(
+    ("client_fixture", "authored"),
+    [("acme_client", False), ("acme_client", True), ("system_key_client", False)],
+    ids=["unauthored", "authored", "system-key"],
+)
+def test_node_write_never_changes_the_graph_author(
+    request, write, client_fixture, authored, member_only, acme
+):
+    author = member_only if authored else None
+    graph = Graph.objects.create(name="node-flow", org=acme, created_by=author)
 
-    response = _write_note(acme_client, graph, write)
-
-    assert response.status_code < 300, response.content
-    assert _author_id(Graph, graph.pk) is None
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("write", NODE_WRITES)
-def test_node_write_keeps_graph_author(write, acme_client, member_only, acme):
-    graph = Graph.objects.create(name="authored-node-flow", org=acme, created_by=member_only)
-
-    response = _write_note(acme_client, graph, write)
+    response = _write_note(request.getfixturevalue(client_fixture), graph, write)
 
     assert response.status_code < 300, response.content
-    assert _author_id(Graph, graph.pk) == member_only.id
+    assert _author_id(Graph, graph.pk) == (author.id if author else None)
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("write", NODE_WRITES)
-def test_node_write_with_system_api_key_leaves_graph_unauthored(write, system_key_client, acme):
-    graph = Graph.objects.create(name="system-node-flow", org=acme)
-
-    response = _write_note(system_key_client, graph, write)
-
-    assert response.status_code < 300, response.content
-    assert _author_id(Graph, graph.pk) is None
-
-
-@pytest.mark.django_db
-def test_cross_org_node_write_returns_404_and_leaves_graph_unauthored(acme_client, beta):
-    graph = Graph.objects.create(name="beta-node-flow", org=beta)
-
-    response = _write_note(acme_client, graph, "update")
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert _author_id(Graph, graph.pk) is None
-
-
-@pytest.mark.django_db
-def test_cross_org_flow_save_returns_404_and_leaves_graph_unauthored(acme_client, beta):
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda client, graph: _write_note(client, graph, "update"),
+        lambda client, graph: client.post(
+            reverse("graphs-save-flow", args=[graph.id]), {"save_version": graph.save_version}, format="json"
+        ),
+    ],
+    ids=["node-write", "flow-save"],
+)
+def test_cross_org_graph_write_returns_404_and_leaves_graph_unauthored(write, acme_client, beta):
     graph = Graph.objects.create(name="beta-flow", org=beta)
 
-    response = acme_client.post(
-        reverse("graphs-save-flow", args=[graph.id]),
-        {"save_version": graph.save_version},
-        format="json",
-    )
+    response = write(acme_client, graph)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert _author_id(Graph, graph.pk) is None
-
-
-@pytest.mark.django_db
-def test_label_patch_on_built_in_tool_succeeds_and_leaves_it_unauthored(acme_client, acme):
-    python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-    built_in_tool = PythonCodeTool.objects.create(
-        name="built-in-tool", description="tool", python_code=python_code, built_in=True
-    )
-    label = Label.objects.create(name="tool-label", org=acme, scope=Label.Scope.TOOL)
-
-    response = acme_client.patch(
-        _detail_url("pythoncodetool", built_in_tool.pk), {"labels": [label.id]}, format="json"
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(PythonCodeTool, built_in_tool.pk) is None
-    assert list(built_in_tool.labels.values_list("id", flat=True)) == [label.id]

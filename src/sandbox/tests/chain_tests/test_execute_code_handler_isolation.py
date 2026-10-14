@@ -70,288 +70,169 @@ def warnings_logged():
     logger.remove(handler_id)
 
 
-async def _handle(tmp_path, monkeypatch, *, abi: int, require_signal_isolation: bool):
-    """Run the handler with network blocking off, so only signal isolation varies."""
-    monkeypatch.setattr(settings, "BLOCK_NETWORK", False)
-    monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", require_signal_isolation)
-    monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: abi)
+async def _run(
+    tmp_path,
+    monkeypatch,
+    *,
+    abi: int,
+    block_network: bool = False,
+    use_storage: bool = False,
+    require_signal_isolation: bool = False,
+    require_isolation: bool = True,
+    block_private_network: bool = False,
+    firewall_active: bool = False,
+):
+    """Run the handler on a kernel with Landlock `abi` under the given settings.
 
+    Returns the result and the launcher plan, or None when nothing was spawned.
+    """
+    monkeypatch.setattr(settings, "BLOCK_NETWORK", block_network)
+    monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
+    monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", require_signal_isolation)
+    monkeypatch.setattr(settings, "BLOCK_PRIVATE_NETWORK", block_private_network)
+    monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "true" if require_isolation else "false")
+    monkeypatch.setattr(egress_firewall, "is_active", lambda: firewall_active)
+    monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: abi)
     recorded: dict = {}
-    context = _make_execute_context(tmp_path)
+    context = _make_execute_context(
+        tmp_path,
+        use_storage=use_storage,
+        temp_storage_access_key="scoped-ak",
+        temp_storage_secret_key="scoped-sk",
+    )
     _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
     result = await ExecuteCodeHandler().handle(context)
-    return result, recorded
+
+    if "argv" not in recorded:
+        return result, None
+    if str(recorded["argv"][1]) != str(LAUNCHER_PATH):
+        return result, "unconfined"
+    return result, _plan_from_argv(recorded["argv"])
 
 
-class TestNetworkFlagOff:
-    @pytest.mark.asyncio
-    async def test_no_network_restriction_in_plan(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", False)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
+JAILED = "jailed"
 
-        recorded: dict = {}
-        context = _make_execute_context(tmp_path)
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-        result = await ExecuteCodeHandler().handle(context)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("settings_for_run", "expected_plan"),
+    [
+        ({"abi": 4}, {"jail": JAILED, "network": {"mode": "unrestricted"}, "isolate_signals": False}),
+        (
+            {"abi": 4, "block_network": True},
+            {"jail": JAILED, "network": {"mode": "block_all"}, "isolate_signals": False},
+        ),
+        (
+            {"abi": 4, "block_network": True, "use_storage": True},
+            {"jail": JAILED, "network": {"mode": "allow_ports", "ports": [9000]}, "isolate_signals": False},
+        ),
+        # No Landlock but the network block requested: the launcher still runs, for seccomp.
+        (
+            {"abi": 0, "block_network": True, "require_isolation": False},
+            {"jail": None, "network": {"mode": "block_all"}, "isolate_signals": False},
+        ),
+        # Signal isolation is enforced wherever the kernel supports it, required or not.
+        (
+            {"abi": 6, "require_signal_isolation": True},
+            {"jail": JAILED, "network": {"mode": "unrestricted"}, "isolate_signals": True},
+        ),
+        (
+            {"abi": 6, "require_signal_isolation": False},
+            {"jail": JAILED, "network": {"mode": "unrestricted"}, "isolate_signals": True},
+        ),
+        (
+            {"abi": 5, "require_signal_isolation": False},
+            {"jail": JAILED, "network": {"mode": "unrestricted"}, "isolate_signals": False},
+        ),
+        (
+            {"abi": 6, "block_network": True, "use_storage": True, "require_signal_isolation": True},
+            {"jail": JAILED, "network": {"mode": "allow_ports", "ports": [9000]}, "isolate_signals": True},
+        ),
+        # The isolation opt-out at ABI 0 is not overridden by the signal isolation requirement.
+        ({"abi": 0, "require_isolation": False, "require_signal_isolation": True}, "unconfined"),
+        ({"abi": 6, "block_private_network": True, "firewall_active": True},
+         {"jail": JAILED, "network": {"mode": "unrestricted"}, "isolate_signals": True}),
+    ],
+    ids=[
+        "network-unrestricted",
+        "network-blocked",
+        "network-blocked-except-storage",
+        "no-landlock-network-blocked",
+        "signal-isolation-required-and-supported",
+        "signal-isolation-supported-not-required",
+        "old-kernel-signal-isolation-not-required",
+        "storage-port-and-signal-isolation",
+        "no-landlock-isolation-opted-out",
+        "private-network-firewall-installed",
+    ],
+)
+async def test_launcher_receives_the_plan_for_the_settings(
+    tmp_path, monkeypatch, settings_for_run, expected_plan
+):
+    result, plan = await _run(tmp_path, monkeypatch, **settings_for_run)
 
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["network"] == {"mode": "unrestricted"}
+    assert result.returncode == 0
+    if isinstance(expected_plan, dict) and expected_plan["jail"] == JAILED:
         assert plan["jail"] is not None
+        plan = {**plan, "jail": JAILED}
+    assert plan == expected_plan
 
 
-class TestNetworkFlagOnWithoutStorage:
-    @pytest.mark.asyncio
-    async def test_plan_blocks_all_inet_with_no_ports(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("settings_for_run", "must_say", "must_not_say"),
+    [
+        (
+            {"abi": 3, "block_network": True, "use_storage": True},
+            ("Landlock ABI 4", "SANDBOX_BLOCK_NETWORK"),
+            (),
+        ),
+        ({"abi": 5, "require_signal_isolation": True}, ("Landlock ABI 6+ (Linux 6.12+)", "SANDBOX_REQUIRE_SIGNAL_ISOLATION"), ()),
+        # Without Landlock the filesystem isolation refusal is the one reported.
+        ({"abi": 0, "require_signal_isolation": True}, ("kernel lacks Landlock",), ("SANDBOX_REQUIRE_SIGNAL_ISOLATION",)),
+        *[
+            # Both refuse; signal isolation is checked first.
+            (
+                {"abi": abi, "block_network": True, "use_storage": True, "require_signal_isolation": True},
+                ("SANDBOX_REQUIRE_SIGNAL_ISOLATION",),
+                ("SANDBOX_BLOCK_NETWORK",),
+            )
+            for abi in (1, 2, 3)
+        ],
+        (
+            {"abi": 6, "block_private_network": True, "firewall_active": False},
+            ("private-network isolation unavailable", "SANDBOX_BLOCK_PRIVATE_NETWORK=false"),
+            (),
+        ),
+    ],
+    ids=[
+        "storage-port-needs-abi-4",
+        "signal-isolation-needs-abi-6",
+        "no-landlock",
+        "abi-1-signal-before-network",
+        "abi-2-signal-before-network",
+        "abi-3-signal-before-network",
+        "private-network-firewall-missing",
+    ],
+)
+async def test_unsafe_settings_refuse_with_one_line_and_spawn_nothing(
+    tmp_path, monkeypatch, settings_for_run, must_say, must_not_say
+):
+    result, plan = await _run(tmp_path, monkeypatch, **settings_for_run)
 
-        recorded: dict = {}
-        context = _make_execute_context(tmp_path, use_storage=False)
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["network"] == {"mode": "block_all"}
-
-
-class TestNetworkFlagOnWithStorageSufficientAbi:
-    @pytest.mark.asyncio
-    async def test_plan_carries_storage_port_and_does_not_block_all(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
-
-        recorded: dict = {}
-        context = _make_execute_context(
-            tmp_path,
-            use_storage=True,
-            temp_storage_access_key="scoped-ak",
-            temp_storage_secret_key="scoped-sk",
-        )
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["network"] == {"mode": "allow_ports", "ports": [9000]}
-
-
-class TestNetworkFlagOnWithStorageInsufficientAbi:
-    @pytest.mark.asyncio
-    async def test_refuses_without_spawning_a_subprocess(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 3)
-
-        recorded: dict = {}
-        context = _make_execute_context(
-            tmp_path,
-            use_storage=True,
-            temp_storage_access_key="scoped-ak",
-            temp_storage_secret_key="scoped-sk",
-        )
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 1
-        assert "Landlock ABI 4" in result.stderr
-        assert "SANDBOX_BLOCK_NETWORK" in result.stderr
-        assert "argv" not in recorded
+    assert plan is None
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "\n" not in result.stderr
+    assert all(fragment in result.stderr for fragment in must_say)
+    assert not any(fragment in result.stderr for fragment in must_not_say)
 
 
-class TestNetworkFlagOnWithoutLandlockAndIsolationNotRequired:
-    @pytest.mark.asyncio
-    async def test_launcher_still_used_with_null_jail_and_block_all(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "false")
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 0)
+@pytest.mark.asyncio
+async def test_running_without_signal_isolation_is_logged_as_a_warning(
+    tmp_path, monkeypatch, warnings_logged
+):
+    await _run(tmp_path, monkeypatch, abi=5, require_signal_isolation=False)
 
-        recorded: dict = {}
-        context = _make_execute_context(tmp_path, use_storage=False)
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["jail"] is None
-        assert plan["network"] == {"mode": "block_all"}
-
-
-class TestSignalIsolationSupported:
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("require_signal_isolation", [True, False])
-    async def test_plan_always_enforces_signal_isolation(
-        self, tmp_path, monkeypatch, require_signal_isolation
-    ):
-        result, recorded = await _handle(
-            tmp_path, monkeypatch, abi=6, require_signal_isolation=require_signal_isolation
-        )
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["isolate_signals"] is True
-        assert plan["jail"] is not None
-
-
-class TestSignalIsolationUnavailableAndRequired:
-    @pytest.mark.asyncio
-    async def test_refuses_with_one_stderr_line_without_spawning(self, tmp_path, monkeypatch):
-        result, recorded = await _handle(
-            tmp_path, monkeypatch, abi=5, require_signal_isolation=True
-        )
-
-        assert result.returncode == 1
-        assert result.stdout == ""
-        assert "Landlock ABI 6+ (Linux 6.12+)" in result.stderr
-        assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION" in result.stderr
-        assert "\n" not in result.stderr
-        assert "argv" not in recorded
-
-
-class TestSignalIsolationUnavailableAndNotRequired:
-    @pytest.mark.asyncio
-    async def test_runs_unisolated_and_warns(self, tmp_path, monkeypatch, warnings_logged):
-        result, recorded = await _handle(
-            tmp_path, monkeypatch, abi=5, require_signal_isolation=False
-        )
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["isolate_signals"] is False
-        assert plan["jail"] is not None
-        assert any("UNISOLATED" in message for message in warnings_logged)
-
-
-class TestSignalIsolationWithoutLandlock:
-    @pytest.mark.asyncio
-    async def test_isolation_opt_out_is_not_overridden_by_the_signal_isolation_requirement(
-        self, tmp_path, monkeypatch, warnings_logged
-    ):
-        """ABI 0 is governed by SANDBOX_REQUIRE_ISOLATION alone: with it off,
-        the execution runs unconfined even though signal isolation is required."""
-        monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "false")
-
-        result, recorded = await _handle(
-            tmp_path, monkeypatch, abi=0, require_signal_isolation=True
-        )
-
-        assert result.returncode == 0
-        assert str(recorded["argv"][1]) != str(LAUNCHER_PATH)
-        assert not any("UNISOLATED" in message for message in warnings_logged)
-
-    @pytest.mark.asyncio
-    async def test_isolation_refusal_is_the_one_reported(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "true")
-
-        result, recorded = await _handle(
-            tmp_path, monkeypatch, abi=0, require_signal_isolation=True
-        )
-
-        assert result.returncode == 1
-        assert "kernel lacks Landlock" in result.stderr
-        assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION" not in result.stderr
-        assert "argv" not in recorded
-
-
-class TestSignalIsolationWithNetworkBlockAndStorage:
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("abi", [1, 2, 3])
-    async def test_signal_isolation_refusal_is_reported_before_the_network_refusal(
-        self, tmp_path, monkeypatch, abi
-    ):
-        """Both decisions refuse here; the handler checks signal isolation first."""
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
-        monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", True)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: abi)
-
-        recorded: dict = {}
-        context = _make_execute_context(
-            tmp_path,
-            use_storage=True,
-            temp_storage_access_key="scoped-ak",
-            temp_storage_secret_key="scoped-sk",
-        )
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 1
-        assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION" in result.stderr
-        assert "SANDBOX_BLOCK_NETWORK" not in result.stderr
-        assert "argv" not in recorded
-
-    @pytest.mark.asyncio
-    async def test_plan_carries_storage_port_and_signal_isolation_together(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
-        monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", True)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 6)
-
-        recorded: dict = {}
-        context = _make_execute_context(
-            tmp_path,
-            use_storage=True,
-            temp_storage_access_key="scoped-ak",
-            temp_storage_secret_key="scoped-sk",
-        )
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        plan = _plan_from_argv(recorded["argv"])
-        assert plan["network"] == {"mode": "allow_ports", "ports": [9000]}
-        assert plan["isolate_signals"] is True
-        assert plan["jail"] is not None
-
-
-class TestPrivateNetworkFirewall:
-    async def _handle(self, tmp_path, monkeypatch, *, block_private_network, firewall_active):
-        monkeypatch.setattr(settings, "BLOCK_PRIVATE_NETWORK", block_private_network)
-        monkeypatch.setattr(egress_firewall, "is_active", lambda: firewall_active)
-        return await _handle(tmp_path, monkeypatch, abi=6, require_signal_isolation=True)
-
-    @pytest.mark.asyncio
-    async def test_refuses_without_spawning_when_required_but_not_installed(
-        self, tmp_path, monkeypatch
-    ):
-        result, recorded = await self._handle(
-            tmp_path, monkeypatch, block_private_network=True, firewall_active=False
-        )
-
-        assert result.returncode == 1
-        assert result.stdout == ""
-        assert "private-network isolation unavailable" in result.stderr
-        assert "SANDBOX_BLOCK_PRIVATE_NETWORK=false" in result.stderr
-        assert "argv" not in recorded
-
-    @pytest.mark.asyncio
-    async def test_runs_when_required_and_installed(self, tmp_path, monkeypatch):
-        result, recorded = await self._handle(
-            tmp_path, monkeypatch, block_private_network=True, firewall_active=True
-        )
-
-        assert result.returncode == 0
-        assert "argv" in recorded
-
-    @pytest.mark.asyncio
-    async def test_runs_when_not_required(self, tmp_path, monkeypatch):
-        result, recorded = await self._handle(
-            tmp_path, monkeypatch, block_private_network=False, firewall_active=False
-        )
-
-        assert result.returncode == 0
-        assert "argv" in recorded
+    assert any("UNISOLATED" in message for message in warnings_logged)

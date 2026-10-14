@@ -1,10 +1,15 @@
-"""Request-building tests for LiteLLMClient._build_kwargs.
+"""The request LiteLLMClient.stream_completion sends to litellm, per provider.
 
-The client takes an LLMConfigData, not an ORM row, so these tests need no database.
+`litellm.acompletion` is the provider boundary: a stub records its kwargs and ends
+the stream at once. The client takes an LLMConfigData, not an ORM row, so these
+tests need no database.
 """
 
+import asyncio
 import copy
 import json
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -27,6 +32,28 @@ MESSAGES = [
 ]
 
 
+def sent_request(client: LiteLLMClient, messages: list[dict], tools: list) -> dict:
+    """Stream one completion and return the kwargs litellm.acompletion received."""
+    sent = {}
+
+    async def acompletion(**kwargs):
+        sent.update(kwargs)
+
+        async def stream():
+            delta = SimpleNamespace(content=None, tool_calls=None)
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason="stop")])
+
+        return stream()
+
+    async def consume():
+        async for _event in client.stream_completion(messages, tools):
+            pass
+
+    with patch("tables.services.llm_clients.litellm_client.litellm.acompletion", new=acompletion):
+        asyncio.run(consume())
+    return sent
+
+
 def make_client(
     provider_name: str | None,
     model_name: str = "some-model",
@@ -45,7 +72,7 @@ def make_client(
 def test_deepseek_with_schema_sends_json_object(provider_name):
     client = make_client(provider_name, "deepseek-chat", output_schema=OUTPUT_SCHEMA)
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert kwargs["response_format"] == {"type": "json_object"}
 
@@ -54,7 +81,7 @@ def test_deepseek_with_schema_prepends_schema_system_message_without_mutating_ca
     caller_messages = copy.deepcopy(MESSAGES)
     client = make_client("deepseek", "deepseek-chat", output_schema=OUTPUT_SCHEMA)
 
-    kwargs = client._build_kwargs(caller_messages, [])
+    kwargs = sent_request(client, caller_messages, [])
 
     first_message = kwargs["messages"][0]
     assert first_message["role"] == "system"
@@ -76,7 +103,7 @@ def test_deepseek_with_schema_prepends_schema_system_message_without_mutating_ca
 def test_non_deepseek_with_schema_sends_unchanged_json_schema(provider_name, model_name):
     client = make_client(provider_name, model_name, output_schema=OUTPUT_SCHEMA)
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert kwargs["response_format"] == {
         "type": "json_schema",
@@ -103,7 +130,7 @@ GROQ_MODELS = ["groq/llama-3.1-8b-instant", "groq/openai/gpt-oss-120b"]
 def test_groq_with_schema_and_tools_sends_schema_in_prompt_only(model_name):
     client = make_client("groq", model_name, output_schema=OUTPUT_SCHEMA)
 
-    kwargs = client._build_kwargs(MESSAGES, TOOLS)
+    kwargs = sent_request(client, MESSAGES, TOOLS)
 
     assert "response_format" not in kwargs
     assert json.dumps(OUTPUT_SCHEMA["schema"]) in kwargs["messages"][0]["content"]
@@ -115,7 +142,7 @@ def test_groq_with_schema_and_tools_sends_schema_in_prompt_only(model_name):
 def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
     client = make_client("groq", model_name, output_schema=OUTPUT_SCHEMA)
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert kwargs["response_format"] == {
         "type": "json_schema",
@@ -144,14 +171,14 @@ def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
 def test_model_string_routes_to_the_row_provider(provider_name, model_name, expected_model):
     client = make_client(provider_name, model_name)
 
-    assert client._build_kwargs(MESSAGES, [])["model"] == expected_model
+    assert sent_request(client, MESSAGES, [])["model"] == expected_model
 
 
 @pytest.mark.parametrize("provider_name", ["deepseek", "openai"])
 def test_without_schema_sends_no_response_format(provider_name):
     client = make_client(provider_name)
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert "response_format" not in kwargs
     assert kwargs["messages"] == MESSAGES
@@ -168,7 +195,7 @@ def test_generation_params_except_stop_reach_the_request():
         seed=7,
     )
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert kwargs["reasoning_effort"] == "high"
     # The config's stop sequences are agent-oriented and could cut the JSON reply.
@@ -179,7 +206,7 @@ def test_generation_params_except_stop_reach_the_request():
 
 
 def test_unset_reasoning_effort_sends_no_key():
-    kwargs = make_client("openai", "gpt-4o")._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(make_client("openai", "gpt-4o"), MESSAGES, [])
 
     assert "reasoning_effort" not in kwargs
     assert "stop" not in kwargs
@@ -189,7 +216,7 @@ def test_unset_reasoning_effort_sends_no_key():
 def test_azure_model_string_uses_the_deployment_id():
     client = make_client("azure", "o3-mini", deployment_id="my-o3-deployment")
 
-    assert client._build_kwargs(MESSAGES, [])["model"] == "azure/my-o3-deployment"
+    assert sent_request(client, MESSAGES, [])["model"] == "azure/my-o3-deployment"
 
 
 def test_transport_fields_come_from_the_config():
@@ -201,7 +228,7 @@ def test_transport_fields_come_from_the_config():
         extra_headers={"X-Trace": "1"},
     )
 
-    kwargs = client._build_kwargs(MESSAGES, [])
+    kwargs = sent_request(client, MESSAGES, [])
 
     assert kwargs["base_url"] == "https://example.openai.azure.com"
     assert kwargs["api_version"] == "2024-10-21"
@@ -209,7 +236,7 @@ def test_transport_fields_come_from_the_config():
 
 
 def test_provider_less_model_uses_the_bare_model_name():
-    assert make_client(None, "gpt-4o")._build_kwargs(MESSAGES, [])["model"] == "gpt-4o"
+    assert sent_request(make_client(None, "gpt-4o"), MESSAGES, [])["model"] == "gpt-4o"
 
 
 def test_empty_model_name_raises_unsupported_provider():

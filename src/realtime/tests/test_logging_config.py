@@ -75,20 +75,6 @@ def _uvicorn_record(name: str, message: str, args: tuple) -> logging.LogRecord:
     return logging.LogRecord(name, logging.INFO, __file__, 1, message, args, None)
 
 
-def test_logged_exception_does_not_leak_local_variable_values(unconfigured_logging, capsys):
-    configure_logging()
-
-    try:
-        _connect_with_secret_key()
-    except ValueError:
-        logger.exception("Realtime connection failed")
-
-    stderr = capsys.readouterr().err
-    assert "Realtime connection failed" in stderr
-    assert "ValueError: provider rejected a key of length 18" in stderr
-    assert SECRET_API_KEY not in stderr
-
-
 def test_configure_logging_twice_writes_each_record_once(unconfigured_logging, capsys):
     configure_logging()
     configure_logging()
@@ -99,34 +85,20 @@ def test_configure_logging_twice_writes_each_record_once(unconfigured_logging, c
     assert stderr.count("single stderr handler probe") == 1
 
 
-def test_configure_logging_keeps_info_level_outside_debug_mode(
-    unconfigured_logging, capsys, monkeypatch
-):
-    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", False)
+@pytest.mark.parametrize("debug_mode", [False, True], ids=["normal", "debug-mode"])
+def test_exceptions_are_logged_without_local_variable_values(unconfigured_logging, capsys, monkeypatch, debug_mode):
+    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", debug_mode)
     configure_logging()
 
-    logger.debug("debug record must be filtered")
-    logger.info("info record must be written")
-
-    stderr = capsys.readouterr().err
-    assert "debug record must be filtered" not in stderr
-    assert "info record must be written" in stderr
-
-
-def test_configure_logging_writes_debug_records_in_debug_mode_without_variable_values(
-    unconfigured_logging, capsys, monkeypatch
-):
-    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", True)
-    configure_logging()
-
-    logger.debug("debug record must be written")
+    logger.debug("debug record")
     try:
         _connect_with_secret_key()
     except ValueError:
         logger.exception("Realtime connection failed")
 
     stderr = capsys.readouterr().err
-    assert "debug record must be written" in stderr
+    assert ("debug record" in stderr) is debug_mode
+    assert "Realtime connection failed" in stderr
     assert "ValueError: provider rejected a key of length 18" in stderr
     assert SECRET_API_KEY not in stderr
 
@@ -141,91 +113,49 @@ def test_configure_logging_keeps_sinks_added_by_other_code(
     assert any("record for an existing sink" in message for message in captured_log_messages)
 
 
-def test_filter_redacts_token_in_accepted_websocket_handshake_record():
-    record = _uvicorn_record(
-        "uvicorn.error",
-        '%s - "WebSocket %s" [accepted]',
-        ("172.18.0.9:51234", f"/realtime/?connection_key=abc-123&token={USER_JWT}"),
-    )
+@pytest.mark.parametrize(
+    ("message", "args", "expected"),
+    [
+        (
+            '%s - "WebSocket %s" [accepted]',
+            ("172.18.0.9:51234", f"/realtime/?connection_key=abc-123&token={USER_JWT}"),
+            '172.18.0.9:51234 - "WebSocket /realtime/?connection_key=abc-123&token=[REDACTED]" [accepted]',
+        ),
+        (
+            '%s - "WebSocket %s" 403',
+            ("172.18.0.9:51234", f"/realtime/?token={USER_JWT}&connection_key=abc-123"),
+            '172.18.0.9:51234 - "WebSocket /realtime/?token=[REDACTED]&connection_key=abc-123" 403',
+        ),
+        (
+            '%s - "WebSocket %s" [accepted]',
+            ("10.0.0.1:4000", "/voice/7/stream?stream_token=st-secret&not_a_token=kept"),
+            '10.0.0.1:4000 - "WebSocket /voice/7/stream?stream_token=[REDACTED]&not_a_token=kept" [accepted]',
+        ),
+        (
+            '%s - "WebSocket %s" [accepted]',
+            ("10.0.0.1:4000", f"/realtime/?Token={USER_JWT}&STREAM_TOKEN=st-secret"),
+            '10.0.0.1:4000 - "WebSocket /realtime/?Token=[REDACTED]&STREAM_TOKEN=[REDACTED]" [accepted]',
+        ),
+        # LogRecord unwraps a single mapping argument into `record.args`.
+        (
+            '%(client)s - "WebSocket %(path)s" %(status)d',
+            ({"client": "172.18.0.9:51234", "path": f"/realtime/?token={USER_JWT}", "status": 403},),
+            '172.18.0.9:51234 - "WebSocket /realtime/?token=[REDACTED]" 403',
+        ),
+        (
+            f'"WebSocket /realtime/?connection_key=abc-123&token={USER_JWT}" 403',
+            (),
+            '"WebSocket /realtime/?connection_key=abc-123&token=[REDACTED]" 403',
+        ),
+    ],
+    ids=["accepted-handshake", "rejected-handshake", "stream-token-and-lookalike", "case-insensitive", "mapping-args", "preformatted"],
+)
+def test_filter_redacts_tokens_in_websocket_handshake_records(message, args, expected):
+    record = _uvicorn_record("uvicorn.error", message, args)
 
     assert SensitiveQueryParameterFilter().filter(record) is True
 
-    message = record.getMessage()
-    assert USER_JWT not in message
-    assert (
-        message
-        == '172.18.0.9:51234 - "WebSocket /realtime/?connection_key=abc-123&token=[REDACTED]"'
-        " [accepted]"
-    )
-
-
-def test_filter_redacts_token_in_rejected_websocket_handshake_record():
-    record = _uvicorn_record(
-        "uvicorn.error",
-        '%s - "WebSocket %s" 403',
-        ("172.18.0.9:51234", f"/realtime/?token={USER_JWT}&connection_key=abc-123"),
-    )
-
-    SensitiveQueryParameterFilter().filter(record)
-
-    assert (
-        record.getMessage()
-        == '172.18.0.9:51234 - "WebSocket /realtime/?token=[REDACTED]&connection_key=abc-123" 403'
-    )
-
-
-def test_filter_redacts_stream_token_and_keeps_similarly_named_parameters():
-    record = _uvicorn_record(
-        "uvicorn.error",
-        '%s - "WebSocket %s" [accepted]',
-        ("10.0.0.1:4000", "/voice/7/stream?stream_token=st-secret&not_a_token=kept"),
-    )
-
-    SensitiveQueryParameterFilter().filter(record)
-
-    message = record.getMessage()
-    assert "st-secret" not in message
-    assert "stream_token=[REDACTED]" in message
-    assert "not_a_token=kept" in message
-
-
-def test_filter_redacts_token_in_mapping_args_record():
-    # LogRecord unwraps a single mapping argument into `record.args`.
-    record = _uvicorn_record(
-        "uvicorn.error",
-        '%(client)s - "WebSocket %(path)s" %(status)d',
-        ({"client": "172.18.0.9:51234", "path": f"/realtime/?token={USER_JWT}", "status": 403},),
-    )
-    assert isinstance(record.args, dict)
-
-    assert SensitiveQueryParameterFilter().filter(record) is True
-
-    assert record.getMessage() == '172.18.0.9:51234 - "WebSocket /realtime/?token=[REDACTED]" 403'
-
-
-def test_filter_redacts_sensitive_parameter_names_case_insensitively():
-    record = _uvicorn_record(
-        "uvicorn.error",
-        '%s - "WebSocket %s" [accepted]',
-        ("10.0.0.1:4000", f"/realtime/?Token={USER_JWT}&STREAM_TOKEN=st-secret"),
-    )
-
-    SensitiveQueryParameterFilter().filter(record)
-
-    message = record.getMessage()
-    assert USER_JWT not in message
-    assert "st-secret" not in message
-    assert "?Token=[REDACTED]&STREAM_TOKEN=[REDACTED]" in message
-
-
-def test_filter_redacts_token_in_preformatted_message():
-    record = _uvicorn_record(
-        "uvicorn.error", f'"WebSocket /realtime/?connection_key=abc-123&token={USER_JWT}" 403', ()
-    )
-
-    SensitiveQueryParameterFilter().filter(record)
-
-    assert record.getMessage() == '"WebSocket /realtime/?connection_key=abc-123&token=[REDACTED]" 403'
+    assert record.getMessage() == expected
 
 
 def test_filter_redacts_token_in_access_log_record_formatted_by_uvicorn():
