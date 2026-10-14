@@ -43,6 +43,7 @@ class FakeLLMClient(LLMClient):
         self.chat_raises = chat_raises
         self.received_configs: list[dict] = []
         self.received_tools: list[list] = []
+        self.received_streams: list[bool] = []
 
     async def _iter_chunks(self, chunks: list[LLMChunk]) -> AsyncIterator[LLMChunk]:
         for chunk in chunks:
@@ -59,6 +60,7 @@ class FakeLLMClient(LLMClient):
     ) -> AsyncIterator[LLMChunk]:
         self.received_configs.append(dict(model_config))
         self.received_tools.append(list(tools))
+        self.received_streams.append(stream)
 
         if self.chat_raises is not None:
             raise self.chat_raises
@@ -1021,6 +1023,8 @@ async def test_consecutive_failures_stops_gracefully_with_summary():
 
     assert llm.received_tools[-1] == []
     assert "tool_choice" not in llm.received_configs[-1]
+    # Both the loop call and the finalization call are non-streamed.
+    assert llm.received_streams == [False, False, False]
 
     assistant_messages = [m for m in context.messages if m["role"] == "assistant"]
     assert assistant_messages[-1]["content"] == "I tried X; it failed because Y"
