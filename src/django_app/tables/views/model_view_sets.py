@@ -179,6 +179,8 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.cdt_explain_serializers import (
     CdtExplainRequestSerializer,
     CdtExplainResponseSerializer,
+    CdtExplanationsSaveRequestSerializer,
+    CdtExplanationsSaveResponseSerializer,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.model_serializers import (
@@ -2115,6 +2117,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         **DEFAULT_ACTION_MAP,
         "export": Permission.EXPORT,
         "explain": Permission.READ,
+        "explanations": Permission.UPDATE,
     }
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.select_related(
@@ -2199,6 +2202,33 @@ class ClassificationDecisionTableNodeModelViewSet(
         )
         return Response(
             {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=CdtExplanationsSaveRequestSerializer,
+        responses={200: CdtExplanationsSaveResponseSerializer},
+        description=(
+            "Replace this node's stored step explanations (`metadata.explanations`) and "
+            "nothing else on it. `{}` clears them. Versioned like the flow bulk save: a "
+            "stale `save_version` is a 409 with the bulk-save conflict body, and a "
+            "success returns the flow's new `save_version`."
+        ),
+    )
+    @action(detail=True, methods=["put"], url_path="explanations")
+    def explanations(self, request, pk=None):
+        serializer = CdtExplanationsSaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._node_service.save_explanations(
+            self.get_object(),
+            explanations=data["explanations"],
+            expected_save_version=data["save_version"],
+            user=request.user,
+        )
+        return Response(
+            {"explanations": result.explanations, "save_version": result.save_version},
             status=status.HTTP_200_OK,
         )
 
@@ -2649,17 +2679,20 @@ class SecretViewSet(
 
 class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     """
-    A user's own saved audit-search filters - owner-only (see get_queryset):
-    every action, including an Org Admin's, is scoped to `created_by=request.
-    user` on top of the usual org scoping, so another user's preset id 404s
-    rather than 403s (it isn't visible enough to even name as "forbidden").
+    Saved audit-search filters of the active org, each private to its author
+    or shared with the org. list, retrieve, export, bulk_export and copy see
+    the caller's own presets plus every shared one; a colleague's private
+    preset 404s there exactly like a preset of another org (bulk_export 400s).
+    Only the author can update or delete - for those actions get_queryset
+    narrows to `created_by=request.user`. A copy belongs to whoever made it.
+    The author may share a preset (`is_shared: true`); un-sharing is rejected
+    by the serializer.
 
     Gated entirely on AUDIT:read, same as browsing itself - presets are a
-    personal convenience over audit data, not audit data or an org-wide
-    setting, so every action (including create/update/destroy/duplicate/
-    overwrite/export/import) maps to READ rather than the CREATE/UPDATE/
-    DELETE bits DEFAULT_ACTION_MAP would otherwise require - which were
-    never granted for the `audit` resource type (see
+    convenience over audit data, not audit data itself, so every action
+    (including create/update/destroy/copy/export/import) maps to READ rather
+    than the CREATE/UPDATE/DELETE bits DEFAULT_ACTION_MAP would otherwise
+    require - which were never granted for the `audit` resource type (see
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
@@ -2682,7 +2715,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         "bulk_export": Permission.READ,
         "import_presets": Permission.READ,
     }
-    queryset = AuditFilterPreset.objects.all()
+    queryset = AuditFilterPreset.objects.select_related("created_by")
     serializer_class = AuditFilterPresetSerializer
 
     def __init__(self, *args, **kwargs):
@@ -2693,8 +2726,13 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             filename_attr="name",
         )
 
+    _author_only_actions = frozenset({"update", "partial_update", "destroy"})
+
     def get_queryset(self):
-        return super().get_queryset().filter(created_by=self.request.user)
+        queryset = super().get_queryset()
+        if self.action in self._author_only_actions:
+            return queryset.filter(created_by=self.request.user)
+        return queryset.filter(Q(is_shared=True) | Q(created_by=self.request.user))
 
     @extend_schema(**AUDIT_FILTER_PRESET_COPY)
     @action(detail=True, methods=["post"])
@@ -2707,8 +2745,9 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             name=serializer.validated_data.get("name"),
             org_id=self.get_active_org_id(),
             created_by=request.user,
+            is_shared=serializer.validated_data["is_shared"],
         )
-        return Response(AuditFilterPresetSerializer(clone).data, status=201)
+        return Response(self.get_serializer(clone).data, status=201)
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ONE)
     @action(detail=True, methods=["get"])

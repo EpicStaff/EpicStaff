@@ -34,101 +34,9 @@ def test_validate_create_empty_permissions_allowed(validator):
     assert cleaned["permissions"] == []
 
 
-def test_validate_create_reserved_name_rejected(validator):
-    with pytest.raises(FormValidationError) as exc:
-        validator.validate_create({"org_id": 10, "name": "Org Admin"})
-    assert any(e["field"] == "name" for e in exc.value.errors)
-
-
-def test_validate_create_blank_name_rejected(validator):
-    with pytest.raises(FormValidationError):
-        validator.validate_create({"org_id": 10, "name": "   "})
-
-
-def test_validate_create_missing_org_id_rejected(validator):
-    with pytest.raises(FormValidationError):
-        validator.validate_create({"name": "X"})
-
-
-def test_validate_create_inapplicable_action_rejected(validator):
-    # secrets does not have "export" in the catalog's applicable_actions.
-    with pytest.raises(FormValidationError) as exc:
-        validator.validate_create(
-            {
-                "org_id": 10,
-                "name": "Bad",
-                "permissions": [{"resource_type": "secrets", "actions": ["export"]}],
-            }
-        )
-    assert any("secrets" in e["field"] for e in exc.value.errors)
-
-
-def test_validate_create_unknown_resource_rejected(validator):
-    with pytest.raises(FormValidationError):
-        validator.validate_create(
-            {
-                "org_id": 10,
-                "name": "Bad",
-                "permissions": [{"resource_type": "nope", "actions": ["read"]}],
-            }
-        )
-
-
-def test_validate_create_duplicate_resource_type_rejected(validator):
-    # Two entries for the same resource_type would violate the
-    # (role, resource_type) unique constraint at write time — reject at 400
-    # rather than surfacing an IntegrityError (500).
-    with pytest.raises(FormValidationError) as exc:
-        validator.validate_create(
-            {
-                "org_id": 10,
-                "name": "Dup Resource",
-                "permissions": [
-                    {"resource_type": "secrets", "actions": ["read"]},
-                    {"resource_type": "secrets", "actions": ["use"]},
-                ],
-            }
-        )
-    assert any(e["field"] == "permissions[1].resource_type" for e in exc.value.errors)
-
-
-def test_validate_update_duplicate_resource_type_rejected(validator):
-    with pytest.raises(FormValidationError) as exc:
-        validator.validate_update(
-            {
-                "permissions": [
-                    {"resource_type": "flows", "actions": ["read"]},
-                    {"resource_type": "flows", "actions": ["create"]},
-                ]
-            }
-        )
-    assert any("resource_type" in e["field"] for e in exc.value.errors)
-
-
 def test_validate_update_partial_only_present_keys(validator):
     cleaned = validator.validate_update({"description": "new desc"})
     assert cleaned == {"description": "new desc"}
-
-
-def test_validate_update_rejects_reserved_name(validator):
-    with pytest.raises(FormValidationError):
-        validator.validate_update({"name": "Viewer"})
-
-
-def test_granting_org_create_rejected_as_platform_action(validator):
-    # organizations.create is platform-level (superadmin-only) — not grantable.
-    with pytest.raises(FormValidationError) as exc:
-        validator.validate_create(
-            {
-                "org_id": 10,
-                "name": "Bad",
-                "permissions": [
-                    {"resource_type": "organizations", "actions": ["create"]}
-                ],
-            }
-        )
-    reasons = " ".join(e["reason"] for e in exc.value.errors)
-    assert "platform" in reasons.lower()
 
 
 def test_granting_org_read_update_still_allowed(validator):
@@ -147,3 +55,49 @@ def test_granting_org_read_update_still_allowed(validator):
             "bitmask": int(Permission.READ | Permission.UPDATE),
         }
     ]
+
+
+def _create(**fields):
+    return lambda validator: validator.validate_create({"org_id": 10, "name": "Bad", **fields})
+
+
+@pytest.mark.parametrize(
+    ("call", "field_fragment", "reason_fragment"),
+    [
+        (_create(name="Org Admin"), "name", None),
+        (lambda validator: validator.validate_update({"name": "Viewer"}), "name", None),
+        (_create(name="   "), "name", None),
+        (lambda validator: validator.validate_create({"name": "X"}), "org_id", None),
+        # secrets has no "export" among its applicable actions.
+        (_create(permissions=[{"resource_type": "secrets", "actions": ["export"]}]), "secrets", None),
+        (_create(permissions=[{"resource_type": "nope", "actions": ["read"]}]), "resource_type", None),
+        # Two entries for one resource_type would hit the (role, resource_type) unique
+        # constraint at write time: a 400 here instead of a 500 there.
+        (
+            _create(permissions=[{"resource_type": "secrets", "actions": ["read"]},
+                                 {"resource_type": "secrets", "actions": ["use"]}]),
+            "permissions[1].resource_type", None,
+        ),
+        (
+            lambda validator: validator.validate_update({"permissions": [
+                {"resource_type": "flows", "actions": ["read"]},
+                {"resource_type": "flows", "actions": ["create"]},
+            ]}),
+            "resource_type", None,
+        ),
+        # organizations.create is platform-level (superadmin-only), never grantable.
+        (_create(permissions=[{"resource_type": "organizations", "actions": ["create"]}]), None, "platform"),
+    ],
+    ids=[
+        "reserved-name", "reserved-name-on-update", "blank-name", "no-org", "inapplicable-action",
+        "unknown-resource", "duplicate-resource", "duplicate-resource-on-update", "platform-action",
+    ],
+)
+def test_invalid_role_is_rejected_naming_the_field(validator, call, field_fragment, reason_fragment):
+    with pytest.raises(FormValidationError) as exc:
+        call(validator)
+
+    if field_fragment:
+        assert any(field_fragment in error["field"] for error in exc.value.errors), exc.value.errors
+    if reason_fragment:
+        assert reason_fragment in " ".join(error["reason"] for error in exc.value.errors).lower()

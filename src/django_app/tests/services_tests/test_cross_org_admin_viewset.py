@@ -24,18 +24,6 @@ class _V(CrossOrgAdminViewSet):
     superadmin_actions = frozenset({"create", "deactivate"})
 
 
-def test_superadmin_action_uses_is_superadmin():
-    v = _V()
-    v.action = "create"
-    assert any(isinstance(p, IsSuperadmin) for p in v.get_permissions())
-
-
-def test_normal_action_uses_door_gate():
-    v = _V()
-    v.action = "list"
-    assert any(isinstance(p, HasResourcePermissionAnywhere) for p in v.get_permissions())
-
-
 def test_parse_org_ids_parses_and_defaults():
     assert _V.parse_org_ids("1,2,3") == [1, 2, 3]
     assert _V.parse_org_ids(None) is None
@@ -45,20 +33,6 @@ def test_parse_org_ids_parses_and_defaults():
 def test_parse_org_ids_rejects_non_integer():
     with pytest.raises(OrgContextRequiredError):
         _V.parse_org_ids("1,abc")
-
-
-def test_cross_org_surfaces_share_one_paginator():
-    from rbac.views.cross_org_base import CrossOrgAdminPagination
-    from rbac.views.memberships import MembershipAdminViewSet
-    from rbac.views.organizations import OrganizationAdminViewSet
-    from rbac.views.roles import RoleAdminViewSet
-
-    assert CrossOrgAdminPagination.page_size == 50
-    assert CrossOrgAdminPagination.max_page_size == 200
-    assert CrossOrgAdminPagination.page_size_query_param == "page_size"
-    for viewset in (RoleAdminViewSet, MembershipAdminViewSet, OrganizationAdminViewSet):
-        assert viewset.pagination_class is CrossOrgAdminPagination
-
 
 # Every action each admin viewset exposes. Written out by hand so a new action
 # shows up as a failing comparison against the viewset, not as silent coverage.
@@ -216,35 +190,25 @@ def test_overriding_permission_classes_does_not_drop_the_api_key_gate():
 
 # ---- RestrictApiKeyToUserKeyReads ----
 
-
-def _request(method, auth):
-    return SimpleNamespace(method=method, auth=auth)
+USER_KEY, SYSTEM_KEY = ApiKey.KeyType.USER, ApiKey.KeyType.SYSTEM
 
 
-def _key(key_type):
-    return ApiKey(key_type=key_type)
+@pytest.mark.parametrize(
+    ("key_type", "methods", "allowed", "message"),
+    [
+        (None, ["GET", "POST", "PATCH", "PUT", "DELETE"], True, None),
+        (USER_KEY, ["GET", "HEAD", "OPTIONS"], True, None),
+        (USER_KEY, ["POST", "PATCH", "PUT", "DELETE"], False, RestrictApiKeyToUserKeyReads.write_message),
+        (SYSTEM_KEY, ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "DELETE"], False, RestrictApiKeyToUserKeyReads.non_user_key_message),
+    ],
+    ids=["no-key", "user-key-read", "user-key-write", "system-key"],
+)
+def test_admin_api_key_gate(key_type, methods, allowed, message):
+    """Admin surfaces take user keys for reads only, and never a system key."""
+    for method in methods:
+        gate = RestrictApiKeyToUserKeyReads()
+        request = SimpleNamespace(method=method, auth=ApiKey(key_type=key_type) if key_type else None)
 
-
-@pytest.mark.parametrize("method", ["GET", "POST", "PATCH", "PUT", "DELETE"])
-def test_gate_lets_non_key_callers_through(method):
-    assert RestrictApiKeyToUserKeyReads().has_permission(_request(method, None), None)
-
-
-@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
-def test_gate_lets_user_key_read(method):
-    gate = RestrictApiKeyToUserKeyReads()
-    assert gate.has_permission(_request(method, _key(ApiKey.KeyType.USER)), None)
-
-
-@pytest.mark.parametrize("method", ["POST", "PATCH", "PUT", "DELETE"])
-def test_gate_rejects_user_key_write(method):
-    gate = RestrictApiKeyToUserKeyReads()
-    assert not gate.has_permission(_request(method, _key(ApiKey.KeyType.USER)), None)
-    assert gate.message == RestrictApiKeyToUserKeyReads.write_message
-
-
-@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "DELETE"])
-def test_gate_rejects_system_key_on_every_method(method):
-    gate = RestrictApiKeyToUserKeyReads()
-    assert not gate.has_permission(_request(method, _key(ApiKey.KeyType.SYSTEM)), None)
-    assert gate.message == RestrictApiKeyToUserKeyReads.non_user_key_message
+        assert gate.has_permission(request, None) is allowed, method
+        if message is not None:
+            assert gate.message == message

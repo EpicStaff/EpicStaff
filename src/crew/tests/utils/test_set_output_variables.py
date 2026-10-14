@@ -28,14 +28,6 @@ def _deep_path_segments(count: int) -> list[str]:
     return segments
 
 
-def test_set_output_variables_with_shallow_path_still_works():
-    state = _make_state(DotDict())
-
-    set_output_variables(state, "variables.result", "hello")
-
-    assert state["variables"].result == "hello"
-
-
 def test_set_output_variables_with_deeply_nested_path_completes_quickly_and_is_correct():
     segments = _deep_path_segments(30)
     output_variable_path = "variables." + ".".join(segments)

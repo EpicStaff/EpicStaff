@@ -1,9 +1,9 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
+import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
@@ -16,6 +16,7 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
+import { isMainSidenavExpanded } from '../main-sidenav-width';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
@@ -47,19 +48,30 @@ interface NavItem {
         UserAvatarComponent,
         OrgAvatarComponent,
         ClickOutsideDirective,
+        SidebarToggleButtonComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LeftSidebarComponent {
+    /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
+    public readonly width = input.required<number>();
+    /** The open/close control was used; the owner of the width decides the new one. */
+    public readonly expandedToggle = output<void>();
+
+    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
+    protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
+
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
-    public showLogoTooltip = false;
+    /** Shown next to the logo when expanded; names the logo image when collapsed. */
+    protected readonly productName = 'EpicStaff';
     public showProfileTooltip = false;
 
     public user = this.currentUserService.currentUserSignal;
@@ -83,6 +95,17 @@ export class LeftSidebarComponent {
         if (!user) return null;
         const orgId = this.activeOrgService.activeOrgId();
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
+    });
+
+    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
+    protected readonly orgSwitcherLabel = computed(() =>
+        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
+    );
+
+    /** Same fallback as the user menu header: the display name, or the email when there is none. */
+    protected readonly accountLabel = computed(() => {
+        const user = this.user();
+        return user ? user.display_name || user.email : '';
     });
 
     private readonly activeOrgService = inject(ActiveOrgService);

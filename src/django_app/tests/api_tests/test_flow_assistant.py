@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -29,7 +29,6 @@ from tables.models.flow_assistant_models import (
 from tables.services.flow_assistant import FlowAssistantService
 from tables.services.llm_clients.base import (
     DoneEvent,
-    StructuredEvent,
     TokenEvent,
     ToolCallEvent,
 )
@@ -483,6 +482,9 @@ def test_audit_endpoint_excludes_deleted_by_default(
 # ── Title auto-derivation tests ───────────────────────────────────────────────
 
 
+LONG_FIRST_MESSAGE = "Hello what does this flow do it seems very complicated to me"
+
+
 @pytest.mark.django_db
 def test_title_derived_from_first_user_message(
     graph, flow_assistant, conversation_a, auth_client_a
@@ -498,28 +500,18 @@ def test_title_derived_from_first_user_message(
     ):
         response = auth_client_a.post(
             url,
-            {"message": "Hello, what does this flow do?"},
+            {"message": LONG_FIRST_MESSAGE},
             format="json",
         )
 
     assert response.status_code == status.HTTP_200_OK, response.content
     conversation_a.refresh_from_db()
-    assert conversation_a.title != ""
-    # Title should start with the message text (truncated)
-    assert conversation_a.title.startswith("Hello")
-
-
-@pytest.mark.django_db
-def test_title_truncated_at_word_boundary():
-    """_derive_title truncates at word boundary and appends ellipsis."""
-    from tables.services.flow_assistant import _derive_title
-
-    long_message = "Hello what does this flow do it seems very complicated"
-    title = _derive_title(long_message)
-    assert len(title) <= 52  # 50 chars + "…" is 1 char = 51 max; allow margin
-    assert title.endswith("…")
-    # No mid-word cut
-    assert not title[:-1].endswith("-")
+    # Cut at a word boundary: a whole-word prefix of the message plus an ellipsis.
+    assert conversation_a.title.endswith("…")
+    assert len(conversation_a.title) <= 51
+    prefix = conversation_a.title[:-1].rstrip()
+    assert LONG_FIRST_MESSAGE.startswith(prefix)
+    assert LONG_FIRST_MESSAGE[len(prefix)] == " "
 
 
 @pytest.mark.django_db
@@ -649,7 +641,6 @@ async def test_stream_yields_tokens_and_done(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -711,7 +702,6 @@ async def test_tool_call_roundtrip(graph, llm_config, user_a, org_a, default_rol
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from tables.services.llm_clients.base import ToolCallEvent, DoneEvent, TokenEvent
     from asgiref.sync import sync_to_async
@@ -897,7 +887,6 @@ async def test_structured_output_event_emitted(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -1010,7 +999,6 @@ async def test_action_message_persisted(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
     from asgiref.sync import sync_to_async
 
@@ -1064,247 +1052,6 @@ async def test_action_message_persisted(
     assert persisted.get("action_message") == action_items
 
 
-# ── _messages_for_llm unit tests ─────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_evicts_prior_turn_tool_results():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        {"role": "system", "content": "You are..."},
-        {"role": "user", "content": "inspect the flow"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "get_flow_overview", "arguments": "{}"},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "call_1",
-            "name": "get_flow_overview",
-            "content": '{"nodes": [{"id": 1, "name": "start"}, ...long body...]}',
-        },
-        {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
-        {"role": "user", "content": "tell me about node 1"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "call_2",
-                    "type": "function",
-                    "function": {"name": "get_node", "arguments": '{"node_id": 1}'},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "call_2",
-            "name": "get_node",
-            "content": '{"id": 1, "config": {...}}',
-        },
-    ]
-    result = _messages_for_llm(messages)
-    # Turn 1's tool result is stubbed
-    assert result[3]["content"].startswith("[tool result from an earlier turn")
-    assert "get_flow_overview" in result[3]["content"]
-    assert result[3]["tool_call_id"] == "call_1"  # other fields preserved
-    # Turn 2's tool result (current turn) untouched
-    assert result[7]["content"] == messages[7]["content"]
-    # Non-tool messages untouched
-    for i in (0, 1, 2, 4, 5, 6):
-        assert result[i] == messages[i]
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_is_idempotent():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        {"role": "system", "content": "..."},
-        {"role": "user", "content": "a"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c",
-                    "type": "function",
-                    "function": {"name": "get_flow_overview", "arguments": "{}"},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "c",
-            "name": "get_flow_overview",
-            "content": "<big>",
-        },
-        {"role": "assistant", "content": "{}"},
-        {"role": "user", "content": "b"},
-    ]
-    once = _messages_for_llm(messages)
-    twice = _messages_for_llm(once)
-    assert once == twice
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_no_user_message_returns_copy():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [{"role": "system", "content": "..."}]
-    result = _messages_for_llm(messages)
-    assert result == messages
-    assert result is not messages  # must be a copy
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_truncates_long_args():
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    long_args = '{"x": "' + ("a" * 500) + '"}'
-    messages = [
-        {"role": "system", "content": "..."},
-        {"role": "user", "content": "a"},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c",
-                    "type": "function",
-                    "function": {"name": "load_skill", "arguments": long_args},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "c", "name": "load_skill", "content": "<big>"},
-        {"role": "assistant", "content": "{}"},
-        {"role": "user", "content": "b"},
-    ]
-    result = _messages_for_llm(messages)
-    stub = result[3]["content"]
-    assert "…" in stub  # truncation marker present
-    assert len(stub) < 500  # stub itself stays small (longer fixed prefix, but bounded)
-
-
-# ── action_message / ef_tables strip test (Fix: strict-provider compat) ────────
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_strips_fa_internal_fields():
-    """_messages_for_llm must remove ef_tables, action_message, and interrupted
-    from every message before it is sent to the LLM.
-
-    Root cause of the Fireworks bug: the second turn loaded the persisted
-    assistant message (which had action_message set) and forwarded it verbatim.
-    Fireworks rejects unknown message fields with a 400 'Extra inputs are not
-    permitted' error. OpenAI silently ignores them, masking the bug.
-
-    The fix must:
-    - Strip action_message, ef_tables, interrupted from outgoing messages.
-    - Preserve the fields in the source dicts (no mutation of the input list).
-    - Preserve all LLM-compliant fields (role, content, tool_calls,
-      tool_call_id, name).
-    """
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    action_items = [
-        {"type": "prompt", "text": "What do you do?"},
-        {"type": "prompt", "text": "Show me recent runs"},
-    ]
-    ef_tables_data = [{"headers": ["col"], "rows": [["val"]]}]
-
-    messages = [
-        {"role": "system", "content": "You are the FA."},
-        {"role": "user", "content": "Test"},
-        # Persisted assistant message from turn 1 — has FA-internal fields.
-        {
-            "role": "assistant",
-            "content": "Got it.",
-            "ef_tables": ef_tables_data,
-            "action_message": action_items,
-            "interrupted": False,
-        },
-        # Second user turn — the one that triggers the 400 on strict providers.
-        {"role": "user", "content": "What do you do?"},
-    ]
-
-    result = _messages_for_llm(messages)
-
-    # FA-internal fields must not appear in any outgoing message.
-    _FA_ONLY_FIELDS = {"ef_tables", "action_message", "interrupted"}
-    for i, out_msg in enumerate(result):
-        for bad_field in _FA_ONLY_FIELDS:
-            assert bad_field not in out_msg, (
-                f"Field '{bad_field}' must be stripped from message[{i}] "
-                f"before sending to the LLM, but it was present: {out_msg}"
-            )
-
-    # LLM-compliant fields must be preserved.
-    assert result[0]["role"] == "system"
-    assert result[0]["content"] == "You are the FA."
-    assert result[2]["role"] == "assistant"
-    assert result[2]["content"] == "Got it."
-    assert result[3]["role"] == "user"
-    assert result[3]["content"] == "What do you do?"
-
-    # Source dicts must NOT have been mutated.
-    assert "action_message" in messages[2], "Source dict must not be mutated"
-    assert "ef_tables" in messages[2], "Source dict must not be mutated"
-
-
-@pytest.mark.django_db
-def test_messages_for_llm_strips_fa_fields_on_all_message_roles():
-    """Stripping applies to every role, not just assistant.
-
-    If FA ever stores extra fields on system/user/tool messages those would also
-    be stripped — this test documents the whitelist covers all roles.
-    """
-    from tables.services.flow_assistant.helpers import _messages_for_llm
-
-    messages = [
-        # system with a hypothetical future FA field
-        {"role": "system", "content": "sys", "ef_tables": []},
-        # user with a hypothetical FA field
-        {"role": "user", "content": "hello", "action_message": []},
-        # assistant with real FA fields
-        {
-            "role": "assistant",
-            "content": "reply",
-            "action_message": [{"type": "prompt", "text": "next"}],
-            "ef_tables": [],
-            "interrupted": False,
-        },
-        # tool role with LLM-compliant fields — must be preserved
-        {
-            "role": "tool",
-            "tool_call_id": "call_99",
-            "name": "get_flow_overview",
-            "content": '{"nodes": []}',
-        },
-        # second user turn — this is the "current" turn boundary
-        {"role": "user", "content": "second"},
-    ]
-
-    result = _messages_for_llm(messages)
-
-    _FA_ONLY_FIELDS = {"ef_tables", "action_message", "interrupted"}
-    for i, out_msg in enumerate(result):
-        for bad_field in _FA_ONLY_FIELDS:
-            assert (
-                bad_field not in out_msg
-            ), f"Field '{bad_field}' found in message[{i}]: {out_msg}"
-
-    # LLM-compliant tool fields must survive.
-    tool_msg = next(m for m in result if m["role"] == "tool")
-    assert tool_msg["tool_call_id"] == "call_99"
-    assert tool_msg["name"] == "get_flow_overview"
-    assert tool_msg["content"] == '{"nodes": []}'
-
-
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
@@ -1319,7 +1066,6 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
     """
     import fakeredis
     from asgiref.sync import sync_to_async
-    from unittest.mock import call as mock_call
 
     user_message_1 = "Test"
     user_message_2 = "What do you do?"
@@ -1396,6 +1142,68 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
                 f"This would cause a 400 'Extra inputs are not permitted' on strict providers "
                 f"such as Fireworks."
             )
+
+
+def _tool_turn(call_id, tool_name, arguments, result):
+    return [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"id": call_id, "type": "function", "function": {"name": tool_name, "arguments": arguments}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": call_id, "name": tool_name, "content": result},
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("arguments", "stub_check"),
+    [
+        ("{}", lambda stub: "get_flow_overview" in stub),
+        # Long call arguments are shortened inside the stub so it stays small.
+        ('{"x": "' + "a" * 500 + '"}', lambda stub: "…" in stub and len(stub) < 500),
+    ],
+    ids=["names-the-tool", "long-arguments-truncated"],
+)
+async def test_tool_results_from_earlier_turns_reach_the_llm_as_stubs(
+    graph, llm_config, user_a, org_a, default_role, db, arguments, stub_check
+):
+    """Earlier turns' tool output is replaced by a short stub before each LLM call, so a
+    long conversation does not resend every large tool result."""
+    from asgiref.sync import sync_to_async
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(user=user_a, org=org_a, role=default_role)
+    assistant = await sync_to_async(FlowAssistant.objects.create)(graph=graph, llm_config=llm_config)
+    history = [
+        {"role": "system", "content": "You are the FA."},
+        {"role": "user", "content": "inspect the flow"},
+        *_tool_turn("call_1", "get_flow_overview", arguments, '{"nodes": ["...long body..."]}'),
+        {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
+        {"role": "user", "content": "tell me about node 1"},
+    ]
+    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user, history)
+    sent: list[list[dict]] = []
+
+    async def fake_stream(messages, tools):
+        sent.append(list(messages))
+        yield TokenEvent(content='{"message": "ok"}')
+        yield DoneEvent()
+
+    await _collect_stream_reply_events(conversation, "tell me about node 1", fake_stream)
+
+    first_call = sent[0]
+    stub = first_call[3]
+    assert stub["tool_call_id"] == "call_1"
+    assert stub["content"].startswith("[tool result from an earlier turn")
+    assert stub_check(stub["content"])
+    # Everything else, including the current turn's user message, is sent unchanged.
+    assert [message["content"] for message in first_call if message["role"] in ("system", "user")] == [
+        "You are the FA.",
+        "inspect the flow",
+        "tell me about node 1",
+    ]
 
 
 # ── Decision-table decision_rules serialization tests ─────────────────────────
@@ -2629,7 +2437,6 @@ async def test_stream_reply_bails_on_cancel_flag(
 ):
     """stream_reply stops early and persists an interrupted partial when the cancel
     flag is set before the LLM call completes."""
-    import asyncio
     import fakeredis
     from unittest.mock import patch
     from asgiref.sync import sync_to_async
@@ -2637,7 +2444,6 @@ async def test_stream_reply_bails_on_cancel_flag(
     from tables.services.flow_assistant.constants import _CANCEL_KEY
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
 
     user_message = "what does this flow do?"
@@ -2721,7 +2527,6 @@ async def test_stream_reply_disconnect_persists_partial(
     from tables.services.flow_assistant import FlowAssistantService
     from tables.models.flow_assistant_models import (
         FlowAssistant,
-        FlowAssistantConversation,
     )
 
     user_message = "hello"
@@ -2984,6 +2789,30 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
 # ── LiteLLMClient request-building tests ─────────────────────────────────────
 
 
+def _litellm_request(client) -> dict:
+    """The kwargs one streamed completion sends to litellm."""
+    import asyncio
+
+    captured: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+
+        async def no_chunks():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return no_chunks()
+
+    async def drain():
+        async for _ in client.stream_completion([], []):
+            pass
+
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        asyncio.run(drain())
+    return captured
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "provider_name, model_name, expected_model",
@@ -3011,7 +2840,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+    kwargs = _litellm_request(LiteLLMClient(config, api_key=None))
 
     assert kwargs["model"] == expected_model
 
@@ -3020,7 +2849,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
 def test_litellm_client_drops_provider_unsupported_params(llm_config):
     from tables.services.llm_clients.litellm_client import LiteLLMClient
 
-    kwargs = LiteLLMClient(llm_config, api_key=None)._build_kwargs([], [])
+    kwargs = _litellm_request(LiteLLMClient(llm_config, api_key=None))
 
     assert kwargs["drop_params"] is True
 
@@ -3046,7 +2875,7 @@ def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+    kwargs = _litellm_request(LiteLLMClient(config, api_key=None))
 
     assert kwargs.get("store") == expected_store
     assert ("store" in kwargs) is (expected_store is not None)

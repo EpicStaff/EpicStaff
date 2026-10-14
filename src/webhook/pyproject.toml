@@ -21,6 +21,7 @@ dependencies = [
 
 [dependency-groups]
 tests = [
+    "fakeredis==2.32.0",
     "httpx==0.28.1",
     "pytest-asyncio==0.25.3",
     "pytest==8.4.2",

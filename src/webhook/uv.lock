@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.10"
 
 [[package]]
@@ -58,6 +58,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "fakeredis"
+version = "2.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "redis" },
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/2e/94ca3f2ff35f086d7d3eeb924054e328b2ac851f0a20302d942c8d29726c/fakeredis-2.32.0.tar.gz", hash = "sha256:63d745b40eb6c8be4899cf2a53187c097ccca3afbca04fdbc5edc8b936cd1d59", size = 171097, upload-time = "2025-10-07T10:46:58.876Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0e/1b/84ab7fd197eba5243b6625c78fbcffaa4cf6ac7dda42f95d22165f52187e/fakeredis-2.32.0-py3-none-any.whl", hash = "sha256:c9da8228de84060cfdb72c3cf4555c18c59ba7a5ae4d273f75e4822d6f01ecf8", size = 118422, upload-time = "2025-10-07T10:46:57.643Z" },
 ]
 
 [[package]]
@@ -334,6 +347,15 @@ wheels = [
 ]
 
 [[package]]
+name = "sortedcontainers"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
+]
+
+[[package]]
 name = "starlette"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -448,6 +470,7 @@ dev = [
     { name = "watchfiles" },
 ]
 tests = [
+    { name = "fakeredis" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -475,6 +498,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [{ name = "watchfiles", specifier = "==1.2.0" }]
 tests = [
+    { name = "fakeredis", specifier = "==2.32.0" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "pytest-asyncio", specifier = "==0.25.3" },

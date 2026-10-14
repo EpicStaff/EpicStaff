@@ -5,7 +5,6 @@ from rest_framework import status
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
-from tests.user_summary_helpers import expected_user_summary
 
 AGENT_DEFINITION = "agentdefinition"
 SURFACE = "surface"
@@ -130,38 +129,23 @@ def test_update_of_authored_row_keeps_author_even_when_body_names_one(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-def test_cross_org_get_returns_404(basename, acme_client, beta):
+@pytest.mark.parametrize(
+    "request_",
+    [
+        lambda client, url: client.get(url),
+        lambda client, url: client.patch(url, {"instructions": "hijacked"}, format="json"),
+        lambda client, url: client.delete(url),
+    ],
+    ids=["get", "patch", "delete"],
+)
+def test_other_orgs_row_is_404_and_untouched(basename, request_, acme_client, beta):
     row = _create_row(basename, beta, f"beta-{basename}")
 
-    response = acme_client.get(_detail_url(basename, row.pk))
+    response = request_(acme_client, _detail_url(basename, row.pk))
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-def test_cross_org_patch_returns_404_and_leaves_row_unauthored(basename, acme_client, beta):
-    row = _create_row(basename, beta, f"beta-{basename}")
-
-    response = acme_client.patch(
-        _detail_url(basename, row.pk), {"instructions": "hijacked"}, format="json"
-    )
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    row.refresh_from_db()
-    assert row.instructions == ""
-    assert row.created_by_id is None
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename", [AGENT_DEFINITION, SURFACE])
-def test_cross_org_delete_returns_404_and_keeps_row(basename, acme_client, beta):
-    row = _create_row(basename, beta, f"beta-{basename}")
-
-    response = acme_client.delete(_detail_url(basename, row.pk))
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert MODEL_BY_BASENAME[basename].objects.filter(pk=row.pk).exists()
+    row = MODEL_BY_BASENAME[basename].objects.get(pk=row.pk)
+    assert (row.instructions, row.created_by_id) == ("", None)
 
 
 @pytest.mark.django_db

@@ -77,6 +77,7 @@ $grid-above-btns-height: 24px;
     padding: 4px 0;
 }
 
+// The group menu and the row context menu share one item style.
 .group-menu-item,
 .context-menu-item {
     display: flex;

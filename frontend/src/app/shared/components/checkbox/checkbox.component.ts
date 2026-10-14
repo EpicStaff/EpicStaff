@@ -18,6 +18,7 @@ export class CheckboxComponent implements ControlValueAccessor {
     indeterminate = input<boolean>(false);
     checked = model<boolean>(false);
     color = input<'primary' | 'secondary'>('primary');
+    ariaLabel = input<string | null>(null);
     disabled = input<boolean>(false);
 
     changed = output<boolean>();

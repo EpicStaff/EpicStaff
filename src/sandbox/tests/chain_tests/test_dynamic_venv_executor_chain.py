@@ -3,7 +3,7 @@
 The test drives the real chain (DummyHandler → CreateVenvHandler →
 InstallLibrariesHandler → ExecuteCodeHandler) without any real venv, pip, or
 network access.  OS boundaries are mocked at the asyncio subprocess level,
-following the same pattern used in test_build_environment_handler.py and
+following the same pattern used in test_execute_code_handler_child_env.py and
 test_execute_code_handler_storage.py.
 
 Design notes

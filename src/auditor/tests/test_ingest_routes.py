@@ -1,17 +1,3 @@
-import os
-
-# Same rationale as tests/test_export_routes.py - app.core.settings requires
-# these at import time, set dummy values before anything under app.* is
-# imported so this module is runnable standalone.
-os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
-os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
-os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
-os.environ.setdefault("REDIS_HOST", "localhost")
-os.environ.setdefault("REDIS_USER", "test")
-os.environ.setdefault("REDIS_PORT", "6379")
-os.environ.setdefault("REDIS_PASSWORD", "")
-os.environ.setdefault("AUDITOR_REDIS_DB", "1")
-
 from datetime import datetime, timezone
 
 import pytest

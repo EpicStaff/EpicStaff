@@ -65,33 +65,18 @@ def test_port_run_code_signature_matches_concrete_implementation():
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_passes_storage_credentials_to_a_port_only_implementation():
+@pytest.mark.parametrize(
+    "credentials", [StorageCredentials(access_key="AK123", secret_key="SK456"), None], ids=["credentials", "none"]
+)
+async def test_tool_executor_hands_storage_credentials_to_a_port_only_implementation(credentials):
     executor_service = RecordingExecutorService()
-    credentials = StorageCredentials(access_key="AK123", secret_key="SK456")
-
     tool_executor = PythonCodeToolExecutor(
         python_code_tool_data=make_python_code_tool_data(),
         python_code_executor_service=executor_service,
-        storage_credentials=credentials,
+        **({"storage_credentials": credentials} if credentials else {}),
     )
 
     result = await tool_executor.execute(some_input="value")
 
     assert result == {"returncode": 0}
-    assert executor_service.call_count == 1
-    assert executor_service.received_storage_credentials == credentials
-
-
-@pytest.mark.asyncio
-async def test_tool_executor_without_storage_credentials_passes_none():
-    executor_service = RecordingExecutorService()
-
-    tool_executor = PythonCodeToolExecutor(
-        python_code_tool_data=make_python_code_tool_data(),
-        python_code_executor_service=executor_service,
-    )
-
-    await tool_executor.execute()
-
-    assert executor_service.call_count == 1
-    assert executor_service.received_storage_credentials is None
+    assert (executor_service.call_count, executor_service.received_storage_credentials) == (1, credentials)

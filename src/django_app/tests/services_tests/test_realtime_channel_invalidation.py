@@ -18,47 +18,29 @@ def org(db):
     return Organization.objects.create(name="Org RealtimeChannelInvalidation")
 
 
+def _create(org):
+    return RealtimeChannel.objects.create(name="Voice line", org=org)
+
+
+def _disable(channel):
+    channel.is_enabled = False
+    channel.save()
+
+
 @pytest.mark.django_db
-class TestRealtimeChannelInvalidation:
-    def test_create_publishes_invalidation_with_new_channels_token(
-        self, org, django_capture_on_commit_callbacks
-    ):
-        with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
-        ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
-            channel = RealtimeChannel.objects.create(name="Voice line", org=org)
+@pytest.mark.parametrize(
+    "change",
+    [lambda org, channel: _create(org), lambda org, channel: _disable(channel), lambda org, channel: channel.delete()],
+    ids=["create", "update", "delete"],
+)
+def test_every_channel_change_tells_realtime_to_drop_its_cached_config(
+    org, django_capture_on_commit_callbacks, change
+):
+    channel = _create(org)
+    token = channel.token
+    with mock.patch("tables.signals.webhook_signals.RedisService") as redis_service, \
+            django_capture_on_commit_callbacks(execute=True):
+        changed = change(org, channel)
 
-        mock_redis_service_cls.assert_called_once_with()
-        mock_redis_service_cls.return_value.publish_channel_invalidation.assert_called_once_with(
-            channel.token
-        )
-
-    def test_update_publishes_invalidation_with_same_token(
-        self, org, django_capture_on_commit_callbacks
-    ):
-        channel = RealtimeChannel.objects.create(name="Voice line", org=org)
-
-        with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
-        ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
-            channel.is_enabled = False
-            channel.save()
-
-        mock_redis_service_cls.return_value.publish_channel_invalidation.assert_called_once_with(
-            channel.token
-        )
-
-    def test_delete_publishes_invalidation_with_deleted_channels_token(
-        self, org, django_capture_on_commit_callbacks
-    ):
-        channel = RealtimeChannel.objects.create(name="Voice line", org=org)
-        token = channel.token
-
-        with mock.patch(
-            "tables.signals.webhook_signals.RedisService"
-        ) as mock_redis_service_cls, django_capture_on_commit_callbacks(execute=True):
-            channel.delete()
-
-        mock_redis_service_cls.return_value.publish_channel_invalidation.assert_called_once_with(
-            token
-        )
+    expected_token = changed.token if isinstance(changed, RealtimeChannel) else token
+    redis_service.return_value.publish_channel_invalidation.assert_called_once_with(expected_token)

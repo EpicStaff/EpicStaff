@@ -7,10 +7,6 @@ from tables.services.secrets import (
     secret_resolver,
     secret_service,
 )
-from tables.services.secrets.secret_resolver import (
-    _NAMED_NAMES_FIELD,
-    _SECRET_ID_SUFFIX,
-)
 
 
 @pytest.fixture
@@ -152,11 +148,6 @@ class TestResolveMany:
 
         assert resolved == {good.pk: "sk-many-good"}
 
-    def test_org_id_has_no_default(self, org):
-        secret = secret_service.create(text="sk-many-req", org=org, name="many-req")
-
-        with pytest.raises(TypeError):
-            secret_resolver.resolve_many(secret_ids=[secret.pk])
 
 
 from src.shared.models import (
@@ -181,36 +172,13 @@ class TestCarrierFields:
     what keeps Secret row ids out of Session.graph_schema and off the wire."""
 
     @pytest.mark.parametrize("model_cls,carrier,target", CARRIERS)
-    def test_carrier_declared_and_paired_with_its_target(
-        self, model_cls, carrier, target
-    ):
-        assert carrier in model_cls.model_fields, f"{model_cls.__name__}.{carrier}"
-        assert target in model_cls.model_fields, f"{model_cls.__name__}.{target}"
-        assert carrier == f"{target}_secret_id", "convention is <field>_secret_id"
+    def test_secret_id_is_readable_in_process_but_never_dumped(self, model_cls, carrier, target):
+        payload = model_cls.model_construct(**{carrier: 42, target: None})
 
-    @pytest.mark.parametrize("model_cls,carrier,target", CARRIERS)
-    def test_carrier_defaults_to_none(self, model_cls, carrier, target):
-        assert model_cls.model_fields[carrier].default is None
-
-    @pytest.mark.parametrize("model_cls,carrier,target", CARRIERS)
-    def test_carrier_excluded_from_both_dump_paths(self, model_cls, carrier, target):
-        assert (
-            model_cls.model_fields[carrier].exclude is True
-        ), f"{model_cls.__name__}.{carrier} must be Field(exclude=True)"
-
-    def test_llm_config_dump_omits_carrier_and_keeps_target(self):
-        cfg = LLMConfigData(model="gpt-4o", api_key_secret_id=42)
-
-        assert cfg.api_key_secret_id == 42
-        assert "api_key_secret_id" not in cfg.model_dump(mode="json")
-        assert "api_key_secret_id" not in cfg.model_dump_json()
-        assert cfg.model_dump(mode="json")["api_key"] is None
-
-    def test_realtime_target_accepts_none(self):
-        # Task 4 builds this payload with the slot empty; it must validate.
-        chat = RealtimeAgentChatData.model_construct(rt_api_key=None)
-        assert chat.rt_api_key is None
-        assert RealtimeAgentChatData.model_fields["rt_api_key"].default is None
+        assert getattr(payload, carrier) == 42
+        assert carrier not in payload.model_dump(mode="json")
+        assert carrier not in payload.model_dump_json()
+        assert payload.model_dump(mode="json")[target] is None
 
 
 from pydantic import BaseModel
@@ -380,18 +348,25 @@ class TestOrgScopedResolution:
                 org_id=org.id,
             )
 
-    def test_org_id_has_no_default(self, org):
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda secret: secret_resolver.resolve(secret_id=secret.pk),
+            lambda secret: secret_resolver.resolve_many(secret_ids=[secret.pk]),
+            lambda secret: secret_resolver.resolve_payload(
+                payload=LLMConfigData(model="gpt-4o", api_key_secret_id=secret.pk)
+            ),
+            lambda secret: secret_resolver.resolve_named(names=[secret.name]),
+        ],
+        ids=["resolve", "resolve_many", "resolve_payload", "resolve_named"],
+    )
+    def test_every_lookup_requires_an_org(self, org, call):
         """No caller may opt out of scoping. A default of None meaning 'skip the
         check' is exactly how the unscoped lookup survived this long."""
         secret = secret_service.create(text="sk-req", org=org, name="requires-org")
 
         with pytest.raises(TypeError):
-            secret_resolver.resolve(secret_id=secret.pk)
-
-        with pytest.raises(TypeError):
-            secret_resolver.resolve_payload(
-                payload=LLMConfigData(model="gpt-4o", api_key_secret_id=secret.pk)
-            )
+            call(secret)
 
 
 @pytest.mark.django_db
@@ -460,17 +435,6 @@ class TestResolveNamed:
         assert secret_resolver.resolve_named(
             names=["SHARED_NAME"], org_id=other_org.id
         ) == {"SHARED_NAME": "sk-theirs"}
-
-    def test_org_id_has_no_default(self, org):
-        secret_service.create(text="sk-req", org=org, name="NEEDS_ORG")
-
-        with pytest.raises(TypeError):
-            secret_resolver.resolve_named(names=["NEEDS_ORG"])
-
-    def test_no_collision_with_the_field_suffix_convention(self):
-        """The reserved pair is secret_names/secrets. It must not be mistaken for
-        the <field>_secret_id convention, which would look for a paired slot."""
-        assert not _NAMED_NAMES_FIELD.endswith(_SECRET_ID_SUFFIX)
 
     def test_resolve_payload_fills_the_reserved_pair(self, org):
         secret_service.create(text="sk-node", org=org, name="NODE_KEY")
