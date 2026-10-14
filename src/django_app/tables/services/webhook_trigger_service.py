@@ -190,11 +190,14 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
         for webhook_trigger_node in webhook_trigger_node_list:
-            # Persistent-variable merging is owned by run_session.
+            # Persistent-variable merging is owned by run_session. The external
+            # payload sits under a fixed key, so it reaches a persistent path only
+            # where the flow editor declared one there.
             self.session_manager_service.run_session(
                 graph_id=webhook_trigger_node.graph.pk,
                 variables={"trigger_payload": payload},
                 trigger=TriggerSpec.webhook(webhook_trigger_node, path, config_id),
+                allow_persistent_override=True,
             )
 
     def register_webhooks(self) -> bool:
