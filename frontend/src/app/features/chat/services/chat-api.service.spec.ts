@@ -140,6 +140,17 @@ describe('ChatApiService', () => {
         request.flush({ message_id: 'm-1', state: 'processing' }, { status: 202, statusText: 'Accepted' });
     });
 
+    it('sends the inbox stream calls, made on every page, with the user JWT but without the forbidden reload', () => {
+        service.getInboxTicket().subscribe();
+        service.getInboxBadges().subscribe();
+        for (const url of ['/chat/operator/v1/inbox/stream-ticket', '/chat/operator/v1/inbox/badges']) {
+            const request = httpMock.expectOne(url);
+            expect(request.request.context.get(SKIP_FORBIDDEN_RELOAD)).toBe(true);
+            expect(request.request.context.get(SKIP_AUTH_HEADER_OVERRIDE)).toBe(false);
+            request.flush({});
+        }
+    });
+
     it('sends a binding patch exactly as given, so unset fields stay unset on the server', () => {
         service.updateBinding('b-1', { daily_token_budget: 20000 }).subscribe();
         const request = httpMock.expectOne('/chat/operator/v1/bindings/b-1');

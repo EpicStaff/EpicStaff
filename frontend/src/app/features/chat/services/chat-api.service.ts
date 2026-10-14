@@ -132,7 +132,7 @@ export class ChatApiService {
     // ---- inbox ----
 
     getInboxTicket(): Observable<ChatTicket> {
-        return this.http.post<ChatTicket>(`${this.operatorUrl}inbox/stream-ticket`, {});
+        return this.http.post<ChatTicket>(`${this.operatorUrl}inbox/stream-ticket`, {}, this.inBackground());
     }
 
     inboxStreamUrl(ticket: string): string {
@@ -160,7 +160,7 @@ export class ChatApiService {
 
     /** Every conversation waiting for a person, org-wide; the inbox stream keeps the set current. */
     getInboxBadges(): Observable<ChatInboxBadges> {
-        return this.http.get<ChatInboxBadges>(`${this.operatorUrl}inbox/badges`);
+        return this.http.get<ChatInboxBadges>(`${this.operatorUrl}inbox/badges`, this.inBackground());
     }
 
     /** Newest page, oldest first; `before` pages backward from a message id. */
@@ -210,6 +210,11 @@ export class ChatApiService {
             body,
             this.asVisitor(visitorToken)
         );
+    }
+
+    /** For the inbox stream's own calls, which run on every page: a chat-service 403 must not remount the route. */
+    private inBackground(): { context: HttpContext } {
+        return { context: new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true) };
     }
 
     /** The visitor token replaces the user JWT, and a public 401/403 is the widget's problem, not a session problem. */
