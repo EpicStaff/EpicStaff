@@ -89,6 +89,7 @@ import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
+import { routingObstacles } from '../core/routing/obstacles';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
@@ -126,12 +127,14 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         '(document:pointercancel)': 'resetReassignHighlight()',
     },
     providers: [
+        CurvedPathBuilder,
         {
             provide: F_CONNECTION_BUILDERS,
-            useFactory: () => ({
+            useFactory: (curvedBuilder: CurvedPathBuilder) => ({
                 orthogonal: new OrthogonalPathBuilder(),
-                'adaptive-curve': new CurvedPathBuilder(),
+                'adaptive-curve': curvedBuilder,
             }),
+            deps: [CurvedPathBuilder],
         },
         KeyValueEntryDraftsService,
     ],
@@ -342,6 +345,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     /** The flow page's store in the live editor, the preview's own (empty) one in a version preview. */
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
+    private readonly curvedPathBuilder = inject(CurvedPathBuilder);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     // Start from the current count so a canvas re-created after an earlier save request
@@ -1227,6 +1231,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const connections = this.flowService.connections();
         const nodes = this.flowService.nodes();
+        this.curvedPathBuilder.setObstacles([...routingObstacles(nodes).values()]);
         const routes = routeAll(nodes, connections);
         for (const conn of connections) {
             const points = routes.get(conn.id);
