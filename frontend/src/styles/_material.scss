@@ -42,9 +42,7 @@ $compact-theme: mat.define-theme(
 }
 
 .mat-mdc-tooltip .mdc-tooltip__surface {
-    box-shadow:
-        0 6px 10px 4px rgba(0, 0, 0, 0.15),
-        0 2px 3px 0 rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-raised);
 }
 
 .allow-scroll-tooltip .mdc-tooltip__surface {
