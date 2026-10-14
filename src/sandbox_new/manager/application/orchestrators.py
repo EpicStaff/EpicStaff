@@ -113,8 +113,9 @@ class VenvBuildOrchestrator:
             await self._rmtree(staging_path)
         await self.uv_provider.init_venv(staging_path)
 
-        libs = [f"{library.name}{library.specification}" for library in venv.libs]
+        libs = [library.requirement for library in venv.libs]
         await self.uv_provider.apply(staging_path, *libs)
+        venv.apply_resolved_versions(self.uv_provider.read_resolved_versions(staging_path))
 
         lock_file = self.uv_provider.get_lock_file(staging_path)
         lock_hash = hashlib.sha256(lock_file.read_bytes()).hexdigest()

@@ -20,6 +20,14 @@ class AbstractUVProvider(abc.ABC):
     async def install_local(cls, venv_path: Path, *packages: Path):
         """Install local source packages (by directory path) into the venv."""
 
+    @classmethod
+    @abc.abstractmethod
+    def read_resolved_versions(cls, venv_path: Path) -> dict[str, str]:
+        """Return the version resolved for every library, keyed by canonical name.
+
+        A venv with no lock file resolves nothing.
+        """
+
     @staticmethod
     def get_python_binary(venv_path: Path) -> Path:
         return venv_path / "bin/python"

@@ -139,3 +139,51 @@ async def test_build_by_id_resolves_the_venv(uow, uv_provider, venvs_dir):
 async def test_build_by_id_raises_for_a_missing_venv(uow, uv_provider, venvs_dir):
     with pytest.raises(VenvNotFoundError):
         await VenvBuildOrchestrator(uow, uv_provider).build(404)
+
+
+async def test_build_pins_a_library_that_carries_an_explicit_version(uow, uv_provider, venvs_dir):
+    stored = uow.venv_repo.seed(
+        make_venv(libs=[make_library(name="pandas", specification=">=2.0", version="2.1.0")])
+    )[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    _, libs = uv_provider.apply_calls[0]
+    assert libs == ("pandas==2.1.0",)
+
+
+async def test_build_records_the_version_the_resolver_installed(uow, uv_provider, venvs_dir):
+    stored = uow.venv_repo.seed(
+        make_venv(libs=[make_library(name="pandas", specification=">=2.0")])
+    )[0]
+    uv_provider.resolved_versions = {"pandas": "2.2.3"}
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    built = uow.venv_repo.rows[stored.id]
+    assert built.libs[0].version == "2.2.3"
+    assert built.status is VenvStatus.COMPLETED
+
+
+async def test_build_reads_the_resolved_versions_from_the_staging_lock_file(
+    uow, uv_provider, venvs_dir
+):
+    stored = uow.venv_repo.seed(make_venv(libs=[make_library(name="pandas")]))[0]
+    seen: list = []
+    uv_provider.read_resolved_versions = lambda venv_path: seen.append(venv_path) or {}
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    assert seen == [venvs_dir / "builds" / f"venv-{stored.id}"]
+
+
+async def test_build_failure_leaves_the_declared_versions_alone(uow, uv_provider, venvs_dir):
+    stored = uow.venv_repo.seed(
+        make_venv(libs=[make_library(name="pandas", specification=">=2.0")])
+    )[0]
+    uv_provider.resolved_versions = {"pandas": "2.2.3"}
+    uv_provider.fail_apply = RuntimeError("uv pip compile failed")
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    assert uow.venv_repo.rows[stored.id].libs[0].version is None

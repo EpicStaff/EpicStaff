@@ -50,7 +50,11 @@ def test_to_domain_carries_the_error_text():
 
 
 def test_dump_libs_round_trips_through_to_domain():
-    libs = [make_library(name="pandas", specification=">=2.0", version="2.1.0")]
+    libs = [
+        make_library(
+            name="pandas", description="dataframes", specification=">=2.0", version="2.1.0"
+        )
+    ]
 
     venv = VenvMapper.to_domain(make_row(libs=VenvMapper.dump_libs(libs)))
 

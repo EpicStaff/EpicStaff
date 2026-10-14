@@ -1,10 +1,17 @@
 import asyncio
+import re
 from pathlib import Path
+
+from packaging.utils import canonicalize_name
 
 from manager.application.ports import AbstractUVProvider
 from manager.domain.types import LibraryString
 
 __all__ = ["UVProvider"]
+
+PIN_PATTERN = re.compile(
+    r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?==(?P<version>[^\s;]+)"
+)
 
 
 class UVProvider(AbstractUVProvider):
@@ -79,9 +86,20 @@ class UVProvider(AbstractUVProvider):
         )
 
     @classmethod
+    def read_resolved_versions(cls, venv_path: Path) -> dict[str, str]:
+        lock_file = cls.get_lock_file(venv_path)
+        if not lock_file.is_file():
+            return {}
+
+        resolved: dict[str, str] = {}
+        for line in lock_file.read_text().splitlines():
+            match = PIN_PATTERN.match(line.strip())
+            if match is not None:
+                resolved[canonicalize_name(match["name"])] = match["version"]
+        return resolved
+
+    @classmethod
     async def install_local(cls, venv_path: Path, *packages: Path):
-        # Local source packages are installed outside the compiled/hashed lock flow:
-        # --generate-hashes cannot hash a directory. Installed straight into the venv.
         if not packages:
             return
         python_binary = cls.get_python_binary(venv_path)

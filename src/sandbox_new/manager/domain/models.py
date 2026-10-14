@@ -3,21 +3,29 @@ from uuid import UUID
 
 from foundation.base import Entity, ValueObject
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from pydantic import Field, field_validator
+from packaging.utils import canonicalize_name
+from pydantic import Field, field_validator, model_validator
 
 from manager.domain.enums import JobStatus, VenvStatus
+from manager.domain.types import LibraryString
 
 __all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "Venv"]
 
 DEFAULT_VENV_NAME = "default"
 
-VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$"
+VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
 class Library(ValueObject):
     name: str = Field(min_length=1)
+    description: str | None = None
     specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return canonicalize_name(value)
 
     @field_validator("specification")
     @classmethod
@@ -27,6 +35,25 @@ class Library(ValueObject):
         except InvalidSpecifier as e:
             raise ValueError(f"Invalid version specification: '{value}'") from e
         return value
+
+    @model_validator(mode="after")
+    def validate_version_against_specification(self) -> "Library":
+        if self.version is None:
+            return self
+        if not SpecifierSet(self.specification).contains(self.version, prereleases=True):
+            raise ValueError(
+                f"Version '{self.version}' does not satisfy specification '{self.specification}'"
+            )
+        return self
+
+    @property
+    def requirement(self) -> LibraryString:
+        if self.version is not None:
+            return f"{self.name}=={self.version}"
+        return f"{self.name}{self.specification}"
+
+    def with_version(self, value: str, /) -> "Library":
+        return Library(**{**self.model_dump(), "version": value})
 
 
 class Venv(Entity):
@@ -43,6 +70,12 @@ class Venv(Entity):
     def set_libs(self, value: list[Library], /):
         self.libs = value
         self.mark_as_declared()
+
+    def apply_resolved_versions(self, versions: dict[str, str], /):
+        self.libs = [
+            library.with_version(versions[library.name]) if library.name in versions else library
+            for library in self.libs
+        ]
 
     def mark_as_declared(self):
         self.error = None
