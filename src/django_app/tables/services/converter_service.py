@@ -311,6 +311,13 @@ class ConverterService(metaclass=SingletonMeta):
                 "likely deleted after this chat was created."
             )
 
+        # The LLM config is where the user sets temperature; the agent's
+        # default_temperature only covers an LLM config that leaves it unset.
+        if ad.llm_config is not None and ad.llm_config.temperature is not None:
+            temperature = ad.llm_config.temperature
+        else:
+            temperature = ad.default_temperature
+
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
             goal=ad.description or "assist the user",
@@ -331,7 +338,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
-            temperature=ad.default_temperature,
+            temperature=temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
             stop_prompt=rt_agent_chat.stop_prompt,
