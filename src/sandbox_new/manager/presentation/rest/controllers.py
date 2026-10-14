@@ -1,10 +1,32 @@
+from foundation.schemas import ErrorResponseSchema
 from litestar import Controller, delete, get, patch, post, status_codes
 from litestar.datastructures import State
+from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import Parameter
 
 from manager.application.orchestrators import JobOrchestrator, VenvCRUDOrchestrator
 from manager.application.ports import AbstractUnitOfWork
 from manager.presentation.rest import schemas
+
+ERROR_RESPONSES = {
+    400: ResponseSpec(
+        ErrorResponseSchema,
+        description="The request was rejected; `errors` says what was wrong with it.",
+        generate_examples=False,
+    ),
+    500: ResponseSpec(
+        ErrorResponseSchema,
+        description="The service failed to answer.",
+        generate_examples=False,
+    ),
+}
+ERROR_RESPONSES_WITH_NOT_FOUND = ERROR_RESPONSES | {
+    404: ResponseSpec(
+        ErrorResponseSchema,
+        description="No venv with this id.",
+        generate_examples=False,
+    ),
+}
 
 
 class VenvController(Controller):
@@ -18,6 +40,7 @@ class VenvController(Controller):
             "applied, so it does not shrink as you page through the result."
         ),
         response_description="A page of venvs and the total before paging.",
+        responses=ERROR_RESPONSES,
     )
     async def list(
         self,
@@ -48,6 +71,7 @@ class VenvController(Controller):
             "`error` holds the reason once a build has failed."
         ),
         response_description="The venv.",
+        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
     )
     async def retrieve(self, id: int, uow: AbstractUnitOfWork) -> schemas.VenvRetrieveSchema:
         """Return one venv.
@@ -73,6 +97,7 @@ class VenvController(Controller):
             "what it installed."
         ),
         response_description="The stored venv, declared but not yet built.",
+        responses=ERROR_RESPONSES,
     )
     async def create(
         self, data: schemas.VenvCreateSchema, uow: AbstractUnitOfWork
@@ -98,6 +123,7 @@ class VenvController(Controller):
             "so renaming a built venv does not rebuild it."
         ),
         response_description="The venv as stored after the change.",
+        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
     )
     async def update(
         self, id: int, data: schemas.VenvUpdateSchema, uow: AbstractUnitOfWork
@@ -121,6 +147,7 @@ class VenvController(Controller):
             "space comes back a little later."
         ),
         response_description="The venv was deleted.",
+        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
     )
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
         """Delete a venv, leaving its directory for the housekeeping task.
@@ -149,6 +176,7 @@ class ExecutionController(Controller):
             "acceptance says the submission was understood, not that the code will run."
         ),
         response_description="The submission was accepted; the result arrives out of band.",
+        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
     )
     async def submit(
         self, data: schemas.ExecutionSubmitSchema, state: State, uow: AbstractUnitOfWork
