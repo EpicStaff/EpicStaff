@@ -72,14 +72,25 @@ class TriggerNodeRunPermissionMixin:
     For the webhook, Telegram and schedule trigger node viewsets: a trigger node
     starts flow runs by itself. Place it after the org-scoping mixin. Reads and
     deletes keep their usual gate.
+
+    `create` is checked with the other permission checks, as there is no node to
+    look up. The detail actions are checked right after the org-scoped lookup, so
+    another org's node or a missing id is a 404 before any RUN 403, and the 403
+    still comes before the body is validated or anything is written or sent.
     """
 
-    run_gated_actions = frozenset({"create", "update", "partial_update", "register_webhook"})
+    run_gated_detail_actions = frozenset({"update", "partial_update", "register_webhook"})
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if self.action in self.run_gated_actions:
+        if self.action == "create":
             trigger_node_access.assert_may_write(request.user, self.get_active_org_id())
+
+    def get_object(self):
+        instance = super().get_object()
+        if self.action in self.run_gated_detail_actions:
+            trigger_node_access.assert_may_write(self.request.user, self.get_active_org_id())
+        return instance
 
 
 class ToolUsageActionsMixin:
