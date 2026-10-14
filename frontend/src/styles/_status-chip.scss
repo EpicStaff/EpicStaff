@@ -7,11 +7,11 @@
     gap: 4px;
     padding: 4px 8px;
     border-radius: 5px;
-    // rem, not em: the same size wherever it sits (a heading, a 14px row). The sessions table sits at the 16px root.
-    font-size: 0.85rem;
+    // The body style (14px, regular), a fixed rem size: the same wherever it sits (a heading, a 14px row).
+    font-size: var(--text-body-size);
     // Pinned to the body's 1.5 (what the sessions table inherits) so a chip inside a styled text span keeps the same height.
     line-height: 1.5;
-    font-weight: 400;
+    font-weight: var(--text-body-weight);
     color: var(--white);
     white-space: nowrap;
     letter-spacing: 0.01em;
