@@ -9,6 +9,7 @@ import {
 } from './orthogonal-route-shapes';
 
 const STUB = 20;
+const STRAIGHT_LINE_THRESHOLD = 60;
 const MAX_ARC_RADIUS = 80;
 const MIN_OFFSET = 20;
 const MAX_OFFSET = 300;
@@ -29,15 +30,26 @@ const ARC_SAMPLES = 8;
  */
 export function curveHitsObstacle(source: IPoint, target: IPoint, obstacles: Rect[]): boolean {
     if (obstacles.length === 0) return false;
-    const relevantObstacles = excludeEndpointObstacles(obstacles, source, target);
-    if (relevantObstacles.length === 0) return false;
+    if (isWithinStraightLineThreshold(source, target)) {
+        const relevantObstacles = excludeEndpointObstacles(obstacles, source, target);
+        return relevantObstacles.length > 0 && pathHitsObstacle([source, target], relevantObstacles);
+    }
     const exitX = source.x + STUB;
     const entryX = target.x - STUB;
     const samplePoints =
         entryX <= exitX
-            ? backwardSamplePoints(source, target, exitX, entryX)
-            : forwardSamplePoints(source, target, exitX, entryX);
-    return pathHitsObstacle(samplePoints, relevantObstacles);
+            ? backwardCurveSamplePoints(source, target, exitX, entryX)
+            : forwardCurveSamplePoints(source, target, exitX, entryX);
+    // Check the interior curve against all obstacles (including endpoint nodes).
+    // The first and last sample points (exit/entry) may sit inside their own node's
+    // padded rect, so exclude endpoint obstacles only for those two edge segments.
+    if (samplePoints.length < 3) return pathHitsObstacle(samplePoints, obstacles);
+    const endpointFiltered = excludeEndpointObstacles(obstacles, source, target);
+    return (
+        pathHitsObstacle(samplePoints.slice(0, 2), endpointFiltered) ||
+        pathHitsObstacle(samplePoints.slice(1, -1), obstacles) ||
+        pathHitsObstacle(samplePoints.slice(-2), endpointFiltered)
+    );
 }
 
 /**
@@ -58,6 +70,10 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
     handle({ source, target, waypoints }: IFConnectionBuilderRequest): IFConnectionBuilderResponse {
         if (waypoints?.length) {
             return this.fromWaypoints(source, target, waypoints);
+        }
+
+        if (isWithinStraightLineThreshold(source, target)) {
+            return straightLine(source, target);
         }
 
         const exitX = source.x + STUB;
@@ -286,32 +302,33 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
 }
 
 // ── Curve sampling for obstacle detection ──────────────────────────────────────
+//
+// These functions sample only the stub-to-stub curve (exitPoint → entryPoint),
+// excluding the horizontal stubs inside the endpoint nodes. This lets
+// curveHitsObstacle check against ALL obstacle rects — including the source and
+// target nodes — without false positives from the stubs.
 
-function forwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+function forwardCurveSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
     const gap = entryX - exitX;
     const offset = clamp(gap * OFFSET_RATIO, MIN_OFFSET, MAX_OFFSET);
-    return [
-        source,
-        ...sampleCubicBezier(
-            { x: exitX, y: source.y },
-            { x: exitX + offset, y: source.y },
-            { x: entryX - offset, y: target.y },
-            { x: entryX, y: target.y },
-            BEZIER_SAMPLES
-        ),
-        target,
-    ];
+    return sampleCubicBezier(
+        { x: exitX, y: source.y },
+        { x: exitX + offset, y: source.y },
+        { x: entryX - offset, y: target.y },
+        { x: entryX, y: target.y },
+        BEZIER_SAMPLES
+    );
 }
 
-function backwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+function backwardCurveSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
     const verticalGap = source.y - target.y;
     if (Math.abs(verticalGap) < STUB) {
-        return backwardLoopSamplePoints(source, target, exitX, entryX);
+        return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
     }
-    return backwardSCurveSamplePoints(source, target, exitX, entryX, verticalGap);
+    return backwardSCurveCurveSamplePoints(source, target, exitX, entryX, verticalGap);
 }
 
-function backwardSCurveSamplePoints(
+function backwardSCurveCurveSamplePoints(
     source: IPoint,
     target: IPoint,
     exitX: number,
@@ -325,7 +342,7 @@ function backwardSCurveSamplePoints(
     const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
 
     if (maxRadiusForSlash < MIN_ARC_RADIUS) {
-        return backwardLoopSamplePoints(source, target, exitX, entryX);
+        return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
     }
 
     let radius = clamp(
@@ -346,7 +363,7 @@ function backwardSCurveSamplePoints(
         centerDy = cEntryY - cExitY;
         centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
         if (centerDistance < 2 * radius) {
-            return backwardLoopSamplePoints(source, target, exitX, entryX);
+            return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
         }
     }
 
@@ -366,7 +383,7 @@ function backwardSCurveSamplePoints(
     };
 
     if (sign * (tangentExitPoint.y - tangentEntryPoint.y) <= 0) {
-        return backwardLoopSamplePoints(source, target, exitX, entryX);
+        return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
     }
 
     const exitSweep = sign > 0 ? 0 : 1;
@@ -376,16 +393,14 @@ function backwardSCurveSamplePoints(
     const entryArcEnd = -sign * (Math.PI / 2);
 
     return [
-        source,
         ...sampleArc(exitCenter, radius, exitArcStart, exitArcEnd, exitSweep, ARC_SAMPLES),
         tangentExitPoint,
         tangentEntryPoint,
         ...sampleArc(entryCenter, radius, entryArcStart, entryArcEnd, 1 - exitSweep, ARC_SAMPLES),
-        target,
     ];
 }
 
-function backwardLoopSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+function backwardLoopCurveSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
     const horizontalGap = exitX - entryX;
     const verticalDiff = Math.abs(source.y - target.y);
     const loopSpan = Math.sqrt(horizontalGap * horizontalGap + verticalDiff * verticalDiff);
@@ -398,16 +413,33 @@ function backwardLoopSamplePoints(source: IPoint, target: IPoint, exitX: number,
     const c4: IPoint = { x: entryX - radius, y: target.y - radius };
 
     return [
-        source,
         ...sampleArc(c1, radius, Math.PI / 2, 0, 0, ARC_SAMPLES),
         ...sampleArc(c2, radius, 0, -Math.PI / 2, 0, ARC_SAMPLES),
         ...sampleArc(c3, radius, -Math.PI / 2, -Math.PI, 0, ARC_SAMPLES),
         ...sampleArc(c4, radius, -Math.PI, -Math.PI * 1.5, 0, ARC_SAMPLES),
-        target,
     ];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+function isWithinStraightLineThreshold(source: IPoint, target: IPoint): boolean {
+    const X_DISTANCE = target.x - source.x;
+    const Y_DISTANCE = target.y - source.y;
+    return (
+        -1 <= X_DISTANCE && X_DISTANCE <= STRAIGHT_LINE_THRESHOLD && Math.abs(Y_DISTANCE) <= STRAIGHT_LINE_THRESHOLD + 1
+    );
+}
+
+function straightLine(source: IPoint, target: IPoint): IFConnectionBuilderResponse {
+    const path = `M ${source.x} ${source.y} L ${target.x + 0.0002} ${target.y + 0.0002}`;
+    return {
+        path,
+        points: [source, target],
+        secondPoint: target,
+        penultimatePoint: source,
+        candidates: [],
+    };
+}
 
 function clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));

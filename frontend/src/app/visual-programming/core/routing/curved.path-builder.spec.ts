@@ -63,27 +63,33 @@ describe('CurvedPathBuilder', () => {
     });
 
     describe('boundary cases', () => {
-        it('zero-gap (target exactly 2*STUB right) uses backward path', () => {
+        it('very close points produce a straight line', () => {
             const response = builder.handle(request({ x: 0, y: 0 }, { x: 40, y: 0 }));
 
-            // backward loop produces 4 A segments and 6 points
-            expect(response.path.match(/ A /g)?.length).toBe(4);
-            expect(response.points.length).toBe(6);
+            expect(response.path).toContain('M 0 0');
+            expect(response.path).toContain('L');
+            expect(response.path.match(/ A /g)).toBeNull();
+            expect(response.points.length).toBe(2);
         });
 
-        it('small positive gap uses backward path', () => {
+        it('small positive gap within threshold produces straight line', () => {
             const response = builder.handle(request({ x: 0, y: 0 }, { x: 50, y: 50 }));
 
-            // entryX (30) <= exitX (20) is false — gap is 10, so forward
-            // Actually: exitX = 20, entryX = 30, entryX > exitX → forward
-            expect(response.points.length).toBe(4);
+            expect(response.points.length).toBe(2);
         });
 
-        it('same point produces backward path with loop above', () => {
+        it('same point produces straight line', () => {
             const response = builder.handle(request({ x: 100, y: 100 }, { x: 100, y: 100 }));
 
-            expect(response.path.match(/ A /g)?.length).toBe(4);
-            expect(response.points[2].y).toBeLessThan(100);
+            expect(response.path).toContain('M 100 100');
+            expect(response.points.length).toBe(2);
+        });
+
+        it('points beyond threshold still use curved path', () => {
+            const response = builder.handle(request({ x: 0, y: 0 }, { x: 200, y: 0 }));
+
+            // Forward curve: exitX=20, entryX=180, forward path with 4 points
+            expect(response.points.length).toBe(4);
         });
     });
 
