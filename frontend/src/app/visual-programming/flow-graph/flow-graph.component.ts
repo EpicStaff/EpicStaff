@@ -66,6 +66,7 @@ import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directiv
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { getPortPosition } from '../core/geometry/port-position';
+import { isStacked } from '../core/geometry/wire-direction';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
@@ -88,6 +89,8 @@ import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.m
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
+import { CurvedPathBuilder, curveHitsObstacle } from '../core/routing/curved.path-builder';
+import { obstacleRect, routingObstacles } from '../core/routing/obstacles';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
@@ -125,9 +128,14 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         '(document:pointercancel)': 'resetReassignHighlight()',
     },
     providers: [
+        CurvedPathBuilder,
         {
             provide: F_CONNECTION_BUILDERS,
-            useFactory: () => ({ orthogonal: new OrthogonalPathBuilder() }),
+            useFactory: (curvedBuilder: CurvedPathBuilder) => ({
+                orthogonal: new OrthogonalPathBuilder(),
+                'adaptive-curve': curvedBuilder,
+            }),
+            deps: [CurvedPathBuilder],
         },
         KeyValueEntryDraftsService,
     ],
@@ -352,6 +360,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.lastSeenFullSaveRequest = requestCount;
                 this.emitSave();
             }
+        });
+
+        effect(() => {
+            this.flowSettings.edgeStyle(); // track the signal
+            untracked(() => this.rerouteSegmentConnections());
         });
 
         // `f-canvas` uses selective content projection and drops any element that
@@ -1217,11 +1230,32 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const connections = this.flowService.connections();
-        const routes = routeAll(this.flowService.nodes(), connections);
+        const nodes = this.flowService.nodes();
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        const obstacleRects = [...routingObstacles(nodes).values()];
+        const isAdaptiveCurve = this.flowSettings.edgeStyle() === 'adaptive-curve';
+        const routes = routeAll(nodes, connections);
         for (const conn of connections) {
-            const points = routes.get(conn.id);
-            if (points && !waypointsEqual(conn.waypoints ?? [], points)) {
-                this.flowService.updateConnectionWaypoints(conn.id, points);
+            const routePoints = routes.get(conn.id);
+            let targetWaypoints = routePoints;
+
+            // For adaptive-curve: only keep A* waypoints when the smooth curve would hit an obstacle.
+            // When the curve is free, clear waypoints so the builder draws the smooth path.
+            if (isAdaptiveCurve && routePoints && !conn.userAdjustedWaypoints) {
+                const ends = resolveWireEnds(conn, nodesById);
+                if (ends) {
+                    const source = getPortPosition(ends.sourceNode, ends.sourcePort);
+                    const target = getPortPosition(ends.targetNode, ends.targetPort);
+                    const sourceBox = obstacleRect(ends.sourceNode);
+                    const targetBox = obstacleRect(ends.targetNode);
+                    const backwardReturnWire = target.x < source.x && !isStacked(sourceBox, targetBox);
+                    targetWaypoints =
+                        backwardReturnWire || curveHitsObstacle(source, target, obstacleRects) ? routePoints : [];
+                }
+            }
+
+            if (targetWaypoints && !waypointsEqual(conn.waypoints ?? [], targetWaypoints)) {
+                this.flowService.updateConnectionWaypoints(conn.id, targetWaypoints);
                 this.bumpConnectionRenderVersion(conn.id);
             }
         }
