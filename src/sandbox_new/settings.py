@@ -10,6 +10,9 @@ if not env.bool("RUN_IN_DOCKER", False):
 
 DEBUG = env.bool("SANDBOX_DEBUG", False)
 
+# Independent of DEBUG: that one only switches Litestar's debug responses.
+LOG_LEVEL = env.str("SANDBOX_LOG_LEVEL", "INFO")
+
 # Read from env so the code and the mounted volume agree on one path.
 VENVS_DIR = env.path("SANDBOX_VENVS_DIR", BASE_DIR / "venvs")
 VENV_STAGING_DIR = VENVS_DIR / "builds"

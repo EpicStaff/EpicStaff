@@ -1,6 +1,7 @@
 import common.bootstrap  # noqa: F401  registers the cross-service runtime (queues + runners)
 import manager.bootstrap  # noqa: F401  registers dependencies and lifespan hooks
 import settings
+from common.bootstrap.logging import configure_logging
 from foundation.utils.litestar import di, error_handler, lifespan
 from litestar import Litestar
 from litestar.openapi.config import OpenAPIConfig
@@ -11,6 +12,8 @@ from litestar.openapi.plugins import (
     SwaggerRenderPlugin,
 )
 from manager.presentation.rest.controllers import ExecutionController, VenvController
+
+configure_logging()
 
 app = Litestar(
     debug=settings.DEBUG,

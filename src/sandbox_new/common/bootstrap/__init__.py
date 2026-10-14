@@ -1,5 +1,5 @@
 """Importing this package wires the cross-service runtime (queues + background runners)."""
 
-from common.bootstrap import lifespan
+from common.bootstrap import lifespan, logging
 
-__all__ = ["lifespan"]
+__all__ = ["lifespan", "logging"]
