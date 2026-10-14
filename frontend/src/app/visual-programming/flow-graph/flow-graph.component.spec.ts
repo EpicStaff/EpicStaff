@@ -1,24 +1,26 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component, input, NO_ERRORS_SCHEMA, output } from '@angular/core';
+import { HttpTestingController } from '@angular/common/http/testing';
+import { Component, DebugElement, input, NO_ERRORS_SCHEMA, output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import {
     FCreateConnectionEvent,
     FDragStartedEvent,
+    FFlowComponent,
     FFlowModule,
     FNodeDirective,
     FReassignConnectionEvent,
     FZoomDirective,
 } from '@foblex/flow';
+import { ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
-import { ImportExportService } from '../../core/services/import-export.service';
-import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
+import { RUN_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-run-permission-refusal.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
@@ -46,7 +48,13 @@ import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createFlowConnection } from '../utils/connection.factory';
 import { createStartNode } from '../utils/load';
+import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
 import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
+import {
+    FLOW_ACTIONS_WITH_RUN,
+    FLOW_ACTIONS_WITHOUT_RUN,
+    grantPermissions,
+} from '../utils/testing/permissions.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
 
 const UNKNOWN_AUTHORSHIP = { created_by: null, created_at: null, last_edited_by: null, last_edited_at: null };
@@ -396,163 +404,7 @@ describe('FlowGraphComponent', () => {
         });
     });
 
-    describe('Flows:Update without Flows:Run (trigger nodes are read-only)', () => {
-        let component: FlowGraphComponent;
-        let flowService: FlowService;
-        let toast: ToastService;
-
-        beforeEach(() => {
-            const fixture = mount(
-                false,
-                { nodes: [createStartNode(), noteNode(), scheduleTriggerNode()], connections: [] },
-                // The real schedule panel, opened in the real panel shell by a test below; its form is not under test.
-                () =>
-                    TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, {
-                        set: { template: '', imports: [] },
-                    }),
-                true,
-                false
-            );
-            component = fixture.componentInstance;
-            flowService = TestBed.inject(FlowService);
-            toast = TestBed.inject(ToastService);
-        });
-
-        function node(id: string): NodeModel {
-            return flowService.nodes().find((candidate) => candidate.id === id) as NodeModel;
-        }
-
-        it('keeps a trigger node in place when a selection drag carries it along, but moves the others', () => {
-            const info = vi.spyOn(toast, 'info').mockImplementation(() => undefined);
-            const trigger = node('schedule-1');
-            const note = node('note-1');
-
-            component.onNodePositionChanged({ x: 600, y: 600 }, trigger);
-            component.onNodePositionChanged({ x: 600, y: 0 }, note);
-
-            expect(node('schedule-1').position).toEqual(trigger.position);
-            // A new object, so Foblex takes the unchanged position again.
-            expect(node('schedule-1').position).not.toBe(trigger.position);
-            expect(node('note-1').position).toEqual({ x: 600, y: 0 });
-            expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
-        });
-
-        it('does not add a trigger node from the context menu', () => {
-            vi.spyOn(toast, 'info').mockImplementation(() => undefined);
-            const nodesBefore = flowService.nodes();
-
-            component.onAddNodeFromContextMenu({ type: NodeType.WEBHOOK_TRIGGER });
-
-            expect(flowService.nodes()).toBe(nodesBefore);
-        });
-
-        it('pastes the copied nodes without the trigger nodes and says so', () => {
-            const warning = vi.spyOn(toast, 'warning').mockImplementation(() => undefined);
-            component['fFlowComponent'] = {
-                getSelection: () => ({ fNodeIds: ['note-1', 'schedule-1'], fGroupIds: [], fConnectionIds: [] }),
-                getPositionInFlow: (point: { x: number; y: number }) => point,
-                select: vi.fn(),
-                redraw: vi.fn(),
-            } as unknown as FlowGraphComponent['fFlowComponent'];
-
-            vi.useFakeTimers();
-
-            component.onCopy();
-            component.onPaste();
-            // The paste selects the new nodes once they are on the canvas.
-            vi.runAllTimers();
-            vi.useRealTimers();
-
-            const pastedTypes = flowService
-                .nodes()
-                .filter((candidate) => candidate.type !== NodeType.START)
-                .filter((candidate) => !['note-1', 'schedule-1'].includes(candidate.id))
-                .map((candidate) => candidate.type);
-            expect(pastedTypes).toEqual([NodeType.NOTE]);
-            expect(warning).toHaveBeenCalledWith(
-                `1 trigger node was not pasted. ${TRIGGER_NODES_NEED_RUN_MESSAGE}`,
-                6000,
-                'bottom-right'
-            );
-        });
-
-        it('blocks auto arrange instead of moving the trigger nodes', () => {
-            const info = vi.spyOn(toast, 'info').mockImplementation(() => undefined);
-            const nodesBefore = flowService.nodes();
-
-            component.onAutoArrange();
-
-            expect(component['isAutoArrangeBlockedByReadOnlyNodes']()).toBe(true);
-            expect(flowService.nodes()).toBe(nodesBefore);
-            expect(info).toHaveBeenCalledWith(
-                expect.stringContaining('Auto arrange would move trigger nodes'),
-                5000,
-                'bottom-right'
-            );
-        });
-
-        it('does not extract a selection with a trigger node into a subflow', () => {
-            vi.spyOn(toast, 'info').mockImplementation(() => undefined);
-            const extract = vi.fn();
-            component.extractToSubflow.subscribe(extract);
-            component['selectedNodeIds'].set(['note-1', 'schedule-1']);
-
-            component['onExtractToSubflow']();
-
-            expect(extract).not.toHaveBeenCalled();
-        });
-
-        it('saves the flow while a trigger node panel is open, as the read-only panel has nothing to commit', async () => {
-            const shellFixture = TestBed.createComponent(NodePanelShellComponent);
-            shellFixture.componentRef.setInput('node', node('schedule-1'));
-            shellFixture.detectChanges();
-            // The shell picks up the panel instance in a setTimeout(0) after the outlet renders.
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            shellFixture.detectChanges();
-            component['nodePanelShell'] = shellFixture.componentInstance;
-            const save = vi.fn();
-            component.save.subscribe(save);
-
-            component.emitSave();
-
-            expect(shellFixture.componentInstance.hasPanelInstance()).toBe(true);
-            expect(shellFixture.componentInstance.isNodeReadOnly()).toBe(true);
-            expect(save).toHaveBeenCalledWith(flowService.getFlowState());
-            shellFixture.destroy();
-        });
-
-        it('still deletes a trigger node', () => {
-            component['fFlowComponent'] = { select: vi.fn() } as unknown as FlowGraphComponent['fFlowComponent'];
-
-            component.onDeleteNode(node('schedule-1'));
-
-            expect(flowService.nodes().some((candidate) => candidate.id === 'schedule-1')).toBe(false);
-        });
-    });
-
-    describe('partial import', () => {
-        it('imports through the copy/import facade, which explains a refusal over trigger nodes to a user without Flows:Run', () => {
-            const fixture = mount(false, { nodes: [createStartNode()], connections: [] });
-            const component = fixture.componentInstance;
-            component.currentFlowId = 3;
-            const facadeImport = vi
-                .spyOn(TestBed.inject(FlowCopyImportFacadeService), 'partialImport')
-                .mockReturnValue(of({}));
-            const directImport = vi.spyOn(TestBed.inject(ImportExportService), 'partialImport');
-            vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
-            const importComplete = vi.fn();
-            component.importComplete.subscribe(importComplete);
-            const file = new File(['{}'], 'nodes.json');
-
-            component['doPartialImport'](file);
-
-            expect(facadeImport).toHaveBeenCalledWith(3, file);
-            expect(directImport).not.toHaveBeenCalled();
-            expect(importComplete).toHaveBeenCalledTimes(1);
-        });
-    });
-
-    describe('canvas template', () => {
+    describe('trigger nodes and the Run permission on flows', () => {
         /** Stands in for the node body, which is not under test; Foblex's fNode sits on the same element. */
         @Component({ selector: 'app-flow-base-node', template: '' })
         class FlowBaseNodeStubComponent {
@@ -564,9 +416,32 @@ describe('FlowGraphComponent', () => {
             readonly unpackClicked = output<void>();
         }
 
-        afterEach(() => vi.unstubAllGlobals());
+        const WITH_RUN = { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_RUN, blocked: false };
+        const WITHOUT_RUN = {
+            user: 'may update but not run flows',
+            flowActions: FLOW_ACTIONS_WITHOUT_RUN,
+            blocked: true,
+        };
 
-        function draggingDisabledByNodeId(canRunFlows: boolean): Record<string, boolean> {
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let flowService: FlowService;
+        let info: ReturnType<typeof vi.spyOn>;
+        let warning: ReturnType<typeof vi.spyOn>;
+
+        afterEach(() => {
+            fixture?.destroy();
+            vi.useRealTimers();
+            vi.unstubAllGlobals();
+        });
+
+        /**
+         * The real canvas template with the real Foblex canvas and the real panel shell; the user's gestures
+         * arrive as the events Foblex and the child components emit into the template's bindings.
+         */
+        function mountCanvas(
+            flowActions: ActionCode[],
+            nodes: NodeModel[] = [noteNode(), scheduleTriggerNode()]
+        ): FlowGraphComponent {
             // jsdom has neither layout nor ResizeObserver; Foblex only needs the observer to exist.
             vi.stubGlobal(
                 'ResizeObserver',
@@ -583,18 +458,11 @@ describe('FlowGraphComponent', () => {
                 providers: [
                     provideHttpClient(),
                     provideHttpClientTesting(),
-                    {
-                        provide: PermissionsService,
-                        useValue: {
-                            can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run || canRunFlows,
-                            canAny: () => true,
-                        },
-                    },
                     { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
                     NodeAuthorshipStore,
                 ],
             });
-            // The real template with the real Foblex canvas; the editor's other children render as unknown elements.
+            // The editor's other children render as unknown elements.
             TestBed.overrideComponent(FlowGraphComponent, {
                 set: {
                     imports: [
@@ -606,36 +474,277 @@ describe('FlowGraphComponent', () => {
                         MouseTrackerDirective,
                         WaypointTooltipDirective,
                         FlowBaseNodeStubComponent,
+                        NodePanelShellComponent,
                     ],
                     schemas: [NO_ERRORS_SCHEMA],
                 },
             });
-            const fixture = TestBed.createComponent(FlowGraphComponent);
-            fixture.componentRef.setInput('flowState', {
-                nodes: [noteNode(), scheduleTriggerNode()],
-                connections: [],
-            });
+            // The schedule panel's own form is its spec's subject; here only the shell's part matters.
+            TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+            grantPermissions({ [ResourceCode.Flows]: flowActions });
+            const toast = TestBed.inject(ToastService);
+            info = vi.spyOn(toast, 'info').mockImplementation(() => undefined);
+            warning = vi.spyOn(toast, 'warning').mockImplementation(() => undefined);
+            flowService = TestBed.inject(FlowService);
+            fixture = TestBed.createComponent(FlowGraphComponent);
+            fixture.componentRef.setInput('flowState', { nodes, connections: [] });
+            fixture.componentRef.setInput('currentFlowId', 3);
             fixture.detectChanges();
-            const result = Object.fromEntries(
-                fixture.debugElement.queryAll(By.directive(FNodeDirective)).map((element) => {
-                    const fNode = element.injector.get(FNodeDirective);
-                    return [fNode.fId(), fNode.fDraggingDisabled()];
-                })
-            );
-            fixture.destroy();
-            return result;
+            return fixture.componentInstance;
         }
 
-        it('disables dragging on the trigger node only, for a user without Flows:Run', () => {
-            expect(draggingDisabledByNodeId(false)).toEqual(
-                expect.objectContaining({ 'note-1': false, 'schedule-1': true })
+        function flowNode(id: string): NodeModel | undefined {
+            return flowService.nodes().find((node) => node.id === id);
+        }
+
+        function canvasNode(id: string): DebugElement {
+            return fixture.debugElement
+                .queryAll(By.directive(FNodeDirective))
+                .find((element) => element.injector.get(FNodeDirective).fId() === id)!;
+        }
+
+        function flowElement(): DebugElement {
+            return fixture.debugElement.query(By.css('f-flow'));
+        }
+
+        function child(selector: string): DebugElement {
+            return fixture.debugElement.query(By.css(selector));
+        }
+
+        function pressShortcut(key: string): void {
+            document.body.dispatchEvent(
+                new KeyboardEvent('keydown', { key, code: `Key${key.toUpperCase()}`, ctrlKey: true, bubbles: true })
             );
+            fixture.detectChanges();
+        }
+
+        function expectRunMessage(blocked: boolean): void {
+            if (blocked) {
+                expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+            } else {
+                expect(info).not.toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+            }
+        }
+
+        describe.each([WITH_RUN, WITHOUT_RUN])('for a user who $user', ({ flowActions, blocked }) => {
+            it(`disables dragging on the trigger node only: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                expect(canvasNode('note-1').injector.get(FNodeDirective).fDraggingDisabled()).toBe(false);
+                expect(canvasNode('schedule-1').injector.get(FNodeDirective).fDraggingDisabled()).toBe(blocked);
+            });
+
+            it(`keeps a trigger node in place when a selection drag carries it along: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                canvasNode('schedule-1').triggerEventHandler('fNodePositionChange', { x: 600, y: 600 });
+                canvasNode('note-1').triggerEventHandler('fNodePositionChange', { x: 600, y: 0 });
+
+                expect(flowNode('schedule-1')!.position).toEqual(blocked ? { x: 0, y: 400 } : { x: 600, y: 600 });
+                expect(flowNode('note-1')!.position).toEqual({ x: 600, y: 0 });
+                expectRunMessage(blocked);
+            });
+
+            it(`keeps a trigger node's size when it is resized: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                canvasNode('schedule-1').triggerEventHandler('fNodeSizeChange', { width: 420, height: 260 });
+
+                expect(flowNode('schedule-1')!.size).toEqual(
+                    blocked ? { width: 200, height: 100 } : { width: 420, height: 260 }
+                );
+            });
+
+            it(`does not add a trigger node from the context menu: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                flowElement().triggerEventHandler(
+                    'contextmenu',
+                    new MouseEvent('contextmenu', { clientX: 40, clientY: 40 })
+                );
+                fixture.detectChanges();
+                child('app-flow-graph-context-menu').triggerEventHandler('nodeSelected', {
+                    type: NodeType.WEBHOOK_TRIGGER,
+                });
+
+                const webhookNodes = flowService.nodes().filter((node) => node.type === NodeType.WEBHOOK_TRIGGER);
+                expect(webhookNodes.length).toBe(blocked ? 0 : 1);
+                expectRunMessage(blocked);
+            });
+
+            // Nothing in the app is a Foblex external item today, so a drop can only be refused, never add a node.
+            it(`refuses a trigger node dropped on the canvas, saying why: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                flowElement().triggerEventHandler('fCreateNode', {
+                    data: { ...scheduleTriggerNode(), id: 'dropped-schedule' },
+                    rect: { x: 800, y: 800 },
+                });
+
+                expect(flowNode('dropped-schedule')).toBeUndefined();
+                expectRunMessage(blocked);
+            });
+
+            it(`pastes the copied nodes without the trigger nodes: ${blocked}`, async () => {
+                mountCanvas(flowActions);
+                // A rubber-band selection needs layout, which jsdom lacks: Foblex reports it as the user made it.
+                vi.spyOn(flowElement().injector.get(FFlowComponent), 'getSelection').mockReturnValue({
+                    fNodeIds: ['note-1', 'schedule-1'],
+                    fGroupIds: [],
+                    fConnectionIds: [],
+                });
+
+                pressShortcut('c');
+                pressShortcut('v');
+                // The paste selects the new nodes once they are on the canvas.
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const pastedTypes = flowService
+                    .nodes()
+                    .filter((node) => !['note-1', 'schedule-1'].includes(node.id))
+                    .map((node) => node.type)
+                    .sort();
+                expect(pastedTypes).toEqual(
+                    blocked ? [NodeType.NOTE] : [NodeType.NOTE, NodeType.SCHEDULE_TRIGGER].sort()
+                );
+                if (blocked) {
+                    expect(warning).toHaveBeenCalledWith(
+                        `1 trigger node was not pasted. ${TRIGGER_NODES_NEED_RUN_MESSAGE}`,
+                        6000,
+                        'bottom-right'
+                    );
+                } else {
+                    expect(warning).not.toHaveBeenCalled();
+                }
+            });
+
+            it(`makes auto arrange unavailable while there is a trigger node, saying why: ${blocked}`, () => {
+                mountCanvas(flowActions);
+
+                const autoArrange = (fixture.nativeElement as HTMLElement)
+                    .querySelector('app-svg-icon[icon="auto-arrange"]')!
+                    .closest('button')!;
+
+                expect(autoArrange.title).toBe(
+                    blocked
+                        ? 'Auto arrange would move trigger nodes, which needs the Run permission on flows.'
+                        : 'Auto arrange'
+                );
+                if (blocked) expect(autoArrange.disabled).toBe(true);
+            });
+
+            it(`does not extract a selection with a trigger node into a subflow: ${blocked}`, () => {
+                const component = mountCanvas(flowActions);
+                const extracted: Set<string>[] = [];
+                component.extractToSubflow.subscribe((ids) => extracted.push(ids));
+
+                flowElement().triggerEventHandler('fSelectionChange', { nodeIds: ['note-1', 'schedule-1'] });
+                fixture.detectChanges();
+                (fixture.nativeElement.querySelector('.extract-subflow-btn') as HTMLButtonElement).click();
+
+                expect(extracted).toEqual(blocked ? [] : [new Set(['note-1', 'schedule-1'])]);
+                expectRunMessage(blocked);
+            });
+
+            it(`ignores a changed trigger node coming from its panel (save and autosave): ${blocked}`, () => {
+                mountCanvas(flowActions);
+                const shell = child('app-node-panel-shell');
+
+                shell.triggerEventHandler('save', { ...scheduleTriggerNode(), node_name: 'Saved name' });
+                const afterSave = flowNode('schedule-1')!.node_name;
+                shell.triggerEventHandler('autosave', { ...scheduleTriggerNode(), node_name: 'Autosaved name' });
+
+                expect(afterSave).toBe(blocked ? 'Schedule #1' : 'Saved name');
+                expect(flowNode('schedule-1')!.node_name).toBe(blocked ? 'Schedule #1' : 'Autosaved name');
+            });
+
+            it('still deletes a trigger node', () => {
+                mountCanvas(flowActions);
+
+                canvasNode('schedule-1').triggerEventHandler('deleteClicked', flowNode('schedule-1'));
+
+                expect(flowNode('schedule-1')).toBeUndefined();
+            });
         });
 
-        it('lets a user who may run flows drag the trigger node', () => {
-            expect(draggingDisabledByNodeId(true)).toEqual(
-                expect.objectContaining({ 'note-1': false, 'schedule-1': false })
-            );
+        it('leaves a trigger node in place when a saved decision table grows over it, but moves the others', () => {
+            const table = mapGraphDtoToFlowModel(liveGraph).nodes.find((node) => node.type === NodeType.TABLE)!;
+            const tableAtOrigin = { ...table, position: { x: 0, y: 0 } };
+            const triggerUnderTable = { ...scheduleTriggerNode(), position: { x: 40, y: 40 } };
+            const noteUnderTable = { ...noteNode(), position: { x: 60, y: 60 } };
+            mountCanvas(FLOW_ACTIONS_WITHOUT_RUN, [tableAtOrigin, triggerUnderTable, noteUnderTable]);
+
+            child('app-node-panel-shell').triggerEventHandler('save', tableAtOrigin);
+
+            expect(flowNode('schedule-1')!.position).toEqual({ x: 40, y: 40 });
+            expect(flowNode('note-1')!.position).not.toEqual({ x: 60, y: 60 });
+        });
+
+        it('saves the flow while a trigger node panel is open, as the read-only panel has nothing to commit', async () => {
+            const component = mountCanvas(FLOW_ACTIONS_WITHOUT_RUN);
+            TestBed.inject(SidePanelService).setSelectedNodeId('schedule-1');
+            fixture.detectChanges();
+            // The shell picks up the panel instance in a setTimeout(0) after the outlet renders.
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            fixture.detectChanges();
+            const saved: FlowModel[] = [];
+            component.save.subscribe((flow) => saved.push(flow));
+
+            // What the flow page calls on its Save button and Ctrl+S.
+            component.emitSave();
+
+            expect(saved).toEqual([flowService.getFlowState()]);
+        });
+
+        describe('partial import', () => {
+            function importFile(): HttpTestingController {
+                const file = new File(['{}'], 'nodes.json');
+                vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+                    Object.defineProperty(this, 'files', { value: [file] });
+                    this.dispatchEvent(new Event('change'));
+                });
+                child('app-flow-export-import-button').triggerEventHandler('import');
+                return TestBed.inject(HttpTestingController);
+            }
+
+            it('explains the refusal of a file with trigger nodes to a user without Flows:Run, importing nothing', () => {
+                const component = mountCanvas(FLOW_ACTIONS_WITHOUT_RUN);
+                const confirm = vi
+                    .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
+                    .mockReturnValue(of('close'));
+                const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+                const importComplete = vi.fn();
+                component.importComplete.subscribe(importComplete);
+
+                importFile()
+                    .expectOne(
+                        (request) => request.method === 'POST' && request.url.endsWith('graphs/3/partial-import/')
+                    )
+                    .flush(
+                        {
+                            code: 'flow_with_trigger_nodes_requires_run_permission',
+                            message: 'This file contains trigger nodes.',
+                        },
+                        { status: 403, statusText: 'Forbidden' }
+                    );
+
+                expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: RUN_PERMISSION_REQUIRED_TITLE }));
+                expect(error).not.toHaveBeenCalled();
+                expect(importComplete).not.toHaveBeenCalled();
+            });
+
+            it('imports a file the backend accepts', () => {
+                const component = mountCanvas(FLOW_ACTIONS_WITH_RUN);
+                vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
+                const importComplete = vi.fn();
+                component.importComplete.subscribe(importComplete);
+
+                importFile()
+                    .expectOne((request) => request.url.endsWith('graphs/3/partial-import/'))
+                    .flush({});
+
+                expect(importComplete).toHaveBeenCalledTimes(1);
+            });
         });
     });
 

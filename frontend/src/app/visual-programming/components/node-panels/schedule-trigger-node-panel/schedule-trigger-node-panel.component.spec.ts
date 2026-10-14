@@ -1,10 +1,10 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ActionCode, NodeType } from '@shared/models';
-import { of } from 'rxjs';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
@@ -15,6 +15,11 @@ import { buildFlowModelFromGraphDto } from '../../../utils/load/build-flow-model
 import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../../../utils/save';
 import { withGraphScheduleTriggerRuntimeState } from '../../../utils/save/schedule-trigger-runtime-state';
 import { liveGraph } from '../../../utils/testing/live-graph.fixture';
+import {
+    FLOW_ACTIONS_WITH_RUN,
+    FLOW_ACTIONS_WITHOUT_RUN,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel.component';
 
 // A node without a backendId — what a version preview renders — must never reach the
@@ -88,44 +93,59 @@ describe('ScheduleTriggerNodePanelComponent with backendId null', () => {
 });
 
 describe('ScheduleTriggerNodePanelComponent permissions', () => {
-    function open(canRunFlows: boolean): ScheduleTriggerNodePanelComponent {
+    // Repeating weekly, so the weekday buttons show.
+    const weeklyScheduleNode: ScheduleTriggerNodeModel = {
+        ...unsavedScheduleNode,
+        data: { ...unsavedScheduleNode.data, intervalUnit: 'weeks' },
+    };
+
+    function open(flowActions: ActionCode[]) {
         TestBed.configureTestingModule({
             providers: [
+                provideHttpClient(),
+                // Never called: the node has no backendId.
                 { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
                 { provide: ToastService, useValue: { info: vi.fn() } },
-                {
-                    provide: PermissionsService,
-                    useValue: {
-                        can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run || canRunFlows,
-                    },
-                },
             ],
         });
-        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        grantPermissions({ [ResourceCode.Flows]: flowActions });
         const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
-        fixture.componentRef.setInput('node', unsavedScheduleNode);
+        fixture.componentRef.setInput('node', weeklyScheduleNode);
         fixture.detectChanges();
-        return fixture.componentInstance;
+        return fixture;
+    }
+
+    function element(fixture: ReturnType<typeof open>, selector: string): HTMLElement | null {
+        return fixture.nativeElement.querySelector(selector);
+    }
+
+    function clickMonday(fixture: ReturnType<typeof open>): void {
+        element(fixture, '[data-tooltip="Monday"]')!.click();
+        fixture.detectChanges();
     }
 
     it('is editable for a user who may update and run flows', () => {
-        const panel = open(true);
+        const fixture = open(FLOW_ACTIONS_WITH_RUN);
 
-        expect(panel.isReadOnly()).toBe(false);
-        expect(panel.form.enabled).toBe(true);
+        expect(element(fixture, 'app-custom-input input')).not.toBeNull();
+        expect(element(fixture, 'app-radio-button')).not.toBeNull();
+        clickMonday(fixture);
+        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).toContain('round-btn--active');
+        fixture.destroy();
     });
 
-    it('is read-only without Flows:Run: disabled form, no weekday toggling, nothing saved', () => {
-        const panel = open(false);
+    it('is read-only without Flows:Run: values shown as text, weekdays cannot be toggled, nothing saved', () => {
+        const fixture = open(FLOW_ACTIONS_WITHOUT_RUN);
 
-        panel.toggleDay('mon');
-
-        expect(panel.isReadOnly()).toBe(true);
-        expect(panel.form.disabled).toBe(true);
-        expect(panel.repeatDays()).toEqual([]);
-        expect(panel.isDirty()).toBe(false);
-        expect(panel.onSave()).toBeNull();
-        expect(panel.captureForValidation()).toBeNull();
+        expect(element(fixture, 'app-custom-input input')).toBeNull();
+        expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
+        expect(element(fixture, 'app-radio-button')).toBeNull();
+        clickMonday(fixture);
+        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).not.toContain('round-btn--active');
+        // What the panel shell and the canvas take on close, Ctrl+S and a full save.
+        expect(fixture.componentInstance.onSave()).toBeNull();
+        expect(fixture.componentInstance.captureForValidation()).toBeNull();
+        fixture.destroy();
     });
 });
 
@@ -137,21 +157,17 @@ describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
         const [storedSchedule] = liveGraph.schedule_trigger_node_list;
         // The schedule ran its last time between the panel opening and the next poll: the backend turned it off.
         const finishedSchedule = { ...storedSchedule, is_active: false, current_runs: storedSchedule.current_runs + 1 };
-        const getScheduleTriggerNode = vi
-            .fn()
-            .mockReturnValueOnce(of(storedSchedule))
-            .mockReturnValue(of(finishedSchedule));
         TestBed.configureTestingModule({
             providers: [
-                { provide: FlowsApiService, useValue: { getScheduleTriggerNode } },
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 { provide: ToastService, useValue: { info: vi.fn() } },
-                {
-                    provide: PermissionsService,
-                    useValue: { can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run },
-                },
             ],
         });
-        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_RUN });
+        const httpMock = TestBed.inject(HttpTestingController);
+        const scheduleUrl = (request: { url: string }): boolean =>
+            request.url.endsWith(`schedule-trigger-nodes/${storedSchedule.id}/`);
         const flowService = TestBed.inject(FlowService);
         const loadedFlow = buildFlowModelFromGraphDto(liveGraph);
         flowService.setFlow(loadedFlow);
@@ -169,10 +185,11 @@ describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
         const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
         fixture.componentRef.setInput('node', scheduleNode);
         fixture.detectChanges();
+        httpMock.expectOne(scheduleUrl).flush(storedSchedule);
         // The poll after the panel's first read of the node (an active schedule with no next run: 1 s).
         vi.advanceTimersByTime(1_000);
+        httpMock.expectOne(scheduleUrl).flush(finishedSchedule);
 
-        expect(getScheduleTriggerNode).toHaveBeenCalledTimes(2);
         const canvasNode = flowService.nodes().find((node) => node.id === scheduleNode.id) as ScheduleTriggerNodeModel;
         expect(canvasNode.data.isActive).toBe(false);
         const savedNode = TestBed.inject(SavedFlowStateService).savedNode(scheduleNode.id) as ScheduleTriggerNodeModel;

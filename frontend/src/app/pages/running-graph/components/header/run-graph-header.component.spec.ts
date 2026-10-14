@@ -128,11 +128,10 @@ describe('RunningGraphHeaderComponent stop button', () => {
         return fixture.nativeElement as HTMLElement;
     }
 
-    it('offers Stop on a running session to a user who can run flows', () => {
-        expect(render(true).querySelector('app-stop-button')).not.toBeNull();
-    });
-
-    it('hides Stop from a user who cannot run flows', () => {
-        expect(render(false).querySelector('app-stop-button')).toBeNull();
+    it.each([
+        ['offers Stop on a running session to a user who can run flows', true, 1],
+        ['hides Stop from a user who cannot run flows', false, 0],
+    ])('%s', (_case, canRun, stopButtons) => {
+        expect(render(canRun).querySelectorAll('app-stop-button')).toHaveLength(stopButtons);
     });
 });

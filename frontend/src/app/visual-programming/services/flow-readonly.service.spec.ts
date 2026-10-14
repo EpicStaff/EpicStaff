@@ -1,9 +1,16 @@
+import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { ActionCode, NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
+import {
+    FLOW_ACTIONS_VIEWER,
+    FLOW_ACTIONS_WITH_RUN,
+    FLOW_ACTIONS_WITHOUT_RUN,
+    grantPermissions,
+} from '../utils/testing/permissions.fixture';
 import { FlowReadOnlyService, TRIGGER_NODES_NEED_RUN_MESSAGE } from './flow-readonly.service';
 
 function setUp({
@@ -64,30 +71,58 @@ describe('FlowReadOnlyService', () => {
     });
 
     describe('trigger nodes', () => {
-        it('lets a user who may update and run flows change trigger nodes', () => {
-            const { service } = setUp({ isPreview: false, canUpdateFlows: true, canRunFlows: true });
+        const TRIGGER_NODE_TYPES = [NodeType.WEBHOOK_TRIGGER, NodeType.TELEGRAM_TRIGGER, NodeType.SCHEDULE_TRIGGER];
+        const OTHER_NODE_TYPES = [NodeType.START, NodeType.PYTHON, NodeType.NOTE, NodeType.END];
 
-            expect(service.canEditTriggerNodes()).toBe(true);
-            expect(service.isNodeTypeReadOnly(NodeType.WEBHOOK_TRIGGER)).toBe(false);
-        });
+        /** The real PermissionsService, holding exactly these Flows actions. */
+        function serviceFor(isPreview: boolean, flowActions: ActionCode[]): FlowReadOnlyService {
+            TestBed.configureTestingModule({
+                providers: [provideHttpClient(), { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview }],
+            });
+            grantPermissions({ [ResourceCode.Flows]: flowActions });
+            return TestBed.inject(FlowReadOnlyService);
+        }
 
-        it('keeps Webhook, Telegram and Schedule triggers read-only without Flows:Run, other nodes editable', () => {
-            const { service } = setUp({ isPreview: false, canUpdateFlows: true, canRunFlows: false });
+        describe.each([
+            {
+                user: 'may update and run flows',
+                isPreview: false,
+                flowActions: FLOW_ACTIONS_WITH_RUN,
+                triggerReadOnly: false,
+                otherReadOnly: false,
+            },
+            {
+                user: 'may update but not run flows',
+                isPreview: false,
+                flowActions: FLOW_ACTIONS_WITHOUT_RUN,
+                triggerReadOnly: true,
+                otherReadOnly: false,
+            },
+            {
+                user: 'may run but not update flows',
+                isPreview: false,
+                flowActions: FLOW_ACTIONS_VIEWER,
+                triggerReadOnly: true,
+                otherReadOnly: true,
+            },
+            {
+                user: 'may update and run flows, in a version preview',
+                isPreview: true,
+                flowActions: FLOW_ACTIONS_WITH_RUN,
+                triggerReadOnly: true,
+                otherReadOnly: true,
+            },
+        ])('for a user who $user', ({ isPreview, flowActions, triggerReadOnly, otherReadOnly }) => {
+            it.each(TRIGGER_NODE_TYPES)(`a %s node is read-only: ${triggerReadOnly}`, (type) => {
+                const service = serviceFor(isPreview, flowActions);
 
-            expect(service.isReadOnly()).toBe(false);
-            expect(service.canEditTriggerNodes()).toBe(false);
-            expect(service.isNodeTypeReadOnly(NodeType.WEBHOOK_TRIGGER)).toBe(true);
-            expect(service.isNodeTypeReadOnly(NodeType.TELEGRAM_TRIGGER)).toBe(true);
-            expect(service.isNodeTypeReadOnly(NodeType.SCHEDULE_TRIGGER)).toBe(true);
-            expect(service.isNodeTypeReadOnly(NodeType.PYTHON)).toBe(false);
-            expect(service.isNodeTypeReadOnly(NodeType.START)).toBe(false);
-        });
+                expect(service.isNodeTypeReadOnly(type)).toBe(triggerReadOnly);
+                expect(service.canEditTriggerNodes()).toBe(!triggerReadOnly);
+            });
 
-        it('keeps trigger nodes read-only in a version preview even with Flows:Run', () => {
-            const { service } = setUp({ isPreview: true, canUpdateFlows: true, canRunFlows: true });
-
-            expect(service.canEditTriggerNodes()).toBe(false);
-            expect(service.isNodeTypeReadOnly(NodeType.SCHEDULE_TRIGGER)).toBe(true);
+            it.each(OTHER_NODE_TYPES)(`a %s node is read-only: ${otherReadOnly}`, (type) => {
+                expect(serviceFor(isPreview, flowActions).isNodeTypeReadOnly(type)).toBe(otherReadOnly);
+            });
         });
 
         it('explains a blocked trigger node with the Run message (throttled), and nothing for an editable node', () => {

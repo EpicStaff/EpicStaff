@@ -6,9 +6,10 @@ from rest_framework.exceptions import PermissionDenied
 from tables.exceptions import GraphNotFoundError, SessionNotFoundError
 from tables.models import Graph
 from tables.models.session_models import Session
-from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.session_access import get_accessible_session, get_runnable_graph
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
@@ -45,27 +46,15 @@ def no_permissions_a(db, django_user_model, org_a):
     return user
 
 
-def _user_with_flows_permissions(django_user_model, org, permissions, name):
-    role = Role.objects.create(name=name, org=org, is_built_in=False)
-    RolePermission.objects.create(
-        role=role, resource_type=ResourceType.FLOWS, permissions=int(permissions)
-    )
-    user = django_user_model.objects.create_user(
-        email=f"{name}@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    return user
+@pytest.fixture
+def flows_reader_a(custom_role_member, org_a):
+    return custom_role_member(org_a, {ResourceType.FLOWS: Permission.READ}, "h-reader")
 
 
 @pytest.fixture
-def flows_reader_a(db, django_user_model, org_a):
-    return _user_with_flows_permissions(django_user_model, org_a, Permission.READ, "h-reader")
-
-
-@pytest.fixture
-def flows_runner_a(db, django_user_model, org_a):
-    return _user_with_flows_permissions(
-        django_user_model, org_a, Permission.READ | Permission.RUN, "h-runner"
+def flows_runner_a(custom_role_member, org_a):
+    return custom_role_member(
+        org_a, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "h-runner"
     )
 
 
@@ -148,39 +137,48 @@ def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
 
 
 @pytest.mark.django_db
-def test_flows_read_without_run_cannot_run_graph(flows_reader_a, org_a):
-    graph = Graph.objects.create(name="H read-only flow", org=org_a)
+@pytest.mark.parametrize(
+    ("caller", "target_org", "outcome"),
+    [
+        ("flows_runner_a", "org_a", "granted"),
+        ("flows_reader_a", "org_a", PermissionDenied),
+        # Another org's graph is a 404 whether or not the caller holds RUN.
+        ("flows_runner_a", "org_b", GraphNotFoundError),
+        ("flows_reader_a", "org_b", GraphNotFoundError),
+    ],
+    ids=["run", "read-without-run", "run-other-org", "read-other-org"],
+)
+def test_running_a_graph_needs_flows_run(request, caller, target_org, outcome):
+    user = request.getfixturevalue(caller)
+    graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
 
-    with pytest.raises(PermissionDenied):
-        get_runnable_graph(flows_reader_a, graph_id=graph.pk)
-
-
-@pytest.mark.django_db
-def test_flows_run_can_run_graph(flows_runner_a, org_a):
-    graph = Graph.objects.create(name="H runnable flow", org=org_a)
-
-    assert get_runnable_graph(flows_runner_a, graph_id=graph.pk).pk == graph.pk
-
-
-@pytest.mark.django_db
-def test_flows_run_in_own_org_still_gets_not_found_for_foreign_graph(flows_runner_a, org_b):
-    graph = Graph.objects.create(name="H foreign runnable flow", org=org_b)
-
-    with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(flows_runner_a, graph_id=graph.pk)
-
-
-@pytest.mark.django_db
-def test_session_access_for_run_requires_run(flows_reader_a, flows_runner_a, org_a):
-    session = _session(org_a)
-
-    assert get_accessible_session(flows_reader_a, session.pk).pk == session.pk
-    with pytest.raises(PermissionDenied):
-        get_accessible_session(flows_reader_a, session.pk, Permission.RUN)
-    assert get_accessible_session(flows_runner_a, session.pk, Permission.RUN).pk == session.pk
+    if outcome == "granted":
+        assert get_runnable_graph(user, graph_id=graph.pk).pk == graph.pk
+    else:
+        with pytest.raises(outcome):
+            get_runnable_graph(user, graph_id=graph.pk)
 
 
 @pytest.mark.django_db
-def test_session_access_for_run_hides_foreign_session(flows_runner_a, org_b):
-    with pytest.raises(SessionNotFoundError):
-        get_accessible_session(flows_runner_a, _session(org_b).pk, Permission.RUN)
+@pytest.mark.parametrize(
+    ("caller", "target_org", "action", "outcome"),
+    [
+        ("flows_reader_a", "org_a", None, "granted"),
+        ("flows_reader_a", "org_a", Permission.RUN, PermissionDenied),
+        ("flows_runner_a", "org_a", Permission.RUN, "granted"),
+        # Another org's session is a 404 whether or not the caller holds RUN.
+        ("flows_runner_a", "org_b", Permission.RUN, SessionNotFoundError),
+        ("flows_reader_a", "org_b", Permission.RUN, SessionNotFoundError),
+    ],
+    ids=["read-default", "read-for-run", "run-for-run", "run-other-org", "read-other-org"],
+)
+def test_session_access_for_run_needs_flows_run(request, caller, target_org, action, outcome):
+    user = request.getfixturevalue(caller)
+    session_id = _session(request.getfixturevalue(target_org)).pk
+    arguments = (user, session_id) if action is None else (user, session_id, action)
+
+    if outcome == "granted":
+        assert get_accessible_session(*arguments).pk == session_id
+    else:
+        with pytest.raises(outcome):
+            get_accessible_session(*arguments)

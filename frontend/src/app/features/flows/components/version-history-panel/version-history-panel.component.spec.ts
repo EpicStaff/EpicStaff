@@ -189,8 +189,9 @@ describe('VersionHistoryPanelComponent', () => {
         it('opens the new flow', () => {
             flowsApi.createGraphFromVersion.mockReturnValue(of({ created: true, graph_id: 42, warnings: [] }));
 
-            component.createFlowFromVersion(VERSIONS[0], new MouseEvent('click'));
+            openMenuAndClick(0, 'Create flow from this');
 
+            expect(flowsApi.createGraphFromVersion).toHaveBeenCalledExactlyOnceWith(VERSIONS[0].id);
             expect(toast.success).toHaveBeenCalledWith('New flow created');
             expect(navigate).toHaveBeenCalledWith(['/flows', 42]);
             expect(closedCount).toBe(1);
@@ -211,7 +212,7 @@ describe('VersionHistoryPanelComponent', () => {
                 )
             );
 
-            component.createFlowFromVersion(VERSIONS[0], new MouseEvent('click'));
+            openMenuAndClick(0, 'Create flow from this');
 
             expect(confirmationDialog.confirm).toHaveBeenCalledExactlyOnceWith(
                 expect.objectContaining({
@@ -232,7 +233,7 @@ describe('VersionHistoryPanelComponent', () => {
                 throwError(() => new HttpErrorResponse({ status: 500, statusText: 'Server Error' }))
             );
 
-            component.createFlowFromVersion(VERSIONS[0], new MouseEvent('click'));
+            openMenuAndClick(0, 'Create flow from this');
 
             expect(toast.error).toHaveBeenCalledWith('Failed to create flow');
             expect(confirmationDialog.confirm).not.toHaveBeenCalled();

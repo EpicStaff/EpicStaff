@@ -21,6 +21,7 @@ from tables.models.session_models import Session, SessionPrincipal, SessionTrigg
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -290,19 +291,21 @@ class TestTriggerTestRunAccess:
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
 
+    @pytest.mark.parametrize("via_api_key", [False, True], ids=["session", "user-api-key"])
     @pytest.mark.parametrize(
-        ("permissions", "role_name"),
+        "permissions",
         [
-            (Permission.READ | Permission.UPDATE, "flows-update-without-run"),
-            (Permission.READ | Permission.RUN, "flows-run-without-update"),
+            pytest.param(Permission.READ | Permission.UPDATE, id="update-without-run"),
+            pytest.param(Permission.READ | Permission.RUN, id="run-without-update"),
         ],
     )
     def test_custom_role_lacking_update_or_run_gets_403(
-        self, client_as, django_user_model, acme, webhook_node, redis_client_mock,
-        permissions, role_name,
+        self, custom_role_client, acme, webhook_node, redis_client_mock, permissions,
+        via_api_key,
     ):
-        client = _client_with_flows_permissions(
-            client_as, django_user_model, acme, permissions, role_name
+        client = custom_role_client(
+            acme, {ResourceType.FLOWS: permissions}, "flows-lacking-a-bit",
+            via_api_key=via_api_key,
         )
 
         response = client.post(

@@ -1,17 +1,17 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
-import { EMPTY, Observable, of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { GetGraphLightRequest } from '../../../../models/graph.model';
-import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -44,9 +44,9 @@ describe('MyFlowsComponent copy action', () => {
                         selectMode: signal(false),
                         selectedFlowIds: signal([]),
                         getFlows,
+                        copyFlow,
                     },
                 },
-                { provide: FlowCopyImportFacadeService, useValue: { copyFlow } },
                 { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
                 { provide: FlowsApiService, useValue: {} },
                 { provide: RunGraphService, useValue: {} },
@@ -88,13 +88,33 @@ describe('MyFlowsComponent copy action', () => {
         expect(getFlows).toHaveBeenCalledTimes(2);
     });
 
-    it('stays silent when the facade has explained a copy refused over trigger nodes', () => {
-        // The facade shows the refusal and completes without emitting.
-        copyFlow.mockReturnValue(EMPTY);
+    it('explains a copy refused over trigger nodes in the Run permission warning, with no toast and no reload', () => {
+        const confirm = vi.fn();
+        TestBed.overrideProvider(ConfirmationDialogService, { useValue: { confirm } });
+        copyFlow.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: {
+                            status_code: 403,
+                            code: 'flow_with_trigger_nodes_requires_run_permission',
+                            message: 'This flow contains trigger nodes.',
+                        },
+                    })
+            )
+        );
 
         openCopyDialog('Support Flow');
 
-        expect(copyFlow).toHaveBeenCalledWith(7, 'Support Flow');
+        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+            title: 'Run permission required',
+            message: 'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
+            caution: '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+            type: 'warning',
+            hideConfirm: true,
+            cancelText: 'OK',
+        });
         expect(toastSuccess).not.toHaveBeenCalled();
         expect(toastError).not.toHaveBeenCalled();
         // Only the page's initial load: a successful copy would reload the list.

@@ -130,11 +130,10 @@ describe('FlowSessionsTableComponent stop button', () => {
         return render([running]).nativeElement as HTMLElement;
     }
 
-    it('offers Stop on a running session to a user who can run flows', () => {
-        expect(renderRunningSession(true).querySelector('app-stop-button')).not.toBeNull();
-    });
-
-    it('hides Stop from a user who cannot run flows', () => {
-        expect(renderRunningSession(false).querySelector('app-stop-button')).toBeNull();
+    it.each([
+        ['offers Stop on a running session to a user who can run flows', true, 1],
+        ['hides Stop from a user who cannot run flows', false, 0],
+    ])('%s', (_case, canRun, stopButtons) => {
+        expect(renderRunningSession(canRun).querySelectorAll('app-stop-button')).toHaveLength(stopButtons);
     });
 });

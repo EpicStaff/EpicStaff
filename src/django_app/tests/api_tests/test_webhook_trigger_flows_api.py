@@ -12,30 +12,15 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, WebhookTrigger
 from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 # Generous on purpose: the point is that it doesn't grow with the number of flows.
 MAX_QUERIES = 15
-
-
-def _client(client_as, django_user_model, org, grants, name):
-    role = Role.objects.create(name=name, org=org, is_built_in=False)
-    for resource_type, permissions in grants.items():
-        RolePermission.objects.create(
-            role=role, resource_type=resource_type, permissions=int(permissions)
-        )
-    user = django_user_model.objects.create_user(
-        email=f"{name}@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    client = client_as(user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
-    return client
 
 
 @pytest.fixture(autouse=True)
@@ -45,11 +30,9 @@ def republished(mocker, mock_telegram_service):
 
 
 @pytest.fixture
-def flows_reader_client(client_as, django_user_model, acme):
+def flows_reader_client(custom_role_client, acme):
     """Reads webhooks and flows; cannot run flows."""
-    return _client(
-        client_as,
-        django_user_model,
+    return custom_role_client(
         acme,
         {ResourceType.WEBHOOKS: Permission.READ, ResourceType.FLOWS: Permission.READ},
         "wtf-flows-reader",
@@ -57,33 +40,23 @@ def flows_reader_client(client_as, django_user_model, acme):
 
 
 @pytest.fixture
-def webhooks_only_client(client_as, django_user_model, acme):
+def webhooks_only_client(custom_role_client, acme):
     """Manages webhooks; holds nothing on flows."""
-    return _client(
-        client_as,
-        django_user_model,
-        acme,
-        {ResourceType.WEBHOOKS: Permission.READ | Permission.UPDATE},
-        "wtf-webhooks-only",
+    return custom_role_client(
+        acme, {ResourceType.WEBHOOKS: Permission.READ | Permission.UPDATE}, "wtf-webhooks-only"
     )
 
 
 @pytest.fixture
-def no_webhooks_client(client_as, django_user_model, acme):
-    return _client(
-        client_as,
-        django_user_model,
-        acme,
-        {ResourceType.FLOWS: Permission.READ | Permission.RUN},
-        "wtf-no-webhooks",
+def no_webhooks_client(custom_role_client, acme):
+    return custom_role_client(
+        acme, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "wtf-no-webhooks"
     )
 
 
 @pytest.fixture
-def superadmin_client(client_as, superadmin, acme):
-    client = client_as(superadmin)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
+def superadmin_client(org_client_as, superadmin, acme):
+    return org_client_as(superadmin, acme)
 
 
 def _trigger(org, path):
@@ -111,6 +84,11 @@ def _flows_url(trigger):
     return reverse("webhooktrigger-flows-using-trigger", args=[trigger.id])
 
 
+def _named_flows(response):
+    """The `(id, name)` of each flow the response names, in its order."""
+    return [(flow["id"], flow["name"]) for flow in response.data["flows"]]
+
+
 @pytest.mark.django_db
 class TestFlowsUsingTrigger:
     def test_trigger_without_nodes(self, flows_reader_client, acme):
@@ -120,7 +98,8 @@ class TestFlowsUsingTrigger:
         response = flows_reader_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert response.data == {"flow_count": 0, "flows": []}
+        assert response.data["flow_count"] == 0
+        assert _named_flows(response) == []
 
     @pytest.mark.parametrize(
         "attach", [_attach_webhook_node, _attach_telegram_node], ids=["webhook", "telegram"]
@@ -133,10 +112,8 @@ class TestFlowsUsingTrigger:
         response = flows_reader_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert response.data == {
-            "flow_count": 1,
-            "flows": [{"id": flow.id, "name": "Inbound orders"}],
-        }
+        assert response.data["flow_count"] == 1
+        assert _named_flows(response) == [(flow.id, "Inbound orders")]
 
     def test_a_flow_with_both_node_types_counts_once(self, flows_reader_client, acme):
         trigger = _trigger(acme, "wtf-both")
@@ -147,7 +124,8 @@ class TestFlowsUsingTrigger:
 
         response = flows_reader_client.get(_flows_url(trigger))
 
-        assert response.data == {"flow_count": 1, "flows": [{"id": flow.id, "name": "Both kinds"}]}
+        assert response.data["flow_count"] == 1
+        assert _named_flows(response) == [(flow.id, "Both kinds")]
 
     def test_flows_are_ordered_by_name_then_id(self, flows_reader_client, acme):
         trigger = _trigger(acme, "wtf-ordered")
@@ -159,13 +137,11 @@ class TestFlowsUsingTrigger:
 
         response = flows_reader_client.get(_flows_url(trigger))
 
-        assert response.data == {
-            "flow_count": 2,
-            "flows": [
-                {"id": orders.id, "name": "Inbound orders"},
-                {"id": support.id, "name": "Support bot"},
-            ],
-        }
+        assert response.data["flow_count"] == 2
+        assert _named_flows(response) == [
+            (orders.id, "Inbound orders"),
+            (support.id, "Support bot"),
+        ]
 
     def test_soft_deleted_nodes_and_flows_do_not_count(self, flows_reader_client, acme):
         trigger = _trigger(acme, "wtf-soft-deleted")
@@ -181,7 +157,8 @@ class TestFlowsUsingTrigger:
 
         response = flows_reader_client.get(_flows_url(trigger))
 
-        assert response.data == {"flow_count": 0, "flows": []}
+        assert response.data["flow_count"] == 0
+        assert _named_flows(response) == []
 
     def test_more_flows_than_the_limit(self, flows_reader_client, acme):
         trigger = _trigger(acme, "wtf-many")
@@ -211,7 +188,8 @@ class TestAccess:
         response = webhooks_only_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert response.data == {"flow_count": 2, "flows": []}
+        assert response.data["flow_count"] == 2
+        assert _named_flows(response) == []
 
     def test_without_webhooks_read_is_403(self, no_webhooks_client, acme):
         trigger = _trigger(acme, "wtf-forbidden")
@@ -219,6 +197,7 @@ class TestAccess:
         response = no_webhooks_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+        assert response.data["code"] == "permission_denied"
 
     def test_superadmin_sees_the_names(self, superadmin_client, acme):
         trigger = _trigger(acme, "wtf-superadmin")
@@ -228,10 +207,8 @@ class TestAccess:
         response = superadmin_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert response.data == {
-            "flow_count": 1,
-            "flows": [{"id": flow.id, "name": "Superadmin view"}],
-        }
+        assert response.data["flow_count"] == 1
+        assert _named_flows(response) == [(flow.id, "Superadmin view")]
 
     @pytest.mark.parametrize("client_fixture", ["flows_reader_client", "superadmin_client"])
     def test_another_orgs_trigger_is_404(self, request, beta, client_fixture):
@@ -242,6 +219,18 @@ class TestAccess:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
         assert b"Beta flow" not in response.content
+
+    def test_another_orgs_flow_on_this_trigger_is_neither_counted_nor_named(
+        self, flows_reader_client, acme, beta
+    ):
+        trigger = _trigger(acme, "wtf-cross-org-node")
+        _attach_webhook_node(_flow(beta, "Beta flow"), trigger)
+
+        response = flows_reader_client.get(_flows_url(trigger))
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert response.data["flow_count"] == 0
+        assert _named_flows(response) == []
 
     def test_missing_org_header_is_400(self, client_as, admin_acme, acme):
         trigger = _trigger(acme, "wtf-no-header")

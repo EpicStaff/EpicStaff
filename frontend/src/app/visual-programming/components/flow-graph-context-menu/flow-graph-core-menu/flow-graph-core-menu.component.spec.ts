@@ -1,10 +1,16 @@
+import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { ActionCode, NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { ActionCode, NODE_COLORS, NODE_ICONS, NodeType, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import {
+    FLOW_ACTIONS_WITH_RUN,
+    FLOW_ACTIONS_WITHOUT_RUN,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu.component';
 
-const TRIGGER_TYPES = [NodeType.WEBHOOK_TRIGGER, NodeType.TELEGRAM_TRIGGER, NodeType.SCHEDULE_TRIGGER];
+const TRIGGER_LABELS = ['Webhook Trigger', 'Telegram Trigger', 'Schedule Trigger'];
 
 function createMenu(canRunFlows = true): FlowGraphCoreMenuComponent {
     TestBed.configureTestingModule({
@@ -16,6 +22,20 @@ function createMenu(canRunFlows = true): FlowGraphCoreMenuComponent {
         ],
     });
     return TestBed.runInInjectionContext(() => new FlowGraphCoreMenuComponent());
+}
+
+function renderMenu(flowActions = FLOW_ACTIONS_WITH_RUN) {
+    TestBed.configureTestingModule({ providers: [provideHttpClient()] });
+    grantPermissions({ [ResourceCode.Flows]: flowActions });
+    const fixture = TestBed.createComponent(FlowGraphCoreMenuComponent);
+    fixture.detectChanges();
+    return fixture;
+}
+
+function offeredLabels(fixture: ReturnType<typeof renderMenu>): string[] {
+    return Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('li')).map(
+        (item) => item.textContent?.trim() ?? ''
+    );
 }
 
 describe('FlowGraphCoreMenuComponent', () => {
@@ -36,19 +56,16 @@ describe('FlowGraphCoreMenuComponent', () => {
     });
 
     it('offers the trigger nodes to a user who may run flows', () => {
-        const offeredTypes = createMenu(true)
-            .filteredBlocks()
-            .map((block) => block.type);
-
-        expect(offeredTypes).toEqual(expect.arrayContaining(TRIGGER_TYPES));
+        expect(offeredLabels(renderMenu(FLOW_ACTIONS_WITH_RUN))).toEqual(expect.arrayContaining(TRIGGER_LABELS));
     });
 
     it('hides the trigger nodes, and only them, from a user who may update but not run flows', () => {
-        const component = createMenu(false);
-        const offeredTypes = component.filteredBlocks().map((block) => block.type);
+        const fixture = renderMenu(FLOW_ACTIONS_WITH_RUN);
+        const offeredWithRun = offeredLabels(fixture);
 
-        expect(offeredTypes).toEqual(
-            component.blocks.map((block) => block.type).filter((type) => !TRIGGER_TYPES.includes(type))
-        );
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_RUN });
+        fixture.detectChanges();
+
+        expect(offeredLabels(fixture)).toEqual(offeredWithRun.filter((label) => !TRIGGER_LABELS.includes(label)));
     });
 });

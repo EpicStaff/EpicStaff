@@ -1,7 +1,8 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { ESCAPE } from '@angular/cdk/keycodes';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { HttpErrorResponse } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
@@ -11,9 +12,10 @@ import {
 } from '@shared/components';
 import { ActionCode, ResourceCode, WebhookTriggerFlowsResponse, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
-import { Observable, of, Subject, throwError } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import { WebhookTriggersSectionComponent } from './webhook-triggers-section.component';
 
@@ -165,31 +167,28 @@ describe('WebhookTriggersSectionComponent "View Details"', () => {
 });
 
 describe('WebhookTriggersSectionComponent "Edit"', () => {
+    const LIST_URL = '/api/webhook-triggers/';
+    const FLOWS_URL = `/api/webhook-triggers/${TRIGGER.id}/flows/`;
+    const NOT_IN_USE: WebhookTriggerFlowsResponse = { flow_count: 0, flows: [] };
+    const IN_USE: WebhookTriggerFlowsResponse = { flow_count: 1, flows: [{ id: 9, name: 'Orders' }] };
+
     interface EditSetup {
         fixture: ComponentFixture<WebhookTriggersSectionComponent>;
-        /** Read by the mocked `can()` on every call, so a test can grant FLOWS:RUN between presses. */
+        httpMock: HttpTestingController;
+        /** Read by the fake `can()` on every call, so a test can grant FLOWS:RUN between presses. */
         access: { canRunFlows: boolean };
-        list: ReturnType<typeof vi.fn>;
-        getFlows: ReturnType<typeof vi.fn>;
         confirm: ReturnType<typeof vi.fn>;
         open: ReturnType<typeof vi.spyOn>;
     }
 
-    const NOT_IN_USE: WebhookTriggerFlowsResponse = { flow_count: 0, flows: [] };
-    const IN_USE: WebhookTriggerFlowsResponse = { flow_count: 1, flows: [{ id: 9, name: 'Orders' }] };
-
-    function renderForEdit(
-        canRunFlows: boolean,
-        flows$: Observable<WebhookTriggerFlowsResponse> = of(NOT_IN_USE),
-        triggers: WebhookTriggerModel[] = [TRIGGER]
-    ): EditSetup {
+    function renderForEdit(canRunFlows: boolean, triggers: WebhookTriggerModel[] = [TRIGGER]): EditSetup {
         const access = { canRunFlows };
-        const list = vi.fn(() => of(triggers));
-        const getFlows = vi.fn(() => flows$);
         const confirm = vi.fn();
         TestBed.configureTestingModule({
             providers: [
-                { provide: WebhookTriggerService, useValue: { list, changed$: new Subject<void>(), getFlows } },
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: {} },
                 {
@@ -201,13 +200,18 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
                 },
             ],
         });
+        const httpMock = TestBed.inject(HttpTestingController);
         const open = vi
             .spyOn(TestBed.inject(Dialog), 'open')
             .mockReturnValue({ closed: of(undefined) } as unknown as DialogRef<unknown, unknown>);
         const fixture = TestBed.createComponent(WebhookTriggersSectionComponent);
         fixture.detectChanges();
-        return { fixture, access, list, getFlows, confirm, open };
+        httpMock.expectOne(LIST_URL).flush({ results: triggers });
+        fixture.detectChanges();
+        return { fixture, httpMock, access, confirm, open };
     }
+
+    afterEach(() => TestBed.inject(HttpTestingController).verify());
 
     function editButton(fixture: ComponentFixture<WebhookTriggersSectionComponent>): HTMLButtonElement {
         return (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[title="Edit"]')!;
@@ -215,6 +219,21 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
 
     function pressEdit(fixture: ComponentFixture<WebhookTriggersSectionComponent>): void {
         editButton(fixture).click();
+        fixture.detectChanges();
+    }
+
+    function answerUsageCheck({ fixture, httpMock }: EditSetup, usage: WebhookTriggerFlowsResponse = NOT_IN_USE): void {
+        httpMock.expectOne(FLOWS_URL).flush(usage);
+        fixture.detectChanges();
+    }
+
+    function failUsageCheck({ fixture, httpMock }: EditSetup, status: number): void {
+        const request = httpMock.expectOne(FLOWS_URL);
+        if (status === 0) {
+            request.error(new ProgressEvent('error'));
+        } else {
+            request.flush({ detail: 'failed' }, { status, statusText: 'Failed' });
+        }
         fixture.detectChanges();
     }
 
@@ -234,32 +253,34 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     });
 
     it('opens the edit dialog straight away for a user who can run flows, without asking which flows use it', () => {
-        const { fixture, getFlows, confirm, open } = renderForEdit(true);
+        const { fixture, httpMock, confirm, open } = renderForEdit(true);
 
         pressEdit(fixture);
 
         expectEditDialogOpened(open);
-        expect(getFlows).not.toHaveBeenCalled();
+        httpMock.expectNone(FLOWS_URL);
         expect(confirm).not.toHaveBeenCalled();
     });
 
     it('opens the edit dialog for a user who cannot run flows when no flow uses the trigger', () => {
-        const { fixture, getFlows, confirm, open } = renderForEdit(false);
+        const setup = renderForEdit(false);
 
-        pressEdit(fixture);
+        pressEdit(setup.fixture);
+        expect(setup.open).not.toHaveBeenCalled();
+        answerUsageCheck(setup, NOT_IN_USE);
 
-        expect(getFlows).toHaveBeenCalledExactlyOnceWith(TRIGGER.id);
-        expectEditDialogOpened(open);
-        expect(confirm).not.toHaveBeenCalled();
+        expectEditDialogOpened(setup.open);
+        expect(setup.confirm).not.toHaveBeenCalled();
     });
 
     // The wording for every usage is covered in the edit-permission service spec.
     it('shows the Run permission warning instead of the edit dialog when a flow uses the trigger', () => {
-        const { fixture, confirm, open } = renderForEdit(false, of(IN_USE));
+        const setup = renderForEdit(false);
 
-        pressEdit(fixture);
+        pressEdit(setup.fixture);
+        answerUsageCheck(setup, IN_USE);
 
-        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+        expect(setup.confirm).toHaveBeenCalledExactlyOnceWith({
             title: 'Run permission required',
             message: 'This webhook is part of the flow <strong>Orders</strong>.',
             caution:
@@ -268,116 +289,105 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
             hideConfirm: true,
             cancelText: 'OK',
         });
-        expect(open).not.toHaveBeenCalled();
-        expect(editButton(fixture).disabled).toBe(false);
+        expect(setup.open).not.toHaveBeenCalled();
+        expect(editButton(setup.fixture).disabled).toBe(false);
     });
 
     it('opens neither dialog on a 403, which the forbidden interceptor already explained', () => {
-        const { fixture, confirm, open, list } = renderForEdit(
-            false,
-            throwError(() => new HttpErrorResponse({ status: 403 }))
-        );
+        const setup = renderForEdit(false);
 
-        pressEdit(fixture);
+        pressEdit(setup.fixture);
+        failUsageCheck(setup, 403);
 
-        expect(open).not.toHaveBeenCalled();
-        expect(confirm).not.toHaveBeenCalled();
-        expect(list).toHaveBeenCalledTimes(1);
-        expect(editButton(fixture).disabled).toBe(false);
+        expect(setup.open).not.toHaveBeenCalled();
+        expect(setup.confirm).not.toHaveBeenCalled();
+        setup.httpMock.expectNone(LIST_URL);
+        expect(editButton(setup.fixture).disabled).toBe(false);
     });
 
     it('reloads the list instead of opening the edit dialog when the trigger is gone (404)', () => {
-        const { fixture, confirm, open, list } = renderForEdit(
-            false,
-            throwError(() => new HttpErrorResponse({ status: 404 }))
-        );
+        const setup = renderForEdit(false);
 
-        pressEdit(fixture);
+        pressEdit(setup.fixture);
+        failUsageCheck(setup, 404);
+        setup.httpMock.expectOne(LIST_URL).flush({ results: [] });
+        setup.fixture.detectChanges();
 
-        expect(open).not.toHaveBeenCalled();
-        expect(confirm).not.toHaveBeenCalled();
-        expect(list).toHaveBeenCalledTimes(2);
+        expect(setup.open).not.toHaveBeenCalled();
+        expect(setup.confirm).not.toHaveBeenCalled();
+        expect(editButton(setup.fixture)).toBeNull();
     });
 
     it.each([0, 500, 503])(
         'opens the edit dialog when the check fails with status %i; the backend still guards the save',
         (status) => {
-            const { fixture, confirm, open } = renderForEdit(
-                false,
-                throwError(() => new HttpErrorResponse({ status }))
-            );
+            const setup = renderForEdit(false);
 
-            pressEdit(fixture);
+            pressEdit(setup.fixture);
+            failUsageCheck(setup, status);
 
-            expectEditDialogOpened(open);
-            expect(confirm).not.toHaveBeenCalled();
-            expect(editButton(fixture).disabled).toBe(false);
+            expectEditDialogOpened(setup.open);
+            expect(setup.confirm).not.toHaveBeenCalled();
+            expect(editButton(setup.fixture).disabled).toBe(false);
         }
     );
 
     it('asks only once when Edit is pressed again while the check is running', () => {
-        const response$ = new Subject<WebhookTriggerFlowsResponse>();
-        const { fixture, getFlows, open } = renderForEdit(false, response$);
-        const button = editButton(fixture);
+        const setup = renderForEdit(false);
+        const button = editButton(setup.fixture);
 
         button.click();
         button.click();
-        fixture.detectChanges();
+        setup.fixture.detectChanges();
 
-        expect(getFlows).toHaveBeenCalledTimes(1);
         expect(button.disabled).toBe(true);
+        // expectOne fails if the second press sent a second request.
+        answerUsageCheck(setup, NOT_IN_USE);
 
-        response$.next(NOT_IN_USE);
-        response$.complete();
-        fixture.detectChanges();
-
-        expectEditDialogOpened(open);
+        expectEditDialogOpened(setup.open);
         expect(button.disabled).toBe(false);
     });
 
     it('checks again on the next press, reading the permission at that moment', () => {
-        const { fixture, access, getFlows, confirm, open } = renderForEdit(false, of(IN_USE));
+        const setup = renderForEdit(false);
 
-        pressEdit(fixture);
-        expect(confirm).toHaveBeenCalledTimes(1);
-        expect(open).not.toHaveBeenCalled();
+        pressEdit(setup.fixture);
+        answerUsageCheck(setup, IN_USE);
+        expect(setup.confirm).toHaveBeenCalledTimes(1);
+        expect(setup.open).not.toHaveBeenCalled();
 
-        pressEdit(fixture);
-        expect(getFlows).toHaveBeenCalledTimes(2);
-        expect(confirm).toHaveBeenCalledTimes(2);
+        pressEdit(setup.fixture);
+        answerUsageCheck(setup, IN_USE);
+        expect(setup.confirm).toHaveBeenCalledTimes(2);
 
-        access.canRunFlows = true;
-        pressEdit(fixture);
+        setup.access.canRunFlows = true;
+        pressEdit(setup.fixture);
 
-        expectEditDialogOpened(open);
-        expect(getFlows).toHaveBeenCalledTimes(2);
-        expect(confirm).toHaveBeenCalledTimes(2);
+        expectEditDialogOpened(setup.open);
+        setup.httpMock.expectNone(FLOWS_URL);
+        expect(setup.confirm).toHaveBeenCalledTimes(2);
     });
 
-    it('opens nothing once the section is destroyed while the check is running', () => {
-        const response$ = new Subject<WebhookTriggerFlowsResponse>();
-        const { fixture, confirm, open } = renderForEdit(false, response$);
+    it('drops the check and opens nothing once the section is destroyed while the check is running', () => {
+        const { fixture, httpMock, confirm, open } = renderForEdit(false);
 
         pressEdit(fixture);
+        const request = httpMock.expectOne(FLOWS_URL);
         fixture.destroy();
 
-        expect(() => {
-            response$.next(IN_USE);
-            response$.complete();
-        }).not.toThrow();
-        expect(response$.observed).toBe(false);
+        expect(request.cancelled).toBe(true);
         expect(confirm).not.toHaveBeenCalled();
         expect(open).not.toHaveBeenCalled();
     });
 
     it('opens the edit dialog without a check for a trigger that has no id', () => {
         const triggerWithoutId: WebhookTriggerModel = { ...TRIGGER, id: undefined };
-        const { fixture, getFlows, open } = renderForEdit(false, of(IN_USE), [triggerWithoutId]);
+        const { fixture, httpMock, open } = renderForEdit(false, [triggerWithoutId]);
 
         pressEdit(fixture);
 
         expectEditDialogOpened(open, triggerWithoutId);
-        expect(getFlows).not.toHaveBeenCalled();
+        httpMock.expectNone(() => true);
     });
 });
 

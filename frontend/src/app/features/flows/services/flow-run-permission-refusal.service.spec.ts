@@ -3,19 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of, throwError } from 'rxjs';
 
-import {
-    FLOW_WITH_TRIGGER_NODES_REQUIRES_RUN_PERMISSION,
-    FlowRunPermissionRefusalService,
-    RUN_PERMISSION_REQUIRED_TITLE,
-    RunPermissionRefusalOperation,
-} from './flow-run-permission-refusal.service';
+import { FlowRunPermissionRefusalService, RunPermissionRefusalOperation } from './flow-run-permission-refusal.service';
 
 const REFUSAL = new HttpErrorResponse({
     status: 403,
     statusText: 'Forbidden',
     error: {
         status_code: 403,
-        code: FLOW_WITH_TRIGGER_NODES_REQUIRES_RUN_PERMISSION,
+        code: 'flow_with_trigger_nodes_requires_run_permission',
         message: 'This flow contains trigger nodes (webhook, Telegram, schedule).',
     },
 });
@@ -49,21 +44,45 @@ describe('FlowRunPermissionRefusalService', () => {
     }
 
     it.each<[RunPermissionRefusalOperation, string, string]>([
-        ['copy', 'This flow', '<strong>Copying</strong> it'],
-        ['import', 'This file', '<strong>Importing</strong> it'],
-        ['partialImport', 'This file', '<strong>Importing</strong> it'],
-        ['restore', 'This version', '<strong>Restoring</strong> it'],
-        ['createFromVersion', 'This version', '<strong>Creating a flow</strong> from it'],
-        ['unpack', 'This subflow', '<strong>Unpacking</strong> it'],
+        [
+            'copy',
+            'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+        ],
+        [
+            'import',
+            'This file contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+        ],
+        [
+            'partialImport',
+            'This file contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+        ],
+        [
+            'restore',
+            'This version contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Restoring</strong> it requires the <strong>Run</strong> permission on flows.',
+        ],
+        [
+            'createFromVersion',
+            'This version contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Creating a flow</strong> from it requires the <strong>Run</strong> permission on flows.',
+        ],
+        [
+            'unpack',
+            'This subflow contains trigger nodes (Webhook, Telegram, Schedule).',
+            '<strong>Unpacking</strong> it requires the <strong>Run</strong> permission on flows.',
+        ],
     ])(
         'explains a refused %s in an OK-only warning with its consequence as the caution',
-        (operation, source, action) => {
+        (operation, message, caution) => {
             service.showRefusal(operation);
 
             expect(confirm).toHaveBeenCalledExactlyOnceWith({
-                title: RUN_PERMISSION_REQUIRED_TITLE,
-                message: `${source} contains trigger nodes (Webhook, Telegram, Schedule).`,
-                caution: `${action} requires the <strong>Run</strong> permission on flows.`,
+                title: 'Run permission required',
+                message,
+                caution,
                 type: 'warning',
                 hideConfirm: true,
                 cancelText: 'OK',

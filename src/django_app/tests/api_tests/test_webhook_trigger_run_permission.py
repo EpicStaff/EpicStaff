@@ -13,13 +13,13 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, WebhookTrigger
 from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 DENIED_CODE = "trigger_nodes_require_run_permission"
@@ -27,9 +27,9 @@ WEBHOOK_SECRET = "epicstaff-api-key-value-0123456789-long"
 TELEGRAM_SECRET = "telegram_secret_token_0123456789"
 
 
-def _client(client_as, django_user_model, org, flows_permissions, name):
-    role = Role.objects.create(name=name, org=org, is_built_in=False)
-    grants = {
+def _grants(flows_permissions):
+    """`flows_permissions` on flows; full control of webhooks and secrets."""
+    return {
         ResourceType.FLOWS: flows_permissions,
         ResourceType.WEBHOOKS: Permission.CREATE
         | Permission.READ
@@ -37,37 +37,22 @@ def _client(client_as, django_user_model, org, flows_permissions, name):
         | Permission.DELETE,
         ResourceType.SECRETS: Permission.CREATE | Permission.READ | Permission.USE,
     }
-    for resource_type, permissions in grants.items():
-        RolePermission.objects.create(
-            role=role, resource_type=resource_type, permissions=int(permissions)
-        )
-    user = django_user_model.objects.create_user(
-        email=f"{name}@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    client = client_as(user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
-    return client
 
 
 @pytest.fixture
-def editor_client(client_as, django_user_model, acme):
+def editor_client(custom_role_client, acme):
     """Can read flows and fully manage webhooks and secrets, but cannot run flows."""
-    return _client(client_as, django_user_model, acme, Permission.READ, "wt-no-run")
+    return custom_role_client(acme, _grants(Permission.READ), "wt-no-run")
 
 
 @pytest.fixture
-def runner_client(client_as, django_user_model, acme):
-    return _client(
-        client_as, django_user_model, acme, Permission.READ | Permission.RUN, "wt-run"
-    )
+def runner_client(custom_role_client, acme):
+    return custom_role_client(acme, _grants(Permission.READ | Permission.RUN), "wt-run")
 
 
 @pytest.fixture
-def superadmin_client(client_as, superadmin, acme):
-    client = client_as(superadmin)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
+def superadmin_client(org_client_as, superadmin, acme):
+    return org_client_as(superadmin, acme)
 
 
 @pytest.fixture
@@ -196,6 +181,34 @@ class TestAttachedTrigger:
 
         assert response.status_code == status.HTTP_200_OK, response.content
         assert _state(trigger)[2] == (WebhookTriggerAuthKind.WEBHOOK, secret.id)
+
+    @pytest.mark.parametrize(
+        ("flows_permissions", "expected_status", "expected_path"),
+        [
+            pytest.param(
+                Permission.READ, status.HTTP_403_FORBIDDEN, "attached-key", id="without-run"
+            ),
+            pytest.param(
+                Permission.READ | Permission.RUN, status.HTTP_200_OK, "key-renamed", id="with-run"
+            ),
+        ],
+    )
+    def test_a_user_api_key_acts_with_its_owners_role(
+        self, custom_role_client, acme, republished, flows_permissions, expected_status,
+        expected_path,
+    ):
+        client = custom_role_client(
+            acme, _grants(flows_permissions), "wt-key", via_api_key=True
+        )
+        trigger = _trigger(acme, "attached-key")
+        _attach_webhook_node(trigger)
+
+        response = client.patch(_detail(trigger), {"path": "key-renamed"}, format="json")
+
+        assert response.status_code == expected_status, response.content
+        if expected_status == status.HTTP_403_FORBIDDEN:
+            assert response.data["code"] == DENIED_CODE
+        assert _state(trigger)[0] == expected_path
 
     def test_superadmin_needs_no_role(self, superadmin_client, acme, republished):
         trigger = _trigger(acme, "attached-superadmin")

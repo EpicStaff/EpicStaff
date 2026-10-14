@@ -24,7 +24,6 @@ import { VersionHistoryPanelComponent } from '../../../../features/flows/compone
 import { GetGraphLightRequest, GraphDto, GraphVersionDto } from '../../../../features/flows/models/graph.model';
 import { SnapshotWebhookTriggerNode } from '../../../../features/flows/models/graph-version-preview.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import { RUN_PERMISSION_REQUIRED_TITLE } from '../../../../features/flows/services/flow-run-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { GraphCollaborationWsService } from '../../../../features/flows/services/graph-collaboration.ws.service';
@@ -72,7 +71,6 @@ import {
     RUN_WHILE_SAVING_MESSAGE,
     TEST_RUN_NODE_GONE_MESSAGE,
     TEST_RUN_PAYLOAD_REJECTED_MESSAGE,
-    TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE,
 } from './flow-visual-programming.component';
 
 /** Past the page's private 1.5 s explanation-save debounce. */
@@ -436,6 +434,18 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
         });
 
+        /** As the user does it: opens the version history from the header and picks Restore on a version. */
+        function requestRestore(version: GraphVersionDto): void {
+            const header = fixture.debugElement.query(By.directive(FlowHeaderStubComponent))
+                .componentInstance as FlowHeaderStubComponent;
+            header.viewVersionHistory.emit();
+            fixture.detectChanges();
+            const history = fixture.debugElement.query(By.directive(VersionHistoryStubComponent))
+                .componentInstance as VersionHistoryStubComponent;
+            history.restoreRequested.emit(version);
+            fixture.detectChanges();
+        }
+
         describe('restoring a version with trigger nodes', () => {
             const WEBHOOK_SNAPSHOT: SnapshotWebhookTriggerNode = {
                 id: 21,
@@ -470,8 +480,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 enterPreview(VERSION_A);
                 makeLiveFlowDirty();
 
-                component.onVersionRestoreRequested(VERSION_A);
-                fixture.detectChanges();
+                requestRestore(VERSION_A);
 
                 expect(previewGraphVersion).toHaveBeenCalledExactlyOnceWith(VERSION_A.id);
                 expect(confirm).toHaveBeenCalledExactlyOnceWith(
@@ -481,7 +490,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     })
                 );
                 expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
-                expect(component.previewedVersion()).toEqual(VERSION_A);
+                expect(preview()).not.toBeNull();
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
                 expect(flowsApi['restoreGraphVersion']).not.toHaveBeenCalled();
                 expect(toast['success']).not.toHaveBeenCalled();
@@ -495,26 +504,26 @@ describe('FlowVisualProgrammingComponent', () => {
                 enterPreview(VERSION_A);
                 unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
 
-                component.onVersionRestoreRequested(VERSION_A);
-                fixture.detectChanges();
+                requestRestore(VERSION_A);
 
                 expect(confirm).not.toHaveBeenCalled();
                 expect(unsavedChangesDialog.confirm).toHaveBeenCalledOnce();
                 expect(flowsApi['restoreGraphVersion']).toHaveBeenCalledWith(VERSION_A.id, false, 1);
-                expect(component.previewedVersion()).toBeNull();
+                expect(preview()).toBeNull();
                 expect(toast['success']).toHaveBeenCalledWith('Version restored successfully');
             });
 
-            it('does not even read the version for a user who can run flows', () => {
+            it('restores a version with trigger nodes for a user who can run flows', () => {
+                versionHolding(WEBHOOK_SNAPSHOT);
                 enterPreview(VERSION_A);
                 unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
 
-                component.onVersionRestoreRequested(VERSION_A);
-                fixture.detectChanges();
+                requestRestore(VERSION_A);
 
-                expect(previewGraphVersion).not.toHaveBeenCalled();
                 expect(confirm).not.toHaveBeenCalled();
                 expect(flowsApi['restoreGraphVersion']).toHaveBeenCalledWith(VERSION_A.id, false, 1);
+                expect(preview()).toBeNull();
+                expect(toast['success']).toHaveBeenCalledWith('Version restored successfully');
             });
         });
 
@@ -539,8 +548,7 @@ describe('FlowVisualProgrammingComponent', () => {
             );
             unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
 
-            component.onVersionRestoreRequested(VERSION_A);
-            fixture.detectChanges();
+            requestRestore(VERSION_A);
 
             expect(confirm).toHaveBeenCalledExactlyOnceWith(
                 expect.objectContaining({
@@ -1256,6 +1264,8 @@ describe('FlowVisualProgrammingComponent', () => {
         const savedWebhook = liveGraph.webhook_trigger_node_list![0];
         const savedSchedule = liveGraph.schedule_trigger_node_list![0];
         let nextRouteId = 500;
+        const TRIGGER_CHANGES_WARNING =
+            'This change includes trigger nodes, which needs the Run permission on flows. Remove or revert the trigger node changes to save.';
 
         function openFlow(graph: GraphDto): void {
             flowsApi['getGraphById'].mockReturnValue(of(graph));
@@ -1276,27 +1286,40 @@ describe('FlowVisualProgrammingComponent', () => {
             return payload.deleted['webhook_trigger_node_ids'];
         }
 
+        /** As the canvas does it when the user saves. */
         function saveLiveFlow(): void {
-            component.onGraphSave(flowService.getFlowState());
+            liveCanvas()!.save.emit(flowService.getFlowState());
+        }
+
+        /** What the page hands its header: the unsaved-changes mark and the saving state. */
+        function header(): FlowHeaderStubComponent {
+            fixture.detectChanges();
+            return fixture.debugElement.query(By.directive(FlowHeaderStubComponent))
+                .componentInstance as FlowHeaderStubComponent;
+        }
+
+        function warningsShown(): unknown[] {
+            return toast['warning'].mock.calls.map(([message]) => message);
         }
 
         describe('a legacy "at HH:MM" once-schedule name', () => {
             const legacyName = 'Once on 05 Oct 2026 at 14:30';
             const legacyGraph = graphDto({ schedule_trigger_node_list: [{ ...savedSchedule, node_name: legacyName }] });
 
-            it('is rewritten for a user who can run flows, leaving the flow to be saved', () => {
+            it.each([
+                [
+                    'rewritten for a user who can run flows, leaving the flow to be saved',
+                    true,
+                    'Once on 05 Oct 2026 at 14-30',
+                    true,
+                ],
+                ['kept for a user who cannot run flows, so the flow stays clean', false, legacyName, false],
+            ])('is %s', (_case, canRun, shownName, unsaved) => {
+                canRunFlows.set(canRun);
                 openFlow(legacyGraph);
 
-                expect(nodeOfType(NodeType.SCHEDULE_TRIGGER).node_name).toBe('Once on 05 Oct 2026 at 14-30');
-                expect(component.hasUnsavedChangesSignal()).toBe(true);
-            });
-
-            it('is kept for a user who cannot run flows, so the flow stays clean and its saves carry no schedule', () => {
-                canRunFlows.set(false);
-                openFlow(legacyGraph);
-
-                expect(nodeOfType(NodeType.SCHEDULE_TRIGGER).node_name).toBe(legacyName);
-                expect(component.hasUnsavedChangesSignal()).toBe(false);
+                expect(nodeOfType(NodeType.SCHEDULE_TRIGGER).node_name).toBe(shownName);
+                expect(header().hasUnsavedChanges()).toBe(unsaved);
             });
         });
 
@@ -1330,8 +1353,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 openFlow(parentGraph);
                 // Used by this flow only, so an allowed unpack asks nothing and deletes the subflow.
                 flowsApi['getSubflowUsage'] = vi.fn().mockReturnValue(of({ parent_flow_ids: [1] }));
-                deleteFlow = vi.fn().mockReturnValue(of(undefined));
-                Object.assign(TestBed.inject(FlowsStorageService), { deleteFlow });
+                deleteFlow = flowsStorage.deleteFlow;
                 const dialogs = TestBed.inject(ConfirmationDialogService);
                 confirm = vi.spyOn(dialogs, 'confirm').mockReturnValue(of<ConfirmationResult>('close'));
                 confirmWithOptions = vi
@@ -1342,6 +1364,8 @@ describe('FlowVisualProgrammingComponent', () => {
             function unpack(subflow: GraphDto): void {
                 flowsApi['getGraphById'].mockReturnValue(of(subflow));
                 flowsApi['bulkSaveGraph'].mockClear();
+                // The canvas stub declares no unpackSubflow output, so the handler its (unpackSubflow) binding calls
+                // is called directly.
                 component.onUnpackSubflow(nodeOfType(NodeType.SUBGRAPH).id);
             }
 
@@ -1367,7 +1391,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 expect(confirm).toHaveBeenCalledExactlyOnceWith(
                     expect.objectContaining({
-                        title: RUN_PERMISSION_REQUIRED_TITLE,
+                        title: 'Run permission required',
                         message: 'This subflow contains trigger nodes (Webhook, Telegram, Schedule).',
                         caution: '<strong>Unpacking</strong> it requires the <strong>Run</strong> permission on flows.',
                         hideConfirm: true,
@@ -1430,7 +1454,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('takes the backend value on the canvas and in the saved baseline, leaving the flow clean', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(component.hasUnsavedChangesSignal()).toBe(false);
+                expect(header().hasUnsavedChanges()).toBe(false);
             });
 
             it('sends no schedule update with the next save', () => {
@@ -1455,7 +1479,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             it('is not an unsaved change', () => {
                 expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
-                expect(component.hasUnsavedChangesSignal()).toBe(false);
+                expect(header().hasUnsavedChanges()).toBe(false);
             });
 
             it('is not in the next save, which a user without Run can therefore send', () => {
@@ -1463,11 +1487,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
                 expect(savedPayload()['schedule_trigger_node_list']).toEqual([]);
-                expect(toast['warning']).not.toHaveBeenCalledWith(
-                    TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE,
-                    expect.anything(),
-                    expect.anything()
-                );
+                expect(warningsShown()).not.toContain(TRIGGER_CHANGES_WARNING);
             });
         });
 
@@ -1478,13 +1498,9 @@ describe('FlowVisualProgrammingComponent', () => {
 
             function expectSaveRefused(): void {
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
-                expect(toast['warning']).toHaveBeenCalledWith(
-                    TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE,
-                    6000,
-                    'bottom-right'
-                );
-                expect(component.hasUnsavedChangesSignal()).toBe(true);
-                expect(component.isSaving()).toBe(false);
+                expect(warningsShown()).toEqual([TRIGGER_CHANGES_WARNING]);
+                expect(header().hasUnsavedChanges()).toBe(true);
+                expect(header().isSaving()).toBe(false);
             }
 
             it('refuses to send a new trigger node, keeping the unsaved changes', () => {
@@ -1542,11 +1558,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 TestBed.inject(SidePanelService).requestSaveNode({ ...webhook, node_name: 'Renamed webhook' });
 
                 expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
-                expect(toast['warning']).toHaveBeenCalledWith(
-                    TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE,
-                    6000,
-                    'bottom-right'
-                );
+                expect(warningsShown()).toEqual([TRIGGER_CHANGES_WARNING]);
             });
         });
     });

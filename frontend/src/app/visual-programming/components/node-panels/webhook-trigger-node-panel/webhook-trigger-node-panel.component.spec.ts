@@ -4,7 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ActionCode } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
@@ -22,6 +22,11 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import {
+    FLOW_ACTIONS_WITH_RUN,
+    FLOW_ACTIONS_WITHOUT_RUN,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -981,23 +986,16 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
     });
 });
 
-describe('WebhookTriggerNodePanelComponent for a user who may update but not run flows', () => {
+describe('WebhookTriggerNodePanelComponent and the Run permission on flows', () => {
     let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
     let toast: { info: ReturnType<typeof vi.fn>; warning: ReturnType<typeof vi.fn> };
 
-    function open(canRunFlows: boolean): WebhookTriggerNodePanelComponent {
+    function open(flowActions: ActionCode[]): WebhookTriggerNodePanelComponent {
         toast = { info: vi.fn(), warning: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideHttpClient(),
                 { provide: ToastService, useValue: toast },
-                {
-                    provide: PermissionsService,
-                    useValue: {
-                        can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run || canRunFlows,
-                        canAny: () => true,
-                        canEditSecrets: () => true,
-                    },
-                },
                 {
                     provide: SecretsStorageService,
                     useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
@@ -1009,6 +1007,7 @@ describe('WebhookTriggerNodePanelComponent for a user who may update but not run
             set: { imports: [NgTemplateOutlet, CodeEditorComponent], schemas: [NO_ERRORS_SCHEMA] },
         });
         TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        grantPermissions({ [ResourceCode.Flows]: flowActions, [ResourceCode.Secrets]: [ActionCode.Use] });
         fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
         fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
         fixture.componentRef.setInput('isExpanded', true);
@@ -1025,42 +1024,30 @@ describe('WebhookTriggerNodePanelComponent for a user who may update but not run
             .map((element) => element.tagName.toLowerCase());
     }
 
-    it('is read-only: the form is disabled and closing saves nothing, saying why', () => {
-        const panel = open(false);
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
 
-        expect(panel.isReadOnly()).toBe(true);
-        expect(panel.form.disabled).toBe(true);
+    it('is read-only without Flows:Run: closing and Ctrl+S save nothing, saying why', () => {
+        const panel = open(FLOW_ACTIONS_WITHOUT_RUN);
+
         expect(panel.onSave()).toBeNull();
         expect(panel.onSaveSilently()).toBeNull();
         expect(panel.needsSave()).toBe(false);
         expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
     });
 
-    it('hides "Run with test payload", which needs Flows:Update and Flows:Run', () => {
-        expect(headerActionTags(open(false))).not.toContain('app-run-test-payload-button');
-    });
+    it.each([
+        { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_RUN, offered: true },
+        { user: 'may update but not run flows', flowActions: FLOW_ACTIONS_WITHOUT_RUN, offered: false },
+    ])(
+        'for a user who $user, the code is editable and "Run with test payload" and "Run python code" offered: $offered',
+        ({ flowActions, offered }) => {
+            const panel = open(flowActions);
 
-    it('shows "Run with test payload" to a user who may also run flows', () => {
-        const panel = open(true);
-
-        expect(panel.isReadOnly()).toBe(false);
-        expect(headerActionTags(panel)).toContain('app-run-test-payload-button');
-    });
-
-    function codeEditor(): CodeEditorComponent {
-        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
-    }
-
-    it('hides "Run python code", which needs Flows:Run for a webhook trigger node', () => {
-        open(false);
-
-        expect(codeEditor().readOnly).toBe(true);
-        expect(codeEditor().actionIcon()).toBeNull();
-    });
-
-    it('offers "Run python code" to a user who may also run flows', () => {
-        open(true);
-
-        expect(codeEditor().actionIcon()).toBe('play-outline');
-    });
+            expect(codeEditor().readOnly).toBe(!offered);
+            expect(headerActionTags(panel).includes('app-run-test-payload-button')).toBe(offered);
+            expect(codeEditor().actionIcon()).toBe(offered ? 'play-outline' : null);
+        }
+    );
 });

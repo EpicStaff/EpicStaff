@@ -1,8 +1,9 @@
+import { provideHttpClient } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, Validators } from '@angular/forms';
 import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
-import { ActionCode, NodeType } from '@shared/models';
+import { NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -22,6 +23,7 @@ import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
+import { FLOW_ACTIONS_WITHOUT_RUN, grantPermissions } from '../../../utils/testing/permissions.fixture';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../schedule-trigger-node-panel/schedule-trigger-node-panel.component';
@@ -291,18 +293,18 @@ describe('NodePanelShellComponent', () => {
         async function mountTrigger(): Promise<ComponentFixture<NodePanelShellComponent>> {
             TestBed.configureTestingModule({
                 providers: [
+                    provideHttpClient(),
                     { provide: FLOW_EDITOR_PREVIEW, useValue: false },
-                    {
-                        provide: PermissionsService,
-                        useValue: { can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run },
-                    },
+                    // Never called: the node has no backendId.
                     { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
                     NodeAuthorshipStore,
                 ],
                 errorOnUnknownProperties: false,
             });
+            // The panels' own forms are their specs' subject; here only the shell around them is.
             TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
             TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
+            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_RUN });
             TestBed.inject(FlowService).setFlow({ nodes: [scheduleNode, endNode], connections: [] });
             TestBed.inject(SidePanelService).setSelectedNodeId(scheduleNode.id);
 
@@ -314,6 +316,21 @@ describe('NodePanelShellComponent', () => {
             return fixture;
         }
 
+        function schedulePanelOf(
+            fixture: ComponentFixture<NodePanelShellComponent>
+        ): ScheduleTriggerNodePanelComponent {
+            return fixture.debugElement.query(
+                (element) => element.componentInstance instanceof ScheduleTriggerNodePanelComponent
+            ).componentInstance as ScheduleTriggerNodePanelComponent;
+        }
+
+        function pressCtrlS(fixture: ComponentFixture<NodePanelShellComponent>): void {
+            document.body.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true })
+            );
+            fixture.detectChanges();
+        }
+
         it('shows it read-only: no Save, Ctrl+S explains, closing saves nothing and reports no error', async () => {
             const fixture = await mountTrigger();
             const shell = fixture.componentInstance;
@@ -323,47 +340,50 @@ describe('NodePanelShellComponent', () => {
             shell.autosave.subscribe((node) => emitted.push(node));
             const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
             const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+            // A pending schedule edit (Run taken away while the panel was open), so there would be something to save.
+            schedulePanelOf(fixture).scheduleDirty.set(true);
+            fixture.detectChanges();
 
-            expect(shell.isNodeReadOnly()).toBe(true);
             expect(fixture.nativeElement.querySelector('.save-btn')).toBeNull();
 
             sidePanel.triggerAutosave();
             fixture.detectChanges();
-            shell['onShortcutSave']();
+            pressCtrlS(fixture);
             expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+            expect(sidePanel.selectedNodeId()).toBe(scheduleNode.id);
 
-            shell['onCloseClick']();
+            (fixture.nativeElement.querySelector('.close-btn') as HTMLButtonElement).click();
             expect(sidePanel.selectedNodeId()).toBeNull();
             expect(emitted).toEqual([]);
             expect(error).not.toHaveBeenCalled();
         });
 
-        it('keeps the trigger panel read-only while switching to an editable node, until the new panel is open', async () => {
+        it('keeps the trigger panel read-only while switching to an editable node, which is editable once open', async () => {
             const fixture = await mountTrigger();
             const shell = fixture.componentInstance;
-            const schedulePanel = fixture.debugElement.query(
-                (element) => element.componentInstance instanceof ScheduleTriggerNodePanelComponent
-            ).componentInstance as ScheduleTriggerNodePanelComponent;
             // A pending schedule edit, so switching away would autosave the panel if it counted as editable.
-            schedulePanel.scheduleDirty.set(true);
-            const onSave = vi.spyOn(schedulePanel, 'onSave');
+            schedulePanelOf(fixture).scheduleDirty.set(true);
             const emitted: NodeModel[] = [];
+            shell.save.subscribe((node) => emitted.push(node));
             shell.autosave.subscribe((node) => emitted.push(node));
-            vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
 
+            // node() is the End node at once; the open panel stays the schedule trigger's until the next tick.
             fixture.componentRef.setInput('node', endNode);
             fixture.detectChanges();
 
-            // node() is already the End node; the open panel is still the schedule trigger's.
-            expect(shell.isNodeReadOnly()).toBe(true);
-            expect(onSave).not.toHaveBeenCalled();
             expect(emitted).toEqual([]);
+            // Nothing tried to save the trigger node, so nothing had to explain a refusal either.
+            expect(info).not.toHaveBeenCalled();
 
             await new Promise((resolve) => setTimeout(resolve, 0));
             fixture.detectChanges();
+            const endPanel = panelOf(fixture);
+            endPanel.onOutputMapChange('{"changed": "value"}');
+            fixture.detectChanges();
+            pressCtrlS(fixture);
 
-            expect(panelOf(fixture)).toBeInstanceOf(EndNodePanelComponent);
-            expect(shell.isNodeReadOnly()).toBe(false);
+            expect(emitted).toEqual([{ ...endNode, data: { output_map: { changed: 'value' } } }]);
         });
     });
 

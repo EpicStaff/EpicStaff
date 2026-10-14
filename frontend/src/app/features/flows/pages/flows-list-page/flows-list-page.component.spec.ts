@@ -1,44 +1,66 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { ConfirmationDialogService, LabelSidebarComponent, SearchComponent } from '@shared/components';
 import { AppStorageService } from '@shared/services';
-import { EMPTY, Observable, of, throwError } from 'rxjs';
+import { EMPTY, Observable } from 'rxjs';
 
 import { ImportResult } from '../../../../core/models/import-result.model';
 import { ImportReviewDialogData, ReviewItem } from '../../../../core/models/review-item.model';
-import { ImportExportService } from '../../../../core/services/import-export.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { FlowsFilterMenuComponent } from '../../components/filter/flows-filter-menu/flows-filter-menu.component';
+import { ImportFlowOptionsPopoverComponent } from '../../components/import-flow-options-popover/import-flow-options-popover.component';
 import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER } from '../../models/flow-filter.model';
-import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
-import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowsListPageComponent } from './flows-list-page.component';
 
+const INSPECT_URL = '/api/graphs/import/inspect/';
+const IMPORT_URL = '/api/graphs/import/';
 const SUMMARY: ImportResult = {
     Flow: { total: 1, created: { count: 1, items: [{ id: 3, name: 'Orders' }] }, reused: { count: 0, items: [] } },
 };
-const SETTINGS = { preserveUuids: false, replaceExisting: true, importLabels: true };
 const CODE_TO_REVIEW: ReviewItem = { kind: 'mcp_tool', name: 'Search', transport: 'stdio' };
+const REFUSAL_BODY = {
+    status_code: 403,
+    code: 'flow_with_trigger_nodes_requires_run_permission',
+    message: 'This flow contains trigger nodes.',
+};
+const IMPORT_REFUSAL_WARNING = {
+    title: 'Run permission required',
+    message: 'This file contains trigger nodes (Webhook, Telegram, Schedule).',
+    caution: '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+    type: 'warning',
+    hideConfirm: true,
+    cancelText: 'OK',
+};
+
+// jsdom has no ResizeObserver; the overflow directives in the header only need it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
 
 describe('FlowsListPageComponent flow import', () => {
-    let importFlow: ReturnType<typeof vi.fn>;
-    let inspectFlow: ReturnType<typeof vi.fn>;
     let dialogOpen: ReturnType<typeof vi.fn>;
+    let confirm: ReturnType<typeof vi.fn>;
     let toastError: ReturnType<typeof vi.fn>;
+    let httpMock: HttpTestingController;
+    let fixture: ComponentFixture<FlowsListPageComponent>;
     let file: File;
 
     beforeEach(() => {
-        importFlow = vi.fn();
-        // No code to review by default, so the file is imported right away.
-        inspectFlow = vi.fn(() => of({ review_items: [] }));
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         dialogOpen = vi.fn(() => ({ closed: EMPTY }));
+        confirm = vi.fn();
         toastError = vi.fn();
         file = new File(['{}'], 'flow.json');
 
@@ -48,10 +70,9 @@ describe('FlowsListPageComponent flow import', () => {
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
                 { provide: Dialog, useValue: { open: dialogOpen } },
-                { provide: ImportExportService, useValue: { inspectFlow } },
-                { provide: FlowCopyImportFacadeService, useValue: { importFlow } },
-                { provide: ImportFlowSettingsService, useValue: { requestSettings: () => SETTINGS } },
+                { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: { error: toastError, success: vi.fn() } },
                 { provide: AppStorageService, useValue: { invalidate: vi.fn() } },
                 {
@@ -61,7 +82,8 @@ describe('FlowsListPageComponent flow import', () => {
                         selectedFlowIds: signal([]),
                         filter: signal(EMPTY_FLOWS_FILTER),
                         flows: signal([]),
-                        getFlows: () => of([]),
+                        getFlows: () => EMPTY,
+                        setFilter: vi.fn(),
                         resetFilter: vi.fn(),
                         setSelectMode: vi.fn(),
                     },
@@ -72,65 +94,118 @@ describe('FlowsListPageComponent flow import', () => {
                         activeLabelFilter: signal('all'),
                         labels: signal([]),
                         setActiveLabelFilter: vi.fn(),
-                        loadLabels: () => of([]),
+                        loadLabels: () => EMPTY,
                     },
                 },
             ],
         });
-        // Only the import is under test; the page's children bring their own services.
-        TestBed.overrideComponent(FlowsListPageComponent, { set: { template: '', imports: [] } });
+        // The header with its Import button is under test; these children bring their own services.
+        TestBed.overrideComponent(FlowsListPageComponent, {
+            remove: {
+                imports: [
+                    LabelSidebarComponent,
+                    SearchComponent,
+                    FlowsFilterMenuComponent,
+                    ImportFlowOptionsPopoverComponent,
+                ],
+            },
+            add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        });
+        httpMock = TestBed.inject(HttpTestingController);
+        fixture = TestBed.createComponent(FlowsListPageComponent);
+        fixture.detectChanges();
     });
 
-    async function importFile(response: Observable<ImportResult>): Promise<void> {
-        importFlow.mockReturnValue(response);
-        const component = TestBed.createComponent(FlowsListPageComponent).componentInstance;
-        const input = document.createElement('input');
-        vi.spyOn(input, 'click').mockImplementation(() => undefined);
-        const createElement = vi.spyOn(document, 'createElement').mockReturnValueOnce(input);
+    afterEach(() => {
+        httpMock.verify();
+        vi.unstubAllGlobals();
+    });
 
-        component.onImportClick();
+    /** Clicks Import and picks the file in the browser's file picker (a detached <input type="file">). */
+    async function chooseFileToImport(): Promise<TestRequest> {
+        const picker = document.createElement('input');
+        vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+        const createElement = vi.spyOn(document, 'createElement').mockReturnValueOnce(picker);
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.import-group__main')!.click();
         createElement.mockRestore();
-        Object.defineProperty(input, 'files', { value: [file] });
-        input.dispatchEvent(new Event('change'));
-        // The file is read asynchronously before the import starts.
-        await vi.waitFor(() => expect(inspectFlow).toHaveBeenCalled());
+        Object.defineProperty(picker, 'files', { value: [file] });
+        picker.dispatchEvent(new Event('change'));
+        // The file is read asynchronously before it is inspected.
+        return vi.waitFor(() => httpMock.expectOne(INSPECT_URL));
     }
 
-    it('imports through the facade and shows the result', async () => {
-        await importFile(of(SUMMARY));
+    async function importFileWithoutCodeToReview(): Promise<TestRequest> {
+        (await chooseFileToImport()).flush({ review_items: [] });
+        const request = httpMock.expectOne(IMPORT_URL);
+        expect(request.request.method).toBe('POST');
+        expect((request.request.body as FormData).get('file')).toBe(file);
+        return request;
+    }
 
-        expect(importFlow).toHaveBeenCalledExactlyOnceWith(file, SETTINGS);
+    it('imports the file and shows the result', async () => {
+        (await importFileWithoutCodeToReview()).flush(SUMMARY);
+
         expect(dialogOpen).toHaveBeenCalledWith(
             ImportResultDialogComponent,
             expect.objectContaining({ data: { importResult: SUMMARY } })
         );
+        expect(confirm).not.toHaveBeenCalled();
+        expect(toastError).not.toHaveBeenCalled();
     });
 
-    it('stays silent when the facade has explained an import refused over trigger nodes', async () => {
-        // The facade shows the refusal and completes without emitting.
-        await importFile(EMPTY);
+    it('explains an import refused over trigger nodes in the Run permission warning, with no toast and no result', async () => {
+        (await importFileWithoutCodeToReview()).flush(REFUSAL_BODY, { status: 403, statusText: 'Forbidden' });
 
-        expect(importFlow).toHaveBeenCalled();
+        expect(confirm).toHaveBeenCalledExactlyOnceWith(IMPORT_REFUSAL_WARNING);
         expect(dialogOpen).not.toHaveBeenCalled();
         expect(toastError).not.toHaveBeenCalled();
     });
 
-    it('reports any other import failure', async () => {
-        await importFile(throwError(() => new HttpErrorResponse({ status: 400, error: { message: 'Bad file' } })));
+    it('reports any other import failure with the reason the backend gave', async () => {
+        (await importFileWithoutCodeToReview()).flush(
+            { message: 'Bad file' },
+            { status: 400, statusText: 'Bad Request' }
+        );
 
-        expect(toastError).toHaveBeenCalled();
+        expect(toastError).toHaveBeenCalledExactlyOnceWith('Bad file');
+        expect(confirm).not.toHaveBeenCalled();
         expect(dialogOpen).not.toHaveBeenCalled();
     });
 
-    it('imports from the code review dialog through the facade too', async () => {
-        inspectFlow.mockReturnValue(of({ review_items: [CODE_TO_REVIEW] }));
+    describe('with code to review', () => {
+        async function openReview(): Promise<ImportReviewDialogData> {
+            (await chooseFileToImport()).flush({ review_items: [CODE_TO_REVIEW] });
+            expect(dialogOpen).toHaveBeenCalledWith(ImportReviewDialogComponent, expect.anything());
+            httpMock.expectNone(IMPORT_URL);
+            return dialogOpen.mock.calls[0][1].data as ImportReviewDialogData;
+        }
 
-        await importFile(of(SUMMARY));
+        function collect(source: Observable<unknown>): { values: unknown[]; completed: boolean } {
+            const outcome = { values: [] as unknown[], completed: false };
+            source.subscribe({
+                next: (value) => outcome.values.push(value),
+                complete: () => (outcome.completed = true),
+            });
+            return outcome;
+        }
 
-        expect(dialogOpen).toHaveBeenCalledWith(ImportReviewDialogComponent, expect.anything());
-        const reviewData = dialogOpen.mock.calls[0][1].data as ImportReviewDialogData;
-        expect(importFlow).not.toHaveBeenCalled();
-        reviewData.importFn().subscribe();
-        expect(importFlow).toHaveBeenCalledExactlyOnceWith(file, SETTINGS);
+        it("imports the file when the review dialog's Import is pressed", async () => {
+            const review = await openReview();
+
+            const outcome = collect(review.importFn());
+            httpMock.expectOne(IMPORT_URL).flush(SUMMARY);
+
+            expect(outcome.values).toEqual([SUMMARY]);
+        });
+
+        it('explains a refusal over trigger nodes and gives the review dialog no result, so it stays open', async () => {
+            const review = await openReview();
+
+            const outcome = collect(review.importFn());
+            httpMock.expectOne(IMPORT_URL).flush(REFUSAL_BODY, { status: 403, statusText: 'Forbidden' });
+
+            expect(confirm).toHaveBeenCalledExactlyOnceWith(IMPORT_REFUSAL_WARNING);
+            expect(outcome).toEqual({ values: [], completed: true });
+        });
     });
 });

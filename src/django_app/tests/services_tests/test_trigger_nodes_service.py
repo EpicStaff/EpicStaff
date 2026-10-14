@@ -3,45 +3,55 @@
 import pytest
 from django.utils import timezone
 
-from tables.import_export.enums import EntityType, NodeType
-from tables.models import Graph, PythonCode, WebhookTrigger
-from tables.models.graph_models import ScheduleTriggerNode, TelegramTriggerNode, WebhookTriggerNode
 from rbac.access.effective import EffectivePermissions
-from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
 from tables.exceptions import (
     FlowWithTriggerNodesRequiresRunPermissionError,
     TriggerNodesRequireRunPermissionError,
 )
-from tables.services.trigger_nodes import (
-    TRIGGER_NODE_TYPES,
-    TriggerNodeAccess,
-    TriggerNodeInspector,
-)
+from tables.import_export.enums import EntityType
+from tables.models import Graph, PythonCode, WebhookTrigger
+from tables.models.graph_models import ScheduleTriggerNode, TelegramTriggerNode, WebhookTriggerNode
+from tables.services.trigger_nodes import TriggerNodeAccess, TriggerNodeInspector
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-def test_trigger_node_types_derive_from_the_registry():
-    assert TRIGGER_NODE_TYPES == {
-        NodeType.WEBHOOK_TRIGGER_NODE,
-        NodeType.TELEGRAM_TRIGGER_NODE,
-        NodeType.SCHEDULE_TRIGGER_NODE,
-    }
+def _webhook_node(graph, trigger=None):
+    return WebhookTriggerNode.objects.create(
+        graph=graph,
+        node_name="w",
+        webhook_trigger=trigger,
+        python_code=PythonCode.objects.create(code="x"),
+    )
+
+
+def _telegram_node(graph, trigger=None):
+    return TelegramTriggerNode.objects.create(graph=graph, node_name="t", webhook_trigger=trigger)
+
+
+def _schedule_node(graph):
+    return ScheduleTriggerNode.objects.create(graph=graph, node_name="s")
+
+
+def _soft_delete(model, node):
+    model.all_objects.filter(pk=node.pk).update(is_soft_deleted=True, soft_deleted_at=timezone.now())
+
+
+# ── a stored flow ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
 class TestGraphHasTriggerNodes:
-    @pytest.mark.parametrize("make_trigger", ["webhook", "telegram", "schedule"])
-    def test_each_trigger_type_counts(self, acme, make_trigger):
-        graph = Graph.objects.create(name=f"flow-{make_trigger}", org=acme)
-        if make_trigger == "webhook":
-            WebhookTriggerNode.objects.create(
-                graph=graph, node_name="w", python_code=PythonCode.objects.create(code="x")
-            )
-        elif make_trigger == "telegram":
-            TelegramTriggerNode.objects.create(graph=graph, node_name="t")
-        else:
-            ScheduleTriggerNode.objects.create(graph=graph, node_name="s")
+    @pytest.mark.parametrize(
+        "add_trigger_node",
+        [_webhook_node, _telegram_node, _schedule_node],
+        ids=["webhook", "telegram", "schedule"],
+    )
+    def test_each_trigger_type_counts(self, acme, add_trigger_node):
+        graph = Graph.objects.create(name="flow", org=acme)
+        add_trigger_node(graph)
 
         assert TriggerNodeInspector.has_any_in_graph(graph) is True
 
@@ -50,16 +60,13 @@ class TestGraphHasTriggerNodes:
 
     def test_soft_deleted_trigger_does_not_count(self, acme):
         graph = Graph.objects.create(name="deleted-trigger", org=acme)
-        node = ScheduleTriggerNode.objects.create(graph=graph, node_name="gone")
-        ScheduleTriggerNode.all_objects.filter(pk=node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
-        )
+        _soft_delete(ScheduleTriggerNode, _schedule_node(graph))
 
         assert TriggerNodeInspector.has_any_in_graph(graph) is False
 
     def test_uses_prefetched_node_lists(self, acme, django_assert_num_queries):
         graph = Graph.objects.create(name="prefetched", org=acme)
-        ScheduleTriggerNode.objects.create(graph=graph, node_name="s")
+        _schedule_node(graph)
         prefetched = Graph.objects.prefetch_related(
             "webhook_trigger_node_list", "telegram_trigger_node_list", "schedule_trigger_node_list"
         ).get(pk=graph.pk)
@@ -68,46 +75,58 @@ class TestGraphHasTriggerNodes:
             assert TriggerNodeInspector.has_any_in_graph(prefetched) is True
 
 
+# ── exported node entries, flows, snapshots and import files ─────────────────
+
+
+@pytest.mark.parametrize(
+    ("node_types", "expected"),
+    [
+        (["PythonNode", "WebhookTriggerNode"], True),
+        (["TelegramTriggerNode"], True),
+        (["ScheduleTriggerNode"], True),
+        (["PythonNode", "NoteNode", "StartNode"], False),
+        ([], False),
+    ],
+)
+def test_node_entries(node_types, expected):
+    entries = [{"node_type": node_type} for node_type in node_types]
+
+    assert TriggerNodeInspector.has_any_in_node_entries(entries) is expected
+
+
 def _flow_entry(*node_types):
     return {"name": "flow", "nodes": [{"node_type": node_type} for node_type in node_types]}
 
 
-class TestNodeEntries:
-    def test_a_trigger_among_the_entries(self):
-        entries = [{"node_type": "PythonNode"}, {"node_type": "WebhookTriggerNode"}]
-
-        assert TriggerNodeInspector.has_any_in_node_entries(entries)
-
-    def test_without_triggers(self):
-        assert not TriggerNodeInspector.has_any_in_node_entries([{"node_type": "PythonNode"}])
-        assert not TriggerNodeInspector.has_any_in_node_entries([])
-
-
-class TestFlowEntryHasTriggerNodes:
-    def test_snapshot_or_exported_flow_with_a_trigger(self):
-        assert TriggerNodeInspector.has_any_in_flow_entry(_flow_entry("PythonNode", "ScheduleTriggerNode"))
-
-    def test_without_triggers(self):
-        assert not TriggerNodeInspector.has_any_in_flow_entry(_flow_entry("PythonNode", "NoteNode"))
-        assert not TriggerNodeInspector.has_any_in_flow_entry({})
+@pytest.mark.parametrize(
+    ("flow_entry", "expected"),
+    [
+        (_flow_entry("PythonNode", "ScheduleTriggerNode"), True),
+        (_flow_entry("PythonNode", "NoteNode"), False),
+        ({}, False),
+    ],
+    ids=["with-a-trigger", "without-triggers", "no-nodes-key"],
+)
+def test_flow_entry_or_snapshot(flow_entry, expected):
+    assert TriggerNodeInspector.has_any_in_flow_entry(flow_entry) is expected
 
 
-class TestExportHasTriggerNodes:
-    def test_trigger_in_any_flow_of_a_full_export(self):
-        export_data = {
-            EntityType.GRAPH: [_flow_entry("PythonNode"), _flow_entry("TelegramTriggerNode")]
-        }
+@pytest.mark.parametrize(
+    ("export_data", "expected"),
+    [
+        ({EntityType.GRAPH: [_flow_entry("PythonNode"), _flow_entry("TelegramTriggerNode")]}, True),
+        ({EntityType.WEBHOOK_TRIGGER_NODE: [{"id": 1}]}, True),
+        ({EntityType.GRAPH: [_flow_entry("PythonNode")], EntityType.PYTHON_NODE: [{"id": 1}]}, False),
+        ({EntityType.WEBHOOK_TRIGGER_NODE: []}, False),
+        ({}, False),
+    ],
+    ids=["trigger-in-a-flow", "loose-trigger", "without-triggers", "empty-trigger-list", "empty"],
+)
+def test_import_file(export_data, expected):
+    assert TriggerNodeInspector.has_any_in_export(export_data) is expected
 
-        assert TriggerNodeInspector.has_any_in_export(export_data)
 
-    def test_trigger_in_a_partial_export(self):
-        assert TriggerNodeInspector.has_any_in_export({EntityType.WEBHOOK_TRIGGER_NODE: [{"id": 1}]})
-
-    def test_without_triggers(self):
-        assert not TriggerNodeInspector.has_any_in_export(
-            {EntityType.GRAPH: [_flow_entry("PythonNode")], EntityType.PYTHON_NODE: [{"id": 1}]}
-        )
-        assert not TriggerNodeInspector.has_any_in_export({EntityType.WEBHOOK_TRIGGER_NODE: []})
+# ── a stored webhook trigger ─────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -116,15 +135,8 @@ class TestAttachedToWebhookTrigger:
         graph = Graph.objects.create(name="attached", org=acme)
         webhook_trigger = WebhookTrigger.objects.create(path="insp-webhook", org=acme)
         telegram_trigger = WebhookTrigger.objects.create(path="insp-telegram", org=acme)
-        WebhookTriggerNode.objects.create(
-            graph=graph,
-            node_name="w",
-            webhook_trigger=webhook_trigger,
-            python_code=PythonCode.objects.create(code="x"),
-        )
-        TelegramTriggerNode.objects.create(
-            graph=graph, node_name="t", webhook_trigger=telegram_trigger
-        )
+        _webhook_node(graph, webhook_trigger)
+        _telegram_node(graph, telegram_trigger)
 
         assert TriggerNodeInspector.has_any_attached_to_webhook_trigger(webhook_trigger)
         assert TriggerNodeInspector.has_any_attached_to_webhook_trigger(telegram_trigger)
@@ -132,26 +144,9 @@ class TestAttachedToWebhookTrigger:
     def test_no_live_node_attached(self, acme):
         graph = Graph.objects.create(name="detached", org=acme)
         trigger = WebhookTrigger.objects.create(path="insp-free", org=acme)
-        node = WebhookTriggerNode.objects.create(
-            graph=graph,
-            node_name="w",
-            webhook_trigger=trigger,
-            python_code=PythonCode.objects.create(code="x"),
-        )
-        WebhookTriggerNode.all_objects.filter(pk=node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
-        )
+        _soft_delete(WebhookTriggerNode, _webhook_node(graph, trigger))
 
         assert not TriggerNodeInspector.has_any_attached_to_webhook_trigger(trigger)
-
-
-def _webhook_node(graph, trigger):
-    return WebhookTriggerNode.objects.create(
-        graph=graph,
-        node_name="w",
-        webhook_trigger=trigger,
-        python_code=PythonCode.objects.create(code="x"),
-    )
 
 
 @pytest.mark.django_db
@@ -161,11 +156,9 @@ class TestGraphsAttachedToWebhookTrigger:
         both = Graph.objects.create(name="both kinds", org=acme)
         _webhook_node(both, trigger)
         _webhook_node(both, trigger)
-        TelegramTriggerNode.objects.create(graph=both, node_name="t", webhook_trigger=trigger)
+        _telegram_node(both, trigger)
         telegram_only = Graph.objects.create(name="telegram only", org=acme)
-        TelegramTriggerNode.objects.create(
-            graph=telegram_only, node_name="t", webhook_trigger=trigger
-        )
+        _telegram_node(telegram_only, trigger)
 
         graphs = TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger)
 
@@ -177,25 +170,19 @@ class TestGraphsAttachedToWebhookTrigger:
         other_trigger = WebhookTrigger.objects.create(path="graphs-other", org=acme)
         _webhook_node(Graph.objects.create(name="other trigger", org=acme), other_trigger)
         Graph.objects.create(name="no triggers", org=acme)
-        ScheduleTriggerNode.objects.create(
-            graph=Graph.objects.create(name="schedule", org=acme), node_name="s"
-        )
+        _schedule_node(Graph.objects.create(name="schedule", org=acme))
 
         assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
 
     def test_soft_deleted_nodes_and_flows_do_not_count(self, acme):
         trigger = WebhookTrigger.objects.create(path="graphs-soft-deleted", org=acme)
-        node = _webhook_node(Graph.objects.create(name="node deleted", org=acme), trigger)
-        WebhookTriggerNode.all_objects.filter(pk=node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+        _soft_delete(
+            WebhookTriggerNode,
+            _webhook_node(Graph.objects.create(name="node deleted", org=acme), trigger),
         )
         deleted_graph = Graph.objects.create(name="graph deleted", org=acme)
-        TelegramTriggerNode.objects.create(
-            graph=deleted_graph, node_name="t", webhook_trigger=trigger
-        )
-        Graph.all_objects.filter(pk=deleted_graph.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
-        )
+        _telegram_node(deleted_graph, trigger)
+        _soft_delete(Graph, deleted_graph)
 
         assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
 
@@ -205,22 +192,12 @@ class TestGraphsAttachedToWebhookTrigger:
 
         assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
 
-    def test_no_trigger_node_fields_matches_no_flow(self, acme, monkeypatch):
-        trigger = WebhookTrigger.objects.create(path="graphs-no-fields", org=acme)
-        _webhook_node(Graph.objects.create(name="attached", org=acme), trigger)
-        Graph.objects.create(name="plain", org=acme)
-        monkeypatch.setattr(
-            "tables.services.trigger_nodes._TRIGGER_NODE_WEBHOOK_TRIGGER_FIELDS", ()
-        )
-
-        assert not TriggerNodeInspector.graphs_attached_to_webhook_trigger(trigger).exists()
-
     def test_one_query(self, acme, django_assert_num_queries):
         trigger = WebhookTrigger.objects.create(path="graphs-one-query", org=acme)
         for index in range(3):
             graph = Graph.objects.create(name=f"flow {index}", org=acme)
             _webhook_node(graph, trigger)
-            TelegramTriggerNode.objects.create(graph=graph, node_name="t", webhook_trigger=trigger)
+            _telegram_node(graph, trigger)
 
         with django_assert_num_queries(1):
             names = list(
@@ -235,45 +212,57 @@ class TestGraphsAttachedToWebhookTrigger:
 # ── TriggerNodeAccess ────────────────────────────────────────────────────────
 
 
-def _effective(flows_permissions):
-    return EffectivePermissions(
-        is_superadmin=False, role=None, by_resource={"flows": int(flows_permissions)}
-    )
-
-
-class TestAssertMayRecreate:
-    def test_without_run_raises_the_flow_error(self):
+@pytest.mark.parametrize(
+    ("effective_permissions", "refused"),
+    [
+        pytest.param(
+            EffectivePermissions(
+                is_superadmin=False,
+                role=None,
+                by_resource={"flows": int(Permission.CREATE | Permission.READ | Permission.UPDATE)},
+            ),
+            True,
+            id="editor-without-run",
+        ),
+        pytest.param(
+            EffectivePermissions(
+                is_superadmin=False,
+                role=None,
+                by_resource={"flows": 0, "webhooks": int(Permission.RUN)},
+            ),
+            True,
+            id="run-on-another-resource",
+        ),
+        pytest.param(
+            EffectivePermissions(
+                is_superadmin=False,
+                role=None,
+                by_resource={"flows": int(Permission.READ | Permission.RUN)},
+            ),
+            False,
+            id="with-run",
+        ),
+        pytest.param(
+            EffectivePermissions(is_superadmin=True, role=None, by_resource={}),
+            False,
+            id="superadmin",
+        ),
+    ],
+)
+def test_assert_may_recreate(effective_permissions, refused):
+    if refused:
         with pytest.raises(FlowWithTriggerNodesRequiresRunPermissionError):
-            TriggerNodeAccess().assert_may_recreate(
-                _effective(Permission.CREATE | Permission.READ | Permission.UPDATE)
-            )
-
-    def test_with_run_or_as_superadmin_passes(self):
-        TriggerNodeAccess().assert_may_recreate(_effective(Permission.READ | Permission.RUN))
-        TriggerNodeAccess().assert_may_recreate(
-            EffectivePermissions(is_superadmin=True, role=None, by_resource={})
-        )
+            TriggerNodeAccess().assert_may_recreate(effective_permissions)
+    else:
+        TriggerNodeAccess().assert_may_recreate(effective_permissions)
 
 
 @pytest.mark.django_db
 class TestAssertMayWriteAndRecreateByUser:
-    @pytest.fixture
-    def member(self, django_user_model, acme):
-        def make(flows_permissions, name):
-            role = Role.objects.create(name=name, org=acme, is_built_in=False)
-            RolePermission.objects.create(
-                role=role, resource_type=ResourceType.FLOWS, permissions=int(flows_permissions)
-            )
-            user = django_user_model.objects.create_user(
-                email=f"{name}@example.com", password="StrongPass123!"
-            )
-            OrganizationUser.objects.create(user=user, org=acme, role=role)
-            return user
-
-        return make
-
-    def test_without_run_each_raises_its_own_error(self, member, acme):
-        user = member(Permission.READ | Permission.UPDATE, "access-no-run")
+    def test_without_run_each_raises_its_own_error(self, custom_role_member, acme):
+        user = custom_role_member(
+            acme, {ResourceType.FLOWS: Permission.READ | Permission.UPDATE}, "access-no-run"
+        )
         access = TriggerNodeAccess()
 
         with pytest.raises(TriggerNodesRequireRunPermissionError):
@@ -281,9 +270,25 @@ class TestAssertMayWriteAndRecreateByUser:
         with pytest.raises(FlowWithTriggerNodesRequiresRunPermissionError):
             access.assert_user_may_recreate(user, acme.id)
 
-    def test_with_run_both_pass(self, member, acme):
-        user = member(Permission.READ | Permission.RUN, "access-run")
+    def test_with_run_both_pass(self, custom_role_member, acme):
+        user = custom_role_member(
+            acme, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "access-run"
+        )
         access = TriggerNodeAccess()
 
         access.assert_may_write(user, acme.id)
         access.assert_user_may_recreate(user, acme.id)
+
+    def test_superadmin_passes_both(self, superadmin, acme):
+        access = TriggerNodeAccess()
+
+        access.assert_may_write(superadmin, acme.id)
+        access.assert_user_may_recreate(superadmin, acme.id)
+
+    def test_a_runner_of_another_org_is_not_a_member(self, custom_role_member, acme, beta):
+        user = custom_role_member(
+            beta, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "beta-runner"
+        )
+
+        with pytest.raises(OrgMembershipRequiredError):
+            TriggerNodeAccess().assert_may_write(user, acme.id)
