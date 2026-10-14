@@ -9,12 +9,11 @@ import {
 } from './orthogonal-route-shapes';
 
 const STUB = 20;
-const ROUNDED_CORNER_RADIUS = Infinity;
+const MAX_ARC_RADIUS = 80;
 const MIN_OFFSET = 20;
 const MAX_OFFSET = 300;
 const OFFSET_RATIO = 0.4;
 const MIN_ARC_RADIUS = 15;
-const MAX_ARC_RADIUS = 80;
 const ARC_RADIUS_RATIO = 0.12;
 const LOOP_RADIUS_RATIO = 0.1;
 const LOOP_MAX_RADIUS = 40;
@@ -71,7 +70,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
     private fromWaypoints(source: IPoint, target: IPoint, waypoints: IPoint[]): IFConnectionBuilderResponse {
         const interior = normalizeOrthogonalWaypoints(source, waypoints, target);
         const points = interior.length ? [source, ...interior, target] : fallbackRoutePoints(source, target);
-        const path = buildRoundedOrthogonalPath(points, ROUNDED_CORNER_RADIUS);
+        const path = buildRoundedOrthogonalPath(points, MAX_ARC_RADIUS);
         return {
             path,
             points,
