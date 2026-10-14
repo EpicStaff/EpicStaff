@@ -3,17 +3,27 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 from tables.serializers.model_serializers import TelegramWebhookInfoSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+_TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION = (
+    "Requires RUN on flows besides the action's own flows permission: a trigger node "
+    "starts flow runs by itself. Without it the response is 403 "
+    "`trigger_nodes_require_run_permission` and nothing is written."
+)
+
 WEBHOOK_TRIGGER_NODE_CREATE = {
     "description": (
         "Auth for this node's inbound webhook is not configured here -- it "
         "lives on the linked `webhook_trigger` (see `/webhook-triggers/`), "
-        "not on the node."
+        "not on the node. " + _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION
     ),
 }
 
-WEBHOOK_TRIGGER_NODE_UPDATE = {}
+WEBHOOK_TRIGGER_NODE_UPDATE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
 
-WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {}
+WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+
+TELEGRAM_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+
+SCHEDULE_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
 
 _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
     "`auth_secret_id` sets/updates this trigger's user-settable auth "
@@ -42,9 +52,21 @@ _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
 
 WEBHOOK_TRIGGER_CREATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
-WEBHOOK_TRIGGER_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
+_ATTACHED_TRIGGER_RUN_DESCRIPTION = (
+    " Updating a trigger that a live webhook or Telegram trigger node is attached to "
+    "also requires RUN on flows, since its auth, path or tunnel decides whether those "
+    "nodes receive deliveries; without it the response is 403 "
+    "`trigger_nodes_require_run_permission` and nothing is written. A trigger with no "
+    "attached nodes needs only the webhooks permission."
+)
 
-WEBHOOK_TRIGGER_PARTIAL_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
+WEBHOOK_TRIGGER_UPDATE = {
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_RUN_DESCRIPTION
+}
+
+WEBHOOK_TRIGGER_PARTIAL_UPDATE = {
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_RUN_DESCRIPTION
+}
 
 
 _TELEGRAM_BOT_KEY_REJECTED_422 = OpenApiResponse(
@@ -168,7 +190,12 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: OpenApiResponse(description="The caller lacks update permission on flows."),
+        403: OpenApiResponse(
+            description=(
+                "The caller lacks UPDATE on flows (`permission_denied`) or RUN on flows "
+                "(`trigger_nodes_require_run_permission`)."
+            )
+        ),
         404: OpenApiResponse(description="No such node in the active organization."),
         409: OpenApiResponse(
             description=(

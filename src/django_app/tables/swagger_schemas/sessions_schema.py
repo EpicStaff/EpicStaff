@@ -16,7 +16,7 @@ RUN_SESSION_POST = {
     "description": (
         "Starts a new session for the given flow (`graph_id` or `graph_uuid`). "
         "Caller and organization are derived from the authenticated request. "
-        "Requires READ on flows. Uploaded `files` are base64-encoded into "
+        "Requires RUN on flows. Uploaded `files` are base64-encoded into "
         "`variables` under the `files` key."
     ),
     "request": RunSessionSerializer,
@@ -77,7 +77,7 @@ RUN_SESSION_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Caller lacks READ on flows in the flow's organization.",
+            description="Caller lacks RUN on flows in the flow's organization.",
             examples=[
                 OpenApiExample(
                     "Permission denied",
@@ -119,7 +119,8 @@ RUN_SESSION_TEST_POST = {
         "Starts a session at the given trigger node as if `payload` had been delivered "
         "to it, without the HTTP ingress, tunnel or webhook authentication. The node "
         "must belong to `graph_id` in the active organization. The session is recorded "
-        "with the node's trigger type and `is_test_run: true`. Requires UPDATE on flows. "
+        "with the node's trigger type and `is_test_run: true`. Requires both UPDATE and "
+        "RUN on flows. "
         "Webhook payloads are passed to the flow as `trigger_payload`; Telegram payloads "
         "as `telegram_payload` and may only use the field parents and fields selected "
         "on the node, plus the update envelope key `update_id`, which is accepted with "
@@ -197,7 +198,7 @@ RUN_SESSION_TEST_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
-            description="Requires UPDATE on flows in the active organization.",
+            description="Requires both UPDATE and RUN on flows in the active organization.",
             examples=[
                 OpenApiExample(
                     "Permission denied",
@@ -639,7 +640,7 @@ SESSION_WARNINGS_GET = {
 
 STOP_SESSION_POST = {
     "summary": "Stop a running session",
-    "description": "Sends a stop signal to the session identified by its session ID. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
+    "description": "Sends a stop signal to the session identified by its session ID. Requires RUN on flows in the organization that owns the session's flow. The signal must be received by all required listeners (manager and crew); if fewer than expected acknowledge, the session is marked as errored.",
     "responses": {
         204: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -654,6 +655,24 @@ STOP_SESSION_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description=(
+                "Caller is a member of the session's organization but lacks RUN on flows."
+            ),
+            examples=[
+                OpenApiExample(
+                    "Permission denied",
+                    value={
+                        "status_code": 403,
+                        "code": "permission_denied",
+                        "message": "You do not have permission to perform this action.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,
             description=(

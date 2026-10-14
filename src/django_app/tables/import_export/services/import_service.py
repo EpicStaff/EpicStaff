@@ -14,6 +14,7 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
+from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 
 
 class ImportService:
@@ -29,12 +30,23 @@ class ImportService:
         user=None,
         effective_permissions=None,
     ):
+        """Import `export_data` into `org_id`, `main_entity` being the file's main type.
+
+        `effective_permissions=None` means a trusted internal caller: both permission
+        checks (CREATE on each new resource, and RUN for trigger nodes) are skipped.
+        """
         if settings is None:
             settings = ImportSettings()
 
         id_mapper = IDMapper()
         denied_resources = set()
         export_data = prepare_import_data(export_data)
+        # A trigger node in the file is live once created, so the whole import needs
+        # flows:RUN; refused here, before the transaction opens, so nothing is written.
+        if effective_permissions is not None and TriggerNodeInspector.has_any_in_export(
+            export_data
+        ):
+            trigger_node_access.assert_may_recreate(effective_permissions)
         created_resources: list[LastEditTrackedModel] = []
 
         with transaction.atomic():

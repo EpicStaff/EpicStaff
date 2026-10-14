@@ -234,6 +234,8 @@ class TestFkFieldsAreGated:
 _FULL_CRUD = int(
     Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 )
+# Editing a Telegram trigger node also needs flows:run (a trigger node starts runs).
+_FLOWS_FULL = _FULL_CRUD | int(Permission.RUN)
 
 
 def _client_with_grants(
@@ -265,7 +267,7 @@ def no_use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
             ResourceType.VOICE.value: _FULL_CRUD,
             ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
         },
     )
 
@@ -282,7 +284,7 @@ def use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
             ResourceType.VOICE.value: _FULL_CRUD,
             ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
         },
     )
 

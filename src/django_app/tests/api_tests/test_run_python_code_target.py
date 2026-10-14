@@ -11,7 +11,8 @@ import json
 import pytest
 from django.utils import timezone
 
-from rbac.models import OrganizationUser
+from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, PythonCodeResult, PythonNode
 from tables.models.graph_models import GraphStorageFile, StorageFile, WebhookTriggerNode
 from tables.services.secrets import secret_service
@@ -283,3 +284,162 @@ class TestRequestShape:
         assert task["org_id"] is None
         assert "org_id" not in task["global_kwargs"]
         assert task["func_kwargs"] == {"x": 1}
+
+
+def _flows_client(client_as, django_user_model, org, permissions, name):
+    role = Role.objects.create(name=name, org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=role, resource_type=ResourceType.FLOWS, permissions=int(permissions)
+    )
+    user = django_user_model.objects.create_user(
+        email=f"{name}@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    client = client_as(user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+def _webhook_trigger_node(graph):
+    python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    return WebhookTriggerNode.objects.create(
+        graph=graph, node_name="webhook_entry", python_code=python_code
+    )
+
+
+@pytest.mark.django_db
+class TestTriggerNodeTargetNeedsRun:
+    """A trigger node's code runs need flows:run on top of flows:update."""
+
+    def test_webhook_trigger_target_without_run_is_denied(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-no-run"
+        )
+        node = _webhook_trigger_node(acme_graph)
+
+        response = _run_target(client, "webhook_trigger_node", node.id)
+
+        assert response.status_code == 403, response.data
+        assert response.data["code"] == "permission_denied"
+        assert not redis_client_mock.publish.call_args_list
+        assert not PythonCodeResult.objects.exists()
+
+    def test_webhook_trigger_target_without_run_is_denied_before_the_lookup(
+        self, client_as, django_user_model, acme, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-no-run-2"
+        )
+
+        response = _run_target(client, "webhook_trigger_node", 999_999)
+
+        assert response.status_code == 403, response.data
+
+    def test_webhook_trigger_target_with_run_runs(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as,
+            django_user_model,
+            acme,
+            Permission.READ | Permission.UPDATE | Permission.RUN,
+            "code-with-run",
+        )
+        node = _webhook_trigger_node(acme_graph)
+
+        response = _run_target(client, "webhook_trigger_node", node.id)
+
+        assert response.status_code == 200, response.data
+        assert len(redis_client_mock.publish.call_args_list) == 1
+
+    def test_webhook_trigger_target_with_run_but_without_update_is_denied(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.RUN, "code-run-only"
+        )
+        node = _webhook_trigger_node(acme_graph)
+
+        response = _run_target(client, "webhook_trigger_node", node.id)
+
+        assert response.status_code == 403, response.data
+        assert not redis_client_mock.publish.call_args_list
+
+    def test_webhook_trigger_code_by_python_code_id_without_run_is_denied(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-id-no-run"
+        )
+        node = _webhook_trigger_node(acme_graph)
+
+        response = client.post(
+            URL, {"python_code_id": node.python_code_id, "variables": {}}, format="json"
+        )
+
+        assert response.status_code == 403, response.data
+        assert response.data["code"] == "permission_denied"
+        assert not redis_client_mock.publish.call_args_list
+        assert not PythonCodeResult.objects.exists()
+
+    def test_webhook_trigger_code_by_python_code_id_with_run_runs(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as,
+            django_user_model,
+            acme,
+            Permission.READ | Permission.UPDATE | Permission.RUN,
+            "code-id-with-run",
+        )
+        node = _webhook_trigger_node(acme_graph)
+
+        response = client.post(
+            URL, {"python_code_id": node.python_code_id, "variables": {}}, format="json"
+        )
+
+        assert response.status_code == 200, response.data
+        assert len(redis_client_mock.publish.call_args_list) == 1
+
+    def test_python_node_code_by_python_code_id_needs_no_run(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-id-py"
+        )
+        node = _python_node(acme_graph, use_storage=False)
+
+        response = client.post(
+            URL, {"python_code_id": node.python_code_id, "variables": {}}, format="json"
+        )
+
+        assert response.status_code == 200, response.data
+
+    def test_foreign_webhook_trigger_code_by_python_code_id_stays_not_found(
+        self, client_as, django_user_model, acme, beta_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-id-xorg"
+        )
+        node = _webhook_trigger_node(beta_graph)
+
+        response = client.post(
+            URL, {"python_code_id": node.python_code_id, "variables": {}}, format="json"
+        )
+
+        assert response.status_code == 400, response.data
+        assert "does not exist" in response.data["message"]
+
+    def test_python_node_target_needs_no_run(
+        self, client_as, django_user_model, acme, acme_graph, redis_client_mock
+    ):
+        client = _flows_client(
+            client_as, django_user_model, acme, Permission.READ | Permission.UPDATE, "code-python"
+        )
+        node = _python_node(acme_graph, use_storage=False)
+
+        response = _run_target(client, "python_node", node.id)
+
+        assert response.status_code == 200, response.data

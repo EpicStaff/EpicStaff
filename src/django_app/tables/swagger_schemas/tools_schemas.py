@@ -12,7 +12,10 @@ from tables.serializers.model_serializers import (
     PythonCodeToolSerializer,
 )
 from tables.serializers.serializers import BulkExportSerializer
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 TOOL_ORDERING_PARAMETER = OpenApiParameter(
     name="ordering",
@@ -309,6 +312,8 @@ def _import_post_schema(*, model_name: str) -> dict:
                 ),
             ),
             401: UNAUTHORIZED_401_RESPONSE,
+            # Refused when the file carries a flow with trigger nodes and the caller lacks Run.
+            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
         },
     }
 

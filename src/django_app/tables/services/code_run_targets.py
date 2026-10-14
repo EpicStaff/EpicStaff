@@ -49,6 +49,14 @@ class CodeRunTarget:
     def python_code_of(self, owner: Model) -> PythonCode:
         return getattr(owner, self.code_field)
 
+    @property
+    def owner_is_trigger_node(self) -> bool:
+        """Whether the slot's owner is a trigger node; running its code also needs FLOWS.RUN."""
+        # Deferred: the trigger node registry imports serializers, which import this module.
+        from tables.services.trigger_nodes import is_trigger_node_model
+
+        return is_trigger_node_model(self.model)
+
 
 def storage_path_for_test_run(target_type: str, target_id: int) -> str:
     """Return the folder a test run of one target may write to, reused across runs."""

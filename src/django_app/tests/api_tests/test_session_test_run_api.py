@@ -273,11 +273,15 @@ class TestTriggerTestRunAccess:
         assert session.principal.user_id == member_only.id
         assert session.trigger.is_test_run is True
 
-    def test_custom_role_with_only_update_on_flows_can_run(
+    def test_custom_role_with_update_and_run_on_flows_can_run(
         self, client_as, django_user_model, acme, webhook_node, redis_client_mock
     ):
         client = _client_with_flows_permissions(
-            client_as, django_user_model, acme, Permission.UPDATE, "flows-update-only"
+            client_as,
+            django_user_model,
+            acme,
+            Permission.UPDATE | Permission.RUN,
+            "flows-update-run",
         )
 
         response = client.post(
@@ -285,6 +289,30 @@ class TestTriggerTestRunAccess:
         )
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
+
+    @pytest.mark.parametrize(
+        ("permissions", "role_name"),
+        [
+            (Permission.READ | Permission.UPDATE, "flows-update-without-run"),
+            (Permission.READ | Permission.RUN, "flows-run-without-update"),
+        ],
+    )
+    def test_custom_role_lacking_update_or_run_gets_403(
+        self, client_as, django_user_model, acme, webhook_node, redis_client_mock,
+        permissions, role_name,
+    ):
+        client = _client_with_flows_permissions(
+            client_as, django_user_model, acme, permissions, role_name
+        )
+
+        response = client.post(
+            URL, _body(webhook_node, "webhook-trigger", WEBHOOK_PAYLOAD), format="json"
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
+        assert response.data["code"] == "permission_denied"
+        assert not Session.objects.exists()
+        redis_client_mock.publish.assert_not_called()
 
     def test_viewer_with_only_read_on_flows_gets_403(
         self, viewer_client, webhook_node, redis_client_mock

@@ -42,6 +42,36 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
+class TriggerNodesRequireRunPermissionError(CustomAPIExeption):
+    """Raised when a caller without RUN on flows would create or edit a trigger node.
+
+    Trigger nodes (webhook, Telegram, schedule) start flow runs by themselves, so
+    writing one is gated on the same permission as running the flow.
+    """
+
+    status_code = 403
+    default_detail = (
+        "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or "
+        "editing them requires the Run permission on flows."
+    )
+    default_code = "trigger_nodes_require_run_permission"
+
+
+class FlowWithTriggerNodesRequiresRunPermissionError(CustomAPIExeption):
+    """Raised when a caller without RUN on flows would copy, import or restore trigger nodes.
+
+    Distinct from TriggerNodesRequireRunPermissionError (editing one trigger node) so a
+    client can tell a refused copy/import/restore from a refused edit.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, "
+        "importing or restoring it requires the Run permission on flows."
+    )
+    default_code = "flow_with_trigger_nodes_requires_run_permission"
+
+
 class CodeRunTargetNotFoundError(Exception):
     """Raised for a test-run target that is missing, deleted, owned by another org,
     or whose code slot is empty. The caller maps it to the same error as a missing
