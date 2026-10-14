@@ -1,12 +1,14 @@
 <div class="field-isolated">
     <app-input-number
         label="Execution Timeout (min)"
-        ariaLabel="Execution timeout in minutes"
+        ariaLabel="Execution Timeout (min)"
         placeholder="Minutes"
         [tooltipText]="tooltipText()"
         [required]="true"
         [min]="minMinutes"
-        [max]="field().maxMinutes"
+        [max]="inputMax()"
+        [warningMax]="field().maxMinutes"
+        [warningMessage]="aboveCeilingWarning()"
         [invalid]="field().control.invalid && field().control.touched"
         [formControl]="field().control"
     />

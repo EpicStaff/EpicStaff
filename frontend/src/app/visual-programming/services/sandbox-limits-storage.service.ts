@@ -1,4 +1,4 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { inject, Injectable, signal, untracked } from '@angular/core';
 import { StorageService } from '@shared/services';
 import { Observable, of, tap } from 'rxjs';
 
@@ -30,9 +30,13 @@ export class SandboxLimitsStorageService implements StorageService {
      * The longest execution timeout a node may set, in minutes. Reading it before the limits are loaded is a
      * wiring error (a screen that edits nodes without the flow editor route's resolver), so it throws instead
      * of guessing a value the backend would reject.
+     *
+     * A one-off read that never makes its caller depend on the limits: a node panel reads it while its form is
+     * built inside an effect, which must not run again (and throw) when a logout or an organization switch
+     * clears every storage. Read `limits` to follow changes.
      */
     public maxExecutionTimeoutMinutes(): number {
-        const limits = this.limitsSignal();
+        const limits = untracked(this.limitsSignal);
         if (!limits) {
             throw new Error('Sandbox limits are not loaded: resolve them with sandboxLimitsResolver first.');
         }

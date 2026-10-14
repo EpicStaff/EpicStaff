@@ -4,6 +4,15 @@ import { NodeType } from '@shared/models';
 export const MIN_EXECUTION_TIMEOUT_MINUTES = 1;
 
 /**
+ * Whether `minutes` is an execution timeout a node may carry: a whole number of at least
+ * `MIN_EXECUTION_TIMEOUT_MINUTES`. There is no upper bound here: a value above the sandbox ceiling is valid, as
+ * the backend lowers it to the ceiling.
+ */
+export function isValidExecutionTimeout(minutes: unknown): minutes is number {
+    return typeof minutes === 'number' && Number.isInteger(minutes) && minutes >= MIN_EXECUTION_TIMEOUT_MINUTES;
+}
+
+/**
  * The default for a new node whose code is written by the user: a short limit stops runaway code (an endless
  * loop, a hanging request) early instead of holding a sandbox worker for the whole ceiling.
  */

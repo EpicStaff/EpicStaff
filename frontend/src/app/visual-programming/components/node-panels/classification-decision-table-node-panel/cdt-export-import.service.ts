@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-import { MIN_EXECUTION_TIMEOUT_MINUTES } from '../../../core/constants/execution-timeout';
+import { isValidExecutionTimeout } from '../../../core/constants/execution-timeout';
 import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -535,9 +535,7 @@ export class CdtExportImportService {
     /** A whole number of minutes, at least 1; anything else counts as no timeout in the file. */
     private asExecutionTimeout(value: unknown): number | null {
         const minutes = this.asNullableNumber(value);
-        return minutes != null && Number.isInteger(minutes) && minutes >= MIN_EXECUTION_TIMEOUT_MINUTES
-            ? minutes
-            : null;
+        return isValidExecutionTimeout(minutes) ? minutes : null;
     }
 
     private asStringArray(value: unknown): string[] {

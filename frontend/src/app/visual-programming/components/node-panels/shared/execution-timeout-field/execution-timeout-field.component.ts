@@ -22,6 +22,19 @@ export class ExecutionTimeoutFieldComponent {
         const note = this.perExecutionNote();
         return note ? `${limit} ${note}` : limit;
     });
+    protected readonly aboveCeilingWarning = computed(
+        () => `Will be saved as ${this.field().maxMinutes} min, the current limit.`
+    );
 
     protected readonly minMinutes = MIN_EXECUTION_TIMEOUT_MINUTES;
+
+    /**
+     * The input's upper bound: the ceiling, which stops its stepper there. Left out while the value is above it
+     * (a timeout saved under a higher ceiling), as the input shows a value beyond its bound as an error; the
+     * value is valid and gets a warning instead.
+     */
+    protected inputMax(): number | null {
+        const { control, maxMinutes } = this.field();
+        return control.value != null && control.value > maxMinutes ? null : maxMinutes;
+    }
 }
