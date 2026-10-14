@@ -16,7 +16,6 @@ from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
@@ -73,6 +72,7 @@ from tables.swagger_schemas.storage_schema import (
 from tables.views.recycle_bin_mixins import (
     PURGE_ACTIONS,
     RECYCLE_BIN_ACTION_MAP,
+    RecycleBinPagination,
     purge_permissions,
     request_actor,
 )
@@ -110,12 +110,6 @@ def _transfer_response(from_path: str, to_path: str, recycle_bin_purged: list[di
         "success": True,
         "recycle_bin_purged": recycle_bin_purged,
     }
-
-
-class StorageRecycleBinPagination(LimitOffsetPagination):
-    """Caps `?limit=`: every folder on a page costs two more queries for its contents."""
-
-    max_limit = 100
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
@@ -543,7 +537,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="recycle-bin")
     def recycle_bin(self, request):
         # Paged: loose deleted files can be thousands.
-        paginator = StorageRecycleBinPagination()
+        paginator = RecycleBinPagination()
         rows = StorageRecycleBinService.entry_rows(
             self.get_active_org_id(),
             search=request.query_params.get("search", "").strip(),

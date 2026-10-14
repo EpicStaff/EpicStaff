@@ -80,11 +80,6 @@ export function toRestoreOutcome(
     return { source, name: response.name, renamedFrom: response.renamed_from, linksRestored: response.links_restored };
 }
 
-/** Sort comparator: newest `deletedAt` first, then higher id first (the backend's own order). */
-export function newestFirst(first: RecycleBinItem, second: RecycleBinItem): number {
-    return second.deletedAt.getTime() - first.deletedAt.getTime() || second.id - first.id;
-}
-
 /**
  * Kinds are kept as sent: an unknown one still shows (with a generic icon and its raw kind). The key is
  * the position: names repeat (blank decision-table nodes all show as "Unnamed").

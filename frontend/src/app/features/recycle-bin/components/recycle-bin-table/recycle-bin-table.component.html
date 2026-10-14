@@ -14,13 +14,16 @@
     }
     @default {
         <!-- A search or filter that matches nothing keeps the table, so its filters can be undone. -->
-        @if (items().length === 0 && !filtered()) {
+        @if (showEmptyState()) {
             <div class="bin-state bin-empty">
                 <h4 class="empty-title">The recycle bin is empty</h4>
                 <p class="empty-subtitle">{{ emptyHint() }}</p>
             </div>
         } @else {
-            <div class="table-wrapper">
+            <div
+                #tableWrapper
+                class="table-wrapper"
+            >
                 <div
                     class="table-header"
                     [style.grid-template-columns]="gridTemplateColumns()"
@@ -50,6 +53,7 @@
                                         label: label,
                                         items: countFilterItems,
                                         value: countFilter(),
+                                        active: countFilter() !== null,
                                         key: 'count',
                                     }
                                 "
@@ -63,9 +67,11 @@
                                     *ngTemplateOutlet="
                                         filterHeader;
                                         context: {
-                                            label: 'Kind',
+                                            label: kindHeaderLabel(),
+                                            ariaLabel: kindHeaderAriaLabel(),
                                             items: kindFilterItems(),
                                             value: kindFilter(),
+                                            active: kindFilterActive(),
                                             key: 'kind',
                                         }
                                     "
@@ -97,7 +103,7 @@
                 </div>
                 <div class="table-body">
                     @if (items().length === 0) {
-                        <div class="bin-no-results">No items match the current search or filters.</div>
+                        <div class="bin-no-results">{{ noResultsMessage() }}</div>
                     }
                     @for (item of items(); track item.key) {
                         <div class="bin-row-wrapper">
@@ -312,7 +318,6 @@
                                                     [kindVisuals]="contentVisuals"
                                                     [moreCount]="moreCount(item)"
                                                     [showAll]="canShowAll(item)"
-                                                    [presetSearch]="contentSearch(item)"
                                                     [showAllLimit]="showAllLimit"
                                                     [showAllPending]="isLoadingContents(item)"
                                                     (showAllRequested)="showAllRequested.emit(item)"
@@ -382,6 +387,8 @@
     let-label="label"
     let-items="items"
     let-value="value"
+    let-active="active"
+    let-ariaLabel="ariaLabel"
     let-key="key"
 >
     <app-select
@@ -395,11 +402,12 @@
         <button
             type="button"
             class="col-label col-label--filter"
-            [class.col-label--filter--active]="value !== null"
+            [class.col-label--filter--active]="active"
+            [attr.aria-label]="ariaLabel ?? null"
             [appSelectTrigger]="filterSelect"
         >
             {{ label }}
-            @if (value !== null) {
+            @if (active) {
                 <span class="col-label__count">(1)</span>
             }
             <app-svg-icon

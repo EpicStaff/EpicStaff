@@ -53,29 +53,35 @@ describe('FlowNodeListComponent', () => {
     });
 
     it('shows every match while searching, with no branch toggles that would do nothing', () => {
-        const element = render({ nodes: TREE, tree: true, presetSearch: 'a.md' });
+        const element = render({ nodes: TREE, tree: true });
+        fixture.componentInstance.searchTerm.set('a.md');
+        fixture.detectChanges();
 
         expect(shownNames(element)).toEqual(['a.md']);
         expect(element.querySelector('.flow-node-list__branch-toggle')).toBeNull();
     });
 
-    it('reads the preset search only when it opens, so a host search change keeps what the user did', () => {
-        const element = render({ nodes: TREE, tree: true, presetSearch: '' });
-        element.querySelector<HTMLElement>('.flow-node-list__row--branch')!.click();
+    it('starts every opening with an empty search', () => {
+        const element = render({ nodes: TREE });
+        fixture.componentInstance.searchTerm.set('pdf');
+        fixture.componentRef.setInput('expanded', false);
         fixture.detectChanges();
 
-        fixture.componentRef.setInput('presetSearch', 'pdf');
+        fixture.componentRef.setInput('expanded', true);
         fixture.detectChanges();
 
+        expect(fixture.componentInstance.searchTerm()).toBe('');
         expect(shownNames(element)).toEqual(['docs/', 'a.md', 'b.pdf']);
     });
 
     it('hides the search for a single item, unless it has text to clear', () => {
         const one = [{ name: 'a.md', nodeType: 'file' }];
         expect(render({ nodes: one, hideSingleItemSearch: true }).querySelector('app-search')).toBeNull();
-        expect(
-            render({ nodes: one, hideSingleItemSearch: true, presetSearch: 'zzz' }).querySelector('app-search')
-        ).not.toBeNull();
+        const element = render({ nodes: TREE, hideSingleItemSearch: true });
+        fixture.componentInstance.searchTerm.set('zzz');
+        fixture.componentRef.setInput('nodes', one);
+        fixture.detectChanges();
+        expect(element.querySelector('app-search')).not.toBeNull();
     });
 
     it('offers "Show all" up to the host limit, and disables it while loading', () => {

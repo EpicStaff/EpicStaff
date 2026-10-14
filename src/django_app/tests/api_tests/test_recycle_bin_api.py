@@ -2,16 +2,13 @@
 READ lists, CREATE restores; only a superadmin purges, whatever bits a role holds."""
 
 import uuid
-from collections.abc import Callable
 from types import SimpleNamespace
-from dataclasses import dataclass
 from datetime import timedelta
 
 import pytest
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db import connection
-from django.db.models import Model
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -28,7 +25,7 @@ from agents.views.agent_definition_views import AgentDefinitionViewSet
 from agents.views.surface_views import SurfaceViewSet
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.identity.api_keys.principals import SystemServicePrincipal
-from rbac.models import ApiKey, Organization, OrganizationUser, Role, RolePermission
+from rbac.models import ApiKey, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import (
     AgentNode,
@@ -42,9 +39,7 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     PythonNode,
-    RealtimeChannel,
     Secret,
-    WebhookTrigger,
     SourceCollection,
     StartNode,
     TaskNode,
@@ -54,7 +49,6 @@ from tables.exceptions import KeyValueTableNotFoundError
 from tables.models.graph_models import KeyValueNode
 from tables.models.knowledge_models import GraphRag
 from tables.services.key_value_table_service import KeyValueTableService
-from tables.models.mcp_models import McpTool
 from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, BinContentsService
 from tables.services.recycle_bin.presentation import (
     FLOW_BIN_NODE_TYPES,
@@ -76,28 +70,22 @@ from tables.views.model_view_sets import (
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin, request_actor
 from tables.views.storage_views import StorageAPIView
+from tests.api_tests.recycle_bin_cases import (
+    AGENTS_URL,
+    CASES,
+    FLOWS_URL,
+    KEY_VALUE_TABLES_URL,
+    PYTHON_TOOLS_URL,
+    SURFACES_URL,
+    make_mcp_tool,
+    make_python_tool,
+)
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from utils.logger import logger
 
-FLOWS_URL = "/api/graphs/"
-PYTHON_TOOLS_URL = "/api/python-code-tool/"
-AGENTS_URL = "/api/agent-definitions/"
-SURFACES_URL = "/api/surfaces/"
 SETTINGS_URL = "/api/recycle-bin/settings/"
-KEY_VALUE_TABLES_URL = "/api/key-value-tables/"
 
-
-@pytest.fixture(autouse=True)
-def retention_seven_days(settings):
-    # A developer's local .env can set DJANGO_RECYCLE_BIN_RETENTION_DAYS.
-    settings.RECYCLE_BIN_RETENTION_DAYS = 7
-
-
-@pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
+pytestmark = pytest.mark.usefixtures("retention_seven_days")
 
 
 def _assert_superadmin_required(response):
@@ -132,9 +120,10 @@ def viewer_client(client_as, django_user_model, acme, role_viewer):
 
 
 def _bin(client, list_url):
+    """The entries of the bin's first page."""
     response = client.get(f"{list_url}recycle-bin/")
     assert response.status_code == 200, response.content
-    return response.json()
+    return response.json()["results"]
 
 
 def _backdate(model, row, days):
@@ -143,7 +132,7 @@ def _backdate(model, row, days):
 
 @pytest.mark.django_db
 class TestFlowRecycleBin:
-    def test_bin_lists_deleted_flows_newest_first(self, admin_client, acme):
+    def test_bin_lists_deleted_flows_newest_first(self, acme_admin_client, acme):
         older = Graph.objects.create(org=acme, name="Older")
         newer = Graph.objects.create(org=acme, name="Newer")
         Graph.objects.create(org=acme, name="Still live")
@@ -151,13 +140,13 @@ class TestFlowRecycleBin:
         newer.delete()
         Graph.all_objects.filter(pk=older.pk).update(soft_deleted_at=timezone.now() - timedelta(hours=1))
 
-        entries = _bin(admin_client, FLOWS_URL)
+        entries = _bin(acme_admin_client, FLOWS_URL)
 
         assert [entry["id"] for entry in entries] == [newer.pk, older.pk]
         assert entries[0]["name"] == "Newer"
         assert set(entries[0]) == {"id", "name", "deleted_at", "days_left", "details", "contents", "contents_total"}
 
-    def test_days_left_counts_down_from_the_retention_time(self, admin_client, acme):
+    def test_days_left_counts_down_from_the_retention_time(self, acme_admin_client, acme):
         fresh = Graph.objects.create(org=acme, name="Fresh")
         five_days_old = Graph.objects.create(org=acme, name="Five days old")
         overdue = Graph.objects.create(org=acme, name="Overdue")
@@ -166,35 +155,35 @@ class TestFlowRecycleBin:
         _backdate(Graph, five_days_old, days=5)
         _backdate(Graph, overdue, days=9)
 
-        days_left = {entry["id"]: entry["days_left"] for entry in _bin(admin_client, FLOWS_URL)}
+        days_left = {entry["id"]: entry["days_left"] for entry in _bin(acme_admin_client, FLOWS_URL)}
 
         assert days_left == {fresh.pk: 7, five_days_old.pk: 2, overdue.pk: 0}
 
-    def test_days_left_follows_the_retention_setting(self, admin_client, acme, settings):
+    def test_days_left_follows_the_retention_setting(self, acme_admin_client, acme, settings):
         settings.RECYCLE_BIN_RETENTION_DAYS = 30
         Graph.objects.create(org=acme, name="Long stay").delete()
 
-        assert _bin(admin_client, FLOWS_URL)[0]["days_left"] == 30
+        assert _bin(acme_admin_client, FLOWS_URL)[0]["days_left"] == 30
 
-    def test_restore_brings_the_flow_back(self, admin_client, acme):
+    def test_restore_brings_the_flow_back(self, acme_admin_client, acme):
         graph = Graph.objects.create(org=acme, name="Comeback")
         TaskNode.objects.create(graph=graph, node_name="task")
-        assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
 
-        response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
+        response = acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
         assert response.json() == {"id": graph.pk, "name": "Comeback", "renamed_from": None, "links_restored": False}
-        assert admin_client.get(f"{FLOWS_URL}{graph.pk}/").status_code == 200
+        assert acme_admin_client.get(f"{FLOWS_URL}{graph.pk}/").status_code == 200
         assert TaskNode.objects.filter(graph=graph).count() == 1
-        assert _bin(admin_client, FLOWS_URL) == []
+        assert _bin(acme_admin_client, FLOWS_URL) == []
 
-    def test_restore_renames_when_the_name_is_taken(self, admin_client, acme):
+    def test_restore_renames_when_the_name_is_taken(self, acme_admin_client, acme):
         graph = Graph.objects.create(org=acme, name="Report")
         graph.delete()
         Graph.objects.create(org=acme, name="Report")
 
-        response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
+        response = acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
         assert response.json() == {
@@ -204,7 +193,7 @@ class TestFlowRecycleBin:
             "links_restored": False,
         }
 
-    def test_purge_removes_the_flow_for_good(self, admin_client, superadmin_in_acme, acme):
+    def test_purge_removes_the_flow_for_good(self, acme_admin_client, superadmin_in_acme, acme):
         graph = Graph.objects.create(org=acme, name="Gone")
         TaskNode.objects.create(graph=graph, node_name="task")
         graph.delete()
@@ -214,18 +203,18 @@ class TestFlowRecycleBin:
         assert response.status_code == 204, response.content
         assert not Graph.all_objects.filter(pk=graph.pk).exists()
         assert not TaskNode.all_objects.filter(graph_id=graph.pk).exists()
-        assert admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
+        assert acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
 
     def test_restoring_a_flow_re_registers_its_telegram_trigger(
-        self, admin_client, acme, mock_telegram_service, redis_client_mock, django_capture_on_commit_callbacks
+        self, acme_admin_client, acme, mock_telegram_service, redis_client_mock, django_capture_on_commit_callbacks
     ):
         graph = Graph.objects.create(org=acme, name="Telegram flow")
         node = TelegramTriggerNode.objects.create(graph=graph, node_name="bot")
-        assert admin_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
         mock_telegram_service.reset_mock()
 
         with django_capture_on_commit_callbacks(execute=True):
-            response = admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
+            response = acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
         assert response.status_code == 200, response.content
         mock_telegram_service.assert_called_once()
@@ -233,30 +222,30 @@ class TestFlowRecycleBin:
         assert registered.pk == node.pk
         assert registered.active is True
 
-    def test_other_orgs_flows_are_hidden_and_404(self, admin_client, superadmin_in_acme, beta):
+    def test_other_orgs_flows_are_hidden_and_404(self, acme_admin_client, superadmin_in_acme, beta):
         foreign = Graph.objects.create(org=beta, name="Foreign")
         foreign.delete()
 
-        assert _bin(admin_client, FLOWS_URL) == []
-        assert admin_client.post(f"{FLOWS_URL}{foreign.pk}/restore/").status_code == 404
+        assert _bin(acme_admin_client, FLOWS_URL) == []
+        assert acme_admin_client.post(f"{FLOWS_URL}{foreign.pk}/restore/").status_code == 404
         # A superadmin purges within the active org too: Beta's flow isn't in Acme's bin.
         assert superadmin_in_acme.delete(f"{FLOWS_URL}{foreign.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=foreign.pk).exists()
 
-    def test_live_flow_is_404_on_restore_and_purge(self, admin_client, superadmin_in_acme, acme):
+    def test_live_flow_is_404_on_restore_and_purge(self, acme_admin_client, superadmin_in_acme, acme):
         graph = Graph.objects.create(org=acme, name="Alive")
 
-        assert admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
+        assert acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{FLOWS_URL}{graph.pk}/purge/").status_code == 404
         assert Graph.objects.filter(pk=graph.pk).exists()
 
-    def test_flow_binned_before_batches_existed_is_hidden_and_404(self, admin_client, superadmin_in_acme, acme):
+    def test_flow_binned_before_batches_existed_is_hidden_and_404(self, acme_admin_client, superadmin_in_acme, acme):
         legacy = Graph.objects.create(org=acme, name="Legacy")
         legacy.delete()
         Graph.all_objects.filter(pk=legacy.pk).update(soft_delete_batch=None)
 
-        assert _bin(admin_client, FLOWS_URL) == []
-        assert admin_client.post(f"{FLOWS_URL}{legacy.pk}/restore/").status_code == 404
+        assert _bin(acme_admin_client, FLOWS_URL) == []
+        assert acme_admin_client.post(f"{FLOWS_URL}{legacy.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{FLOWS_URL}{legacy.pk}/purge/").status_code == 404
         assert Graph.deleted_objects.filter(pk=legacy.pk).exists()
 
@@ -275,8 +264,8 @@ class TestFlowRecycleBin:
         assert purge_lines == [f"Purged Graph {graph.pk} of org {acme.id} (batch {batch}) by user {superadmin.pk}\n"]
         assert "Secret plan" not in "".join(messages)
 
-    def test_non_numeric_id_is_404(self, admin_client, superadmin_in_acme):
-        assert admin_client.post(f"{FLOWS_URL}not-a-number/restore/").status_code == 404
+    def test_non_numeric_id_is_404(self, acme_admin_client, superadmin_in_acme):
+        assert acme_admin_client.post(f"{FLOWS_URL}not-a-number/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{FLOWS_URL}not-a-number/purge/").status_code == 404
 
 
@@ -401,94 +390,20 @@ class TestRecycleBinSettings:
         assert APIClient().get(SETTINGS_URL).status_code == 401
 
 
-def _make_flow(org: Organization, name: str) -> Model:
-    return Graph.objects.create(org=org, name=name)
-
-
-def _make_python_tool(org: Organization, name: str) -> Model:
-    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-    return PythonCodeTool.objects.create(name=name, description="d", python_code=code, org=org)
-
-
-def _make_mcp_tool(org: Organization, name: str) -> Model:
-    return McpTool.objects.create(name=name, org=org, transport="https://example.com/mcp", tool_name="some_tool")
-
-
-def _make_agent(org: Organization, name: str) -> Model:
-    return AgentDefinition.objects.create(org=org, name=name, instruction_list=[{"name": "Instruction_1.md", "content": "Do things."}])
-
-
-def _make_surface(org: Organization, name: str) -> Model:
-    return Surface.objects.create(org=org, name=name)
-
-
-def _make_key_value_table(org: Organization, name: str) -> Model:
-    return KeyValueTable.objects.create(org=org, name=name)
-
-
-def _make_secret(org: Organization, name: str) -> Model:
-    return secret_service.create(text="value", org=org, name=name)
-
-
-def _make_realtime_channel(org: Organization, name: str) -> Model:
-    return RealtimeChannel.objects.create(org=org, name=name)
-
-
-def _make_webhook_trigger(org: Organization, name: str) -> Model:
-    # The ORM skips the path validator, and every test here uses its own name.
-    return WebhookTrigger.objects.create(org=org, path=name)
-
-
-def _make_collection(org: Organization, name: str) -> Model:
-    return SourceCollection.objects.create(org=org, collection_name=name)
-
-
-@dataclass(frozen=True)
-class BinCase:
-    key: str
-    url: str
-    delete_status: int
-    make: Callable[[Organization, str], Model]
-    # What used the item is connected again on restore: it kept its links in the bin.
-    links_restored: bool = False
-
-    @property
-    def model(self) -> type[Model]:
-        return bin_resources()[self.key].model
-
-    @property
-    def resource_type(self) -> ResourceType:
-        return bin_resources()[self.key].resource_type
-
-
-CASES = [
-    BinCase("flow", FLOWS_URL, 204, _make_flow),
-    BinCase("python_tool", PYTHON_TOOLS_URL, 204, _make_python_tool),
-    BinCase("mcp_tool", "/api/mcp-tools/", 204, _make_mcp_tool),
-    BinCase("agent", AGENTS_URL, 204, _make_agent),
-    BinCase("surface", SURFACES_URL, 204, _make_surface),
-    BinCase("collection", "/api/source-collections/", 200, _make_collection),
-    BinCase("key_value_table", KEY_VALUE_TABLES_URL, 204, _make_key_value_table),
-    BinCase("secret", "/api/secrets/", 204, _make_secret, links_restored=True),
-    BinCase("realtime_channel", "/api/realtime-channels/", 204, _make_realtime_channel, links_restored=True),
-    BinCase("webhook_trigger", "/api/webhook-triggers/", 204, _make_webhook_trigger, links_restored=True),
-]
-
-
 @pytest.mark.django_db
 @pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
 class TestEveryBinResource:
-    def test_delete_list_restore_delete_purge(self, case, admin_client, superadmin_in_acme, acme):
+    def test_delete_list_restore_delete_purge(self, case, acme_admin_client, superadmin_in_acme, acme):
         name = f"Lifecycle {case.key}"
         row = case.make(acme, name)
         detail_url = f"{case.url}{row.pk}/"
 
-        assert admin_client.delete(detail_url).status_code == case.delete_status
-        entries = _bin(admin_client, case.url)
+        assert acme_admin_client.delete(detail_url).status_code == case.delete_status
+        entries = _bin(acme_admin_client, case.url)
         assert [entry["id"] for entry in entries] == [row.pk]
         assert {"details", "contents", "contents_total"} <= set(entries[0])
 
-        restored = admin_client.post(f"{detail_url}restore/")
+        restored = acme_admin_client.post(f"{detail_url}restore/")
         assert restored.status_code == 200, restored.content
         assert restored.json() == {
             "id": row.pk,
@@ -496,38 +411,38 @@ class TestEveryBinResource:
             "renamed_from": None,
             "links_restored": case.links_restored,
         }
-        assert admin_client.get(detail_url).status_code == 200
-        assert _bin(admin_client, case.url) == []
+        assert acme_admin_client.get(detail_url).status_code == 200
+        assert _bin(acme_admin_client, case.url) == []
 
-        assert admin_client.delete(detail_url).status_code == case.delete_status
+        assert acme_admin_client.delete(detail_url).status_code == case.delete_status
         purged = superadmin_in_acme.delete(f"{detail_url}purge/")
         assert purged.status_code == 204, purged.content
         assert not case.model.all_objects.filter(pk=row.pk).exists()
-        assert admin_client.post(f"{detail_url}restore/").status_code == 404
+        assert acme_admin_client.post(f"{detail_url}restore/").status_code == 404
 
-    def test_other_orgs_rows_are_hidden_and_404(self, case, admin_client, superadmin_in_acme, beta):
+    def test_other_orgs_rows_are_hidden_and_404(self, case, acme_admin_client, superadmin_in_acme, beta):
         row = case.make(beta, f"Foreign {case.key}")
         row.delete()
 
-        assert _bin(admin_client, case.url) == []
-        assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
+        assert _bin(acme_admin_client, case.url) == []
+        assert acme_admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
-    def test_live_row_is_404_on_restore_and_purge(self, case, admin_client, superadmin_in_acme, acme):
+    def test_live_row_is_404_on_restore_and_purge(self, case, acme_admin_client, superadmin_in_acme, acme):
         row = case.make(acme, f"Alive {case.key}")
 
-        assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
+        assert acme_admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.objects.filter(pk=row.pk).exists()
 
-    def test_row_binned_before_batches_existed_is_hidden_and_404(self, case, admin_client, superadmin_in_acme, acme):
+    def test_row_binned_before_batches_existed_is_hidden_and_404(self, case, acme_admin_client, superadmin_in_acme, acme):
         row = case.make(acme, f"Legacy {case.key}")
         row.delete()
         case.model.all_objects.filter(pk=row.pk).update(soft_delete_batch=None)
 
-        assert _bin(admin_client, case.url) == []
-        assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
+        assert _bin(acme_admin_client, case.url) == []
+        assert acme_admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
@@ -566,12 +481,12 @@ class TestEveryBinResource:
 @pytest.mark.django_db
 @pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
 class TestBulkActions:
-    def test_restore_selected(self, case, admin_client, acme):
+    def test_restore_selected(self, case, acme_admin_client, acme):
         rows = [case.make(acme, f"Bulk {case.key} {index}") for index in range(3)]
         for row in rows:
             row.delete()
 
-        response = admin_client.post(
+        response = acme_admin_client.post(
             f"{case.url}recycle-bin/restore/", {"ids": [rows[0].pk, rows[1].pk]}, format="json"
         )
 
@@ -632,27 +547,27 @@ class TestBulkActions:
 class TestPurgeIsSuperadminOnly:
     """An org admin holds every bit, Delete included, and still can't purge: only a superadmin can."""
 
-    def test_an_org_admin_cannot_purge_or_bulk_purge(self, case, admin_client, acme):
+    def test_an_org_admin_cannot_purge_or_bulk_purge(self, case, acme_admin_client, acme):
         row = case.make(acme, f"Admin kept {case.key}")
         row.delete()
 
-        _assert_superadmin_required(admin_client.delete(f"{case.url}{row.pk}/purge/"))
+        _assert_superadmin_required(acme_admin_client.delete(f"{case.url}{row.pk}/purge/"))
         _assert_superadmin_required(
-            admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+            acme_admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
         )
         _assert_superadmin_required(
-            admin_client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
+            acme_admin_client.post(f"{case.url}recycle-bin/purge/", {"all": True}, format="json")
         )
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
-    def test_an_org_admin_gets_the_same_403_for_another_orgs_id(self, case, admin_client, beta):
+    def test_an_org_admin_gets_the_same_403_for_another_orgs_id(self, case, acme_admin_client, beta):
         # The gate answers before any lookup, so the reply says nothing about the id.
         row = case.make(beta, f"Admin foreign {case.key}")
         row.delete()
 
-        _assert_superadmin_required(admin_client.delete(f"{case.url}{row.pk}/purge/"))
+        _assert_superadmin_required(acme_admin_client.delete(f"{case.url}{row.pk}/purge/"))
         _assert_superadmin_required(
-            admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
+            acme_admin_client.post(f"{case.url}recycle-bin/purge/", {"ids": [row.pk]}, format="json")
         )
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
@@ -773,7 +688,9 @@ def test_extra_details_show_without_detail_fields(acme):
         detail_fields=(), extra_details=lambda ids, context: {graph_id: [notice] for graph_id in ids}
     )
 
-    entries = BinContentsService.entries(bin_resources()["flow"], presentation, acme.id)
+    resource = bin_resources()["flow"]
+    rows = BinContentsService.entry_rows(resource, presentation, acme.id)
+    entries = BinContentsService.to_entries(resource, presentation, acme.id, rows)
 
     # After the "Created by" and "Deleted by" lines every tab starts with.
     assert [entry.details[2:] for entry in entries] == [[notice]]
@@ -796,14 +713,14 @@ def test_storage_bin_purge_is_unmapped():
 
 
 @pytest.mark.django_db
-def test_built_in_tools_never_show_in_an_org_bin(admin_client, superadmin_in_acme):
+def test_built_in_tools_never_show_in_an_org_bin(acme_admin_client, superadmin_in_acme):
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     built_in = PythonCodeTool.objects.create(name="Bin built-in", description="d", python_code=code, built_in=True)
     # upload_tools deletes a built-in that left the manifest the same way.
     built_in.delete()
 
-    assert _bin(admin_client, PYTHON_TOOLS_URL) == []
-    assert admin_client.post(f"{PYTHON_TOOLS_URL}{built_in.pk}/restore/").status_code == 404
+    assert _bin(acme_admin_client, PYTHON_TOOLS_URL) == []
+    assert acme_admin_client.post(f"{PYTHON_TOOLS_URL}{built_in.pk}/restore/").status_code == 404
     assert superadmin_in_acme.delete(f"{PYTHON_TOOLS_URL}{built_in.pk}/purge/").status_code == 404
     assert PythonCodeTool.deleted_objects.filter(pk=built_in.pk).exists()
 
@@ -816,51 +733,51 @@ class TestOwnedSurfaces:
         surface = Surface.objects.create(org=acme, name="Owned", owner_agent=agent)
         return agent, surface
 
-    def test_surface_binned_with_its_agent_is_listed_and_restores_shared(self, admin_client, acme):
+    def test_surface_binned_with_its_agent_is_listed_and_restores_shared(self, acme_admin_client, acme):
         agent, surface = self._agent_with_surface(acme)
-        assert admin_client.delete(f"{AGENTS_URL}{agent.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/").status_code == 204
 
-        assert [entry["id"] for entry in _bin(admin_client, SURFACES_URL)] == [surface.pk]
-        response = admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/")
+        assert [entry["id"] for entry in _bin(acme_admin_client, SURFACES_URL)] == [surface.pk]
+        response = acme_admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/")
 
         assert response.status_code == 200, response.content
         assert Surface.objects.get(pk=surface.pk).owner_agent_id is None
-        assert [entry["id"] for entry in _bin(admin_client, AGENTS_URL)] == [agent.pk]
+        assert [entry["id"] for entry in _bin(acme_admin_client, AGENTS_URL)] == [agent.pk]
 
-    def test_surface_binned_with_its_agent_can_be_purged_alone(self, admin_client, superadmin_in_acme, acme):
+    def test_surface_binned_with_its_agent_can_be_purged_alone(self, acme_admin_client, superadmin_in_acme, acme):
         agent, surface = self._agent_with_surface(acme)
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
         assert superadmin_in_acme.delete(f"{SURFACES_URL}{surface.pk}/purge/").status_code == 204
 
         assert not Surface.all_objects.filter(pk=surface.pk).exists()
         assert AgentDefinition.deleted_objects.filter(pk=agent.pk).exists()
 
-    def test_restoring_the_agent_brings_its_surface_back_as_its_own(self, admin_client, acme):
+    def test_restoring_the_agent_brings_its_surface_back_as_its_own(self, acme_admin_client, acme):
         agent, surface = self._agent_with_surface(acme)
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        assert admin_client.post(f"{AGENTS_URL}{agent.pk}/restore/").status_code == 200
+        assert acme_admin_client.post(f"{AGENTS_URL}{agent.pk}/restore/").status_code == 200
 
         assert Surface.objects.filter(pk=surface.pk, owner_agent=agent).exists()
 
-    def test_owned_surface_deleted_alone_is_listed_while_its_agent_is_live(self, admin_client, acme):
+    def test_owned_surface_deleted_alone_is_listed_while_its_agent_is_live(self, acme_admin_client, acme):
         agent, surface = self._agent_with_surface(acme)
-        assert admin_client.delete(f"{SURFACES_URL}{surface.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{SURFACES_URL}{surface.pk}/").status_code == 204
 
-        assert [entry["id"] for entry in _bin(admin_client, SURFACES_URL)] == [surface.pk]
-        assert admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/").status_code == 200
+        assert [entry["id"] for entry in _bin(acme_admin_client, SURFACES_URL)] == [surface.pk]
+        assert acme_admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/").status_code == 200
         assert Surface.objects.get(pk=surface.pk).owner_agent_id == agent.pk
 
-    def test_owned_surface_deleted_before_its_agent_is_listed_and_restores_shared(self, admin_client, acme):
+    def test_owned_surface_deleted_before_its_agent_is_listed_and_restores_shared(self, acme_admin_client, acme):
         agent, surface = self._agent_with_surface(acme)
-        assert admin_client.delete(f"{SURFACES_URL}{surface.pk}/").status_code == 204
-        assert admin_client.delete(f"{AGENTS_URL}{agent.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{SURFACES_URL}{surface.pk}/").status_code == 204
+        assert acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/").status_code == 204
 
-        assert [entry["id"] for entry in _bin(admin_client, SURFACES_URL)] == [surface.pk]
-        assert admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/").status_code == 200
+        assert [entry["id"] for entry in _bin(acme_admin_client, SURFACES_URL)] == [surface.pk]
+        assert acme_admin_client.post(f"{SURFACES_URL}{surface.pk}/restore/").status_code == 200
         assert Surface.objects.get(pk=surface.pk).owner_agent_id is None
-        assert [entry["id"] for entry in _bin(admin_client, AGENTS_URL)] == [agent.pk]
+        assert [entry["id"] for entry in _bin(acme_admin_client, AGENTS_URL)] == [agent.pk]
 
 
 # frontend/src/app/shared/models/node/node-type.ts
@@ -902,7 +819,7 @@ def _flow_with_nodes(org, name):
 
 @pytest.mark.django_db
 class TestFlowBinNodes:
-    def test_lists_named_nodes_of_the_same_batch(self, admin_client, acme):
+    def test_lists_named_nodes_of_the_same_batch(self, acme_admin_client, acme):
         graph = _flow_with_nodes(acme, "With nodes")
         binned_earlier = TaskNode.objects.create(graph=graph, node_name="Old")
         TaskNode.all_objects.filter(pk=binned_earlier.pk).update(
@@ -910,7 +827,7 @@ class TestFlowBinNodes:
         )
         graph.delete()
 
-        entry = _bin(admin_client, FLOWS_URL)[0]
+        entry = _bin(acme_admin_client, FLOWS_URL)[0]
 
         assert entry["contents_total"] == 3
         assert sorted(entry["contents"], key=lambda content: content["name"]) == [
@@ -919,15 +836,15 @@ class TestFlowBinNodes:
             {"name": "Writer", "kind": "agent"},
         ]
 
-    def test_query_count_does_not_grow_with_flows(self, admin_client, acme):
+    def test_query_count_does_not_grow_with_flows(self, acme_admin_client, acme):
         _flow_with_nodes(acme, "First").delete()
         with CaptureQueriesContext(connection) as one_flow:
-            _bin(admin_client, FLOWS_URL)
+            _bin(acme_admin_client, FLOWS_URL)
         for name in ("Second", "Third"):
             _flow_with_nodes(acme, name).delete()
 
         with CaptureQueriesContext(connection) as three_flows:
-            entries = _bin(admin_client, FLOWS_URL)
+            entries = _bin(acme_admin_client, FLOWS_URL)
 
         assert len(entries) == 3
         assert len(three_flows.captured_queries) == len(one_flow.captured_queries)
@@ -958,28 +875,28 @@ def test_every_named_flow_node_model_has_a_node_type():
 class TestBinContents:
     """Each row lists what its restore brings back, from the same batch."""
 
-    def test_an_agent_lists_its_own_surfaces(self, admin_client, acme):
+    def test_an_agent_lists_its_own_surfaces(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
         Surface.objects.create(org=acme, name="Own surface", owner_agent=agent)
         Surface.objects.create(org=acme, name="Shared surface")
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        entry = _bin(admin_client, AGENTS_URL)[0]
+        entry = _bin(acme_admin_client, AGENTS_URL)[0]
 
         assert entry["contents"] == [{"name": "Own surface", "kind": "surface"}]
         assert entry["contents_total"] == 1
 
-    def test_a_surface_lists_its_tools_and_sources(self, admin_client, acme):
+    def test_a_surface_lists_its_tools_and_sources(self, acme_admin_client, acme):
         surface = Surface.objects.create(org=acme, name="Research")
-        tool = _make_python_tool(acme, "Search tool")
-        mcp_tool = _make_mcp_tool(acme, "Web MCP")
+        tool = make_python_tool(acme, "Search tool")
+        mcp_tool = make_mcp_tool(acme, "Web MCP")
         collection = SourceCollection.objects.create(org=acme, collection_name="Docs")
         SurfacePythonTool.objects.create(surface=surface, python_tool=tool, mode=ToolMode.ALLOW)
         SurfaceMcpTool.objects.create(surface=surface, mcp_tool=mcp_tool, mode=ToolMode.ALLOW)
         SurfaceKnowledge.objects.create(surface=surface, collection=collection)
-        admin_client.delete(f"{SURFACES_URL}{surface.pk}/")
+        acme_admin_client.delete(f"{SURFACES_URL}{surface.pk}/")
 
-        contents = _bin(admin_client, SURFACES_URL)[0]["contents"]
+        contents = _bin(acme_admin_client, SURFACES_URL)[0]["contents"]
 
         assert sorted((content["kind"], content["name"]) for content in contents) == [
             ("knowledge_source", "Docs"),
@@ -987,39 +904,39 @@ class TestBinContents:
             ("python_tool", "Search tool"),
         ]
 
-    def test_a_collection_lists_its_documents(self, admin_client, acme):
+    def test_a_collection_lists_its_documents(self, acme_admin_client, acme):
         collection = SourceCollection.objects.create(org=acme, collection_name="Docs")
         content = DocumentContent.objects.create(content=b"x")
         DocumentMetadata.objects.create(
             source_collection=collection, document_content=content, file_name="a.txt", file_type="txt", file_size=1
         )
-        admin_client.delete(f"/api/source-collections/{collection.pk}/")
+        acme_admin_client.delete(f"/api/source-collections/{collection.pk}/")
 
-        entry = _bin(admin_client, "/api/source-collections/")[0]
+        entry = _bin(acme_admin_client, "/api/source-collections/")[0]
 
         assert entry["contents"] == [{"name": "a.txt", "kind": "document"}]
 
-    def test_items_deleted_earlier_on_their_own_are_not_listed(self, admin_client, acme):
+    def test_items_deleted_earlier_on_their_own_are_not_listed(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
         earlier = Surface.objects.create(org=acme, name="Deleted before", owner_agent=agent)
         earlier.delete()
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        assert _bin(admin_client, AGENTS_URL)[0]["contents"] == []
+        assert _bin(acme_admin_client, AGENTS_URL)[0]["contents"] == []
 
-    def test_contents_are_capped_and_counted(self, admin_client, acme):
+    def test_contents_are_capped_and_counted(self, acme_admin_client, acme):
         graph = Graph.objects.create(org=acme, name="Big")
         TaskNode.objects.bulk_create(
             [TaskNode(graph=graph, node_name=f"task {index}") for index in range(CONTENTS_LIMIT + 5)]
         )
         graph.delete()
 
-        entry = _bin(admin_client, FLOWS_URL)[0]
+        entry = _bin(acme_admin_client, FLOWS_URL)[0]
 
         assert len(entry["contents"]) == CONTENTS_LIMIT
         assert entry["contents_total"] == CONTENTS_LIMIT + 5
 
-    def test_show_all_returns_every_content_past_the_cap(self, admin_client, acme, beta):
+    def test_show_all_returns_every_content_past_the_cap(self, acme_admin_client, acme, beta):
         graph = Graph.objects.create(org=acme, name="Big")
         TaskNode.objects.bulk_create(
             [TaskNode(graph=graph, node_name=f"task {index}") for index in range(CONTENTS_LIMIT + 5)]
@@ -1028,17 +945,17 @@ class TestBinContents:
         theirs = Graph.objects.create(org=beta, name="Theirs")
         theirs.delete()
 
-        response = admin_client.get(f"{FLOWS_URL}{graph.pk}/recycle-bin-contents/")
+        response = acme_admin_client.get(f"{FLOWS_URL}{graph.pk}/recycle-bin-contents/")
 
         assert response.status_code == 200, response.content
         assert len(response.json()["contents"]) == CONTENTS_LIMIT + 5
         assert response.json()["contents_total"] == CONTENTS_LIMIT + 5
-        assert admin_client.get(f"{FLOWS_URL}{theirs.pk}/recycle-bin-contents/").status_code == 404
+        assert acme_admin_client.get(f"{FLOWS_URL}{theirs.pk}/recycle-bin-contents/").status_code == 404
 
-    def test_tools_have_nothing_inside(self, admin_client, acme):
-        _make_python_tool(acme, "Alone").delete()
+    def test_tools_have_nothing_inside(self, acme_admin_client, acme):
+        make_python_tool(acme, "Alone").delete()
 
-        entry = _bin(admin_client, PYTHON_TOOLS_URL)[0]
+        entry = _bin(acme_admin_client, PYTHON_TOOLS_URL)[0]
 
         assert (entry["contents"], entry["contents_total"]) == ([], 0)
 
@@ -1052,15 +969,15 @@ class TestBinDetails:
     """Basic info about each binned item, shown when its row is expanded."""
 
     def test_a_secret_shows_where_it_is_used_never_its_value(
-        self, admin_client, acme, llm_config
+        self, acme_admin_client, acme, llm_config
     ):
         secret = secret_service.create(text="sk-abcd1234", org=acme, name="OPENAI_KEY")
         llm_config.org = acme
         llm_config.api_key_secret = secret
         llm_config.save()
-        admin_client.delete(f"/api/secrets/{secret.pk}/")
+        acme_admin_client.delete(f"/api/secrets/{secret.pk}/")
 
-        entry = _bin(admin_client, "/api/secrets/")[0]
+        entry = _bin(acme_admin_client, "/api/secrets/")[0]
         details = _details(entry)
 
         assert list(details) == ["Created by", "Deleted by", "Created", "Last changed", "Used by"]
@@ -1068,7 +985,7 @@ class TestBinDetails:
         assert "sk-abcd1234" not in str(entry)
         assert Secret.all_objects.get(pk=secret.pk).value not in str(entry)
 
-    def test_an_agent_shows_description_instructions_and_llm(self, admin_client, acme, llm_config):
+    def test_an_agent_shows_description_instructions_and_llm(self, acme_admin_client, acme, llm_config):
         agent = AgentDefinition.objects.create(
             org=acme,
             name="Helper",
@@ -1076,16 +993,16 @@ class TestBinDetails:
             instruction_list=[{"name": "Instruction_1.md", "content": "  Be   brief.\nUse the FAQ.  "}],
             llm_config=llm_config,
         )
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        details = _details(_bin(admin_client, AGENTS_URL)[0])
+        details = _details(_bin(acme_admin_client, AGENTS_URL)[0])
 
         assert details["Description"] == ("Answers support questions", "text")
         # One document reads as plain instructions: its text, trimmed, line breaks kept.
         assert details["Instructions"] == ("Be   brief.\nUse the FAQ.", "text")
         assert details["LLM"] == (f"MyGPT-4o · {llm_config.model.name}", "text")
 
-    def test_an_agent_lists_its_instruction_files_in_order(self, admin_client, acme):
+    def test_an_agent_lists_its_instruction_files_in_order(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(
             org=acme,
             name="Layered",
@@ -1095,49 +1012,49 @@ class TestBinDetails:
                 {"name": "Goals.md", "content": "Close tickets."},
             ],
         )
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        details = _details(_bin(admin_client, AGENTS_URL)[0])
+        details = _details(_bin(acme_admin_client, AGENTS_URL)[0])
 
         # Several documents are listed by name, a blank one too: their text can't be read in a row.
         assert details["Instruction files"] == ("Tone.md, Empty.md, Goals.md", "text")
         assert "Instructions" not in details
 
-    def test_empty_fields_are_sent_as_null(self, admin_client, acme):
+    def test_empty_fields_are_sent_as_null(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(org=acme, name="Terse", instruction_list=[])
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        details = _details(_bin(admin_client, AGENTS_URL)[0])
+        details = _details(_bin(acme_admin_client, AGENTS_URL)[0])
 
         assert list(details) == ["Created by", "Deleted by", "Description", "Instructions", "LLM"]
         assert details["Description"] == (None, "text")
         assert details["LLM"] == (None, "text")
         assert details["Instructions"] == (None, "text")
 
-    def test_a_description_is_sent_whole(self, admin_client, acme):
+    def test_a_description_is_sent_whole(self, acme_admin_client, acme):
         description = "word_" * 100  # 500 characters
         agent = AgentDefinition.objects.create(
             org=acme, name="Wordy", description=description, instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
         )
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        details = _details(_bin(admin_client, AGENTS_URL)[0])
+        details = _details(_bin(acme_admin_client, AGENTS_URL)[0])
 
         assert details["Description"] == (description, "text")
 
-    def test_a_flow_shows_its_dates(self, admin_client, acme):
+    def test_a_flow_shows_its_dates(self, acme_admin_client, acme):
         Graph.objects.create(org=acme, name="Dated", description="Nightly report").delete()
 
-        details = _details(_bin(admin_client, FLOWS_URL)[0])
+        details = _details(_bin(acme_admin_client, FLOWS_URL)[0])
 
         assert details["Description"] == ("Nightly report", "text")
         assert details["Created"][1] == "date"
         assert details["Last changed"][1] == "date"
 
-    def test_an_mcp_tool_shows_its_server_and_never_its_secret(self, admin_client, acme):
-        _make_mcp_tool(acme, "Web").delete()
+    def test_an_mcp_tool_shows_its_server_and_never_its_secret(self, acme_admin_client, acme):
+        make_mcp_tool(acme, "Web").delete()
 
-        entry = _bin(admin_client, "/api/mcp-tools/")[0]
+        entry = _bin(acme_admin_client, "/api/mcp-tools/")[0]
 
         details = _details(entry)
         assert details["Server"] == ("https://example.com/mcp", "text")
@@ -1145,46 +1062,46 @@ class TestBinDetails:
         assert list(details) == ["Created by", "Deleted by", "Server", "Tool name", "Created", "Last changed"]
         assert all("secret" not in label.lower() for label in details)
 
-    def test_a_collection_shows_its_indexes_instead_of_upload_status(self, admin_client, acme):
+    def test_a_collection_shows_its_indexes_instead_of_upload_status(self, acme_admin_client, acme):
         collection = SourceCollection.objects.create(org=acme, collection_name="Docs")
         BaseRagType.objects.create(rag_type=BaseRagType.RagType.GRAPH, source_collection=collection)
         GraphRag.objects.create(
             base_rag_type=BaseRagType.objects.get(source_collection=collection),
             rag_status=GraphRag.GraphRagStatus.COMPLETED,
         )
-        admin_client.delete(f"/api/source-collections/{collection.pk}/")
+        acme_admin_client.delete(f"/api/source-collections/{collection.pk}/")
 
-        details = _details(_bin(admin_client, "/api/source-collections/")[0])
+        details = _details(_bin(acme_admin_client, "/api/source-collections/")[0])
 
         assert details["Indexed"] == ("Naive RAG: Not indexed · GraphRAG: Indexed", "text")
         assert "Status" not in details
 
-    def test_every_tab_sends_the_same_fields_for_every_row(self, admin_client, acme):
+    def test_every_tab_sends_the_same_fields_for_every_row(self, acme_admin_client, acme):
         Surface.objects.create(org=acme, name="Bare").delete()
         Surface.objects.create(org=acme, name="Full", instructions="Do it").delete()
 
-        rows = _bin(admin_client, SURFACES_URL)
+        rows = _bin(acme_admin_client, SURFACES_URL)
 
         assert {tuple(detail["label"] for detail in row["details"]) for row in rows} == {
             ("Created by", "Deleted by", "Instructions", "Owner agent", "Created", "Last changed")
         }
 
-    def test_a_surface_whose_agent_is_binned_says_it_comes_back_shared(self, admin_client, acme):
+    def test_a_surface_whose_agent_is_binned_says_it_comes_back_shared(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
         Surface.objects.create(org=acme, name="Own", owner_agent=agent)
-        admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+        acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-        details = _details(_bin(admin_client, SURFACES_URL)[0])
+        details = _details(_bin(acme_admin_client, SURFACES_URL)[0])
 
         assert details["Comes back as"][0].startswith("Shared")
         assert details["Comes back as"][1] == "notice"
 
-    def test_an_owned_surface_names_its_agent(self, admin_client, acme):
+    def test_an_owned_surface_names_its_agent(self, acme_admin_client, acme):
         agent = AgentDefinition.objects.create(org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}])
         surface = Surface.objects.create(org=acme, name="Own", owner_agent=agent, instructions="Use docs")
-        admin_client.delete(f"{SURFACES_URL}{surface.pk}/")
+        acme_admin_client.delete(f"{SURFACES_URL}{surface.pk}/")
 
-        details = _details(_bin(admin_client, SURFACES_URL)[0])
+        details = _details(_bin(acme_admin_client, SURFACES_URL)[0])
 
         assert details["Instructions"] == ("Use docs", "text")
         assert details["Owner agent"] == ("Owner", "text")
@@ -1194,36 +1111,36 @@ class TestBinDetails:
 
 @pytest.mark.django_db
 class TestKeyValueTableBin:
-    def test_a_table_goes_with_its_keys_and_comes_back_with_them(self, admin_client, acme):
+    def test_a_table_goes_with_its_keys_and_comes_back_with_them(self, acme_admin_client, acme):
         table = KeyValueTable.objects.create(org=acme, name="Prices", description="Daily prices")
         entry = KeyValueTableEntry.objects.create(table=table, key="apple", value=1)
-        admin_client.delete(f"{KEY_VALUE_TABLES_URL}{table.pk}/")
+        acme_admin_client.delete(f"{KEY_VALUE_TABLES_URL}{table.pk}/")
 
-        row = _bin(admin_client, KEY_VALUE_TABLES_URL)[0]
+        row = _bin(acme_admin_client, KEY_VALUE_TABLES_URL)[0]
         # Keys can be private data: the bin says how many come back, never which.
         assert (row["contents"], row["contents_total"]) == ([], 1)
         assert "Keys" not in _details(row)
-        show_all = admin_client.get(f"{KEY_VALUE_TABLES_URL}{table.pk}/recycle-bin-contents/")
+        show_all = acme_admin_client.get(f"{KEY_VALUE_TABLES_URL}{table.pk}/recycle-bin-contents/")
         assert show_all.json() == {"contents": [], "contents_total": 1}
         assert _details(row)["Description"] == ("Daily prices", "text")
         assert KeyValueTableEntry.deleted_objects.filter(pk=entry.pk).exists()
 
-        assert admin_client.post(f"{KEY_VALUE_TABLES_URL}{table.pk}/restore/").status_code == 200
+        assert acme_admin_client.post(f"{KEY_VALUE_TABLES_URL}{table.pk}/restore/").status_code == 200
         assert KeyValueTableEntry.objects.filter(pk=entry.pk).exists()
 
-    def test_a_binned_table_frees_its_name(self, admin_client, acme):
+    def test_a_binned_table_frees_its_name(self, acme_admin_client, acme):
         KeyValueTable.objects.create(org=acme, name="Prices").delete()
 
-        response = admin_client.post(KEY_VALUE_TABLES_URL, {"name": "Prices"}, format="json")
+        response = acme_admin_client.post(KEY_VALUE_TABLES_URL, {"name": "Prices"}, format="json")
 
         assert response.status_code == 201, response.content
 
-    def test_restore_renames_when_the_name_is_taken_in_another_case(self, admin_client, acme):
+    def test_restore_renames_when_the_name_is_taken_in_another_case(self, acme_admin_client, acme):
         table = KeyValueTable.objects.create(org=acme, name="Prices")
         table.delete()
         KeyValueTable.objects.create(org=acme, name="prices")
 
-        response = admin_client.post(f"{KEY_VALUE_TABLES_URL}{table.pk}/restore/")
+        response = acme_admin_client.post(f"{KEY_VALUE_TABLES_URL}{table.pk}/restore/")
 
         assert response.status_code == 200, response.content
         assert response.json() == {
@@ -1233,12 +1150,12 @@ class TestKeyValueTableBin:
             "links_restored": False,
         }
 
-    def test_flows_lose_the_deleted_table(self, admin_client, acme):
+    def test_flows_lose_the_deleted_table(self, acme_admin_client, acme):
         table = KeyValueTable.objects.create(org=acme, name="Prices")
         graph = Graph.objects.create(org=acme, name="Uses prices")
         node = KeyValueNode.objects.create(graph=graph, node_name="kv", key_value_table=table)
 
-        admin_client.delete(f"{KEY_VALUE_TABLES_URL}{table.pk}/")
+        acme_admin_client.delete(f"{KEY_VALUE_TABLES_URL}{table.pk}/")
 
         node.refresh_from_db()
         assert node.key_value_table_id is None

@@ -14,13 +14,6 @@ pytestmark = pytest.mark.django_db
 SYSTEM_NAME = "system_minio_org_user"
 
 
-@pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
-
-
 def _system_secret(org, *, binned=False):
     secret = Secret.all_objects.create(name=SYSTEM_NAME, value="ciphertext-s", org=org, system=True)
     if binned:
@@ -39,24 +32,24 @@ def test_managers_never_return_system_secrets(acme):
 
 
 def test_a_binned_system_secret_is_not_in_the_bin_and_cannot_be_restored_or_purged(
-    admin_client, superadmin_in_acme, acme
+    acme_admin_client, superadmin_in_acme, acme
 ):
     secret = _system_secret(acme, binned=True)
 
-    listed = admin_client.get("/api/secrets/recycle-bin/")
+    listed = acme_admin_client.get("/api/secrets/recycle-bin/")
     assert listed.status_code == 200
-    assert secret.pk not in [entry["id"] for entry in listed.json()]
-    assert admin_client.post(f"/api/secrets/{secret.pk}/restore/").status_code == 404
+    assert secret.pk not in [entry["id"] for entry in listed.json()["results"]]
+    assert acme_admin_client.post(f"/api/secrets/{secret.pk}/restore/").status_code == 404
     # Not even a superadmin, the one caller that may purge, reaches it.
     assert superadmin_in_acme.delete(f"/api/secrets/{secret.pk}/purge/").status_code == 404
-    assert admin_client.post("/api/secrets/recycle-bin/restore/", {"ids": [secret.pk]}, format="json").status_code == 404
+    assert acme_admin_client.post("/api/secrets/recycle-bin/restore/", {"ids": [secret.pk]}, format="json").status_code == 404
     assert Secret.all_objects.filter(pk=secret.pk, active=False).exists()
 
 
-def test_a_link_field_refuses_a_system_secret(admin_client, acme):
+def test_a_link_field_refuses_a_system_secret(acme_admin_client, acme):
     secret = _system_secret(acme)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         "/api/python-code-tool/",
         {
             "name": "reads_storage_admin",

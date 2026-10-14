@@ -312,8 +312,8 @@ class TestConcurrentPurges:
         _bin_file(manager, org, "second.txt", 10, days_ago=2)
         pick = StorageRecycleBinService._oldest_entries_freeing
 
-        def _pick_then_lose_the_first(org_id, needed_bytes):
-            chosen = pick(org_id, needed_bytes)
+        def _pick_then_lose_the_first(org_id, needed_bytes, skipped):
+            chosen = pick(org_id, needed_bytes, skipped)
             # A user or retention purge takes first.txt between the pick and the lock.
             StorageFile.all_objects.filter(org_id=org_id, path="first.txt").delete()
             return chosen
@@ -338,10 +338,10 @@ class TestConcurrentPurges:
         quota(30)
         pick = StorageRecycleBinService._oldest_entries_freeing
 
-        def _pick_too_few(org_id, needed_bytes):
+        def _pick_too_few(org_id, needed_bytes, skipped):
             # Stands in for an agent write landing after the shortfall was measured: what
             # the pick frees no longer covers this write.
-            return pick(org_id, needed_bytes)[:1]
+            return pick(org_id, needed_bytes, skipped)[:1]
 
         monkeypatch.setattr(
             StorageRecycleBinService, "_oldest_entries_freeing", staticmethod(_pick_too_few)

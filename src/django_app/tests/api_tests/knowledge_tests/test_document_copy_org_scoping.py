@@ -20,13 +20,6 @@ def _document(collection, **fields) -> DocumentMetadata:
 
 
 @pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
-
-
-@pytest.fixture
 def own_collection(acme):
     return SourceCollection.objects.create(collection_name="Own collection", org=acme)
 
@@ -49,17 +42,17 @@ def _copy(client, collection, documents):
 
 @pytest.mark.django_db
 def test_copy_into_another_orgs_collection_is_404(
-    admin_client, own_collection, foreign_collection
+    acme_admin_client, own_collection, foreign_collection
 ):
-    response = _copy(admin_client, foreign_collection, [_document(own_collection)])
+    response = _copy(acme_admin_client, foreign_collection, [_document(own_collection)])
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert not foreign_collection.documents.exists()
 
 
 @pytest.mark.django_db
-def test_copy_of_another_orgs_documents_is_404(admin_client, own_collection, foreign_collection):
-    response = _copy(admin_client, own_collection, [_document(foreign_collection)])
+def test_copy_of_another_orgs_documents_is_404(acme_admin_client, own_collection, foreign_collection):
+    response = _copy(acme_admin_client, own_collection, [_document(foreign_collection)])
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert not own_collection.documents.exists()
@@ -67,12 +60,12 @@ def test_copy_of_another_orgs_documents_is_404(admin_client, own_collection, for
 
 @pytest.mark.django_db
 def test_copy_mixing_own_and_foreign_documents_is_404_and_copies_nothing(
-    admin_client, acme, own_collection, foreign_collection
+    acme_admin_client, acme, own_collection, foreign_collection
 ):
     source = SourceCollection.objects.create(collection_name="Source", org=acme)
 
     response = _copy(
-        admin_client, own_collection, [_document(source), _document(foreign_collection)]
+        acme_admin_client, own_collection, [_document(source), _document(foreign_collection)]
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -80,10 +73,10 @@ def test_copy_mixing_own_and_foreign_documents_is_404_and_copies_nothing(
 
 
 @pytest.mark.django_db
-def test_copy_within_the_active_org_succeeds(admin_client, acme, own_collection):
+def test_copy_within_the_active_org_succeeds(acme_admin_client, acme, own_collection):
     source = SourceCollection.objects.create(collection_name="Source", org=acme)
 
-    response = _copy(admin_client, own_collection, [_document(source)])
+    response = _copy(acme_admin_client, own_collection, [_document(source)])
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert own_collection.documents.count() == 1
@@ -97,28 +90,28 @@ def _download(client, documents):
 
 
 @pytest.mark.django_db
-def test_download_of_another_orgs_document_is_404(admin_client, foreign_collection):
-    response = _download(admin_client, [_document(foreign_collection)])
+def test_download_of_another_orgs_document_is_404(acme_admin_client, foreign_collection):
+    response = _download(acme_admin_client, [_document(foreign_collection)])
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 def test_download_mixing_own_and_foreign_documents_is_404(
-    admin_client, own_collection, foreign_collection
+    acme_admin_client, own_collection, foreign_collection
 ):
-    response = _download(admin_client, [_document(own_collection), _document(foreign_collection)])
+    response = _download(acme_admin_client, [_document(own_collection), _document(foreign_collection)])
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
-def test_download_answers_a_foreign_document_like_a_missing_one(admin_client, foreign_collection):
+def test_download_answers_a_foreign_document_like_a_missing_one(acme_admin_client, foreign_collection):
     foreign_document = _document(foreign_collection)
     missing_id = foreign_document.document_id + 1000
 
-    foreign_response = _download(admin_client, [foreign_document])
-    missing_response = admin_client.get(reverse("document-download"), {"document_ids": str(missing_id)})
+    foreign_response = _download(acme_admin_client, [foreign_document])
+    missing_response = acme_admin_client.get(reverse("document-download"), {"document_ids": str(missing_id)})
 
     assert foreign_response.status_code == missing_response.status_code == status.HTTP_404_NOT_FOUND
     # Only the id the caller sent differs; nothing tells a foreign document from a missing one.
@@ -129,21 +122,21 @@ def test_download_answers_a_foreign_document_like_a_missing_one(admin_client, fo
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("document_count", [1, 2], ids=["single-file", "archive"])
-def test_download_of_own_documents_succeeds(admin_client, own_collection, document_count):
+def test_download_of_own_documents_succeeds(acme_admin_client, own_collection, document_count):
     documents = [_document(own_collection) for _ in range(document_count)]
 
-    response = _download(admin_client, documents)
+    response = _download(acme_admin_client, documents)
 
     assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
 def test_bulk_delete_of_only_foreign_documents_deletes_nothing_and_answers_empty(
-    admin_client, foreign_collection
+    acme_admin_client, foreign_collection
 ):
     foreign_document = _document(foreign_collection)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("document-bulk-delete"),
         {"document_ids": [foreign_document.document_id]},
         format="json",
@@ -155,8 +148,8 @@ def test_bulk_delete_of_only_foreign_documents_deletes_nothing_and_answers_empty
 
 
 @pytest.mark.django_db
-def test_bulk_delete_of_only_missing_documents_answers_like_foreign_ones(admin_client):
-    response = admin_client.post(
+def test_bulk_delete_of_only_missing_documents_answers_like_foreign_ones(acme_admin_client):
+    response = acme_admin_client.post(
         reverse("document-bulk-delete"), {"document_ids": [987654321]}, format="json"
     )
 

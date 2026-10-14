@@ -16,7 +16,7 @@ from tables.exceptions import NotInRecycleBinError, StorageRestoreConflictError
 from tables.models import StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
-from tables.views.storage_views import StorageRecycleBinPagination
+from tables.views.recycle_bin_mixins import RecycleBinPagination
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
@@ -203,13 +203,6 @@ def real_manager():
 
 
 @pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
-
-
-@pytest.fixture
 def client_with_files_bits(client_as, django_user_model, acme):
     def _make(bits: Permission) -> APIClient:
         role = Role.objects.create(name=f"Files {int(bits)}", org=acme, is_built_in=False)
@@ -316,7 +309,7 @@ class TestStorageBinApi:
         )
 
     def test_limit_is_capped(self, admin_client, real_manager, acme, mocker):
-        mocker.patch.object(StorageRecycleBinPagination, "max_limit", 2)
+        mocker.patch.object(RecycleBinPagination, "max_limit", 2)
         for index in range(3):
             _binned(real_manager, acme, f"f{index}.txt")
 

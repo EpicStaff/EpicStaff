@@ -6,15 +6,15 @@ import { ConfigService } from '../../../services/config';
 import { RECYCLE_BIN_SOURCES } from '../constants/recycle-bin-sources.constants';
 import {
     GetRecycleBinContentsResponse,
-    GetRecycleBinEntryResponse,
-    GetStorageRecycleBinPageResponse,
+    GetRecycleBinPageResponse,
+    GetStorageRecycleBinEntryResponse,
     RecycleBinBulkPurgeResponse,
     RecycleBinBulkRestoreResponse,
     RecycleBinEmptyResponse,
+    RecycleBinListQuery,
     RecycleBinResourceSourceKey,
     RecycleBinSelection,
     RecycleBinSourceKey,
-    RecycleBinStorageQuery,
 } from '../models/recycle-bin.model';
 
 /**
@@ -30,19 +30,29 @@ export class RecycleBinApiService {
     private readonly http = inject(HttpClient);
     private readonly configService = inject(ConfigService);
 
-    getEntries(source: RecycleBinResourceSourceKey): Observable<GetRecycleBinEntryResponse[]> {
-        return this.http.get<GetRecycleBinEntryResponse[]>(this.binUrl(source));
+    /** One page of a resource bin (`query.itemType` is storage's own and isn't sent). */
+    getEntries(
+        source: RecycleBinResourceSourceKey,
+        limit: number,
+        offset: number,
+        query: RecycleBinListQuery
+    ): Observable<GetRecycleBinPageResponse> {
+        return this.http.get<GetRecycleBinPageResponse>(this.binUrl(source), {
+            params: listParams(limit, offset, query),
+        });
     }
 
+    /** One page of the storage bin, which also filters by `item_type`. */
     getStorageEntries(
         limit: number,
         offset: number,
-        query: RecycleBinStorageQuery
-    ): Observable<GetStorageRecycleBinPageResponse> {
-        let params = new HttpParams().set('limit', limit).set('offset', offset).set('ordering', query.ordering);
-        if (query.search) params = params.set('search', query.search);
+        query: RecycleBinListQuery
+    ): Observable<GetRecycleBinPageResponse<GetStorageRecycleBinEntryResponse>> {
+        let params = listParams(limit, offset, query);
         if (query.itemType) params = params.set('item_type', query.itemType);
-        return this.http.get<GetStorageRecycleBinPageResponse>(this.binUrl('storage'), { params });
+        return this.http.get<GetRecycleBinPageResponse<GetStorageRecycleBinEntryResponse>>(this.binUrl('storage'), {
+            params,
+        });
     }
 
     /** Every content of one binned item, past the list's 100. */
@@ -70,4 +80,12 @@ export class RecycleBinApiService {
     private binUrl(source: RecycleBinSourceKey): string {
         return `${this.configService.apiUrl}${RECYCLE_BIN_SOURCES[source].path}recycle-bin/`;
     }
+}
+
+/** The paging, search, ordering and count filter every bin list takes; empty filters are left out. */
+function listParams(limit: number, offset: number, query: RecycleBinListQuery): HttpParams {
+    let params = new HttpParams().set('limit', limit).set('offset', offset).set('ordering', query.ordering);
+    if (query.search) params = params.set('search', query.search);
+    if (query.contents) params = params.set('contents', query.contents);
+    return params;
 }

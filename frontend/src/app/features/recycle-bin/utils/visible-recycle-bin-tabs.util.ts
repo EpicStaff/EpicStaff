@@ -8,7 +8,10 @@ export function visibleRecycleBinTabs(can: CanFunction): RecycleBinTabDefinition
     return RECYCLE_BIN_TABS.filter((tab) => can(tab.resource, ActionCode.Read));
 }
 
-/** A Kind column only helps where rows can differ in kind: merged sources (Tools) or storage (file / folder). */
+/**
+ * A Kind column where the tab has kinds to tell apart: storage rows (file / folder), or the bins of Tools,
+ * whose column header holds the switch between them.
+ */
 export function recycleBinTabShowsKind(tab: RecycleBinTabDefinition): boolean {
     return tab.sources.length > 1 || tab.sources.includes('storage');
 }

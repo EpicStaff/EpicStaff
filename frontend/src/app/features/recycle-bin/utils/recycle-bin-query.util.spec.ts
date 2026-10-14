@@ -1,78 +1,18 @@
 import { RECYCLE_BIN_TAB_BY_KEY } from '../constants/recycle-bin-tabs.constants';
-import { RecycleBinItem } from '../models/recycle-bin.model';
 import {
+    COUNT_FILTER_OPTIONS,
     DEFAULT_SORT,
-    filterAndSortItems,
     flipColumnDirection,
+    hasKindSwitch,
     INITIAL_COLUMN_DIRECTIONS,
+    initialKindFilter,
+    kindFilterNarrows,
     kindFilterOptions,
-    toStorageQuery,
+    shownSource,
+    toListQuery,
 } from './recycle-bin-query.util';
 
-function binItem(id: number, displayName: string, deletedAt: string, daysLeft: number): RecycleBinItem {
-    return {
-        key: `flow-${id}`,
-        id,
-        source: 'flow',
-        name: displayName,
-        displayName,
-        kind: 'Flow',
-        deletedAt: new Date(deletedAt),
-        daysLeft,
-        details: [],
-        contents: [],
-        contentsTotal: 0,
-    };
-}
-
-const ITEMS = [
-    binItem(1, 'beta', '2026-10-02T10:00:00Z', 6),
-    binItem(2, 'Alpha', '2026-10-03T10:00:00Z', 7),
-    binItem(3, 'gamma', '2026-10-01T10:00:00Z', 5),
-];
-
-function names(items: RecycleBinItem[]): string[] {
-    return items.map((item) => item.displayName);
-}
-
 describe('recycle bin query', () => {
-    it('sorts newest first by default', () => {
-        expect(names(filterAndSortItems(ITEMS, { search: '', sort: DEFAULT_SORT }))).toEqual([
-            'Alpha',
-            'beta',
-            'gamma',
-        ]);
-    });
-
-    it('sorts by days left', () => {
-        expect(names(filterAndSortItems(ITEMS, { search: '', sort: { field: 'daysLeft', direction: 'asc' } }))).toEqual(
-            ['gamma', 'beta', 'Alpha']
-        );
-    });
-
-    it('orders Days left by the hour within a day, not only by whole days', () => {
-        // Both have 6 whole days left; the one deleted earlier has less time left.
-        const earlier = binItem(1, 'earlier', '2026-10-02T08:00:00Z', 6);
-        const later = binItem(2, 'later', '2026-10-02T10:00:00Z', 6);
-        const sort = { field: 'daysLeft', direction: 'asc' } as const;
-
-        expect(names(filterAndSortItems([later, earlier], { search: '', sort }))).toEqual(['earlier', 'later']);
-    });
-
-    it('finds a row by a name inside it too (a node, a surface)', () => {
-        const flow = {
-            ...binItem(9, 'Nightly', '2026-10-01T10:00:00Z', 5),
-            contents: [{ name: 'Send Invoice', nodeType: 'task' }],
-        };
-        expect(names(filterAndSortItems([...ITEMS, flow], { search: 'invoice', sort: DEFAULT_SORT }))).toEqual([
-            'Nightly',
-        ]);
-    });
-
-    it('searches the shown name, case-insensitively', () => {
-        expect(names(filterAndSortItems(ITEMS, { search: '  ALP ', sort: DEFAULT_SORT }))).toEqual(['Alpha']);
-    });
-
     it('flips only the clicked column, every click, and leaves the other one as it was', () => {
         const afterDaysLeft = flipColumnDirection(INITIAL_COLUMN_DIRECTIONS, 'daysLeft');
         expect(afterDaysLeft).toEqual({ deletedAt: 'desc', daysLeft: 'asc' });
@@ -85,24 +25,40 @@ describe('recycle bin query', () => {
         expect(flipColumnDirection(INITIAL_COLUMN_DIRECTIONS, 'daysLeft').daysLeft).toBe('asc');
     });
 
-    it('builds the Files ordering the backend takes', () => {
-        expect(toStorageQuery(' rep ', { field: 'deletedAt', direction: 'desc' }, null)).toEqual({
+    it('builds the ordering the backend takes', () => {
+        expect(toListQuery(' rep ', { field: 'deletedAt', direction: 'desc' }, null, null)).toEqual({
             search: 'rep',
             ordering: '-deleted_at',
+            contents: null,
             itemType: null,
         });
-        expect(toStorageQuery('', { field: 'daysLeft', direction: 'asc' }, 'folder')).toEqual({
-            search: '',
-            ordering: 'days_left',
-            itemType: 'folder',
-        });
-        expect(toStorageQuery('', { field: 'deletedAt', direction: 'asc' }, null).ordering).toBe('deleted_at');
+        expect(toListQuery('', { field: 'daysLeft', direction: 'asc' }, null, null).ordering).toBe('days_left');
+        expect(toListQuery('', { field: 'daysLeft', direction: 'desc' }, null, null).ordering).toBe('-days_left');
+        expect(toListQuery('', { field: 'deletedAt', direction: 'asc' }, null, null).ordering).toBe('deleted_at');
     });
 
-    it('offers tool kinds on Tools, item types on Files, and nothing elsewhere', () => {
+    it('sends an item type and a count filter only when they are ones the backend knows', () => {
+        expect(toListQuery('', DEFAULT_SORT, 'folder', 'some')).toMatchObject({ itemType: 'folder', contents: 'some' });
+        expect(toListQuery('', DEFAULT_SORT, null, 'none').contents).toBe('none');
+        // Tools' Kind switch holds a source key: that picks the bin, it is no item type.
+        expect(toListQuery('', DEFAULT_SORT, 'mcp_tool', null).itemType).toBeNull();
+        expect(toListQuery('', DEFAULT_SORT, 'toString', 'toString')).toMatchObject({
+            itemType: null,
+            contents: null,
+        });
+    });
+
+    it('offers has / has none on the count column', () => {
+        expect(COUNT_FILTER_OPTIONS).toEqual([
+            { name: 'Has', value: 'some' },
+            { name: 'Has none', value: 'none' },
+        ]);
+    });
+
+    it('offers the tool bins on Tools, item types on Files, and nothing elsewhere', () => {
         expect(kindFilterOptions(RECYCLE_BIN_TAB_BY_KEY.tools)).toEqual([
-            { name: 'Python tool', value: 'python_tool' },
-            { name: 'MCP tool', value: 'mcp_tool' },
+            { name: 'Python tools', value: 'python_tool' },
+            { name: 'MCP tools', value: 'mcp_tool' },
         ]);
         expect(kindFilterOptions(RECYCLE_BIN_TAB_BY_KEY.files)).toEqual([
             { name: 'File', value: 'file' },
@@ -111,32 +67,23 @@ describe('recycle bin query', () => {
         expect(kindFilterOptions(RECYCLE_BIN_TAB_BY_KEY.flows)).toEqual([]);
     });
 
-    it('filters by source on the client', () => {
-        const mixed = [ITEMS[0], { ...ITEMS[1], key: 'mcp_tool-2', source: 'mcp_tool' as const }];
-        expect(names(filterAndSortItems(mixed, { search: '', sort: DEFAULT_SORT, kindFilter: 'mcp_tool' }))).toEqual([
-            'Alpha',
-        ]);
+    it('makes the Kind filter a switch only on Tools, starting on Python tools', () => {
+        expect(hasKindSwitch(RECYCLE_BIN_TAB_BY_KEY.tools)).toBe(true);
+        expect(hasKindSwitch(RECYCLE_BIN_TAB_BY_KEY.files)).toBe(false);
+        expect(initialKindFilter(RECYCLE_BIN_TAB_BY_KEY.tools)).toBe('python_tool');
+        expect(initialKindFilter(RECYCLE_BIN_TAB_BY_KEY.files)).toBeNull();
     });
 
-    it.each([
-        ['none', ['zero']],
-        ['some', ['one', 'five', 'six', 'ten', 'eleven']],
-    ])('keeps the rows whose count matches %s', (range, expected) => {
-        const counts: [string, number][] = [
-            ['zero', 0],
-            ['one', 1],
-            ['five', 5],
-            ['six', 6],
-            ['ten', 10],
-            ['eleven', 11],
-        ];
-        const counted = counts.map(([name, total], index) => ({
-            ...binItem(index + 1, name, '2026-10-01T10:00:00Z', 5),
-            contentsTotal: total,
-        }));
-        const sort = { field: 'deletedAt', direction: 'asc' } as const;
-        expect(names(filterAndSortItems(counted, { search: '', sort, countFilter: range })).sort()).toEqual(
-            [...expected].sort()
-        );
+    it('counts a chosen kind as narrowing the list only when the Kind filter is no switch', () => {
+        expect(kindFilterNarrows('folder', false)).toBe(true);
+        expect(kindFilterNarrows(null, false)).toBe(false);
+        expect(kindFilterNarrows('mcp_tool', true)).toBe(false);
+    });
+
+    it('lists the bin the Kind switch picks on Tools, and the only bin elsewhere', () => {
+        expect(shownSource(RECYCLE_BIN_TAB_BY_KEY.tools, 'mcp_tool')).toBe('mcp_tool');
+        expect(shownSource(RECYCLE_BIN_TAB_BY_KEY.tools, 'python_tool')).toBe('python_tool');
+        expect(shownSource(RECYCLE_BIN_TAB_BY_KEY.files, 'folder')).toBe('storage');
+        expect(shownSource(RECYCLE_BIN_TAB_BY_KEY.flows, null)).toBe('flow');
     });
 });

@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 from django.utils import timezone
 
+from agents.models import AgentDefinition, Surface
 from rbac.models import Organization
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients.errors import ClientNotAvailableError, ClientResourceNotFoundError
@@ -26,6 +27,7 @@ from tables.models import (
     TaskNode,
 )
 from tables.models.knowledge_models import BaseRagType, GraphRag, GraphRagIndexConfig
+from tables.services.cascade_org_guard import CascadeOrgGuard
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.soft_delete import DeleteService
 from tables.services.storage_service.manager import StorageManager
@@ -297,16 +299,51 @@ class TestPurgeExpired:
         stuck = min(nodes, key=lambda node: node.pk)  # in the first chunk on every run
         real_delete = PurgeService._delete_locked
 
-        def refuse_the_stuck_one(model, expired, pks):
+        def refuse_the_stuck_one(model, expired, org_guard, pks):
             if model is TaskNode and stuck.pk in pks:
                 raise RuntimeError("protected")
-            return real_delete(model, expired, pks)
+            return real_delete(model, expired, org_guard, pks)
 
         with mock.patch.object(PurgeService, "_delete_locked", side_effect=refuse_the_stuck_one):
             PurgeService.purge_expired()
 
         assert TaskNode.deleted_objects.filter(pk=stuck.pk).exists()
         assert not TaskNode.all_objects.filter(pk__in=[node.pk for node in nodes if node.pk != stuck.pk]).exists()
+
+    def test_a_chunk_that_cannot_be_split_by_org_is_swept_row_by_row_and_the_run_goes_on(self, default_org):
+        graph = Graph.objects.create(org=default_org, name="Live")
+        nodes = [TaskNode.objects.create(graph=graph, node_name=f"removed {index}") for index in range(3)]
+        for node in nodes:
+            DeleteService.delete(node)
+            _backdate(TaskNode, node, 8)
+        code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+        tool = PythonCodeTool.objects.create(name="Other model", description="d", python_code=code, built_in=True)
+        config = PythonCodeToolConfig.objects.create(org=default_org, tool=tool, name="Other model config")
+        _bin_on_its_own(PythonCodeToolConfig, config, days_ago=8)
+        real_per_org = CascadeOrgGuard.per_org
+        errors: list[str] = []
+        sink_id = logger.add(errors.append, level="ERROR", format="{message}")
+
+        # Only the chunk split (quiet) fails; the row-by-row pass splits each row normally.
+        def fail_the_chunk_split(model, pks, using=None, *, log_refusal=True):
+            if model is TaskNode and not log_refusal:
+                raise RuntimeError("split failed")
+            return real_per_org(model, pks, using, log_refusal=log_refusal)
+
+        try:
+            with mock.patch.object(CascadeOrgGuard, "per_org", side_effect=fail_the_chunk_split):
+                result = PurgeService.purge_expired()
+        finally:
+            logger.remove(sink_id)
+
+        assert result["tables.TaskNode"] == 3
+        assert not TaskNode.all_objects.filter(pk__in=[node.pk for node in nodes]).exists()
+        assert not PythonCodeToolConfig.all_objects.filter(pk=config.pk).exists()
+        assert len(errors) == 1
+        assert errors[0].startswith(
+            f"Recycle bin sweep could not split tables.TaskNode rows {sorted(node.pk for node in nodes)} "
+            "by organization; sweeping them one by one"
+        )
 
     def test_an_empty_bin_purges_nothing(self):
         assert PurgeService.purge_expired() == {}
@@ -342,7 +379,7 @@ class TestSweepStaysInEachRowsOrg:
         yield messages
         logger.remove(sink_id)
 
-    def test_a_row_whose_delete_reaches_another_org_is_kept_and_the_rest_swept(
+    def test_a_row_whose_delete_reaches_another_org_is_kept_logged_once_and_the_rest_swept(
         self, acme, beta, python_code_tool, error_log
     ):
         reaching = _tool_config(acme, python_code_tool, "Reaches beta")
@@ -355,21 +392,25 @@ class TestSweepStaysInEachRowsOrg:
         for config in (reaching, own, other_org):
             _bin_on_its_own(PythonCodeToolConfig, config, days_ago=8)
 
-        result = PurgeService.purge_expired()
+        with mock.patch.object(
+            PurgeService, "_sweep_one_by_one", wraps=PurgeService._sweep_one_by_one
+        ) as one_by_one:
+            result = PurgeService.purge_expired()
 
         assert result["tables.PythonCodeToolConfig"] == 2
         assert list(PythonCodeToolConfig.all_objects.values_list("pk", flat=True)) == [reaching.pk]
         assert PythonCodeToolConfig.deleted_objects.filter(pk=reaching.pk).exists()
         assert AgentPythonCodeToolConfigs.objects.filter(pk=foreign_link.pk).exists()
-        assert (
+        assert error_log == [
             f"Refused to delete PythonCodeToolConfig {reaching.pk} of org {acme.id}: the delete "
             f"reaches AgentPythonCodeToolConfigs {foreign_link.pk} of org(s) [{beta.id}], "
             "linked across organizations outside the API\n"
-        ) in error_log
-        assert (
-            f"Recycle bin sweep kept tables.PythonCodeToolConfig {reaching.pk} in the bin: "
-            "its delete reaches another organization's row\n"
-        ) in error_log
+        ]
+        # Only Acme's rows were retried one by one: Beta's went in their own delete.
+        retried = [
+            sorted(call.args[2]) for call in one_by_one.call_args_list if call.args[0] is PythonCodeToolConfig
+        ]
+        assert retried == [sorted([reaching.pk, own.pk])]
 
     def test_a_row_owned_by_two_orgs_is_kept_and_the_rest_swept(self, acme, beta, error_log):
         acme_flow = Graph.objects.create(org=acme, name="Acme")
@@ -386,10 +427,37 @@ class TestSweepStaysInEachRowsOrg:
 
         assert CrewNode.deleted_objects.filter(pk=two_orgs.pk).exists()
         assert not CrewNode.all_objects.filter(pk=own.pk).exists()
-        assert (
-            f"Recycle bin sweep kept tables.CrewNode {two_orgs.pk} in the bin: "
-            "its delete reaches another organization's row\n"
-        ) in error_log
+        assert error_log == [
+            f"Refused to delete CrewNode {two_orgs.pk} of org None: the delete reaches "
+            f"CrewNode {two_orgs.pk} of org(s) {sorted([acme.id, beta.id])}, "
+            "linked across organizations outside the API\n"
+        ]
+
+    def test_a_root_whose_purge_reaches_another_org_is_kept_and_logged_once(self, acme, beta, error_log):
+        reaching, own = (
+            AgentDefinition.objects.create(
+                org=acme, name=name, instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+            )
+            for name in ("Reaches beta", "Acme only")
+        )
+        for agent in (reaching, own):
+            DeleteService.delete(agent)
+            _backdate(AgentDefinition, agent, 8)
+        # Written after the agent was binned, so only the purge reaches it.
+        foreign_surface = Surface.objects.create(org=beta, name="Beta surface", owner_agent=reaching)
+
+        result = PurgeService.purge_expired()
+
+        assert result["agents.AgentDefinition"] == 1
+        assert AgentDefinition.deleted_objects.filter(pk=reaching.pk).exists()
+        assert not AgentDefinition.all_objects.filter(pk=own.pk).exists()
+        assert Surface.objects.filter(pk=foreign_surface.pk, owner_agent=reaching).exists()
+        # One line, no traceback.
+        assert error_log == [
+            f"Refused to delete AgentDefinition {reaching.pk} of org {acme.id}: the delete reaches "
+            f"Surface {foreign_surface.pk} of org(s) [{beta.id}], "
+            "linked across organizations outside the API\n"
+        ]
 
     def test_rows_of_several_orgs_are_swept_together(self, acme, beta, error_log):
         nodes = []

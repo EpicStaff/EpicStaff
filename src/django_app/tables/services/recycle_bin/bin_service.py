@@ -12,6 +12,17 @@ from tables.services.recycle_bin.registry import BinResource
 
 _SECONDS_PER_DAY = 86400
 
+# The list's sort choices, as storage's (storage_service.recycle_bin.ENTRY_ORDERINGS).
+# Days left falls as the deletion time gets older, so it sorts by that time; ties go
+# by id, so pages never overlap.
+ENTRY_ORDERINGS: dict[str, tuple[str, ...]] = {
+    "-deleted_at": ("-soft_deleted_at", "-pk"),
+    "deleted_at": ("soft_deleted_at", "pk"),
+    "days_left": ("soft_deleted_at", "pk"),
+    "-days_left": ("-soft_deleted_at", "-pk"),
+}
+DEFAULT_ENTRY_ORDERING = "-deleted_at"
+
 
 @dataclass(frozen=True)
 class RecycleBinEntry:
@@ -39,15 +50,29 @@ class RecycleBinService:
             **{f"{resource.org_field}_id": org_id},
         )
 
-    @classmethod
-    def entries(cls, resource: BinResource, org_id: int) -> list[RecycleBinEntry]:
-        """Return the org's bin entries for `resource`, newest first."""
+    @staticmethod
+    def entry_rows(
+        resource: BinResource,
+        binned: QuerySet,
+        *,
+        search: str = "",
+        ordering: str = DEFAULT_ENTRY_ORDERING,
+    ) -> QuerySet:
+        """The list's rows of `binned` (a queryset from binned()); pass a page of it to to_entries.
+
+        `search` keeps the rows whose name contains it, in any case; `ordering` is one of
+        ENTRY_ORDERINGS, the default for anything else.
+        """
+        if search:
+            binned = binned.filter(**{f"{resource.name_field}__icontains": search})
         # values_list: a flow row carries large metadata JSON the list never shows.
-        rows = (
-            cls.binned(resource, org_id)
-            .order_by("-soft_deleted_at", "-pk")
-            .values_list("pk", resource.name_field, "soft_deleted_at", "soft_delete_batch")
-        )
+        return binned.order_by(
+            *ENTRY_ORDERINGS.get(ordering, ENTRY_ORDERINGS[DEFAULT_ENTRY_ORDERING])
+        ).values_list("pk", resource.name_field, "soft_deleted_at", "soft_delete_batch")
+
+    @classmethod
+    def to_entries(cls, rows) -> list[RecycleBinEntry]:
+        """Entries for rows of entry_rows, in their order."""
         return [
             RecycleBinEntry(
                 id=pk,

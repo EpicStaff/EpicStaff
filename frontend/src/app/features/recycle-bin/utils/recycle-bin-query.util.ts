@@ -1,21 +1,25 @@
 import { RECYCLE_BIN_SOURCES, STORAGE_ITEM_KINDS } from '../constants/recycle-bin-sources.constants';
 import {
     GetStorageRecycleBinEntryResponse,
+    RecycleBinContentsFilter,
     RecycleBinFilterOption,
-    RecycleBinItem,
     RecycleBinListQuery,
     RecycleBinSort,
     RecycleBinSortDirection,
     RecycleBinSortField,
-    RecycleBinStorageQuery,
+    RecycleBinSourceKey,
     RecycleBinTabDefinition,
 } from '../models/recycle-bin.model';
-import { newestFirst } from './recycle-bin-mappers.util';
 
 /** The backend's own order: newest deletion first. */
 export const DEFAULT_SORT: RecycleBinSort = { field: 'deletedAt', direction: 'desc' };
 
-export const DEFAULT_STORAGE_QUERY: RecycleBinStorageQuery = { search: '', ordering: '-deleted_at', itemType: null };
+export const DEFAULT_LIST_QUERY: RecycleBinListQuery = {
+    search: '',
+    ordering: '-deleted_at',
+    contents: null,
+    itemType: null,
+};
 
 /**
  * Each sortable column's own direction, which its arrow shows: a click on a column flips that column's
@@ -27,11 +31,21 @@ export const INITIAL_COLUMN_DIRECTIONS: Readonly<Record<RecycleBinSortField, Rec
     daysLeft: 'desc',
 };
 
-/** The backend's `ordering` name of each field (Files list). */
-const STORAGE_ORDERING_FIELD: Record<RecycleBinSortField, string> = {
+/** The backend's `ordering` name of each field. */
+const ORDERING_FIELD: Record<RecycleBinSortField, string> = {
     deletedAt: 'deleted_at',
     daysLeft: 'days_left',
 };
+
+/** Choices of the count column's filter (a flow's nodes, an agent's own surfaces), sent as `contents`. */
+const CONTENTS_FILTER_NAMES: Record<RecycleBinContentsFilter, string> = {
+    some: 'Has',
+    none: 'Has none',
+};
+
+export const COUNT_FILTER_OPTIONS: readonly RecycleBinFilterOption[] = Object.entries(CONTENTS_FILTER_NAMES).map(
+    ([value, name]) => ({ name, value })
+);
 
 /** The column directions after a click on `field`: only that column's arrow flips. */
 export function flipColumnDirection(
@@ -41,17 +55,46 @@ export function flipColumnDirection(
     return { ...directions, [field]: directions[field] === 'asc' ? 'desc' : 'asc' };
 }
 
-export function toStorageQuery(
+/**
+ * The server query of a tab's list. `kindFilter` is an item type on Files (on Tools it picks the source
+ * instead, see shownSource); `countFilter` a COUNT_FILTER_OPTIONS value.
+ */
+export function toListQuery(
     search: string,
     sort: RecycleBinSort,
-    kindFilter: string | null
-): RecycleBinStorageQuery {
+    kindFilter: string | null,
+    countFilter: string | null
+): RecycleBinListQuery {
     const prefix = sort.direction === 'desc' ? '-' : '';
     return {
         search: search.trim(),
-        ordering: `${prefix}${STORAGE_ORDERING_FIELD[sort.field]}`,
+        ordering: `${prefix}${ORDERING_FIELD[sort.field]}`,
+        contents: isContentsFilter(countFilter) ? countFilter : null,
         itemType: isStorageItemType(kindFilter) ? kindFilter : null,
     };
+}
+
+/**
+ * A tab with several sources (Tools) shows one at a time, and its Kind filter is a switch between them:
+ * always one chosen, no "All".
+ */
+export function hasKindSwitch(tab: RecycleBinTabDefinition): boolean {
+    return tab.sources.length > 1;
+}
+
+/** Whether the Kind filter narrows the list: a chosen kind does, unless the filter is a switch (Tools). */
+export function kindFilterNarrows(kindFilter: string | null, kindSwitch: boolean): boolean {
+    return kindFilter !== null && !kindSwitch;
+}
+
+/** The kind a tab starts on: its first source on a Kind switch (Tools: Python tools), otherwise all. */
+export function initialKindFilter(tab: RecycleBinTabDefinition): string | null {
+    return hasKindSwitch(tab) ? tab.sources[0] : null;
+}
+
+/** The bin a tab lists: the one its Kind switch picks (Tools), otherwise its only source. */
+export function shownSource(tab: RecycleBinTabDefinition, kindFilter: string | null): RecycleBinSourceKey {
+    return tab.sources.find((source) => source === kindFilter) ?? tab.sources[0];
 }
 
 /**
@@ -62,70 +105,16 @@ export function kindFilterOptions(tab: RecycleBinTabDefinition): RecycleBinFilte
     if (tab.sources.includes('storage')) {
         return Object.entries(STORAGE_ITEM_KINDS).map(([value, name]) => ({ name, value }));
     }
-    if (tab.sources.length < 2) return [];
+    if (!hasKindSwitch(tab)) return [];
     return tab.sources.flatMap((source) =>
-        source === 'storage' ? [] : [{ name: RECYCLE_BIN_SOURCES[source].kind, value: source }]
+        source === 'storage' ? [] : [{ name: RECYCLE_BIN_SOURCES[source].pluralKind, value: source }]
     );
 }
-
-interface CountRange extends RecycleBinFilterOption {
-    min: number;
-    max: number;
-}
-
-/** Choices of the count column's filter (a flow's nodes, an agent's own surfaces). */
-const RECYCLE_BIN_COUNT_RANGES: readonly CountRange[] = [
-    { name: 'Has', value: 'some', min: 1, max: Number.POSITIVE_INFINITY },
-    { name: 'Has none', value: 'none', min: 0, max: 0 },
-];
-
-export const COUNT_FILTER_OPTIONS: readonly RecycleBinFilterOption[] = RECYCLE_BIN_COUNT_RANGES.map(
-    ({ name, value }) => ({ name, value })
-);
 
 function isStorageItemType(value: string | null): value is GetStorageRecycleBinEntryResponse['item_type'] {
-    return value !== null && value in STORAGE_ITEM_KINDS;
+    return value !== null && Object.hasOwn(STORAGE_ITEM_KINDS, value);
 }
 
-function inCountRange(count: number, rangeValue: string): boolean {
-    const range = RECYCLE_BIN_COUNT_RANGES.find((candidate) => candidate.value === rangeValue);
-    return range === undefined || (count >= range.min && count <= range.max);
-}
-
-/** The row's own name, or the name of something inside it (a flow's node, an agent's surface…). */
-function matchesSearch(item: RecycleBinItem, term: string): boolean {
-    return (
-        item.displayName.toLowerCase().includes(term) ||
-        item.contents.some((content) => content.name.toLowerCase().includes(term))
-    );
-}
-
-/**
- * Client-side search (by the name the row shows or one of its contents), kind filter (by source, for Tools), count filter
- * (by `contentsTotal`) and sort, for the lists that aren't paged.
- */
-export function filterAndSortItems(items: readonly RecycleBinItem[], query: RecycleBinListQuery): RecycleBinItem[] {
-    const term = query.search.trim().toLowerCase();
-    const kindFilter = query.kindFilter ?? null;
-    const countFilter = query.countFilter ?? null;
-    const matching = items.filter(
-        (item) =>
-            (!term || matchesSearch(item, term)) &&
-            (kindFilter === null || item.source === kindFilter) &&
-            (countFilter === null || inCountRange(item.contentsTotal, countFilter))
-    );
-    const sign = query.sort.direction === 'asc' ? 1 : -1;
-    return matching.sort(
-        (first, second) => sign * compareBy(query.sort.field, first, second) || newestFirst(first, second)
-    );
-}
-
-function compareBy(field: RecycleBinSortField, first: RecycleBinItem, second: RecycleBinItem): number {
-    switch (field) {
-        case 'deletedAt':
-            return first.deletedAt.getTime() - second.deletedAt.getTime();
-        case 'daysLeft':
-            // Less time left means deleted earlier. Not `daysLeft`: it's whole days, and the cells show hours.
-            return first.deletedAt.getTime() - second.deletedAt.getTime();
-    }
+function isContentsFilter(value: string | null): value is RecycleBinContentsFilter {
+    return value !== null && Object.hasOwn(CONTENTS_FILTER_NAMES, value);
 }

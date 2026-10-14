@@ -324,6 +324,9 @@ class SoftDeleteMixin(SoftDeleteFields):
             # What Model.delete() does, with the collected rows checked in between:
             # rows that keep their link to a binned row (soft_delete_keeps_references)
             # are only changed now, so the soft delete's own check never saw them.
+            # NOTE: this runs Model.delete()'s collector itself, deliberately, so a
+            # delete() override placed after SoftDeleteMixin in a model's MRO is
+            # skipped by a purge. Put purge-time cleanup in a signal, not in delete().
             collector = Collector(using=using, origin=self)
             collector.collect([self], keep_parents=keep_parents)
             CascadeOrgGuard.for_root(self, using).check_collected(collector)

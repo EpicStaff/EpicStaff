@@ -22,30 +22,17 @@ from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import bin_resources
 from tables.services.storage_service.manager import StorageManager
-from tests.api_tests.test_recycle_bin_api import AGENTS_URL, CASES, FLOWS_URL, SURFACES_URL
+from tests.api_tests.recycle_bin_cases import AGENTS_URL, CASES, FLOWS_URL, SURFACES_URL
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from tests.user_summary_helpers import expected_user_summary
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("retention_seven_days")]
 
 STORAGE_BIN_URL = "/api/storage/recycle-bin/"
 CREATED_BY = "Created by"
 DELETED_BY = "Deleted by"
 EDITED_BEFORE = timezone.now() - timedelta(days=1)
-
-
-@pytest.fixture(autouse=True)
-def retention_seven_days(settings):
-    # A developer's local .env can set DJANGO_RECYCLE_BIN_RETENTION_DAYS.
-    settings.RECYCLE_BIN_RETENTION_DAYS = 7
-
-
-@pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
 
 
 @pytest.fixture
@@ -82,7 +69,7 @@ def _client_in(client_as, user, org) -> APIClient:
 def _bin(client, list_url) -> list[dict]:
     response = client.get(f"{list_url}recycle-bin/")
     assert response.status_code == 200, response.content
-    return response.json()
+    return response.json()["results"]
 
 
 def _authorship_lines(entry: dict) -> list[dict]:
@@ -130,54 +117,54 @@ def test_every_bin_resource_records_last_edits():
 @pytest.mark.parametrize("case", CASES, ids=[case.key for case in CASES])
 class TestEveryBinResource:
     def test_delete_records_the_request_user_and_both_lines_come_first(
-        self, case, admin_client, admin_acme, author, acme
+        self, case, acme_admin_client, admin_acme, author, acme
     ):
         row = _make(case, acme, author)
 
-        assert admin_client.delete(f"{case.url}{row.pk}/").status_code == case.delete_status
+        assert acme_admin_client.delete(f"{case.url}{row.pk}/").status_code == case.delete_status
 
         assert _deleter_id(row) == admin_acme.pk
-        assert _authorship_lines(_bin(admin_client, case.url)[0]) == [
+        assert _authorship_lines(_bin(acme_admin_client, case.url)[0]) == [
             _user_line(CREATED_BY, author),
             _user_line(DELETED_BY, admin_acme),
         ]
 
-    def test_restore_keeps_the_deleter_as_last_editor(self, case, admin_client, admin_acme, acme):
+    def test_restore_keeps_the_deleter_as_last_editor(self, case, acme_admin_client, admin_acme, acme):
         row = _make(case, acme)
-        admin_client.delete(f"{case.url}{row.pk}/")
+        acme_admin_client.delete(f"{case.url}{row.pk}/")
 
-        assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 200
+        assert acme_admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 200
 
         assert _last_edit_of(row).edited_by_id == admin_acme.pk
 
     def test_bulk_restore_keeps_the_deleter_as_last_editor(
-        self, case, admin_client, admin_acme, acme
+        self, case, acme_admin_client, admin_acme, acme
     ):
         row = _make(case, acme)
-        admin_client.delete(f"{case.url}{row.pk}/")
+        acme_admin_client.delete(f"{case.url}{row.pk}/")
 
-        response = admin_client.post(
+        response = acme_admin_client.post(
             f"{case.url}recycle-bin/restore/", {"ids": [row.pk]}, format="json"
         )
 
         assert response.status_code == 200, response.content
         assert _last_edit_of(row).edited_by_id == admin_acme.pk
 
-    def test_purge_removes_the_record(self, case, admin_client, superadmin_in_acme, acme):
+    def test_purge_removes_the_record(self, case, acme_admin_client, superadmin_in_acme, acme):
         row = _make(case, acme)
-        admin_client.delete(f"{case.url}{row.pk}/")
+        acme_admin_client.delete(f"{case.url}{row.pk}/")
 
         assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 204
 
         assert _last_edit_of(row) is None
 
     def test_bulk_purge_and_emptying_the_bin_remove_the_records(
-        self, case, admin_client, superadmin_in_acme, acme
+        self, case, acme_admin_client, superadmin_in_acme, acme
     ):
         selected = _make(case, acme, suffix="-selected")
         rest = _make(case, acme, suffix="-rest")
         for row in (selected, rest):
-            admin_client.delete(f"{case.url}{row.pk}/")
+            acme_admin_client.delete(f"{case.url}{row.pk}/")
 
         by_id = superadmin_in_acme.post(
             f"{case.url}recycle-bin/purge/", {"ids": [selected.pk]}, format="json"
@@ -190,20 +177,20 @@ class TestEveryBinResource:
         assert _last_edit_of(selected) is None
         assert _last_edit_of(rest) is None
 
-    def test_an_item_binned_without_a_record_shows_null(self, case, admin_client, author, acme):
+    def test_an_item_binned_without_a_record_shows_null(self, case, acme_admin_client, author, acme):
         # Items binned before deleters were recorded: a last edit from before the
         # delete names an editor, not the deleter.
         row = _make(case, acme)
         record_last_edit(row, author, edited_at=EDITED_BEFORE)
         row.delete()
 
-        assert _authorship_lines(_bin(admin_client, case.url)[0]) == [
+        assert _authorship_lines(_bin(acme_admin_client, case.url)[0]) == [
             _user_line(CREATED_BY, None),
             _user_line(DELETED_BY, None),
         ]
 
     def test_another_orgs_restore_or_purge_leaves_the_record(
-        self, case, client_as, django_user_model, beta, role_org_admin, admin_client, superadmin_in_acme
+        self, case, client_as, django_user_model, beta, role_org_admin, acme_admin_client, superadmin_in_acme
     ):
         beta_admin = django_user_model.objects.create_user(
             email="bin-beta-admin@example.com", password="StrongPass123!"
@@ -212,26 +199,26 @@ class TestEveryBinResource:
         row = _make(case, beta)
         _client_in(client_as, beta_admin, beta).delete(f"{case.url}{row.pk}/")
 
-        assert admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
+        assert acme_admin_client.post(f"{case.url}{row.pk}/restore/").status_code == 404
         assert superadmin_in_acme.delete(f"{case.url}{row.pk}/purge/").status_code == 404
-        assert _bin(admin_client, case.url) == []
+        assert _bin(acme_admin_client, case.url) == []
         assert _deleter_id(row) == beta_admin.pk
 
 
-def test_restore_shows_the_deleter_as_last_editor(admin_client, admin_acme, author, acme):
+def test_restore_shows_the_deleter_as_last_editor(acme_admin_client, admin_acme, author, acme):
     graph = Graph.objects.create(org=acme, name="Comes back")
     record_last_edit(graph, author, edited_at=EDITED_BEFORE)
-    admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
+    acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
-    admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
+    acme_admin_client.post(f"{FLOWS_URL}{graph.pk}/restore/")
 
-    response = admin_client.get(f"{FLOWS_URL}{graph.pk}/")
+    response = acme_admin_client.get(f"{FLOWS_URL}{graph.pk}/")
     assert response.json()["last_edited_by"] == expected_user_summary(admin_acme)
 
 
-def test_emptying_every_bin_removes_the_records(admin_client, superadmin_in_acme, acme):
+def test_emptying_every_bin_removes_the_records(acme_admin_client, superadmin_in_acme, acme):
     graph = Graph.objects.create(org=acme, name="Emptied")
-    admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
+    acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
     response = superadmin_in_acme.post("/api/recycle-bin/empty/")
 
@@ -239,9 +226,9 @@ def test_emptying_every_bin_removes_the_records(admin_client, superadmin_in_acme
     assert _last_edit_of(graph) is None
 
 
-def test_the_scheduled_purge_removes_the_record(admin_client, acme):
+def test_the_scheduled_purge_removes_the_record(acme_admin_client, acme):
     graph = Graph.objects.create(org=acme, name="Expired")
-    admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
+    acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
     PurgeService.purge_expired(now=timezone.now() + timedelta(days=8))
 
@@ -249,7 +236,7 @@ def test_the_scheduled_purge_removes_the_record(admin_client, acme):
     assert _last_edit_of(graph) is None
 
 
-def test_a_delete_without_a_person_records_no_deleter(issue_api_key, author, acme, admin_client):
+def test_a_delete_without_a_person_records_no_deleter(issue_api_key, author, acme, acme_admin_client):
     graph = Graph.objects.create(org=acme, name="System deleted")
     record_last_edit(graph, author, edited_at=EDITED_BEFORE)
     raw_key, _ = issue_api_key(user=None)
@@ -259,7 +246,7 @@ def test_a_delete_without_a_person_records_no_deleter(issue_api_key, author, acm
     assert system_client.delete(f"{FLOWS_URL}{graph.pk}/").status_code == 204
 
     assert _deleter_id(graph) is None
-    assert _authorship_lines(_bin(admin_client, FLOWS_URL)[0])[1] == _user_line(DELETED_BY, None)
+    assert _authorship_lines(_bin(acme_admin_client, FLOWS_URL)[0])[1] == _user_line(DELETED_BY, None)
 
 
 def test_a_management_command_delete_replaces_the_previous_editor(author, acme):
@@ -286,11 +273,11 @@ def test_a_built_in_tool_records_no_deleter(admin_acme):
 
 
 def test_deleting_an_already_binned_item_keeps_the_first_record(
-    admin_client, admin_acme, second_admin, acme
+    acme_admin_client, admin_acme, second_admin, acme
 ):
     graph = Graph.objects.create(org=acme, name="Twice")
     stale_copy = Graph.objects.get(pk=graph.pk)
-    admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
+    acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
     first = _last_edit_of(graph)
 
     assert move_to_recycle_bin(stale_copy, second_admin) is None
@@ -299,20 +286,20 @@ def test_deleting_an_already_binned_item_keeps_the_first_record(
     assert (again.edited_by_id, again.edited_at) == (admin_acme.pk, first.edited_at)
 
 
-def test_a_deleted_user_shows_as_null(client_as, second_admin, admin_client, acme):
+def test_a_deleted_user_shows_as_null(client_as, second_admin, acme_admin_client, acme):
     graph = Graph.objects.create(org=acme, name="Orphaned", created_by=second_admin)
     _client_in(client_as, second_admin, acme).delete(f"{FLOWS_URL}{graph.pk}/")
 
     second_admin.delete()
 
-    assert _authorship_lines(_bin(admin_client, FLOWS_URL)[0]) == [
+    assert _authorship_lines(_bin(acme_admin_client, FLOWS_URL)[0]) == [
         _user_line(CREATED_BY, None),
         _user_line(DELETED_BY, None),
     ]
 
 
 def test_a_deleter_who_left_the_org_shows_as_null(
-    client_as, second_admin, superadmin, admin_client, acme
+    client_as, second_admin, superadmin, acme_admin_client, acme
 ):
     graph = Graph.objects.create(org=acme, name="Left behind", created_by=second_admin)
     _client_in(client_as, second_admin, acme).delete(f"{FLOWS_URL}{graph.pk}/")
@@ -321,7 +308,7 @@ def test_a_deleter_who_left_the_org_shows_as_null(
     MembershipManagementService().remove_member(superadmin, membership.pk)
 
     assert _deleter_id(graph) is None
-    assert _authorship_lines(_bin(admin_client, FLOWS_URL)[0]) == [
+    assert _authorship_lines(_bin(acme_admin_client, FLOWS_URL)[0]) == [
         _user_line(CREATED_BY, None),
         _user_line(DELETED_BY, None),
     ]
@@ -360,20 +347,20 @@ def test_losing_superadmin_releases_deleters_outside_memberships(superadmin, acm
     assert _deleter_id(graph) is None
 
 
-def test_avatar_urls_are_absolute(admin_client, admin_acme, acme):
+def test_avatar_urls_are_absolute(acme_admin_client, admin_acme, acme):
     admin_acme.avatar = "avatars/admin.png"
     admin_acme.save(update_fields=["avatar"])
     graph = Graph.objects.create(org=acme, name="Pictured", created_by=admin_acme)
-    admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
+    acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
-    lines = _authorship_lines(_bin(admin_client, FLOWS_URL)[0])
+    lines = _authorship_lines(_bin(acme_admin_client, FLOWS_URL)[0])
 
     for line in lines:
         assert line["value"]["avatar_url"].startswith("http://testserver/")
 
 
 def test_a_surface_deleted_with_its_agent_shows_the_agents_deleter(
-    admin_client, admin_acme, author, acme
+    acme_admin_client, admin_acme, author, acme
 ):
     agent = AgentDefinition.objects.create(
         org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
@@ -381,17 +368,17 @@ def test_a_surface_deleted_with_its_agent_shows_the_agents_deleter(
     surface = Surface.objects.create(org=acme, name="Owned", owner_agent=agent)
     record_last_edit(surface, author, edited_at=EDITED_BEFORE)
 
-    admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+    acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
     # Only the item the user picked records the deletion; the surface keeps its editor.
     assert _last_edit_of(surface).edited_by_id == author.pk
-    entry = _bin(admin_client, SURFACES_URL)[0]
+    entry = _bin(acme_admin_client, SURFACES_URL)[0]
     assert entry["id"] == surface.pk
     assert _authorship_lines(entry)[1] == _user_line(DELETED_BY, admin_acme)
 
 
 def test_a_surface_deleted_before_its_agent_keeps_its_own_deleter(
-    admin_client, client_as, second_admin, acme
+    acme_admin_client, client_as, second_admin, acme
 ):
     agent = AgentDefinition.objects.create(
         org=acme, name="Owner", instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
@@ -399,9 +386,9 @@ def test_a_surface_deleted_before_its_agent_keeps_its_own_deleter(
     surface = Surface.objects.create(org=acme, name="Owned", owner_agent=agent)
     _client_in(client_as, second_admin, acme).delete(f"{SURFACES_URL}{surface.pk}/")
 
-    admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
+    acme_admin_client.delete(f"{AGENTS_URL}{agent.pk}/")
 
-    entry = _bin(admin_client, SURFACES_URL)[0]
+    entry = _bin(acme_admin_client, SURFACES_URL)[0]
     assert _authorship_lines(entry)[1] == _user_line(DELETED_BY, second_admin)
 
 
@@ -410,7 +397,7 @@ def _make_tool(org, name):
     return PythonCodeTool.objects.create(name=name, description="d", python_code=code, org=org)
 
 
-def test_bulk_deletes_record_the_request_user(admin_client, admin_acme, acme):
+def test_bulk_deletes_record_the_request_user(acme_admin_client, admin_acme, acme):
     python_tool = _make_tool(acme, "Bulk python")
     mcp_tool = McpTool.objects.create(
         name="Bulk mcp", org=acme, transport="https://example.com/mcp", tool_name="t"
@@ -418,9 +405,9 @@ def test_bulk_deletes_record_the_request_user(admin_client, admin_acme, acme):
     collection = CASES[[case.key for case in CASES].index("collection")].make(acme, "Bulk docs")
 
     responses = [
-        admin_client.post("/api/python-code-tool/bulk-delete/", {"ids": [python_tool.pk]}, format="json"),
-        admin_client.post("/api/mcp-tools/bulk-delete/", {"ids": [mcp_tool.pk]}, format="json"),
-        admin_client.post(
+        acme_admin_client.post("/api/python-code-tool/bulk-delete/", {"ids": [python_tool.pk]}, format="json"),
+        acme_admin_client.post("/api/mcp-tools/bulk-delete/", {"ids": [mcp_tool.pk]}, format="json"),
+        acme_admin_client.post(
             "/api/source-collections/bulk-delete/",
             {"collection_ids": [collection.pk]},
             format="json",
@@ -433,7 +420,7 @@ def test_bulk_deletes_record_the_request_user(admin_client, admin_acme, acme):
 
 
 def test_the_list_reads_users_once_whatever_the_number_of_entries(
-    admin_client, django_user_model, acme, role_org_admin, client_as, django_assert_num_queries
+    acme_admin_client, django_user_model, acme, role_org_admin, client_as, django_assert_num_queries
 ):
     def bin_graphs(count, offset):
         for index in range(count):
@@ -445,15 +432,15 @@ def test_the_list_reads_users_once_whatever_the_number_of_entries(
             _client_in(client_as, user, acme).delete(f"{FLOWS_URL}{graph.pk}/")
 
     bin_graphs(1, offset=0)
-    _bin(admin_client, FLOWS_URL)  # warms the per-process caches (content types, roles)
+    _bin(acme_admin_client, FLOWS_URL)  # warms the per-process caches (content types, roles)
     with CaptureQueriesContext(connection) as one_entry:
-        _bin(admin_client, FLOWS_URL)
+        _bin(acme_admin_client, FLOWS_URL)
     # captured_queries reads the connection's log when accessed: count before more queries run.
     one_entry_queries = len(one_entry.captured_queries)
     bin_graphs(4, offset=1)
 
     with django_assert_num_queries(one_entry_queries):
-        entries = _bin(admin_client, FLOWS_URL)
+        entries = _bin(acme_admin_client, FLOWS_URL)
 
     assert len(entries) == 5
     assert all(entry["details"][1]["value"] is not None for entry in entries)
@@ -461,12 +448,12 @@ def test_the_list_reads_users_once_whatever_the_number_of_entries(
 
 class TestStorageBin:
     def test_delete_records_the_request_user_and_both_lines_come_first(
-        self, admin_client, admin_acme, author, real_manager, acme
+        self, acme_admin_client, admin_acme, author, real_manager, acme
     ):
         seed_file(real_manager._backend, acme.id, "docs/a.txt", b"a")
         StorageFile.objects.filter(org=acme).update(created_by=author)
 
-        response = admin_client.delete("/api/storage/delete/", {"paths": ["docs/"]}, format="json")
+        response = acme_admin_client.delete("/api/storage/delete/", {"paths": ["docs/"]}, format="json")
 
         assert response.status_code == 204, response.content
         folder = StorageFile.deleted_objects.get(org=acme, path="docs/")
@@ -474,24 +461,24 @@ class TestStorageBin:
         assert _deleter_id(folder) == admin_acme.pk
         # Deleted with its folder, not an entry: no deletion recorded on it.
         assert _last_edit_of(file_row) is None
-        entry = admin_client.get(STORAGE_BIN_URL).json()["results"][0]
+        entry = acme_admin_client.get(STORAGE_BIN_URL).json()["results"][0]
         assert entry["details"][:2] == [
             _user_line(CREATED_BY, author),
             _user_line(DELETED_BY, admin_acme),
         ]
 
     def test_restore_keeps_the_deleter_and_purge_removes_it(
-        self, admin_client, superadmin_in_acme, admin_acme, real_manager, acme
+        self, acme_admin_client, superadmin_in_acme, admin_acme, real_manager, acme
     ):
         for path in ("keep.txt", "drop.txt"):
             seed_file(real_manager._backend, acme.id, path, b"x")
-        admin_client.delete(
+        acme_admin_client.delete(
             "/api/storage/delete/", {"paths": ["keep.txt", "drop.txt"]}, format="json"
         )
         kept = StorageFile.deleted_objects.get(org=acme, path="keep.txt")
         dropped = StorageFile.deleted_objects.get(org=acme, path="drop.txt")
 
-        restored = admin_client.post(f"{STORAGE_BIN_URL}restore/", {"ids": [kept.pk]}, format="json")
+        restored = acme_admin_client.post(f"{STORAGE_BIN_URL}restore/", {"ids": [kept.pk]}, format="json")
         purged = superadmin_in_acme.post(
             f"{STORAGE_BIN_URL}purge/", {"ids": [dropped.pk]}, format="json"
         )
@@ -500,12 +487,12 @@ class TestStorageBin:
         assert _last_edit_of(kept).edited_by_id == admin_acme.pk
         assert _last_edit_of(dropped) is None
 
-    def test_a_file_binned_without_a_record_shows_null(self, admin_client, real_manager, acme):
+    def test_a_file_binned_without_a_record_shows_null(self, acme_admin_client, real_manager, acme):
         seed_file(real_manager._backend, acme.id, "old.txt", b"x")
         real_manager.delete(acme.id, "old.txt", user=None)
         row = StorageFile.deleted_objects.get(org=acme, path="old.txt")
         _last_edit_of(row).delete()
 
-        entry = admin_client.get(STORAGE_BIN_URL).json()["results"][0]
+        entry = acme_admin_client.get(STORAGE_BIN_URL).json()["results"][0]
 
         assert entry["details"][:2] == [_user_line(CREATED_BY, None), _user_line(DELETED_BY, None)]

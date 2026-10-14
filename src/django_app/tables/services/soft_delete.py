@@ -228,9 +228,12 @@ class _DeleteContext:
         not obj.delete(), because obj.delete() may be
         overridden by SoftDeleteFields.
 
-        Its reverse relations were walked already; the only rows of other
-        models Django's Collector still changes are the M2M links pointing at
-        `obj`, so those are checked against the root's organization first.
+        Its reverse relations were walked already, so what Django's Collector
+        still removes is `obj`'s own M2M links, its ResourceLastEdit rows and
+        the M2M links pointing at `obj` from other rows. The first two describe
+        `obj` itself and are in its organization; only the incoming links can
+        come from another organization's row, so those are checked against the
+        root's organization first.
         """
         for relation in self._incoming_auto_m2m_relations(obj):
             field = relation.field

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from django.db import transaction
+from django.db import router, transaction
 from django.db.models import (
     BigIntegerField,
     Case,
@@ -19,15 +19,18 @@ from django.db.models import (
     Sum,
     When,
 )
+from django.db.models.deletion import Collector
 from django.db.models.functions import Coalesce
 from rbac.models import Organization
 from rest_framework.exceptions import APIException
 from tables.exceptions import (
+    CrossOrgCascadeError,
     NotInRecycleBinError,
     StorageQuotaExceeded,
     StorageRestoreConflictError,
 )
 from tables.models import StorageFile
+from tables.services.cascade_org_guard import CascadeOrgGuard
 from tables.services.recycle_bin.authorship import BinEntryAuthorship, authorship_details
 from tables.services.recycle_bin.bin_contents_service import CONTENTS_LIMIT, SHOW_ALL_LIMIT
 from tables.services.recycle_bin.bin_service import RecycleBinService
@@ -399,6 +402,8 @@ class StorageRecycleBinService:
 
         Raises:
             NotInRecycleBinError: `row_id` isn't in this org's bin.
+            CrossOrgCascadeError: the delete would reach another organization's row
+                (a flow or surface of another org linked to the file); nothing is purged.
         """
         with transaction.atomic():
             batch_rows, root = self._lock_batch_of(org_id, row_id)
@@ -408,7 +413,7 @@ class StorageRecycleBinService:
                 if root.item_type == "folder"
                 else [root.pk]
             )
-            StorageFile.all_objects.filter(pk__in=doomed).delete()
+            self._checked_collector(org_id, doomed, f"storage entry {row_id}").delete()
             if len(doomed) == len(batch_rows):
                 self._manager.delete_trash_batch(org_id, batch)
             else:
@@ -427,7 +432,12 @@ class StorageRecycleBinService:
     def purge_expired_batch(
         self, org_id: int, batch: uuid.UUID, cutoff: datetime, *, actor: str
     ) -> int:
-        """Purge a whole batch binned before `cutoff`. Returns the rows purged, 0 if any row is locked."""
+        """Purge a whole batch binned before `cutoff`. Returns the rows purged, 0 if any row is locked.
+
+        Raises:
+            CrossOrgCascadeError: the delete would reach another organization's row;
+                the batch stays in the bin.
+        """
         with transaction.atomic():
             batch_rows = StorageFile.deleted_objects.filter(org_id=org_id, soft_delete_batch=batch)
             locked = list(
@@ -439,7 +449,7 @@ class StorageRecycleBinService:
             # restore or a user purge holds some of them. Skip; retry next run.
             if not locked or len(locked) != batch_rows.count():
                 return 0
-            StorageFile.all_objects.filter(pk__in=locked).delete()
+            self._checked_collector(org_id, locked, f"storage batch {batch}").delete()
             self._manager.delete_trash_batch(org_id, batch)
 
         logger.info(
@@ -465,6 +475,10 @@ class StorageRecycleBinService:
         record_files_within_quota), so writers of one org pick and use freed bytes one
         at a time; the rows picked are locked too, against a user or retention purge.
 
+        An entry whose delete would reach another organization's row (see
+        CascadeOrgGuard) is logged and kept, and the next oldest entries are picked in
+        its place.
+
         Rows are deleted now, their trash objects only once the transaction commits. A
         rollback then leaves every binned row with its objects, and an object delete that
         fails after the commit leaves only trash nothing points at, which is logged.
@@ -472,10 +486,72 @@ class StorageRecycleBinService:
         the write) as the manual purge logs it.
 
         Raises:
-            StorageQuotaExceeded: the whole bin frees less than `needed_bytes`; nothing is purged.
+            StorageQuotaExceeded: the whole bin, minus the entries kept, frees less than
+                `needed_bytes`; nothing is purged.
         """
-        # (pk, batch) of each top-level entry picked.
-        chosen = self._oldest_entries_freeing(org_id, needed_bytes)
+        refused: set[int] = set()
+        while True:
+            entries, rows_by_batch = self._lock_entries_freeing(org_id, needed_bytes, refused)
+            doomed_ids = [row.pk for _, entry_rows in entries for row in entry_rows]
+            try:
+                # Quiet: on a refusal each entry is checked on its own, which logs it.
+                collector = self._checked_collector(
+                    org_id,
+                    doomed_ids,
+                    f"{len(entries)} storage bin entries",
+                    log_refusal=False,
+                )
+                break
+            except CrossOrgCascadeError:
+                newly_refused = self._refused_entries(org_id, entries)
+                if not newly_refused:
+                    # Refused together, though no entry is on its own: the quiet check
+                    # logged nothing, so this is the only trace of the 409.
+                    logger.error(
+                        "Refused to delete {model} {ids} of org {org_id} to make room: "
+                        "the entries together reach another organization's row, "
+                        "though none does on its own",
+                        model=StorageFile.__name__,
+                        ids=sorted(doomed_ids),
+                        org_id=org_id,
+                    )
+                    raise
+                refused |= newly_refused
+
+        purged = [
+            PurgedBinEntry(name=root.path, size=sum(row.size or 0 for row in entry_rows))
+            for root, entry_rows in entries
+        ]
+        doomed_in_batch: dict[uuid.UUID, int] = defaultdict(int)
+        for root, entry_rows in entries:
+            doomed_in_batch[root.soft_delete_batch] += len(entry_rows)
+        # A batch left with no rows goes with its whole trash prefix, as in purge().
+        emptied = {
+            batch for batch, count in doomed_in_batch.items() if count == len(rows_by_batch[batch])
+        }
+        trash: list[tuple[uuid.UUID, str | None]] = [
+            (root.soft_delete_batch, root.path)
+            for root, _ in entries
+            if root.soft_delete_batch not in emptied
+        ]
+        trash += [(batch, None) for batch in emptied]
+
+        collector.delete()
+        transaction.on_commit(lambda: self._finish_quota_purge(org_id, purged, trash, actor))
+        return purged
+
+    def _lock_entries_freeing(
+        self, org_id: int, needed_bytes: int, skipped: set[int]
+    ) -> tuple[list[tuple[StorageFile, list[StorageFile]]], dict[uuid.UUID, list[StorageFile]]]:
+        """Pick and lock the oldest entries freeing `needed_bytes`, leaving out the `skipped` ones.
+
+        Returns each entry's top-level row with the rows its purge deletes, and every
+        locked row of the batches picked, by batch.
+
+        Raises:
+            StorageQuotaExceeded: the bin, minus `skipped`, frees less.
+        """
+        chosen = self._oldest_entries_freeing(org_id, needed_bytes, skipped)
         rows_by_batch: dict[uuid.UUID, list[StorageFile]] = defaultdict(list)
         # One ordered statement, as _lock_batch_of locks a batch: no lock-order deadlock.
         for row in (
@@ -485,10 +561,7 @@ class StorageRecycleBinService:
         ):
             rows_by_batch[row.soft_delete_batch].append(row)
 
-        purged: list[PurgedBinEntry] = []
-        doomed_ids: list[int] = []
-        trash: list[tuple[uuid.UUID, str | None]] = []
-        doomed_in_batch: dict[uuid.UUID, int] = defaultdict(int)
+        entries: list[tuple[StorageFile, list[StorageFile]]] = []
         for entry_id, batch in chosen:
             batch_rows = rows_by_batch[batch]
             root = next((row for row in batch_rows if row.pk == entry_id), None)
@@ -499,29 +572,54 @@ class StorageRecycleBinService:
                 if root.item_type == "folder"
                 else [root]
             )
-            doomed_ids += [row.pk for row in entry_rows]
-            doomed_in_batch[batch] += len(entry_rows)
-            purged.append(
-                PurgedBinEntry(name=root.path, size=sum(row.size or 0 for row in entry_rows))
-            )
-            trash.append((batch, root.path))
-        # A batch left with no rows goes with its whole trash prefix, as in purge().
-        emptied = {
-            batch for batch, count in doomed_in_batch.items() if count == len(rows_by_batch[batch])
-        }
-        trash = [(batch, path) for batch, path in trash if batch not in emptied]
-        trash += [(batch, None) for batch in emptied]
+            entries.append((root, entry_rows))
+        return entries, rows_by_batch
 
-        StorageFile.all_objects.filter(pk__in=doomed_ids).delete()
-        transaction.on_commit(lambda: self._finish_quota_purge(org_id, purged, trash, actor))
-        return purged
+    def _refused_entries(
+        self, org_id: int, entries: list[tuple[StorageFile, list[StorageFile]]]
+    ) -> set[int]:
+        """Ids of the entries whose delete the guard refuses, each refusal logged once."""
+        refused: set[int] = set()
+        for root, entry_rows in entries:
+            try:
+                self._checked_collector(
+                    org_id, [row.pk for row in entry_rows], f"storage entry {root.pk}"
+                )
+            except CrossOrgCascadeError:
+                refused.add(root.pk)
+        return refused
+
+    @staticmethod
+    def _checked_collector(
+        org_id: int, pks: list[int], description: str, *, log_refusal: bool = True
+    ) -> Collector:
+        """Collect what deleting the storage rows `pks` of `org_id` changes, checked by the guard.
+
+        What QuerySet.delete() does, with the collected rows checked before anything
+        is deleted: a file linked to another organization's flow or surface would take
+        that link row with it (GraphStorageFile and SurfaceStorageItem cascade from
+        StorageFile). Call delete() on the result to delete.
+
+        Raises:
+            CrossOrgCascadeError: the delete would change another organization's row.
+        """
+        using = router.db_for_write(StorageFile)
+        rows = StorageFile.all_objects.using(using).filter(pk__in=pks)
+        collector = Collector(using=using, origin=rows)
+        collector.collect(rows)
+        CascadeOrgGuard(org_id, description, using, log_refusal=log_refusal).check_collected(
+            collector
+        )
+        return collector
 
     @classmethod
-    def _oldest_entries_freeing(cls, org_id: int, needed_bytes: int) -> list[tuple[int, uuid.UUID]]:
+    def _oldest_entries_freeing(
+        cls, org_id: int, needed_bytes: int, skipped: set[int]
+    ) -> list[tuple[int, uuid.UUID]]:
         """(pk, batch) of the fewest oldest top-level entries freeing `needed_bytes`, read unlocked.
 
         Raises:
-            StorageQuotaExceeded: the whole bin frees less.
+            StorageQuotaExceeded: the whole bin, minus the `skipped` entries, frees less.
         """
         deleted_with_folder = (
             StorageFile.deleted_objects.filter(
@@ -536,6 +634,7 @@ class StorageRecycleBinService:
         )
         entries = (
             cls.top_level(org_id)
+            .exclude(pk__in=skipped)
             .annotate(
                 freed=Case(
                     When(item_type="folder", then=Coalesce(Subquery(deleted_with_folder), 0)),

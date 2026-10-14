@@ -8,7 +8,6 @@ import {
     output,
     signal,
     TemplateRef,
-    untracked,
 } from '@angular/core';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
@@ -85,8 +84,6 @@ export class FlowNodeListComponent<T extends NodeListItem = FlowNodeListItem> {
      * gets a chevron, and its branch starts collapsed. A search shows every match, collapsed or not.
      */
     public readonly tree = input<boolean>(false);
-    /** The search the list starts with each time it opens (a host search that matched inside it). */
-    public readonly presetSearch = input<string>('');
 
     /** The "and N more" line becomes a "Show all" button; the host loads the rest. */
     public readonly showAll = input<boolean>(false);
@@ -118,7 +115,7 @@ export class FlowNodeListComponent<T extends NodeListItem = FlowNodeListItem> {
         return items;
     });
 
-    /** Hidden for a single item only while it's empty: a preset search must stay clearable. */
+    /** Hidden for a single item only while it's empty: text typed before the list shrank must stay clearable. */
     public readonly showSearch = computed(
         () => !this.hideSingleItemSearch() || this.nodes().length + this.moreCount() > 1 || this.searchTerm() !== ''
     );
@@ -180,9 +177,7 @@ export class FlowNodeListComponent<T extends NodeListItem = FlowNodeListItem> {
     constructor() {
         effect(() => {
             if (this.expanded()) {
-                // Read only when the list opens: a later change of the host's search mustn't wipe what
-                // the user did inside an open list.
-                this.searchTerm.set(untracked(() => this.presetSearch()));
+                this.searchTerm.set('');
                 this.nodeTypeFilter.set(null);
                 this.openBranches.set(new Set());
             }

@@ -4,19 +4,36 @@ agent's own surfaces, a surface's tools and sources, a collection's documents.
 The machinery only: what each resource shows is its BinPresentation, in presentation.py.
 """
 
+import operator
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import reduce
 
-from django.db.models import Count, F, Model, Window
-from django.db.models.functions import RowNumber
+from django.db.models import (
+    Count,
+    Expression,
+    F,
+    IntegerField,
+    Model,
+    OuterRef,
+    QuerySet,
+    Subquery,
+    Value,
+    Window,
+)
+from django.db.models.functions import Coalesce, RowNumber
 from rbac.authorship.policy import AUTHOR_FIELD, has_author_field
 from tables.services.recycle_bin.authorship import (
     BinEntryAuthorship,
     DeletedWith,
     authorship_details,
 )
-from tables.services.recycle_bin.bin_service import RecycleBinEntry, RecycleBinService
+from tables.services.recycle_bin.bin_service import (
+    DEFAULT_ENTRY_ORDERING,
+    RecycleBinEntry,
+    RecycleBinService,
+)
 from tables.services.recycle_bin.presentation import (
     BinContent,
     BinDetail,
@@ -30,6 +47,11 @@ from tables.services.recycle_bin.registry import BinResource
 CONTENTS_LIMIT = 100
 # "Show all" sends at most this many; a bigger folder or flow says how many more there are.
 SHOW_ALL_LIMIT = 5000
+# The list's `contents` filter: rows whose restore brings back something, or nothing.
+CONTENTS_FILTERS: dict[str, dict[str, int]] = {
+    "some": {"contents_count__gt": 0},
+    "none": {"contents_count": 0},
+}
 
 
 @dataclass(frozen=True)
@@ -41,14 +63,44 @@ class RecycleBinEntryWithContents(RecycleBinEntry):
 
 class BinContentsService:
     @classmethod
-    def entries(
-        cls, resource: BinResource, presentation: BinPresentation, org_id: int, *, request=None
+    def entry_rows(
+        cls,
+        resource: BinResource,
+        presentation: BinPresentation,
+        org_id: int,
+        *,
+        search: str = "",
+        ordering: str = DEFAULT_ENTRY_ORDERING,
+        contents: str = "",
+    ) -> QuerySet:
+        """The org's bin rows for `resource`, filtered and sorted; pass a page of it to to_entries.
+
+        `contents` is "some" or "none" to keep only the rows whose restore brings back
+        something, or nothing (the count to_entries sends as `contents_total`); anything
+        else keeps every row. `search` and `ordering` are RecycleBinService.entry_rows'.
+        """
+        binned = RecycleBinService.binned(resource, org_id)
+        if contents in CONTENTS_FILTERS:
+            binned = binned.annotate(
+                contents_count=cls._contents_count(presentation.content_sources)
+            ).filter(**CONTENTS_FILTERS[contents])
+        return RecycleBinService.entry_rows(resource, binned, search=search, ordering=ordering)
+
+    @classmethod
+    def to_entries(
+        cls,
+        resource: BinResource,
+        presentation: BinPresentation,
+        org_id: int,
+        rows,
+        *,
+        request=None,
     ) -> list[RecycleBinEntryWithContents]:
-        """The org's bin entries for `resource`, newest first, each with what its restore brings back.
+        """Entries for a page of entry_rows, each with what its restore brings back.
 
         `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
         """
-        entries = RecycleBinService.entries(resource, org_id)
+        entries = RecycleBinService.to_entries(rows)
         batch_by_parent = {entry.id: entry.batch for entry in entries}
         contents, totals = cls._contents(
             presentation.content_sources,
@@ -83,6 +135,32 @@ class BinContentsService:
             limit=SHOW_ALL_LIMIT,
         )
         return contents.get(root.pk, []), totals.get(root.pk, 0)
+
+    @staticmethod
+    def _contents_count(sources: tuple[ContentSource, ...]) -> Expression:
+        """Per bin row, in SQL, how many rows its restore brings back: `_contents`' totals.
+
+        One correlated count per source, of the rows binned in the entry's own batch.
+        0 for a resource with nothing inside.
+        """
+        counts = [
+            Coalesce(
+                Subquery(
+                    source.model.deleted_objects.filter(
+                        **{source.parent_field: OuterRef("pk")},
+                        soft_delete_batch=OuterRef("soft_delete_batch"),
+                    )
+                    .order_by()
+                    .values(source.parent_field)
+                    .annotate(count=Count("pk"))
+                    .values("count"),
+                    output_field=IntegerField(),
+                ),
+                0,
+            )
+            for source in sources
+        ]
+        return reduce(operator.add, counts, Value(0, output_field=IntegerField()))
 
     @staticmethod
     def _contents(

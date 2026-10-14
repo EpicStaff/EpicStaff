@@ -293,6 +293,22 @@ describe('RecycleBinTableComponent', () => {
         expect(element.querySelector('app-pagination-controls')).not.toBeNull();
     });
 
+    it('starts another page at the top of the table', () => {
+        const element = render({ page: { current: 1, size: 50, totalCount: 120 } });
+        const wrapper = element.querySelector<HTMLElement>('.table-wrapper')!;
+        // jsdom has no layout, so scrollTop needs a value it keeps.
+        let scrollTop = 300;
+        Object.defineProperty(wrapper, 'scrollTop', {
+            get: () => scrollTop,
+            set: (value: number) => (scrollTop = value),
+        });
+
+        fixture.componentRef.setInput('page', { current: 2, size: 50, totalCount: 120 });
+        fixture.detectChanges();
+
+        expect(wrapper.scrollTop).toBe(0);
+    });
+
     it('offers "Show all" when the backend listed only part of the contents, and asks for the rest', () => {
         const folder = binItem({
             key: 'storage-9',
@@ -315,33 +331,6 @@ describe('RecycleBinTableComponent', () => {
     it('has no "more" line when every content is listed', () => {
         const element = renderOpen({});
         expect(element.querySelector('.flow-node-list__more')).toBeNull();
-    });
-
-    it('filters an opened row by the tab search only when the match is inside it', () => {
-        const byName = binItem({
-            key: 'flow-1',
-            displayName: 'Marketing flow',
-            contents: [{ name: 'Start', nodeType: 'start' }],
-            contentsTotal: 1,
-        });
-        const byContent = binItem({
-            key: 'flow-2',
-            displayName: 'Nightly',
-            contents: [
-                { name: 'Send marketing mail', nodeType: 'task' },
-                { name: 'Archive', nodeType: 'task' },
-            ],
-            contentsTotal: 2,
-        });
-        const element = render({ items: [byName, byContent], searchTerm: 'marketing' });
-        element.querySelectorAll<HTMLButtonElement>('button.bin-name').forEach((button) => button.click());
-        fixture.detectChanges();
-
-        const lists = element.querySelectorAll('app-flow-node-list');
-        const names = (list: Element): string[] =>
-            Array.from(list.querySelectorAll('.flow-node-list__node-name'), (name) => name.textContent?.trim() ?? '');
-        expect(names(lists[0])).toEqual(['Start']);
-        expect(names(lists[1])).toEqual(['Send marketing mail']);
     });
 
     it('stops offering "Show all" once a row holds the most it can load', () => {
@@ -855,6 +844,8 @@ describe('RecycleBinTableComponent', () => {
 
         const trigger = element.querySelector('.col-label--filter');
         expect(trigger?.textContent).toContain('Kind');
+        expect(trigger?.textContent).not.toContain('Kind:');
+        expect(trigger?.hasAttribute('aria-label')).toBe(false);
         expect(trigger?.textContent).toContain('(1)');
         expect(trigger?.querySelector('app-svg-icon')).not.toBeNull();
 
@@ -866,6 +857,62 @@ describe('RecycleBinTableComponent', () => {
         ]);
         select.componentInstance.changed.emit(null);
         expect(changed).toHaveBeenCalledWith(null);
+    });
+
+    describe('Kind switch', () => {
+        const TOOL_BINS = [
+            { name: 'Python tools', value: 'python_tool' },
+            { name: 'MCP tools', value: 'mcp_tool' },
+        ];
+
+        it('offers only the bins, with no "All", and never marks the header as filtered', () => {
+            const element = render({
+                showKind: true,
+                kindOptions: TOOL_BINS,
+                kindFilter: 'mcp_tool',
+                kindSwitch: true,
+            });
+
+            const trigger = element.querySelector('.col-label--filter');
+            expect(trigger?.textContent?.trim()).toBe('MCP tools');
+            expect(trigger?.getAttribute('aria-label')).toBe('Showing MCP tools. Choose which kind to show');
+            expect(trigger?.textContent).not.toContain('(1)');
+            expect(trigger?.classList).not.toContain('col-label--filter--active');
+            const select = fixture.debugElement.query(By.directive(SelectComponent));
+            expect(select.componentInstance.items().map((item: { name: string }) => item.name)).toEqual([
+                'Python tools',
+                'MCP tools',
+            ]);
+        });
+
+        it('keeps the table on an empty bin and names it, instead of "The recycle bin is empty"', () => {
+            const element = render({
+                items: [],
+                showKind: true,
+                kindOptions: TOOL_BINS,
+                kindFilter: 'python_tool',
+                kindSwitch: true,
+            });
+
+            expect(element.textContent).not.toContain('The recycle bin is empty');
+            expect(element.querySelector('.table-header .col-label--filter')).not.toBeNull();
+            expect(element.querySelector('.bin-no-results')?.textContent?.trim()).toBe('No deleted Python tools.');
+        });
+
+        it('says nothing matched when a search empties the bin shown', () => {
+            const element = render({
+                items: [],
+                filtered: true,
+                showKind: true,
+                kindOptions: TOOL_BINS,
+                kindFilter: 'python_tool',
+                kindSwitch: true,
+            });
+
+            expect(element.querySelector('.bin-no-results')?.textContent?.trim()).toBe(
+                'No items match the current search or filters.'
+            );
+        });
     });
 
     it('shows the count column with a range filter and no sort control', () => {

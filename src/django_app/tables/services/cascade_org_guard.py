@@ -16,6 +16,11 @@ off: it isn't one organization's delete.
 
 A delete of many roots at once (the retention job's sweep of expired rows)
 splits them by organization with `per_org`, so each row is held to its own.
+
+A refusal is logged with the row it reaches and both organizations; the error
+the caller gets names neither. A caller that tries many rows at once and then
+retries them one by one to find the refused one turns the log off for the first
+try (`log_refusal=False`), so each refused row is logged once.
 """
 
 from __future__ import annotations
@@ -79,15 +84,24 @@ def _org_paths(model: type[models.Model], chain: frozenset[type[models.Model]]) 
 class CascadeOrgGuard:
     """Refuses a delete whose cascade would change a row of another organization than its root's."""
 
-    def __init__(self, org_id: int | None, root_description: str, using: str | None = None):
+    def __init__(
+        self,
+        org_id: int | None,
+        root_description: str,
+        using: str | None = None,
+        *,
+        log_refusal: bool = True,
+    ):
         """Guard a delete of the rows `root_description` names, all of organization `org_id`.
 
-        Build one through for_root() or per_org(), which resolve the organization.
-        An `org_id` of None turns the guard off.
+        Build one through for_root() or per_org(), which resolve the organization,
+        unless the caller already knows it (a storage row's `org_id`). An `org_id` of
+        None turns the guard off.
         """
         self.org_id = org_id
         self.root_description = root_description
         self.using = using
+        self.log_refusal = log_refusal
 
     @classmethod
     def for_root(cls, root: models.Model, using: str | None = None) -> CascadeOrgGuard:
@@ -112,7 +126,12 @@ class CascadeOrgGuard:
 
     @classmethod
     def per_org(
-        cls, model: type[models.Model], pks: list, using: str | None = None
+        cls,
+        model: type[models.Model],
+        pks: list,
+        using: str | None = None,
+        *,
+        log_refusal: bool = True,
     ) -> list[tuple[CascadeOrgGuard, list]]:
         """Split rows of `model` by the organization owning each, for a delete of them all.
 
@@ -130,10 +149,13 @@ class CascadeOrgGuard:
             rows = [(pk,) for pk in pks]
         pks_per_org: dict[int | None, list] = {}
         for pk, *values in rows:
-            org_id = _only_org(values, f"{model.__name__} {pk}", model, pk)
+            org_id = _only_org(values, f"{model.__name__} {pk}", model, pk, log_refusal)
             pks_per_org.setdefault(org_id, []).append(pk)
         return [
-            (cls(org_id, _rows_description(model, org_pks), using), org_pks)
+            (
+                cls(org_id, _rows_description(model, org_pks), using, log_refusal=log_refusal),
+                org_pks,
+            )
             for org_id, org_pks in pks_per_org.items()
         ]
 
@@ -220,10 +242,11 @@ class CascadeOrgGuard:
                 rows.model,
                 pk,
                 {org for org in orgs if org is not None},
+                self.log_refusal,
             )
 
 
-def _only_org(values, root_description: str, model, pk) -> int | None:
+def _only_org(values, root_description: str, model, pk, log_refusal: bool = True) -> int | None:
     """Return the one organization among a row's `values` (its org paths), None if none.
 
     Raises:
@@ -231,7 +254,7 @@ def _only_org(values, root_description: str, model, pk) -> int | None:
     """
     orgs = {value for value in values if value is not None}
     if len(orgs) > 1:
-        _refuse(root_description, None, model, pk, orgs)
+        _refuse(root_description, None, model, pk, orgs, log_refusal)
     return next(iter(orgs), None)
 
 
@@ -241,14 +264,17 @@ def _rows_description(model, pks: list) -> str:
     return f"{len(pks)} {model.__name__} rows"
 
 
-def _refuse(root_description: str, root_org: int | None, model, pk, orgs) -> None:
-    logger.error(
-        "Refused to delete {root} of org {root_org}: the delete reaches "
-        "{model} {pk} of org(s) {orgs}, linked across organizations outside the API",
-        root=root_description,
-        root_org=root_org,
-        model=model.__name__,
-        pk=pk,
-        orgs=sorted(orgs),
-    )
+def _refuse(
+    root_description: str, root_org: int | None, model, pk, orgs, log_refusal: bool
+) -> None:
+    if log_refusal:
+        logger.error(
+            "Refused to delete {root} of org {root_org}: the delete reaches "
+            "{model} {pk} of org(s) {orgs}, linked across organizations outside the API",
+            root=root_description,
+            root_org=root_org,
+            model=model.__name__,
+            pk=pk,
+            orgs=sorted(orgs),
+        )
     raise CrossOrgCascadeError()

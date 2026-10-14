@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, input, linkedSignal, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
@@ -49,17 +49,20 @@ import {
 } from '../../utils/recycle-bin-messages.util';
 import {
     DEFAULT_SORT,
-    filterAndSortItems,
     flipColumnDirection,
+    hasKindSwitch,
     INITIAL_COLUMN_DIRECTIONS,
+    initialKindFilter,
+    kindFilterNarrows,
     kindFilterOptions,
-    toStorageQuery,
+    shownSource,
+    toListQuery,
 } from '../../utils/recycle-bin-query.util';
 import { isExpandableItem } from '../../utils/recycle-bin-rows.util';
 import { recycleBinTabShowsKind } from '../../utils/visible-recycle-bin-tabs.util';
 import { RecycleBinTableComponent } from '../recycle-bin-table/recycle-bin-table.component';
 
-/** How long typing pauses before the paged Files list asks the server again. */
+/** How long typing pauses before the list asks the server again. */
 const SERVER_SEARCH_DEBOUNCE_MS = 300;
 
 /**
@@ -68,9 +71,9 @@ const SERVER_SEARCH_DEBOUNCE_MS = 300;
  * restore can bring back parent folders or owned surfaces, and a folder purge can take other
  * rows with it.
  *
- * Search, sort and the kind filter run on the client for the plain lists, and on the server for the
- * paged Files list. Bulk actions apply to the selected rows; emptying everything is the page's
- * "Empty recycle bin".
+ * The list is paged, searched, sorted and filtered on the server. A tab with two bins (Tools) shows one
+ * at a time, picked by its Kind switch. Bulk actions apply to the selected rows of the page shown;
+ * emptying everything is the page's "Empty recycle bin".
  */
 @Component({
     selector: 'app-recycle-bin-tab',
@@ -100,8 +103,6 @@ export class RecycleBinTabComponent implements OnInit {
     protected readonly canPurge = computed(() => this.permissionsService.isSuperadmin);
     /** No checkboxes when there is nothing the user could do with a selection. */
     protected readonly selectable = computed(() => this.canRestore() || this.canPurge());
-    /** The paged Files list searches and sorts on the server. */
-    protected readonly queriesServer = computed(() => this.tab().sources.includes('storage'));
     protected readonly searchTerm = signal('');
     /** Each date column's own direction (its arrow), and the column the list is sorted by. */
     protected readonly columnDirections = signal(INITIAL_COLUMN_DIRECTIONS);
@@ -112,11 +113,18 @@ export class RecycleBinTabComponent implements OnInit {
     }));
     /** Options of the Kind column's filter (Tools: the tool sources, Files: file / folder). */
     protected readonly kindOptions = computed(() => kindFilterOptions(this.tab()));
-    protected readonly kindFilter = signal<string | null>(null);
-    /** A count range of the count column (Flows, Agents); those lists are filtered on the client. */
+    /** Tools: the Kind filter picks which bin is listed, so one is always chosen. */
+    protected readonly kindSwitch = computed(() => hasKindSwitch(this.tab()));
+    /** Files: an item type, or `null` for both. Tools: the source shown (see kindSwitch). */
+    protected readonly kindFilter = linkedSignal<string | null>(() => initialKindFilter(this.tab()));
+    /** The count column's filter (Flows, Agents…): a COUNT_FILTER_OPTIONS value, or `null` for all. */
     protected readonly countFilter = signal<string | null>(null);
+    /** A search or filter narrows the list; the Kind switch doesn't, it picks the list. */
     protected readonly filtered = computed(
-        () => this.searchTerm().trim() !== '' || this.kindFilter() !== null || this.countFilter() !== null
+        () =>
+            this.searchTerm().trim() !== '' ||
+            kindFilterNarrows(this.kindFilter(), this.kindSwitch()) ||
+            this.countFilter() !== null
     );
     /**
      * The search shows once there's something to search, and stays while a search or filter is active so
@@ -134,16 +142,7 @@ export class RecycleBinTabComponent implements OnInit {
         const keys = this.expandableKeys();
         return keys.length > 0 && keys.every((key) => this.expandedKeys().has(key));
     });
-    protected readonly items = computed(() =>
-        this.queriesServer()
-            ? this.storage.items()
-            : filterAndSortItems(this.storage.items(), {
-                  search: this.searchTerm(),
-                  sort: this.sort(),
-                  kindFilter: this.kindFilter(),
-                  countFilter: this.countFilter(),
-              })
-    );
+    protected readonly items = this.storage.items;
     protected readonly status = this.storage.status;
     protected readonly page = this.storage.page;
     protected readonly retentionDays = this.recycleBinSettings.retentionDays;
@@ -188,25 +187,26 @@ export class RecycleBinTabComponent implements OnInit {
     protected onSearch(term: string): void {
         this.searchTerm.set(term);
         this.clearSelection();
-        if (this.queriesServer()) this.serverSearches.next(term.trim());
+        this.serverSearches.next(term.trim());
     }
 
+    /** Picking the option already chosen changes nothing, so it keeps the page and selection. */
     protected onKindFilterChanged(value: string | null): void {
+        if (value === this.kindFilter()) return;
         this.kindFilter.set(value);
-        this.clearSelection();
-        if (this.queriesServer()) this.reload(1);
+        this.reload(1);
     }
 
     protected onCountFilterChanged(value: string | null): void {
+        if (value === this.countFilter()) return;
         this.countFilter.set(value);
-        this.clearSelection();
+        this.reload(1);
     }
 
     protected onSort(field: RecycleBinSortField): void {
         this.columnDirections.update((directions) => flipColumnDirection(directions, field));
         this.sortField.set(field);
-        this.clearSelection();
-        if (this.queriesServer()) this.reload(1);
+        this.reload(1);
     }
 
     /**
@@ -368,15 +368,15 @@ export class RecycleBinTabComponent implements OnInit {
         this.reload();
     }
 
-    /** Loads the list again (Files: `pageNumber`, by default the page shown) and clears the selection. */
+    /** Loads page `pageNumber` (by default the page shown) of the bin shown, and clears the selection. */
     private reload(pageNumber?: number): void {
         this.clearSelection();
         // A newer load (a page click, a search, a reload after an action) replaces one still in flight.
         this.loadSubscription?.unsubscribe();
         this.loadSubscription = this.storage
-            .load(this.tab(), {
+            .load(shownSource(this.tab(), this.kindFilter()), {
                 page: pageNumber,
-                storageQuery: toStorageQuery(this.searchTerm(), this.sort(), this.kindFilter()),
+                query: toListQuery(this.searchTerm(), this.sort(), this.kindFilter(), this.countFilter()),
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             // The storage service already set the 'error' status the table shows.

@@ -1,6 +1,5 @@
-import { GetRecycleBinEntryResponse, RecycleBinItem, RecycleBinResourceSourceKey } from '../models/recycle-bin.model';
+import { GetRecycleBinEntryResponse, RecycleBinResourceSourceKey } from '../models/recycle-bin.model';
 import {
-    newestFirst,
     storageOwnName,
     toRecycleBinDetail,
     toRecycleBinItem,
@@ -123,15 +122,6 @@ describe('recycle bin mappers', () => {
             links_restored: false,
         });
         expect(outcome).toEqual({ source: 'flow', name: 'Report #2', renamedFrom: 'Report', linksRestored: false });
-    });
-
-    it('sorts newest first, then higher id first', () => {
-        const deletedAt = new Date('2026-10-01T10:00:00Z');
-        const older = { id: 20, deletedAt: new Date('2026-09-30T10:00:00Z') } as RecycleBinItem;
-        const lowerId = { id: 4, deletedAt } as RecycleBinItem;
-        const higherId = { id: 9, deletedAt } as RecycleBinItem;
-        const sorted = [older, lowerId, higherId].sort(newestFirst);
-        expect(sorted.map((item) => item.id)).toEqual([9, 4, 20]);
     });
 
     it('maps the details of every source', () => {

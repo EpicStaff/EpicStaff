@@ -28,13 +28,6 @@ TRIGGERS_URL = "/api/webhook-triggers/"
 REGISTER = "tables.signals.webhook_signals.WebhookTriggerService.register_webhooks"
 
 
-@pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-    return client
-
-
 def _trigger(org, path="orders"):
     trigger = WebhookTrigger.objects.create(org=org, path=path, provider_type="localhost")
     LocalhostWebhookConfig.objects.create(trigger=trigger, name="local")
@@ -42,31 +35,31 @@ def _trigger(org, path="orders"):
 
 
 def test_binning_and_restoring_re_registers_the_tunnels(
-    admin_client, acme, django_capture_on_commit_callbacks
+    acme_admin_client, acme, django_capture_on_commit_callbacks
 ):
     with patch(REGISTER, return_value=True):
         trigger = _trigger(acme)
     with patch(REGISTER, return_value=True) as register:
         with django_capture_on_commit_callbacks(execute=True):
-            assert admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/").status_code == 204
+            assert acme_admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/").status_code == 204
         assert register.called
         assert not LocalhostWebhookConfig.objects.filter(trigger_id=trigger.pk).exists()
         assert trigger.__class__.all_objects.get(pk=trigger.pk).get_active_config() is None
 
         register.reset_mock()
         with django_capture_on_commit_callbacks(execute=True):
-            assert admin_client.post(f"{TRIGGERS_URL}{trigger.pk}/restore/").status_code == 200
+            assert acme_admin_client.post(f"{TRIGGERS_URL}{trigger.pk}/restore/").status_code == 200
         assert register.called
         assert LocalhostWebhookConfig.objects.filter(trigger_id=trigger.pk).exists()
 
 
-def test_a_path_another_org_took_comes_back_with_a_dash_number(admin_client, acme, beta):
+def test_a_path_another_org_took_comes_back_with_a_dash_number(acme_admin_client, acme, beta):
     with patch(REGISTER, return_value=True):
         trigger = _trigger(acme)
-        admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/")
+        acme_admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/")
         _trigger(beta, path="orders")
 
-        restored = admin_client.post(f"{TRIGGERS_URL}{trigger.pk}/restore/").json()
+        restored = acme_admin_client.post(f"{TRIGGERS_URL}{trigger.pk}/restore/").json()
 
     assert restored == {
         "id": trigger.pk,
@@ -201,42 +194,42 @@ def test_binning_restoring_and_purging_a_tunnel_secret_re_pushes_the_registry(
     assert not register.called
 
 
-def _bin_details(admin_client, url):
-    entry = admin_client.get(f"{url}recycle-bin/").json()[0]
+def _bin_details(acme_admin_client, url):
+    entry = acme_admin_client.get(f"{url}recycle-bin/").json()["results"][0]
     return {detail["label"]: detail for detail in entry["details"]}
 
 
-def test_a_binned_trigger_says_what_still_uses_it(admin_client, acme):
+def test_a_binned_trigger_says_what_still_uses_it(acme_admin_client, acme):
     with patch(REGISTER, return_value=True):
         trigger = _trigger(acme, path="calls")
         _node(acme, trigger, "hook")
         channel = RealtimeChannel.objects.create(org=acme, name="Line")
         TwilioChannel.objects.create(channel=channel, account_sid="AC1", webhook_trigger=trigger)
         unused = _trigger(acme, path="spare")
-        admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/")
-        admin_client.delete(f"{TRIGGERS_URL}{unused.pk}/")
+        acme_admin_client.delete(f"{TRIGGERS_URL}{trigger.pk}/")
+        acme_admin_client.delete(f"{TRIGGERS_URL}{unused.pk}/")
 
-        entries = admin_client.get(f"{TRIGGERS_URL}recycle-bin/").json()
+        entries = acme_admin_client.get(f"{TRIGGERS_URL}recycle-bin/").json()["results"]
 
     used_by = {entry["name"]: _labels(entry)["Used by"]["value"] for entry in entries}
     assert used_by == {"calls": "1 flow, 1 voice channel", "spare": None}
 
 
-def test_a_binned_trigger_shows_its_auth_type(admin_client, acme):
+def test_a_binned_trigger_shows_its_auth_type(acme_admin_client, acme):
     with patch(REGISTER, return_value=True):
         signed = _trigger(acme, path="signed")
         WebhookTriggerAuth.objects.create(trigger=signed, kind="telegram")
         plain = _trigger(acme, path="plain")
-        admin_client.delete(f"{TRIGGERS_URL}{signed.pk}/")
-        admin_client.delete(f"{TRIGGERS_URL}{plain.pk}/")
+        acme_admin_client.delete(f"{TRIGGERS_URL}{signed.pk}/")
+        acme_admin_client.delete(f"{TRIGGERS_URL}{plain.pk}/")
 
-        entries = admin_client.get(f"{TRIGGERS_URL}recycle-bin/").json()
+        entries = acme_admin_client.get(f"{TRIGGERS_URL}recycle-bin/").json()["results"]
 
     auth = {entry["name"]: _labels(entry)["Auth"]["value"] for entry in entries}
     assert auth == {"signed": "Telegram", "plain": None}
 
 
-def test_a_binned_channel_warns_when_its_trigger_is_binned_too(admin_client, acme):
+def test_a_binned_channel_warns_when_its_trigger_is_binned_too(acme_admin_client, acme):
     with patch(REGISTER, return_value=True):
         trigger = WebhookTrigger.objects.create(org=acme, path="calls", provider_type="ngrok")
         channel = RealtimeChannel.objects.create(org=acme, name="Line")
@@ -244,20 +237,20 @@ def test_a_binned_channel_warns_when_its_trigger_is_binned_too(admin_client, acm
         channel.delete()
         trigger.delete()
 
-        warning = _bin_details(admin_client, "/api/realtime-channels/")["Comes back"]
+        warning = _bin_details(acme_admin_client, "/api/realtime-channels/")["Comes back"]
 
     assert warning["format"] == "notice"
     assert 'until its webhook trigger "calls" is restored' in warning["value"]
 
 
-def test_a_binned_flow_warns_when_its_trigger_node_points_at_a_binned_trigger(admin_client, acme):
+def test_a_binned_flow_warns_when_its_trigger_node_points_at_a_binned_trigger(acme_admin_client, acme):
     with patch(REGISTER, return_value=True):
         trigger = _trigger(acme, path="hook")
         node = _node(acme, trigger, "hook")
         node.graph.delete()
         trigger.delete()
 
-        warning = _bin_details(admin_client, "/api/graphs/")["Comes back"]
+        warning = _bin_details(acme_admin_client, "/api/graphs/")["Comes back"]
 
     assert warning["format"] == "notice"
     assert 'Its webhook trigger "hook" is in the recycle bin' in warning["value"]

@@ -1,5 +1,17 @@
 import { DatePipe, formatDate, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input, linkedSignal, LOCALE_ID, model, output, viewChild } from '@angular/core';
+import {
+    Component,
+    computed,
+    effect,
+    ElementRef,
+    inject,
+    input,
+    linkedSignal,
+    LOCALE_ID,
+    model,
+    output,
+    viewChild,
+} from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
     ActivateButtonComponent,
@@ -39,13 +51,20 @@ import {
     RecycleBinSortField,
 } from '../../models/recycle-bin.model';
 import { documentFormatGroup, storageFormatGroup } from '../../utils/recycle-bin-contents.util';
-import { COUNT_FILTER_OPTIONS, DEFAULT_SORT, INITIAL_COLUMN_DIRECTIONS } from '../../utils/recycle-bin-query.util';
+import {
+    COUNT_FILTER_OPTIONS,
+    DEFAULT_SORT,
+    INITIAL_COLUMN_DIRECTIONS,
+    kindFilterNarrows,
+} from '../../utils/recycle-bin-query.util';
 import { isExpandableItem } from '../../utils/recycle-bin-rows.util';
 import { purgeDate, timeLeftLabel } from '../../utils/recycle-bin-time.util';
 
 // Widths follow the Secrets list (name flexes, the rest 128px, actions 96px).
 const NAME_COLUMN = 'minmax(200px, 1fr)';
 const DATA_COLUMN = '128px';
+// Tools' Kind header names the bin shown ("Python tools"), so it needs more than a data column.
+const KIND_SWITCH_COLUMN = '168px';
 const ACTIONS_COLUMN = '96px';
 // The same width as app-table's selection column.
 const CHECKBOX_COLUMN = '2rem';
@@ -87,9 +106,9 @@ export class RecycleBinTableComponent {
     readonly retentionDays = input<number | null>(null);
     /** Keys of rows with a restore or purge in flight; their buttons are disabled. */
     readonly pendingKeys = input<ReadonlySet<string>>(new Set());
-    /** Paging of a paged list (Files); `null` hides the paginator. */
+    /** Paging of the list; `null` (or a single page) hides the paginator. */
     readonly page = input<RecycleBinPage | null>(null);
-    /** Only where rows can differ in kind (Tools, Files); see recycleBinTabShowsKind. */
+    /** Files (file / folder) and Tools (its header switches the bin); see recycleBinTabShowsKind. */
     readonly showKind = input(false);
     /** A checkbox column; off when the user can neither restore nor delete. */
     readonly selectable = input(false);
@@ -100,8 +119,6 @@ export class RecycleBinTableComponent {
         input<Readonly<Record<RecycleBinSortField, RecycleBinSortDirection>>>(INITIAL_COLUMN_DIRECTIONS);
     /** A search or the kind filter is narrowing the list, so an empty list means "no match", not "empty bin". */
     readonly filtered = input(false);
-    /** The tab's search: an opened row's contents start filtered by it, so a match inside shows. */
-    readonly searchTerm = input('');
     /** Rows whose "Show all" is loading; their button is disabled. */
     readonly loadingContentKeys = input<ReadonlySet<string>>(new Set());
     /** Title of the count column (each row's `contentsTotal`); `null` hides the column. */
@@ -112,6 +129,11 @@ export class RecycleBinTableComponent {
     readonly kindOptions = input<RecycleBinFilterOption[]>([]);
     /** The chosen kind option's value; `null` for all. */
     readonly kindFilter = input<string | null>(null);
+    /**
+     * The Kind filter switches between bins (Tools: Python / MCP tools): no "All", never marked as an
+     * active filter, and an empty list keeps the table so the other bin stays one click away.
+     */
+    readonly kindSwitch = input(false);
 
     readonly restoreRequested = output<RecycleBinItem>();
     readonly purgeRequested = output<RecycleBinItem>();
@@ -129,6 +151,15 @@ export class RecycleBinTableComponent {
     readonly expandedKeys = model<ReadonlySet<string>>(new Set());
 
     private readonly headerCheckbox = viewChild<CheckboxComponent>('headerCheckbox');
+    private readonly tableWrapper = viewChild<ElementRef<HTMLElement>>('tableWrapper');
+
+    // Another page starts at its top: the rows scroll inside the table, which keeps its scroll
+    // position when only its rows change.
+    private readonly scrollToTopOnPageChange = effect(() => {
+        this.page()?.current;
+        const wrapper = this.tableWrapper()?.nativeElement;
+        if (wrapper) wrapper.scrollTop = 0;
+    });
 
     protected readonly showActions = computed(() => this.canRestore() || this.canPurge());
     protected readonly gridTemplateColumns = computed(() =>
@@ -136,7 +167,7 @@ export class RecycleBinTableComponent {
             ...(this.selectable() ? [CHECKBOX_COLUMN] : []),
             NAME_COLUMN,
             ...(this.countLabel() ? [DATA_COLUMN] : []),
-            ...(this.showKind() ? [DATA_COLUMN] : []),
+            ...(this.showKind() ? [this.kindSwitch() ? KIND_SWITCH_COLUMN : DATA_COLUMN] : []),
             DATA_COLUMN,
             DATA_COLUMN,
             ...(this.showActions() ? [ACTIONS_COLUMN] : []),
@@ -158,7 +189,33 @@ export class RecycleBinTableComponent {
     );
     protected readonly kindFilterItems = computed<SelectItem<string | null>[]>(() => {
         const options = this.kindOptions();
-        return options.length === 0 ? [] : [{ name: 'All', value: null }, ...options];
+        if (options.length === 0 || this.kindSwitch()) return options;
+        return [{ name: 'All', value: null }, ...options];
+    });
+    protected readonly kindFilterActive = computed(() => kindFilterNarrows(this.kindFilter(), this.kindSwitch()));
+    /** The chosen kind option; `undefined` for "All". */
+    private readonly chosenKind = computed(() =>
+        this.kindOptions().find((option) => option.value === this.kindFilter())
+    );
+    /** A switch names the bin shown ("Python tools"); a plain filter marks itself with "(1)" instead. */
+    protected readonly kindHeaderLabel = computed(() => {
+        const chosen = this.chosenKind();
+        return this.kindSwitch() && chosen !== undefined ? chosen.name : 'Kind';
+    });
+    protected readonly kindHeaderAriaLabel = computed(() => {
+        const chosen = this.chosenKind();
+        return this.kindSwitch() && chosen !== undefined ? `Showing ${chosen.name}. Choose which kind to show` : null;
+    });
+    /** "The recycle bin is empty" replaces the table; not while a filter or a Kind switch could change that. */
+    protected readonly showEmptyState = computed(
+        () => this.items().length === 0 && !this.filtered() && !this.kindSwitch()
+    );
+    /** Why an empty table is empty: nothing matched, or (unfiltered, on a Kind switch) the chosen bin is. */
+    protected readonly noResultsMessage = computed(() => {
+        const chosen = this.chosenKind();
+        return this.filtered() || chosen === undefined
+            ? 'No items match the current search or filters.'
+            : `No deleted ${chosen.name}.`;
     });
     protected readonly showPaginator = computed(() => {
         const page = this.page();
@@ -220,14 +277,6 @@ export class RecycleBinTableComponent {
     protected contentFilterGroup(item: RecycleBinItem): ((content: NodeListItem) => string) | null {
         if (item.source === 'storage') return storageFormatGroup;
         return item.source === 'collection' ? documentFormatGroup : null;
-    }
-
-    /** The tab's search, for an opened row's contents, only when it matched something inside the row. */
-    protected contentSearch(item: RecycleBinItem): string {
-        const term = this.searchTerm().toLowerCase();
-        return term && item.contents.some((content) => content.name.toLowerCase().includes(term))
-            ? this.searchTerm()
-            : '';
     }
 
     protected isLoadingContents(item: RecycleBinItem): boolean {

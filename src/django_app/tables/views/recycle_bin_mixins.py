@@ -1,12 +1,13 @@
 """Recycle-bin actions for every viewset whose items can be restored."""
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import get_object_or_404
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.serializers.recycle_bin_serializers import (
@@ -15,13 +16,15 @@ from tables.serializers.recycle_bin_serializers import (
     RecycleBinBulkRestoreResponseSerializer,
     RecycleBinContentsSerializer,
     RecycleBinEntrySerializer,
+    RecycleBinPageSerializer,
     RestoreResultSerializer,
 )
-from tables.services.recycle_bin.bin_contents_service import (
-    BinContentsService,
-    RecycleBinEntryWithContents,
+from tables.services.recycle_bin.bin_contents_service import CONTENTS_FILTERS, BinContentsService
+from tables.services.recycle_bin.bin_service import (
+    DEFAULT_ENTRY_ORDERING,
+    ENTRY_ORDERINGS,
+    RecycleBinService,
 )
-from tables.services.recycle_bin.bin_service import RecycleBinService
 from tables.services.recycle_bin.bulk_service import RecycleBinBulkService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.presentation import BinPresentation, bin_presentations
@@ -47,6 +50,16 @@ RECYCLE_BIN_ACTION_MAP = {
 PURGE_ACTIONS = frozenset({"purge", "bulk_purge"})
 
 
+class RecycleBinPagination(LimitOffsetPagination):
+    """`?limit=`/`?offset=` paging of every bin list, storage's too.
+
+    The limit is capped: every entry on a page costs its contents and details queries.
+    """
+
+    default_limit = 50
+    max_limit = 100
+
+
 class RecycleBinActionsMixin:
     """Add the bin actions to a viewset: `recycle-bin/` (list), `<pk>/recycle-bin-contents/`
     ("Show all"), `<pk>/restore/`, `<pk>/purge/`, and the bulk `recycle-bin/restore/` and
@@ -69,7 +82,6 @@ class RecycleBinActionsMixin:
     """
 
     recycle_bin_resource_key: RecycleBinSource
-    recycle_bin_entry_serializer_class = RecycleBinEntrySerializer
 
     def get_permissions(self):
         permissions = super().get_permissions()
@@ -86,22 +98,50 @@ class RecycleBinActionsMixin:
     def _bin_presentation(self) -> BinPresentation:
         return bin_presentations()[self.recycle_bin_resource_key]
 
-    def recycle_bin_entries(self, org_id: int) -> list[RecycleBinEntryWithContents]:
-        """Entries the list action returns, each with what its restore brings back."""
-        return BinContentsService.entries(
-            self._bin_resource(), self._bin_presentation(), org_id, request=self.request
-        )
-
     def _get_binned_or_404(self, pk):
         # DRF's get_object_or_404 turns a non-numeric pk into a 404, not a 500.
         binned = RecycleBinService.binned(self._bin_resource(), self.get_active_org_id())
         return get_object_or_404(binned, pk=pk)
 
-    @extend_schema(request=None, responses=RecycleBinEntrySerializer(many=True))
+    @extend_schema(
+        request=None,
+        parameters=[
+            OpenApiParameter("limit", int, description="Default 50, at most 100"),
+            OpenApiParameter("offset", int),
+            OpenApiParameter("search", str, description="Part of the item's name, in any case"),
+            OpenApiParameter(
+                "ordering", str, enum=list(ENTRY_ORDERINGS), description="Default: -deleted_at"
+            ),
+            OpenApiParameter(
+                "contents",
+                str,
+                enum=list(CONTENTS_FILTERS),
+                description="Only items whose restore brings back something (`some`) "
+                "or nothing (`none`), as `contents_total` counts it",
+            ),
+        ],
+        responses=RecycleBinPageSerializer,
+    )
     @action(detail=False, methods=["get"], url_path="recycle-bin")
     def recycle_bin(self, request):
-        entries = self.recycle_bin_entries(self.get_active_org_id())
-        return Response(self.recycle_bin_entry_serializer_class(entries, many=True).data)
+        # Filtered, sorted and counted in SQL; entries are built for the page only.
+        resource = self._bin_resource()
+        presentation = self._bin_presentation()
+        org_id = self.get_active_org_id()
+        paginator = RecycleBinPagination()
+        rows = BinContentsService.entry_rows(
+            resource,
+            presentation,
+            org_id,
+            search=request.query_params.get("search", "").strip(),
+            ordering=request.query_params.get("ordering", DEFAULT_ENTRY_ORDERING),
+            contents=request.query_params.get("contents", ""),
+        )
+        page = paginator.paginate_queryset(rows, request, view=self)
+        entries = BinContentsService.to_entries(
+            resource, presentation, org_id, page, request=request
+        )
+        return paginator.get_paginated_response(RecycleBinEntrySerializer(entries, many=True).data)
 
     @extend_schema(request=None, responses=RecycleBinContentsSerializer)
     @action(detail=True, methods=["get"], url_path="recycle-bin-contents")

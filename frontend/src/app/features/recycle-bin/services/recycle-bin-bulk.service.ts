@@ -24,8 +24,8 @@ interface BulkCall {
 }
 
 /**
- * Restores or purges several bin items, possibly from several sources (Tools holds Python and MCP
- * tools). Stateless: the tab and the page both use it.
+ * Restores or purges several bin items; items of different sources go to their own bins.
+ * Stateless: the tab and the page both use it.
  *
  * Calls run one after another, never in parallel: per source, ids in chunks of at most 100.
  * The backend reports each skipped item in `failed` and goes on with the rest; the results of all

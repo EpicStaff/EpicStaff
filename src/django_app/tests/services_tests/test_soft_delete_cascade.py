@@ -101,6 +101,7 @@ from tables.services.soft_delete import DeleteService, _DeleteContext
 from agents.models import AgentDefinition
 from tables.exceptions import CrossOrgCascadeError
 from tables.models import Crew, CrewNode
+from tables.services import cascade_org_guard
 from tables.services.cascade_org_guard import CascadeOrgGuard, org_paths
 from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401  -- fixtures
 
@@ -1193,3 +1194,20 @@ class TestOrgPaths:
 
     def test_a_model_without_an_org_has_no_path(self):
         assert org_paths(PythonCode) == ()
+
+    def test_no_model_is_cut_off_by_the_owner_hop_limit(self, monkeypatch):
+        # A model past the limit gets no path and silently loses the guard: raise the
+        # limit when this fails.
+        every_model = apps.get_models()
+        within_limit = {
+            model: cascade_org_guard._org_paths(model, frozenset({model})) for model in every_model
+        }
+        monkeypatch.setattr(cascade_org_guard, "_MAX_OWNER_HOPS", 50)
+        unlimited = {
+            model: cascade_org_guard._org_paths(model, frozenset({model})) for model in every_model
+        }
+
+        cut_off = sorted(
+            model._meta.label for model in every_model if within_limit[model] != unlimited[model]
+        )
+        assert cut_off == []

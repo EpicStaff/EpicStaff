@@ -15,7 +15,7 @@ from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.recycle_bin.registry import bin_resources
 from tables.services.secrets import secret_service
-from tests.api_tests.test_secret_use_fk_fields import _client_with_grants
+from tests.api_tests.role_grant_clients import client_with_grants
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
@@ -28,11 +28,6 @@ def _client_in(client_as, user, org):
     client = client_as(user)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
     return client
-
-
-@pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    return _client_in(client_as, admin_acme, acme)
 
 
 def _binned_flow(org, name="Orders"):
@@ -60,10 +55,10 @@ def test_empty_removes_every_bin_and_never_another_org(superadmin_in_acme, acme,
     assert Graph.all_objects.filter(pk=other_org_flow_id).exists()
 
 
-def test_an_org_admin_cannot_empty_the_bin(admin_client, acme):
+def test_an_org_admin_cannot_empty_the_bin(acme_admin_client, acme):
     flow_id, secret_id = _binned_flow(acme), _binned_secret(acme)
 
-    response = admin_client.post(EMPTY_URL)
+    response = acme_admin_client.post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
     assert response.json()["message"] == IsSuperadmin.message
@@ -87,7 +82,7 @@ def test_a_member_or_viewer_cannot_empty_the_bin(
 
 
 def test_a_role_holding_every_bit_cannot_empty_the_bin(django_user_model, acme):
-    client = _client_with_grants(
+    client = client_with_grants(
         org=acme,
         django_user_model=django_user_model,
         email="empty-all-bits@example.com",

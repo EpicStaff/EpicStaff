@@ -13,7 +13,7 @@ export type RecycleBinTabKey =
     | 'voice-channels'
     | 'webhook-triggers';
 
-/** One backend bin endpoint family. `storage` is the only one with `{ids}` bodies and a paged list. */
+/** One backend bin endpoint family; every one has a paged list and `{ids}` bulk bodies. */
 export type RecycleBinSourceKey =
     | 'flow'
     | 'agent'
@@ -38,8 +38,10 @@ export interface RecycleBinSourceDefinition {
 
 /** A resource source's rows all share one kind; storage rows take theirs from `item_type` (STORAGE_ITEM_KINDS). */
 export interface RecycleBinResourceSourceDefinition extends RecycleBinSourceDefinition {
-    /** The Kind column label and Kind filter option: "Flow", "Python tool", … */
+    /** The Kind column label: "Flow", "Python tool", … */
     kind: string;
+    /** Names the source as a whole: the Tools tab's Kind switch ("Python tools") and its empty list. */
+    pluralKind: string;
 }
 
 /** Every source once: a resource source without `kind`, or a missing source, does not compile. */
@@ -50,7 +52,10 @@ export interface RecycleBinTabDefinition {
     key: RecycleBinTabKey;
     label: string;
     resource: ResourceCode;
-    /** Lists merged into this tab. Tools has two (Python + MCP). */
+    /**
+     * The bins this tab shows, one at a time. Tools has two (Python + MCP): its Kind filter switches
+     * between them, the first by default.
+     */
     sources: readonly RecycleBinSourceKey[];
     /** Plural used in the empty state: "Deleted flows stay here for 7 days." */
     pluralNoun: string;
@@ -127,12 +132,12 @@ export interface GetStorageRecycleBinEntryResponse extends GetRecycleBinEntryRes
     item_type: 'file' | 'folder';
 }
 
-/** `GET storage/recycle-bin/` is paged with limit/offset. */
-export interface GetStorageRecycleBinPageResponse {
+/** Every `GET <list>/recycle-bin/` is paged with limit/offset. */
+export interface GetRecycleBinPageResponse<Entry extends GetRecycleBinEntryResponse = GetRecycleBinEntryResponse> {
     count: number;
     next: string | null;
     previous: string | null;
-    results: GetStorageRecycleBinEntryResponse[];
+    results: Entry[];
 }
 
 export interface RestoreRecycleBinItemResponse {
@@ -146,7 +151,7 @@ export interface RestoreRecycleBinItemResponse {
 // View models (camelCase)
 
 export interface RecycleBinItem {
-    /** Unique within a tab: `${source}-${id}`. Python and MCP tool ids can collide in the Tools tab. */
+    /** Unique within a tab: `${source}-${id}`. Python and MCP tool ids can collide, and Tools shows both bins. */
     key: string;
     id: number;
     source: RecycleBinSourceKey;
@@ -189,7 +194,7 @@ export interface RecycleBinRestoreOutcome {
 
 export type RecycleBinLoadStatus = 'loading' | 'loaded' | 'error';
 
-/** Where the tab's list stands when the source is paged (only Files). */
+/** Where the tab's paged list stands. */
 export interface RecycleBinPage {
     /** 1-based. */
     current: number;
@@ -258,26 +263,22 @@ export interface RecycleBinSort {
     direction: RecycleBinSortDirection;
 }
 
-/** Server-side query of the paged Files list (`search` matches the item's own name). */
-export interface RecycleBinStorageQuery {
+/** The count column's filter, sent as `contents`: items with some contents, or none. */
+export type RecycleBinContentsFilter = 'some' | 'none';
+
+/** Server-side query of a bin list (`search` matches the item's own name). */
+export interface RecycleBinListQuery {
     search: string;
+    /** `-deleted_at` (default), `deleted_at`, `days_left` or `-days_left`. */
     ordering: string;
-    /** `item_type` filter; `null` for both files and folders. */
+    /** The count column's filter; `null` for all. Only tabs with a count column set it. */
+    contents: RecycleBinContentsFilter | null;
+    /** Files only: the `item_type` filter; `null` for both files and folders. Other sources ignore it. */
     itemType: GetStorageRecycleBinEntryResponse['item_type'] | null;
 }
 
-/** An option of a column filter: a source key or storage item type (Kind), or a count (Nodes / Surfaces). */
+/** An option of a column filter: a source key (Tools) or storage item type (Kind), or a count (Nodes / Surfaces). */
 export interface RecycleBinFilterOption {
     name: string;
     value: string;
-}
-
-/** Client-side search, filters and sort of the lists that aren't paged. */
-export interface RecycleBinListQuery {
-    search: string;
-    sort: RecycleBinSort;
-    /** A source key (Tools); `null` for all. */
-    kindFilter?: string | null;
-    /** A RECYCLE_BIN_COUNT_RANGES value on `contentsTotal`; `null` for all. */
-    countFilter?: string | null;
 }

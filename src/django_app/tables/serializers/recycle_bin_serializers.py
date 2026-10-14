@@ -77,6 +77,15 @@ class RecycleBinEntrySerializer(serializers.Serializer):
     )
 
 
+class RecycleBinPageSerializer(serializers.Serializer):
+    """Response of GET /api/<resource>/recycle-bin/ (limit/offset paging)."""
+
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = RecycleBinEntrySerializer(many=True)
+
+
 class RestoreResultSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()

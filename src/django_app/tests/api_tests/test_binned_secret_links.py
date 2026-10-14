@@ -19,17 +19,13 @@ from tests.api_tests.test_secret_use_fk_fields import (  # noqa: F401  -- fixtur
     elevenlabs_config_pointing_at_secret_a,
     embedding_config_pointing_at_secret_a,
     gemini_config_pointing_at_secret_a,
-    llm_config_pointing_at_secret_a,
     mcp_tool_pointing_at_secret_a,
-    no_use_client_6b,
     openai_realtime_config_pointing_at_secret_a,
     realtime_config_pointing_at_secret_a,
     realtime_transcription_config_pointing_at_secret_a,
-    secret_a,
     secret_b,
     telegram_trigger_node_pointing_at_secret_a,
     twilio_channel_pointing_at_secret_a,
-    use_client_6b,
 )
 
 REGISTER = "tables.signals.webhook_signals.WebhookTriggerService.register_webhooks"
@@ -198,10 +194,10 @@ def test_python_node_cannot_add_a_binned_secret(use_client_6b, default_org, secr
 def test_trigger_settings_keep_binned_auth_and_tunnel_secrets(
     django_user_model, default_org
 ):
-    from tests.api_tests.test_secret_use_fk_fields import _client_with_grants
+    from tests.api_tests.role_grant_clients import client_with_grants
     from rbac.models.enums import Permission, ResourceType
 
-    client = _client_with_grants(
+    client = client_with_grants(
         org=default_org,
         django_user_model=django_user_model,
         email="binned-trigger-settings@example.com",

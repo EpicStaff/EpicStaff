@@ -41,6 +41,8 @@ class PurgeService:
         Raises:
             NotInRecycleBinError: `root` is live (e.g. restored after the caller
                 loaded it). Purge never removes a live item.
+            CrossOrgCascadeError: The purge would delete or update a row of another
+                organization (see CascadeOrgGuard); nothing is deleted.
         """
         resource = bin_resource_for(type(root))
         pk = root.pk
@@ -104,6 +106,10 @@ class PurgeService:
         for org_id, batch in list(expired_batches):
             try:
                 purged += service.purge_expired_batch(org_id, batch, cutoff, actor=actor)
+            except CrossOrgCascadeError:
+                # The guard logged the batch, the row it reaches and both organizations;
+                # the batch stays in the bin until the link is removed.
+                continue
             except Exception:
                 # A background job: one failing batch mustn't stall the rest of the bin.
                 logger.exception(
@@ -125,6 +131,10 @@ class PurgeService:
                         continue
                     cls.purge(root, actor=actor)
                 purged += 1
+            except CrossOrgCascadeError:
+                # The guard logged the root, the row it reaches and both organizations;
+                # the root stays in the bin until the link is removed.
+                continue
             except Exception:
                 logger.exception("Recycle bin purge failed for {} {}", model._meta.label, pk)
         return purged
@@ -141,8 +151,12 @@ class PurgeService:
         row can't block the model for good.
 
         Each row's delete must stay inside the row's own organization (see
-        CascadeOrgGuard). A row whose delete would reach another organization's
-        row is logged and kept in the bin; the rest of the model is still swept.
+        CascadeOrgGuard): a chunk is split by organization first and each
+        organization's rows are deleted on their own. A row whose delete would
+        reach another organization's row is logged once and kept in the bin; the
+        rest of the model, its own organization's rows included, is still swept.
+        A chunk that can't be split by organization at all is logged once and
+        swept row by row too.
         """
         deleted: Counter[str] = Counter()
         expired = model.deleted_objects.filter(soft_deleted_at__lt=cutoff)
@@ -153,6 +167,7 @@ class PurgeService:
                 ).values("soft_delete_batch")
             )
         failed_pks: set = set()
+        using = router.db_for_write(model)
         while True:
             with transaction.atomic():
                 chunk = list(
@@ -163,59 +178,82 @@ class PurgeService:
                 )
             if not chunk:
                 return deleted
+            # Quiet: a refused group is retried row by row, which logs the refused row.
+            try:
+                groups = CascadeOrgGuard.per_org(model, chunk, using, log_refusal=False)
+            except CrossOrgCascadeError:
+                # A row belongs to two organizations: the row-by-row pass finds it.
+                deleted.update(cls._sweep_one_by_one(model, expired, chunk, failed_pks, using))
+                continue
+            except Exception:
+                # Row by row, so one row the split can't read doesn't stop the whole run.
+                logger.exception(
+                    "Recycle bin sweep could not split {} rows {} by organization; "
+                    "sweeping them one by one",
+                    model._meta.label,
+                    chunk,
+                )
+                deleted.update(cls._sweep_one_by_one(model, expired, chunk, failed_pks, using))
+                continue
+            # One organization at a time, so a bad row only holds back its own org's rows.
+            for org_guard, org_pks in groups:
+                try:
+                    with transaction.atomic():
+                        deleted.update(cls._delete_locked(model, expired, org_guard, org_pks))
+                except Exception:
+                    deleted.update(
+                        cls._sweep_one_by_one(model, expired, org_pks, failed_pks, using)
+                    )
+
+    @classmethod
+    def _sweep_one_by_one(
+        cls, model, expired, pks: list, failed_pks: set, using: str
+    ) -> Counter[str]:
+        """Hard-delete each row of `pks` on its own; add the ones that fail to `failed_pks`.
+
+        A row the guard refuses is logged once, by the guard, with the row it reaches.
+        """
+        deleted: Counter[str] = Counter()
+        for pk in pks:
             try:
                 with transaction.atomic():
-                    deleted.update(cls._delete_locked(model, expired, chunk))
+                    for org_guard, org_pks in CascadeOrgGuard.per_org(model, [pk], using):
+                        deleted.update(cls._delete_locked(model, expired, org_guard, org_pks))
+            except CrossOrgCascadeError:
+                failed_pks.add(pk)
             except Exception:
-                for pk in chunk:
-                    try:
-                        with transaction.atomic():
-                            deleted.update(cls._delete_locked(model, expired, [pk]))
-                    except CrossOrgCascadeError:
-                        # The guard has logged the row and organization it reaches.
-                        logger.error(
-                            "Recycle bin sweep kept {} {} in the bin: its delete reaches "
-                            "another organization's row",
-                            model._meta.label,
-                            pk,
-                        )
-                        failed_pks.add(pk)
-                    except Exception:
-                        logger.exception(
-                            "Recycle bin sweep failed for {} {}", model._meta.label, pk
-                        )
-                        failed_pks.add(pk)
+                logger.exception("Recycle bin sweep failed for {} {}", model._meta.label, pk)
+                failed_pks.add(pk)
+        return deleted
 
     @staticmethod
-    def _delete_locked(model, expired, pks: list) -> Counter[str]:
+    def _delete_locked(model, expired, org_guard: CascadeOrgGuard, pks: list) -> Counter[str]:
         """Lock the rows of `pks` still in `expired`, then hard-delete them.
 
         Re-checked through `expired`: a row restored and deleted again since the
-        chunk was read has a new deletion time and isn't due yet. The rows are
-        deleted one organization at a time, each delete held to its organization.
+        chunk was read has a new deletion time and isn't due yet. `pks` are rows of
+        `org_guard`'s organization (see CascadeOrgGuard.per_org), and the delete is
+        held to it.
 
         Raises:
             CrossOrgCascadeError: A row's delete would reach another organization's
-                row, or the row belongs to two; the caller's transaction must roll back.
+                row; the caller's transaction must roll back.
         """
         locked = list(
             expired.filter(pk__in=pks)
             .select_for_update(skip_locked=True)
             .values_list("pk", flat=True)
         )
-        deleted: Counter[str] = Counter()
         if not locked:
-            return deleted
-        using = router.db_for_write(model)
-        for org_guard, org_pks in CascadeOrgGuard.per_org(model, locked, using):
-            # What QuerySet.delete() does, with the collected rows checked in between.
-            rows = model.all_objects.using(using).filter(pk__in=org_pks)
-            collector = Collector(using=using, origin=rows)
-            collector.collect(rows)
-            org_guard.check_collected(collector)
-            _, per_label = collector.delete()
-            deleted.update(per_label)
-        return deleted
+            return Counter()
+        using = org_guard.using
+        # What QuerySet.delete() does, with the collected rows checked in between.
+        rows = model.all_objects.using(using).filter(pk__in=locked)
+        collector = Collector(using=using, origin=rows)
+        collector.collect(rows)
+        org_guard.check_collected(collector)
+        _, per_label = collector.delete()
+        return Counter(per_label)
 
     @staticmethod
     def _leftover_models(root_models: set) -> list:
