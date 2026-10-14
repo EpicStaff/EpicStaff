@@ -137,3 +137,12 @@ def test_grantable_bits_are_still_compared_exactly():
 
     assert caller.covers({FLOWS: int(Permission.READ)})
     assert not caller.covers({FLOWS: int(Permission.READ | Permission.EXPORT)})
+
+
+def test_flows_run_is_compared_like_any_grantable_bit():
+    """`run` is an action of `flows`, so a caller without it cannot hand it out."""
+    reader = _effective({FLOWS: int(Permission.READ)})
+    runner = _effective({FLOWS: int(Permission.READ | Permission.RUN)})
+
+    assert not reader.covers({FLOWS: int(Permission.READ | Permission.RUN)})
+    assert runner.covers({FLOWS: int(Permission.READ | Permission.RUN)})

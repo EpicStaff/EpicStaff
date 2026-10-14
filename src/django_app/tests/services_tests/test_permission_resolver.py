@@ -244,3 +244,17 @@ def test_org_context_superadmin_bypass(org_context, superadmin_user):
     other = Organization.objects.create(name="Other Inc 2 (org-context tests)")
     request = _request_with_header(str(other.id), user=superadmin_user)
     assert org_context.resolve(request=request, view_kwargs={}) == other.id
+
+
+def test_run_action_code_maps_to_its_own_bit():
+    assert actions_to_bitmask(["run"]) == int(Permission.RUN) == 256
+    assert bitmask_to_actions(
+        int(Permission.READ | Permission.RUN), applicable=["read", "update", "run"]
+    ) == ["read", "run"]
+
+
+def test_holding_read_does_not_grant_run():
+    eff = EffectivePermissions(
+        is_superadmin=False, role=None, by_resource={"flows": int(Permission.READ)}
+    )
+    assert eff.can("flows", Permission.RUN) is False

@@ -53,6 +53,18 @@ def test_recommended_with_omits_platform_actions(client_as, admin_acme):
 
 
 @pytest.mark.django_db
+def test_catalog_exposes_run_as_a_flows_only_action(client_as, admin_acme):
+    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
+
+    run = next(a for a in body["actions"] if a["code"] == "run")
+    assert run == {"code": "run", "label": "Run", "bit": 256}
+    holders = [r["code"] for r in body["resource_types"] if "run" in r["applicable_actions"]]
+    assert holders == ["flows"]
+    flows = next(r for r in body["resource_types"] if r["code"] == "flows")
+    assert flows["recommended_with"]["run"] == [{"resource_type": "flows", "action": "read"}]
+
+
+@pytest.mark.django_db
 def test_catalog_exposes_api_keys_as_an_admin_resource(client_as, admin_acme):
     body = client_as(admin_acme).get("/api/permissions/catalog/").json()
     api_keys = next(r for r in body["resource_types"] if r["code"] == "api_keys")

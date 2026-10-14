@@ -147,3 +147,28 @@ def test_granting_org_read_update_still_allowed(validator):
             "bitmask": int(Permission.READ | Permission.UPDATE),
         }
     ]
+
+
+def test_granting_flows_run_is_accepted(validator):
+    cleaned = validator.validate_create(
+        {
+            "org_id": 10,
+            "name": "Flow Runner",
+            "permissions": [{"resource_type": "flows", "actions": ["read", "run"]}],
+        }
+    )
+    assert cleaned["permissions"] == [
+        {"resource_type": "flows", "bitmask": int(Permission.READ | Permission.RUN)}
+    ]
+
+
+def test_granting_run_outside_flows_is_rejected(validator):
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_create(
+            {
+                "org_id": 10,
+                "name": "Bad Runner",
+                "permissions": [{"resource_type": "agents", "actions": ["run"]}],
+            }
+        )
+    assert any("agents" in e["field"] for e in exc.value.errors)

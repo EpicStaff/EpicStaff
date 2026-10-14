@@ -89,6 +89,7 @@ def test_permission_catalog_returns_actions_and_resource_types(
         "delete",
         "export",
         "use",
+        "run",
     ]
     resource_codes = [r["code"] for r in body["resource_types"]]
     assert "organizations" in resource_codes
@@ -149,7 +150,7 @@ def test_admin_roles_list_org_admin_shape(auth_client, org_admin_user, org_acme)
     assert "built_in_roles" in body and "results" in body
     org_admin = next(r for r in body["built_in_roles"] if r["name"] == "Org Admin")
     flows = next(p for p in org_admin["permissions"] if p["resource_type"] == "flows")
-    assert set(flows["actions"]) == {"create", "read", "update", "delete", "export"}
+    assert set(flows["actions"]) == {"create", "read", "update", "delete", "export", "run"}
 
 
 @pytest.mark.django_db

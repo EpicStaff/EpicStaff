@@ -112,8 +112,34 @@ def test_no_built_in_holds_the_list_bit(role_name):
 
 @pytest.mark.django_db
 def test_viewer_can_still_read_flows():
-    """Removing the dead `flows: USE` bit must not cost Viewer the READ that
-    running a flow actually requires (views.py RunSession)."""
+    """Removing the dead `flows: USE` bit must not cost Viewer READ on flows."""
     viewer = EffectivePermissions.from_role(_builtin(BuiltInRole.VIEWER))
 
     assert viewer.can(ResourceType.FLOWS.value, Permission.READ)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role_name", DELEGATED)
+def test_every_delegated_built_in_can_run_flows(role_name):
+    """Running a flow requires `flows: run` (views.py RunSession); every built-in
+    below Superadmin keeps the ability it had when running needed only READ."""
+    role = EffectivePermissions.from_role(_builtin(role_name))
+
+    assert role.can(ResourceType.FLOWS.value, Permission.RUN)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role_name", DELEGATED)
+def test_no_built_in_holds_run_outside_flows(role_name):
+    """`run` is an action of `flows` alone."""
+    role = _builtin(role_name)
+
+    elsewhere = [
+        row.resource_type
+        for row in RolePermission.objects.filter(role=role).exclude(
+            resource_type=ResourceType.FLOWS.value
+        )
+        if row.permissions & int(Permission.RUN)
+    ]
+
+    assert elsewhere == []

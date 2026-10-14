@@ -20,6 +20,7 @@ ACTION_METADATA = [
     {"code": "delete", "label": "Delete", "bit": int(Permission.DELETE)},
     {"code": "export", "label": "Export", "bit": int(Permission.EXPORT)},
     {"code": "use", "label": "Use", "bit": int(Permission.USE)},
+    {"code": "run", "label": "Run", "bit": int(Permission.RUN)},
     # TODO: Future actions:
     # {"code": "list", "label": "List", "bit": int(Permission.LIST)},
 ]
@@ -71,7 +72,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Flows",
         "group": "workspace",
         "description": "Workflow definitions and their nodes",
-        "applicable_actions": ["create", "read", "update", "delete", "export"],
+        "applicable_actions": ["create", "read", "update", "delete", "export", "run"],
         "platform_actions": [],
     },
     {
@@ -208,6 +209,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("flows", "read"), ("projects", "read"), ("llm_configs", "read")),
         "delete": (("flows", "read"),),
         "export": (("flows", "read"),),
+        "run": (("flows", "read"),),
     },
     ResourceType.AGENTS.value: {
         "read": (("surfaces", "read"), ("llm_configs", "read")),
