@@ -1,0 +1,36 @@
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
+import { ImportExportService } from '../../../core/services/import-export.service';
+import { GraphDto } from '../models/graph.model';
+import { FlowRunPermissionRefusalService } from './flow-run-permission-refusal.service';
+import { FlowsStorageService } from './flows-storage.service';
+
+/**
+ * Copies and imports flows. The backend refuses these for a user without FLOWS:RUN when the flow has trigger
+ * nodes; that refusal is explained to the user and the observable completes without emitting. Any other
+ * error reaches the caller unchanged.
+ */
+@Injectable({
+    providedIn: 'root',
+})
+export class FlowCopyImportFacadeService {
+    private readonly flowsStorage = inject(FlowsStorageService);
+    private readonly importExport = inject(ImportExportService);
+    private readonly runPermissionRefusal = inject(FlowRunPermissionRefusalService);
+
+    copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
+        return this.flowsStorage.copyFlow(sourceId, newName).pipe(this.runPermissionRefusal.catchRefusal('copy'));
+    }
+
+    importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
+        return this.importExport.importFlow(file, settings).pipe(this.runPermissionRefusal.catchRefusal('import'));
+    }
+
+    partialImport(graphId: number, file: File): Observable<unknown> {
+        return this.importExport
+            .partialImport(graphId, file)
+            .pipe(this.runPermissionRefusal.catchRefusal('partialImport'));
+    }
+}

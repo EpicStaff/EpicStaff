@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 
 interface FlowGraphBlock {
     label: string;
@@ -90,12 +91,18 @@ interface FlowGraphBlock {
 })
 export class FlowGraphCoreMenuComponent {
     private readonly flowService = inject(FlowService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     public readonly searchTerm = input('');
     public readonly nodeSelected = output<{ type: NodeType; data: unknown }>();
 
+    /** Matching the search, without the types this user may not add (trigger nodes without Flows:Run). */
     public readonly filteredBlocks = computed(() =>
-        this.blocks.filter((block) => block.label.toLowerCase().includes(this.searchTerm().toLowerCase()))
+        this.blocks.filter(
+            (block) =>
+                !this.flowReadOnly.isNodeTypeReadOnly(block.type) &&
+                block.label.toLowerCase().includes(this.searchTerm().toLowerCase())
+        )
     );
 
     public readonly blocks: FlowGraphBlock[] = [

@@ -11,7 +11,7 @@ This guide walks through everything the FE needs to wire up to make the new perm
 
 ### What landed on the BE
 
-- **Permission framework.** Every authenticated user has a role per organization with a permission bitmask covering 11 resource types (Organizations, Users, Roles, Flows, Agents, Tools, Knowledge Sources, Files, Projects, LLM Configs, Secrets) and up to 5 actions per resource (Create / Read / Update / Delete / Export).
+- **Permission framework.** Every authenticated user has a role per organization with a permission bitmask covering 11 resource types (Organizations, Users, Roles, Flows, Agents, Tools, Knowledge Sources, Files, Projects, LLM Configs, Secrets) and the actions applicable to each resource (Create / Read / Update / Delete / Export, plus Use on Secrets and Run on Flows — the catalog's `applicable_actions` is the source of truth).
 - **Active-org header.** Endpoints that need to know which workspace the caller is operating in read it from an `X-Organization-Id` request header. Missing → 400. Wrong → 403.
 - **5 new endpoints.** Permission catalog, "what can I do here", role list (active-context + target-context variants), role detail.
 - **Profile extended.** `GET /api/profile/` now echoes `active_organization_id` and `active_permissions` when the header is set — single round-trip workspace bootstrap.
@@ -217,7 +217,9 @@ import { Injectable, signal } from '@angular/core';
 
 export type ActionCode =
   | 'create' | 'read' | 'update' | 'delete'
-  | 'export';
+  | 'export'
+  | 'use'   // secrets only
+  | 'run';  // flows only
 
 export type ResourceCode =
   | 'organizations' | 'users' | 'roles'
@@ -371,8 +373,11 @@ The new error envelope codes you need to handle:
 | `org_context_required` | 400 | `X-Organization-Id` missing or non-integer on a header-required endpoint | Should not happen — your interceptor sets it. If it does, you have a bug (calling a gated endpoint before bootstrap completes). Log + crash to surface fast. |
 | `org_membership_required` | 403 | Active org is one the user is no longer a member of (deactivated org, or admin removed them) | Clear `activeOrgId`, force `bootstrap()` to re-pick from current memberships. Toast: "Your access to this workspace was revoked." |
 | `permission_denied` | 403 | User lacks the permission for the action they attempted | Toast: "You don't have permission to do that." Plus your UI should have hidden/disabled the action — this 403 indicates a UI-gating bug you should track. |
+| `trigger_nodes_require_run_permission` | 403 | A caller without `flows:run` creates or changes a trigger node (Webhook / Telegram / Schedule): a bulk save (`POST graphs/{id}/save/`) that creates or updates one, or the trigger node endpoints. Deleting a trigger node needs only `flows:update`. Nothing is saved. | Treated like any other 403: `forbiddenInterceptor` refreshes permissions, since `flows:run` may have just been revoked. The editor already keeps such users from creating or changing trigger nodes, so this should only follow a mid-session permission change. |
+| `flow_with_trigger_nodes_requires_run_permission` | 403 | A caller without `flows:run` copies (`POST graphs/{id}/copy/`), imports (`POST graphs/import/`, including `replace_existing`), partially imports (`POST graphs/{id}/partial-import/`), restores a version of (`POST graph-versions/{id}/restore/`) or creates a new flow from a version of (`POST graph-versions/{id}/create-graph/`) a flow whose source contains trigger nodes. Nothing is created or restored. | A business rule, not stale permissions: the code is in `forbiddenInterceptor`'s business-rule list, so no permission refresh and no toast. `FlowRunPermissionRefusalService` shows an OK-only warning dialog with its own text per operation ("This flow contains trigger nodes (Webhook, Telegram, Schedule).", with "Copying it requires the Run permission on flows." as the caution) and the operation ends silently (no success or error toast, no navigation). Unpacking a subflow in the editor follows the same rule without a backend round trip: for a user without `flows:run`, a subflow with trigger nodes is refused with the same OK-only dialog before anything is asked or changed. |
 | `built_in_role_immutable` | 403 | Tried to edit/delete a built-in role (Superadmin, Org Admin, Member, Viewer) | The role-detail modal should never offer edit/delete for `is_built_in=true` rows. If you see this, fix the modal. |
 | `not_authenticated` | 401 | Token expired / missing | Existing auth-refresh logic. |
+
 
 Global HTTP interceptor sketch:
 
@@ -493,7 +498,9 @@ Drop these into a shared `permissions.types.ts`:
 ```typescript
 export type ActionCode =
   | 'create' | 'read' | 'update' | 'delete'
-  | 'export';
+  | 'export'
+  | 'use'   // secrets only
+  | 'run';  // flows only
 
 export type ResourceCode =
   | 'organizations' | 'users' | 'roles'

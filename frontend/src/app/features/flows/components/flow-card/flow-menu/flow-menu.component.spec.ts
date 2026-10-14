@@ -91,3 +91,26 @@ describe('FlowMenuComponent "View Details" item', () => {
         expect(menuItems(rendered.host)).toHaveLength(0);
     });
 });
+
+describe('FlowMenuComponent "Run" item', () => {
+    it('is offered to a user who can run flows', () => {
+        const rendered = render((resource, action) => resource === ResourceCode.Flows && action === ActionCode.Run);
+        openMenu(rendered);
+
+        expect(itemLabels(rendered.host)).toEqual(['View Sessions', 'Run', 'View Details']);
+    });
+
+    it('is hidden from a user who cannot run flows, leaving every other item', () => {
+        const rendered = render((_resource, action) => action !== ActionCode.Run);
+        openMenu(rendered);
+
+        expect(itemLabels(rendered.host)).toEqual([
+            'View Sessions',
+            'Edit',
+            'Copy',
+            'Export',
+            'View Details',
+            'Delete',
+        ]);
+    });
+});

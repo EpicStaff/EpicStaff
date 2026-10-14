@@ -159,7 +159,10 @@ export class TelegramWebhookRegistrationComponent {
     readonly botKeySecretId = input<number | null>(null);
     /** The panel form has a bot key or webhook trigger that is not saved yet. */
     readonly hasUnsavedConnectionChanges = input<boolean>(false);
-    /** The user cannot change the flow: Register (an UPDATE) is hidden and blockers get no how-to. */
+    /**
+     * The user cannot change this node (no Flows:Update, a version preview, or no Flows:Run for a trigger
+     * node): Register (a trigger node write) is hidden and blockers get no how-to.
+     */
     readonly readonly = input<boolean>(false);
 
     protected readonly canCheck = computed(() => this.backendId() != null && this.botKeySecretId() != null);
@@ -273,6 +276,7 @@ export class TelegramWebhookRegistrationComponent {
     }
 
     protected registerWebhook(): void {
+        if (this.readonly()) return;
         this.registerRequests.next();
     }
 

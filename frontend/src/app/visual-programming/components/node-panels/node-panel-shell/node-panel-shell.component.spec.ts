@@ -2,21 +2,29 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, Validators } from '@angular/forms';
 import { AuthorshipDetailsDialogService, AuthorshipDetailsSource } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType } from '@shared/models';
 import { of } from 'rxjs';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { EndNodeModel, NodeModel, PythonNodeModel, SubGraphNodeModel } from '../../../core/models/node.model';
+import {
+    EndNodeModel,
+    NodeModel,
+    PythonNodeModel,
+    ScheduleTriggerNodeModel,
+    SubGraphNodeModel,
+} from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
+import { TRIGGER_NODES_NEED_RUN_MESSAGE } from '../../../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
+import { ScheduleTriggerNodePanelComponent } from '../schedule-trigger-node-panel/schedule-trigger-node-panel.component';
 import { SubGraphNodePanelComponent } from '../subgraph-node-panel/subgraph-node-panel.component';
 import { NodePanelShellComponent } from './node-panel-shell.component';
 
@@ -249,6 +257,113 @@ describe('NodePanelShellComponent', () => {
 
             shell['onCloseClick']();
             expect(emitted).toEqual([partialNode]);
+        });
+    });
+
+    describe('trigger node for a user who may update but not run flows', () => {
+        const scheduleNode: ScheduleTriggerNodeModel = {
+            id: 'schedule-1',
+            backendId: null,
+            type: NodeType.SCHEDULE_TRIGGER,
+            node_name: 'Schedule #1',
+            data: {
+                isActive: false,
+                runMode: 'once',
+                startDateTime: '2026-07-01T12:00:00',
+                intervalEvery: null,
+                intervalUnit: null,
+                weekdays: [],
+                endType: 'never',
+                endDateTime: null,
+                maxRuns: null,
+                timezone: 'UTC',
+                nextRunDateTime: null,
+            },
+            position: { x: 0, y: 0 },
+            ports: null,
+            color: '',
+            icon: '',
+            size: { width: 200, height: 100 },
+            input_map: {},
+            output_variable_path: null,
+        };
+
+        async function mountTrigger(): Promise<ComponentFixture<NodePanelShellComponent>> {
+            TestBed.configureTestingModule({
+                providers: [
+                    { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                    {
+                        provide: PermissionsService,
+                        useValue: { can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run },
+                    },
+                    { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+                    NodeAuthorshipStore,
+                ],
+                errorOnUnknownProperties: false,
+            });
+            TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+            TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
+            TestBed.inject(FlowService).setFlow({ nodes: [scheduleNode, endNode], connections: [] });
+            TestBed.inject(SidePanelService).setSelectedNodeId(scheduleNode.id);
+
+            const fixture = TestBed.createComponent(NodePanelShellComponent);
+            fixture.componentRef.setInput('node', scheduleNode);
+            fixture.detectChanges();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            fixture.detectChanges();
+            return fixture;
+        }
+
+        it('shows it read-only: no Save, Ctrl+S explains, closing saves nothing and reports no error', async () => {
+            const fixture = await mountTrigger();
+            const shell = fixture.componentInstance;
+            const sidePanel = TestBed.inject(SidePanelService);
+            const emitted: NodeModel[] = [];
+            shell.save.subscribe((node) => emitted.push(node));
+            shell.autosave.subscribe((node) => emitted.push(node));
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
+
+            expect(shell.isNodeReadOnly()).toBe(true);
+            expect(fixture.nativeElement.querySelector('.save-btn')).toBeNull();
+
+            sidePanel.triggerAutosave();
+            fixture.detectChanges();
+            shell['onShortcutSave']();
+            expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+
+            shell['onCloseClick']();
+            expect(sidePanel.selectedNodeId()).toBeNull();
+            expect(emitted).toEqual([]);
+            expect(error).not.toHaveBeenCalled();
+        });
+
+        it('keeps the trigger panel read-only while switching to an editable node, until the new panel is open', async () => {
+            const fixture = await mountTrigger();
+            const shell = fixture.componentInstance;
+            const schedulePanel = fixture.debugElement.query(
+                (element) => element.componentInstance instanceof ScheduleTriggerNodePanelComponent
+            ).componentInstance as ScheduleTriggerNodePanelComponent;
+            // A pending schedule edit, so switching away would autosave the panel if it counted as editable.
+            schedulePanel.scheduleDirty.set(true);
+            const onSave = vi.spyOn(schedulePanel, 'onSave');
+            const emitted: NodeModel[] = [];
+            shell.autosave.subscribe((node) => emitted.push(node));
+            vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+
+            fixture.componentRef.setInput('node', endNode);
+            fixture.detectChanges();
+
+            // node() is already the End node; the open panel is still the schedule trigger's.
+            expect(shell.isNodeReadOnly()).toBe(true);
+            expect(onSave).not.toHaveBeenCalled();
+            expect(emitted).toEqual([]);
+
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            fixture.detectChanges();
+
+            expect(panelOf(fixture)).toBeInstanceOf(EndNodePanelComponent);
+            expect(shell.isNodeReadOnly()).toBe(false);
         });
     });
 

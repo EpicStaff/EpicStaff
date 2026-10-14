@@ -143,6 +143,7 @@
                     <div class="preview-header-actions">
                         @if (canStopSession(session.status)) {
                             <app-stop-button
+                                *appHasPermission="[ResourceCode.Flows, ActionCode.Run]"
                                 variant="stop"
                                 tooltip="Stop session"
                                 (triggered)="onStopSession(session.id)"

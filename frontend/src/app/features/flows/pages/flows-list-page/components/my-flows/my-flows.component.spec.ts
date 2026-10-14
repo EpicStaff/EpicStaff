@@ -4,13 +4,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
-import { Observable, of, throwError } from 'rxjs';
+import { EMPTY, Observable, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { GetGraphLightRequest } from '../../../../models/graph.model';
+import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -22,10 +23,14 @@ const SOURCE_FLOW: GetGraphLightRequest = { id: 7, uuid: 'uuid-7', name: 'Suppor
 describe('MyFlowsComponent copy action', () => {
     const copyFlow = vi.fn();
     const toastSuccess = vi.fn();
+    const toastError = vi.fn();
+    const getFlows = vi.fn();
 
     beforeEach(() => {
         copyFlow.mockReset().mockReturnValue(of({ name: 'Support Flow #2' }));
         toastSuccess.mockReset();
+        toastError.mockReset();
+        getFlows.mockReset().mockReturnValue(of([]));
 
         TestBed.configureTestingModule({
             providers: [
@@ -38,14 +43,14 @@ describe('MyFlowsComponent copy action', () => {
                         isFlowsLoaded: signal(false),
                         selectMode: signal(false),
                         selectedFlowIds: signal([]),
-                        getFlows: () => of([]),
-                        copyFlow,
+                        getFlows,
                     },
                 },
+                { provide: FlowCopyImportFacadeService, useValue: { copyFlow } },
                 { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
                 { provide: FlowsApiService, useValue: {} },
                 { provide: RunGraphService, useValue: {} },
-                { provide: ToastService, useValue: { success: toastSuccess, error: vi.fn() } },
+                { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
                 { provide: ConfirmationDialogService, useValue: {} },
                 { provide: ImportExportService, useValue: {} },
             ],
@@ -80,6 +85,30 @@ describe('MyFlowsComponent copy action', () => {
 
         expect(copyFlow).toHaveBeenCalledWith(7, 'Support Flow');
         expect(toastSuccess).toHaveBeenCalledWith('Flow copied and saved as "Support Flow #2"');
+        expect(getFlows).toHaveBeenCalledTimes(2);
+    });
+
+    it('stays silent when the facade has explained a copy refused over trigger nodes', () => {
+        // The facade shows the refusal and completes without emitting.
+        copyFlow.mockReturnValue(EMPTY);
+
+        openCopyDialog('Support Flow');
+
+        expect(copyFlow).toHaveBeenCalledWith(7, 'Support Flow');
+        expect(toastSuccess).not.toHaveBeenCalled();
+        expect(toastError).not.toHaveBeenCalled();
+        // Only the page's initial load: a successful copy would reload the list.
+        expect(getFlows).toHaveBeenCalledOnce();
+    });
+
+    it('reports a failed copy', () => {
+        copyFlow.mockReturnValue(throwError(() => new Error('offline')));
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        openCopyDialog('Support Flow');
+
+        expect(toastError).toHaveBeenCalledWith('Failed to copy flow');
+        consoleError.mockRestore();
     });
 });
 

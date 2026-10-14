@@ -3,7 +3,8 @@ import { DatePipe } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { GraphSessionStatus } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import {
@@ -11,6 +12,7 @@ import {
     GraphSessionService,
     SessionTrigger,
 } from '../../../../features/flows/services/flows-sessions.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { MemoryService } from '../memory-sidebar/service/memory.service';
 import { RunningGraphHeaderComponent } from './run-graph-header.component';
@@ -94,5 +96,43 @@ describe('RunningGraphHeaderComponent session type', () => {
 
     it('shows no type until the current session is loaded', () => {
         expect(typeValue(createFixture('99'))).toBe('');
+    });
+});
+
+describe('RunningGraphHeaderComponent stop button', () => {
+    function render(canRun: boolean): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                { provide: Dialog, useValue: {} },
+                { provide: MemoryService, useValue: {} },
+                { provide: RunGraphPageService, useValue: { getMemories: () => [] } },
+                { provide: GraphSessionService, useValue: { getSessionsByGraphId: () => of({ results: [] }) } },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            canRun && resource === ResourceCode.Flows && action === ActionCode.Run,
+                    },
+                },
+            ],
+        });
+        TestBed.overrideComponent(RunningGraphHeaderComponent, {
+            set: { imports: [DatePipe, HasPermissionDirective], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        });
+        const fixture = TestBed.createComponent(RunningGraphHeaderComponent);
+        fixture.componentRef.setInput('graphId', 3);
+        fixture.componentRef.setInput('sessionId', '3');
+        fixture.componentRef.setInput('sessionStatus', GraphSessionStatus.RUNNING);
+        fixture.detectChanges();
+        return fixture.nativeElement as HTMLElement;
+    }
+
+    it('offers Stop on a running session to a user who can run flows', () => {
+        expect(render(true).querySelector('app-stop-button')).not.toBeNull();
+    });
+
+    it('hides Stop from a user who cannot run flows', () => {
+        expect(render(false).querySelector('app-stop-button')).toBeNull();
     });
 });

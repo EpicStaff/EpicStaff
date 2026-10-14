@@ -4,6 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ActionCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
@@ -16,6 +17,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { FlowService } from '../../../services/flow.service';
+import { TRIGGER_NODES_NEED_RUN_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
@@ -860,5 +862,89 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             ).not.toBeNull();
             expect(terminals()).toBe(1);
         });
+    });
+});
+
+describe('WebhookTriggerNodePanelComponent for a user who may update but not run flows', () => {
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let toast: { info: ReturnType<typeof vi.fn>; warning: ReturnType<typeof vi.fn> };
+
+    function open(canRunFlows: boolean): WebhookTriggerNodePanelComponent {
+        toast = { info: vi.fn(), warning: vi.fn() };
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: ToastService, useValue: toast },
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (_resource: unknown, action: ActionCode) => action !== ActionCode.Run || canRunFlows,
+                        canAny: () => true,
+                        canEditSecrets: () => true,
+                    },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template; the code editor is a real (empty, Monaco-free) component so its inputs can be read.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, CodeEditorComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.componentRef.setInput('isExpanded', true);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    /** What the panel shell would render in its header from the panel's template. */
+    function headerActionTags(panel: WebhookTriggerNodePanelComponent): string[] {
+        const view = panel.headerActionsTemplate()!.createEmbeddedView({});
+        view.detectChanges();
+        return view.rootNodes
+            .filter((rootNode): rootNode is Element => rootNode instanceof Element)
+            .map((element) => element.tagName.toLowerCase());
+    }
+
+    it('is read-only: the form is disabled and closing saves nothing, saying why', () => {
+        const panel = open(false);
+
+        expect(panel.isReadOnly()).toBe(true);
+        expect(panel.form.disabled).toBe(true);
+        expect(panel.onSave()).toBeNull();
+        expect(panel.onSaveSilently()).toBeNull();
+        expect(panel.needsSave()).toBe(false);
+        expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+    });
+
+    it('hides "Run with test payload", which needs Flows:Update and Flows:Run', () => {
+        expect(headerActionTags(open(false))).not.toContain('app-run-test-payload-button');
+    });
+
+    it('shows "Run with test payload" to a user who may also run flows', () => {
+        const panel = open(true);
+
+        expect(panel.isReadOnly()).toBe(false);
+        expect(headerActionTags(panel)).toContain('app-run-test-payload-button');
+    });
+
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
+
+    it('hides "Run python code", which needs Flows:Run for a webhook trigger node', () => {
+        open(false);
+
+        expect(codeEditor().readOnly).toBe(true);
+        expect(codeEditor().actionIcon()).toBeNull();
+    });
+
+    it('offers "Run python code" to a user who may also run flows', () => {
+        open(true);
+
+        expect(codeEditor().actionIcon()).toBe('play-outline');
     });
 });

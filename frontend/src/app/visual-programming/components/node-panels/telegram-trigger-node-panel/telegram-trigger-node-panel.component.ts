@@ -32,7 +32,6 @@ import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
-import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
@@ -71,7 +70,6 @@ export const INSERT_EXAMPLE_NO_FIELDS_REASON = 'Select fields first';
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
-        IfFlowEditableDirective,
         TelegramWebhookRegistrationComponent,
         TestPayloadSectionComponent,
         RunTestPayloadButtonComponent,
@@ -113,6 +111,8 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
      * and the live Telegram registration says nothing about an old version, so the check is hidden.
      */
     protected readonly showsWebhookRegistration = !this.flowReadOnly.isPreview;
+    /** A test run saves the flow and starts a session: it needs Flows:Update and Flows:Run, outside a preview. */
+    protected readonly canStartTestRun = this.flowReadOnly.canEditTriggerNodes;
     protected readonly savedBackendId = computed(() => this.savedNode()?.backendId ?? null);
     protected readonly savedBotKeySecretId = computed(
         () => this.savedNode()?.data.telegram_bot_api_key_secret_id ?? null
@@ -274,6 +274,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     onEditing(): void {
+        if (this.isReadOnly()) return;
         const dialog = this.dialog.open(TelegramTriggerEditingDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',

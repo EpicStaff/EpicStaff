@@ -11,6 +11,7 @@
 
     @if (canStopSelectedSession) {
         <app-stop-button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Run]"
             variant="stop"
             tooltip="Stop session"
             (triggered)="onStopSession()"

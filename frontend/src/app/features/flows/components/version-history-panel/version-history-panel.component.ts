@@ -29,6 +29,7 @@ import { filter, Subscription, switchMap } from 'rxjs';
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
+import { FlowRunPermissionRefusalService } from '../../services/flow-run-permission-refusal.service';
 import { FlowsApiService } from '../../services/flows-api.service';
 
 /** How long a click on the renameable name/description waits for a second click (double-click = rename). */
@@ -66,6 +67,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
     private destroyRef = inject(DestroyRef);
+    private readonly runPermissionRefusal = inject(FlowRunPermissionRefusalService);
 
     public graphId = input.required<number>();
     public graphSaveVersion = input<number | undefined>();
@@ -281,7 +283,8 @@ export class VersionHistoryPanelComponent implements OnInit {
         this.openMenuId = null;
         this.flowApiService
             .createGraphFromVersion(version.id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            // A refusal over trigger nodes is explained there and emits nothing: no toast, no navigation.
+            .pipe(this.runPermissionRefusal.catchRefusal('createFromVersion'), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
                     this.toastService.success('New flow created');
