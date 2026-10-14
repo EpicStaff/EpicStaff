@@ -20,7 +20,10 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
-import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
+import {
+    provideLoadedSandboxLimits,
+    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
+} from '../../../utils/testing/sandbox-limits.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -714,6 +717,55 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
 
         expect(runService.runPythonCode).not.toHaveBeenCalled();
         expect(terminals()).toBe(0);
+    });
+
+    describe('execution timeout', () => {
+        const TIMED_DTO: GetWebhookTriggerNodeRequest = { ...DTO, execution_timeout: 3 };
+
+        it('shows the stored timeout, and the ceiling for a node saved before nodes had one', () => {
+            bindStoredGraph(asStored(TIMED_DTO));
+            open(mapWebhookTriggerNodeToModel(TIMED_DTO));
+            expect(panel().form.value.execution_timeout).toBe(3);
+
+            open(mapWebhookTriggerNodeToModel(DTO));
+            expect(panel().form.value.execution_timeout).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        });
+
+        it('asks to save after a timeout edit, and runs once the saved graph has it, waiting that long', () => {
+            bindStoredGraph(asStored(TIMED_DTO));
+            fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+            fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(TIMED_DTO));
+            fixture.componentRef.setInput('isExpanded', true);
+            fixture.detectChanges();
+            const runPanel = fixture.componentInstance as unknown as RunCodePanel;
+
+            panel().form.patchValue({ execution_timeout: 5 });
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            bindStoredGraph(asStored({ ...TIMED_DTO, execution_timeout: 5 }));
+            expect(runPanel.runCodeBlocker()).toBeNull();
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 5);
+        });
+
+        it('waits for a stored node without a timeout as long as the ceiling the backend applies to it', () => {
+            openExpanded();
+
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        });
+
+        it('puts the edited timeout on the node it saves', () => {
+            open();
+
+            panel().form.patchValue({ execution_timeout: 7 });
+
+            expect(panel().onSaveSilently()?.execution_timeout).toBe(7);
+        });
     });
 
     describe('Save (the panel shell header button)', () => {

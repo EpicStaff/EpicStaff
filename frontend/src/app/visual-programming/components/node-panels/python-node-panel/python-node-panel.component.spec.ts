@@ -13,7 +13,10 @@ import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
-import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
+import {
+    provideLoadedSandboxLimits,
+    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
+} from '../../../utils/testing/sandbox-limits.testing';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -263,5 +266,64 @@ describe('PythonNodePanelComponent test run', () => {
         open();
 
         expect(blocker()).toBe(STORED_GRAPH_OUTDATED_MESSAGE);
+    });
+
+    describe('execution timeout', () => {
+        const TIMED_NODE: PythonNode = { ...STORED_NODE, execution_timeout: 3 };
+
+        function startRun(): void {
+            const start$ = new Subject<{ execution_id: string }>();
+            runService.runPythonCode.mockReturnValue(start$);
+            panel.onRunTest({ count: '3' });
+            start$.next({ execution_id: 'exec-1' });
+        }
+
+        it('shows the stored timeout, and the ceiling for a node saved before nodes had one', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+            expect(panel.form.value.execution_timeout).toBe(3);
+
+            open(mapPythonNodeToModel(STORED_NODE));
+            expect(panel.form.value.execution_timeout).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        });
+
+        it('blocks the run after a timeout edit until the stored node has it, then waits that long for the result', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+
+            panel.form.patchValue({ execution_timeout: 5 });
+            expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            bindStoredGraph({ ...TIMED_NODE, execution_timeout: 5 });
+            expect(blocker()).toBeNull();
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 5);
+        });
+
+        it('waits for a stored node without a timeout as long as the ceiling the backend applies to it', () => {
+            open();
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        });
+
+        it('puts the edited timeout on the node it saves', () => {
+            open();
+
+            panel.form.patchValue({ execution_timeout: 7 });
+
+            expect(panel.onSaveSilently()?.execution_timeout).toBe(7);
+        });
+
+        it('hands an emptied timeout to the flow save, which refuses it', () => {
+            open();
+
+            panel.form.patchValue({ execution_timeout: null });
+
+            expect(panel.onSaveSilently()).toBeNull();
+            expect(panel.captureForValidation()?.execution_timeout).toBeNull();
+        });
     });
 });

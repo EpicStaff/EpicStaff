@@ -1213,6 +1213,46 @@ describe('FlowVisualProgrammingComponent', () => {
         });
     });
 
+    describe('full save of a node with an execution timeout', () => {
+        function loadPythonNodeWithTimeout(executionTimeout: number | null): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ python_node_list: [livePython] })));
+            component.refreshCurrentFlow();
+            const python = flowService.nodes().find((node) => node.backendId === livePython.id)!;
+            flowService.updateNode({ ...python, execution_timeout: executionTimeout } as NodeModel);
+        }
+
+        it('refuses to save a node whose timeout was emptied, and names it', () => {
+            loadPythonNodeWithTimeout(null);
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least 1 whole minute.`
+            );
+        });
+
+        it('refuses to save a fractional timeout', () => {
+            loadPythonNodeWithTimeout(2.5);
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+        });
+
+        it('saves a timeout above the ceiling for the backend to lower, so a lowered ceiling never blocks a save', () => {
+            loadPythonNodeWithTimeout(1000);
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            const payload = flowsApi['bulkSaveGraph'].mock.calls[0][1] as Record<string, unknown>;
+            expect(payload['python_node_list']).toEqual([
+                expect.objectContaining({ id: livePython.id, execution_timeout: 1000 }),
+            ]);
+        });
+    });
+
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
             ...UNEDITED_NODE,

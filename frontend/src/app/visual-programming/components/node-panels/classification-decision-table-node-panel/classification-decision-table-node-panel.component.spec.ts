@@ -3,8 +3,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AbstractControl } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
+import { InputNumberComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
@@ -21,10 +23,14 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
-import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
+import {
+    provideLoadedSandboxLimits,
+    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
+} from '../../../utils/testing/sandbox-limits.testing';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
+import { CdtExportImportService } from './cdt-export-import.service';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -535,5 +541,96 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
         expect(treeDetail().querySelector('.cdt-tree-detail__outdated')).not.toBeNull();
         // Only the generation asked for a persist; the move rides with the table edit.
         expect(persistRequests).toEqual([NODE_ID]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — execution timeout', () => {
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+    let panel: ClassificationDecisionTableNodePanelComponent;
+
+    function open(executionTimeout: number | null): void {
+        TestBed.configureTestingModule({
+            errorOnUnknownProperties: true,
+            errorOnUnknownElements: true,
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideLoadedSandboxLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                {
+                    provide: FullLLMConfigService,
+                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
+                },
+            ],
+        });
+        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+            remove: { imports: [ClassificationDecisionTableGridComponent] },
+            add: { imports: [GridStubComponent] },
+        });
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({ nodes: [{ ...tableNode(), execution_timeout: executionTimeout }], connections: [] });
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+    }
+
+    function timeoutInput(): InputNumberComponent {
+        return fixture.debugElement.query(By.css('app-execution-timeout-field app-input-number'))
+            .componentInstance as InputNumberComponent;
+    }
+
+    function timeoutControl(): AbstractControl {
+        return panel.form.get('execution_timeout')!;
+    }
+
+    it('shows the stored timeout and says it applies to each code step separately', () => {
+        open(3);
+
+        expect(timeoutInput().value()).toBe(3);
+        expect(timeoutInput().max()).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        expect(timeoutInput().tooltipText()).toContain('each code step separately');
+    });
+
+    it('shows a table saved before nodes had a timeout at the ceiling', () => {
+        open(null);
+
+        expect(timeoutInput().value()).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+    });
+
+    it('puts an edited timeout on the node it saves', () => {
+        open(3);
+
+        timeoutControl().setValue(8);
+
+        expect(panel.onSaveSilently()?.execution_timeout).toBe(8);
+    });
+
+    it('keeps a timeout saved under a higher ceiling, with a warning, and closes with it and the other edits', () => {
+        const aboveCeiling = TEST_MAX_EXECUTION_TIMEOUT_MINUTES + 30;
+        open(aboveCeiling);
+
+        expect(timeoutControl().valid).toBe(true);
+        expect(timeoutInput().isAboveWarning()).toBe(true);
+        panel.form.patchValue({ node_name: 'Renamed' });
+        const saved = panel.onSave();
+
+        expect(saved?.execution_timeout).toBe(aboveCeiling);
+        expect(saved?.node_name).toBe('Renamed');
+    });
+
+    it('exports the edited timeout to CSV', () => {
+        open(3);
+        const downloadFile = vi
+            .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
+            .mockImplementation(() => undefined);
+
+        timeoutControl().setValue(8);
+        panel.exportAsCsv();
+
+        expect(downloadFile).toHaveBeenCalledTimes(1);
+        expect((downloadFile.mock.calls[0][0] as string).split('\n')).toContain('execution_timeout,8');
     });
 });

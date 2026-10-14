@@ -49,3 +49,61 @@ describe('CdtExportImportService route code import', () => {
         });
     });
 });
+
+describe('CdtExportImportService execution timeout', () => {
+    const service = new CdtExportImportService();
+
+    function exportData(executionTimeout: number | null) {
+        return service.buildExportData({
+            nodeName: 'Triage',
+            preCode: '',
+            preLibraries: [],
+            preInputMap: {},
+            preOutputVariablePath: null,
+            preUseStorage: false,
+            postCode: '',
+            postLibraries: [],
+            postInputMap: {},
+            postOutputVariablePath: null,
+            postUseStorage: false,
+            defaultLlmConfig: null,
+            executionTimeout,
+            conditionGroups: [],
+            prompts: {},
+        });
+    }
+
+    function importedTimeout(fileContent: Record<string, unknown>): number | null {
+        const result = service.parseJson(JSON.stringify({ condition_groups: [], ...fileContent }));
+        if (!('data' in result)) throw new Error(`Import failed: ${result.errors.join('; ')}`);
+        return result.data.execution_timeout;
+    }
+
+    it('keeps the timeout through a JSON export and import', () => {
+        const result = service.parseJson(service.exportToJson(exportData(7)));
+
+        expect('data' in result && result.data.execution_timeout).toBe(7);
+    });
+
+    it('writes the timeout into the CSV metadata, and leaves it empty for a node without one', () => {
+        expect(service.exportToCsv(exportData(7)).split('\n')).toContain('execution_timeout,7');
+        expect(service.exportToCsv(exportData(null)).split('\n')).toContain('execution_timeout,');
+    });
+
+    it('reads no timeout from a file exported before nodes had one', () => {
+        expect(importedTimeout({})).toBeNull();
+    });
+
+    it.each([0, -2, 2.5, 'soon', true])('reads no timeout from a file holding %s, which no node may set', (value) => {
+        expect(importedTimeout({ execution_timeout: value })).toBeNull();
+    });
+
+    it('carries the timeout of a node exported by the backend into the CSV of selected nodes', () => {
+        const data = service.partialExportNodeToCdtExportData({
+            ClassificationDecisionTableNode: [{ node_name: 'Triage', condition_groups: [], execution_timeout: 12 }],
+        });
+
+        expect(data.execution_timeout).toBe(12);
+        expect(service.exportToCsv(data).split('\n')).toContain('execution_timeout,12');
+    });
+});
