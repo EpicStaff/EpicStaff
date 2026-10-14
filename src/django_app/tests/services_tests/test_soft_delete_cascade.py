@@ -98,6 +98,11 @@ from tables.models.knowledge_models.graphrag_models import (
     GraphRagIndexConfig,
 )
 from tables.services.soft_delete import DeleteService, _DeleteContext
+from agents.models import AgentDefinition
+from tables.exceptions import CrossOrgCascadeError
+from tables.models import Crew, CrewNode
+from tables.services.cascade_org_guard import CascadeOrgGuard, org_paths
+from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401  -- fixtures
 
 
 @pytest.mark.django_db
@@ -909,7 +914,7 @@ class TestOwnerVersusReferenceLinks:
         tool_link = InlineSurfacePythonTool.objects.create(
             inline_surface=inline_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
         )
-        context = _DeleteContext()
+        context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(graph))
 
         context.delete(graph)
         context.delete(python_code_tool)
@@ -1058,3 +1063,133 @@ class TestSoftDeleteStateStaysOutOfApiImportAndCopy:
         copied_values = _copy_field_values(tool_link, exclude={"inline_surface"})
 
         assert not set(copied_values) & set(SOFT_DELETE_FIELD_NAMES)
+
+
+def _agent_definition(org, name="Agent"):
+    return AgentDefinition.objects.create(
+        org=org, name=name, instruction_list=[{"name": "Instruction_1.md", "content": "x"}]
+    )
+
+
+@pytest.mark.django_db
+class TestCascadeStaysInTheRootsOrg:
+    """A delete or purge that would bin, null, unlink or remove a row of another
+    organization raises CrossOrgCascadeError and changes nothing. The API refuses
+    such links, so these tests write them straight to the database."""
+
+    def test_cascade_into_another_orgs_row_raises_and_bins_nothing(self, acme, beta):
+        agent = _agent_definition(acme)
+        own_surface = Surface.objects.create(org=acme, name="Own", owner_agent=agent)
+        foreign_surface = Surface.objects.create(org=beta, name="Foreign", owner_agent=agent)
+
+        with pytest.raises(CrossOrgCascadeError):
+            DeleteService.delete(agent)
+
+        rows = [
+            AgentDefinition.all_objects.get(pk=agent.pk),
+            Surface.all_objects.get(pk=own_surface.pk),
+            Surface.all_objects.get(pk=foreign_surface.pk),
+        ]
+        assert [(row.active, row.soft_delete_batch) for row in rows] == [(True, None)] * 3
+
+    def test_set_null_on_another_orgs_row_raises_and_keeps_its_link(self, acme, beta):
+        acme_flow = Graph.objects.create(org=acme, name="Acme")
+        beta_flow = Graph.objects.create(org=beta, name="Beta")
+        beta_node = SubGraphNode.objects.create(graph=beta_flow, node_name="sub", subgraph=acme_flow)
+
+        with pytest.raises(CrossOrgCascadeError):
+            DeleteService.delete(acme_flow)
+
+        assert Graph.objects.filter(pk=acme_flow.pk).exists()
+        assert SubGraphNode.objects.get(pk=beta_node.pk).subgraph_id == acme_flow.pk
+
+    def test_removing_another_orgs_m2m_link_raises_and_keeps_it(self, acme, beta):
+        label = Label.objects.create(name="prod", org=acme)
+        beta_flow = Graph.objects.create(org=beta, name="Beta")
+        beta_flow.labels.add(label)
+
+        with pytest.raises(CrossOrgCascadeError):
+            DeleteService.delete(label)
+
+        assert Label.objects.filter(pk=label.pk).exists()
+        assert list(beta_flow.labels.all()) == [label]
+
+    def test_root_owned_by_two_orgs_raises(self, acme, beta):
+        node = CrewNode.objects.create(
+            graph=Graph.objects.create(org=acme, name="Acme"),
+            node_name="crew",
+            crew=Crew.objects.create(org=beta, name="Beta crew"),
+        )
+
+        with pytest.raises(CrossOrgCascadeError):
+            DeleteService.delete(node)
+
+        assert CrewNode.objects.filter(pk=node.pk).exists()
+
+    def test_same_org_and_orgless_rows_still_cascade(self, acme, python_code_tool):
+        agent = _agent_definition(acme)
+        own_surface = Surface.objects.create(org=acme, name="Own", owner_agent=agent)
+        # A shared built-in (no org) the surface uses: a reference link, removed for good.
+        tool_link = SurfacePythonTool.objects.create(
+            surface=own_surface, python_tool=python_code_tool, mode=ToolMode.ALLOW
+        )
+
+        batch = DeleteService.delete(agent)
+
+        assert Surface.deleted_objects.filter(pk=own_surface.pk, soft_delete_batch=batch).exists()
+        assert SurfacePythonTool.all_objects.get(pk=tool_link.pk).soft_delete_batch == batch
+
+    def test_orgless_root_reaches_every_org(self, acme, beta, python_code_tool):
+        # A built-in tool binned by the upload_tools command isn't one org's delete.
+        links = [
+            SurfacePythonTool.objects.create(
+                surface=Surface.objects.create(org=org, name=f"Uses {org.name}"),
+                python_tool=python_code_tool,
+                mode=ToolMode.ALLOW,
+            )
+            for org in (acme, beta)
+        ]
+
+        DeleteService.delete(python_code_tool)
+
+        assert not SurfacePythonTool.all_objects.filter(pk__in=[link.pk for link in links]).exists()
+
+    def test_purge_reaching_another_orgs_row_raises_and_deletes_nothing(self, acme, beta):
+        agent = _agent_definition(acme)
+        DeleteService.delete(agent)
+        # Written after the agent was binned, so only the purge reaches it.
+        foreign_surface = Surface.objects.create(org=beta, name="Foreign", owner_agent=agent)
+
+        with pytest.raises(CrossOrgCascadeError):
+            AgentDefinition.all_objects.get(pk=agent.pk).purge()
+
+        assert AgentDefinition.deleted_objects.filter(pk=agent.pk).exists()
+        assert Surface.objects.filter(pk=foreign_surface.pk, owner_agent=agent).exists()
+
+    def test_purge_within_one_org_still_removes_the_subtree(self, acme):
+        agent = _agent_definition(acme)
+        own_surface = Surface.objects.create(org=acme, name="Own", owner_agent=agent)
+        DeleteService.delete(agent)
+
+        AgentDefinition.all_objects.get(pk=agent.pk).purge()
+
+        assert not AgentDefinition.all_objects.filter(pk=agent.pk).exists()
+        assert not Surface.all_objects.filter(pk=own_surface.pk).exists()
+
+
+class TestOrgPaths:
+    def test_own_org_column_is_the_only_path(self):
+        assert org_paths(Surface) == ("org_id",)
+
+    def test_a_node_is_owned_through_its_flow_not_the_flow_it_calls(self):
+        # SubGraphNode.subgraph is SET_NULL: a reference, not an owner.
+        assert org_paths(SubGraphNode) == ("graph__org_id",)
+
+    def test_reference_fields_are_not_owners(self):
+        assert org_paths(SurfacePythonTool) == ("surface__org_id",)
+
+    def test_a_row_with_two_owners_has_two_paths(self):
+        assert org_paths(CrewNode) == ("graph__org_id", "crew__org_id")
+
+    def test_a_model_without_an_org_has_no_path(self):
+        assert org_paths(PythonCode) == ()

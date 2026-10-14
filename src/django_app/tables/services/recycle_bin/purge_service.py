@@ -5,10 +5,13 @@ from datetime import datetime, timedelta
 
 from django.apps import apps
 from django.conf import settings
-from django.db import transaction
+from django.db import router, transaction
+from django.db.models.deletion import Collector
 from django.utils import timezone
+from tables.exceptions import CrossOrgCascadeError
 from tables.models import SourceCollection, StorageFile
 from tables.models.base_models import SoftDeleteFields, SoftDeleteMixin
+from tables.services.cascade_org_guard import CascadeOrgGuard
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -136,6 +139,10 @@ class PurgeService:
         at the swept ones. A chunk that fails is retried row by row; rows that
         still fail are logged and left out for the rest of the run, so one bad
         row can't block the model for good.
+
+        Each row's delete must stay inside the row's own organization (see
+        CascadeOrgGuard). A row whose delete would reach another organization's
+        row is logged and kept in the bin; the rest of the model is still swept.
         """
         deleted: Counter[str] = Counter()
         expired = model.deleted_objects.filter(soft_deleted_at__lt=cutoff)
@@ -164,6 +171,15 @@ class PurgeService:
                     try:
                         with transaction.atomic():
                             deleted.update(cls._delete_locked(model, expired, [pk]))
+                    except CrossOrgCascadeError:
+                        # The guard has logged the row and organization it reaches.
+                        logger.error(
+                            "Recycle bin sweep kept {} {} in the bin: its delete reaches "
+                            "another organization's row",
+                            model._meta.label,
+                            pk,
+                        )
+                        failed_pks.add(pk)
                     except Exception:
                         logger.exception(
                             "Recycle bin sweep failed for {} {}", model._meta.label, pk
@@ -171,21 +187,35 @@ class PurgeService:
                         failed_pks.add(pk)
 
     @staticmethod
-    def _delete_locked(model, expired, pks: list) -> dict[str, int]:
+    def _delete_locked(model, expired, pks: list) -> Counter[str]:
         """Lock the rows of `pks` still in `expired`, then hard-delete them.
 
         Re-checked through `expired`: a row restored and deleted again since the
-        chunk was read has a new deletion time and isn't due yet.
+        chunk was read has a new deletion time and isn't due yet. The rows are
+        deleted one organization at a time, each delete held to its organization.
+
+        Raises:
+            CrossOrgCascadeError: A row's delete would reach another organization's
+                row, or the row belongs to two; the caller's transaction must roll back.
         """
         locked = list(
             expired.filter(pk__in=pks)
             .select_for_update(skip_locked=True)
             .values_list("pk", flat=True)
         )
+        deleted: Counter[str] = Counter()
         if not locked:
-            return {}
-        _, per_label = model.all_objects.filter(pk__in=locked).delete()
-        return per_label
+            return deleted
+        using = router.db_for_write(model)
+        for org_guard, org_pks in CascadeOrgGuard.per_org(model, locked, using):
+            # What QuerySet.delete() does, with the collected rows checked in between.
+            rows = model.all_objects.using(using).filter(pk__in=org_pks)
+            collector = Collector(using=using, origin=rows)
+            collector.collect(rows)
+            org_guard.check_collected(collector)
+            _, per_label = collector.delete()
+            deleted.update(per_label)
+        return deleted
 
     @staticmethod
     def _leftover_models(root_models: set) -> list:

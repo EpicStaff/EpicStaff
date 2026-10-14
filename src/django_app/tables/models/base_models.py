@@ -7,8 +7,9 @@ from enum import Enum
 from typing import ClassVar, Self
 
 from django.apps import apps
-from django.db import connection, models, transaction
+from django.db import connection, models, router, transaction
 from django.db.models import Func, Value
+from django.db.models.deletion import Collector
 from django.utils import timezone
 from rbac.models.author import AuthorModel
 from rbac.models.last_edit import LastEditTrackedModel
@@ -303,9 +304,13 @@ class SoftDeleteMixin(SoftDeleteFields):
             NotInRecycleBinError: The row is live, e.g. a restore committed
                 after the caller loaded it. The row is locked first, so a purge
                 racing a restore never deletes the restored row.
+            CrossOrgCascadeError: The purge would delete or update a row of
+                another organization; nothing is deleted.
         """
         from tables.exceptions import NotInRecycleBinError
+        from tables.services.cascade_org_guard import CascadeOrgGuard
 
+        using = using or router.db_for_write(type(self), instance=self)
         with transaction.atomic(using=using):
             is_binned = (
                 type(self)
@@ -316,7 +321,13 @@ class SoftDeleteMixin(SoftDeleteFields):
             )
             if not is_binned:
                 raise NotInRecycleBinError()
-            return super().delete(using=using, keep_parents=keep_parents)
+            # What Model.delete() does, with the collected rows checked in between:
+            # rows that keep their link to a binned row (soft_delete_keeps_references)
+            # are only changed now, so the soft delete's own check never saw them.
+            collector = Collector(using=using, origin=self)
+            collector.collect([self], keep_parents=keep_parents)
+            CascadeOrgGuard.for_root(self, using).check_collected(collector)
+            return collector.delete()
 
 
 class TimestampMixin(models.Model):

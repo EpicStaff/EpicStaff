@@ -14,6 +14,7 @@ from django.db.models.fields.reverse_related import ManyToManyRel
 from django.db.models.signals import post_save
 from django.utils import timezone
 from tables.models.base_models import SoftDeleteFields
+from tables.services.cascade_org_guard import CascadeOrgGuard
 
 
 def keeps_references(model: type[models.Model]) -> bool:
@@ -81,6 +82,12 @@ class DeleteService:
 
     M2M (explicit through):
         -> process through model normally
+
+    Organization (fail closed, see tables/services/cascade_org_guard.py):
+        a delete that would bin, null, reset or unlink a row of another
+        organization than the root's raises CrossOrgCascadeError, and the
+        whole delete rolls back. Checked before each reverse relation is acted
+        on and before incoming M2M links are removed.
     """
 
     @classmethod
@@ -94,6 +101,10 @@ class DeleteService:
         Returns:
             The batch id stamped on every row this call soft-deleted, or None
             when `obj` was already in the recycle bin and nothing changed.
+
+        Raises:
+            CrossOrgCascadeError: The delete reaches a row of another
+                organization; nothing is changed.
         """
         with transaction.atomic(using=using):
             # Lock the root and read its flag from the database, not from the
@@ -114,7 +125,7 @@ class DeleteService:
                     # The walk trusts `obj.active`; a copy loaded while the row
                     # was binned (and since restored) must not skip it.
                     obj.active = stored_active
-            context = _DeleteContext(using=using)
+            context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(obj, using), using=using)
             context.delete(obj)
             context.finish()
             return context.batch
@@ -144,7 +155,8 @@ class _DeleteContext:
         models.DO_NOTHING: "_handle_do_nothing",
     }
 
-    def __init__(self, using: str | None = None):
+    def __init__(self, org_guard: CascadeOrgGuard, using: str | None = None):
+        self.org_guard = org_guard
         self.using = using
         self.visited: set[tuple[type[models.Model], Any]] = set()
         # One batch id and one timestamp for the whole call, so every row it
@@ -215,7 +227,17 @@ class _DeleteContext:
         We deliberately call Django's Model.delete(),
         not obj.delete(), because obj.delete() may be
         overridden by SoftDeleteFields.
+
+        Its reverse relations were walked already; the only rows of other
+        models Django's Collector still changes are the M2M links pointing at
+        `obj`, so those are checked against the root's organization first.
         """
+        for relation in self._incoming_auto_m2m_relations(obj):
+            field = relation.field
+            links = field.remote_field.through._default_manager.using(self.using).filter(
+                **{f"{field.m2m_reverse_field_name()}_id": obj.pk}
+            )
+            self.org_guard.check_incoming_links(links, field.m2m_field_name(), field.model)
 
         models.Model.delete(
             obj,
@@ -235,6 +257,9 @@ class _DeleteContext:
         obj: models.Model,
     ):
         for relation in self._get_reverse_relations(obj):
+            if self._may_change_children(obj, relation):
+                self.org_guard.check_reverse_relation(obj, relation)
+
             children = self._get_related_objects(
                 obj,
                 relation,
@@ -259,6 +284,24 @@ class _DeleteContext:
                     child=child,
                     relation=relation,
                 )
+
+    @classmethod
+    def _may_change_children(cls, parent, relation) -> bool:
+        """
+        False when the delete never writes to the rows of `relation`: PROTECT
+        and RESTRICT only refuse, and a kept reference stays as it is (see
+        keeps_references). Their rows need no organization check.
+        """
+        on_delete = relation.field.remote_field.on_delete
+        if on_delete in (models.PROTECT, models.RESTRICT):
+            return False
+        return not cls._is_kept_reference(parent, on_delete)
+
+    @classmethod
+    def _is_kept_reference(cls, parent, on_delete) -> bool:
+        return keeps_references(type(parent)) and (
+            on_delete in (models.SET_NULL, models.SET_DEFAULT) or cls._is_set_callable(on_delete)
+        )
 
     @staticmethod
     def _get_reverse_relations(obj):
@@ -480,9 +523,7 @@ class _DeleteContext:
         field = relation.field
         on_delete = field.remote_field.on_delete
 
-        if keeps_references(type(parent)) and (
-            on_delete in (models.SET_NULL, models.SET_DEFAULT) or self._is_set_callable(on_delete)
-        ):
+        if self._is_kept_reference(parent, on_delete):
             return
 
         # ------------------------------------------------------
@@ -670,13 +711,18 @@ class _DeleteContext:
         """
         if keeps_references(type(obj)):
             return
+        for relation in self._incoming_auto_m2m_relations(obj):
+            self.incoming_m2m[relation].append(obj.pk)
+
+    @staticmethod
+    def _incoming_auto_m2m_relations(obj: models.Model):
         for relation in obj._meta.get_fields(include_hidden=True):
             if (
                 relation.auto_created
                 and relation.many_to_many
                 and relation.through._meta.auto_created
             ):
-                self.incoming_m2m[relation].append(obj.pk)
+                yield relation
 
     def finish(self):
         """
@@ -707,6 +753,7 @@ class _DeleteContext:
             # this delete it was hard-deleted, and its links went with it.
             if issubclass(field.model, SoftDeleteFields):
                 links = links.exclude(**{f"{source_name}__active": False})
+            self.org_guard.check_incoming_links(links, source_name, field.model)
             links.delete()
 
     # ==========================================================

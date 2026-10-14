@@ -139,6 +139,23 @@ class RestoreConflictError(CustomAPIExeption):
     default_detail = "Something else just took this item's name. Try the restore again."
 
 
+class CrossOrgCascadeError(CustomAPIExeption):
+    """A delete would change a row of another organization than the one it started in.
+
+    409, not 500: the request is valid and the caller did nothing wrong; the data
+    holds a link no API path creates, and the delete can't go ahead while it's there.
+    The message names neither the row nor its organization, so it can't be used to
+    learn what another organization holds; the server log has the details.
+    """
+
+    status_code = 409
+    default_code = "cross_org_cascade"
+    default_detail = (
+        "This item is linked to data it can't be deleted with. Nothing was deleted. "
+        "Contact an administrator."
+    )
+
+
 class StorageRestoreConflictError(CustomAPIExeption):
     """An object nobody indexed already sits where a restored storage item would go."""
 

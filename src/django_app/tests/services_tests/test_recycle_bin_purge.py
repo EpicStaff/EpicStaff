@@ -11,11 +11,16 @@ from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients.errors import ClientNotAvailableError, ClientResourceNotFoundError
 from tables.exceptions import NotInRecycleBinError
 from tables.models import (
+    Agent,
+    AgentPythonCodeToolConfigs,
+    Crew,
+    CrewNode,
     DocumentContent,
     DocumentMetadata,
     Graph,
     PythonCode,
     PythonCodeTool,
+    PythonCodeToolConfig,
     SourceCollection,
     StorageFile,
     TaskNode,
@@ -25,7 +30,9 @@ from tables.services.recycle_bin.purge_service import PurgeService
 from tables.services.soft_delete import DeleteService
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401  -- fixtures
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from utils.logger import logger
 
 KNOWLEDGE_DELETE = "tables.clients.KnowledgeClient.delete"
 
@@ -303,3 +310,98 @@ class TestPurgeExpired:
 
     def test_an_empty_bin_purges_nothing(self):
         assert PurgeService.purge_expired() == {}
+
+
+def _bin_on_its_own(model, row, days_ago):
+    """Bin a leftover row straight in the database, as nothing else holds it, `days_ago` days ago."""
+    model.all_objects.filter(pk=row.pk).update(
+        active=False, soft_deleted_at=timezone.now() - timedelta(days=days_ago)
+    )
+
+
+def _tool_config(org, tool, name):
+    return PythonCodeToolConfig.objects.create(org=org, tool=tool, name=name)
+
+
+@pytest.mark.django_db
+class TestSweepStaysInEachRowsOrg:
+    """The sweep of leftover expired rows deletes rows of many organizations at once.
+    Each row's delete must stay in that row's own organization: a row whose delete
+    reaches another organization's row is kept in the bin and logged, and the rest
+    are still swept. The API refuses such links, so these tests write them straight
+    to the database."""
+
+    @pytest.fixture(autouse=True)
+    def retention_seven_days(self, settings, storage_manager):
+        settings.RECYCLE_BIN_RETENTION_DAYS = 7
+
+    @pytest.fixture
+    def error_log(self):
+        messages: list[str] = []
+        sink_id = logger.add(messages.append, level="ERROR", format="{message}")
+        yield messages
+        logger.remove(sink_id)
+
+    def test_a_row_whose_delete_reaches_another_org_is_kept_and_the_rest_swept(
+        self, acme, beta, python_code_tool, error_log
+    ):
+        reaching = _tool_config(acme, python_code_tool, "Reaches beta")
+        own = _tool_config(acme, python_code_tool, "Acme only")
+        other_org = _tool_config(beta, python_code_tool, "Beta only")
+        beta_agent = Agent.objects.create(org=beta, role="beta", goal="goal")
+        foreign_link = AgentPythonCodeToolConfigs.objects.create(
+            agent=beta_agent, pythoncodetoolconfig=reaching
+        )
+        for config in (reaching, own, other_org):
+            _bin_on_its_own(PythonCodeToolConfig, config, days_ago=8)
+
+        result = PurgeService.purge_expired()
+
+        assert result["tables.PythonCodeToolConfig"] == 2
+        assert list(PythonCodeToolConfig.all_objects.values_list("pk", flat=True)) == [reaching.pk]
+        assert PythonCodeToolConfig.deleted_objects.filter(pk=reaching.pk).exists()
+        assert AgentPythonCodeToolConfigs.objects.filter(pk=foreign_link.pk).exists()
+        assert (
+            f"Refused to delete PythonCodeToolConfig {reaching.pk} of org {acme.id}: the delete "
+            f"reaches AgentPythonCodeToolConfigs {foreign_link.pk} of org(s) [{beta.id}], "
+            "linked across organizations outside the API\n"
+        ) in error_log
+        assert (
+            f"Recycle bin sweep kept tables.PythonCodeToolConfig {reaching.pk} in the bin: "
+            "its delete reaches another organization's row\n"
+        ) in error_log
+
+    def test_a_row_owned_by_two_orgs_is_kept_and_the_rest_swept(self, acme, beta, error_log):
+        acme_flow = Graph.objects.create(org=acme, name="Acme")
+        two_orgs = CrewNode.objects.create(
+            graph=acme_flow, node_name="foreign crew", crew=Crew.objects.create(org=beta, name="Beta")
+        )
+        own = CrewNode.objects.create(
+            graph=acme_flow, node_name="own crew", crew=Crew.objects.create(org=acme, name="Acme")
+        )
+        for node in (two_orgs, own):
+            _bin_on_its_own(CrewNode, node, days_ago=8)
+
+        PurgeService.purge_expired()
+
+        assert CrewNode.deleted_objects.filter(pk=two_orgs.pk).exists()
+        assert not CrewNode.all_objects.filter(pk=own.pk).exists()
+        assert (
+            f"Recycle bin sweep kept tables.CrewNode {two_orgs.pk} in the bin: "
+            "its delete reaches another organization's row\n"
+        ) in error_log
+
+    def test_rows_of_several_orgs_are_swept_together(self, acme, beta, error_log):
+        nodes = []
+        for org in (acme, beta):
+            graph = Graph.objects.create(org=org, name=f"Live {org.name}")
+            node = TaskNode.objects.create(graph=graph, node_name="removed")
+            DeleteService.delete(node)
+            _backdate(TaskNode, node, 8)
+            nodes.append(node)
+
+        result = PurgeService.purge_expired()
+
+        assert result["tables.TaskNode"] == 2
+        assert not TaskNode.all_objects.filter(pk__in=[node.pk for node in nodes]).exists()
+        assert error_log == []
