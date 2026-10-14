@@ -1,7 +1,8 @@
-"""Success responses of the venv controller.
+"""Responses of the venv controller.
 
-By decision these tests cover 2XX only: error mapping would need a case per handler and
-every one of them costs a live HTTP test server.
+Mostly 2XX: error mapping would need a case per handler and every one of them costs a
+live HTTP test server. The one rejection covered here is the library invariant, because
+it is the only validation that happens after the body has already been parsed.
 """
 
 from litestar import status_codes
@@ -96,3 +97,74 @@ def test_remove_returns_204_and_deletes_the_venv(client, venv_repository):
 
     assert response.status_code == status_codes.HTTP_204_NO_CONTENT
     assert stored.id not in venv_repository.rows
+
+
+def test_create_carries_the_library_description_and_pinned_version(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [
+                {
+                    "name": "Pandas",
+                    "description": "dataframes",
+                    "specification": ">=2.0",
+                    "version": "2.1.0",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert response.json()["libs"] == [
+        {
+            "name": "pandas",
+            "description": "dataframes",
+            "specification": ">=2.0",
+            "version": "2.1.0",
+        }
+    ]
+
+
+def test_create_defaults_the_optional_library_fields(client, venv_repository):
+    response = client.post("/venvs", json={"name": "data", "libs": [{"name": "pandas"}]})
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert response.json()["libs"] == [
+        {"name": "pandas", "description": None, "specification": "", "version": None}
+    ]
+
+
+def test_create_rejects_a_version_outside_its_specification(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [{"name": "pandas", "specification": ">=2.0", "version": "1.9.0"}],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert venv_repository.rows == {}
+
+
+def test_update_replaces_the_whole_library_list(client, venv_repository):
+    stored = venv_repository.seed(make_venv(libs=[make_library(name="pandas")]))[0]
+
+    response = client.patch(
+        f"/venvs/{stored.id}",
+        json={"libs": [{"name": "numpy", "specification": ">=1.26"}]},
+    )
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert [lib["name"] for lib in response.json()["libs"]] == ["numpy"]
+    assert [lib.name for lib in venv_repository.rows[stored.id].libs] == ["numpy"]
+
+
+def test_update_without_libraries_leaves_them_alone(client, venv_repository):
+    stored = venv_repository.seed(make_venv(libs=[make_library(name="pandas")]))[0]
+
+    response = client.patch(f"/venvs/{stored.id}", json={"name": "new"})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert [lib["name"] for lib in response.json()["libs"]] == ["pandas"]

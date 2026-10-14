@@ -1,14 +1,16 @@
-from typing import Any
+from typing import Any, Self
 
 from foundation.base import Schema
 from pydantic import Field
 
 from manager.domain.enums import JobStatus, VenvStatus
-from manager.domain.models import Library
+from manager.domain.models import Library, Venv
 
 __all__ = [
     "ExecutionAcceptedSchema",
     "ExecutionSubmitSchema",
+    "LibraryRetrieveSchema",
+    "LibraryWriteSchema",
     "VenvCreateSchema",
     "VenvListSchema",
     "VenvRetrieveSchema",
@@ -16,9 +18,42 @@ __all__ = [
 ]
 
 
+class LibraryWriteSchema(Schema):
+    """A library as a client declares it."""
+
+    name: str
+    description: str | None = None
+    specification: str = ""
+    version: str | None = None
+
+    def to_domain(self) -> Library:
+        return Library(
+            name=self.name,
+            description=self.description,
+            specification=self.specification,
+            version=self.version,
+        )
+
+
+class LibraryRetrieveSchema(Schema):
+    name: str
+    description: str | None = None
+    specification: str
+    version: str | None = None
+
+    @classmethod
+    def from_domain(cls, library: Library) -> Self:
+        return cls(
+            name=library.name,
+            description=library.description,
+            specification=library.specification,
+            version=library.version,
+        )
+
+
 class VenvCreateSchema(Schema):
     name: str
-    libs: list[Library]
+    libs: list[LibraryWriteSchema]
 
 
 class VenvListSchema(Schema):
@@ -33,14 +68,25 @@ class VenvListSchema(Schema):
 class VenvRetrieveSchema(Schema):
     id: int
     name: str
-    libs: list[Library]
+    libs: list[LibraryRetrieveSchema]
     status: VenvStatus
     error: str | None = None
 
+    @classmethod
+    def from_domain(cls, venv: Venv) -> Self:
+        return cls(
+            id=venv.id,
+            name=venv.name,
+            libs=[LibraryRetrieveSchema.from_domain(lib) for lib in venv.libs],
+            status=venv.status,
+            error=venv.error,
+        )
+
 
 class VenvUpdateSchema(Schema):
+    # An absent `libs` leaves the declared libraries alone; a list replaces all of them.
     name: str | None = None
-    libs: list[Library] | None = None
+    libs: list[LibraryWriteSchema] | None = None
 
 
 class ExecutionSubmitSchema(Schema):

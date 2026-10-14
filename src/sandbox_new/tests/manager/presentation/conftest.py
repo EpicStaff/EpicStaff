@@ -8,15 +8,20 @@ traceback in the response body instead of a bare 500.
 ``job_intake`` mirrors what ``common.bootstrap.lifespan`` publishes on ``app.state``. It
 is rebuilt here from fakes instead of imported, so importing this conftest does not
 register the real runtime's startup hooks.
+
+The error handlers are the real ones, so a test can assert the status a rejected request
+actually gets rather than the one the controller hoped for.
 """
 
 from dataclasses import dataclass
 
 import pytest
+from foundation.utils.litestar import error_handler
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.testing import create_test_client
 
+import manager.bootstrap  # noqa: F401  registers the error handlers below
 from manager.application.holding import JobHoldingRegistry
 from manager.application.ports import AbstractUnitOfWork
 from manager.presentation.rest.controllers import ExecutionController, VenvController
@@ -49,6 +54,7 @@ def client(uow, job_intake):
         route_handlers=[VenvController, ExecutionController],
         dependencies={"uow": Provide(provide_uow)},
         state=State({"job_intake": job_intake}),
+        exception_handlers=error_handler.get_handlers(),
         debug=True,
     ) as test_client:
         yield test_client

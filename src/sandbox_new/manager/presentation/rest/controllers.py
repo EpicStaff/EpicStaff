@@ -23,30 +23,31 @@ class VenvController(Controller):
             count=count,
             limit=limit or 0,
             offset=offset or 0,
-            result=[schemas.VenvRetrieveSchema.model_validate(o) for o in objs],
+            result=[schemas.VenvRetrieveSchema.from_domain(o) for o in objs],
         )
 
     @get(path="/{id:int}")
     async def retrieve(self, id: int, uow: AbstractUnitOfWork) -> schemas.VenvRetrieveSchema:
         orchestrator = VenvCRUDOrchestrator(uow)
         obj = await orchestrator.retrieve(id)
-        return schemas.VenvRetrieveSchema.model_validate(obj)
+        return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @post(status_code=status_codes.HTTP_201_CREATED)
     async def create(
         self, data: schemas.VenvCreateSchema, uow: AbstractUnitOfWork
     ) -> schemas.VenvRetrieveSchema:
         orchestrator = VenvCRUDOrchestrator(uow)
-        obj = await orchestrator.create(data.name, data.libs)
-        return schemas.VenvRetrieveSchema.model_validate(obj)
+        obj = await orchestrator.create(data.name, [lib.to_domain() for lib in data.libs])
+        return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @patch(path="/{id:int}")
     async def update(
         self, id: int, data: schemas.VenvUpdateSchema, uow: AbstractUnitOfWork
     ) -> schemas.VenvRetrieveSchema:
         orchestrator = VenvCRUDOrchestrator(uow)
-        obj = await orchestrator.update(id, data.name, data.libs)
-        return schemas.VenvRetrieveSchema.model_validate(obj)
+        libs = None if data.libs is None else [lib.to_domain() for lib in data.libs]
+        obj = await orchestrator.update(id, data.name, libs)
+        return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @delete(path="/{id:int}")
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
