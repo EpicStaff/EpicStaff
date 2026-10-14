@@ -151,15 +151,19 @@ class WebhookCreationMixin:
 
 
 class ExecutionTimeoutSerializerMixin:
-    """Accept a node's `execution_timeout` (minutes), lowering a value above the sandbox ceiling.
+    """Read and write a node's `execution_timeout` (minutes), never above the sandbox ceiling.
 
     One rule for every write path (node endpoints, graph bulk save, import and version
     restore): a value above the ceiling is clamped to it rather than rejected, because the
     ceiling is deployment configuration that can be lowered after a flow was saved or
-    exported. The field is injected in `get_fields` because this mixin is not a
-    `Serializer`, so a class-level field declaration would not be collected into
-    `_declared_fields`. The clamp reads the ceiling on each call. Optional on input: an
-    omitted value keeps the stored one, or takes the model default (the ceiling) on create.
+    exported. Reads (node and graph responses, export) clamp too, so a row stored before
+    the ceiling was lowered is never shown above it; the stored rows themselves are
+    clamped at startup by `clamp_execution_timeouts_to_ceiling`. The field is injected in
+    `get_fields` because this mixin is not a `Serializer`, so a class-level field
+    declaration would not be collected into `_declared_fields`, and it is injected even
+    when `Meta.fields` lists names explicitly. The clamp reads the ceiling on each call.
+    Optional on input: an omitted value keeps the stored one, or takes the model default
+    (the ceiling) on create.
     """
 
     def get_fields(self):
@@ -175,4 +179,16 @@ class ExecutionTimeoutSerializerMixin:
         return fields
 
     def validate_execution_timeout(self, value: int) -> int:
-        return min(value, settings.SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES)
+        return _clamp_to_execution_timeout_ceiling(value)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("execution_timeout") is not None:
+            data["execution_timeout"] = _clamp_to_execution_timeout_ceiling(
+                data["execution_timeout"]
+            )
+        return data
+
+
+def _clamp_to_execution_timeout_ceiling(minutes: int) -> int:
+    return min(minutes, settings.SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES)

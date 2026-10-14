@@ -2,6 +2,7 @@ import sys
 
 from django.apps import AppConfig
 from django.conf import settings
+from django.db.models.signals import post_migrate
 from loguru import logger
 
 
@@ -67,6 +68,17 @@ class TablesConfig(AppConfig):
         from tables.services.session_manager_service import SessionManagerService
         from tables.services.telegram_trigger_service import TelegramTriggerService
         from tables.services.webhook_trigger_service import WebhookTriggerService
+        from tables.signals.execution_timeout_signals import (
+            clamp_execution_timeouts_after_migrate,
+        )
+
+        # Sent once per migrated database for each app; `sender=self` keeps it to
+        # the tables app so the clamp runs once per migrate.
+        post_migrate.connect(
+            clamp_execution_timeouts_after_migrate,
+            sender=self,
+            dispatch_uid="tables.clamp_execution_timeouts_after_migrate",
+        )
 
         if "runserver" in sys.argv:
             logger.info(f"{settings.DEBUG=}")
