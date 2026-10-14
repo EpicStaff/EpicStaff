@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EpicStaff Benchmarks</title>
   <link rel="icon" href="data:," />
+  <script>
+    // the theme before the first paint (the control in the header changes it later)
+    (() => {
+      let choice = "auto";
+      try { choice = localStorage.getItem("epicstaff-bench-theme") || "auto"; } catch { /* storage blocked: Auto */ }
+      const dark = choice === "dark" || (choice !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     /* Layout: one-column workbench — actions, run picker, differences, then tabbed comparisons; wide tables scroll inside their own box. */
@@ -21,6 +30,7 @@
       --accent-soft: #e5edfb;
       --good: #0b7a0b;
       --bad: #c42b2b;
+      --warning: #9a5b00; /* status only (findings, flagged panels); 5.4:1 on --surface */
       --alert-bg: #fdeceb;
       --alert-ink: #8a1c1c;
       --alert-line: #eeb1ad;
@@ -35,32 +45,32 @@
       --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --font-data: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        color-scheme: dark;
-        --bg: #0e1116;
-        --surface: #161a21;
-        --ink: #edf0f4;
-        --ink-2: #b6bdc8;
-        --muted: #8f98a5; /* 6.5:1 on --bg, 6.0:1 on --surface */
-        --line: #2b313b;
-        --grid: #232830;
-        --accent: #79a6f2;
-        --accent-soft: #1b2940;
-        --good: #43c15b;
-        --bad: #f07070;
-        --alert-bg: #3a1618;
-        --alert-ink: #ffd0cc;
-        --alert-line: #7d2d2d;
-        --series-1: #3987e5;
-        --series-2: #d95926;
-        --series-3: #199e70;
-        --series-4: #c98500;
-        --series-5: #d55181;
-        --series-6: #008300;
-        --series-7: #9085e9;
-        --series-8: #e66767;
-      }
+    /* dark theme: <html data-theme="dark">, set by the theme control (Auto follows the OS setting) */
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0e1116;
+      --surface: #161a21;
+      --ink: #edf0f4;
+      --ink-2: #b6bdc8;
+      --muted: #8f98a5; /* 6.5:1 on --bg, 6.0:1 on --surface */
+      --line: #2b313b;
+      --grid: #232830;
+      --accent: #79a6f2;
+      --accent-soft: #1b2940;
+      --good: #43c15b;
+      --bad: #f07070;
+      --warning: #fab219;
+      --alert-bg: #3a1618;
+      --alert-ink: #ffd0cc;
+      --alert-line: #7d2d2d;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --series-5: #d55181;
+      --series-6: #008300;
+      --series-7: #9085e9;
+      --series-8: #e66767;
     }
     * { box-sizing: border-box; }
     body {
@@ -124,9 +134,29 @@
     .hint { max-width: 80ch; margin: 2px 0 12px; font-size: 12.5px; color: var(--ink-2); }
     .empty { padding: 24px 0; color: var(--ink-2); }
     .chart { position: relative; width: 100%; }
+    /* the Timeline's shared crosshair: a 1px overlay per chart, moved without redrawing the canvas */
+    .crosshair { position: absolute; top: 0; width: 1px; background: var(--ink-2); pointer-events: none; }
     .grid-2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
     .grid-2 > * { min-width: 0; }
     .key { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+    /* Column tooltips: the definition is in the header's aria-describedby text; #tip shows it on hover and focus. */
+    th [aria-describedby] { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; cursor: help; }
+    th button[aria-describedby] { cursor: pointer; }
+    #tip { position: fixed; z-index: 10; max-width: min(44ch, calc(100vw - 16px)); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.4; box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); pointer-events: none; }
+    .glyph { font-weight: 700; }
+    .findings h3 { display: flex; align-items: center; gap: 6px; }
+    .finding-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+    .finding-list button { all: unset; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+    .finding-list button:hover { background: var(--accent-soft); }
+    .finding-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .goto { font-size: 12px; color: var(--accent); }
+    /* Timeline zoom: the range being dragged, and the overview's brush over the visible range */
+    .selection, .brush { position: absolute; pointer-events: none; background: color-mix(in srgb, var(--accent) 22%, transparent); border-inline: 1px solid var(--accent); }
+    .container-row { margin: 0 0 16px; padding: 8px 8px 4px; border: 1px solid var(--grid); border-radius: 6px; min-width: 0; }
+    .container-row.warning { border: 2px solid var(--warning); }
+    .container-row.critical { border: 2px solid var(--bad); }
+    .container-row .name { margin: 0 0 4px; color: var(--ink); font-size: 14px; }
+    .container-row .flag { margin: 0 0 4px; font-size: 12.5px; color: var(--ink-2); }
   </style>
 </head>
 <body>
@@ -136,6 +166,7 @@
       <p class="subtitle">Pick runs, set a baseline, compare capacity, latency and resources.</p>
     </div>
     <div class="actions">
+      <label class="inline">Theme <select id="theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <button id="load-index" type="button">Load index.json</button>
       <button id="open-folders" type="button" class="primary">Open run folders…</button>
       <input id="folder-input" type="file" webkitdirectory multiple hidden />
@@ -159,18 +190,18 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">Select</th>
-            <th scope="col">Baseline</th>
-            <th scope="col">Run</th>
-            <th scope="col">Date (UTC)</th>
-            <th scope="col">Kind</th>
-            <th scope="col">Case / variant</th>
-            <th scope="col">Ref</th>
-            <th scope="col">Sha</th>
-            <th scope="col">Host</th>
-            <th scope="col">Note</th>
-            <th scope="col">Labels</th>
-            <th scope="col" title="Capacity runs: highest passing concurrency per phase. Dev runs: p95 end-to-end seconds.">Result</th>
+            <th scope="col" data-def="select">Select</th>
+            <th scope="col" data-def="baseline">Baseline</th>
+            <th scope="col" data-def="run">Run</th>
+            <th scope="col" data-def="created_at">Date (UTC)</th>
+            <th scope="col" data-def="run_kind">Kind</th>
+            <th scope="col" data-def="case_variant">Case / variant</th>
+            <th scope="col" data-def="ref">Ref</th>
+            <th scope="col" data-def="sha">Sha</th>
+            <th scope="col" data-def="host">Host</th>
+            <th scope="col" data-def="note">Note</th>
+            <th scope="col" data-def="labels">Labels</th>
+            <th scope="col" data-def="result">Result</th>
           </tr>
         </thead>
         <tbody id="runs-body"></tbody>
@@ -180,6 +211,7 @@
   <section id="diff" class="panel" hidden></section>
   <nav id="tabs" role="tablist" aria-label="Comparison views"></nav>
   <main id="tab"></main>
+  <div id="tip" aria-hidden="true" hidden></div>
   <script>
     "use strict";
 
@@ -188,7 +220,147 @@
     const TEXT_COLUMNS = new Set([
       "phase", "kind", "verdict", "live_verdict", "fail_reasons", "bottleneck", "node_name", "node_type",
       "container", "status", "error_reason", "censored", "service", "checkpoint", "extra_json",
+      "stage", "severity", "message", "tab",
     ]);
+    // One line per column, consistent with benchmark/docs/METRICS.md: every table header's tooltip.
+    // Keys are CSV column names (test_bench.ViewerDefinitionsTest checks that every column the
+    // analyzer writes has one), "<file>.<column>" where a name means different things in two
+    // files, meta.json verdict keys, and the viewer's own columns. A duration statistic such as
+    // e2e_s_p95 is explained by its statistic (p95) and its duration (e2e_s); see definition().
+    const DEFINITIONS = {
+      phase: "Phase of the case: one flow with its pass rules. Phases run one after another.",
+      segment: "Stretch of load after a stack restart: 1 is the ladder, every bisect probe is its own segment.",
+      level: "Concurrency level: sessions kept in flight at the same time (0 outside a level).",
+      kind: "ladder, bisect or dev level; for a session also cold (first after a restart) or finish (sent while the level waited for its measured sessions; never measured).",
+      cold: "1 for the first session after a restart: start-up cost, never in aggregates.",
+      session_id: "EpicStaff session id (empty when the start request failed).",
+      intended_ts: "When the load controller decided to start the session (epoch s). Decides whether it is measured.",
+      sent_ts: "When the start request was actually sent (epoch s).",
+      gen_lag_ms: "sent_ts − intended_ts: how late the load generator sent the session.",
+      api_ms: "Duration of the start request.",
+      http_status: "HTTP status of the start request.",
+      arrival_ts: "Django request_received: when the start request arrived.",
+      received_ts: "Crew received the session.",
+      slot_ts: "Crew acquired a slot and started the flow.",
+      end_ts: "Session end: crew's session_end, or the runner's own stop time for timeout, http_error and interrupted.",
+      status: "Final status: crew's (end, error, stop, …) or the runner's http_error, timeout, interrupted. Empty: no end known.",
+      censored: "True when the duration is only a lower bound (interrupted, or still running when judged).",
+      error_reason: "Why the session did not end with end: the request error or crew's reason.",
+      e2e_s: "End-to-end seconds: request sent → session end, as a client sees it.",
+      dispatch_s: "Request sent → crew received: HTTP, Django creating and publishing the session, Redis delivery to crew.",
+      queue_wait_s: "Crew received → slot acquired: waiting for a crew slot.",
+      run_s: "Slot acquired → session end: executing the flow.",
+      llm_s: "Sum of time inside LLM provider calls (parallel calls can exceed wall time).",
+      llm_calls: "Number of LLM calls.",
+      tokens: "Total LLM tokens.",
+      cost_usd: "LLM cost reported by the agent, USD.",
+      agent_queue_s: "Sum of crew agent_dispatched → agent request_consumed: waiting for an agent worker.",
+      python_s: "Sum of sandbox exec_start → exec_end: running Python code in the sandbox.",
+      sandbox_wait_s: "Sum of sandbox_dispatched (crew or agent) → sandbox exec_start: code handed to the sandbox but not running yet.",
+      other_s: "Crew overhead: run_s − LLM − Python − agent queue − sandbox wait (≥ 0): orchestration, node bookkeeping, Redis hops. In runs without sandbox_wait_s it still contains the sandbox wait.",
+      platform_overhead_s: "e2e_s − llm_s: everything that is not the LLM provider.",
+      p50: "Median: half the sessions were faster",
+      p90: "90 % of the sessions were faster",
+      p95: "95 % of the sessions were faster (the pass rules use it)",
+      p99: "99 % of the sessions were faster (close to max with few sessions)",
+      max: "Slowest session",
+      mean: "Arithmetic mean",
+      target: "Concurrency target (= level).",
+      inflight_mean: "Mean sessions in flight in the measured window; well below target means the generator or the API could not keep up.",
+      running_mean: "Mean sessions crew was executing (slot acquired, not ended). 0 in fallback mode.",
+      steady_s: "Measured window: end of settle → end of hold, seconds.",
+      sent: "Measured sessions of the level.",
+      completed: "Measured sessions that ended with status end.",
+      failed: "Measured sessions that ended with another status (interrupted ones excluded).",
+      interrupted: "Measured sessions stopped because the run itself was stopped. Not failures.",
+      throughput_per_min: "Sessions of the phase that ended end in the level's measured window, per minute.",
+      error_rate: "failed / sent over the measured sessions.",
+      cpu_s_per_session: "CPU-seconds of all containers in the measured window / sessions that ended end in it. Includes idle CPU.",
+      mb_per_concurrent: "Per level: Σ (container memory − baseline) / mean running sessions. Includes fixed growth, so it reads high at low levels.",
+      gen_lag_p99_ms: "p99 generator lag of the measured sessions; above 500 ms the level is invalid (the tool, not the server, was the limit).",
+      verdict: "Final verdict of the level: pass, fail or invalid.",
+      live_verdict: "Verdict the runner took during the run; it decided whether the ladder continued.",
+      fail_reasons: "The rules that failed, or why the level is invalid.",
+      bottleneck: "Why a level failed, first match of: container restart/OOM, timed-out sessions (with the checkpoint where they hung), host RAM, host CPU, container CPU limit, crew slots full, agent queue growing, Postgres connections.",
+      container: "Container name.",
+      cpu_s: "CPU-seconds the container used in the level's measured window.",
+      "containers.cpu_s_per_session": "This container's CPU-seconds in the measured window / sessions that ended end in it.",
+      cpu_pct_mean: "Mean sampled CPU in the window, % of one core.",
+      cpu_pct_max: "Highest sampled CPU in the window, % of one core.",
+      mem_mean_mb: "Mean sampled memory in the window, MB.",
+      mem_peak_mb: "Highest 2-second memory sample in the level's measured window, MB.",
+      restarts: "Rise of the container's restart count.",
+      oom_kills: "Rise of the container's OOM-kill counter.",
+      phase_peak_mb: "Highest memory sample of the container over the whole phase: every level including the failing one, drain and cooldown.",
+      phase_peak_level: "Level of the phase peak sample; 0 = outside a level (cold session, baseline, drain or cooldown), shown as “outside a level”.",
+      baseline_mb: "Mean container memory before load (the phase's first baseline window), MB.",
+      "container_phases.mb_per_concurrent": "Slope of the container's memory against running sessions over the phase's first segment: MB one more concurrent session costs.",
+      r2: "r²: how well that slope fits (1 = a perfect line, 0 = none). Below 0.5 it stays out of the headline.",
+      retained_mb_after_cooldown: "Memory above baseline in the last 60 s of the cooldown: caches, fragmentation or a leak.",
+      node_name: "Node as named in the flow.",
+      node_type: "Node type.",
+      count: "Node executions in the level's measured sessions.",
+      p50_s: "Median node execution time, s.",
+      p95_s: "95th percentile node execution time, s.",
+      mean_s: "Mean node execution time, s.",
+      max_s: "Slowest node execution, s.",
+      error_count: "Executions whose node_end reported ok = false.",
+      ts: "Sample or event time (epoch s).",
+      rel_s: "Seconds since the segment's sampler started; restarts at 0 in every segment.",
+      run_rel_s: "Seconds since the run's first sample, continuous across segments (the timeline x axis).",
+      inflight: "Sessions in flight: started, not ended (includes sessions queued in crew).",
+      running: "Sessions crew is executing.",
+      queued: "inflight − running: waiting for a slot or not yet received by crew.",
+      "timeline.completed": "Sessions ended with end so far in the segment (cumulative).",
+      "timeline.failed": "Sessions failed so far in the segment (cumulative, interrupted excluded).",
+      host_cpu_pct: "Busy share of all host cores, %.",
+      host_mem_avail_mb: "Host MemAvailable, MB.",
+      host_mem_avail_pct: "Host MemAvailable, % of RAM.",
+      load1: "Host 1-minute load average.",
+      pg_connections: "Rows in pg_stat_activity (includes Postgres background processes).",
+      pg_max_connections: "Postgres max_connections.",
+      redis_used_mb: "Redis used_memory, MB.",
+      runner_cpu_pct: "CPU of the benchmark process itself, % of one core.",
+      "timeline.throughput_per_min": "Sessions that ended with end in the 60 s before the sample (a rolling rate per minute).",
+      e2e_p95_60s: "p95 end-to-end seconds of the sessions that ended with end in the 60 s before the sample.",
+      cpu_pct: "Container CPU between two samples, % of one core (100 = one full core).",
+      mem_mb: "Container memory, MB.",
+      service: "Service that logged the checkpoint: django_app, crew, agent, sandbox.",
+      checkpoint: "BENCH checkpoint name.",
+      extra_json: "Every other field of the checkpoint line.",
+      stage: "Where an in-flight session is, from the last checkpoint it reached: waiting for crew, crew, agent queue, agent, LLM, waiting for sandbox, python, result return.",
+      "inflight_stages.count": "Sessions in flight at that stage at the sample.",
+      severity: "critical, warning or info.",
+      "findings.kind": "Rule that produced the finding.",
+      message: "What the rule found.",
+      tab: "Viewer tab to read on.",
+      max_pass_concurrency: "Highest level with a final pass (ladder or bisect): the measured capacity under the pass rules.",
+      first_fail_level: "Lowest failing level; the true limit lies between it and the max passing level.",
+      throughput_per_min_at_max: "Throughput at the highest passing level, sessions per minute.",
+      p95_e2e_s_at_max: "p95 end-to-end seconds at the highest passing level.",
+      p95_platform_overhead_s_at_max: "p95 of e2e minus LLM time at the highest passing level.",
+      cpu_s_per_session_at_max: "CPU-seconds per session at the highest passing level (all containers, idle CPU included).",
+      mb_per_concurrent_total: "Sum of the containers' memory slopes with r² ≥ 0.5: memory one more concurrent session costs.",
+      p50_e2e_s: "Median end-to-end seconds.",
+      p95_e2e_s: "95th percentile end-to-end seconds.",
+      capacity_estimate: "Smallest bound (CPU, RAM, configured caps) extrapolated from the highest passing level; the bounds are in the cell's title.",
+      run: "Run: #N from the results index, L1, L2 … for folders opened from disk.",
+      select: "Tick to compare the run.",
+      baseline: "The run the others are compared with (Δ %).",
+      created_at: "When the run started (UTC).",
+      run_kind: "capacity (ladder until a level fails) or dev (fixed load, no verdict).",
+      case_variant: "Case file and the variant (env overrides) it ran.",
+      ref: "Git ref that was measured.",
+      sha: "Git commit that was measured.",
+      host: "Host the stack ran on.",
+      note: "--note given to the run.",
+      labels: "Labels limiting what the run can show (interrupted, crashed, fallback-control, dirty-tree, …).",
+      result: "Capacity runs: highest passing concurrency per phase. Dev runs: p95 end-to-end seconds.",
+      field: "meta.json field that differs between the selected runs.",
+      sessions: "Completed sessions of the level the bar averages over (cold sessions excluded).",
+      headline_level: "Highest passing level (dev: its only level): where CPU and peak memory are read.",
+      delta_p50: "Change of the node's p50 against the same node in the baseline run.",
+    };
     const NUMBER = /^-?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
     const MEASURED_KINDS = new Set(["ladder", "bisect", "dev"]);
     const CAPACITY_COLUMNS = [
@@ -214,14 +386,29 @@
       e2e_s_p95: "p95 end-to-end (s)",
       queue_wait_s_p95: "p95 queue wait (s)",
       platform_overhead_s_p95: "p95 platform overhead (s)",
+      sandbox_wait_s_p95: "p95 sandbox wait (s)",
       error_rate: "Error rate (0–1)",
       cpu_s_per_session: "CPU-seconds per session",
       mb_per_concurrent: "MB per concurrent session",
     };
+    // Stacked charts colour each stage with the categorical slot of its position, in this fixed
+    // order (the palette is validated for neighbours in slot order; a custom order failed it).
+    // Both lists put the shared stages on the same slot — dispatch / waiting for crew, crew
+    // overhead / crew, agent queue, LLM, sandbox wait / waiting for sandbox, Python — so a colour
+    // means the same thing in both charts; only slot 4 differs (queue wait / agent).
     const BREAKDOWN = [
-      ["dispatch_s", "Dispatch"], ["queue_wait_s", "Queue wait"], ["agent_queue_s", "Agent queue"],
-      ["llm_s", "LLM"], ["python_s", "Python"], ["other_s", "Other"],
+      ["dispatch_s", "Dispatch"], ["other_s", "Crew overhead"], ["agent_queue_s", "Agent queue"],
+      ["queue_wait_s", "Queue wait"], ["llm_s", "LLM"], ["sandbox_wait_s", "Sandbox wait"], ["python_s", "Python"],
     ];
+    // analyze.STAGES, same order
+    const STAGES = ["waiting for crew", "crew", "agent queue", "agent", "LLM", "waiting for sandbox", "python", "result return"];
+    // [severity, glyph, label, status colour token]: the glyph and the label carry the meaning, never the colour alone
+    const SEVERITIES = [["critical", "✖", "Critical", "--bad"], ["warning", "▲", "Warning", "--warning"], ["info", "ⓘ", "Info", "--ink-2"]];
+    // findings.csv kind → the short label of its timeline marker
+    const MARKER_LABELS = {
+      timeouts: "first timeout", abort: "abort", container_restart: "restart/OOM", http_errors: "first HTTP error",
+      invalid_level: "invalid level", cpu_limit: "CPU limit",
+    };
     const SPAN_TYPES = [
       ["session", "Session (request → end)", "--muted"], ["queue", "Queue (received → slot)", "--series-2"],
       ["node", "Node", "--series-1"], ["llm", "LLM call", "--series-7"], ["exec", "Python exec (sandbox)", "--series-3"],
@@ -238,11 +425,13 @@
       filters: { kind: "", case: "", ref: "", host: "", text: "" },
       curveMetric: "throughput_per_min",
       logX: true,
-      rightAxis: "host",
       focusRun: null,
       sessionPick: "median",
+      highlight: null, // run_rel_s of a finding to show once the Timeline is drawn
+      zoom: null, // { run, from, to }: the Timeline's visible range, kept across re-draws
     };
     let charts = [];
+    let tipCount = 0;
     let localCount = 0;
     let diffToken = 0;
     const notified = new Set();
@@ -326,6 +515,46 @@
     }
 
     const sameStep = (row, step) => row.phase === step.phase && row.segment === step.segment && row.level === step.level && row.kind === step.kind;
+
+    // ------------------------------------------------------------ column tooltips
+
+    function definition(key) {
+      if (!key) return null;
+      if (DEFINITIONS[key]) return DEFINITIONS[key];
+      const match = /^(.+)_(p50|p90|p95|p99|max|mean)$/.exec(key);
+      return match && DEFINITIONS[match[1]] ? `${match[2]}: ${DEFINITIONS[match[2]]}, of ${DEFINITIONS[match[1]]}` : null;
+    }
+
+    function showTip(anchor, text) {
+      const tip = $("#tip");
+      tip.textContent = text;
+      tip.hidden = false;
+      const box = anchor.getBoundingClientRect();
+      const left = Math.max(8, Math.min(box.left, innerWidth - tip.offsetWidth - 8));
+      const below = box.bottom + 6;
+      tip.style.left = `${left}px`;
+      tip.style.top = `${below + tip.offsetHeight > innerHeight - 8 ? box.top - tip.offsetHeight - 6 : below}px`;
+    }
+
+    const hideTip = () => { $("#tip").hidden = true; };
+
+    // A header cell whose definition is announced (aria-describedby) and shown on hover and on
+    // keyboard focus — `title` alone reaches neither keyboard nor touch users.
+    function header(label, key, { numeric = false, onSort = null } = {}) {
+      const text = definition(key);
+      const id = text ? `def-${++tipCount}` : undefined;
+      const control = onSort
+        ? el("button", { type: "button", onclick: onSort, "aria-describedby": id }, label)
+        : text ? el("span", { tabindex: "0", "aria-describedby": id }, label) : label;
+      const cell = el("th", { scope: "col", class: numeric ? "num" : "" }, control, text ? el("span", { id, hidden: true }, text) : null);
+      if (text) {
+        cell.addEventListener("mouseenter", () => showTip(cell, text));
+        cell.addEventListener("mouseleave", hideTip);
+        cell.addEventListener("focusin", () => showTip(cell, text));
+        cell.addEventListener("focusout", hideTip);
+      }
+      return cell;
+    }
 
     // ------------------------------------------------------------ loading
 
@@ -501,6 +730,14 @@
       return run.cache.get(name);
     }
 
+    // A file older run folders do not have: null without a message when it is missing.
+    function optionalCsv(run, name) {
+      run.cache ??= new Map();
+      const key = `optional:${name}`;
+      if (!run.cache.has(key)) run.cache.set(key, readText(run.source, name).then(parseCsv).catch(() => null));
+      return run.cache.get(key);
+    }
+
     // ------------------------------------------------------------ selection and the run list
 
     function toggleSelect(run, on) {
@@ -623,7 +860,7 @@
           : "",
         differing.length
           ? el("div", { class: "table-wrap" }, el("table", {},
-            el("thead", {}, el("tr", {}, el("th", { scope: "col" }, "Field"), known.map(([run]) => el("th", { scope: "col" }, swatch(run), run.tag)))),
+            el("thead", {}, el("tr", {}, header("Field", "field"), known.map(([run]) => el("th", { scope: "col", title: run.folder }, swatch(run), run.tag)))),
             el("tbody", {}, differing.map(([path, values]) => el("tr", {},
               el("th", { scope: "row", class: "mono" }, path),
               values.map((value) => el("td", { class: "mono clip", title: show(value) }, show(value))))))))
@@ -641,6 +878,8 @@
     }
 
     function destroyCharts() {
+      activeView?.dispose();
+      activeView = null;
       charts.forEach((chart) => chart.destroy());
       charts = [];
     }
@@ -661,6 +900,8 @@
         Chart.defaults.font.family = css("--font-ui");
         Chart.defaults.animation = false;
         Chart.defaults.maintainAspectRatio = false;
+        // the Timeline's tooltips: one point per series at the crosshair's x (see nearestAtX)
+        if (Chart.Interaction?.modes) Chart.Interaction.modes.sameX ??= (chart, event) => nearestAtX(chart, chart.scales.x.getValueForPixel(event.x));
       }
       const host = el("div");
       main.replaceChildren(host);
@@ -707,8 +948,9 @@
       let sortColumn = null;
       let direction = 1;
       const body = el("tbody");
-      const headers = columns.map((column, index) => el("th", { scope: "col", class: column.numeric ? "num" : "", "aria-sort": "none" },
-        el("button", { type: "button", onclick: () => { direction = sortColumn === index ? -direction : 1; sortColumn = index; draw(); } }, column.label)));
+      const headers = columns.map((column, index) => header(column.label, column.key, {
+        numeric: column.numeric, onSort: () => { direction = sortColumn === index ? -direction : 1; sortColumn = index; draw(); },
+      }));
       function draw() {
         const ordered = sortColumn === null ? rows : [...rows].sort((left, right) => {
           const column = columns[sortColumn];
@@ -730,8 +972,42 @@
 
     // ------------------------------------------------------------ Verdicts
 
+    function openFinding(run, finding) {
+      state.focusRun = run.key;
+      if (TABS.includes(finding.tab)) state.tab = finding.tab;
+      state.highlight = state.tab === "Timeline" && typeof finding.run_rel_s === "number" ? finding.run_rel_s : null;
+      if (state.highlight !== null) state.zoom = { run: run.key, from: state.highlight - FINDING_ZOOM_S, to: state.highlight + FINDING_ZOOM_S };
+      renderTab().then(() => $("#tabs").scrollIntoView({ block: "start" }));
+    }
+
+    // findings.csv of each run, grouped by severity; each item opens the tab it points to (and on
+    // the Timeline moves the crosshair to its moment). Older run folders have no findings.csv.
+    async function renderFindings(runs, host) {
+      const lists = await Promise.all(runs.map((run) => optionalCsv(run, "findings.csv")));
+      if (!host.isConnected) return;
+      runs.forEach((run, index) => {
+        const findings = lists[index];
+        if (!findings) return;
+        const panel = el("section", { class: "panel findings" }, el("h2", {}, runs.length > 1 ? `Findings · ${run.tag}` : "Findings"),
+          el("p", { class: "hint" }, "What to look at first, found by simple rules (docs/METRICS.md → findings.csv). Select one to open the tab it points to."));
+        if (!findings.length) panel.append(el("p", { class: "muted" }, "No rule found anything to flag in this run."));
+        for (const [severity, glyph, label, token] of SEVERITIES) {
+          const own = findings.filter((finding) => finding.severity === severity);
+          if (!own.length) continue;
+          panel.append(el("h3", {}, el("span", { class: "glyph", style: `color: var(${token})`, "aria-hidden": "true" }, glyph), `${label} (${own.length})`),
+            el("ul", { class: "finding-list" }, own.map((finding) => el("li", {}, el("button", { type: "button", onclick: () => openFinding(run, finding) },
+              el("span", { class: "chip" }, finding.phase || "run"),
+              el("span", {}, finding.message),
+              el("span", { class: "goto" }, `→ ${finding.tab}${finding.tab === "Timeline" && typeof finding.run_rel_s === "number" ? ` at ${elapsed(finding.run_rel_s, true)}` : ""}`))))));
+        }
+        host.append(panel);
+      });
+    }
+
     async function renderVerdicts(runs, baseline, host) {
-      const metas = await Promise.all(runs.map(loadMeta));
+      const findingsHost = el("div");
+      host.append(findingsHost);
+      const [metas] = await Promise.all([Promise.all(runs.map(loadMeta)), renderFindings(runs, findingsHost)]);
       if (!host.isConnected) return;
       const baseMeta = metas[0];
       const phases = phaseList(metas.map((meta) => (meta?.phases || []).map((phase) => ({ phase: phase.name }))));
@@ -746,9 +1022,9 @@
           if (!rows.length) continue;
           const basePhase = baseMeta?.kind === kind ? baseMeta.phases.find((item) => item.name === phaseName) : null;
           const columns = kind === "capacity" ? CAPACITY_COLUMNS : DEV_COLUMNS;
-          const head = el("tr", {}, el("th", { scope: "col" }, kind === "capacity" ? "Capacity run" : "Dev run"),
-            columns.map(([, label]) => el("th", { scope: "col", class: "num" }, label)),
-            kind === "capacity" ? [el("th", { scope: "col", class: "num" }, "Estimated limit"), el("th", { scope: "col" }, "Bottleneck at first failing level")] : null);
+          const head = el("tr", {}, header(kind === "capacity" ? "Capacity run" : "Dev run", "run"),
+            columns.map(([key, label]) => header(label, key, { numeric: true })),
+            kind === "capacity" ? [header("Estimated limit", "capacity_estimate", { numeric: true }), header("Bottleneck at first failing level", "bottleneck")] : null);
           const body = rows.map(({ run, phase }) => {
             const verdict = phase.verdict || {};
             const showDelta = basePhase && run !== baseline;
@@ -840,15 +1116,22 @@
     async function renderBreakdown(runs, host) {
       const data = await Promise.all(runs.map(async (run) => ({ run, steps: await runCsv(run, "steps.csv"), sessions: await runCsv(run, "sessions.csv.gz") })));
       if (!host.isConnected) return;
-      host.append(el("p", { class: "hint" }, "Mean seconds per completed session at each run’s headline level (capacity: highest passing level; dev: its only level). Cold-start sessions are left out."));
+      host.append(el("p", { class: "hint" }, "Mean seconds per completed session at every measured level of each run (ladder, bisect and dev levels; levels where no session completed are left out). Cold-start sessions are left out. Crew overhead is the run time not spent in the LLM, Python, the agent queue or waiting for the sandbox."));
+      const older = data.filter(({ sessions }) => sessions.length && !("sandbox_wait_s" in sessions[0])).map(({ run }) => run.tag);
+      if (older.length) {
+        host.append(el("p", { class: "hint" }, `${older.join(", ")}: analyzed before the sandbox wait was measured, so there it is 0 and Crew overhead still contains it (the old “Other”).`));
+      }
       for (const phase of phaseList(data.map((item) => item.steps))) {
         const bars = [];
         for (const { run, steps, sessions } of data) {
-          const step = headline(run, steps, phase);
-          if (!step) continue;
-          const rows = sessions.filter((session) => sameStep(session, step) && MEASURED_KINDS.has(session.kind) && !session.cold && session.status === "end");
-          const means = Object.fromEntries(BREAKDOWN.map(([key]) => [key, mean(rows.map((row) => row[key]))]));
-          bars.push({ run, level: step.level, count: rows.length, means, total: mean(rows.map((row) => row.e2e_s)) });
+          const levels = steps.filter((step) => step.phase === phase && MEASURED_KINDS.has(step.kind))
+            .sort((a, b) => a.segment - b.segment || a.level - b.level);
+          for (const step of levels) {
+            const rows = sessions.filter((session) => sameStep(session, step) && !session.cold && session.status === "end");
+            if (!rows.length) continue;
+            const means = Object.fromEntries(BREAKDOWN.map(([key]) => [key, mean(rows.map((row) => row[key]))]));
+            bars.push({ run, step, level: step.level, count: rows.length, means, total: mean(rows.map((row) => row.e2e_s)) });
+          }
         }
         if (!bars.length) continue;
         const panel = el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`));
@@ -856,7 +1139,7 @@
         makeChart(panel, {
           type: "bar",
           data: {
-            labels: bars.map((bar) => `${bar.run.tag} @${bar.level}`),
+            labels: bars.map((bar) => `${bar.run.tag} L${bar.level}${bar.step.kind === "bisect" ? " (bisect)" : ""}`),
             datasets: BREAKDOWN.map(([key, label], index) => ({
               label, data: bars.map((bar) => bar.means[key]),
               backgroundColor: css(`--series-${index + 1}`), borderColor: css("--surface"), borderWidth: 1, maxBarThickness: 28,
@@ -875,154 +1158,676 @@
               },
             },
           },
-        }, 90 + 40 * bars.length, `Where session time goes, phase ${phase}`);
+        }, 90 + 32 * bars.length, `Where session time goes at each level, phase ${phase}`);
         panel.append(sortableTable([
-          { label: "Run", value: (bar) => bar.run.tag, cell: (bar) => runCell(bar.run, runs[0]) },
-          { label: "Level", value: (bar) => bar.level, numeric: true },
-          { label: "Sessions", value: (bar) => bar.count, numeric: true },
-          ...BREAKDOWN.map(([key, label]) => ({ label: `${label} s`, value: (bar) => bar.means[key], numeric: true })),
-          { label: "End-to-end s", value: (bar) => bar.total, numeric: true },
+          { label: "Run", key: "run", value: (bar) => bar.run.tag, cell: (bar) => runCell(bar.run, runs[0]) },
+          { label: "Level", key: "level", value: (bar) => bar.level, numeric: true },
+          { label: "Kind", key: "kind", value: (bar) => bar.step.kind },
+          { label: "Verdict", key: "verdict", value: (bar) => bar.step.verdict },
+          { label: "Sessions", key: "sessions", value: (bar) => bar.count, numeric: true },
+          ...BREAKDOWN.map(([key, label]) => ({ label: `${label} s`, key, value: (bar) => bar.means[key], numeric: true })),
+          { label: "End-to-end s", key: "e2e_s", value: (bar) => bar.total, numeric: true },
         ], bars));
       }
     }
 
     // ------------------------------------------------------------ Timeline
+    //
+    // Every chart of the Timeline shares one time view: x = seconds since the run's first sample
+    // (run_rel_s), one visible range (zoom) and one crosshair. Samples are aggregated into
+    // buckets sized to the visible range, about one per PX_PER_BUCKET pixels: the line is the
+    // bucket mean and a light band of the same hue its min–max, so spikes stay visible zoomed out.
 
-    function decimate(points, limit = 2000) {
-      if (points.length <= limit) return points;
-      const size = Math.ceil(points.length / Math.floor(limit / 2)); // ≤ limit / 2 buckets, two points each
-      const result = [];
-      for (let start = 0; start < points.length; start += size) {
-        let low = null;
-        let high = null;
-        for (let index = start; index < Math.min(start + size, points.length); index++) {
-          const point = points[index];
-          if (typeof point.y !== "number") continue;
-          if (!low || point.y < low.y) low = point;
-          if (!high || point.y > high.y) high = point;
-        }
-        if (!low) result.push({ x: points[start].x, y: null });
-        else if (low === high) result.push(low);
-        else result.push(...(low.x <= high.x ? [low, high] : [high, low]));
-      }
-      return result;
+    const Y_AXIS_WIDTH = 76; // every timeline chart reserves the same y-axis width, so their x axes line up
+    const PX_PER_BUCKET = 3;
+    const BUCKET_STEPS_S = [2, 4, 6, 10, 20, 30, 60, 120, 180, 300, 600, 900, 1800, 3600];
+    const TICK_STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400];
+    const TICK_SPACING_PX = 90; // at most one x tick per this many pixels
+    const MIN_SPAN_S = 20; // the narrowest zoom: ten 2-second samples
+    const SHORT_SPAN_S = 600; // below this visible span the axis reads m:ss instead of h:mm
+    const FINDING_ZOOM_S = 300; // a finding opens the Timeline zoomed to ± this many seconds around it
+    const BAND_OPACITY = 0.18;
+    let activeView = null;
+
+    // Elapsed time: h:mm, or m:ss (h:mm:ss past an hour) when `precise`.
+    function elapsed(seconds, precise) {
+      const total = Math.round(Math.max(0, seconds));
+      const two = (number) => String(number).padStart(2, "0");
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      if (!precise) return `${hours}:${two(minutes)}`;
+      return hours ? `${hours}:${two(minutes)}:${two(total % 60)}` : `${minutes}:${two(total % 60)}`;
     }
 
+    const utcClock = (epoch) => `${new Date(epoch * 1000).toISOString().slice(11, 19)} UTC`;
+    const axisTitle = (span) => `Elapsed (${span < SHORT_SPAN_S ? "m:ss" : "h:mm"})`;
+
+    function alpha(color, opacity) {
+      const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color.trim());
+      return match ? `rgba(${parseInt(match[1], 16)}, ${parseInt(match[2], 16)}, ${parseInt(match[3], 16)}, ${opacity})` : color;
+    }
+
+    // Ticks at round elapsed times (0:15, 0:30, …), at most one per TICK_SPACING_PX.
+    function timeTicks(from, to, widthPx) {
+      const span = to - from;
+      const most = Math.max(2, Math.floor(widthPx / TICK_SPACING_PX));
+      let step = TICK_STEPS_S.find((candidate) => span / candidate <= most) ?? TICK_STEPS_S[TICK_STEPS_S.length - 1];
+      if (span >= SHORT_SPAN_S) step = Math.max(step, 60); // h:mm labels need whole minutes
+      const ticks = [];
+      for (let value = Math.ceil(from / step) * step; value <= to + 1e-9; value += step) ticks.push({ value });
+      return ticks;
+    }
+
+    function bucketSize(span, widthPx) {
+      const wanted = span / Math.max(1, widthPx / PX_PER_BUCKET);
+      return BUCKET_STEPS_S.find((step) => step >= wanted) ?? BUCKET_STEPS_S[BUCKET_STEPS_S.length - 1];
+    }
+
+    // Rows in time order with their x, the [start, end) row range of each segment, and numeric
+    // columns (NaN where unknown) read once per key.
+    function sampleSet(rows, xOf) {
+      const xs = rows.map(xOf);
+      const ranges = [];
+      const segmentOf = (row) => `${row.phase}|${row.segment}`;
+      let start = 0;
+      for (let index = 1; index <= rows.length; index++) {
+        if (index === rows.length || segmentOf(rows[index]) !== segmentOf(rows[index - 1])) {
+          ranges.push([start, index]);
+          start = index;
+        }
+      }
+      const columns = new Map();
+      const column = (key) => {
+        if (!columns.has(key)) columns.set(key, rows.map((row) => (typeof row[key] === "number" ? row[key] : NaN)));
+        return columns.get(key);
+      };
+      return { rows, xs, ranges, column };
+    }
+
+    // Mean, min and max of `values` per bucket of `size` seconds around [from, to], segment by
+    // segment. A bucket's x is the mean x of its samples, so all columns of one set share the
+    // grid (stacked areas stay aligned); a null point between segments breaks the line there.
+    function bucketize(set, values, from, to, size) {
+      const points = [];
+      const { xs } = set;
+      for (const [start, end] of set.ranges) {
+        if (xs[end - 1] < from - size || xs[start] > to + size) continue;
+        let low = start;
+        let high = end;
+        while (low < high) {
+          const middle = (low + high) >> 1;
+          if (xs[middle] < from - size) low = middle + 1;
+          else high = middle;
+        }
+        if (points.length) points.push({ x: (points[points.length - 1].x + xs[low]) / 2, y: null });
+        let bucket = null;
+        let rows = 0;
+        let xSum = 0;
+        let count = 0;
+        let sum = 0;
+        let min = Infinity;
+        let max = -Infinity;
+        const flush = () => {
+          if (rows) points.push(count ? { x: xSum / rows, y: sum / count, min, max } : { x: xSum / rows, y: null });
+        };
+        for (let index = low; index < end && xs[index] <= to + size; index++) {
+          const key = Math.floor(xs[index] / size);
+          if (key !== bucket) {
+            flush();
+            bucket = key;
+            rows = xSum = count = sum = 0;
+            min = Infinity;
+            max = -Infinity;
+          }
+          rows++;
+          xSum += xs[index];
+          const value = values[index];
+          if (!Number.isNaN(value)) {
+            count++;
+            sum += value;
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+          }
+        }
+        flush();
+      }
+      return points;
+    }
+
+    // Per visible series (not the min–max bands), the point nearest to x, within its bucket.
+    function nearestAtX(chart, value) {
+      const tolerance = Math.max(3, 1.5 * (chart.$bucket || 2));
+      const items = [];
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        const data = dataset.data;
+        if (dataset.band || !data.length || !chart.isDatasetVisible(datasetIndex)) return;
+        let low = 0;
+        let high = data.length - 1;
+        while (low < high) {
+          const middle = (low + high) >> 1;
+          if (data[middle].x < value) low = middle + 1;
+          else high = middle;
+        }
+        if (low > 0 && Math.abs(data[low - 1].x - value) < Math.abs(data[low].x - value)) low--;
+        const point = data[low];
+        const element = chart.getDatasetMeta(datasetIndex).data[low];
+        if (element && typeof point.y === "number" && Math.abs(point.x - value) <= tolerance) items.push({ datasetIndex, index: low, element });
+      });
+      return items;
+    }
+
+    // The shared range and crosshair. Zoom changes are applied in the next animation frame;
+    // charts scrolled out of view are only marked stale and redrawn once they scroll back in.
+    function createTimeView(full, origin) {
+      const view = { full: Math.max(full, 1), origin, from: 0, to: Math.max(full, 1), x: null, source: null, entries: [], overview: null, zoomFrame: 0, crossFrame: 0, onRange: null, onApply: null };
+      view.span = () => view.to - view.from;
+      const observer = typeof IntersectionObserver === "function"
+        ? new IntersectionObserver((records) => {
+          for (const record of records) {
+            const entry = view.entries.find((item) => item.wrapper === record.target);
+            if (!entry) continue;
+            entry.visible = record.isIntersecting;
+            if (entry.visible && entry.stale) refresh(entry);
+          }
+        }, { rootMargin: "400px 0px" })
+        : null;
+
+      view.setRange = (from, to, immediate = false) => {
+        const span = Math.min(view.full, Math.max(MIN_SPAN_S, to - from));
+        const center = to - from < MIN_SPAN_S ? (from + to) / 2 - span / 2 : from;
+        view.from = Math.min(Math.max(0, center), view.full - span);
+        view.to = view.from + span;
+        view.onRange?.(view.from, view.to);
+        if (immediate) return;
+        cancelAnimationFrame(view.zoomFrame);
+        view.zoomFrame = requestAnimationFrame(view.apply);
+      };
+      view.zoomAt = (center, factor) => view.setRange(center - (center - view.from) * factor, center + (view.to - center) * factor);
+      view.pan = (delta) => view.setRange(view.from + delta, view.to + delta);
+      view.reset = () => view.setRange(0, view.full);
+
+      function placeCrosshair(entry) {
+        const { chart, line, tooltip } = entry;
+        const area = chart.chartArea;
+        if (!area || !chart.canvas?.isConnected) return;
+        const pixel = view.x === null ? null : chart.scales.x.getPixelForValue(view.x);
+        line.hidden = pixel === null || pixel < area.left || pixel > area.right;
+        if (!line.hidden) Object.assign(line.style, { left: `${pixel}px`, top: `${area.top}px`, height: `${area.bottom - area.top}px` });
+        const show = !line.hidden && (tooltip === "always" || chart === view.source);
+        if (!show && !entry.showing) return;
+        entry.showing = show;
+        chart.tooltip?.setActiveElements(show ? nearestAtX(chart, view.x) : [], { x: show ? pixel : 0, y: (area.top + area.bottom) / 2 });
+        chart.draw();
+      }
+
+      function refresh(entry) {
+        const { chart } = entry;
+        entry.stale = false;
+        const width = chart.chartArea ? chart.chartArea.right - chart.chartArea.left : chart.width - Y_AXIS_WIDTH;
+        chart.$bucket = bucketSize(view.span(), width);
+        entry.build(view.from, view.to, chart.$bucket).forEach((data, index) => { chart.data.datasets[index].data = data; });
+        Object.assign(chart.options.scales.x, { min: view.from, max: view.to });
+        chart.options.scales.x.title.text = axisTitle(view.span());
+        chart.update("none");
+        placeCrosshair(entry);
+      }
+
+      function placeBrush() {
+        if (!view.overview) return;
+        const { chart, brush } = view.overview;
+        const area = chart.chartArea;
+        const whole = view.from <= 0 && view.to >= view.full;
+        brush.hidden = whole || !area;
+        if (brush.hidden) return;
+        const left = chart.scales.x.getPixelForValue(view.from);
+        const right = chart.scales.x.getPixelForValue(view.to);
+        Object.assign(brush.style, { left: `${left}px`, width: `${Math.max(2, right - left)}px`, top: `${area.top}px`, height: `${area.bottom - area.top}px` });
+      }
+
+      view.apply = () => {
+        for (const entry of view.entries) {
+          if (entry.visible) refresh(entry);
+          else entry.stale = true;
+        }
+        placeBrush();
+        view.onApply?.(view.entries[0]?.chart.$bucket);
+      };
+
+      view.setCrosshair = (value, source = null) => {
+        view.x = value;
+        view.source = source;
+        cancelAnimationFrame(view.crossFrame);
+        view.crossFrame = requestAnimationFrame(() => {
+          for (const entry of view.entries) if (entry.visible) placeCrosshair(entry);
+        });
+      };
+
+      // Pointer: drag selects a range, Shift+drag pans, the wheel zooms around the pointer,
+      // hovering moves the crosshair. Keyboard (focusable charts): arrows move the crosshair,
+      // Shift+arrows pan, + and − zoom around it, 0 resets, Escape clears.
+      function interact(chart, wrapper, { onSelect, onClick, follow = true }) {
+        const canvas = chart.canvas;
+        canvas.style.touchAction = "pan-y"; // vertical swipes still scroll the page on a phone
+        const selection = el("div", { class: "selection", hidden: true, "aria-hidden": "true" });
+        wrapper.append(selection);
+        const pointAt = (event) => {
+          const area = chart.chartArea;
+          const offset = event.clientX - canvas.getBoundingClientRect().left;
+          const pixel = Math.min(area.right, Math.max(area.left, offset));
+          return { pixel, value: chart.scales.x.getValueForPixel(pixel), inside: offset >= area.left && offset <= area.right };
+        };
+        let drag = null;
+        canvas.addEventListener("pointerdown", (event) => {
+          const at = pointAt(event);
+          if (event.button !== 0 || !at.inside) return;
+          drag = { ...at, pan: event.shiftKey && follow, from: view.from, to: view.to, moved: false };
+          canvas.setPointerCapture?.(event.pointerId);
+        });
+        canvas.addEventListener("pointermove", (event) => {
+          const at = pointAt(event);
+          if (!drag) {
+            if (at.inside && follow) view.setCrosshair(at.value, chart);
+            return;
+          }
+          drag.moved ||= Math.abs(at.pixel - drag.pixel) > 4;
+          if (!drag.moved) return;
+          if (drag.pan) {
+            const perPixel = (drag.to - drag.from) / (chart.chartArea.right - chart.chartArea.left);
+            const shift = (drag.pixel - at.pixel) * perPixel;
+            view.setRange(drag.from + shift, drag.to + shift);
+            return;
+          }
+          const area = chart.chartArea;
+          selection.hidden = false;
+          Object.assign(selection.style, { left: `${Math.min(drag.pixel, at.pixel)}px`, width: `${Math.abs(at.pixel - drag.pixel)}px`, top: `${area.top}px`, height: `${area.bottom - area.top}px` });
+        });
+        canvas.addEventListener("pointerup", (event) => {
+          if (!drag) return;
+          const at = pointAt(event);
+          selection.hidden = true;
+          if (drag.moved && !drag.pan) onSelect(Math.min(drag.value, at.value), Math.max(drag.value, at.value));
+          else if (!drag.moved) onClick?.(at.value);
+          drag = null;
+        });
+        canvas.addEventListener("pointercancel", () => { drag = null; selection.hidden = true; });
+        canvas.addEventListener("pointerleave", () => { if (!drag && follow) view.setCrosshair(null); });
+        canvas.addEventListener("wheel", (event) => {
+          const at = pointAt(event);
+          if (!at.inside) return;
+          event.preventDefault();
+          view.zoomAt(follow ? at.value : view.from + view.span() / 2, Math.exp(Math.max(-200, Math.min(200, event.deltaY)) * 0.002));
+        }, { passive: false });
+      }
+
+      view.add = (chart, build, { tooltip = "always", focusable = false } = {}) => {
+        const wrapper = chart.canvas.parentNode;
+        const line = el("div", { class: "crosshair", hidden: true, "aria-hidden": "true" });
+        wrapper.append(line);
+        const entry = { chart, build, tooltip, wrapper, line, visible: true, stale: false, showing: false };
+        view.entries.push(entry);
+        observer?.observe(wrapper);
+        interact(chart, wrapper, { onSelect: (from, to) => view.setRange(from, to) });
+        refresh(entry);
+        if (!focusable) return;
+        const canvas = chart.canvas;
+        canvas.tabIndex = 0;
+        canvas.addEventListener("blur", () => view.setCrosshair(null));
+        canvas.addEventListener("keydown", (event) => {
+          const here = view.x ?? (view.from + view.to) / 2;
+          const step = view.span() / 100;
+          const moveTo = (value) => view.setCrosshair(Math.min(view.to, Math.max(view.from, value)), chart);
+          const actions = {
+            ArrowRight: () => (event.shiftKey ? view.pan(view.span() / 10) : moveTo((view.x ?? view.from) + step)),
+            ArrowLeft: () => (event.shiftKey ? view.pan(-view.span() / 10) : moveTo((view.x ?? view.to) - step)),
+            Home: () => moveTo(view.from),
+            End: () => moveTo(view.to),
+            "+": () => view.zoomAt(here, 1 / 1.5),
+            "=": () => view.zoomAt(here, 1 / 1.5),
+            "-": () => view.zoomAt(here, 1.5),
+            0: () => view.reset(),
+            Escape: () => view.setCrosshair(null),
+          };
+          const action = actions[event.key];
+          if (!action) return;
+          event.preventDefault();
+          action();
+        });
+      };
+
+      // The overview strip always shows the whole run; dragging on it selects the range, a click
+      // centres the current range there, and the brush shows what the charts below show.
+      view.addOverview = (chart) => {
+        const wrapper = chart.canvas.parentNode;
+        const brush = el("div", { class: "brush", hidden: true, "aria-hidden": "true" });
+        wrapper.append(brush);
+        view.overview = { chart, brush };
+        interact(chart, wrapper, {
+          follow: false,
+          onSelect: (from, to) => view.setRange(from, to),
+          onClick: (value) => view.setRange(value - view.span() / 2, value + view.span() / 2),
+        });
+        placeBrush();
+      };
+
+      view.dispose = () => {
+        observer?.disconnect();
+        cancelAnimationFrame(view.zoomFrame);
+        cancelAnimationFrame(view.crossFrame);
+      };
+      return view;
+    }
+
+    // Vertical markers: level starts (row 0, green pass / red fail / grey invalid), stack restarts
+    // between segments (row 1, dashed) and findings with a moment (row 2, status glyph + label).
+    // Labels are drawn only on the first chart; text is in ink, the glyph carries the status.
     function markerPlugin(markers, withLabels) {
       return {
-        id: "stepMarkers",
+        id: "markers",
         afterDatasetsDraw(chart) {
           const { ctx, chartArea, scales } = chart;
-          let lastLabel = -Infinity;
-          let lastPhase = null;
+          const ink = css("--ink-2");
+          const labelEnd = [-Infinity, -Infinity, -Infinity]; // per row: where the last label ends
           ctx.save();
           ctx.font = `11px ${css("--font-ui")}`;
           for (const marker of markers) {
             const x = scales.x.getPixelForValue(marker.x);
             if (x < chartArea.left || x > chartArea.right) continue;
             ctx.strokeStyle = marker.color;
-            ctx.lineWidth = 1;
+            ctx.setLineDash(marker.dash || []);
+            ctx.lineWidth = marker.glyph ? 1.5 : 1;
             ctx.beginPath();
             ctx.moveTo(x, chartArea.top);
             ctx.lineTo(x, chartArea.bottom);
             ctx.stroke();
-            if (withLabels && x - lastLabel > 48) {
-              ctx.fillStyle = css("--ink-2");
-              ctx.fillText(marker.phase !== lastPhase ? `${marker.phase} ${marker.level}` : String(marker.level), x + 3, chartArea.top + 11);
-              lastLabel = x;
+            if (!withLabels || !marker.label) continue;
+            const glyph = marker.glyph ? `${marker.glyph} ` : "";
+            const width = ctx.measureText(glyph + marker.label).width;
+            let left = x + 3;
+            if (left + width > chartArea.right) left = Math.max(chartArea.left, x - 3 - width);
+            if (left < labelEnd[marker.row] + 6) continue; // would overlap the previous label of its row
+            const y = chartArea.top + 11 + 13 * marker.row;
+            if (glyph) {
+              ctx.fillStyle = marker.color;
+              ctx.fillText(glyph, left, y);
             }
-            lastPhase = marker.phase;
+            ctx.fillStyle = ink;
+            ctx.fillText(marker.label, left + ctx.measureText(glyph).width, y);
+            labelEnd[marker.row] = left + width;
           }
           ctx.restore();
         },
       };
     }
 
-    function timeChart(parent, title, datasets, yTitle, markers, withLabels, extraScales = {}) {
-      parent.append(el("h3", {}, title));
-      return makeChart(parent, {
+    function timelineMarkers(steps, timeline, findings, xOf, origin) {
+      const verdictColor = { pass: css("--good"), fail: css("--bad") };
+      const markers = [];
+      let lastPhase = null;
+      for (const step of steps.filter((item) => MEASURED_KINDS.has(item.kind))) {
+        const first = timeline.find((row) => row.phase === step.phase && row.segment === step.segment && row.level === step.level);
+        if (!first) continue;
+        markers.push({ x: xOf(first), row: 0, color: verdictColor[step.verdict] || css("--muted"), label: step.phase !== lastPhase ? `${step.phase} ${step.level}` : String(step.level) });
+        lastPhase = step.phase;
+      }
+      let previous = null;
+      for (const row of timeline) {
+        if (previous && (row.phase !== previous.phase || row.segment !== previous.segment)) {
+          const levels = steps.filter((step) => step.phase === row.phase && step.segment === row.segment && MEASURED_KINDS.has(step.kind));
+          const what = row.phase !== previous.phase ? `phase ${row.phase}` : `${levels[0]?.kind || "segment"} ${levels.map((step) => step.level).join(", ")}`.trim();
+          markers.push({ x: xOf(row), row: 1, color: css("--ink-2"), dash: [4, 3], label: `restart · ${what}` });
+        }
+        previous = row;
+      }
+      for (const finding of findings) {
+        const x = typeof finding.run_rel_s === "number" ? finding.run_rel_s : typeof finding.ts === "number" ? finding.ts - origin : null;
+        const severity = SEVERITIES.find(([name]) => name === finding.severity);
+        if (x === null || !severity) continue;
+        const label = MARKER_LABELS[finding.kind] || finding.kind;
+        markers.push({ x, row: 2, color: css(severity[3]), glyph: severity[1], label: finding.container ? `${label}: ${finding.container}` : label });
+      }
+      return markers.sort((a, b) => a.x - b.x);
+    }
+
+    // A chart of the time view. spec.series: [{ label, color, key | values, band, stepped, dash }]
+    // over spec.set (sampleSet); a series with `band` gets its min–max band; spec.stacked draws
+    // stacked areas (spec.series[].fill) on the set's common bucket grid.
+    function timeChart(parent, view, spec) {
+      if (spec.title) parent.append(el("h3", {}, spec.title));
+      const datasets = [];
+      for (const series of spec.series) {
+        datasets.push({
+          label: series.label, data: [], pointRadius: 0, stepped: series.stepped, borderDash: series.dash,
+          borderColor: spec.stacked ? css("--surface") : series.color,
+          backgroundColor: spec.stacked ? series.fill : series.color,
+          borderWidth: spec.stacked ? 1 : series.width ?? 1.5,
+          fill: spec.stacked ? (datasets.length ? "-1" : "origin") : false,
+        });
+        if (series.band) {
+          datasets.push(
+            { label: `${series.label} min–max`, band: true, data: [], pointRadius: 0, borderWidth: 0, backgroundColor: alpha(series.color, BAND_OPACITY), fill: "+1" },
+            { label: "", band: true, data: [], pointRadius: 0, borderWidth: 0, fill: false },
+          );
+        }
+      }
+      const build = (from, to, size) => spec.series.flatMap((series) => {
+        const points = bucketize(spec.set, series.values ?? spec.set.column(series.key), from, to, size);
+        if (!series.band) return [points];
+        const edge = (side) => points.map((point) => ({ x: point.x, y: point.y === null ? null : point[side] }));
+        return [points, edge("max"), edge("min")];
+      });
+      const range = spec.range || [view.from, view.to];
+      const chart = makeChart(parent, {
         type: "line",
-        data: { datasets: datasets.map((dataset) => ({ pointRadius: 0, pointHitRadius: 4, borderWidth: 1.5, backgroundColor: dataset.borderColor, ...dataset })) },
+        data: { datasets },
         options: {
           parsing: false,
           normalized: true,
-          interaction: { mode: "nearest", axis: "x", intersect: false },
+          events: ["click"], // hover is the shared crosshair; clicks keep the legend working
+          interaction: { mode: window.Chart?.Interaction?.modes?.sameX ? "sameX" : "nearest", axis: "x", intersect: false },
           scales: {
-            x: { type: "linear", title: { display: true, text: "Seconds since run start" } },
-            y: { beginAtZero: true, title: { display: true, text: yTitle } },
-            ...extraScales,
+            x: {
+              type: "linear", min: range[0], max: range[1],
+              title: { display: true, text: axisTitle(range[1] - range[0]) },
+              afterBuildTicks: (axis) => { axis.ticks = timeTicks(axis.min, axis.max, axis.width); },
+              ticks: { maxRotation: 0, autoSkip: false, callback(value) { return elapsed(value, this.max - this.min < SHORT_SPAN_S); } },
+            },
+            y: {
+              beginAtZero: spec.beginAtZero ?? true, stacked: Boolean(spec.stacked),
+              title: { display: true, text: spec.yTitle }, ticks: { maxTicksLimit: spec.yTicks ?? 6 },
+              afterFit: (scale) => { scale.width = Y_AXIS_WIDTH; },
+            },
           },
           plugins: {
-            legend: { position: "bottom", labels: { boxWidth: 14, boxHeight: 2 } },
-            tooltip: { callbacks: { title: (items) => `${fmt(items[0]?.parsed.x)} s`, label: (item) => `${item.dataset.label}: ${fmt(item.parsed.y)}` } },
+            legend: {
+              display: spec.series.length > 1, position: "bottom",
+              labels: { filter: (item, data) => !data.datasets[item.datasetIndex].band, ...(spec.stacked ? { boxWidth: 12, boxHeight: 12 } : { boxWidth: 14, boxHeight: 2 }) },
+            },
+            tooltip: {
+              filter: (item) => !item.dataset.band,
+              itemSort: spec.stacked ? (a, b) => b.datasetIndex - a.datasetIndex : undefined, // top of the stack first
+              callbacks: {
+                title: (items) => (items.length ? `${elapsed(items[0].parsed.x, true)} elapsed · ${utcClock(view.origin + items[0].parsed.x)}` : ""),
+                label: (item) => {
+                  const { min, max } = item.raw;
+                  const spread = typeof min === "number" && min !== max ? ` (${fmt(+min.toFixed(2))}–${fmt(+max.toFixed(2))})` : "";
+                  return `${fmt(+item.parsed.y.toFixed(2))}${spec.unit || ""}${spread} · ${item.dataset.label}`;
+                },
+              },
+            },
           },
         },
-        plugins: [markerPlugin(markers, withLabels)],
-      }, 300, title);
+        plugins: [markerPlugin(spec.markers || [], Boolean(spec.labels))],
+      }, spec.height, `${spec.description || spec.title}. Drag across it to zoom; with focus, arrow keys move the crosshair, + and − zoom, 0 resets.`);
+      if (!chart) return null;
+      if (spec.range) {
+        const arrays = build(range[0], range[1], bucketSize(range[1] - range[0], chart.chartArea.right - chart.chartArea.left));
+        chart.data.datasets.forEach((dataset, index) => { dataset.data = arrays[index]; });
+        chart.update("none");
+      } else view.add(chart, build, { tooltip: spec.tooltip || "always", focusable: Boolean(spec.focusable) });
+      return chart;
     }
 
-    async function renderTimeline(run, host) {
-      const [steps, timeline, containerRows] = await Promise.all([
-        runCsv(run, "steps.csv"), runCsv(run, "timeline.csv"), runCsv(run, "container_timeline.csv"),
-      ]);
-      if (!host.isConnected) return;
-      if (!timeline.length) {
-        host.append(el("p", { class: "empty" }, `${run.tag} has no timeline samples.`));
-        return;
+    const missingColumn = (parent, title) => parent.append(el("h3", {}, title),
+      el("p", { class: "muted" }, "Not in this run folder: it was analyzed before this was measured."));
+
+    // Stacked areas of in-flight sessions per stage, from inflight_stages.csv (a stage without a
+    // row at a sample has 0 there). Every stage keeps its STAGES colour, also when stages without
+    // sessions are left out. The table gives the same numbers without colour.
+    function stageChart(parent, view, timeSet, stageRows, markers) {
+      const counts = new Map();
+      for (const row of stageRows) {
+        if (!counts.has(row.ts)) counts.set(row.ts, {});
+        counts.get(row.ts)[row.stage] = row.count;
       }
-      const verdictColor = { pass: css("--good"), fail: css("--bad") };
-      const markers = steps.filter((step) => MEASURED_KINDS.has(step.kind)).map((step) => {
-        const first = timeline.find((row) => row.phase === step.phase && row.segment === step.segment && row.level === step.level);
-        return first && { x: first.rel_s, phase: step.phase, level: step.level, color: verdictColor[step.verdict] || css("--muted") };
-      }).filter(Boolean).sort((a, b) => a.x - b.x);
-      const series = (rows, key) => decimate(rows.map((row) => ({ x: row.rel_s, y: row[key] })));
+      const present = STAGES.filter((stage) => stageRows.some((row) => row.stage === stage));
+      const series = present.map((stage) => ({
+        label: stage, fill: css(`--series-${STAGES.indexOf(stage) + 1}`),
+        values: timeSet.rows.map((row) => counts.get(row.ts)?.[stage] ?? 0),
+      }));
+      timeChart(parent, view, {
+        title: "In flight by stage", yTitle: "Sessions in flight", stacked: true, height: 300, focusable: true, markers,
+        description: "In-flight sessions by the stage of the last checkpoint they reached, stacked", set: timeSet, series,
+      });
+      const peaks = series.map(({ label, values }) => {
+        let best = 0;
+        values.forEach((value, index) => { if (value > values[best]) best = index; });
+        return { stage: label, count: values[best] ?? 0, x: values.length ? timeSet.xs[best] : null };
+      });
+      // the same numbers without colour: some stage fills are below 3:1 contrast on the light surface
+      parent.append(el("details", {}, el("summary", {}, "Peak per stage (table)"), sortableTable([
+        { label: "Stage", key: "stage", value: (row) => row.stage },
+        { label: "Peak sessions", key: "inflight_stages.count", value: (row) => row.count, numeric: true },
+        { label: "At (elapsed)", key: "run_rel_s", value: (row) => row.x, numeric: true, cell: (row) => el("td", { class: "num" }, row.x === null ? "—" : elapsed(row.x, true)) },
+      ], peaks)));
+    }
+
+    // One full-width row per container on the same time scale as the charts above: memory and
+    // CPU as two stacked charts. Containers a finding names (memory not released, CPU limit,
+    // restart) come first with a status border, glyph and the finding's text; then by peak memory.
+    function containerCharts(parent, view, containerRows, xOf, findings, markers) {
       const byContainer = new Map();
       for (const row of containerRows) {
         if (!byContainer.has(row.container)) byContainer.set(row.container, []);
         byContainer.get(row.container).push(row);
       }
-      const peak = (name) => byContainer.get(name).reduce((max, row) => Math.max(max, row.mem_mb ?? 0), 0);
-      const ranked = [...byContainer.keys()].sort((a, b) => peak(b) - peak(a));
-      const shown = ranked.slice(0, 5);
-      const hidden = ranked.slice(5);
-      const containerColor = (name) => css(`--series-${4 + shown.indexOf(name)}`);
-
-      const rightAxis = el("select", { id: "right-axis", onchange: (event) => { state.rightAxis = event.target.value; renderTab(); } },
-        el("option", { value: "host" }, "Host CPU %"), el("option", { value: "containers" }, "Container CPU %"), el("option", { value: "none" }, "Nothing"));
-      rightAxis.value = state.rightAxis;
-      host.append(el("div", { class: "controls" }, el("label", { class: "inline" }, "Right axis", rightAxis)),
-        el("p", { class: "hint" }, "Vertical lines mark where each measured level starts: green passed, red failed, grey invalid. Container CPU %: 100 = one full core. Host CPU %: share of all cores."));
-
-      const sessionSets = [
-        { label: "target", data: series(timeline, "target"), borderColor: css("--muted"), stepped: true, borderWidth: 1 },
-        { label: "in flight", data: series(timeline, "inflight"), borderColor: css("--series-1") },
-        { label: "running", data: series(timeline, "running"), borderColor: css("--series-3") },
-        { label: "queued", data: series(timeline, "queued"), borderColor: css("--series-2") },
-      ].map((dataset) => ({ yAxisID: "y", ...dataset }));
-      const cpuSets = state.rightAxis === "host"
-        ? [{ label: "host CPU %", data: series(timeline, "host_cpu_pct"), borderColor: css("--ink-2"), borderDash: [5, 3], yAxisID: "y2" }]
-        : state.rightAxis === "containers"
-          ? shown.map((name) => ({ label: `${name} CPU %`, data: series(byContainer.get(name), "cpu_pct"), borderColor: containerColor(name), borderDash: [5, 3], yAxisID: "y2" }))
-          : [];
-      const panel = el("section", { class: "panel" }, el("h2", {}, `${run.tag} · ${run.summary.case || ""} · ${run.summary.ref || ""}`));
-      host.append(panel);
-      timeChart(panel, "Sessions and CPU", [...sessionSets, ...cpuSets], "Sessions", markers, true, cpuSets.length
-        ? { y2: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: "CPU %" } } }
-        : {});
-      timeChart(panel, "Memory per container", shown.map((name) => ({ label: name, data: series(byContainer.get(name), "mem_mb"), borderColor: containerColor(name) })),
-        "MB", markers, false);
-      if (hidden.length) {
-        panel.append(el("p", { class: "hint" }, `Memory and container CPU show the ${shown.length} containers with the highest peak memory. Not drawn: ${hidden.join(", ")}. The Containers tab lists every container.`));
+      const flags = new Map();
+      for (const finding of findings) {
+        if (!finding.container) continue;
+        if (!flags.has(finding.container)) flags.set(finding.container, []);
+        flags.get(finding.container).push(finding);
       }
-      const pair = el("div", { class: "grid-2" }, el("div"), el("div"));
-      panel.append(pair);
-      timeChart(pair.children[0], "Postgres connections", [
-        { label: "connections", data: series(timeline, "pg_connections"), borderColor: css("--series-1") },
-        { label: "max connections", data: series(timeline, "pg_max_connections"), borderColor: css("--muted"), borderDash: [5, 3], borderWidth: 1 },
-      ], "Connections", markers, false);
-      timeChart(pair.children[1], "Redis memory", [
-        { label: "used MB", data: series(timeline, "redis_used_mb"), borderColor: css("--series-1") },
-      ], "MB", markers, false);
+      const rank = (severity) => SEVERITIES.findIndex(([name]) => name === severity);
+      const worst = (name) => Math.min(...(flags.get(name) || []).map((finding) => rank(finding.severity)), SEVERITIES.length);
+      const peak = (name) => Math.max(0, ...byContainer.get(name).map((row) => row.mem_mb ?? 0));
+      const names = [...byContainer.keys()].sort((a, b) => worst(a) - worst(b) || peak(b) - peak(a) || byName(a, b));
+      parent.append(el("h2", {}, "Memory and CPU per container"),
+        el("p", { class: "hint" }, "One row per container, on the same time scale and zoom as the charts above. Containers a finding names come first, then by peak memory. Each has its own memory scale; CPU is % of one core (100 = one full core)."));
+      const restarts = markers.filter((marker) => marker.row === 1);
+      for (const name of names) {
+        const own = (flags.get(name) || []).sort((a, b) => rank(a.severity) - rank(b.severity));
+        const top = SEVERITIES.find(([severity]) => severity === own[0]?.severity);
+        const block = el("section", { class: `container-row${top ? ` ${top[0]}` : ""}`, "aria-label": `Container ${name}` },
+          el("h3", { class: "name" }, el("span", { class: "mono" }, name), el("span", { class: "muted" }, ` · peak ${fmt(+peak(name).toFixed(1))} MB`)),
+          own.map((finding) => {
+            const [, glyph, label, token] = SEVERITIES.find(([severity]) => severity === finding.severity) || SEVERITIES[2];
+            return el("p", { class: "flag" }, el("span", { class: "glyph", style: `color: var(${token})`, "aria-hidden": "true" }, glyph), ` ${label}: ${finding.message}`);
+          }));
+        parent.append(block);
+        const set = sampleSet([...byContainer.get(name)].sort((a, b) => a.ts - b.ts), xOf);
+        timeChart(block, view, {
+          description: `Memory of ${name}`, yTitle: "Memory (MB)", unit: " MB", height: 200, beginAtZero: false, tooltip: "source", markers: restarts, set,
+          series: [{ label: "memory", key: "mem_mb", color: css("--series-1"), band: true }],
+        });
+        timeChart(block, view, {
+          description: `CPU of ${name}`, yTitle: "CPU % (100 = 1 core)", unit: " %", height: 150, yTicks: 4, tooltip: "source", markers: restarts, set,
+          series: [{ label: "CPU", key: "cpu_pct", color: css("--series-2"), band: true }],
+        });
+      }
+    }
+
+    async function renderTimeline(run, host) {
+      const [steps, timelineRows, containerRows, stageRows, findingRows] = await Promise.all([
+        runCsv(run, "steps.csv"), runCsv(run, "timeline.csv"), runCsv(run, "container_timeline.csv"),
+        optionalCsv(run, "inflight_stages.csv"), optionalCsv(run, "findings.csv"),
+      ]);
+      if (!host.isConnected) return;
+      if (!timelineRows.length) {
+        host.append(el("p", { class: "empty" }, `${run.tag} has no timeline samples.`));
+        return;
+      }
+      const timeline = [...timelineRows].sort((a, b) => a.ts - b.ts);
+      const origin = timeline[0].ts;
+      // run_rel_s is written by newer analyses; for older folders the same value from ts
+      const xOf = (row) => (typeof row.run_rel_s === "number" ? row.run_rel_s : row.ts - origin);
+      const findings = findingRows || [];
+      const view = createTimeView(xOf(timeline[timeline.length - 1]), origin);
+      activeView = view;
+      const zoom = state.zoom?.run === run.key ? state.zoom : null;
+      if (zoom) view.setRange(zoom.from, zoom.to, true);
+      view.onRange = (from, to) => { state.zoom = { run: run.key, from, to }; };
+      const markers = timelineMarkers(steps, timeline, findings, xOf, origin);
+      const timeSet = sampleSet(timeline, xOf);
+      const has = (key) => timeline.some((row) => typeof row[key] === "number");
+
+      const reset = el("button", { type: "button", onclick: () => view.reset() }, "Reset zoom");
+      const readout = el("span", { class: "muted", "aria-live": "polite" });
+      view.onApply = (bucket) => {
+        const whole = view.from <= 0 && view.to >= view.full;
+        reset.disabled = whole;
+        // always to the second here: "1:06" alone could be an hour or a minute
+        readout.textContent = `${whole ? "Whole run" : `${elapsed(view.from, true)} – ${elapsed(view.to, true)}`} of ${elapsed(view.full, true)}${bucket ? ` · ${bucket} s per point` : ""}`;
+      };
+      host.append(el("p", { class: "hint" },
+        "All charts share one time axis (elapsed since the run's first sample) and one crosshair. Zoom: drag across any chart or the overview, or use the mouse wheel over a chart; Shift+drag pans; Reset zoom shows the whole run. With a chart focused: arrow keys move the crosshair, Shift+arrows pan, + / − zoom, 0 resets. Each line is the mean per time bucket (the bucket grows with the visible range), the light band its min–max. Vertical lines: measured level starts (green passed, red failed, grey invalid), dashed stack restarts, and findings (✖ critical, ▲ warning)."));
+      const panel = el("section", { class: "panel", id: "timeline-stack" },
+        el("div", { class: "panel-head" }, el("h2", {}, `${run.tag} · ${run.summary.case || ""} · ${run.summary.ref || ""}`), el("div", { class: "controls" }, readout, reset)));
+      host.append(panel);
+      const overview = timeChart(panel, view, {
+        title: "Whole run (drag to zoom)", yTitle: "In flight", height: 130, yTicks: 3, range: [0, view.full], markers: markers.filter((marker) => marker.row === 1), set: timeSet,
+        description: "Overview of the whole run: sessions in flight",
+        series: [{ label: "in flight", key: "inflight", color: css("--series-1") }],
+      });
+      if (overview) view.addOverview(overview);
+      const line = (label, key, color, extra = {}) => ({ label, key, color, band: true, ...extra });
+      timeChart(panel, view, {
+        title: "Sessions", yTitle: "Sessions", labels: true, height: 320, focusable: true, markers, set: timeSet,
+        series: [
+          line("target", "target", css("--muted"), { stepped: true, width: 1, band: false }),
+          line("in flight", "inflight", css("--series-1")),
+          line("running", "running", css("--series-3")),
+          line("queued", "queued", css("--series-2")),
+        ],
+      });
+      if (stageRows) stageChart(panel, view, timeSet, stageRows, markers);
+      else missingColumn(panel, "In flight by stage");
+      if (has("throughput_per_min")) {
+        timeChart(panel, view, { title: "Throughput", yTitle: "Ended per minute", height: 260, focusable: true, markers, set: timeSet, series: [line("sessions ended (last 60 s)", "throughput_per_min", css("--series-1"))] });
+      } else missingColumn(panel, "Throughput");
+      if (has("e2e_p95_60s")) {
+        timeChart(panel, view, { title: "p95 end-to-end (last 60 s)", yTitle: "Seconds", unit: " s", height: 260, focusable: true, markers, set: timeSet, series: [line("p95 e2e of sessions ended in the last 60 s", "e2e_p95_60s", css("--series-1"))] });
+      } else missingColumn(panel, "p95 end-to-end (last 60 s)");
+      if (has("host_cpu_pct")) {
+        timeChart(panel, view, { title: "Host CPU", yTitle: "% of all cores", unit: " %", height: 260, focusable: true, markers, set: timeSet, series: [line("host CPU", "host_cpu_pct", css("--series-1"))] });
+      } else {
+        panel.append(el("h3", {}, "Host CPU"), el("p", { class: "muted" }, "Not sampled on this host (no /proc, e.g. Docker Desktop)."));
+      }
+      const containers = el("section", { class: "panel", id: "timeline-containers" });
+      host.append(containers);
+      containerCharts(containers, view, containerRows, xOf, findings, markers);
+      const services = el("section", { class: "panel" }, el("h2", {}, "Postgres and Redis"));
+      host.append(services);
+      const restarts = markers.filter((marker) => marker.row === 1);
+      timeChart(services, view, {
+        title: "Postgres connections", yTitle: "Connections", height: 220, tooltip: "source", markers: restarts, set: timeSet,
+        series: [line("connections", "pg_connections", css("--series-1")), line("max connections", "pg_max_connections", css("--muted"), { dash: [5, 3], width: 1, band: false })],
+      });
+      timeChart(services, view, { title: "Redis memory", yTitle: "MB", unit: " MB", height: 220, tooltip: "source", markers: restarts, set: timeSet, series: [line("used memory", "redis_used_mb", css("--series-1"))] });
+      view.onApply(view.entries[0]?.chart.$bucket);
+      if (state.highlight !== null) {
+        view.setCrosshair(state.highlight);
+        state.highlight = null;
+        requestAnimationFrame(() => panel.scrollIntoView({ block: "start" }));
+      }
     }
 
     // ------------------------------------------------------------ Nodes
@@ -1043,16 +1848,16 @@
         })).sort((a, b) => byName(a.node.node_name, b.node.node_name)); // stable: runs stay in order under each node
         if (!rows.length) continue;
         host.append(el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`), sortableTable([
-          { label: "Node", value: (row) => row.node.node_name },
-          { label: "Type", value: (row) => row.node.node_type },
-          { label: "Run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
-          { label: "Level", value: (row) => row.node.level, numeric: true },
-          { label: "Count", value: (row) => row.node.count, numeric: true },
-          { label: "p50 s", value: (row) => row.node.p50_s, numeric: true },
-          { label: "p95 s", value: (row) => row.node.p95_s, numeric: true },
-          { label: "Errors", value: (row) => row.node.error_count, numeric: true },
+          { label: "Node", key: "node_name", value: (row) => row.node.node_name },
+          { label: "Type", key: "node_type", value: (row) => row.node.node_type },
+          { label: "Run", key: "run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
+          { label: "Level", key: "headline_level", value: (row) => row.node.level, numeric: true },
+          { label: "Count", key: "count", value: (row) => row.node.count, numeric: true },
+          { label: "p50 s", key: "p50_s", value: (row) => row.node.p50_s, numeric: true },
+          { label: "p95 s", key: "p95_s", value: (row) => row.node.p95_s, numeric: true },
+          { label: "Errors", key: "error_count", value: (row) => row.node.error_count, numeric: true },
           {
-            label: "Δ p50 vs baseline", value: (row) => row.change, numeric: true,
+            label: "Δ p50 vs baseline", key: "delta_p50", value: (row) => row.change, numeric: true,
             cell: (row) => el("td", { class: "num" }, delta(row.node.p50_s, row.base?.p50_s, -1) || "—"),
           },
         ], rows)));
@@ -1066,7 +1871,7 @@
         run, steps: await runCsv(run, "steps.csv"), phases: await runCsv(run, "container_phases.csv"), containers: await runCsv(run, "containers.csv"),
       })));
       if (!host.isConnected) return;
-      host.append(el("p", { class: "hint" }, `Memory model per container over the whole phase (baseline MB, MB added per concurrent session with its r², MB still held after cooldown) and CPU / peak memory at each run’s headline level. Δ vs baseline ${baseline.tag} for runs of the same kind.`));
+      host.append(el("p", { class: "hint" }, `Memory model per container over the whole phase (baseline MB, MB added per concurrent session with its r², MB still held after cooldown, the phase's highest memory sample and where it was taken) and CPU / peak memory at each run’s headline level. Δ vs baseline ${baseline.tag} for runs of the same kind.`));
       const collect = ({ run, steps, phases, containers }, phase) => {
         const step = headline(run, steps, phase);
         const names = new Set([
@@ -1077,8 +1882,14 @@
           run, container, level: step?.level,
           model: phases.find((row) => row.phase === phase && row.container === container) || {},
           load: (step && containers.find((row) => sameStep(row, step) && row.container === container)) || {},
+          // the same on every level row of the phase; absent in folders analyzed before it existed
+          peak: containers.find((row) => row.phase === phase && row.container === container && typeof row.phase_peak_mb === "number") || {},
         }));
       };
+      const peakCell = (row) => el("td", { class: "num" }, fmt(row.peak.phase_peak_mb),
+        typeof row.peak.phase_peak_level === "number"
+          ? el("span", { class: "reason" }, row.peak.phase_peak_level === 0 ? "outside a level" : `at level ${row.peak.phase_peak_level}`)
+          : null);
       for (const phase of phaseList(data.flatMap((item) => [item.steps, item.phases]))) {
         const baseRows = collect(data[0], phase);
         const rows = data.flatMap((item) => collect(item, phase).map((row) => ({
@@ -1087,15 +1898,16 @@
         if (!rows.length) continue;
         const withDelta = (pick, better) => (row) => numberCell(pick(row), row.base ? pick(row.base) : null, better, Boolean(row.base));
         host.append(el("section", { class: "panel" }, el("h2", {}, `Phase ${phase}`), sortableTable([
-          { label: "Container", value: (row) => row.container },
-          { label: "Run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
-          { label: "Baseline MB", value: (row) => row.model.baseline_mb, numeric: true },
-          { label: "MB / concurrent session", value: (row) => row.model.mb_per_concurrent, numeric: true, cell: withDelta((row) => row.model.mb_per_concurrent, -1) },
-          { label: "r²", value: (row) => row.model.r2, numeric: true },
-          { label: "Retained MB after cooldown", value: (row) => row.model.retained_mb_after_cooldown, numeric: true },
-          { label: "Headline level", value: (row) => row.level, numeric: true },
-          { label: "CPU-s / session", value: (row) => row.load.cpu_s_per_session, numeric: true, cell: withDelta((row) => row.load.cpu_s_per_session, -1) },
-          { label: "Peak memory MB", value: (row) => row.load.mem_peak_mb, numeric: true, cell: withDelta((row) => row.load.mem_peak_mb, -1) },
+          { label: "Container", key: "container", value: (row) => row.container },
+          { label: "Run", key: "run", value: (row) => row.run.tag, cell: (row) => runCell(row.run, baseline) },
+          { label: "Baseline MB", key: "baseline_mb", value: (row) => row.model.baseline_mb, numeric: true },
+          { label: "MB / concurrent session", key: "container_phases.mb_per_concurrent", value: (row) => row.model.mb_per_concurrent, numeric: true, cell: withDelta((row) => row.model.mb_per_concurrent, -1) },
+          { label: "r²", key: "r2", value: (row) => row.model.r2, numeric: true },
+          { label: "Retained MB after cooldown", key: "retained_mb_after_cooldown", value: (row) => row.model.retained_mb_after_cooldown, numeric: true },
+          { label: "Phase peak MB", key: "phase_peak_mb", value: (row) => row.peak.phase_peak_mb, numeric: true, cell: peakCell },
+          { label: "Headline level", key: "headline_level", value: (row) => row.level, numeric: true },
+          { label: "CPU-s / session", key: "containers.cpu_s_per_session", value: (row) => row.load.cpu_s_per_session, numeric: true, cell: withDelta((row) => row.load.cpu_s_per_session, -1) },
+          { label: "Peak memory MB", key: "mem_peak_mb", value: (row) => row.load.mem_peak_mb, numeric: true, cell: withDelta((row) => row.load.mem_peak_mb, -1) },
         ], rows)));
       }
     }
@@ -1230,7 +2042,29 @@
       await Promise.all(entries.map((entry) => walk(entry, "", files)));
       openFolders(files);
     });
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.selected.length) renderTab(); });
+    // Theme: Auto follows the OS setting, Light and Dark override it; the choice is kept in
+    // localStorage when the browser allows it. Charts read their colours when drawn, so the
+    // tab is drawn again (the Timeline keeps its zoom).
+    const THEME_KEY = "epicstaff-bench-theme";
+    function themeChoice() {
+      try { return localStorage.getItem(THEME_KEY) || "auto"; } catch { return "auto"; }
+    }
+    function applyTheme(choice) {
+      const dark = choice === "dark" || (choice === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      if (state.selected.length) renderTab();
+    }
+    $("#theme").value = themeChoice();
+    $("#theme").addEventListener("change", (event) => {
+      try { localStorage.setItem(THEME_KEY, event.target.value); } catch { /* not kept, still applied */ }
+      applyTheme(event.target.value);
+    });
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if ($("#theme").value === "auto") applyTheme("auto"); });
+    // the static run-list headers get the same tooltips as every other table
+    for (const cell of document.querySelectorAll("#runs th[data-def]")) cell.replaceWith(header(cell.textContent, cell.dataset.def));
+    // a tooltip can always be dismissed without moving the pointer or focus (WCAG 1.4.13)
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTip(); });
+    addEventListener("scroll", hideTip, true);
 
     refresh();
     if (/^https?:$/.test(location.protocol)) loadIndex();

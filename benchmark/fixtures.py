@@ -91,7 +91,8 @@ def _samples(
 
 
 def _session_events(session_id: int, sent: float, slot: float, done: float) -> list[dict]:
-    """Checkpoints of one session: five Python nodes, each wrapping a sandbox execution."""
+    """Checkpoints of one session: five Python nodes, each handing its code to the sandbox
+    (40 ms sandbox wait) and wrapping its execution."""
     node_s = (done - slot - 0.05) / 5  # all five nodes end before session_end
     events = [
         {
@@ -115,6 +116,13 @@ def _session_events(session_id: int, sent: float, slot: float, done: float) -> l
                 "node_name": name,
                 "node_type": "PythonNode",
                 "ts": node_start,
+            },
+            {
+                "service": "crew",
+                "checkpoint": "sandbox_dispatched",
+                "session_id": session_id,
+                "execution_id": execution,
+                "ts": node_start + 0.01,
             },
             {
                 "service": "sandbox",

@@ -23,6 +23,7 @@ from config import (
     Variant,
     allowlisted,
     bisect_next,
+    graph_id_missing,
     ladder_levels,
 )
 from load import FINISH_KIND, INTERRUPTED, RUNNER_STATUSES, Controller
@@ -156,7 +157,13 @@ def evaluate_stack(facts: dict, case: Case) -> list[tuple[str, str]]:
     return findings
 
 
-def plan_text(case: Case, variants: list[Variant]) -> str:
+def missing_graph_id_text(phase_name: str) -> str:
+    return f"phase {phase_name}: graph id: set with --graph {phase_name}=<id>"
+
+
+def plan_text(
+    case: Case, variants: list[Variant], flow_exports: dict[str, Path] | None = None
+) -> str:
     ladder = case.ladder
     levels = ladder_levels(ladder)
     lines = [f"case {case.name} ({case.kind}), hash {case.case_hash}"]
@@ -164,6 +171,11 @@ def plan_text(case: Case, variants: list[Variant]) -> str:
         lines.append(
             f"variant {variant.name}: ref={variant.ref or 'current checkout'} env={allowlisted({**case.env, **variant.env})}"
         )
+    lines += [
+        missing_graph_id_text(phase.name)
+        for phase in case.phases
+        if graph_id_missing(phase.name, phase.graph_id, flow_exports)
+    ]
     if case.kind == "dev":
         lines.append(f"dev: {case.dev.sessions} sessions, {case.dev.concurrency} in flight")
         return "\n".join(lines)
@@ -183,6 +195,24 @@ def plan_text(case: Case, variants: list[Variant]) -> str:
         f"worst case per variant: {worst / 60:.0f} min, {len(variants) * worst / 60:.0f} min total"
     )
     return "\n".join(lines)
+
+
+def judge_live(
+    records: list, events: list[dict], window, rules, abort, now: float
+) -> tuple[str, str]:
+    """The verdict the runner takes at the end of a level from what it knows at `now`, and the
+    text it prints: the reasons, plus for a failed level the checkpoint where timed-out
+    sessions hung (when the reasons do not name it already), the first thing to look at."""
+    rows = analyze.build_rows(records, events, now=now)
+    by_session, _ = analyze.index_events(events)
+    verdict, reasons = analyze.judge_level(rows, window, rules, abort, by_session)
+    text = " ".join([verdict, "; ".join(reasons)]).strip()
+    timed_out = (
+        analyze.timeout_bottleneck(rows, window, reasons, by_session) if verdict == "fail" else None
+    )
+    if timed_out and "last checkpoint" not in text:
+        text += f" · {timed_out}"
+    return verdict, text
 
 
 def run_dir_name(
@@ -350,22 +380,19 @@ class PhaseRunner:
                         print(
                             f"[{self.phase.name}] could not refresh sessions from the API: {error}"
                         )
-                live_rows = analyze.build_rows(
-                    controller.records, [e for f in followers for e in f.events], now=time.time()
-                )
-                verdict, reasons = analyze.judge(
-                    analyze.measured(live_rows, window),
+                verdict, text = judge_live(
+                    controller.records,
+                    [e for f in followers for e in f.events],
                     window,
                     self.phase.pass_rules,
                     self.case.abort,
+                    time.time(),
                 )
                 window.live_verdict = verdict
                 self.windows.append(window)
                 results.append((level, verdict))
                 if kind != "smoke":
-                    print(
-                        f"[{self.phase.name}] {kind} level {level}: {verdict} {'; '.join(reasons)}"
-                    )
+                    print(f"[{self.phase.name}] {kind} level {level}: {text}")
                 if verdict != "pass":
                     break
             load_end = time.time()
@@ -425,6 +452,10 @@ class PhaseRunner:
         the wait: one still running then is stopped as `timeout`, a failure. Sets
         window.finish_end_ts; returns an abort reason or None."""
         measured = [record for record in controller.records if window.measures(vars(record))]
+        if not measured:
+            # the stack stalled in the settle window, so the hold sent nothing new: wait for the
+            # settle sessions instead, so their timeouts decide the verdict (analyze.judge_level)
+            measured = [record for record in controller.records if window.settles(vars(record))]
         timeout_s = self.case.ladder.session_timeout_s
         last_refresh = 0.0
 
@@ -938,17 +969,26 @@ def preflight_only(case: Case, options: Options) -> int:
     compose_file = options.repo / "src" / "docker-compose.yaml"
     findings = evaluate_host(_host_facts(options.repo))
     findings += evaluate_env(_env_facts(compose_file, env_path, case.env))
-    if _report(findings, fatal=False):
+    missing = [
+        phase
+        for phase in case.phases
+        if graph_id_missing(phase.name, phase.graph_id, options.flow_exports)
+    ]
+    # reported, not fatal: the stack checks below still run for the phases that have an id
+    id_findings = [("error", missing_graph_id_text(phase.name)) for phase in missing]
+    _report(findings + id_findings, fatal=False)
+    if any(level == "error" for level, _ in findings):
         # a host error (e.g. docker down) or an unusable .env makes the stack checks meaningless
         return 2
     api = options.api()
     compose = stack.Compose(options.repo / "src", env_path, stack.detect_project())
+    case = replace(case, phases=tuple(phase for phase in case.phases if phase not in missing))
     case = _import_flows(case, api, options.flow_exports)
     graphs = _resolve_graphs(api, case)
     env = {**stack.read_env_file(env_path), **case.env}  # a run applies the case env on top
     facts = _stack_facts(compose, api, case, env, graphs, case_env=case.env)
     stack_findings = evaluate_stack(facts, case)
-    has_error = _report(stack_findings, fatal=False)
-    if not findings and not stack_findings:
+    has_error = _report(stack_findings, fatal=False) or bool(id_findings)
+    if not findings and not id_findings and not stack_findings:
         print("preflight ok")
     return 2 if has_error else 0

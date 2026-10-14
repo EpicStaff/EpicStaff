@@ -84,10 +84,17 @@ class Case:
     source_text: str
 
 
+def graph_id_missing(phase_name: str, graph_id, flow_exports: dict[str, Path] | None) -> bool:
+    """The phase has no graph id and no flow export to import one from."""
+    export = (flow_exports or {}).get(phase_name)
+    return graph_id is None and not (export is not None and export.is_file())
+
+
 def load_case(
     path: Path,
     graph_overrides: dict[str, int] | None = None,
     flow_exports: dict[str, Path] | None = None,
+    require_graph_ids: bool = True,
 ) -> Case:
     """Parse and validate a case file.
 
@@ -96,6 +103,10 @@ def load_case(
         flow_exports: Flow export file per phase name. A phase that neither the overrides nor
             the case file give a graph id keeps graph_id None when its export exists; the
             runner imports it after its checks. Loading never touches the stack.
+        require_graph_ids: False for `plan` and `preflight`, which only describe or check a
+            run: a phase without a graph id and without an export keeps graph_id None
+            (graph_id_missing) instead of failing the load. An id that is given must still
+            be a positive integer.
     """
     text = path.read_text(encoding="utf-8")
     try:
@@ -116,8 +127,11 @@ def load_case(
         phase_name = _require(raw, "name", str, path)
         graph_id = overrides.get(phase_name, raw.get("graph_id"))
         export = (flow_exports or {}).get(phase_name)
-        imported_later = graph_id is None and export is not None and export.is_file()
-        if not imported_later and (
+        # no id is fine when the export will provide one, or when it is not required
+        checked = graph_id is not None or (
+            require_graph_ids and graph_id_missing(phase_name, graph_id, flow_exports)
+        )
+        if checked and (
             not isinstance(graph_id, int) or isinstance(graph_id, bool) or graph_id < 1
         ):
             alternative = (

@@ -24,7 +24,7 @@ What every number, file and label of a benchmark run means. Definitions follow t
 | **Segment** | One stretch of load inside a phase: restart of `django_app crew agent sandbox knowledge_new` (not in the smoke step or with `dev --no-restart`), one cold session, baseline sampling (`baseline_s`), one or more levels, drain, cooldown sampling (`cooldown_s`). Segment 1 of a phase is the ladder; every bisect probe is its own segment (2, 3, ...). |
 | **Settle window** | The first `settle_s` seconds of a level. Sessions sent then run at the new load but are not measured. `settle_s` is raised to the smoke step's highest per-phase p95 session time, so that settle sessions have ended before measuring starts. Dev runs have no settle window. |
 | **Hold window** | The `hold_s` seconds after settle. Sessions whose intended start falls in it are the level's **measured sessions**. |
-| **Finish step** | After the hold, the level keeps its load until every measured session has ended, so the verdict uses true durations. It is capped by `session_timeout_s`: a measured session still running then is stopped and counted as failed `timeout`. Sessions started during the finish step have kind `finish` and are never measured. Dev runs and aborted levels have no finish step. |
+| **Finish step** | After the hold, the level keeps its load until every measured session has ended, so the verdict uses true durations. It is capped by `session_timeout_s`: a measured session still running then is stopped and counted as failed `timeout`. Sessions started during the finish step have kind `finish` and are never measured. When the level measured no session, it waits for the sessions of its settle window instead (see Verdict, rule 4). Dev runs and aborted levels have no finish step. |
 | **Measured session** | A session of the level's phase, segment, level and kind whose `intended_ts` lies between the end of settle and the end of hold. Only these feed the verdict and the duration statistics of the level. |
 | **Cold session** | The first session of every segment, started alone after the restart (`kind = cold`, `cold = 1`). Never in aggregates; the first one per phase is reported in `meta.json` → `phases[].cold`. It shows start-up cost (imports, caches, connections). |
 | **Finish sessions** | Kind `finish`: they keep the concurrency at the level while measured sessions end. In the timeline and in `sessions.csv.gz`, never measured. |
@@ -32,7 +32,7 @@ What every number, file and label of a benchmark run means. Definitions follow t
 | **Interrupted** | Status of a session the runner stopped because the run itself was stopped (Ctrl+C, crash). Not a failure: counted in `steps.csv` → `interrupted`, not in `failed` or `error_rate`. |
 | **Timeout** | Status of a session the runner stopped because it was older than `session_timeout_s`. A failure. |
 | **http_error** | The start request failed (non-2xx, network error, or no `session_id` in the answer). A failure; `http_status` and `error_reason` say why. |
-| **Drain** | After the last level of a segment: wait for in-flight sessions up to `session_timeout_s`, wait up to 35 s for unanswered start requests, then stop what still runs (`timeout`, or `interrupted` when the run is being stopped). |
+| **Drain** | After the last level of a segment: wait for in-flight sessions up to `session_timeout_s`, stopping each one as `timeout` as soon as it is `session_timeout_s` old (counted from its `sent_ts`, as during a level), wait up to 35 s for unanswered start requests, then stop what still runs (`timeout`, or `interrupted` when the run is being stopped). |
 | **Bisect** | After the first non-passing level F with last pass P: probe `(P + F) // 2` in a new segment; a pass moves P up, a fail moves F down, an `invalid` stops. At most `bisect_steps` probes; stops early when `(F - P) / P <= 10 %`. No bisect when the ladder ended on `invalid` or never failed. |
 | **Fallback-control mode** | Crew wrote no `session_end` checkpoint during the cold session (a branch without checkpoints, or `CREW_LOG_LEVEL` not BENCH/DEBUG/TRACE). In-flight counts then come from `GET /api/sessions/statuses/` and end times from the sessions list (every 5 s during the finish step and after each level). Limits: `running` is always 0 (so `queued` = `inflight`), sessions cannot be timed out by id while the load runs (only at the end of the finish step), `error_rate_30s` is off, an API unreachable for 10 s or more fails the level, and there are no per-node or per-stage times. Labelled `fallback-control:<phase>`. |
 | **Live vs final verdict** | The **live verdict** is computed right after the finish step from what the runner knows at that moment; it decides whether the ladder continues (`live_verdict` in `steps.csv`). The **final verdict** (`verdict`) is computed by the analysis from all collected events with the same rules and window. They differ only when late events changed the data; then the run gets the `verdict-revised` label. |
@@ -43,7 +43,7 @@ What every number, file and label of a benchmark run means. Definitions follow t
 
 ## Verdict
 
-Each level (and bisect probe) gets `pass`, `fail` or `invalid` from its measured sessions. Rules in order (`judge()` in `analyze.py`):
+Each level (and bisect probe) gets `pass`, `fail` or `invalid` from its measured sessions. Rules in order (`judge_level()` and `judge()` in `analyze.py`):
 
 1. **Generator lag** — if the p99 of `gen_lag_ms` over the measured sessions exceeds `abort.generator_lag_p99_ms` (500): `invalid`, reason `generator-limited: lag p99 <N> ms`. The load generator could not start sessions on time, so the server was not loaded as intended. The ladder stops; no server verdict for that level.
 2. **Abort** — if the level was aborted: `fail` with the abort reason. Abort reasons (checked every 0.25 s while the level runs): a container's restart or OOM counter rose since the segment's load started (`container restart/OOM: ...`, when `abort.container_restart`); host available RAM below `abort.host_min_available_ram_pct` (5 %); error rate of 5 % or more (`abort.error_rate_30s`) among sessions that ended in the last 30 s, once at least 20 ended (not in fallback mode); in fallback mode, the sessions API failing for 10 s or more.
@@ -53,9 +53,10 @@ Each level (and bisect probe) gets `pass`, `fail` or `invalid` from its measured
    - **estimated fail**: otherwise, the p95 of the ended sessions is above the limit.
 
    For e2e, ended = status `end`. For queue wait, every session with a known queue wait counts; a session still queued at judging is unfinished.
-4. **Too few** — fewer than 10 measured sessions ended (not censored, end before the verdict time): `fail` if a proven fail exists, otherwise `invalid` with `too few measured sessions ended (N); raise ladder.hold_s`.
-5. **Error rate** — failed / measured above `pass.max_error_rate` (1 %): fail reason `error rate X% > 1.0%`.
-6. Any error-rate, proven or estimated reason: `fail` (all reasons joined with `; ` in `fail_reasons`). Otherwise any unknown: `invalid`. Otherwise `pass`.
+4. **Stalled in settle** — the level measured no session at all, and sessions it sent in its settle window ended as `timeout` by the verdict time: `fail`, reason `N settle sessions timed out (last checkpoint: <service> <checkpoint> (count))`. This is the stack stalling before a session could be measured: nothing ended, so the hold started no new session. Without this rule the level would be `invalid` ("raise ladder.hold_s"), which blames the hold and stops the bisect. To make the live and the final verdict agree, the runner's finish step waits for these settle sessions (up to `session_timeout_s`) when the level measured none (`judge_level` in `analyze.py`, `_finish_measured` in `runner.py`).
+5. **Too few** — fewer than 10 measured sessions ended (not censored, end before the verdict time): `fail` if a proven fail exists, otherwise `invalid` with `too few measured sessions ended (N); raise ladder.hold_s`.
+6. **Error rate** — failed / measured above `pass.max_error_rate` (1 %): fail reason `error rate X% > 1.0%`.
+7. Any error-rate, proven or estimated reason: `fail` (all reasons joined with `; ` in `fail_reasons`). Otherwise any unknown: `invalid`. Otherwise `pass`.
 
 The ladder continues only on `pass`. **Max passing concurrency** is the highest level with a final `pass` (ladder or bisect). **First failing level** is the lowest `fail`.
 
@@ -63,11 +64,12 @@ A dev run is judged with the same function (dev case: only `max_error_rate` appl
 
 ## Bottleneck
 
-Computed for every failing level from the samples in its measured window; the phase's headline bottleneck is the one of its lowest failing level. First match wins:
+Computed for every failing level from the samples in its measured window and the sessions the level started; the phase's headline bottleneck is the one of its lowest failing level. First match wins:
 
 | # | Rule | Text |
 |---|---|---|
 | 1 | A container's restart or OOM counter rose during the level | `container restart/OOM: <containers>` |
+| 1a | The level failed on the error rate (rule or abort) or on the settle-timeout rule, and sessions it started (settle, measured and finish sessions) ended as `timeout` by the verdict time (a finish session stopped later, in the drain, did not fail the level) | `N timed out; last checkpoint: <service> <checkpoint> (count)[, <second most common> (count)]`: the last checkpoint each reached before the runner stopped it (crew's later `session_end` answering the stop is ignored; `no checkpoint` when it logged none) |
 | 2 | Lowest host available RAM % in the window below the RAM guard (5 %) | `host RAM (available N%)` |
 | 3 | Mean host CPU in the window ≥ 90 % | `host CPU N%` |
 | 4 | A container's mean CPU ≥ 90 % of its CPU limit (only containers with a limit; none today) | `container CPU limit: <containers>` |
@@ -75,6 +77,8 @@ Computed for every failing level from the samples in its measured window; the ph
 | 6 | p95 of `agent_queue_s` (sessions with agent calls) more than double the previous level's and above 1 s | `agent queue growing (p95 N s)` |
 | 7 | Peak Postgres connections ≥ 90 % of `max_connections` | `Postgres connections at N% of max` |
 | 8 | None of the above | `no saturated resource found` |
+
+When timeouts explain the failure, the timed-out rule comes before the resource rules because it says where the stuck sessions are: `crew sandbox_dispatched` means the code was handed to the sandbox and never started there. The runner prints the same text on its live verdict line of a failed level.
 
 "No saturated resource found" means the failure came from latency or errors without one of these resources at its limit: look at the Time breakdown and Nodes tabs and at `error_reason` in `sessions.csv.gz`.
 
@@ -130,7 +134,7 @@ Per session in `sessions.csv.gz`. Timestamps: `sent_ts` is taken by the runner j
 
 | Column | From → to | What it contains |
 |---|---|---|
-| `e2e_s` | `sent_ts` → crew `session_end` (or the runner's end time for `timeout`, `http_error`, `interrupted`, or the API's `finished_at` in fallback mode) | Whole session as a client sees it. |
+| `e2e_s` | `sent_ts` → crew `session_end` (or the runner's end time for `timeout`, `http_error`, `interrupted`, or the API's `finished_at` in fallback mode) | Whole session as a client sees it. For a session the runner ended, crew's `session_end` only answers the runner's stop (it can come much later, e.g. at the next stack restart) and is ignored. |
 | `dispatch_s` | `sent_ts` → crew `received` | HTTP request, Django creating and publishing the session, Redis delivery to crew. |
 | `queue_wait_s` | crew `received` → crew `slot_acquired` | Waiting for a crew slot (`CREW_MAX_CONCURRENT_SESSIONS`). |
 | `run_s` | crew `slot_acquired` → session end | Executing the flow. |
@@ -138,10 +142,11 @@ Per session in `sessions.csv.gz`. Timestamps: `sent_ts` is taken by the runner j
 | `llm_calls`, `tokens`, `cost_usd` | from `llm_end` | Call count, total tokens, cost as reported by the agent. |
 | `agent_queue_s` | Σ crew `agent_dispatched` → agent `request_consumed` | Waiting for an agent worker to pick up a request (Redis stream backlog). |
 | `python_s` | Σ sandbox `exec_start` → `exec_end`, paired by execution id | Time executing Python node code in the sandbox. |
-| `other_s` | `max(0, run_s − llm_s − python_s − agent_queue_s)` | Everything else inside the run: crew orchestration, node bookkeeping, Redis hops, RAG search, agent work outside LLM calls. Clamped at 0 when parallel spans overlap. |
+| `sandbox_wait_s` | Σ crew or agent `sandbox_dispatched` → sandbox `exec_start`, paired by execution id | Code handed to the sandbox but not running yet (sandbox queue, Redis delivery, worker start). An execution that never started adds nothing; such a session ends as `timeout`. A **lower bound**: crew and agent log `sandbox_dispatched` after publishing the execution, so at low load the sandbox's `exec_start` can come first; that execution's wait then counts as 0 (and its time stays in crew overhead). |
+| `other_s` (**crew overhead**) | `max(0, run_s − llm_s − python_s − agent_queue_s − sandbox_wait_s)` | Everything else inside the run: crew orchestration, node bookkeeping, Redis hops, RAG search, agent work outside LLM calls. Clamped at 0 when parallel spans overlap. In run folders analyzed before `sandbox_wait_s` existed it still contains the sandbox wait (the viewer says so). |
 | `platform_overhead_s` | `e2e_s − llm_s` | Everything that is not the LLM provider. The number to compare branches with when LLM latency is noisy. |
 
-`e2e_s = dispatch_s + queue_wait_s + run_s`, and `run_s ≈ llm_s + python_s + agent_queue_s + other_s` when nothing runs in parallel. Without checkpoints (fallback mode) only `e2e_s` and `platform_overhead_s` (= `e2e_s`) are filled.
+`e2e_s = dispatch_s + queue_wait_s + run_s`, and `run_s ≈ llm_s + python_s + agent_queue_s + sandbox_wait_s + other_s` when nothing runs in parallel. Without checkpoints (fallback mode) only `e2e_s` and `platform_overhead_s` (= `e2e_s`) are filled.
 
 ## Resource costs
 
@@ -173,6 +178,8 @@ Folder name: `<YYYY-MM-DD_HHMM>_<host>_<ref>_<sha7>_<case>-<variant>` under `ben
 | `nodes.csv` | level × node | yes |
 | `timeline.csv` | 2-second sample | yes |
 | `container_timeline.csv` | 2-second sample × container | yes |
+| `inflight_stages.csv` | 2-second sample × stage with sessions in it | yes |
+| `findings.csv` | finding (what to look at first) | yes |
 | `events_sample.csv` | checkpoint event of a sampled session | yes |
 | `events_full.csv.gz` | every checkpoint event | no (size) |
 
@@ -196,7 +203,7 @@ Folder name: `<YYYY-MM-DD_HHMM>_<host>_<ref>_<sha7>_<case>-<variant>` under `ben
 | `status` | Crew's final status (`end`, `error`, `stop`, `cancelled`), or the runner's `http_error`, `timeout`, `interrupted`. Empty: no end known. |
 | `censored` | True when the duration is only a lower bound (`interrupted`). |
 | `error_reason` | For a status other than `end`: the request error or crew's `reason`, at most 300 characters. |
-| `e2e_s` … `platform_overhead_s` | See [Session time and its parts](#session-time-and-its-parts). |
+| `e2e_s` … `platform_overhead_s` | See [Session time and its parts](#session-time-and-its-parts) (includes `sandbox_wait_s`). |
 
 ### `steps.csv`
 
@@ -213,7 +220,7 @@ Folder name: `<YYYY-MM-DD_HHMM>_<host>_<ref>_<sha7>_<case>-<variant>` under `ben
 | `interrupted` | Measured sessions stopped by an interrupt. |
 | `throughput_per_min` | See [Statistics](#statistics). |
 | `error_rate` | `failed / sent`. |
-| `e2e_s_*`, `queue_wait_s_*`, `run_s_*`, `llm_s_*`, `platform_overhead_s_*` | `p50`, `p90`, `p95`, `p99`, `max`, `mean` of that duration over completed measured sessions. |
+| `e2e_s_*`, `queue_wait_s_*`, `run_s_*`, `llm_s_*`, `platform_overhead_s_*`, `sandbox_wait_s_*` | `p50`, `p90`, `p95`, `p99`, `max`, `mean` of that duration over completed measured sessions. |
 | `cpu_s_per_session` | See [Resource costs](#resource-costs). |
 | `mb_per_concurrent` | Per-level MB per concurrent session (not the headline slope). |
 | `gen_lag_p99_ms` | p99 generator lag of the measured sessions. |
@@ -233,6 +240,8 @@ Folder name: `<YYYY-MM-DD_HHMM>_<host>_<ref>_<sha7>_<case>-<variant>` under `ben
 | `cpu_pct_mean`, `cpu_pct_max` | Mean and highest sampled CPU, % of one core. |
 | `mem_mean_mb`, `mem_peak_mb` | Mean and highest sampled memory. Peak is the highest 2-second sample, not a true peak. |
 | `restarts`, `oom_kills` | Rise of the container's restart count and OOM-kill counter during the window. |
+| `phase_peak_mb` | Highest memory sample of the container over the whole phase: every segment and level, including the failing one, drain and cooldown. The same on every row of the phase. `mem_peak_mb` covers one level's measured window only, so after a failure the real peak is often only here. |
+| `phase_peak_level` | Level of that sample; `0` = taken outside a level (cold session, baseline, drain or cooldown), shown as "outside a level" in the viewer. |
 
 ### `container_phases.csv`
 
@@ -260,7 +269,10 @@ From `node_start` / `node_end` checkpoints of the level's measured sessions (all
 
 | Column | Meaning |
 |---|---|
-| `ts`, `rel_s` | Sample time (epoch) and seconds since the segment's sampler started. |
+| `ts`, `rel_s` | Sample time (epoch) and seconds since the segment's sampler started (restarts at 0 in every segment). |
+| `run_rel_s` | Seconds since the run's first sample, continuous across segments and phases: the viewer's time axis. |
+| `throughput_per_min` | Sessions that ended with `end` in the 60 s before the sample (a rolling rate; not the level value of `steps.csv`). |
+| `e2e_p95_60s` | p95 `e2e_s` of those sessions; empty when none ended. |
 | `phase`, `segment`, `level`, `target` | Context; `level`/`target` 0 outside levels (cold session, baseline, drain, cooldown). |
 | `inflight` | Sessions in flight. |
 | `running` | Sessions executing in crew. |
@@ -276,6 +288,39 @@ From `node_start` / `node_end` checkpoints of the level's measured sessions (all
 ### `container_timeline.csv`
 
 `ts`, `rel_s`, `phase`, `segment`, `level`, `container`, `cpu_pct` (% of one core), `mem_mb`, `restarts` (Docker restart count), `oom_kills` (cgroup OOM-kill counter on Linux; Docker's 0/1 OOMKilled flag otherwise).
+
+### `inflight_stages.csv`
+
+At every timeline sample, the sessions in flight (sent, not ended) counted by the stage of the last checkpoint they had reached at that moment, from all checkpoint events. Columns `ts`, `run_rel_s`, `phase`, `segment` (of the sample), `stage`, `count`; a stage with no session at a sample has no row (count 0).
+
+| Stage | Last checkpoint |
+|---|---|
+| `waiting for crew` | none yet, Django's checkpoints, or crew `received` (queued for a slot) |
+| `crew` | crew `slot_acquired`, `compiled`, `node_start`, `node_end` or any other crew checkpoint; agent `result_published` |
+| `agent queue` | crew `agent_dispatched` |
+| `agent` | agent `request_consumed`, `llm_end` (agent work outside an LLM call) |
+| `LLM` | agent `llm_start` |
+| `waiting for sandbox` | crew or agent `sandbox_dispatched` (no `exec_start` yet; a `sandbox_dispatched` logged after its execution's `exec_start` is skipped, the session is then in `python`) |
+| `python` | sandbox `exec_start` |
+| `result return` | sandbox `exec_end` (crew has not logged its `node_end` yet) |
+
+A session that hangs stays at its stage until the runner stops it, so a growing band shows where sessions pile up. A session with no known end counts until its segment's end (cooldown end), never into the next segment; an end that another container's clock puts before the send counts as the send, so no count is negative.
+
+### `findings.csv`
+
+What to look at first, from simple rules over the run. Columns: `phase`, `severity` (`critical`, `warning`, `info`), `kind`, `message`, `ts` and `run_rel_s` (the moment, for findings that have one; drawn as markers on the viewer's Timeline), `tab` (the viewer tab to read on), `container` (when the finding is about one). Sorted by severity, then time. The thresholds are named constants at the top of `analyze.py`.
+
+| Kind | Severity | Rule |
+|---|---|---|
+| `timeouts` | critical | Per level: sessions that ended as `timeout`, with the last checkpoint they reached (as in the bottleneck text). Moment: the first runner stop. |
+| `abort` | critical | A level was aborted, with the abort reason. Moment: end of the hold. |
+| `container_restart` | critical | A container's known restart or OOM counter rose within a segment. Moment: the first sample showing it. |
+| `cpu_limit` | warning | A container's mean CPU in a level's measured window is at least 90 % of its CPU limit (only containers with a limit); once per container and phase, at the first such level. |
+| `http_errors` | warning or info | Start requests that failed, by HTTP status: warning above 1 % of the phase's sessions (`HTTP_ERROR_WARN_SHARE`), info below. Moment: the first one. |
+| `invalid_level` | warning | A level with verdict `invalid`, with its reason. Moment: level start. |
+| `throughput_plateau` | warning | Among passing ladder levels only: the first one after which the next passing level raised throughput by less than 10 % (`PLATEAU_GROWTH`): `throughput stopped growing at level N (~T/min); passing level M only added latency`. A failed or invalid level is never compared. |
+| `dominant_stage` | warning (info for LLM) | At the headline level (highest pass, else the first level) one part of the session time (dispatch, queue wait, agent queue, LLM, Python, sandbox wait, crew overhead) is more than 50 % (`DOMINANT_STAGE_SHARE`) of the mean e2e of the completed measured sessions. LLM is info: an agent flow is expected to spend its time there. The share is capped at 100 %: parallel LLM calls can sum to more than the session's time. |
+| `memory_retained` | warning | `retained_mb_after_cooldown` above the larger of 50 MB (`RETAINED_MIN_MB`) and 10 % of the container's `baseline_mb` (`RETAINED_SHARE`). |
 
 ### `events_sample.csv` and `events_full.csv.gz`
 
@@ -319,13 +364,17 @@ One row per checkpoint: `session_id`, `service` (`django_app`, `crew`, `agent`, 
 
 | Tab | Shows |
 |---|---|
-| **Verdicts** | Per phase, one row per run. Capacity: max passing concurrency, first failing level, throughput, p95 e2e, p95 platform overhead and CPU-s/session at the highest passing level, headline MB per concurrent session, capacity estimate with its limit (bounds in the tooltip), bottleneck and fail reasons. Dev: concurrency, throughput, p50 and p95 e2e, CPU-s/session. ⚠ marks `slow_provider`. |
+| **Verdicts** | First the **Findings** of each run (`findings.csv`), grouped by severity; selecting one opens its tab, and on the Timeline moves the crosshair to its moment. Run folders without `findings.csv` show no panel. Then per phase, one row per run. Capacity: max passing concurrency, first failing level, throughput, p95 e2e, p95 platform overhead and CPU-s/session at the highest passing level, headline MB per concurrent session, capacity estimate with its limit (bounds in the tooltip), bottleneck and fail reasons. Dev: concurrency, throughput, p50 and p95 e2e, CPU-s/session. ⚠ marks `slow_provider`. |
 | **Curves** | One chart per phase: a metric from `steps.csv` against concurrency level (ladder, bisect and dev rows), one line per run. Metrics: throughput, p50/p95 e2e, p95 queue wait, p95 platform overhead, error rate, CPU-s per session, per-level MB per concurrent session. Filled point = pass, hollow = fail, cross = invalid. Log scale for the level axis is optional. |
-| **Time breakdown** | Stacked bars of mean seconds per completed session at each run's headline level (capacity: highest passing; dev: its level): dispatch, queue wait, agent queue, LLM, Python, other; mean e2e in the table. Uses that level's sessions with status `end`, cold and finish sessions excluded. |
-| **Timeline** | One run (pick it with **Run**). Sessions chart: target, in flight, running, queued over time, with host CPU % or the top-5 containers' CPU % on the right axis; vertical lines where each measured level starts (green pass, red fail, grey invalid). Memory per container (the 5 with the highest peak). Postgres connections vs max. Redis memory. The x axis is `rel_s`, which restarts at 0 in every segment, so with bisect probes or two phases the segments are drawn over each other. |
+| **Time breakdown** | Stacked bars of mean seconds per completed session at every measured level of every run, side by side (levels where nothing completed are left out): dispatch, crew overhead, agent queue, queue wait, LLM, sandbox wait, Python; level, kind, verdict and mean e2e in the table. Uses each level's sessions of its kind with status `end`, cold and finish sessions excluded. Each stage keeps one colour, the same as the matching stage of the Timeline's in-flight chart. For runs analyzed before `sandbox_wait_s` existed the sandbox wait is empty and Crew overhead still contains it (the old "Other"); a note names those runs. |
+| **Timeline** | One run (pick it with **Run**). All charts share one time axis, elapsed since the run's first sample (`run_rel_s`, continuous across segments; computed from `ts` for older folders), labelled h:mm, or m:ss when less than 10 minutes are visible, at round intervals; tooltips give the elapsed time and the UTC clock time. **Zoom:** a slim overview of the whole run (sessions in flight) sits on top; drag across it or across any chart to show that range in every chart (the overview's brush marks it), the mouse wheel over a chart zooms around the pointer, Shift+drag pans, **Reset zoom** shows the whole run. With a chart focused: arrow keys move the crosshair, Shift+arrows pan, + / − zoom, 0 resets, Escape clears. The zoom is kept when the theme changes. **Buckets:** samples are averaged into time buckets sized to the visible range (about one per 3 pixels, from the raw 2 s samples when zoomed in to minutes for a long run), so each line is the bucket mean and a light band of the same colour its min–max; the stacked in-flight areas share one bucket grid. One crosshair: hovering a chart shows the values at that moment in all of them. Lines break between segments, and a dashed `restart · <next segment>` marker marks each stack restart. Charts, top to bottom: sessions (target, in flight, running, queued), in flight by stage (`inflight_stages.csv`, stacked areas, with a peak-per-stage table), throughput per minute and p95 e2e over the last 60 s, host CPU %. Then one full-width row per container on the same time scale: memory (MB) and CPU (% of one core) as two charts; containers a finding names (memory not released, CPU limit, restart) come first with a status border, glyph and the finding's text, then by peak memory. Then Postgres connections and Redis memory. Every chart has titled axes with units. Vertical lines: each measured level's start (green pass, red fail, grey invalid) and findings with a moment (✖ critical, ▲ warning, labelled). Selecting a Timeline finding opens the Timeline zoomed to ± 5 minutes around its moment with the crosshair on it. A chart whose data an older run folder lacks says so. |
 | **Nodes** | Per node at each run's headline level: count, p50, p95, errors, Δ p50 against the same node in the baseline. |
-| **Containers** | Per container: baseline MB, MB per concurrent session (slope) with Δ, r², retained MB after cooldown, and at the headline level CPU-s/session and peak memory with Δ. |
+| **Containers** | Per container: baseline MB, MB per concurrent session (slope) with Δ, r², retained MB after cooldown, phase peak MB with the level it was taken at ("outside a level" for level 0), and at the headline level CPU-s/session and peak memory with Δ. |
 | **Waterfall** | One session from `events_sample.csv`: fastest, median, slowest (among sampled sessions with status `end`, whole run), a failed one, or the cold one. Bars from Django receiving the request: session, queue, each node, each LLM call, each Python execution. |
+
+The **Theme** control in the header (Auto, Light, Dark) switches every chart at once; Auto follows the system setting, and the choice is kept in the browser's local storage when it allows that.
+
+Every table header has a one-line definition (the viewer's `DEFINITIONS`, consistent with this file), shown on hover and on keyboard focus and announced to screen readers; a unit test checks that every column the analyzer writes has one.
 
 A run with a `schema_version` other than 1 is refused with a message.
 
@@ -339,6 +388,7 @@ A run with a `schema_version` other than 1 is refused with a message.
    - `crew slots full`: the configured cap, not the hardware (raise `CREW_MAX_CONCURRENT_SESSIONS` for the test).
    - `agent queue growing`: too few agent workers for the LLM work.
    - `Postgres connections`: the connection limit (RUNBOOK B11) or connection usage per session.
+   - `N timed out; last checkpoint: ...`: sessions hung at that checkpoint. `crew sandbox_dispatched` means the sandbox never started the code; the Timeline's in-flight chart shows when they piled up there.
    - `no saturated resource found`: latency grew without a saturated resource. Check the Time breakdown (which part grew between levels), Nodes, and `error_reason` of failed sessions.
 4. **Compare branches on stable numbers.** Prefer p50 e2e and p95 platform overhead, the payload phase (no LLM), CPU-seconds per session and the headline MB slope. Throughput at different levels is not comparable; compare at the same level or compare max passing concurrency.
 5. **Know what is noise.** One run per configuration, no repeats: differences under about 5–10 % in latency are within run-to-run noise, more on a laptop. `max` and `p99` with few sessions are single sessions. A slope with `r² < 0.5` is noise. `slow_provider` means LLM latency moved, not EpicStaff. The capacity estimate is an extrapolation; the measured max passing concurrency is the fact.

@@ -11,13 +11,16 @@ import email.policy
 import io
 import itertools
 import json
+import re
 import shutil
 import tempfile
 import textwrap
 import threading
 import time as time_module
 import tomllib
+import types
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest import mock
 
@@ -671,6 +674,28 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual({record.end_status for record in controller.records}, {load.INTERRUPTED})
         controller.close()
 
+    def test_drain_stops_a_session_once_its_own_age_passes_the_timeout(self):
+        fake = FakeStack(duration_s=None)  # never ends by itself
+        controller = make_controller(fake)
+        controller.hold(target=2, duration_s=0.1, timeout_s=10, abort_check=lambda: None)
+        while controller.in_flight_count() < 2 or controller._pending_http:
+            time_module.sleep(0.01)  # both start requests answered
+        stuck, ending = controller.records
+        stuck.sent_ts -= 60  # sent long before the drain: past its 30 s timeout already
+        threading.Timer(
+            0.3,
+            lambda: controller.on_event(
+                {"session_id": ending.session_id, "checkpoint": "session_end", "status": "end"}
+            ),
+        ).start()
+        started = time_module.time()
+        self.assertEqual(controller.drain(timeout_s=30), 1)
+        controller.close()
+        self.assertLess(time_module.time() - started, 10)  # did not wait for the drain deadline
+        self.assertEqual((stuck.end_status, ending.end_status), ("timeout", "end"))
+        self.assertLess(stuck.done_ts - started, 1)  # stopped at once, not after 30 s
+        self.assertEqual(fake.stopped, [stuck.session_id])
+
     def test_status_does_not_count_interrupted_sessions_as_failed(self):
         controller = make_controller(FakeStack())
         for status in ("end", "error", load.INTERRUPTED):
@@ -787,6 +812,79 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual(row["status"], load.INTERRUPTED)
         self.assertTrue(row["censored"])
         self.assertFalse(analyze.is_failed(row))
+
+    def test_runner_ended_session_keeps_the_runner_end_time(self):
+        # crew answered the runner's stop only at the next stack restart, 15 minutes later
+        late = crew_events(5, received=11.0, slot=12.0, end=1810.0, status="stop")
+        events, _ = analyze.index_events(late)
+        row = analyze.session_row(
+            record(5, intended=10, sent=10, done=910.0, status="timeout"), events[5]
+        )
+        self.assertEqual((row["status"], row["end_ts"], row["e2e_s"]), ("timeout", 910.0, 900.0))
+        self.assertTrue(analyze.is_failed(row))
+
+    def test_sandbox_wait_is_paired_by_execution_id_and_leaves_crew_overhead(self):
+        events = [
+            *crew_events(6, received=11.0, slot=12.0, end=20.0),
+            {
+                "service": "crew",
+                "checkpoint": "sandbox_dispatched",
+                "session_id": 6,
+                "execution_id": "a",
+                "ts": 14.0,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_start",
+                "session_id": 6,
+                "execution_id": "a",
+                "ts": 16.5,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_end",
+                "session_id": 6,
+                "execution_id": "a",
+                "ts": 17.5,
+            },
+            # the agent's tool call: also waits for the sandbox
+            {
+                "service": "agent",
+                "checkpoint": "sandbox_dispatched",
+                "session_id": 6,
+                "execution_id": "b",
+                "ts": 18.0,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_start",
+                "session_id": 6,
+                "execution_id": "b",
+                "ts": 18.5,
+            },
+            {
+                "service": "sandbox",
+                "checkpoint": "exec_end",
+                "session_id": 6,
+                "execution_id": "b",
+                "ts": 19.0,
+            },
+            # lost: dispatched, never started; counts nowhere in sandbox_wait_s
+            {
+                "service": "crew",
+                "checkpoint": "sandbox_dispatched",
+                "session_id": 6,
+                "execution_id": "c",
+                "ts": 19.5,
+            },
+        ]
+        by_session, _ = analyze.index_events(events)
+        row = analyze.session_row(record(6, intended=10, sent=10, done=20.0), by_session[6])
+        self.assertAlmostEqual(row["sandbox_wait_s"], 3.0)  # 2.5 + 0.5
+        self.assertAlmostEqual(row["python_s"], 1.5)
+        self.assertAlmostEqual(row["llm_s"], 1.0)
+        # run 8 s - LLM 1 s - Python 1.5 s - sandbox wait 3 s
+        self.assertAlmostEqual(row["other_s"], 2.5)
 
     def test_percentiles(self):
         self.assertIsNone(analyze.percentile([], 0.5))
@@ -936,6 +1034,7 @@ class BottleneckTest(unittest.TestCase):
             "agent_queue_p95": 0.1,
             "previous_agent_queue_p95": 0.1,
             "pg_ratio_max": 0.2,
+            "timed_out": None,
         }
         self.assertEqual(analyze.bottleneck(base), "no saturated resource found")
         self.assertEqual(analyze.bottleneck({**base, "host_cpu_mean": 95}), "host CPU 95%")
@@ -967,10 +1066,23 @@ class AnalyzeFolderTest(unittest.TestCase):
             "container_timeline.csv",
             "events_sample.csv",
             "events_full.csv.gz",
+            "inflight_stages.csv",
+            "findings.csv",
         }
         self.assertEqual({path.name for path in run_dir.iterdir()}, expected)
+        for file_name, columns in (
+            ("steps.csv", analyze.STEP_COLUMNS),
+            ("containers.csv", analyze.CONTAINER_COLUMNS),
+            ("timeline.csv", analyze.TIMELINE_COLUMNS),
+            ("inflight_stages.csv", analyze.INFLIGHT_STAGE_COLUMNS),
+            ("findings.csv", analyze.FINDING_COLUMNS),
+        ):
+            with open(run_dir / file_name, encoding="utf-8") as csv_file:
+                self.assertEqual(csv_file.readline().strip().split(","), columns)
         with open(run_dir / "steps.csv", encoding="utf-8") as steps_file:
-            self.assertEqual(steps_file.readline().strip().split(","), analyze.STEP_COLUMNS)
+            first_level = next(csv.DictReader(steps_file))
+        # five sandbox executions per fixture session, each waiting 40 ms to start
+        self.assertAlmostEqual(float(first_level["sandbox_wait_s_mean"]), 0.2, places=3)
         meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
         self.assertEqual(meta["schema_version"], 1)
         verdict = meta["phases"][0]["verdict"]
@@ -1686,8 +1798,7 @@ def live_verdict(data, window, rules):
         if item.intended_ts <= now
     ]
     events = [event for event in data.events if float(event["ts"]) <= now]
-    rows = analyze.build_rows(records, events, now=now)
-    return analyze.judge(analyze.measured(rows, window), window, rules, data.case.abort)[0]
+    return runner.judge_live(records, events, window, rules, data.case.abort, now)[0]
 
 
 class FixtureReplayTest(unittest.TestCase):
@@ -2224,6 +2335,20 @@ class ImportedPhaseTest(unittest.TestCase):
         self.assertEqual(self.calls, ["import"])
         self.assertEqual(resolve.call_args.args[1].phases[0].graph_id, 42)
 
+    def test_preflight_reports_a_missing_graph_id_and_checks_the_other_phases(self):
+        self.case = config.load_case(
+            write_case(self.DEV_CASE + '[[phase]]\nname = "complex"\n'),
+            flow_exports=self.exports,
+            require_graph_ids=False,
+        )
+        code, output, resolve = self.preflight(self.HOST_OK)
+        self.assertEqual(code, 2)
+        self.assertIn("✗ phase complex: graph id: set with --graph complex=<id>", output)
+        self.assertNotIn("preflight ok", output)
+        self.assertEqual(self.calls, ["import"])  # the payload phase is still imported ...
+        checked = resolve.call_args.args[1].phases  # ... and its graph checked
+        self.assertEqual([(phase.name, phase.graph_id) for phase in checked], [("payload", 42)])
+
     def test_run_imports_once_the_stack_is_up_and_before_resolving_graphs(self):
         compose = mock.Mock()
         compose.up.side_effect = lambda build: self.calls.append("up")
@@ -2345,13 +2470,35 @@ class BenchCliTest(unittest.TestCase):
         self.assertIn("bench.py flow import", stderr)
         run_dev.assert_not_called()
 
-    def test_other_phases_still_need_a_graph_id(self):
+    def test_run_still_needs_a_graph_id_for_other_phases(self):
         case = write_case(self.DEV_CASE + '[[phase]]\nname = "complex"\n')
-        with mock.patch.object(bench.runner, "preflight_only") as preflight:
-            code, _, stderr = self.run_main("preflight", str(case))
+        with mock.patch.object(bench.runner, "run_variant") as run_variant:
+            code, _, stderr = self.run_main("run", str(case))
         self.assertEqual(code, 2)
         self.assertIn("'complex' needs a positive integer graph_id", stderr)
-        preflight.assert_not_called()
+        run_variant.assert_not_called()
+
+    def test_plan_without_a_graph_id_names_the_flag(self):
+        case = write_case(
+            'name = "server"\nkind = "capacity"\n[[phase]]\nname = "payload"\n'
+            '[[phase]]\nname = "complex"\n'
+        )
+        code, stdout, _ = self.run_main("plan", str(case))
+        self.assertEqual(code, 0)
+        self.assertIn("phase complex: graph id: set with --graph complex=<id>", stdout)
+        self.assertNotIn("phase payload: graph id", stdout)  # imported from its export
+        self.assertIn("complex: 25 → 50", stdout)
+
+    def test_preflight_without_a_graph_id_still_runs_its_checks(self):
+        case = write_case(self.DEV_CASE + '[[phase]]\nname = "complex"\n')
+        with mock.patch.object(bench.runner, "preflight_only", return_value=2) as preflight:
+            code, _, _ = self.run_main("preflight", str(case))
+        self.assertEqual(code, 2)
+        phases = preflight.call_args.args[0].phases
+        self.assertEqual(
+            [(phase.name, phase.graph_id) for phase in phases],
+            [("payload", None), ("complex", None)],
+        )
 
     def test_plan_works_without_the_payload_graph_id_and_never_imports(self):
         code, stdout, _ = self.run_main("plan", str(write_case(self.DEV_CASE)))
@@ -2612,6 +2759,686 @@ class ApiKeyTest(unittest.TestCase):
         message = self.exit_message({})
         self.assertIn("BENCH_API_KEY is not set", message)
         self.assertNotIn("DJANGO_API_KEY", message)
+
+
+def hung_at_sandbox(session_id, sent, crew_answer_ts):
+    """Checkpoints of a session whose code never started in the sandbox; crew reports its end
+    only at `crew_answer_ts`, long after the runner stopped it."""
+    events = [
+        ("received", sent + 0.1),
+        ("slot_acquired", sent + 0.2),
+        ("node_start", sent + 0.3),
+        ("sandbox_dispatched", sent + 0.4),
+    ]
+    return [
+        {"service": "crew", "checkpoint": checkpoint, "session_id": session_id, "ts": ts}
+        | ({"execution_id": f"x{session_id}"} if checkpoint == "sandbox_dispatched" else {})
+        for checkpoint, ts in events
+    ] + [
+        {
+            "service": "crew",
+            "checkpoint": "session_end",
+            "session_id": session_id,
+            "status": "stop",
+            "ts": crew_answer_ts,
+        }
+    ]
+
+
+class TimedOutLevelTest(unittest.TestCase):
+    """A bisect probe whose measured sessions all hung: the runner stopped them at
+    session_timeout_s (900 s) and crew answered the stops only at the next stack restart."""
+
+    WINDOW = analyze.Window(
+        "payload", 150, "bisect", 2, start_ts=0, settle_end_ts=30, end_ts=210, finish_end_ts=1115
+    )
+
+    def hung(self):
+        records = [
+            record(
+                number,
+                intended=40 + number,
+                sent=40 + number,
+                done=940 + number,
+                status="timeout",
+                level=150,
+                kind="bisect",
+                segment=2,
+            )
+            for number in range(1, 21)
+        ]
+        events = [
+            event for number in range(1, 21) for event in hung_at_sandbox(number, 40 + number, 2460)
+        ]
+        return records, events
+
+    def test_verdict_is_fail_on_the_error_rate_not_invalid(self):
+        records, events = self.hung()
+        rows = analyze.build_rows(records, events)
+        verdict, reasons = analyze.judge(
+            analyze.measured(rows, self.WINDOW), self.WINDOW, PassRules(p95_e2e_s=120), AbortRules()
+        )
+        self.assertEqual((verdict, reasons), ("fail", ["error rate 100.0% > 1.0%"]))
+
+    def test_timed_out_text_counts_the_two_most_common_last_checkpoints(self):
+        records, events = self.hung()
+        # three more hung inside their Python code, one before crew received it
+        for number in (21, 22, 23):
+            records.append(record(number, intended=41, sent=41, done=941, status="timeout"))
+            events += [
+                *hung_at_sandbox(number, 41, 2460)[:4],
+                {"service": "sandbox", "checkpoint": "exec_start", "session_id": number, "ts": 42},
+            ]
+        records.append(record(24, intended=41, sent=41, done=941, status="timeout"))
+        records.append(record(25, intended=41, sent=41, done=50, status="end"))
+        rows = analyze.build_rows(records, events)
+        by_session, _ = analyze.index_events(events)
+        self.assertEqual(
+            analyze.timed_out_text(rows, by_session),
+            "24 timed out; last checkpoint: crew sandbox_dispatched (20), sandbox exec_start (3)",
+        )
+        self.assertIsNone(analyze.timed_out_text(rows[-1:], by_session))
+        self.assertEqual(analyze.last_checkpoint([], 10.0), "no checkpoint")
+
+    def test_bottleneck_names_the_timeouts_after_restarts_and_before_resources(self):
+        context = {
+            "restarts": [],
+            "timed_out": "20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+            "host_mem_avail_min_pct": 50,
+            "ram_guard_pct": 5,
+            "host_cpu_mean": 95,
+            "containers_at_cpu_limit": [],
+            "running_mean": 10,
+            "queued_mean": 0,
+            "crew_cap": None,
+            "agent_queue_p95": None,
+            "previous_agent_queue_p95": None,
+            "pg_ratio_max": None,
+        }
+        self.assertEqual(analyze.bottleneck(context), context["timed_out"])
+        self.assertEqual(
+            analyze.bottleneck({**context, "restarts": ["sandbox"]}),
+            "container restart/OOM: sandbox",
+        )
+
+    def test_analyzed_level_reports_the_timeouts_as_bottleneck_and_critical_finding(self):
+        records, events = self.hung()
+        data = synthetic_run(mem_slope=0.3)
+        data.records, data.events, data.windows = records, events, [self.WINDOW]
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual(
+            (step["verdict"], step["fail_reasons"], step["bottleneck"]),
+            (
+                "fail",
+                "error rate 100.0% > 1.0%",
+                "20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+            ),
+        )
+        with open(out / "findings.csv", encoding="utf-8") as findings_file:
+            first = next(csv.DictReader(findings_file))
+        self.assertEqual(
+            first,
+            {
+                "phase": "payload",
+                "severity": "critical",
+                "kind": "timeouts",
+                "message": "bisect level 150: 20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+                "ts": "941",  # the first runner stop, not crew's late answer
+                "run_rel_s": "941",
+                "tab": "Timeline",
+                "container": "",
+            },
+        )
+
+
+class TimelineColumnsTest(unittest.TestCase):
+    def test_rolling_throughput_p95_and_time_continuous_across_segments(self):
+        samples = [
+            {"ts": ts, "rel_s": rel_s, "segment": segment}
+            for ts, rel_s, segment in (
+                (1000, 0, 1),
+                (1030, 30, 1),
+                (1060, 60, 1),
+                (1200, 0, 2),
+                (1230, 30, 2),
+            )
+        ]
+        ended = [
+            (1010, 5, "end"),
+            (1020, 7, "end"),
+            (1025, 900, "timeout"),
+            (1050, 9, "end"),
+            (1210, 3, "end"),
+        ]
+        rows = [{"end_ts": end, "e2e_s": e2e, "status": status} for end, e2e, status in ended]
+        result = analyze._timeline_rows(types.SimpleNamespace(timeline=samples), rows, 1000)
+        self.assertEqual(
+            [
+                (row["run_rel_s"], row["rel_s"], row["throughput_per_min"], row["e2e_p95_60s"])
+                for row in result
+            ],
+            [
+                (0, 0, 0, None),
+                (30, 30, 2, 6.9),
+                (60, 60, 3, 8.8),
+                (200, 0, 0, None),
+                (230, 30, 1, 3),
+            ],
+        )
+
+
+class InflightStagesTest(unittest.TestCase):
+    def test_sessions_are_counted_at_the_stage_of_their_last_checkpoint(self):
+        def event(service, checkpoint, session_id, ts, **extra):
+            return {
+                "service": service,
+                "checkpoint": checkpoint,
+                "session_id": session_id,
+                "ts": ts,
+                **extra,
+            }
+
+        events = [
+            event("crew", "received", 1, 1.0),
+            event("crew", "slot_acquired", 1, 2.0),
+            event("crew", "sandbox_dispatched", 1, 3.0, execution_id="e1"),
+            event("sandbox", "exec_start", 1, 5.0, execution_id="e1"),
+            event("sandbox", "exec_end", 1, 6.0, execution_id="e1"),
+            event("crew", "node_end", 1, 6.5),
+            event("crew", "session_end", 1, 8.0, status="end"),
+            event("crew", "received", 2, 1.2),
+            event("crew", "slot_acquired", 2, 1.4),
+            event("crew", "agent_dispatched", 2, 1.6, correlation_id="c2"),
+            event("agent", "request_consumed", 2, 2.2, correlation_id="c2"),
+            event("agent", "llm_start", 2, 2.4, correlation_id="c2"),
+            event("agent", "llm_end", 2, 4.0, correlation_id="c2"),
+            event("agent", "sandbox_dispatched", 2, 4.5, execution_id="e2"),
+            event("crew", "session_end", 2, 30.0, status="stop"),  # answers the runner's stop
+        ]
+        records = [
+            record(1, intended=0, sent=0, done=8.0),
+            record(2, intended=0.2, sent=0.2, done=9.0, status="timeout"),
+        ]
+        rows = analyze.build_rows(records, events)
+        by_session, _ = analyze.index_events(events)
+        samples = [
+            {"ts": ts, "phase": "payload", "segment": 1}
+            for ts in (0.5, 1.5, 2.5, 3.5, 4.2, 5.5, 6.2, 7.0, 8.5, 9.5)
+        ]
+        result = analyze._inflight_stage_rows(
+            types.SimpleNamespace(timeline=samples, segments=[]), rows, by_session, 0.0
+        )
+        by_ts = defaultdict(dict)
+        for row in result:
+            by_ts[row["ts"]][row["stage"]] = row["count"]
+        self.assertEqual(
+            dict(by_ts),
+            {
+                0.5: {"waiting for crew": 2},
+                1.5: {"waiting for crew": 1, "crew": 1},
+                2.5: {"crew": 1, "LLM": 1},
+                3.5: {"LLM": 1, "waiting for sandbox": 1},
+                4.2: {"agent": 1, "waiting for sandbox": 1},
+                5.5: {"waiting for sandbox": 1, "python": 1},
+                6.2: {"waiting for sandbox": 1, "result return": 1},
+                7.0: {"crew": 1, "waiting for sandbox": 1},
+                8.5: {"waiting for sandbox": 1},
+            },
+        )
+        self.assertEqual({row["run_rel_s"] for row in result if row["ts"] == 8.5}, {8.5})
+
+
+class PhasePeakTest(unittest.TestCase):
+    def test_peak_covers_the_whole_phase_and_keeps_its_level(self):
+        rows = [
+            {"phase": "payload", "container": "django_app", "level": 100, "mem_mb": 857.0},
+            {"phase": "payload", "container": "django_app", "level": 0, "mem_mb": 1284.0},
+            {"phase": "payload", "container": "django_app", "level": 200, "mem_mb": None},
+            {"phase": "complex", "container": "django_app", "level": 25, "mem_mb": 900.0},
+        ]
+        self.assertEqual(
+            analyze._phase_peaks(rows),
+            {("payload", "django_app"): (1284.0, 0), ("complex", "django_app"): (900.0, 25)},
+        )
+
+    def test_every_level_row_carries_the_phase_peak(self):
+        run_dir = fixtures.write_capacity_run(
+            Path(tempfile.mkdtemp()), "peaks", levels=(10, 20), fail_from=None
+        )
+        with open(run_dir / "containers.csv", encoding="utf-8") as containers_file:
+            rows = list(csv.DictReader(containers_file))
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertGreaterEqual(float(row["phase_peak_mb"]), float(row["mem_peak_mb"]))
+            self.assertIn(row["phase_peak_level"], {"0", "10", "20"})
+
+
+def session(status="end", **values):
+    """A sessions.csv row of the synthetic level (payload, level 10, measured)."""
+    row = dict.fromkeys(analyze.SESSION_COLUMNS, 0.0)
+    row.update(
+        phase="payload",
+        segment=1,
+        level=10,
+        kind="ladder",
+        cold=0,
+        session_id=None,
+        intended_ts=30,
+        sent_ts=30,
+        end_ts=40,
+        status=status,
+        censored=False,
+        e2e_s=10.0,
+        http_status=200,
+    )
+    return row | values
+
+
+class FindingsTest(unittest.TestCase):
+    def setUp(self):
+        self.data = synthetic_run(mem_slope=0.3)  # one payload level 10: settle 10-20, hold to 100
+
+    def findings(self, rows=(), steps=(), container_phase_rows=(), kind=None):
+        found = analyze._findings(
+            self.data, list(rows), {}, list(steps), list(container_phase_rows), 0.0
+        )
+        return [finding for finding in found if kind is None or finding["kind"] == kind]
+
+    @staticmethod
+    def step(level, throughput, verdict="pass", fail_reasons=""):
+        return {
+            "phase": "payload",
+            "segment": 1,
+            "level": level,
+            "kind": "ladder",
+            "throughput_per_min": throughput,
+            "verdict": verdict,
+            "fail_reasons": fail_reasons,
+        }
+
+    def test_throughput_plateau_names_the_last_level_that_still_grew(self):
+        steps = [self.step(25, 218.09), self.step(50, 212.07), self.step(100, 218.72)]
+        (finding,) = self.findings(steps=steps, kind="throughput_plateau")
+        self.assertEqual(
+            finding["message"],
+            "throughput stopped growing at level 25 (~218/min); passing level 50 only added latency",
+        )
+        self.assertEqual(
+            (finding["severity"], finding["tab"], finding["ts"]), ("warning", "Curves", None)
+        )
+        growing = [self.step(25, 100), self.step(50, 190), self.step(100, 370)]
+        self.assertEqual(self.findings(steps=growing, kind="throughput_plateau"), [])
+
+    def test_dominant_stage_at_the_headline_level(self):
+        waiting = [
+            session(sandbox_wait_s=7.6, python_s=1.0, other_s=1.0, dispatch_s=0.4)
+            for _ in range(12)
+        ]
+        (finding,) = self.findings(rows=waiting, steps=[self.step(10, 6)], kind="dominant_stage")
+        self.assertEqual(
+            (finding["severity"], finding["message"], finding["tab"]),
+            ("warning", "sandbox wait = 76% of session time at L10", "Time breakdown"),
+        )
+        llm_bound = [session(llm_s=8.0, other_s=2.0) for _ in range(12)]
+        (finding,) = self.findings(rows=llm_bound, steps=[self.step(10, 6)], kind="dominant_stage")
+        self.assertEqual(
+            (finding["severity"], finding["message"]), ("info", "LLM = 80% of session time at L10")
+        )
+        spread = [session(python_s=5.0, other_s=5.0) for _ in range(12)]
+        self.assertEqual(
+            self.findings(rows=spread, steps=[self.step(10, 6)], kind="dominant_stage"), []
+        )
+
+    def test_memory_not_released_above_50_mb_and_10_percent_of_baseline(self):
+        models = [
+            {
+                "phase": "payload",
+                "container": "crewdb",
+                "baseline_mb": 47.3,
+                "retained_mb_after_cooldown": 643.0,
+            },
+            {
+                "phase": "payload",
+                "container": "django_app",
+                "baseline_mb": 759.5,
+                "retained_mb_after_cooldown": 60.0,
+            },
+            {
+                "phase": "payload",
+                "container": "redis",
+                "baseline_mb": 11.5,
+                "retained_mb_after_cooldown": None,
+            },
+        ]
+        (finding,) = self.findings(container_phase_rows=models, kind="memory_retained")
+        self.assertEqual(
+            (finding["message"], finding["container"], finding["tab"]),
+            ("crewdb kept 643 MB after cooldown (baseline 47 MB)", "crewdb", "Containers"),
+        )
+
+    def test_moments_are_sorted_critical_first_with_timeline_positions(self):
+        self.data.windows[0].abort_reason = "container restart/OOM: crew"
+        self.data.container_timeline += [
+            {
+                "ts": ts,
+                "phase": "payload",
+                "segment": 1,
+                "container": "crew",
+                "restarts": restarts,
+                "oom_kills": 0,
+            }
+            for ts, restarts in ((50, 0), (60, 1), (70, 1))
+        ]
+        rows = [session(), *(session("http_error", http_status=502, sent_ts=35) for _ in range(2))]
+        rows.append(session("http_error", http_status=None, sent_ts=33))
+        steps = [
+            self.step(10, 0, verdict="invalid", fail_reasons="too few measured sessions ended (0)")
+        ]
+        found = self.findings(rows=rows, steps=steps)
+        self.assertEqual(
+            [
+                (finding["severity"], finding["kind"], finding["ts"], finding["run_rel_s"])
+                for finding in found
+            ],
+            [
+                ("critical", "container_restart", 60, 60.0),
+                ("critical", "abort", 100, 100.0),
+                ("warning", "invalid_level", 10, 10.0),
+                ("warning", "http_errors", 33, 33.0),
+            ],
+        )
+        self.assertEqual(found[0]["container"], "crew")
+        self.assertEqual(
+            found[1]["message"], "ladder level 10 aborted: container restart/OOM: crew"
+        )
+        self.assertEqual(
+            found[2]["message"], "ladder level 10 invalid: too few measured sessions ended (0)"
+        )
+        self.assertEqual(found[3]["message"], "3 start requests failed (HTTP 502: 2, no answer: 1)")
+
+    def test_a_few_http_errors_are_info(self):
+        rows = [session() for _ in range(200)] + [session("http_error", http_status=502)]
+        (finding,) = self.findings(rows=rows, kind="http_errors")
+        self.assertEqual(finding["severity"], "info")
+
+
+class ViewerDefinitionsTest(unittest.TestCase):
+    """Every column the analyzer writes has a tooltip in the viewer's DEFINITIONS dictionary, so a
+    new column cannot reach the viewer unexplained."""
+
+    def test_every_written_column_has_a_definition(self):
+        html = (Path(__file__).with_name("viewer.html")).read_text(encoding="utf-8")
+        body = html.split("const DEFINITIONS = {", 1)[1].split("\n    };", 1)[0]
+        keys = set(re.findall(r'^\s*"?([\w.]+)"?\s*:', body, re.MULTILINE))
+        column_lists = {
+            "sessions.csv.gz": analyze.SESSION_COLUMNS,
+            "steps.csv": analyze.STEP_COLUMNS,
+            "containers.csv": analyze.CONTAINER_COLUMNS,
+            "container_phases.csv": analyze.CONTAINER_PHASE_COLUMNS,
+            "nodes.csv": analyze.NODE_COLUMNS,
+            "timeline.csv": analyze.TIMELINE_COLUMNS,
+            "container_timeline.csv": analyze.CONTAINER_TIMELINE_COLUMNS,
+            "events_sample.csv": analyze.EVENT_COLUMNS,
+            "inflight_stages.csv": analyze.INFLIGHT_STAGE_COLUMNS,
+            "findings.csv": analyze.FINDING_COLUMNS,
+        }
+        missing = []
+        for file_name, columns in column_lists.items():
+            for column in columns:
+                # duration statistics (e2e_s_p95) are defined by their duration and statistic
+                base, _, statistic = column.rpartition("_")
+                if column not in keys and not (base in keys and statistic in analyze.STAT_KEYS):
+                    missing.append(f"{file_name}: {column}")
+        self.assertEqual(missing, [])
+        self.assertTrue(set(analyze.STAT_KEYS) <= keys)
+
+
+class StalledSettleTest(unittest.TestCase):
+    """The real bisect probe: every session was sent in the settle window and hung at
+    sandbox_dispatched, so the hold sent nothing new and measured no session."""
+
+    WINDOW = analyze.Window(
+        "payload", 150, "bisect", 2, start_ts=0, settle_end_ts=30, end_ts=210, finish_end_ts=925
+    )
+    REASON = "20 settle sessions timed out (last checkpoint: crew sandbox_dispatched (20))"
+
+    def stalled(self):
+        records = [
+            record(
+                number,
+                intended=5 + number,
+                sent=5 + number,
+                done=905 + number,
+                status="timeout",
+                level=150,
+                kind="bisect",
+                segment=2,
+            )
+            for number in range(1, 21)
+        ]
+        events = [
+            event for number in range(1, 21) for event in hung_at_sandbox(number, 5 + number, 2460)
+        ]
+        return records, events
+
+    def test_settle_timeouts_fail_the_level_instead_of_invalid(self):
+        records, events = self.stalled()
+        rows = analyze.build_rows(records, events)
+        by_session, _ = analyze.index_events(events)
+        self.assertEqual(analyze.measured(rows, self.WINDOW), [])
+        self.assertEqual(
+            analyze.judge_level(
+                rows, self.WINDOW, PassRules(p95_e2e_s=120), AbortRules(), by_session
+            ),
+            ("fail", [self.REASON]),
+        )
+        # settle timeouts after the verdict time do not count: still too few measured
+        early = dataclasses.replace(self.WINDOW, finish_end_ts=500)
+        verdict, reasons = analyze.judge_level(rows, early, PassRules(), AbortRules(), by_session)
+        self.assertEqual(verdict, "invalid")
+        self.assertIn("too few measured sessions", reasons[0])
+
+    def test_live_and_final_verdicts_agree_and_name_the_checkpoint_once(self):
+        records, events = self.stalled()
+        verdict, text = runner.judge_live(
+            records, events, self.WINDOW, PassRules(p95_e2e_s=120), AbortRules(), now=930
+        )
+        self.assertEqual((verdict, text), ("fail", f"fail {self.REASON}"))
+        data = synthetic_run(mem_slope=0.3)
+        data.records, data.events, data.windows = records, events, [self.WINDOW]
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual(
+            (step["sent"], step["verdict"], step["fail_reasons"], step["bottleneck"]),
+            (
+                "0",
+                "fail",
+                self.REASON,
+                "20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+            ),
+        )
+
+    def test_runner_waits_for_settle_sessions_when_none_was_measured(self):
+        fake = FakeStack(duration_s=None)  # the stack stalls: nothing ever ends
+        controller = make_controller(fake)
+        phase_runner = make_phase_runner(FakeSessionsApi())
+        ladder = dataclasses.replace(phase_runner.case.ladder, session_timeout_s=0.3)
+        phase_runner.case = dataclasses.replace(phase_runner.case, ladder=ladder)
+        start = time_module.time()
+        controller.hold(3, 0.1, 10, abort_check=lambda: None, tick_s=0.02)
+        # every session of the hold was sent before the settle window ended
+        window = analyze.Window(
+            "payload", 5, "ladder", 1, start, time_module.time() + 1, time_module.time()
+        )
+        phase_runner._finish_measured(controller, window, lambda: None)
+        controller.close()
+        settle = [record for record in controller.records if window.settles(vars(record))]
+        self.assertEqual({record.end_status for record in settle}, {"timeout"})
+        self.assertGreaterEqual(window.finish_end_ts, max(record.done_ts for record in settle))
+        no_lag_guard = AbortRules(generator_lag_p99_ms=float("inf"))
+        live, text = runner.judge_live(
+            controller.records, [], window, PassRules(), no_lag_guard, window.finish_end_ts
+        )
+        final, _ = analyze.judge_level(
+            analyze.build_rows(controller.records, []), window, PassRules(), no_lag_guard, {}
+        )
+        self.assertEqual((live, final), ("fail", "fail"))
+        self.assertEqual(
+            text, "fail 3 settle sessions timed out (last checkpoint: no checkpoint (3))"
+        )
+
+
+class TimeoutBottleneckTest(unittest.TestCase):
+    def test_live_line_adds_the_timed_out_text_to_an_error_rate_fail(self):
+        records, events = TimedOutLevelTest().hung()
+        verdict, text = runner.judge_live(
+            records, events, TimedOutLevelTest.WINDOW, PassRules(), AbortRules(), now=1200
+        )
+        self.assertEqual(verdict, "fail")
+        self.assertEqual(
+            text,
+            "fail error rate 100.0% > 1.0% · 20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+        )
+
+    def test_timeouts_name_the_bottleneck_only_when_they_failed_the_level(self):
+        records, events = TimedOutLevelTest().hung()
+        rows = analyze.build_rows(records, events)
+        by_session, _ = analyze.index_events(events)
+        window = TimedOutLevelTest.WINDOW
+        text = "20 timed out; last checkpoint: crew sandbox_dispatched (20)"
+        for reasons, expected in (
+            (["error rate 100.0% > 1.0%"], text),
+            (["error rate 7% over 30 s"], text),  # the abort on the error rate
+            (["p95 e2e 200.0 s > 120 s"], None),  # latency failed it: resource rules decide
+            (["container restart/OOM: crew"], None),
+        ):
+            self.assertEqual(
+                analyze.timeout_bottleneck(rows, window, reasons, by_session), expected
+            )
+
+    def test_a_finish_session_timing_out_after_the_verdict_leaves_the_resource_rule(self):
+        data = synthetic_run(mem_slope=0.3)
+        data.windows[0].finish_end_ts = 140
+        for session_record in data.records:
+            session_record.end_status = "error"  # the error-rate rule fails the level
+        for timeline_row in data.timeline:
+            timeline_row["host_cpu_pct"] = 95
+        # kept the load during the finish step, stopped in the drain after the verdict
+        data.records.append(
+            record(99, intended=101, sent=101, done=1001, status="timeout", kind=load.FINISH_KIND)
+        )
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual((step["verdict"], step["bottleneck"]), ("fail", "host CPU 95%"))
+
+
+class DrainAgeTest(unittest.TestCase):
+    def test_a_session_younger_than_the_timeout_ages_out_during_the_drain(self):
+        fake = FakeStack(duration_s=None)
+        controller = make_controller(fake)
+        controller.hold(target=2, duration_s=0.1, timeout_s=10, abort_check=lambda: None)
+        while controller.in_flight_count() < 2 or controller._pending_http:
+            time_module.sleep(0.01)
+        young, ending = controller.records
+        young.sent_ts = time_module.time() - 1.5  # 1.5 s left of its 3 s timeout
+        threading.Timer(
+            2.5,
+            lambda: controller.on_event(
+                {"session_id": ending.session_id, "checkpoint": "session_end", "status": "end"}
+            ),
+        ).start()
+        started = time_module.time()
+        self.assertEqual(controller.drain(timeout_s=3), 1)
+        controller.close()
+        self.assertEqual((young.end_status, ending.end_status), ("timeout", "end"))
+        # stopped when it turned 3 s old: not at once, and not at the drain deadline
+        self.assertGreater(young.done_ts - started, 1.2)
+        self.assertLess(young.done_ts - started, 2.4)
+
+
+class StageSweepEdgesTest(unittest.TestCase):
+    def counts(self, rows, events, samples, segments=()):
+        by_session, _ = analyze.index_events(events)
+        data = types.SimpleNamespace(timeline=samples, segments=list(segments))
+        by_ts = defaultdict(dict)
+        for row in analyze._inflight_stage_rows(data, rows, by_session, 0.0):
+            by_ts[row["ts"]][row["stage"]] = row["count"]
+        return dict(by_ts)
+
+    def test_exec_start_logged_before_sandbox_dispatched_counts_as_python(self):
+        def event(service, checkpoint, ts, **extra):
+            return {
+                "service": service,
+                "checkpoint": checkpoint,
+                "session_id": 1,
+                "ts": ts,
+                **extra,
+            }
+
+        events = [
+            event("crew", "slot_acquired", 1.0),
+            event("sandbox", "exec_start", 2.0, execution_id="e"),
+            event("crew", "sandbox_dispatched", 2.1, execution_id="e"),
+            event("crew", "session_end", 9.0, status="end"),
+        ]
+        rows = analyze.build_rows([record(1, intended=0, sent=0, done=9.0)], events)
+        samples = [{"ts": ts, "phase": "payload", "segment": 1} for ts in (1.5, 3.0)]
+        self.assertEqual(self.counts(rows, events, samples), {1.5: {"crew": 1}, 3.0: {"python": 1}})
+        self.assertEqual(rows[0]["sandbox_wait_s"], 0)  # a lower bound: this wait is unknown
+
+    def test_unended_session_stops_at_its_segment_end_and_skew_writes_no_negative_count(self):
+        rows = [
+            # no end known: in flight until its segment's cooldown end, not into segment 2
+            session(status=None, sent_ts=1.0, end_ts=None),
+            # another clock put its end before its send
+            session(sent_ts=5.0, end_ts=4.0),
+        ]
+        samples = [
+            {"ts": ts, "phase": "payload", "segment": segment}
+            for ts, segment in ((2.0, 1), (4.5, 1), (6.0, 1), (11.0, 2))
+        ]
+        segments = [analyze.Segment("payload", 1, "ladder", 0, 1, 8, 10)]
+        self.assertEqual(
+            self.counts(rows, [], samples, segments),
+            {
+                2.0: {"waiting for crew": 1},
+                4.5: {"waiting for crew": 1},
+                6.0: {"waiting for crew": 1},
+            },
+        )
+
+
+class FindingNitsTest(unittest.TestCase):
+    def test_cpu_limit_is_reported_once_per_container_and_phase(self):
+        data = synthetic_run(mem_slope=0.3)  # crew at 50 % CPU throughout
+        data.meta["container_limits"] = {"crew": {"cpus": 0.5}}
+        data.windows.append(dataclasses.replace(data.windows[0], level=20))
+        found = analyze._findings(data, [], {}, [], [], 0.0)
+        (finding,) = [item for item in found if item["kind"] == "cpu_limit"]
+        self.assertEqual(finding["message"], "crew CPU at its limit (0.5 CPUs) at level 10")
+
+    def test_plateau_ignores_failed_levels(self):
+        steps = [
+            FindingsTest.step(25, 218.0),
+            FindingsTest.step(50, 420.0),
+            FindingsTest.step(100, 150.0, verdict="fail"),
+        ]
+        found = analyze._findings(synthetic_run(mem_slope=0.3), [], {}, steps, [], 0.0)
+        self.assertEqual([item for item in found if item["kind"] == "throughput_plateau"], [])
+
+    def test_overlapping_llm_spans_cap_the_share_at_100_percent(self):
+        rows = [session(llm_s=12.0) for _ in range(12)]  # parallel calls: 12 s of LLM in 10 s
+        steps = [FindingsTest.step(10, 6)]
+        found = analyze._findings(synthetic_run(mem_slope=0.3), rows, {}, steps, [], 0.0)
+        (finding,) = [item for item in found if item["kind"] == "dominant_stage"]
+        self.assertEqual(finding["message"], "LLM = 100% of session time at L10")
 
 
 if __name__ == "__main__":

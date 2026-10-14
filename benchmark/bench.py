@@ -220,12 +220,18 @@ def main(argv: list[str] | None = None) -> int:
                 args.concurrency or case.dev.concurrency,
             )
             return 0
-        case = load_case(case_path(args.case), graph_overrides, flow_exports())
+        # plan and preflight describe or check a run, so a missing graph id is reported, not fatal
+        case = load_case(
+            case_path(args.case),
+            graph_overrides,
+            flow_exports(),
+            require_graph_ids=args.command not in ("plan", "preflight"),
+        )
         variants = select_variants(
             case, [v for v in args.variant.split(",") if v], parse_assignments(args.set), args.ref
         )
         if args.command == "plan":  # never touches the stack, so never imports
-            print(runner.plan_text(case, variants))
+            print(runner.plan_text(case, variants, flow_exports()))
             return 0
         run_options = options(args)
         if args.command == "preflight":

@@ -349,7 +349,7 @@ The tool warns when this file is readable by other users.
 
   The graph id is not part of the case hash, so setting it does not make runs incomparable. Editing the flow in the UI does: the graph hash changes and the viewer shows "different workload".
 
-Without a `complex` id, every command on `server.toml` (also `plan` and `preflight`) stops with `case error: ... phase 'complex' needs a positive integer graph_id`.
+Without a `complex` id, `run`, `smoke` and `dev` on `server.toml` stop with `case error: ... phase 'complex' needs a positive integer graph_id`. `plan` and `preflight` still work: `plan` prints `phase complex: graph id: set with --graph complex=<id>` in place of an id, and `preflight` reports that line as an error (`✗`, exit 2) but still runs every other check, for the payload phase too, so you can fix the stack before you have the agent flow.
 
 ### B8. A payload-only case and the ladder
 
@@ -454,6 +454,8 @@ The setting lives in the database volume and survives container recreation. Undo
    ```
 
    Arrow keys scroll sideways, `q` quits. `column` can shift cells when a value is empty or contains a comma; the viewer shows the same data exactly. Read `verdict`, `fail_reasons` and `bottleneck` of the first non-passing row.
+
+   In the viewer start with **Findings** at the top of the Verdicts tab (`findings.csv`; rules in docs/METRICS.md). Critical first: timed-out sessions with the checkpoint where they hung, aborts, container restarts. Then warnings: a throughput plateau (the level where adding sessions stopped adding throughput), one stage taking most of the session time, memory not released after cooldown, invalid levels. Select a finding to open its tab; a Timeline finding moves the crosshair to its moment, where the in-flight-by-stage chart shows where the sessions were.
 3. **Push** to the results repository:
 
    ```bash

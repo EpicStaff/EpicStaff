@@ -7,7 +7,9 @@ import gzip
 import hashlib
 import itertools
 import json
-from collections import defaultdict
+import math
+from bisect import bisect_left, bisect_right
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,10 +53,11 @@ SESSION_COLUMNS = [
     "cost_usd",
     "agent_queue_s",
     "python_s",
+    "sandbox_wait_s",
     "other_s",
     "platform_overhead_s",
 ]
-DURATIONS = ["e2e_s", "queue_wait_s", "run_s", "llm_s", "platform_overhead_s"]
+DURATIONS = ["e2e_s", "queue_wait_s", "run_s", "llm_s", "platform_overhead_s", "sandbox_wait_s"]
 STAT_KEYS = ["p50", "p90", "p95", "p99", "max", "mean"]
 STEP_COLUMNS = [
     "phase",
@@ -94,6 +97,8 @@ CONTAINER_COLUMNS = [
     "mem_peak_mb",
     "restarts",
     "oom_kills",
+    "phase_peak_mb",
+    "phase_peak_level",
 ]
 CONTAINER_PHASE_COLUMNS = [
     "phase",
@@ -137,6 +142,9 @@ TIMELINE_COLUMNS = [
     "pg_max_connections",
     "redis_used_mb",
     "runner_cpu_pct",
+    "run_rel_s",
+    "throughput_per_min",
+    "e2e_p95_60s",
 ]
 CONTAINER_TIMELINE_COLUMNS = [
     "ts",
@@ -151,6 +159,69 @@ CONTAINER_TIMELINE_COLUMNS = [
     "oom_kills",
 ]
 EVENT_COLUMNS = ["session_id", "service", "checkpoint", "ts", "node_name", "extra_json"]
+INFLIGHT_STAGE_COLUMNS = ["ts", "run_rel_s", "phase", "segment", "stage", "count"]
+FINDING_COLUMNS = [
+    "phase",
+    "severity",
+    "kind",
+    "message",
+    "ts",
+    "run_rel_s",
+    "tab",
+    "container",
+]
+# Window of the timeline's rolling throughput_per_min and e2e_p95_60s.
+ROLLING_S = 60
+# In-flight stage of a session from the last checkpoint it reached (inflight_stages.csv), in
+# pipeline order: the viewer colours the stages in this order, so a new stage goes at its
+# place in the pipeline and the list stays at 8 (the categorical palette has 8 colours).
+STAGES = [
+    "waiting for crew",
+    "crew",
+    "agent queue",
+    "agent",
+    "LLM",
+    "waiting for sandbox",
+    "python",
+    "result return",
+]
+STAGE_AFTER = {
+    ("crew", "received"): "waiting for crew",  # received, no slot yet: still queued in crew
+    ("crew", "agent_dispatched"): "agent queue",
+    ("agent", "llm_start"): "LLM",
+    ("agent", "result_published"): "crew",
+    ("crew", "sandbox_dispatched"): "waiting for sandbox",
+    ("agent", "sandbox_dispatched"): "waiting for sandbox",
+    ("sandbox", "exec_start"): "python",
+    ("sandbox", "exec_end"): "result return",
+}
+# Any other checkpoint: crew bookkeeping, agent work outside an LLM call, and so on.
+STAGE_BY_SERVICE = {
+    "django_app": "waiting for crew",
+    "crew": "crew",
+    "agent": "agent",
+    "sandbox": "python",
+}
+# Parts of a session's time (sessions.csv.gz columns) with their readable names.
+BREAKDOWN_STAGES = {
+    "dispatch_s": "dispatch",
+    "queue_wait_s": "queue wait",
+    "agent_queue_s": "agent queue",
+    "llm_s": "LLM",
+    "python_s": "Python",
+    "sandbox_wait_s": "sandbox wait",
+    "other_s": "crew overhead",
+}
+# judge_level's reason for a level whose settle sessions timed out before any was measured
+SETTLE_TIMEOUT_REASON = "settle sessions timed out"
+# findings.csv: severities and the rule thresholds (docs/METRICS.md → findings.csv).
+CRITICAL, WARNING, INFO = "critical", "warning", "info"
+SEVERITY_ORDER = {CRITICAL: 0, WARNING: 1, INFO: 2}
+PLATEAU_GROWTH = 0.10  # a ladder level that rose but raised throughput by less has plateaued
+DOMINANT_STAGE_SHARE = 0.5  # one stage above this share of the mean e2e at the headline level
+RETAINED_MIN_MB = 50  # memory kept after cooldown is flagged above the larger of this ...
+RETAINED_SHARE = 0.10  # ... and this share of the container's baseline
+HTTP_ERROR_WARN_SHARE = 0.01  # failed start requests above this share of the phase: a warning
 
 
 @dataclass
@@ -183,6 +254,17 @@ class Window:
             and session["level"] == self.level
             and session["kind"] == self.kind
             and self.settle_end_ts <= session["intended_ts"] <= self.end_ts
+        )
+
+    def settles(self, session: dict) -> bool:
+        """A session sent in this level's settle window: never measured, but it decides the
+        verdict when the level measured nothing (see judge_level)."""
+        return (
+            session["phase"] == self.phase
+            and session["segment"] == self.segment
+            and session["level"] == self.level
+            and session["kind"] == self.kind
+            and session["intended_ts"] < self.settle_end_ts
         )
 
 
@@ -303,10 +385,16 @@ def session_row(record: SessionRecord, events: list[dict], now: float | None = N
         return float(event.get("arrival_ts") or event["ts"])
 
     end_event = first.get(("crew", "session_end"))
-    end_ts = float(end_event["ts"]) if end_event else record.done_ts
     status = record.end_status
-    if status not in RUNNER_STATUSES and end_event:
-        status = end_event.get("status") or status
+    if status in RUNNER_STATUSES:
+        # The runner ended it (timeout, failed send, interrupt): crew's session_end, if any,
+        # only answers the runner's stop call and can come much later (e.g. at the next
+        # stack restart), so it must not stretch the duration past the verdict time.
+        end_ts = record.done_ts
+    else:
+        end_ts = float(end_event["ts"]) if end_event else record.done_ts
+        if end_event:
+            status = end_event.get("status") or status
     still_running = end_ts is None and now is not None and record.sent_ts is not None
     if still_running:
         end_ts, status = now, None
@@ -323,10 +411,16 @@ def session_row(record: SessionRecord, events: list[dict], now: float | None = N
     agent_queue = pair_spans(
         events, "agent_dispatched", "request_consumed", lambda event: event.get("correlation_id")
     )
-    llm_s, python_s, agent_queue_s = (
+    # crew or agent handing code to the sandbox until the sandbox starts running it; an
+    # execution that never started adds nothing here (the session shows up as a timeout)
+    sandbox_wait = pair_spans(
+        events, "sandbox_dispatched", "exec_start", lambda event: event.get("execution_id")
+    )
+    llm_s, python_s, agent_queue_s, sandbox_wait_s = (
         _span_seconds(llm),
         _span_seconds(executions),
         _span_seconds(agent_queue),
+        _span_seconds(sandbox_wait),
     )
     sent = record.sent_ts
 
@@ -366,7 +460,8 @@ def session_row(record: SessionRecord, events: list[dict], now: float | None = N
         "cost_usd": round(sum(float(end.get("total_cost_usd") or 0) for _, end in llm), 6),
         "agent_queue_s": agent_queue_s,
         "python_s": python_s,
-        "other_s": max(0.0, round(run_s - llm_s - python_s - agent_queue_s, 4))
+        "sandbox_wait_s": sandbox_wait_s,
+        "other_s": max(0.0, round(run_s - llm_s - python_s - agent_queue_s - sandbox_wait_s, 4))
         if run_s is not None
         else None,
         "platform_overhead_s": round(e2e - llm_s, 4) if e2e is not None else None,
@@ -385,6 +480,92 @@ def build_rows(
 
 def measured(rows: list[dict], window: Window) -> list[dict]:
     return [row for row in rows if window.measures(row)]
+
+
+def level_rows(rows: list[dict], window: Window) -> list[dict]:
+    """Every session the level started (settle, measured and finish), without the cold one."""
+    return [
+        row
+        for row in rows
+        if row["phase"] == window.phase
+        and row["segment"] == window.segment
+        and row["level"] == window.level
+        and not row["cold"]
+    ]
+
+
+def last_checkpoint(events: list[dict], before: float | None) -> str:
+    """`<service> <checkpoint>` of the last event before `before` (the session's end), so
+    crew's session_end answering the runner's stop does not hide where the session hung."""
+    reached = [event for event in events if before is None or float(event["ts"]) < before]
+    if not reached:
+        return "no checkpoint"
+    last = max(reached, key=lambda event: float(event["ts"]))
+    return f"{last['service']} {last['checkpoint']}"
+
+
+def _timeout_summary(rows: list[dict], by_session: dict[int, list[dict]]) -> tuple[int, str]:
+    """(count, `<where> (count), ...`) of the rows with status timeout: the two most common
+    checkpoints they last reached."""
+    timed_out = [row for row in rows if row["status"] == "timeout"]
+    where = Counter(
+        last_checkpoint(by_session.get(row["session_id"], []), row["end_ts"]) for row in timed_out
+    )
+    return len(timed_out), ", ".join(f"{name} ({count})" for name, count in where.most_common(2))
+
+
+def timed_out_text(rows: list[dict], by_session: dict[int, list[dict]]) -> str | None:
+    """`N timed out; last checkpoint: <where> (count), ...` for the rows with status timeout,
+    or None when none timed out."""
+    count, where = _timeout_summary(rows, by_session)
+    return f"{count} timed out; last checkpoint: {where}" if count else None
+
+
+def _ended_by_verdict(row: dict, window: Window) -> bool:
+    return row["end_ts"] is not None and row["end_ts"] <= window.verdict_ts
+
+
+def judge_level(
+    rows: list[dict],
+    window: Window,
+    rules: PassRules,
+    abort: AbortRules,
+    by_session: dict[int, list[dict]],
+) -> tuple[str, list[str]]:
+    """judge() for one level from all session rows (live or final).
+
+    When the level measured no session because the stack stalled during the settle window
+    (no session ended, so no new one was started in the hold), the settle sessions that timed
+    out by the verdict time fail the level: `invalid ... raise ladder.hold_s` would blame the
+    hold and stop the bisect. The runner waits for those settle sessions before judging such a
+    level (runner._finish_measured), so the live and the final verdict agree.
+    """
+    measured_rows = measured(rows, window)
+    if not measured_rows and not window.abort_reason:
+        stalled = [
+            row
+            for row in rows
+            if window.settles(row) and row["status"] == "timeout" and _ended_by_verdict(row, window)
+        ]
+        if stalled:
+            count, where = _timeout_summary(stalled, by_session)
+            return "fail", [f"{count} {SETTLE_TIMEOUT_REASON} (last checkpoint: {where})"]
+    return judge(measured_rows, window, rules, abort)
+
+
+def timeout_bottleneck(
+    rows: list[dict], window: Window, reasons: list[str], by_session: dict[int, list[dict]]
+) -> str | None:
+    """The timed-out text of a failed level, only when timeouts explain the failure: the
+    error-rate rule (or the abort on it) or the settle-timeout rule failed it. Only timeouts
+    by the verdict time count; a finish session stopped later, in the drain, did not fail it."""
+    if not any(
+        reason.startswith("error rate") or SETTLE_TIMEOUT_REASON in reason for reason in reasons
+    ):
+        return None
+    return timed_out_text(
+        [row for row in level_rows(rows, window) if _ended_by_verdict(row, window)], by_session
+    )
 
 
 def is_failed(row: dict) -> bool:
@@ -485,6 +666,8 @@ def judge(
 def bottleneck(context: dict) -> str:
     if context["restarts"]:
         return f"container restart/OOM: {', '.join(context['restarts'])}"
+    if context["timed_out"]:  # where the stuck sessions stopped beats a guess at the resource
+        return context["timed_out"]
     if (
         context["host_mem_avail_min_pct"] is not None
         and context["host_mem_avail_min_pct"] < context["ram_guard_pct"]
@@ -564,13 +747,13 @@ def _baselines(data: RunData) -> dict[tuple[str, str], float]:
 # ---------------------------------------------------------------- per-window rows
 
 
-def _step_and_container_rows(data, rows, baselines, crew_cap):
+def _step_and_container_rows(data, rows, by_session, baselines, crew_cap):
     steps, containers, previous_agent_p95 = [], [], {}
     phases = {phase.name: phase for phase in data.case.phases}
     for window in data.windows:
         rules = phases[window.phase].pass_rules
         window_rows = measured(rows, window)
-        verdict, reasons = judge(window_rows, window, rules, data.case.abort)
+        verdict, reasons = judge_level(rows, window, rules, data.case.abort, by_session)
         samples = _in(data.timeline, window.settle_end_ts, window.end_ts)
         container_samples = _in(data.container_timeline, window.settle_end_ts, window.end_ts)
         steady_s = max(window.end_ts - window.settle_end_ts, 1e-6)
@@ -636,6 +819,7 @@ def _step_and_container_rows(data, rows, baselines, crew_cap):
                         {row["container"] for row in container_samples}
                         & set(_restarted(data.container_timeline, window))
                     ),
+                    "timed_out": timeout_bottleneck(rows, window, reasons, by_session),
                     "host_mem_avail_min_pct": min(
                         (
                             row["host_mem_avail_pct"]
@@ -847,6 +1031,319 @@ def _event_rows(by_session: dict[int, list[dict]], only: set[int] | None) -> lis
     return result
 
 
+def _phase_peaks(container_timeline: list[dict]) -> dict[tuple[str, str], tuple[float, int]]:
+    """(phase, container) → (highest sampled mem_mb, level of that sample) over the whole
+    phase: every segment, the failing level, drain and cooldown. Level 0 means the sample was
+    taken outside a level (cold session, baseline, drain or cooldown)."""
+    peaks: dict[tuple[str, str], tuple[float, int]] = {}
+    for row in container_timeline:
+        key = (row["phase"], row["container"])
+        if row["mem_mb"] is not None and (key not in peaks or row["mem_mb"] > peaks[key][0]):
+            peaks[key] = (row["mem_mb"], row["level"])
+    return peaks
+
+
+def _timeline_rows(data: RunData, rows: list[dict], origin: float | None) -> list[dict]:
+    """The samples with run_rel_s and, over the ROLLING_S before each sample, the sessions that
+    ended `end` (throughput_per_min) and the p95 of their e2e (e2e_p95_60s)."""
+    ended = sorted(
+        (row["end_ts"], row["e2e_s"])
+        for row in rows
+        if row["status"] == "end" and row["end_ts"] is not None and row["e2e_s"] is not None
+    )
+    ends = [end_ts for end_ts, _ in ended]
+    result = []
+    for sample in data.timeline:
+        recent = [
+            e2e
+            for _, e2e in ended[
+                bisect_right(ends, sample["ts"] - ROLLING_S) : bisect_right(ends, sample["ts"])
+            ]
+        ]
+        result.append(
+            {
+                **sample,
+                "run_rel_s": round(sample["ts"] - origin, 3),
+                "throughput_per_min": round(len(recent) * 60 / ROLLING_S, 2),
+                "e2e_p95_60s": percentile(recent, 0.95),
+            }
+        )
+    return result
+
+
+def _stage_transitions(row: dict, events: list[dict]) -> list[tuple[float, str]]:
+    """(from ts, stage) of one in-flight session, from sent_ts until its end: the stage of the
+    last checkpoint it reached (STAGES), starting as `waiting for crew`.
+
+    Crew and agent log sandbox_dispatched after publishing the execution, so at low load the
+    sandbox's exec_start (or exec_end) can come first; that late sandbox_dispatched is skipped,
+    or the session would wait for a sandbox that is already running its code."""
+    sent, end = row["sent_ts"], row["end_ts"]
+    transitions = [(sent, STAGES[0])]
+    in_sandbox: set = set()  # execution ids the sandbox has already logged
+    for event in sorted(events, key=lambda item: float(item["ts"])):
+        ts = float(event["ts"])
+        if end is not None and ts >= end:
+            break
+        if event["service"] == "sandbox":
+            in_sandbox.add(event.get("execution_id"))
+        elif (
+            event["checkpoint"] == "sandbox_dispatched" and event.get("execution_id") in in_sandbox
+        ):
+            continue
+        stage = STAGE_AFTER.get((event["service"], event["checkpoint"])) or STAGE_BY_SERVICE.get(
+            event["service"], "crew"
+        )
+        if stage != transitions[-1][1]:
+            # another container's clock may put a checkpoint a hair before the send
+            transitions.append((max(ts, sent), stage))
+    return transitions
+
+
+def _inflight_stage_rows(
+    data: RunData, rows: list[dict], by_session: dict[int, list[dict]], origin: float | None
+) -> list[dict]:
+    """At every sample: sessions in flight (sent, not ended) per stage.
+
+    Each stage change is added to a per-stage difference array over the sample indexes (the
+    first sample at or after it), then summed up: memory is stages x samples, time is the
+    number of changes. A session with no known end is in flight until its segment's end, never
+    into the next segment; an end that another clock puts before the send counts as the send.
+    Stages with no session at a sample are left out (count 0)."""
+    samples = sorted(data.timeline, key=lambda item: item["ts"])
+    times = [sample["ts"] for sample in samples]
+    segment_end = {
+        (segment.phase, segment.segment): segment.cooldown_end for segment in data.segments
+    }
+    for sample in samples:  # runs without segment bounds: their last sample
+        segment_end.setdefault((sample["phase"], sample["segment"]), sample["ts"])
+    differences = {stage: [0] * (len(samples) + 1) for stage in STAGES}
+    for row in rows:
+        if row["sent_ts"] is None:
+            continue
+        transitions = _stage_transitions(row, by_session.get(row["session_id"], []))
+        end = row["end_ts"]
+        if end is None:
+            end = segment_end.get((row["phase"], row["segment"]), math.inf)
+        stops = [ts for ts, _ in transitions[1:]] + [max(end, row["sent_ts"])]
+        for (start, stage), stop in zip(transitions, stops, strict=True):
+            differences[stage][bisect_left(times, start)] += 1
+            differences[stage][bisect_left(times, stop)] -= 1
+    result = []
+    counts = dict.fromkeys(STAGES, 0)
+    for index, sample in enumerate(samples):
+        for stage in STAGES:
+            counts[stage] += differences[stage][index]
+        result += [
+            {
+                "ts": sample["ts"],
+                "run_rel_s": round(sample["ts"] - origin, 3),
+                "phase": sample["phase"],
+                "segment": sample["segment"],
+                "stage": stage,
+                "count": count,
+            }
+            for stage, count in counts.items()
+            if count > 0
+        ]
+    return result
+
+
+def _restart_moments(container_timeline: list[dict]) -> list[tuple[str, str, float]]:
+    """(phase, container, ts) of the first sample in each segment where a container's known
+    restart or OOM counter is above its first known value in that segment (as _restarted)."""
+    first: dict[tuple, int] = {}
+    restarted: set[tuple] = set()
+    moments = []
+    for row in sorted(container_timeline, key=lambda item: item["ts"]):
+        key = (row["phase"], row["segment"], row["container"])
+        for counter in ("restarts", "oom_kills"):
+            if key in restarted or row[counter] is None:
+                continue
+            if row[counter] > first.setdefault((*key, counter), row[counter]):
+                restarted.add(key)
+                moments.append((row["phase"], row["container"], row["ts"]))
+    return moments
+
+
+def _findings(data, rows, by_session, steps, container_phase_rows, origin) -> list[dict]:
+    """findings.csv: what to look at first, by simple rules with the thresholds above. A
+    finding with a moment (`ts`) is drawn on the viewer's timeline; `tab` is where to read on."""
+    findings = []
+
+    def add(phase, severity, kind, message, tab, ts=None, container=None):
+        findings.append(
+            {
+                "phase": phase,
+                "severity": severity,
+                "kind": kind,
+                "message": message,
+                "ts": ts,
+                "run_rel_s": round(ts - origin, 1)
+                if ts is not None and origin is not None
+                else None,
+                "tab": tab,
+                "container": container,
+            }
+        )
+
+    windows = {(window.phase, window.segment, window.level): window for window in data.windows}
+
+    def level_name(phase, segment, level):
+        window = windows.get((phase, segment, level))
+        if window:
+            return f"{window.kind} level {level}"
+        return "cold session" if level == 0 else f"level {level}"
+
+    timed_out: dict[tuple, list[dict]] = defaultdict(list)
+    for row in rows:
+        if row["status"] == "timeout":
+            timed_out[(row["phase"], row["segment"], row["level"])].append(row)
+    for (phase, segment, level), level_timeouts in sorted(timed_out.items()):
+        add(
+            phase,
+            CRITICAL,
+            "timeouts",
+            f"{level_name(phase, segment, level)}: {timed_out_text(level_timeouts, by_session)}",
+            "Timeline",
+            min(
+                (row["end_ts"] for row in level_timeouts if row["end_ts"] is not None), default=None
+            ),
+        )
+    for window in data.windows:
+        if window.abort_reason:
+            message = f"{window.kind} level {window.level} aborted: {window.abort_reason}"
+            add(window.phase, CRITICAL, "abort", message, "Timeline", window.end_ts)
+    for phase, container, ts in _restart_moments(data.container_timeline):
+        message = f"{container} restarted or was OOM-killed"
+        add(phase, CRITICAL, "container_restart", message, "Containers", ts, container)
+    limits = data.meta.get("container_limits", {})
+    at_limit: set[tuple[str, str]] = set()  # once per container and phase: its first level
+    for window in data.windows:
+        samples = _in(data.container_timeline, window.settle_end_ts, window.end_ts)
+        for name in _at_cpu_limit(samples, limits):
+            if (window.phase, name) in at_limit:
+                continue
+            at_limit.add((window.phase, name))
+            message = (
+                f"{name} CPU at its limit ({limits[name]['cpus']:g} CPUs) at level {window.level}"
+            )
+            add(
+                window.phase,
+                WARNING,
+                "cpu_limit",
+                message,
+                "Containers",
+                window.settle_end_ts,
+                name,
+            )
+    for phase in data.case.phases:
+        own = [row for row in rows if row["phase"] == phase.name]
+        failed = [row for row in own if row["status"] == "http_error"]
+        if failed:
+            statuses = Counter(row["http_status"] for row in failed)
+            detail = ", ".join(
+                f"HTTP {status}: {count}" if status else f"no answer: {count}"
+                for status, count in statuses.most_common()
+            )
+            add(
+                phase.name,
+                WARNING if len(failed) > HTTP_ERROR_WARN_SHARE * len(own) else INFO,
+                "http_errors",
+                f"{len(failed)} start requests failed ({detail})",
+                "Timeline",
+                min((row["sent_ts"] for row in failed if row["sent_ts"] is not None), default=None),
+            )
+        own_steps = [step for step in steps if step["phase"] == phase.name]
+        for step in own_steps:
+            if step["verdict"] == "invalid":
+                window = windows.get((step["phase"], step["segment"], step["level"]))
+                message = f"{step['kind']} level {step['level']} invalid: {step['fail_reasons']}"
+                add(
+                    phase.name,
+                    WARNING,
+                    "invalid_level",
+                    message,
+                    "Curves",
+                    window and window.start_ts,
+                )
+        # passing levels only: a failed or invalid level's throughput says nothing about latency
+        ladder = sorted(
+            (step for step in own_steps if step["kind"] == "ladder" and step["verdict"] == "pass"),
+            key=lambda step: step["level"],
+        )
+        for previous, current in itertools.pairwise(ladder):
+            if (
+                previous["throughput_per_min"]
+                and current["level"] > previous["level"]
+                and current["throughput_per_min"]
+                < previous["throughput_per_min"] * (1 + PLATEAU_GROWTH)
+            ):
+                message = (
+                    f"throughput stopped growing at level {previous['level']} "
+                    f"(~{previous['throughput_per_min']:.0f}/min); passing level {current['level']} "
+                    "only added latency"
+                )
+                add(phase.name, WARNING, "throughput_plateau", message, "Curves")
+                break
+        dominant = _dominant_stage(rows, own_steps, windows)
+        if dominant:
+            key, share, level = dominant
+            message = f"{BREAKDOWN_STAGES[key]} = {share:.0%} of session time at L{level}"
+            # most of the time in the LLM provider is what an agent flow is expected to show
+            add(
+                phase.name,
+                INFO if key == "llm_s" else WARNING,
+                "dominant_stage",
+                message,
+                "Time breakdown",
+            )
+    for row in container_phase_rows:
+        retained, baseline = row["retained_mb_after_cooldown"], row["baseline_mb"]
+        if (
+            retained is not None
+            and baseline is not None
+            and retained > max(RETAINED_MIN_MB, RETAINED_SHARE * baseline)
+        ):
+            message = f"{row['container']} kept {retained:.0f} MB after cooldown (baseline {baseline:.0f} MB)"
+            add(
+                row["phase"],
+                WARNING,
+                "memory_retained",
+                message,
+                "Containers",
+                container=row["container"],
+            )
+    return sorted(
+        findings,
+        key=lambda finding: (
+            SEVERITY_ORDER[finding["severity"]],
+            finding["ts"] is None,
+            finding["ts"] or 0,
+        ),
+    )
+
+
+def _dominant_stage(rows, steps, windows) -> tuple[str, float, int] | None:
+    """(stage column, share of the mean e2e, level) of the largest stage at the headline level
+    (highest pass, else the first level, as the viewer's headline), when above
+    DOMINANT_STAGE_SHARE; None otherwise."""
+    passes = [step for step in steps if step["verdict"] == "pass"]
+    headline = max(passes, key=lambda step: step["level"]) if passes else next(iter(steps), None)
+    window = headline and windows.get((headline["phase"], headline["segment"], headline["level"]))
+    if not window:
+        return None
+    completed = [row for row in measured(rows, window) if row["status"] == "end"]
+    e2e = _mean(row["e2e_s"] for row in completed)
+    if not e2e:
+        return None
+    means = {key: _mean(row[key] for row in completed) or 0 for key in BREAKDOWN_STAGES}
+    key = max(means, key=means.get)
+    # LLM calls can run in parallel, so their summed time can exceed the session's
+    share = min(1.0, means[key] / e2e)
+    return (key, share, headline["level"]) if share > DOMINANT_STAGE_SHARE else None
+
+
 def _write_csv(path: Path, columns: list[str], rows: list[dict]) -> None:
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "wt", newline="", encoding="utf-8") as output:
@@ -969,9 +1466,16 @@ def analyze(data: RunData, out_dir: Path) -> dict:
     baselines = _baselines(data)
     crew_cap_text = data.meta.get("env", {}).get("CREW_MAX_CONCURRENT_SESSIONS") or ""
     steps, containers = _step_and_container_rows(
-        data, rows, baselines, int(crew_cap_text) if crew_cap_text.isdigit() else None
+        data, rows, by_session, baselines, int(crew_cap_text) if crew_cap_text.isdigit() else None
     )
+    peaks = _phase_peaks(data.container_timeline)
+    for row in containers:
+        row["phase_peak_mb"], row["phase_peak_level"] = peaks.get(
+            (row["phase"], row["container"]), (None, None)
+        )
     container_phase_rows = _container_phase_rows(data, baselines)
+    # every timeline x is seconds since the run's first sample, continuous across segments
+    origin = min((sample["ts"] for sample in data.timeline), default=None)
     meta = {
         "schema_version": SCHEMA_VERSION,
         "tool_version": TOOL_VERSION,
@@ -996,9 +1500,19 @@ def analyze(data: RunData, out_dir: Path) -> dict:
     _write_csv(out_dir / "containers.csv", CONTAINER_COLUMNS, containers)
     _write_csv(out_dir / "container_phases.csv", CONTAINER_PHASE_COLUMNS, container_phase_rows)
     _write_csv(out_dir / "nodes.csv", NODE_COLUMNS, _node_rows(data, rows, by_session))
-    _write_csv(out_dir / "timeline.csv", TIMELINE_COLUMNS, data.timeline)
+    _write_csv(out_dir / "timeline.csv", TIMELINE_COLUMNS, _timeline_rows(data, rows, origin))
     _write_csv(
         out_dir / "container_timeline.csv", CONTAINER_TIMELINE_COLUMNS, data.container_timeline
+    )
+    _write_csv(
+        out_dir / "inflight_stages.csv",
+        INFLIGHT_STAGE_COLUMNS,
+        _inflight_stage_rows(data, rows, by_session, origin),
+    )
+    _write_csv(
+        out_dir / "findings.csv",
+        FINDING_COLUMNS,
+        _findings(data, rows, by_session, steps, container_phase_rows, origin),
     )
     _write_csv(
         out_dir / "events_sample.csv",

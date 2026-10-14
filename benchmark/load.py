@@ -237,10 +237,17 @@ class Controller:
     def drain(self, timeout_s: float, stop_status: str = "timeout") -> int:
         """Wait for in-flight sessions; stop the ones still running after `timeout_s` and mark
         them `stop_status` (INTERRUPTED when the run itself is being stopped, so they do not
-        count as timeouts). Returns the number of sessions it stopped (0 in fallback mode).
+        count as timeouts). While waiting, a session older than `timeout_s` since it was sent
+        is stopped as `timeout` at once, as hold() does: its age, not the drain's start, sets
+        its end. Returns the number of sessions it stopped (0 in fallback mode).
         Can block up to `timeout_s` + 35 s + 60 s."""
         deadline = time.monotonic() + timeout_s
-        while self.in_flight_count() > 0 and time.monotonic() < deadline:
+        futures: list[concurrent.futures.Future] = []
+        while time.monotonic() < deadline:
+            futures += self._expire(self._clock(), timeout_s)
+            # one count per tick: in fallback mode each count is a sessions API call
+            if self.in_flight_count() == 0:
+                break
             time.sleep(0.25)
         # let unanswered start requests finish; 35 s covers the API client's 30 s HTTP timeout
         pending_deadline = time.monotonic() + 35
@@ -249,7 +256,7 @@ class Controller:
                 if self._pending_http == 0:
                     break
             time.sleep(0.05)
-        futures = self._expire(self._clock(), timeout_s=-1, status=stop_status)
+        futures += self._expire(self._clock(), timeout_s=-1, status=stop_status)
         concurrent.futures.wait(futures, timeout=60)
         return len(futures)
 
