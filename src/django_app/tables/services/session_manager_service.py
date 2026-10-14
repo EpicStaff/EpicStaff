@@ -237,7 +237,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         api_key=None,
     ) -> int:
         variables = self._get_actual_variables(variables)
-        logger.info("'run_session' got variables: {}", variables)
+        # Keys only: values hold user input and base64-encoded uploads, and the log
+        # truncation runs after the whole message has been formatted.
+        logger.info("'run_session' got variables with keys: {}", list(variables))
 
         # Nothing on the run path reads the canvas JSON in metadata.
         graph = Graph.objects.defer("metadata").get(pk=graph_id)

@@ -4,6 +4,7 @@ from tables.models.graph_models import Graph
 from tables.models.session_models import Session
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
+from utils.logger import logger
 
 GRAPH_SCHEMA = {"marker": 1}
 
@@ -49,6 +50,27 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService, received_
         "publish_session_data",
         lambda *, session_data, org_id: received_count,
     )
+
+
+@pytest.mark.django_db
+def test_run_session_logs_variable_keys_not_values(
+    graph, session_manager, monkeypatch
+):
+    _stub_publish(monkeypatch, session_manager, received_count=1)
+    messages: list[str] = []
+    sink_id = logger.add(messages.append, level="TRACE", format="{message}")
+    try:
+        session_manager.run_session(
+            graph_id=graph.id,
+            variables={"files": {"report": {"base64_data": "VALUE_MUST_NOT_BE_LOGGED"}}},
+            trigger=TriggerSpec.manual(),
+        )
+    finally:
+        logger.remove(sink_id)
+
+    log_text = "".join(messages)
+    assert "'run_session' got variables with keys: ['files']" in log_text
+    assert "VALUE_MUST_NOT_BE_LOGGED" not in log_text
 
 
 @pytest.mark.django_db
