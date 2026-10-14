@@ -62,14 +62,10 @@ def test_temporary_policy_scopes_resources_to_allowed_folders():
     assert allow_statement["Resource"] == ["arn:aws:s3:::bucket/org_1/foo"]
 
 
-def test_temporary_policy_rejects_empty_folders():
+@pytest.mark.parametrize("folders", [set(), {"../etc"}], ids=["no-folders", "traversal"])
+def test_temporary_policy_refuses_a_scope_it_cannot_confine(folders):
     with pytest.raises(CredentialScopeValidationError):
-        build_temporary_policy("bucket", set())
-
-
-def test_temporary_policy_rejects_path_traversal():
-    with pytest.raises(CredentialScopeValidationError):
-        build_temporary_policy("bucket", {"../etc"})
+        build_temporary_policy("bucket", folders)
 
 
 def test_org_user_policy_scopes_to_org_prefix_and_grants_self_service_admin():

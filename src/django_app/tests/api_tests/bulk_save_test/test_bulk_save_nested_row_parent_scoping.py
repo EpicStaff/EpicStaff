@@ -36,7 +36,9 @@ from tables.models.graph_models import (
     Graph,
 )
 from tables.services.classification_decision_table_node_children import (
+    CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS,
     CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
+    CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS,
 )
 
 from tests.fixtures import *
@@ -448,3 +450,20 @@ def test_cdt_frontend_group_columns_persist_on_create_and_update(
     assert update_response.status_code == status.HTTP_200_OK, update_response.content
     _assert_groups_persisted(node, updated_groups)
     assert set(node.condition_groups.values_list("id", flat=True)) == group_ids
+
+
+def test_update_list_covers_every_input_column_not_create_only():
+    # Both write paths bulk_update existing classification condition groups with this
+    # list: an input column missing from it is written on create and silently dropped
+    # on every later update.
+    update_fields = set(CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS)
+
+    assert (
+        CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS
+        <= CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+    )
+    assert update_fields >= (
+        CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+        - CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS
+    )
+    assert not update_fields & CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS

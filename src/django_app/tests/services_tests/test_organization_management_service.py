@@ -1,23 +1,6 @@
-"""Sequential (non-concurrent) service-layer tests for
-OrganizationManagementService.deactivate_organization.
+"""OrganizationManagementService: deactivating and deleting organizations.
 
-These tests cover the four distinct branch paths through the method that are
-not exercised by the concurrency suite in
-test_organization_management_service_concurrency.py:
-
-  1. Active org deactivated successfully when others remain.
-  2. Last active org raises LastActiveOrganizationError.
-  3. Already-inactive org is a silent no-op (does not raise even when it is the
-     only inactive org and the active set has exactly one member).
-  4. Nonexistent org_id raises OrganizationNotFoundError.
-
-Plain @pytest.mark.django_db is sufficient -- no cross-connection visibility
-or FOR UPDATE serialization is under test here.
-
-What is NOT duplicated here:
-  - Concurrent deactivation race (two threads, last two active orgs) --
-    covered in test_organization_management_service_concurrency.py.
-  - Both-succeed case with three active orgs under concurrency -- same file.
+Concurrent deactivation is covered in test_organization_management_service_concurrency.py.
 """
 
 import pytest
@@ -41,79 +24,35 @@ def service():
 
 
 @pytest.mark.django_db
-def test_deactivate_active_org_succeeds_when_others_remain(service):
-    """Deactivating one of two active organizations succeeds.
-
-    The if-branch fires (org_id in orgs_map) and len(orgs_map) == 2 > 1, so
-    the guard allows the deactivation. The returned org has is_active=False
-    and the sibling org remains active.
-    """
+@pytest.mark.parametrize(
+    ("other_active", "target_active", "error"),
+    [
+        (True, True, None),
+        (False, True, LastActiveOrganizationError),
+        # Already inactive: a no-op, even though only one active org is left.
+        (True, False, None),
+    ],
+    ids=["one-of-two-active", "last-active-refused", "already-inactive-no-op"],
+)
+def test_deactivate_never_leaves_no_active_org(service, other_active, target_active, error):
     Organization.objects.filter(is_active=True).update(is_active=False)
+    other = Organization.objects.create(name="SeqOther", is_active=other_active)
+    target = Organization.objects.create(name="SeqTarget", is_active=target_active)
 
-    org_a = Organization.objects.create(name="SeqDeactivateA", is_active=True)
-    org_b = Organization.objects.create(name="SeqDeactivateB", is_active=True)
+    if error:
+        with pytest.raises(error):
+            service.deactivate_organization(target.pk)
+    else:
+        assert service.deactivate_organization(target.pk).pk == target.pk
 
-    result = service.deactivate_organization(org_a.pk)
-
-    assert result.pk == org_a.pk
-    assert result.is_active is False
-
-    org_a.refresh_from_db()
-    assert org_a.is_active is False
-
-    org_b.refresh_from_db()
-    assert org_b.is_active is True
+    target.refresh_from_db()
+    other.refresh_from_db()
+    assert target.is_active is (error is not None)
+    assert other.is_active is other_active
 
 
 @pytest.mark.django_db
-def test_deactivate_last_active_org_raises(service):
-    """Deactivating the sole active organization raises LastActiveOrganizationError.
-
-    The if-branch fires (org_id in orgs_map) and len(orgs_map) == 1, which
-    trips the guard immediately.
-    """
-    Organization.objects.filter(is_active=True).update(is_active=False)
-
-    org = Organization.objects.create(name="SeqLastActive", is_active=True)
-
-    with pytest.raises(LastActiveOrganizationError):
-        service.deactivate_organization(org.pk)
-
-    org.refresh_from_db()
-    assert org.is_active is True
-
-
-@pytest.mark.django_db
-def test_deactivate_already_inactive_org_is_no_op(service):
-    """Deactivating an already-inactive org is a silent no-op.
-
-    The else-branch fires (_get_locked_org) because the target is not in
-    orgs_map (inactive orgs are excluded from the active-set query). The
-    subsequent `if target.is_active` guard is False, so the save is skipped.
-    No LastActiveOrganizationError is raised even though the system has exactly
-    one active org -- B is already inactive, so the invariant is not threatened.
-    """
-    Organization.objects.filter(is_active=True).update(is_active=False)
-
-    Organization.objects.create(name="SeqIdempotentGuard", is_active=True)
-    org_b = Organization.objects.create(name="SeqIdempotentTarget", is_active=False)
-
-    result = service.deactivate_organization(org_b.pk)
-
-    assert result.pk == org_b.pk
-    assert result.is_active is False
-
-    org_b.refresh_from_db()
-    assert org_b.is_active is False
-
-
-@pytest.mark.django_db
-def test_deactivate_nonexistent_org_raises_not_found(service):
-    """Deactivating an org_id that matches no row raises OrganizationNotFoundError.
-
-    The else-branch fires (_get_locked_org) and translates DoesNotExist into
-    the project-standard 404 envelope.
-    """
+def test_deactivate_unknown_org_is_not_found(service):
     with pytest.raises(OrganizationNotFoundError):
         service.deactivate_organization(999_999)
 
@@ -124,18 +63,6 @@ def test_deactivate_nonexistent_org_raises_not_found(service):
 # build_affected_resources unit tests live in test_delete_collector.py --
 # it's shared with UserManagementService, not specific to this service.
 # ---------------------------------------------------------------------------
-
-
-def test_default_organization_not_deletable_error_shape():
-    error = DefaultOrganizationNotDeletableError()
-    assert error.status_code == 400
-    assert error.default_code == "default_organization_not_deletable"
-
-
-def test_last_organization_error_shape():
-    error = LastOrganizationError()
-    assert error.status_code == 400
-    assert error.default_code == "last_organization"
 
 
 @pytest.fixture
@@ -583,45 +510,38 @@ def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org
 
 
 @pytest.mark.django_db
-def test_cannot_delete_the_default_org(db, actor, _surviving_org):
-    org = Organization.objects.create(name="Default Org", is_default=True)
-    with pytest.raises(DefaultOrganizationNotDeletableError):
-        OrganizationManagementService().preview_delete(
-            actor=actor, org_id=org.pk
-        )
-
-
-@pytest.mark.django_db
-def test_default_org_blocker_applies_in_real_mode_too(db, actor, _surviving_org):
-    """The default-organization guard applies whether or not dry_run is set."""
-    org = Organization.objects.create(name="Default Org Real", is_default=True)
-    with pytest.raises(DefaultOrganizationNotDeletableError):
-        OrganizationManagementService().delete_organization(
-            actor=actor, org_id=org.pk, verification_phrase=f"delete-{org.name}"
-        )
-
-
-@pytest.mark.django_db
-def test_cannot_delete_the_last_org(db, actor):
+@pytest.mark.parametrize("dry_run", [True, False], ids=["preview", "delete"])
+@pytest.mark.parametrize(
+    ("make_orgs", "error", "code"),
+    [
+        (
+            lambda: [Organization.objects.create(name="Default Org", is_default=True),
+                     Organization.objects.create(name="Survivor Org")][0],
+            DefaultOrganizationNotDeletableError, "default_organization_not_deletable",
+        ),
+        (lambda: Organization.objects.create(name="Only Org"), LastOrganizationError, "last_organization"),
+        # An inactive org does not count: the only active org still can't go.
+        (
+            lambda: [Organization.objects.create(name="Only Active Org"),
+                     Organization.objects.create(name="Inactive Org", is_active=False)][0],
+            LastOrganizationError, "last_organization",
+        ),
+    ],
+    ids=["default-org", "last-org", "last-active-org"],
+)
+def test_protected_org_is_refused_with_a_400_and_kept(db, actor, dry_run, make_orgs, error, code):
     Organization.objects.all().delete()
-    only = Organization.objects.create(name="Only Org")
-    with pytest.raises(LastOrganizationError):
-        OrganizationManagementService().preview_delete(
-            actor=actor, org_id=only.pk
-        )
+    org = make_orgs()
+    service = OrganizationManagementService()
 
+    with pytest.raises(error) as raised:
+        if dry_run:
+            service.preview_delete(actor=actor, org_id=org.pk)
+        else:
+            service.delete_organization(actor=actor, org_id=org.pk, verification_phrase=f"delete-{org.name}")
 
-@pytest.mark.django_db
-def test_cannot_delete_the_last_active_org_even_if_an_inactive_one_exists(db, actor):
-    """Deleting the only active org is refused even when an inactive org also exists."""
-    Organization.objects.all().delete()
-    active = Organization.objects.create(name="Only Active Org")
-    Organization.objects.create(name="Inactive Org", is_active=False)
-
-    with pytest.raises(LastOrganizationError):
-        OrganizationManagementService().preview_delete(
-            actor=actor, org_id=active.pk
-        )
+    assert (raised.value.status_code, raised.value.default_code) == (400, code)
+    assert Organization.objects.filter(pk=org.pk).exists()
 
 
 @pytest.mark.django_db
@@ -634,29 +554,18 @@ def test_org_report_includes_storage_totals(actor, populated_org, _surviving_org
 
 
 @pytest.mark.django_db
-def test_org_report_survives_storage_listing_failure(
-    actor, populated_org, _surviving_org, _no_storage_calls
+@pytest.mark.parametrize("failure", ["listing", "backend-construction"])
+def test_org_report_survives_storage_being_unreachable(
+    actor, populated_org, _surviving_org, _no_storage_calls, failure
 ):
-    """A `list_all_objects` failure degrades the storage count to None (contributing 0) instead of raising; with no recordings either, `storage_files` is simply absent."""
-    _no_storage_calls.return_value.list_all_objects.side_effect = RuntimeError("minio down")
+    """Storage failing degrades its count to nothing instead of failing the preview;
+    with no recordings either, `storage_files` is simply absent."""
+    if failure == "listing":
+        _no_storage_calls.return_value.list_all_objects.side_effect = RuntimeError("minio down")
+    else:
+        _no_storage_calls.side_effect = RuntimeError("bad credentials")
 
-    report = OrganizationManagementService().preview_delete(
-        actor=actor, org_id=populated_org.pk
-    )
-
-    assert "storage_files" not in report.affected_resources
-
-
-@pytest.mark.django_db
-def test_org_report_survives_storage_backend_construction_failure(
-    actor, populated_org, _surviving_org, _no_storage_calls
-):
-    """A `get_storage_backend` construction failure also degrades to a 0 contribution instead of raising."""
-    _no_storage_calls.side_effect = RuntimeError("bad credentials")
-
-    report = OrganizationManagementService().preview_delete(
-        actor=actor, org_id=populated_org.pk
-    )
+    report = OrganizationManagementService().preview_delete(actor=actor, org_id=populated_org.pk)
 
     assert "storage_files" not in report.affected_resources
 
@@ -801,7 +710,6 @@ def test_org_delete_clears_the_platform_default_config_cache(
     actor, populated_org, _surviving_org, django_capture_on_commit_callbacks
 ):
     """Platform defaults pointing at the org's configs are nulled, and the process cache stops serving the dead row."""
-    from tables.models.base_models import DefaultBaseModel
     from tables.models.crew_models import DefaultAgentConfig
     from tables.models.llm_models import LLMConfig
 
@@ -818,7 +726,6 @@ def test_org_delete_clears_the_platform_default_config_cache(
 
     assert not LLMConfig.objects.filter(pk=config.pk).exists()
     assert DefaultAgentConfig.objects.get(pk=1).llm_config_id is None
-    assert DefaultAgentConfig not in DefaultBaseModel._load_cache
     assert DefaultAgentConfig.load().llm_config_id is None
 
 

@@ -1,4 +1,8 @@
-<div class="copy-to-dialog">
+<div
+    class="copy-to-dialog"
+    (appEnterSubmit)="onConfirm()"
+    [appEnterSubmitDisabled]="!isValid"
+>
     <div class="copy-to-dialog__header">
         <h2 class="copy-to-dialog__title">Copy to Folder</h2>
         <button

@@ -6,12 +6,7 @@ import pytest
 
 from app.core.settings import settings
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
-from app.providers.tunnels.ngrok_working_directory import (
-    NgrokWorkingDirectoryError,
-    create_locked_working_directory,
-    remove_working_directory,
-    temp_root_unsafe_reason,
-)
+from app.providers.tunnels.ngrok_working_directory import temp_root_unsafe_reason
 
 # Patched rather than real, so the owner cases run the same as root, as a user and on
 # Windows, which has no geteuid.
@@ -26,18 +21,16 @@ def as_current_user(monkeypatch):
 
 
 def _make_provider() -> NgrokTunnel:
-    provider = NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token")
-    provider._is_running = True
-    return provider
+    return NgrokTunnel(port=settings.WEBHOOK_PORT, auth_token="test-token")
 
 
 @pytest.mark.parametrize(
     ("mode", "owner_uid", "reason"),
     [
-        (stat.S_IFDIR | 0o777, CURRENT_UID, "writable by other users without the sticky bit"),
-        (stat.S_IFDIR | 0o777, ROOT_UID, "writable by other users without the sticky bit"),
-        (stat.S_IFDIR | 0o775, ROOT_UID, "writable by other users without the sticky bit"),
-        (stat.S_IFDIR | 0o757, CURRENT_UID, "writable by other users without the sticky bit"),
+        (stat.S_IFDIR | 0o777, CURRENT_UID, "is writable by other users without the sticky bit"),
+        (stat.S_IFDIR | 0o777, ROOT_UID, "is writable by other users without the sticky bit"),
+        (stat.S_IFDIR | 0o775, ROOT_UID, "is writable by other users without the sticky bit"),
+        (stat.S_IFDIR | 0o757, CURRENT_UID, "is writable by other users without the sticky bit"),
         (stat.S_IFDIR | 0o755, OTHER_UID, "is owned by another user"),
         (stat.S_IFDIR | 0o1777, OTHER_UID, "is owned by another user"),
         (stat.S_IFREG | 0o755, CURRENT_UID, "is not a directory"),
@@ -52,17 +45,23 @@ def _make_provider() -> NgrokTunnel:
         "not-a-directory",
     ],
 )
-async def test_unsafe_temp_root_is_refused_before_anything_is_created(
+def test_unsafe_temp_root_is_reported(
     ngrok_environment, temp_root_status, as_current_user, mode, owner_uid, reason
 ):
     temp_root_status(mode=mode, uid=owner_uid)
+
+    assert temp_root_unsafe_reason(os.path.realpath(ngrok_environment.temp_root)) == reason
+
+
+async def test_tunnel_creates_nothing_and_never_starts_in_an_unsafe_temp_root(
+    ngrok_environment, temp_root_status, as_current_user
+):
+    temp_root_status(mode=stat.S_IFDIR | 0o777, uid=CURRENT_UID)
     provider = _make_provider()
 
-    with pytest.raises(NgrokWorkingDirectoryError, match=reason):
-        await provider._establish_connection()
+    await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_not_called()
-    assert provider._working_directory is None
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
     await provider.disconnect()
@@ -95,47 +94,6 @@ def test_safe_temp_root_is_accepted(
     assert temp_root_unsafe_reason(os.path.realpath(ngrok_environment.temp_root)) is None
 
 
-async def test_resolved_temp_root_is_checked_and_used(
-    ngrok_environment, temp_root_status, reported_status, as_current_user, tmp_path, monkeypatch
-):
-    # Portable stand-in for a symlinked TMPDIR: the alias itself does not exist.
-    alias = str(tmp_path / "tmpdir-alias")
-    resolved_temp_root = os.path.realpath(ngrok_environment.temp_root)
-    real_realpath = os.path.realpath
-    monkeypatch.setattr(
-        os.path,
-        "realpath",
-        lambda path, *args, **kwargs: (
-            resolved_temp_root if os.fspath(path) == alias else real_realpath(path, *args, **kwargs)
-        ),
-    )
-    monkeypatch.setattr(tempfile, "tempdir", alias)
-    temp_root_status(mode=stat.S_IFDIR | 0o777, uid=CURRENT_UID)
-    provider = _make_provider()
-
-    with pytest.raises(NgrokWorkingDirectoryError, match="without the sticky bit") as refusal:
-        await provider._establish_connection()
-
-    assert resolved_temp_root in str(refusal.value)
-    assert alias not in str(refusal.value)
-
-    await provider.disconnect()
-
-    # Now a safe root, with the new directory owned by and private to the current user.
-    temp_root_status(mode=stat.S_IFDIR | 0o1777, uid=ROOT_UID)
-    reported_status(
-        lambda path: os.path.basename(path).startswith("ngrok_"),
-        permissions=0o700,
-        uid=CURRENT_UID,
-    )
-
-    working_directory, lock_descriptor = create_locked_working_directory()
-    try:
-        assert os.path.dirname(working_directory) == resolved_temp_root
-    finally:
-        remove_working_directory(working_directory, lock_descriptor)
-
-
 async def test_symlinked_temp_root_is_checked_at_its_target(
     ngrok_environment, temp_root_status, as_current_user, tmp_path, monkeypatch
 ):
@@ -149,10 +107,20 @@ async def test_symlinked_temp_root_is_checked_at_its_target(
     temp_root_status(mode=stat.S_IFDIR | 0o777, uid=CURRENT_UID)
     provider = _make_provider()
 
-    with pytest.raises(NgrokWorkingDirectoryError, match="without the sticky bit"):
-        await provider._establish_connection()
+    await provider.connect()
 
-    assert list(ngrok_environment.temp_root.iterdir()) == []
+    ngrok_environment.ngrok.connect.assert_not_called()
+
+    # Once the target is safe, the working directory is created in the target itself.
+    temp_root_status(mode=stat.S_IFDIR | 0o1777, uid=ROOT_UID)
+    monkeypatch.setattr(os, "geteuid", lambda: os.stat(ngrok_environment.source_binary).st_uid)
+
+    await provider.connect()
+
+    started_path = ngrok_environment.ngrok.connect.call_args.kwargs["pyngrok_config"].ngrok_path
+    assert os.path.dirname(os.path.dirname(started_path)) == os.path.realpath(
+        ngrok_environment.temp_root
+    )
 
     await provider.disconnect()
 
@@ -164,7 +132,7 @@ async def test_temp_root_check_is_skipped_without_geteuid(
     temp_root_status(mode=stat.S_IFDIR | 0o777, uid=OTHER_UID)
     provider = _make_provider()
 
-    await provider._establish_connection()
+    await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_called_once()
 

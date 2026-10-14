@@ -94,6 +94,7 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.Condition",
         "tables.ClassificationDecisionTablePrompt",
         "tables.ClassificationConditionGroup",
+        "tables.ClassificationConditionGroupSection",
         "tables.TelegramTriggerNodeField",
         "tables.PythonCodeToolConfig",
         "tables.PythonCodeResult",

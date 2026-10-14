@@ -302,7 +302,8 @@ class TestTelegramTriggerServiceLocalhostGuard:
         WebhookTriggerService().set_trigger_auth_secret(
             trigger,
             secret_service.create(
-                text="tg-ngrok-ok-secret-token",
+                # At least AUTH_SECRET_MIN_LENGTH (32) characters.
+                text="tg-ngrok-ok-secret-token-0123456789",
                 org=default_org,
                 name="tg-ngrok-ok-auth-secret",
             ),

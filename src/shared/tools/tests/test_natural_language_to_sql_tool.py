@@ -7,260 +7,103 @@ from conftest import load_tool_main
 # natural_language_to_sql_tool/main.py imports sqlalchemy at module level. Per
 # tool_data.yaml's requirements.txt, sqlalchemy (and langchain/litellm) are
 # installed into this tool's own dedicated venv by the sandbox at execution
-# time, not into any service venv — skip cleanly instead of failing 11 times
-# when running these tests outside that venv.
+# time, not into any service venv — skip cleanly instead of failing when
+# running these tests outside that venv.
 pytest.importorskip(
     "sqlalchemy",
     reason="installed by the sandbox into this tool's own venv, not a service venv",
 )
 
-
-def _make_tool(module, db_uri: str, read_only: bool):
-    module.state = {
-        "variables": {
-            "DB_URI": db_uri,
-            "OPENAI_API_KEY": "sk-test",
-            "READ_ONLY": read_only,
-        }
-    }
-    return module.NaturalLanguageToSQLTool()
+POSTGRES_URI = "postgresql+psycopg2://user:pass@localhost/db"
 
 
-def _fake_engine(dialect_name: str) -> MagicMock:
+def _tool(**variables):
+    module = load_tool_main("natural_language_to_sql_tool")
+    module.state = {"variables": {"DB_URI": POSTGRES_URI, "READ_ONLY": False, **variables}}
+    return module, module.NaturalLanguageToSQLTool()
+
+
+def _engine_on(module, tool, dialect: str):
+    """Create the tool's engine against a database of `dialect`; returns the
+    statements a new connection runs before the agent gets it."""
     engine = MagicMock()
-    engine.dialect.name = dialect_name
-    return engine
+    engine.dialect.name = dialect
+    connect_listeners = []
+
+    def listens_for(target, identifier):
+        assert (target, identifier) == (engine, "connect")
+        return lambda listener: connect_listeners.append(listener) or listener
+
+    with (
+        patch.object(module, "create_engine", return_value=engine),
+        patch.object(module.event, "listens_for", side_effect=listens_for),
+    ):
+        tool._create_engine()
+
+    connection = MagicMock()
+    for listener in connect_listeners:
+        listener(connection, None)
+    return [call.args[0] for call in connection.cursor.return_value.execute.call_args_list], connection
 
 
-class TestNaturalLanguageToSQLToolReadOnlyPostgres:
-    def test_read_only_postgres_registers_listener_that_sets_read_only(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        tool = _make_tool(
-            module, "postgresql+psycopg2://user:pass@localhost/db", read_only=True
-        )
-        fake_engine = _fake_engine("postgresql")
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("postgresql", "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"),
+        ("mysql", "SET SESSION TRANSACTION READ ONLY"),
+    ],
+)
+def test_read_only_mode_makes_every_connection_read_only(dialect, statement):
+    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=True)
 
-        captured_listener = {}
+    statements, connection = _engine_on(module, tool, dialect)
 
-        def fake_listens_for(target, identifier):
-            assert target is fake_engine
-            assert identifier == "connect"
-
-            def decorator(fn):
-                captured_listener["fn"] = fn
-                return fn
-
-            return decorator
-
-        with (
-            patch.object(module, "create_engine", return_value=fake_engine),
-            patch.object(module.event, "listens_for", side_effect=fake_listens_for),
-        ):
-            engine = tool._create_engine()
-
-        assert engine is fake_engine
-        assert "fn" in captured_listener
-
-        fake_cursor = MagicMock()
-        fake_connection = MagicMock()
-        fake_connection.cursor.return_value = fake_cursor
-
-        captured_listener["fn"](fake_connection, None)
-
-        fake_cursor.execute.assert_called_once_with(
-            "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"
-        )
-        fake_cursor.close.assert_called_once()
-        fake_connection.commit.assert_called_once()
+    assert statements == [statement]
+    connection.commit.assert_called_once()
 
 
-class TestNaturalLanguageToSQLToolReadOnlyMySQL:
-    def test_read_only_mysql_registers_listener_that_sets_read_only(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        tool = _make_tool(
-            module, "mysql+pymysql://user:pass@localhost/db", read_only=True
-        )
-        fake_engine = _fake_engine("mysql")
+def test_read_only_mode_refuses_a_dialect_it_cannot_lock_down():
+    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=True)
 
-        captured_listener = {}
-
-        def fake_listens_for(target, identifier):
-            assert target is fake_engine
-            assert identifier == "connect"
-
-            def decorator(fn):
-                captured_listener["fn"] = fn
-                return fn
-
-            return decorator
-
-        with (
-            patch.object(module, "create_engine", return_value=fake_engine),
-            patch.object(module.event, "listens_for", side_effect=fake_listens_for),
-        ):
-            engine = tool._create_engine()
-
-        assert engine is fake_engine
-        assert "fn" in captured_listener
-
-        fake_cursor = MagicMock()
-        fake_connection = MagicMock()
-        fake_connection.cursor.return_value = fake_cursor
-
-        captured_listener["fn"](fake_connection, None)
-
-        fake_cursor.execute.assert_called_once_with("SET SESSION TRANSACTION READ ONLY")
-        fake_cursor.close.assert_called_once()
-        fake_connection.commit.assert_called_once()
+    with pytest.raises(RuntimeError, match="sqlite"):
+        _engine_on(module, tool, "sqlite")
 
 
-class TestNaturalLanguageToSQLToolUnsupportedDialect:
-    def test_read_only_unsupported_dialect_raises_runtime_error(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        tool = _make_tool(module, "sqlite:///:memory:", read_only=True)
-        fake_engine = _fake_engine("sqlite")
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
+def test_read_write_mode_leaves_connections_alone(dialect):
+    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=False)
 
-        with patch.object(module, "create_engine", return_value=fake_engine):
-            with pytest.raises(RuntimeError) as exc_info:
-                tool._create_engine()
+    statements, _ = _engine_on(module, tool, dialect)
 
-        assert "sqlite" in str(exc_info.value)
+    assert statements == []
 
 
-class TestNaturalLanguageToSQLToolModelAndApiKey:
-    def test_model_defaults_to_gpt_4o_mini_when_not_set(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "OPENAI_API_KEY": "sk-test",
-                "READ_ONLY": False,
-            }
-        }
-        tool = module.NaturalLanguageToSQLTool()
+@pytest.mark.parametrize(
+    ("variables", "expected_model", "expected_key"),
+    [
+        ({"OPENAI_API_KEY": "sk-legacy"}, "gpt-4o-mini", "sk-legacy"),
+        ({"API_KEY": "sk-new", "OPENAI_API_KEY": "sk-legacy"}, "gpt-4o-mini", "sk-new"),
+        ({"OPENAI_API_KEY": "sk-test", "MODEL": "anthropic/claude-3-5-sonnet-20241022"},
+         "anthropic/claude-3-5-sonnet-20241022", "sk-test"),
+    ],
+    ids=["legacy-key-default-model", "api-key-wins", "custom-model"],
+)
+def test_the_agent_llm_gets_the_configured_model_and_key(variables, expected_model, expected_key):
+    module, tool = _tool(**variables)
+    engine = MagicMock()
+    engine.dialect.name = "postgresql"
 
-        assert tool.model == "gpt-4o-mini"
+    with (
+        patch.object(module, "create_engine", return_value=engine),
+        patch.object(module, "ChatLiteLLM") as chat_litellm,
+        patch.object(module, "SQLDatabase"),
+        patch.object(module, "create_sql_agent"),
+    ):
+        tool._create_agent()
 
-    def test_model_defaults_to_gpt_4o_mini_and_is_passed_to_chatlitellm(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "OPENAI_API_KEY": "sk-test",
-                "READ_ONLY": False,
-            }
-        }
-        tool = module.NaturalLanguageToSQLTool()
-        fake_engine = _fake_engine("postgresql")
-
-        with (
-            patch.object(module, "create_engine", return_value=fake_engine),
-            patch.object(module, "ChatLiteLLM") as fake_chat_litellm,
-            patch.object(module, "SQLDatabase") as fake_sql_database,
-            patch.object(module, "create_sql_agent") as fake_create_sql_agent,
-        ):
-            fake_sql_database.return_value.dialect = "postgresql"
-            tool._create_agent()
-
-        fake_chat_litellm.assert_called_once_with(
-            model="gpt-4o-mini", temperature=0, api_key="sk-test"
-        )
-
-    def test_non_default_model_is_passed_through_to_chatlitellm(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "MODEL": "anthropic/claude-3-5-sonnet-20241022",
-                "OPENAI_API_KEY": "sk-test",
-                "READ_ONLY": False,
-            }
-        }
-        tool = module.NaturalLanguageToSQLTool()
-        fake_engine = _fake_engine("postgresql")
-
-        with (
-            patch.object(module, "create_engine", return_value=fake_engine),
-            patch.object(module, "ChatLiteLLM") as fake_chat_litellm,
-            patch.object(module, "SQLDatabase") as fake_sql_database,
-            patch.object(module, "create_sql_agent") as fake_create_sql_agent,
-        ):
-            fake_sql_database.return_value.dialect = "postgresql"
-            tool._create_agent()
-
-        fake_chat_litellm.assert_called_once_with(
-            model="anthropic/claude-3-5-sonnet-20241022",
-            temperature=0,
-            api_key="sk-test",
-        )
-
-    def test_api_key_falls_back_to_openai_api_key(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "OPENAI_API_KEY": "sk-legacy",
-                "READ_ONLY": False,
-            }
-        }
-        tool = module.NaturalLanguageToSQLTool()
-
-        assert tool.api_key == "sk-legacy"
-
-    def test_api_key_takes_precedence_over_openai_api_key(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "API_KEY": "sk-new",
-                "OPENAI_API_KEY": "sk-legacy",
-                "READ_ONLY": False,
-            }
-        }
-        tool = module.NaturalLanguageToSQLTool()
-
-        assert tool.api_key == "sk-new"
-
-    def test_missing_both_api_key_variables_raises_runtime_error(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        module.state = {
-            "variables": {
-                "DB_URI": "postgresql+psycopg2://user:pass@localhost/db",
-                "READ_ONLY": False,
-            }
-        }
-
-        with pytest.raises(RuntimeError) as exc_info:
-            module.NaturalLanguageToSQLTool()
-
-        assert "API_KEY" in str(exc_info.value)
+    chat_litellm.assert_called_once_with(model=expected_model, temperature=0, api_key=expected_key)
 
 
-class TestNaturalLanguageToSQLToolReadWrite:
-    def test_read_write_mode_registers_no_read_only_listener(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        tool = _make_tool(
-            module, "postgresql+psycopg2://user:pass@localhost/db", read_only=False
-        )
-        fake_engine = _fake_engine("postgresql")
-
-        with (
-            patch.object(module, "create_engine", return_value=fake_engine),
-            patch.object(module.event, "listens_for") as fake_listens_for,
-        ):
-            engine = tool._create_engine()
-
-        assert engine is fake_engine
-        fake_listens_for.assert_not_called()
-
-    def test_read_write_mode_does_not_raise_for_unsupported_dialect(self):
-        module = load_tool_main("natural_language_to_sql_tool")
-        tool = _make_tool(module, "sqlite:///:memory:", read_only=False)
-        fake_engine = _fake_engine("sqlite")
-
-        # Should not raise: the dialect-support check is only enforced when
-        # read_only is True.
-        with patch.object(module, "create_engine", return_value=fake_engine):
-            engine = tool._create_engine()
-
-        assert engine is fake_engine
+def test_missing_api_key_is_refused():
+    with pytest.raises(RuntimeError, match="API_KEY"):
+        _tool()

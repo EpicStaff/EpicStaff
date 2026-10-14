@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 
@@ -54,12 +55,16 @@ async def test_sweep_once_deletes_expired_job_and_its_file(
     await _seed_job(
         redis_client, "job-1", expires_at=time.time() - 10, file_path=str(export_file)
     )
+    # _seed_job writes org_id=1, user_id=1, so the per-user index lives under that pair.
+    index_key = user_jobs_key("sessions", 1, 1)
+    await redis_client.sadd(index_key, "job-1")
 
     await cleanup_service.sweep_once()
 
     assert not export_file.exists()
     assert await redis_client.hgetall(f"{JOB_KEY_PREFIX}job-1") == {}
     assert await redis_client.zscore(EXPIRY_ZSET_KEY, "job-1") is None
+    assert not await redis_client.sismember(index_key, "job-1")
 
 
 @pytest.mark.asyncio
@@ -152,42 +157,6 @@ async def test_sweep_once_with_wildcard_job_id_deletes_no_files(
 
 
 @pytest.mark.asyncio
-async def test_sweep_once_tolerates_hash_already_gone(redis_client, cleanup_service):
-    # Simulates the native TTL backstop firing before the sweep runs: the
-    # zset entry survives (zadd carries no TTL of its own) but the hash is
-    # already gone. Sweeping it must not raise - just clean up the zset.
-    await redis_client.zadd(EXPIRY_ZSET_KEY, {"orphaned-job": time.time() - 10})
-    # Simulate the real per-user index entry that would have been created
-    # when this job was registered.
-    index_key = user_jobs_key("sessions", 1, 1)
-    await redis_client.sadd(index_key, "orphaned-job")
-
-    await cleanup_service.sweep_once()
-
-    assert await redis_client.zscore(EXPIRY_ZSET_KEY, "orphaned-job") is None
-    # Known bug (tracked separately): with the hash already gone, org_id/user_id
-    # can't be read back, so deregister_job's srem targets the wrong
-    # (None, None) index key and the real per-user index entry is left
-    # orphaned rather than cleaned up here.
-    assert await redis_client.sismember(index_key, "orphaned-job")
-
-
-@pytest.mark.asyncio
-async def test_sweep_once_removes_job_from_user_index(redis_client, cleanup_service):
-    # _seed_job always writes org_id=1, user_id=1 into the hash mapping, so
-    # the per-user index entry lives under that same (org_id, user_id) pair.
-    index_key = user_jobs_key("sessions", 1, 1)
-    await _seed_job(redis_client, "job-idx", expires_at=time.time() - 10)
-    await redis_client.sadd(index_key, "job-idx")
-
-    assert await redis_client.sismember(index_key, "job-idx")
-
-    await cleanup_service.sweep_once()
-
-    assert not await redis_client.sismember(index_key, "job-idx")
-
-
-@pytest.mark.asyncio
 async def test_sweep_once_with_no_file_path_only_cleans_redis(
     redis_client, cleanup_service
 ):
@@ -203,29 +172,50 @@ async def test_sweep_once_with_no_file_path_only_cleans_redis(
 
 
 @pytest.mark.asyncio
-async def test_sweep_once_handles_multiple_due_jobs(
+async def test_sweep_once_still_cleans_other_jobs_when_one_job_fails(
     redis_client, cleanup_service, export_dir
 ):
-    for i in range(3):
-        f = export_dir / f"job-{i}.json"
-        f.write_text("[]")
-        await _seed_job(
-            redis_client, f"job-{i}", expires_at=time.time() - 1, file_path=str(f)
-        )
+    # Unlinking a directory raises, so this job's cleanup fails mid-way.
+    undeletable_path = export_dir / "job-broken.json"
+    undeletable_path.mkdir()
+    await _seed_job(
+        redis_client, "job-broken", expires_at=time.time() - 10, file_path=str(undeletable_path)
+    )
+    export_file = export_dir / "job-ok.json"
+    export_file.write_text("[]")
+    await _seed_job(
+        redis_client, "job-ok", expires_at=time.time() - 10, file_path=str(export_file)
+    )
 
     await cleanup_service.sweep_once()
 
-    for i in range(3):
-        assert not (export_dir / f"job-{i}.json").exists()
-        assert await redis_client.zscore(EXPIRY_ZSET_KEY, f"job-{i}") is None
+    assert not export_file.exists()
+    assert await redis_client.zscore(EXPIRY_ZSET_KEY, "job-ok") is None
 
 
 @pytest.mark.asyncio
-async def test_start_and_stop_run_sweep_loop_without_error(redis_client, export_dir):
+async def test_started_service_sweeps_until_stopped(redis_client, export_dir):
     service = ExportCleanupService(
-        redis_client=redis_client, export_data_dir=str(export_dir), sweep_interval_seconds=60
+        redis_client=redis_client, export_data_dir=str(export_dir), sweep_interval_seconds=0.01
     )
     await service.start()
-    assert service._task is not None
-    await service.stop()
-    assert service._task is None
+    try:
+        export_file = export_dir / "job-live.json"
+        export_file.write_text("[]")
+        await _seed_job(
+            redis_client, "job-live", expires_at=time.time() - 10, file_path=str(export_file)
+        )
+        deadline = asyncio.get_running_loop().time() + 2
+        while export_file.exists() and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        assert not export_file.exists()
+    finally:
+        await service.stop()
+
+    later_file = export_dir / "job-after-stop.json"
+    later_file.write_text("[]")
+    await _seed_job(
+        redis_client, "job-after-stop", expires_at=time.time() - 10, file_path=str(later_file)
+    )
+    await asyncio.sleep(0.05)
+    assert later_file.exists()

@@ -338,3 +338,33 @@ class TestFolderRename:
 
         assert "docs/a.txt" in raised.value.source_keys
         assert {"archive/docs/a.txt", "archive/docs/b.txt", "archive/docs/sub/c.txt"} <= set(client.objects)
+
+
+class TestInvalidNames:
+    """MinIO/S3 rejections of a key name surface as ValueError (a 400 to the caller);
+    anything else is not the caller's fault and propagates."""
+
+    @staticmethod
+    def _failing(client, monkeypatch, method, code, status):
+        def fail(**kwargs):
+            raise client_error(code, status, method)
+
+        monkeypatch.setattr(client, method, fail)
+
+    @pytest.mark.parametrize("code", ["400", "XMinioInvalidObjectName", "InvalidArgument", "KeyTooLongError"])
+    @pytest.mark.parametrize(("operation", "method"), [("mkdir", "put_object"), ("info", "head_object")])
+    def test_an_invalid_name_from_the_store_is_a_value_error(
+        self, backend, client, monkeypatch, operation, method, code
+    ):
+        self._failing(client, monkeypatch, method, code, 400)
+
+        with pytest.raises(ValueError, match="Invalid storage path"):
+            getattr(backend, operation)("some_path")
+
+    @pytest.mark.parametrize(("operation", "method"), [("mkdir", "put_object"), ("info", "head_object")])
+    def test_any_other_store_error_propagates(self, backend, client, monkeypatch, operation, method):
+        self._failing(client, monkeypatch, method, "NoSuchBucket", 404)
+
+        with pytest.raises(ClientError) as caught:
+            getattr(backend, operation)("some_path")
+        assert caught.value.response["Error"]["Code"] == "NoSuchBucket"

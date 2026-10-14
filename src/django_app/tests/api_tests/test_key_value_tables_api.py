@@ -73,19 +73,6 @@ def test_create_table_lands_in_active_org(admin_client, org_a):
 
 
 @pytest.mark.django_db
-def test_duplicate_name_case_insensitive_is_400(admin_client, table_a):
-    response = admin_client.post(TABLES_URL, {"name": "customers"}, format="json")
-    assert response.status_code == 400
-
-
-@pytest.mark.django_db
-def test_whitespace_only_name_is_400(admin_client):
-    response = admin_client.post(TABLES_URL, {"name": "   "}, format="json")
-    assert response.status_code == 400
-    assert not KeyValueTable.objects.exists()
-
-
-@pytest.mark.django_db
 def test_rename_to_own_name_in_other_case_is_allowed(admin_client, table_a):
     response = admin_client.patch(f"{TABLES_URL}{table_a.id}/", {"name": "CUSTOMERS"}, format="json")
     assert response.status_code == 200, response.content
@@ -100,13 +87,6 @@ def test_list_only_active_org_with_entry_count(admin_client, table_a, table_b):
     rows = _results(response)
     assert [row["name"] for row in rows] == ["Customers"]
     assert rows[0]["entry_count"] == 1
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("method", ["get", "patch", "delete"])
-def test_table_detail_cross_org_is_404(admin_client, table_b, method):
-    response = getattr(admin_client, method)(f"{TABLES_URL}{table_b.id}/", {"name": "x"}, format="json")
-    assert response.status_code == 404
 
 
 @pytest.mark.django_db
@@ -165,11 +145,24 @@ def test_delete_table_in_use_succeeds_and_unlinks_every_node(admin_client, table
 
 
 @pytest.mark.django_db
-def test_usage_counts_live_nodes_and_distinct_flows(admin_client, table_a, table_in_use):
-    response = admin_client.get(f"{TABLES_URL}{table_a.id}/usage/")
+@pytest.mark.parametrize(
+    ("client_fixture", "in_use", "expected"),
+    [
+        ("admin_client", True, {"node_count": 3, "flow_count": 2}),
+        # Usage is read access: a member who may read tables sees it too.
+        ("member_client", True, {"node_count": 3, "flow_count": 2}),
+        ("admin_client", False, {"node_count": 0, "flow_count": 0}),
+    ],
+    ids=["admin", "member", "unused"],
+)
+def test_usage_counts_live_nodes_and_distinct_flows(request, table_a, client_fixture, in_use, expected):
+    if in_use:
+        request.getfixturevalue("table_in_use")
+
+    response = request.getfixturevalue(client_fixture).get(f"{TABLES_URL}{table_a.id}/usage/")
 
     assert response.status_code == 200, response.content
-    assert response.json() == {"node_count": 3, "flow_count": 2}
+    assert response.json() == expected
 
 
 @pytest.mark.django_db
@@ -181,41 +174,6 @@ def test_usage_does_not_count_entries(admin_client, table_a):
 
     assert response.status_code == 200, response.content
     assert not any("tables_keyvaluetableentry" in q["sql"] for q in queries.captured_queries)
-
-
-@pytest.mark.django_db
-def test_list_and_retrieve_still_carry_entry_count(admin_client, table_a):
-    KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
-
-    assert admin_client.get(f"{TABLES_URL}{table_a.id}/").data["entry_count"] == 1
-    assert _results(admin_client.get(TABLES_URL))[0]["entry_count"] == 1
-
-
-@pytest.mark.django_db
-def test_usage_of_unused_table_is_zero(admin_client, table_a):
-    response = admin_client.get(f"{TABLES_URL}{table_a.id}/usage/")
-
-    assert response.status_code == 200, response.content
-    assert response.json() == {"node_count": 0, "flow_count": 0}
-
-
-@pytest.mark.django_db
-def test_usage_is_readable_by_member(member_client, table_a, table_in_use):
-    response = member_client.get(f"{TABLES_URL}{table_a.id}/usage/")
-
-    assert response.status_code == 200, response.content
-    assert response.json() == {"node_count": 3, "flow_count": 2}
-
-
-@pytest.mark.django_db
-def test_usage_of_table_in_other_org_is_404(admin_client, org_b, table_b):
-    graph = Graph.objects.create(name="Theirs", org=org_b)
-    KeyValueNode.objects.create(graph=graph, node_name="t", key_value_table=table_b)
-
-    response = admin_client.get(f"{TABLES_URL}{table_b.id}/usage/")
-
-    assert response.status_code == 404
-    assert "node_count" not in response.data
 
 
 @pytest.mark.django_db
@@ -315,16 +273,6 @@ def test_entry_write_responses_carry_full_value(admin_client, table_a):
 
 
 @pytest.mark.django_db
-def test_duplicate_entry_key_is_400(admin_client, table_a):
-    KeyValueTableEntry.objects.create(table=table_a, key="k1", value=1)
-    response = admin_client.post(ENTRIES_URL, {"table": table_a.id, "key": "k1", "value": 2}, format="json")
-    assert response.status_code == 400
-    # The global exception handler flattens field errors into `message`.
-    assert response.data["message"] == "key: An entry with this key already exists in this table."
-    assert KeyValueTableEntry.objects.get(table=table_a, key="k1").value == 1
-
-
-@pytest.mark.django_db
 def test_hand_edit_clears_run_attribution(admin_client, org_a, table_a):
     graph = Graph.objects.create(name="Writer flow", org=org_a)
     session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
@@ -394,46 +342,10 @@ def test_entry_rename_keeps_value_and_clears_run_attribution(admin_client, org_a
     assert (entry.key, entry.value, entry.updated_by_session_id) == ("new", {"a": 1}, None)
 
 
-@pytest.mark.django_db
-def test_entry_rename_onto_existing_key_is_400(admin_client, table_a):
-    KeyValueTableEntry.objects.create(table=table_a, key="taken", value=1)
-    entry = KeyValueTableEntry.objects.create(table=table_a, key="mine", value=2)
-
-    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "taken"}, format="json")
-
-    assert response.status_code == 400
-    assert response.data["message"] == "key: An entry with this key already exists in this table."
-    entry.refresh_from_db()
-    assert entry.key == "mine"
-
-
 KEY_RULE_MESSAGE = (
     "key: use only letters, digits and _, don't start with a digit, and keep it to at most "
     "512 characters"
 )
-
-
-@pytest.mark.django_db
-def test_entry_create_with_invalid_key_is_400(admin_client, table_a):
-    response = admin_client.post(
-        ENTRIES_URL, {"table": table_a.id, "key": "user-1", "value": 1}, format="json"
-    )
-
-    assert response.status_code == 400
-    assert response.data["message"] == KEY_RULE_MESSAGE
-    assert not KeyValueTableEntry.objects.filter(table=table_a).exists()
-
-
-@pytest.mark.django_db
-def test_entry_rename_to_invalid_key_is_400(admin_client, table_a):
-    entry = KeyValueTableEntry.objects.create(table=table_a, key="mine", value=2)
-
-    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "my key"}, format="json")
-
-    assert response.status_code == 400
-    assert response.data["message"] == KEY_RULE_MESSAGE
-    entry.refresh_from_db()
-    assert entry.key == "mine"
 
 
 @pytest.mark.django_db
@@ -459,17 +371,6 @@ def test_entry_rename_to_key_used_in_another_table_is_allowed(admin_client, org_
     response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "shared"}, format="json")
 
     assert response.status_code == 200, response.content
-
-
-@pytest.mark.django_db
-def test_entry_rename_cross_org_is_404(admin_client, table_b):
-    entry = KeyValueTableEntry.objects.create(table=table_b, key="k", value=1)
-
-    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"key": "renamed"}, format="json")
-
-    assert response.status_code == 404
-    entry.refresh_from_db()
-    assert entry.key == "k"
 
 
 @pytest.mark.django_db
@@ -618,34 +519,6 @@ def test_entry_list_limit_is_capped(admin_client, table_a):
 
 
 @pytest.mark.django_db
-def test_entry_for_foreign_table_is_rejected(admin_client, table_b):
-    response = admin_client.post(ENTRIES_URL, {"table": table_b.id, "key": "k", "value": 1}, format="json")
-    assert response.status_code == 400
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("method", ["get", "patch", "delete"])
-def test_entry_cross_org_detail_is_404(admin_client, table_b, method):
-    entry = KeyValueTableEntry.objects.create(table=table_b, key="k", value=1)
-    response = getattr(admin_client, method)(f"{ENTRIES_URL}{entry.id}/", {"value": 2}, format="json")
-    assert response.status_code == 404
-    entry.refresh_from_db()
-    assert entry.value == 1
-
-
-@pytest.mark.django_db
-def test_entry_cannot_be_moved_to_another_table(admin_client, org_a, table_a):
-    other_table = KeyValueTable.objects.create(org=org_a, name="Other")
-    entry = KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
-
-    response = admin_client.patch(f"{ENTRIES_URL}{entry.id}/", {"table": other_table.id}, format="json")
-
-    assert response.status_code == 400
-    entry.refresh_from_db()
-    assert entry.table_id == table_a.id
-
-
-@pytest.mark.django_db
 def test_entry_put_with_its_own_table_is_allowed(admin_client, table_a):
     entry = KeyValueTableEntry.objects.create(table=table_a, key="k", value=1)
 
@@ -656,12 +529,6 @@ def test_entry_put_with_its_own_table_is_allowed(admin_client, table_a):
     assert response.status_code == 200, response.content
     entry.refresh_from_db()
     assert entry.value == 2
-
-
-@pytest.mark.django_db
-def test_oversized_entry_is_400(admin_client, table_a):
-    response = admin_client.post(ENTRIES_URL, {"table": table_a.id, "key": "k", "value": "x" * 262144}, format="json")
-    assert response.status_code == 400
 
 
 @pytest.mark.django_db
@@ -682,7 +549,73 @@ def test_lookup_entries(member_client, table_a):
     assert response.data["nope"] == {"exists": False, "value_preview": None, "updated_at": None}
 
 
+
+
+# --- rejected writes and other organizations ------------------------------
+
+KEY_TAKEN = "key: An entry with this key already exists in this table."
+
+
+def _entry(table, key="mine", value=2):
+    return KeyValueTableEntry.objects.create(table=table, key=key, value=value)
+
+
 @pytest.mark.django_db
-def test_lookup_cross_org_is_404(admin_client, table_b):
-    response = admin_client.post(f"{TABLES_URL}{table_b.id}/entries/lookup/", {"keys": ["k"]}, format="json")
+@pytest.mark.parametrize(
+    ("request_", "message"),
+    [
+        pytest.param(lambda c, a, o: c.post(TABLES_URL, {"name": "customers"}, format="json"), None, id="table-name-taken-any-case"),
+        pytest.param(lambda c, a, o: c.post(TABLES_URL, {"name": "   "}, format="json"), None, id="table-name-blank"),
+        pytest.param(lambda c, a, o: c.post(ENTRIES_URL, {"table": a.id, "key": "taken", "value": 2}, format="json"), KEY_TAKEN, id="entry-key-taken"),
+        pytest.param(lambda c, a, o: c.patch(f"{ENTRIES_URL}{_entry(a).id}/", {"key": "taken"}, format="json"), KEY_TAKEN, id="entry-renamed-onto-taken-key"),
+        pytest.param(lambda c, a, o: c.post(ENTRIES_URL, {"table": a.id, "key": "user-1", "value": 1}, format="json"), KEY_RULE_MESSAGE, id="entry-key-invalid"),
+        pytest.param(lambda c, a, o: c.patch(f"{ENTRIES_URL}{_entry(a).id}/", {"key": "my key"}, format="json"), KEY_RULE_MESSAGE, id="entry-renamed-to-invalid-key"),
+        pytest.param(lambda c, a, o: c.post(ENTRIES_URL, {"table": o.id, "key": "k", "value": 1}, format="json"), None, id="entry-into-other-orgs-table"),
+        pytest.param(lambda c, a, o: c.patch(f"{ENTRIES_URL}{_entry(a).id}/", {"table": KeyValueTable.objects.create(org=a.org, name="Other").id}, format="json"), None, id="entry-moved-to-another-table"),
+        pytest.param(lambda c, a, o: c.post(ENTRIES_URL, {"table": a.id, "key": "k", "value": "x" * 262144}, format="json"), None, id="entry-oversized"),
+    ],
+)
+def test_invalid_write_is_400_and_changes_nothing(admin_client, table_a, table_b, request_, message):
+    _entry(table_a, key="taken", value=1)
+
+    response = request_(admin_client, table_a, table_b)
+
+    assert response.status_code == 400, response.content
+    if message is not None:
+        # The global exception handler flattens field errors into `message`.
+        assert response.data["message"] == message
+    # Only the seeded rows exist, unchanged and in their own table.
+    assert set(KeyValueTableEntry.objects.values_list("table_id", "key", "value")) <= {
+        (table_a.id, "taken", 1),
+        (table_a.id, "mine", 2),
+    }
+    assert set(KeyValueTable.objects.filter(org=table_a.org).values_list("name", flat=True)) <= {"Customers", "Other"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "request_",
+    [
+        pytest.param(lambda c, t, e: c.get(f"{TABLES_URL}{t.id}/"), id="table-get"),
+        pytest.param(lambda c, t, e: c.patch(f"{TABLES_URL}{t.id}/", {"name": "x"}, format="json"), id="table-patch"),
+        pytest.param(lambda c, t, e: c.delete(f"{TABLES_URL}{t.id}/"), id="table-delete"),
+        pytest.param(lambda c, t, e: c.get(f"{TABLES_URL}{t.id}/usage/"), id="table-usage"),
+        pytest.param(lambda c, t, e: c.post(f"{TABLES_URL}{t.id}/entries/lookup/", {"keys": ["k"]}, format="json"), id="lookup"),
+        pytest.param(lambda c, t, e: c.get(f"{ENTRIES_URL}{e.id}/"), id="entry-get"),
+        pytest.param(lambda c, t, e: c.patch(f"{ENTRIES_URL}{e.id}/", {"value": 2}, format="json"), id="entry-patch"),
+        pytest.param(lambda c, t, e: c.patch(f"{ENTRIES_URL}{e.id}/", {"key": "renamed"}, format="json"), id="entry-rename"),
+        pytest.param(lambda c, t, e: c.delete(f"{ENTRIES_URL}{e.id}/"), id="entry-delete"),
+    ],
+)
+def test_other_orgs_table_and_entries_are_404_and_untouched(admin_client, org_b, table_b, request_):
+    entry = _entry(table_b, key="k", value=1)
+    graph = Graph.objects.create(name="Theirs", org=org_b)
+    KeyValueNode.objects.create(graph=graph, node_name="t", key_value_table=table_b)
+
+    response = request_(admin_client, table_b, entry)
+
     assert response.status_code == 404
+    assert "node_count" not in (response.data or {})
+    table_b.refresh_from_db()
+    entry.refresh_from_db()
+    assert (table_b.name, entry.key, entry.value) == ("Theirs", "k", 1)

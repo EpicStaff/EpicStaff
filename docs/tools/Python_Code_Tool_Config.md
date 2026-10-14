@@ -23,6 +23,7 @@ If a configuration field is defined with the name `api_key`, the Python code mus
 ```python
 # Backend passes: main(api_key="sk-...", limit=10)
 
+
 def main(api_key, limit):
     # api_key receives the value "sk-..." automatically
     print(f"Connecting with {api_key}")

@@ -14,6 +14,8 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     webhook_trigger: number | null;
     /** Payload used by "Run with test payload"; a JSON object, `{}` when unset. */
     test_payload: Record<string, unknown>;
+    /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
+    use_storage: boolean;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -27,4 +29,5 @@ export interface CreateWebhookTriggerNodeRequest {
     /** Bulk save accepts only the id of an existing trigger; triggers are created through `/webhook-triggers/`. */
     webhook_trigger: number | null;
     test_payload: Record<string, unknown>;
+    use_storage: boolean;
 }

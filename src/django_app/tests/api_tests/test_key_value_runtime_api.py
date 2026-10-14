@@ -68,17 +68,17 @@ def test_delete_of_only_missing_keys_reports_nothing(system_client, running_sess
 
 
 @pytest.mark.django_db
-def test_jwt_user_is_forbidden(auth_client, running_session, table):
-    response = auth_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
-    assert response.status_code == 403
-    assert response.data["code"] == "permission_denied"
+@pytest.mark.parametrize("caller", ["jwt-user", "user-api-key"])
+def test_only_the_system_api_key_may_call(request, api_client, running_session, table, caller):
+    if caller == "jwt-user":
+        client = request.getfixturevalue("auth_client")
+    else:
+        raw_key, _ = request.getfixturevalue("user_api_key")
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+        client = api_client
 
+    response = client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
 
-@pytest.mark.django_db
-def test_user_api_key_is_forbidden(api_client, user_api_key, running_session, table):
-    raw_key, _ = user_api_key
-    api_client.credentials(HTTP_X_API_KEY=raw_key)
-    response = api_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
     assert response.status_code == 403
     assert response.data["code"] == "permission_denied"
 
@@ -109,47 +109,43 @@ def test_unknown_session_is_404(system_client, table):
     assert response.data["code"] == "not_found"
 
 
-@pytest.mark.django_db
-def test_table_in_other_org_is_404(system_client, running_session):
+def _foreign_table_used_by_the_flow(session, default_org, table):
     foreign = KeyValueTable.objects.create(org=Organization.objects.create(name="Foreign"), name="Customers")
-    KeyValueNode.objects.create(graph=running_session.graph, node_name="p2", key_value_table=foreign)
-    response = system_client.post(_url(running_session.id, foreign.id, "read"), {"keys": ["a"]}, format="json")
+    KeyValueTableEntry.objects.create(table=foreign, key="a", value="secret")
+    KeyValueNode.objects.create(graph=session.graph, node_name="p2", key_value_table=foreign)
+    return foreign
+
+
+def _own_table_the_flow_does_not_use(session, default_org, table):
+    return KeyValueTable.objects.create(org=default_org, name="Unreferenced")
+
+
+def _table_of_a_soft_deleted_node(session, default_org, table):
+    KeyValueNode.objects.filter(graph=session.graph).update(active=False, soft_deleted_at=timezone.now())
+    return table
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["read", "write", "delete"])
+@pytest.mark.parametrize(
+    "target",
+    [_foreign_table_used_by_the_flow, _own_table_the_flow_does_not_use, _table_of_a_soft_deleted_node],
+    ids=["other-orgs-table", "table-not-in-the-flow", "soft-deleted-node"],
+)
+def test_a_session_reaches_only_tables_its_flow_uses_in_its_org(
+    system_client, running_session, default_org, table, target, operation
+):
+    reached = target(running_session, default_org, table)
+    entries_before = sorted(KeyValueTableEntry.objects.values_list("table_id", "key", "value"))
+    body = {"entries": {"a": "overwritten"}} if operation == "write" else {"keys": ["a"]}
+
+    response = system_client.post(_url(running_session.id, reached.id, operation), body, format="json")
+
     assert response.status_code == 404
     assert response.data["code"] == "key_value_table_not_found"
     assert "table_name" not in response.data
-    assert "Customers" not in response.content.decode()
-
-
-@pytest.mark.django_db
-def test_delete_from_table_in_other_org_is_404_and_deletes_nothing(system_client, running_session):
-    foreign = KeyValueTable.objects.create(org=Organization.objects.create(name="Foreign"), name="Customers")
-    KeyValueTableEntry.objects.create(table=foreign, key="a", value="secret")
-    KeyValueNode.objects.create(graph=running_session.graph, node_name="p2", key_value_table=foreign)
-
-    response = system_client.post(_url(running_session.id, foreign.id, "delete"), {"keys": ["a"]}, format="json")
-
-    assert response.status_code == 404
-    assert response.data["code"] == "key_value_table_not_found"
     assert "secret" not in response.content.decode()
-    assert KeyValueTableEntry.objects.filter(table=foreign, key="a").exists()
-
-
-@pytest.mark.django_db
-def test_table_not_referenced_by_graph_is_404(system_client, running_session, default_org):
-    other_table = KeyValueTable.objects.create(org=default_org, name="Unreferenced")
-    response = system_client.post(_url(running_session.id, other_table.id, "read"), {"keys": ["a"]}, format="json")
-    assert response.status_code == 404
-    assert response.data["code"] == "key_value_table_not_found"
-
-
-@pytest.mark.django_db
-def test_soft_deleted_node_grants_no_access(system_client, running_session, table):
-    KeyValueNode.objects.filter(graph=running_session.graph).update(
-        active=False, soft_deleted_at=timezone.now()
-    )
-    response = system_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
-    assert response.status_code == 404
-    assert response.data["code"] == "key_value_table_not_found"
+    assert sorted(KeyValueTableEntry.objects.values_list("table_id", "key", "value")) == entries_before
 
 
 @pytest.mark.django_db

@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, HelpTooltipComponent, SelectComponent, SelectItem } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { AssignableUsersResponse, FullMembership, Organization } from '@shared/models';
 import { forkJoin, map, Observable, of } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
@@ -35,7 +36,7 @@ export interface MembershipDialogData {
     templateUrl: './create-membership-dialog.component.html',
     styleUrls: ['./create-membership-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [ButtonComponent, StepAssignToOrgComponent, HelpTooltipComponent, SelectComponent],
+    imports: [ButtonComponent, EnterSubmitDirective, HelpTooltipComponent, SelectComponent, StepAssignToOrgComponent],
 })
 export class CreateMembershipDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);

@@ -7,6 +7,8 @@ publish a payload containing a 'warnings' key.
 
 from __future__ import annotations
 
+import pytest
+
 import json
 from unittest.mock import MagicMock
 
@@ -81,87 +83,33 @@ def _make_loop_result() -> LoopResult:
 
 
 # ---------------------------------------------------------------------------
-# on_warning buffering and deduplication
+# warnings reach the terminal payload, de-duplicated
 # ---------------------------------------------------------------------------
 
 
-async def test_on_warning_buffers_message():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("context near limit")
-    assert emitter._warnings == ["context near limit"]
-
-
-async def test_on_warning_deduplicates_identical_messages():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("same warning")
-    await emitter.on_warning("same warning")
-    await emitter.on_warning("same warning")
-    assert emitter._warnings == ["same warning"]
-
-
-async def test_on_warning_keeps_distinct_messages():
-    emitter, _ = _make_emitter()
-    await emitter.on_warning("warning A")
-    await emitter.on_warning("warning B")
-    assert emitter._warnings == ["warning A", "warning B"]
-
-
-# ---------------------------------------------------------------------------
-# on_final includes warnings in published payload
-# ---------------------------------------------------------------------------
-
-
-async def test_on_final_includes_warnings_key_when_no_warnings():
+@pytest.mark.parametrize("terminal", ["final", "error"])
+@pytest.mark.parametrize(
+    ("warnings", "expected"),
+    [
+        ([], []),
+        (["approaching limit"], ["approaching limit"]),
+        (["dup", "dup", "dup"], ["dup"]),
+        (["warning A", "warning B"], ["warning A", "warning B"]),
+    ],
+    ids=["none", "one", "duplicates", "distinct"],
+)
+async def test_terminal_payload_carries_each_warning_once(terminal, warnings, expected):
     emitter, published = _make_emitter()
-    await emitter.on_final(_make_loop_result())
+    for warning in warnings:
+        await emitter.on_warning(warning)
 
-    assert len(published) == 1
-    payload = _decode_payload(published[0])
-    assert "warnings" in payload
-    assert payload["warnings"] == []
+    if terminal == "final":
+        await emitter.on_final(_make_loop_result())
+    else:
+        await emitter.on_error(RuntimeError("boom"))
 
-
-async def test_on_final_includes_warnings_after_on_warning():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("approaching limit")
-    await emitter.on_final(_make_loop_result())
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["approaching limit"]
-
-
-async def test_on_final_deduped_warnings_in_payload():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("dup")
-    await emitter.on_warning("dup")
-    await emitter.on_final(_make_loop_result())
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["dup"]
-
-
-# ---------------------------------------------------------------------------
-# on_error includes warnings in published payload
-# ---------------------------------------------------------------------------
-
-
-async def test_on_error_includes_warnings_key_when_no_warnings():
-    emitter, published = _make_emitter()
-    await emitter.on_error(RuntimeError("boom"))
-
-    assert len(published) == 1
-    payload = _decode_payload(published[0])
-    assert "warnings" in payload
-    assert payload["warnings"] == []
-
-
-async def test_on_error_includes_warnings_after_on_warning():
-    emitter, published = _make_emitter()
-    await emitter.on_warning("context limit warning")
-    await emitter.on_error(RuntimeError("something failed"))
-
-    payload = _decode_payload(published[0])
-    assert payload["warnings"] == ["context limit warning"]
+    (payload,) = [_decode_payload(fields) for fields in published]
+    assert payload["warnings"] == expected
 
 
 # ---------------------------------------------------------------------------

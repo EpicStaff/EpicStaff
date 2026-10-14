@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="form.invalid || isSaving() || isLoading()"
+>
     <div class="header">
         <h2 class="title">
             {{ title() }}

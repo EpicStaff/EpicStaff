@@ -11,6 +11,7 @@ from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
 )
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
 
 
 class ClassificationConditionGroupImportSerializer(
@@ -55,7 +56,7 @@ class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSeriali
 
 
 class ClassificationDecisionTableNodeImportSerializer(
-    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin, CdtExplanationsSanitizingMixin, serializers.ModelSerializer
 ):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)

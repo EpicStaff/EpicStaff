@@ -24,6 +24,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
                 secret_names: toSecretNames(wn.python_code.secrets),
             },
             test_payload: wn.test_payload ?? {},
+            use_storage: wn.use_storage ?? false,
         },
         position: ui.position,
         ports: null,

@@ -1,5 +1,6 @@
-"""
-Tests for SourceCollection CRUD operations
+"""The source-collection endpoints: CRUD, bulk delete, copy, soft delete, authorship.
+
+Cross-org access is covered in test_org_scoping_knowledge.py.
 """
 
 import pytest
@@ -7,379 +8,164 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 
+from tables.models import DocumentMetadata
 from tables.models.knowledge_models import SourceCollection
 
-
-@pytest.mark.django_db
-class TestCollectionList:
-    """Tests for listing collections."""
-
-    def test_list_empty_collections(self, auth_client):
-        """Test listing when no collections exist."""
-        url = reverse("sourcecollection-list")
-        response = auth_client.get(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        assert response.json() == []
-
-    def test_list_collections(self, auth_client, source_collection, empty_collection):
-        """Test listing existing collections."""
-        url = reverse("sourcecollection-list")
-        response = auth_client.get(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert len(data) == 2
-        assert all("collection_id" in item for item in data)
-        assert all("collection_name" in item for item in data)
-        assert all("description" in item for item in data)
-        assert all("document_count" in item for item in data)
+MISSING = 99999
 
 
 @pytest.mark.django_db
-class TestCollectionCreate:
-    """Tests for creating collections."""
+def test_list_shows_each_collection_with_its_summary(auth_client, source_collection, empty_collection):
+    response = auth_client.get(reverse("sourcecollection-list"))
 
-    def test_create_collection_with_name(self, auth_client):
-        """Test creating a collection with a specific name."""
-        url = reverse("sourcecollection-list")
-        data = {"collection_name": "My New Collection"}
+    assert response.status_code == status.HTTP_200_OK
+    assert {item["collection_id"] for item in response.json()} == {
+        source_collection.collection_id, empty_collection.collection_id
+    }
+    assert all({"collection_name", "description", "document_count"} <= item.keys() for item in response.json())
 
-        response = auth_client.post(url, data, format="json")
 
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        assert response_data["collection_name"] == "My New Collection"
-        assert response_data["status"] == "empty"
-        assert "collection_id" in response_data
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("body", "expected_name", "expected_description"),
+    [
+        ({"collection_name": "My New Collection"}, "My New Collection", None),
+        ({"collection_name": ""}, "Untitled Collection", None),
+        (
+            {"collection_name": "Documented", "description": "Contains onboarding docs for new hires."},
+            "Documented",
+            "Contains onboarding docs for new hires.",
+        ),
+    ],
+    ids=["named", "blank-name-gets-default", "with-description"],
+)
+def test_create(auth_client, body, expected_name, expected_description):
+    response = auth_client.post(reverse("sourcecollection-list"), body, format="json")
 
-        # Verify in database
-        collection = SourceCollection.objects.get(
-            collection_id=response_data["collection_id"]
-        )
-        assert collection.collection_name == "My New Collection"
+    assert response.status_code == status.HTTP_201_CREATED
+    collection = SourceCollection.objects.get(collection_id=response.json()["collection_id"])
+    assert (response.json()["collection_name"], collection.collection_name) == (expected_name, expected_name)
+    assert response.json()["status"] == "empty"
+    if expected_description is not None:
+        assert collection.description == response.json()["description"] == expected_description
 
-    def test_create_collection_with_blank_name(self, auth_client):
-        """Test creating a collection without specifying a name."""
-        url = reverse("sourcecollection-list")
-        data = {"collection_name": ""}
 
-        response = auth_client.post(url, data, format="json")
+@pytest.mark.django_db
+def test_a_taken_name_is_numbered_not_rejected(auth_client, source_collection):
+    names = [
+        auth_client.post(
+            reverse("sourcecollection-list"), {"collection_name": source_collection.collection_name}, format="json"
+        ).json()["collection_name"]
+        for _ in range(2)
+    ]
 
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        assert "Untitled Collection" in response_data["collection_name"]
+    assert names == [f"{source_collection.collection_name} (1)", f"{source_collection.collection_name} (2)"]
 
-    def test_create_collection_with_description(self, auth_client):
-        """Test creating a collection with a description."""
-        url = reverse("sourcecollection-list")
-        data = {
-            "collection_name": "Documented Collection",
-            "description": "Contains onboarding docs for new hires.",
-        }
 
-        response = auth_client.post(url, data, format="json")
+@pytest.mark.django_db
+def test_read_and_update(auth_client, source_collection):
+    url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
 
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        assert response_data["description"] == "Contains onboarding docs for new hires."
+    read = auth_client.get(url)
+    updated = auth_client.patch(url, {"collection_name": "Updated Name", "description": "Updated description."}, format="json")
 
-        collection = SourceCollection.objects.get(
-            collection_id=response_data["collection_id"]
-        )
-        assert collection.description == "Contains onboarding docs for new hires."
+    assert read.status_code == status.HTTP_200_OK
+    assert (read.json()["collection_name"], read.json()["description"]) == (
+        source_collection.collection_name, source_collection.description
+    )
+    assert updated.status_code == status.HTTP_200_OK
+    source_collection.refresh_from_db()
+    assert (source_collection.collection_name, source_collection.description) == ("Updated Name", "Updated description.")
 
-    def test_create_collection_with_too_long_description_rejected(self, auth_client):
-        """Test creating a collection with a description over 2000 chars fails."""
-        url = reverse("sourcecollection-list")
-        data = {
-            "collection_name": "Overlong Description Collection",
-            "description": "x" * 2001,
-        }
 
-        response = auth_client.post(url, data, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_create_duplicate_collection_name(self, auth_client, source_collection):
-        """Test that duplicate collection names are handled correctly.
-
-        The model has auto-rename logic, but the serializer validates uniqueness
-        at the API level. This test verifies that creating with the same name
-        multiple times results in auto-renamed collections via the model layer.
-        """
-        from tables.services.knowledge_services.collection_management_service import (
-            CollectionManagementService,
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("write", "body"),
+    [
+        ("create", {"collection_name": "Overlong", "description": "x" * 2001}),
+        ("update", {"description": "x" * 2001}),
+        ("update", {"collection_name": ""}),
+    ],
+    ids=["create-description-too-long", "update-description-too-long", "update-blank-name"],
+)
+def test_invalid_write_is_400_and_stores_nothing(auth_client, source_collection, write, body):
+    before = list(SourceCollection.objects.values_list("collection_id", "collection_name", "description"))
+    if write == "create":
+        response = auth_client.post(reverse("sourcecollection-list"), body, format="json")
+    else:
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.collection_id]), body, format="json"
         )
 
-        test_collection_name = source_collection.collection_name
-        collection_1 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name
-        )
-        collection_2 = CollectionManagementService.create_collection(
-            collection_name=test_collection_name
-        )
-
-        # All should be created successfully with different names
-        assert collection_1.collection_name != source_collection.collection_name
-        assert collection_2.collection_name != collection_1.collection_name
-
-        # Auto-renamed collections should have "(1)", "(2)", etc.
-        all_names = [
-            source_collection.collection_name,
-            collection_1.collection_name,
-            collection_2.collection_name,
-        ]
-        # At least some should have the rename pattern
-        assert any("(" in name and ")" in name for name in all_names[1:])
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert list(SourceCollection.objects.values_list("collection_id", "collection_name", "description")) == before
 
 
 @pytest.mark.django_db
-class TestCollectionRetrieve:
-    """Tests for retrieving a single collection."""
+@pytest.mark.parametrize(
+    ("method", "route"),
+    [("get", "sourcecollection-detail"), ("patch", "sourcecollection-detail"), ("delete", "sourcecollection-detail"), ("post", "sourcecollection-copy")],
+)
+def test_unknown_collection_is_404(auth_client, method, route):
+    response = getattr(auth_client, method)(reverse(route, args=[MISSING]), {"collection_name": "x"}, format="json")
 
-    def test_retrieve_collection(self, auth_client, source_collection):
-        """Test retrieving a collection by ID."""
-        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
-        response = auth_client.get(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["collection_id"] == source_collection.collection_id
-        assert data["collection_name"] == source_collection.collection_name
-        assert data["description"] == source_collection.description
-        assert "document_count" in data
-
-    def test_retrieve_nonexistent_collection(self, auth_client):
-        """Test retrieving a collection that doesn't exist."""
-        url = reverse("sourcecollection-detail", args=[99999])
-        response = auth_client.get(url)
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
-class TestCollectionUpdate:
-    """Tests for updating collections."""
+@pytest.mark.parametrize("with_documents", [False, True])
+def test_delete_removes_the_collection_and_its_documents(auth_client, source_collection, multiple_documents, empty_collection, with_documents):
+    collection = source_collection if with_documents else empty_collection
 
-    def test_update_collection_name(self, auth_client, source_collection):
-        """Test updating a collection's name."""
-        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
-        data = {"collection_name": "Updated Name"}
+    response = auth_client.delete(reverse("sourcecollection-detail", args=[collection.collection_id]))
 
-        response = auth_client.patch(url, data, format="json")
-
-        assert response.status_code == status.HTTP_200_OK
-        response_data = response.json()
-        assert response_data["collection_name"] == "Updated Name"
-
-        # Verify in database
-        source_collection.refresh_from_db()
-        assert source_collection.collection_name == "Updated Name"
-
-    def test_update_collection_description(self, auth_client, source_collection):
-        """Test updating a collection's description."""
-        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
-        data = {"description": "Updated description."}
-
-        response = auth_client.patch(url, data, format="json")
-
-        assert response.status_code == status.HTTP_200_OK
-        response_data = response.json()
-        assert response_data["description"] == "Updated description."
-
-        source_collection.refresh_from_db()
-        assert source_collection.description == "Updated description."
-
-    def test_update_collection_with_too_long_description_rejected(
-        self, auth_client, source_collection
-    ):
-        """Test updating with a description over 2000 chars fails validation."""
-        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
-        data = {"description": "x" * 2001}
-
-        response = auth_client.patch(url, data, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_update_collection_with_empty_name(self, auth_client, source_collection):
-        """Test updating with empty name fails validation."""
-        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
-        data = {"collection_name": ""}
-
-        response = auth_client.patch(url, data, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_update_nonexistent_collection(self, auth_client):
-        """Test updating a collection that doesn't exist."""
-        url = reverse("sourcecollection-detail", args=[99999])
-        data = {"collection_name": "New Name"}
-
-        response = auth_client.patch(url, data, format="json")
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["deleted_documents"] == (3 if with_documents else 0)
+    assert not SourceCollection.objects.filter(collection_id=collection.collection_id).exists()
+    assert DocumentMetadata.objects.filter(document_id__in=[d.document_id for d in multiple_documents]).exists() is not with_documents
 
 
 @pytest.mark.django_db
-class TestCollectionDelete:
-    """Tests for deleting collections."""
+def test_bulk_delete_counts_collections_and_skips_unknown_ids(
+    auth_client, source_collection, empty_collection, multiple_documents
+):
+    ids = [source_collection.collection_id, empty_collection.collection_id]
 
-    def test_delete_empty_collection(self, auth_client, empty_collection):
-        """Test deleting an empty collection."""
-        collection_id = empty_collection.collection_id
-        url = reverse("sourcecollection-detail", args=[collection_id])
+    response = auth_client.post(reverse("sourcecollection-bulk-delete"), {"collection_ids": [*ids, MISSING]}, format="json")
 
-        response = auth_client.delete(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "message" in data
-        assert data["deleted_documents"] == 0
-
-        # Verify deletion
-        assert not SourceCollection.objects.filter(collection_id=collection_id).exists()
-
-    def test_delete_collection_with_documents(
-        self, auth_client, source_collection, multiple_documents
-    ):
-        """Test deleting a collection with documents cascades properly."""
-        collection_id = source_collection.collection_id
-        document_ids = [doc.document_id for doc in multiple_documents]
-        url = reverse("sourcecollection-detail", args=[collection_id])
-
-        response = auth_client.delete(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["deleted_documents"] == 3
-
-        # Verify cascade deletion
-        from tables.models import DocumentMetadata
-
-        for doc_id in document_ids:
-            assert not DocumentMetadata.objects.filter(document_id=doc_id).exists()
-
-    def test_delete_nonexistent_collection(self, auth_client):
-        """Test deleting a collection that doesn't exist."""
-        url = reverse("sourcecollection-detail", args=[99999])
-        response = auth_client.delete(url)
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_200_OK, response.content
+    # The count is of collections, not of the rows their delete cascaded to.
+    assert response.json()["deleted_count"] == 2
+    assert response.json()["message"] == "Successfully deleted 2 collection(s)"
+    assert response.json()["deleted_documents"] == len(multiple_documents)
+    assert SourceCollection.deleted_objects.filter(collection_id__in=ids).count() == 2
+    assert not DocumentMetadata.objects.filter(document_id__in=[d.document_id for d in multiple_documents]).exists()
 
 
 @pytest.mark.django_db
-class TestCollectionBulkDelete:
-    """Tests for bulk deleting collections."""
+def test_bulk_delete_without_ids_is_400(auth_client):
+    response = auth_client.post(reverse("sourcecollection-bulk-delete"), {"collection_ids": []}, format="json")
 
-    def test_bulk_delete_collections(
-        self, auth_client, source_collection, empty_collection
-    ):
-        """Test bulk deleting multiple collections."""
-        url = reverse("sourcecollection-bulk-delete")
-        data = {
-            "collection_ids": [
-                source_collection.collection_id,
-                empty_collection.collection_id,
-            ]
-        }
-
-        response = auth_client.post(url, data, format="json")
-
-        assert response.status_code == status.HTTP_200_OK
-        response_data = response.json()
-        assert response_data["deleted_count"] == 2
-
-        # Verify deletion
-        assert not SourceCollection.objects.filter(
-            collection_id__in=[
-                source_collection.collection_id,
-                empty_collection.collection_id,
-            ]
-        ).exists()
-
-    def test_bulk_delete_with_empty_list(self, auth_client):
-        """Test bulk delete with empty collection_ids list."""
-        url = reverse("sourcecollection-bulk-delete")
-        data = {"collection_ids": []}
-
-        response = auth_client.post(url, data, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_bulk_delete_with_missing_ids(self, auth_client, source_collection):
-        """Test bulk delete with some nonexistent IDs."""
-        url = reverse("sourcecollection-bulk-delete")
-        data = {"collection_ids": [source_collection.collection_id, 99999]}
-
-        response = auth_client.post(url, data, format="json")
-
-        # Should delete the existing one and ignore the missing one
-        assert response.status_code == status.HTTP_200_OK
-        response_data = response.json()
-        assert response_data["deleted_count"] >= 1
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
-class TestCollectionCopy:
-    """Tests for copying collections."""
+@pytest.mark.parametrize(
+    ("body", "expected_name"),
+    [({"new_collection_name": "Copied Collection"}, "Copied Collection"), ({}, "Test Collection (Copy)")],
+    ids=["named", "default-name"],
+)
+def test_copy_duplicates_documents_and_description(auth_client, source_collection, multiple_documents, body, expected_name):
+    source_collection.description = "Source description."
+    source_collection.save()
 
-    def test_copy_collection(self, auth_client, source_collection, multiple_documents):
-        """Test copying a collection creates new metadata but shares content."""
-        url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
-        data = {"new_collection_name": "Copied Collection"}
+    response = auth_client.post(reverse("sourcecollection-copy", args=[source_collection.collection_id]), body, format="json")
 
-        response = auth_client.post(url, data, format="json")
+    assert response.status_code == status.HTTP_201_CREATED
+    copy = response.json()["collection"]
+    assert (copy["collection_name"], copy["description"]) == (expected_name, "Source description.")
+    assert DocumentMetadata.objects.filter(source_collection_id=copy["collection_id"]).count() == len(multiple_documents)
 
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        assert response_data["collection"]["collection_name"] == "Copied Collection"
-
-        new_collection_id = response_data["collection"]["collection_id"]
-
-        # Verify new collection has same document count
-        from tables.models import DocumentMetadata
-
-        original_count = DocumentMetadata.objects.filter(
-            source_collection=source_collection
-        ).count()
-        copied_count = DocumentMetadata.objects.filter(
-            source_collection_id=new_collection_id
-        ).count()
-        assert original_count == copied_count
-
-    def test_copy_collection_carries_description(self, auth_client, source_collection):
-        """Test copying a collection carries the source description to the copy."""
-        source_collection.description = "Source description."
-        source_collection.save()
-
-        url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
-        response = auth_client.post(url, {}, format="json")
-
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        assert response_data["collection"]["description"] == "Source description."
-
-    def test_copy_collection_without_name(self, auth_client, source_collection):
-        """Test copying without providing a new name."""
-        url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
-        data = {}
-
-        response = auth_client.post(url, data, format="json")
-
-        assert response.status_code == status.HTTP_201_CREATED
-        response_data = response.json()
-        # Should auto-generate name with "(Copy)" suffix
-        assert "(Copy)" in response_data["collection"]["collection_name"]
-
-    def test_copy_nonexistent_collection(self, auth_client):
-        """Test copying a collection that doesn't exist."""
-        url = reverse("sourcecollection-copy", args=[99999])
-        data = {}
-
-        response = auth_client.post(url, data, format="json")
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db

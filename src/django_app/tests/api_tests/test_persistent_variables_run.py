@@ -4,9 +4,9 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tables.models.graph_models import Graph, GraphOrganization, StartNode
+from tables.models.graph_models import Edge, EndNode, Graph, GraphOrganization, StartNode
 from tables.models.session_models import Session
-from tables.services.session_manager_service import SessionManagerService
+from tests.fixtures import redis_client_mock  # noqa: F401
 
 
 @pytest.fixture
@@ -32,17 +32,8 @@ def _flow(default_org, *, flag, org_paths, defaults, org_stored=None):
     return graph
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
-
-
 @pytest.mark.django_db
-def test_run_merges_org_variables_into_session(org_client, default_org, monkeypatch):
+def test_run_merges_org_variables_into_session(org_client, default_org, redis_client_mock):
     graph = _flow(
         default_org,
         flag=True,
@@ -50,13 +41,9 @@ def test_run_merges_org_variables_into_session(org_client, default_org, monkeypa
         defaults={"counter": 0},
         org_stored={"counter": 5},
     )
-    # run_session publishes to Redis and builds SessionData; stub both so the
-    # run completes without the live stack, leaving the merged session to inspect.
-    svc = SessionManagerService()
-    monkeypatch.setattr(svc, "create_session_data", lambda session: _FakeSessionData())
-    monkeypatch.setattr(
-        svc.redis_service, "publish_session_data", lambda **kwargs: 2
-    )
+    # run_session refuses a start node that leads nowhere.
+    end_node = EndNode.objects.create(graph=graph, output_map={})
+    Edge.objects.create(graph=graph, start_node_id=StartNode.objects.get(graph=graph).id, end_node_id=end_node.id)
 
     resp = org_client.post(
         reverse("run-session"), {"graph_id": graph.id, "variables": {}}, format="json"

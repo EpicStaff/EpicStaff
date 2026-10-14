@@ -1,4 +1,8 @@
-<div class="mcp-tool-dialog">
+<div
+    class="mcp-tool-dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="form.invalid || form.pending"
+>
     <div class="mcp-tool-dialog__header">
         <h2 class="mcp-tool-dialog__title">
             {{ isEditMode ? 'Edit MCP Tool' : 'Add MCP Tool' }}

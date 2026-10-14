@@ -1,4 +1,8 @@
-<div class="container">
+<div
+    class="container"
+    (appEnterSubmit)="onConfirm()"
+    [appEnterSubmitDisabled]="submitting()"
+>
     <form [formGroup]="settingsForm()!">
         <!-- Header -->
         <div class="dialog-header">

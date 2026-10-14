@@ -12,6 +12,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ElevenLabsRealtimeConfig, GeminiRealtimeConfig, OpenAIRealtimeConfig } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { trackPickedSecrets } from '@shared/utils';
@@ -42,6 +43,7 @@ export interface RealtimeConfigDialogData {
         ValidationErrorsComponent,
         HelpTooltipComponent,
         HintMessageComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

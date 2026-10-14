@@ -18,7 +18,6 @@ export * from './node/key-value-mode';
 export * from './node/node-config';
 export * from './node/node-type';
 export * from './node/node-type-labels';
-export * from './node-group.model';
 export * from './realtime-voice/elevenlabs-realtime-config.model';
 export * from './realtime-voice/gemini-realtime-config.model';
 export * from './realtime-voice/openai-realtime-config.model';

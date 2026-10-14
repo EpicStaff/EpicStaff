@@ -151,10 +151,6 @@ export class EpicChatService {
         this.dockWidthSignal.set(next);
     }
 
-    public dockLeftPx(): number {
-        return 60;
-    }
-
     private toNumber(v: unknown): number | null {
         if (v == null || v === '') return null;
         const n = Number(v);
