@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('url', models.URLField(max_length=2048)),
-                ('secret', models.CharField(max_length=256)),
+                ('encrypted_secret', models.TextField(blank=True)),
                 ('payload', models.JSONField(default=dict)),
                 ('status', models.CharField(choices=[('registered', 'Registered'), ('pending', 'Pending'), ('delivered', 'Delivered'), ('failed', 'Failed')], db_index=True, default='registered', max_length=16)),
                 ('attempts', models.PositiveIntegerField(default=0)),

@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 import fakeredis
@@ -9,14 +10,17 @@ from django.utils import timezone
 from tables.models import GraphSessionMessage, Session, SessionCallback
 from tables.services import redis_pubsub
 from tables.services.redis_pubsub import RedisPubSub
-from tables.services.session_callbacks.service import SessionCallbackService
+from tables.services.session_callbacks.service import (
+    STALE_MARGIN,
+    SessionCallbackService,
+)
 from tests.fixtures import *
 
 USAGE = {"total_tokens": 42, "prompt_tokens": 40, "completion_tokens": 2}
 
 
 def _register(session):
-    return SessionCallback.objects.create(session=session, url="http://chat:8000/cb", secret="s" * 32)
+    return SessionCallback.objects.create(session=session, url="http://chat:8000/cb", encrypted_secret="s" * 32)
 
 
 def _graph_end(session, end_node_result):
@@ -145,3 +149,120 @@ def test_status_handler_survives_enqueue_failure(session):
     session.refresh_from_db()
     assert session.status == Session.SessionStatus.END
     assert SessionCallback.objects.get(session=session).status == SessionCallback.Status.REGISTERED
+
+
+def _age(session, *, status, time_to_live, idle_for, finished_ago=None):
+    """Put the session in `status`, last saved `idle_for` ago, finished `finished_ago` ago."""
+    now = timezone.now()
+    Session.objects.filter(pk=session.pk).update(
+        status=status,
+        time_to_live=time_to_live,
+        status_updated_at=now - idle_for,
+        finished_at=None if finished_ago is None else now - finished_ago,
+        token_usage=USAGE,
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", ["end", "error", "stop", "expired"])
+def test_reap_enqueues_stale_row_of_finished_session(session, status):
+    _register(session)
+    _age(session, status=status, time_to_live=60, idle_for=timedelta(hours=1))
+
+    reaped = SessionCallbackService().reap_stale(timezone.now())
+
+    callback = SessionCallback.objects.get(session=session)
+    assert reaped == 1
+    assert callback.status == SessionCallback.Status.PENDING
+    assert callback.payload["status"] == status
+    assert callback.payload["token_usage"] == USAGE
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", ["pending", "run", "wait_for_user"])
+def test_reap_fails_stale_row_of_stuck_session_and_clears_secret(session, status):
+    _register(session)
+    _age(session, status=status, time_to_live=60, idle_for=timedelta(hours=1))
+
+    SessionCallbackService().reap_stale(timezone.now())
+
+    callback = SessionCallback.objects.get(session=session)
+    assert callback.status == SessionCallback.Status.FAILED
+    assert callback.encrypted_secret == ""
+    assert status in callback.last_error
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "time_to_live, idle_for, expected",
+    [
+        (60, timedelta(seconds=60) + STALE_MARGIN - timedelta(seconds=30), "registered"),
+        (60, timedelta(seconds=60) + STALE_MARGIN + timedelta(seconds=30), "failed"),
+        (0, timedelta(days=365), "registered"),
+        (-1, timedelta(days=365), "registered"),
+    ],
+)
+def test_reap_waits_for_the_session_deadline(session, time_to_live, idle_for, expected):
+    _register(session)
+    _age(session, status="run", time_to_live=time_to_live, idle_for=idle_for)
+
+    SessionCallbackService().reap_stale(timezone.now())
+
+    assert SessionCallback.objects.get(session=session).status == expected
+
+
+@pytest.mark.django_db
+def test_reap_leaves_rows_past_registered_alone(session):
+    callback = _register(session)
+    SessionCallback.objects.filter(pk=callback.pk).update(status=SessionCallback.Status.DELIVERED)
+    _age(session, status="run", time_to_live=60, idle_for=timedelta(days=2))
+
+    reaped = SessionCallbackService().reap_stale(timezone.now())
+
+    assert reaped == 0
+    assert SessionCallback.objects.get(session=session).status == SessionCallback.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_reap_never_gives_up_a_live_session_without_time_to_live(session):
+    _register(session)
+    Session.objects.filter(pk=session.pk).update(time_to_live=0)
+    pubsub = _pubsub()
+    for status in ("run", "wait_for_user"):
+        pubsub.session_status_handler(
+            {"data": json.dumps({"session_id": session.pk, "status": status, "status_data": {}})}
+        )
+
+    reaped = SessionCallbackService().reap_stale(timezone.now() + timedelta(days=30))
+
+    assert reaped == 0
+    assert SessionCallback.objects.get(session=session).status == SessionCallback.Status.REGISTERED
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("time_to_live", [0, 7 * 24 * 3600])
+@pytest.mark.parametrize(
+    "finished_ago, expected",
+    [
+        (STALE_MARGIN - timedelta(seconds=30), "registered"),
+        (STALE_MARGIN + timedelta(seconds=30), "pending"),
+    ],
+)
+def test_reap_enqueues_a_missed_finish_after_the_margin_whatever_the_ttl(
+    session, time_to_live, finished_ago, expected
+):
+    _register(session)
+    _age(
+        session,
+        status="end",
+        time_to_live=time_to_live,
+        idle_for=finished_ago,
+        finished_ago=finished_ago,
+    )
+
+    SessionCallbackService().reap_stale(timezone.now())
+
+    callback = SessionCallback.objects.get(session=session)
+    assert callback.status == expected
+    if expected == "pending":
+        assert callback.payload["status"] == "end"

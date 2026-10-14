@@ -52,6 +52,7 @@ from tables.services.redis_service import RedisService
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
+    secret_encryption,
 )
 from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.surface_knowledge_warning_service import (
@@ -182,7 +183,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 # Same transaction as the Session: the status listener must find the row
                 # even if the run finishes before this request returns.
                 SessionCallback.objects.create(
-                    session=session, url=callback_url, secret=callback_secret
+                    session=session,
+                    url=callback_url,
+                    encrypted_secret=secret_encryption.encrypt(text=callback_secret).encryptedtext,
                 )
         return session
 

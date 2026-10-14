@@ -9,7 +9,9 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from tables.models import GraphSessionMessage, SessionCallback
+from tables.models import GraphSessionMessage, Session, SessionCallback
+from tables.services.secrets import secret_encryption
+from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.session_callbacks.sender import (
@@ -35,7 +37,7 @@ def _pending(session, status="end", end_node_result="done"):
     return SessionCallback.objects.create(
         session=session,
         url="http://chat:8000/cb",
-        secret=SECRET,
+        encrypted_secret=secret_encryption.encrypt(text=SECRET).encryptedtext,
         status=SessionCallback.Status.PENDING,
         next_attempt_at=now,
         payload={
@@ -73,7 +75,7 @@ def test_delivers_signed_payload_and_clears_secret(session):
     callback.refresh_from_db()
     assert attempted == 1
     assert callback.status == SessionCallback.Status.DELIVERED
-    assert callback.secret == ""
+    assert callback.encrypted_secret == ""
     request = recorder.requests[0]
     body = request.content.decode()
     assert request.url == "http://chat:8000/cb"
@@ -82,6 +84,65 @@ def test_delivers_signed_payload_and_clears_secret(session):
     timestamp = request.headers[TIMESTAMP_HEADER]
     assert request.headers[SIGNATURE_HEADER] == sign(SECRET, timestamp, body)
     assert json.loads(body)["end_node_result"] == "done"
+
+
+@pytest.mark.django_db
+def test_secret_given_at_run_is_stored_encrypted_and_signs_the_delivery(session_data):
+    session = SessionManagerService().create_session(
+        **session_data,
+        trigger=TriggerSpec.manual(),
+        callback_url="http://chat:8000/cb",
+        callback_secret=SECRET,
+    )
+    stored = SessionCallback.objects.get(session=session).encrypted_secret
+    SessionCallbackService().enqueue(session_id=session.pk, status="error", token_usage={})
+    recorder = Recorder(200)
+
+    SessionCallbackSender(transport=recorder.transport()).send_due(timezone.now())
+
+    assert SECRET not in stored
+    request = recorder.requests[0]
+    timestamp = request.headers[TIMESTAMP_HEADER]
+    assert request.headers[SIGNATURE_HEADER] == sign(SECRET, timestamp, request.content.decode())
+
+
+@pytest.mark.django_db
+def test_pass_delivers_a_stale_registered_row_of_a_finished_session(session):
+    SessionCallback.objects.create(
+        session=session,
+        url="http://chat:8000/cb",
+        encrypted_secret=secret_encryption.encrypt(text=SECRET).encryptedtext,
+    )
+    Session.objects.filter(pk=session.pk).update(
+        status=Session.SessionStatus.ERROR,
+        time_to_live=60,
+        status_updated_at=timezone.now() - timedelta(days=1),
+    )
+    recorder = Recorder(200)
+
+    # Enqueue stamps real time, so selection looks ahead instead of faking the clock.
+    SessionCallbackSender(transport=recorder.transport()).send_due(
+        timezone.now() + timedelta(seconds=1)
+    )
+
+    callback = SessionCallback.objects.get(session=session)
+    assert callback.status == SessionCallback.Status.DELIVERED
+    assert json.loads(recorder.requests[0].content)["status"] == "error"
+
+
+@pytest.mark.django_db
+def test_undecryptable_secret_fails_on_the_first_pass(session):
+    callback = _pending(session)
+    SessionCallback.objects.filter(pk=callback.pk).update(encrypted_secret="not-a-fernet-token")
+    recorder = Recorder(200)
+
+    SessionCallbackSender(transport=recorder.transport()).send_due(timezone.now())
+
+    callback.refresh_from_db()
+    assert recorder.requests == []
+    assert callback.status == SessionCallback.Status.FAILED
+    assert callback.encrypted_secret == ""
+    assert "decrypt" in callback.last_error
 
 
 @pytest.mark.django_db
@@ -96,7 +157,7 @@ def test_failure_schedules_first_retry(session):
     assert callback.attempts == 1
     assert now + RETRY_DELAYS[0] <= callback.next_attempt_at <= timezone.now() + RETRY_DELAYS[0]
     assert "500" in callback.last_error
-    assert callback.secret == SECRET
+    assert callback.encrypted_secret != ""
 
 
 @pytest.mark.django_db

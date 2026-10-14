@@ -40,7 +40,8 @@ def test_system_key_registers_callback(api_client, env_api_key, default_org, red
     assert response.status_code == status.HTTP_201_CREATED, response.content
     callback = SessionCallback.objects.get(session_id=response.data["session_id"])
     assert callback.url == payload["callback_url"]
-    assert callback.secret == SECRET
+    assert callback.encrypted_secret
+    assert SECRET not in callback.encrypted_secret
     assert callback.status == SessionCallback.Status.REGISTERED
 
 

@@ -17,7 +17,7 @@ def test_detail_without_callback_is_null(auth_client, session):
 @pytest.mark.django_db
 def test_detail_shows_callback_status(auth_client, session):
     SessionCallback.objects.create(
-        session=session, url="http://chat:8000/cb", secret="s" * 32, status=SessionCallback.Status.PENDING
+        session=session, url="http://chat:8000/cb", encrypted_secret="s" * 32, status=SessionCallback.Status.PENDING
     )
 
     response = auth_client.get(reverse("session-detail", args=[session.pk]))
@@ -31,7 +31,7 @@ def test_detail_shows_callback_status(auth_client, session):
 def test_list_does_not_query_callback_per_row(auth_client, graph, session_factory, django_assert_max_num_queries):
     sessions = [session_factory(graph=graph) for _ in range(3)]
     for item in sessions:
-        SessionCallback.objects.create(session=item, url="http://chat:8000/cb", secret="s" * 32)
+        SessionCallback.objects.create(session=item, url="http://chat:8000/cb", encrypted_secret="s" * 32)
 
     # Unfixed list is 10 queries for 3 rows (one callback query per row); fixed is 7.
     with django_assert_max_num_queries(8):
