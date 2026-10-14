@@ -56,6 +56,7 @@ class VenvCRUDOrchestrator:
         async with self.uow:
             venv = await self.uow.venv_repo.create(venv)
             await self.uow.commit()
+        logger.info("Declared venv {} ({}) with {} libraries", venv.id, venv.name, len(venv.libs))
         return venv
 
     async def update(self, id: int, name: str | None, libs: List[Library] | None) -> Venv:
@@ -73,6 +74,7 @@ class VenvCRUDOrchestrator:
             venv = await self.uow.venv_repo.update(venv)
             await self.uow.commit()
 
+        logger.info("Updated venv {}, status {}", venv.id, venv.status.value)
         return venv
 
     async def remove(self, id: int):
@@ -82,6 +84,7 @@ class VenvCRUDOrchestrator:
                 raise VenvNotFoundError(venv_id=id)
             await self.uow.venv_repo.remove(venv)
             await self.uow.commit()
+        logger.info("Removed venv {}", id)
 
 
 class VenvBuildOrchestrator:
@@ -97,13 +100,16 @@ class VenvBuildOrchestrator:
 
         venv.mark_as_processing()
         venv = await self._update(venv)
+        logger.info("Building venv {} with {} libraries", venv.id, len(venv.libs))
 
         try:
             await self._build(venv)
         except Exception as e:
             venv.mark_as_failed(e)
+            logger.exception("Venv {} failed to build", venv.id)
         else:
             venv.mark_as_completed()
+            logger.info("Venv {} built, hash {}", venv.id, venv.hash)
 
         await self._update(venv)
 
@@ -214,10 +220,12 @@ class JobOrchestrator:
         )
 
         if venv.status is VenvStatus.FAILED:
+            logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
             await self.failure_sink.fail(execution_id, _VENV_BUILD_FAILED_MESSAGE)
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
+            logger.info("Execution {} held until venv {} finishes building", execution_id, venv.id)
             self.holding.hold(venv.id, job)
 
         return job
