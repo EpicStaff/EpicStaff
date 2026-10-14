@@ -184,6 +184,10 @@ describe('ChatPageComponent and the URL', () => {
         isPhone.set(false);
         listing(BOT_ROWS);
         TestBed.configureTestingModule({
+            // Routed only, the page would compile outside TestBed, which then never resets what Angular cached about
+            // its standalone imports: a later spec in the same worker overriding one of them (the composer's JSON
+            // editor) would be ignored.
+            imports: [ChatPageComponent],
             providers: [
                 provideRouter(
                     [
