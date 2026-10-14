@@ -128,7 +128,6 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         if (Math.abs(verticalGap) < STUB) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
-
         return this.backwardSCurve(source, target, exitX, entryX, verticalGap);
     }
 
@@ -164,7 +163,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
 
         // R < absGap/4 guarantees the tangent line goes "\" direction.
         const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
-        if (maxRadiusForSlash < MIN_ARC_RADIUS) {
+        if (maxRadiusForSlash < MIN_ARC_RADIUS || horizontalGap > 740) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
 
@@ -189,10 +188,6 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             cEntryY = target.y + sign * radius;
             centerDy = cEntryY - cExitY;
             centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-
-            if (centerDistance < 2 * radius) {
-                return this.backwardLoop(source, target, exitX, entryX);
-            }
         }
 
         // Internal tangent — sign picks the correct tangent solution
@@ -211,11 +206,6 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             x: entryX - radius * cosContact,
             y: cEntryY - radius * sinContact,
         };
-
-        // Tangent line must go "\" (upper-left → lower-right on screen).
-        if (sign * (tangentExitPoint.y - tangentEntryPoint.y) <= 0) {
-            return this.backwardLoop(source, target, exitX, entryX);
-        }
 
         // Arc span — generalized for both directions
         const TAU = 2 * Math.PI;
