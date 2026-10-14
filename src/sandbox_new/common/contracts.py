@@ -9,7 +9,7 @@ any domain or application module -- those layers work with their own models.
 
 from typing import Any
 
-from foundation.base import Schema
+from foundation.schemas import Schema
 from pydantic import Field
 
 __all__ = ["ExecutionJobMessage", "ExecutionResultMessage", "StorageMutationsMessage"]

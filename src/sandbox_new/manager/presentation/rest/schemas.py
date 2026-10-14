@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Self
 
-from foundation.base import Schema
+from foundation.schemas import Schema
 from pydantic import Field
 
 from manager.domain.enums import JobStatus, VenvStatus
