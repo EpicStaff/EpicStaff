@@ -1,6 +1,6 @@
 import { EFConnectableSide, IFConnectionBuilderRequest } from '@foblex/flow';
 
-import { CurvedPathBuilder } from './curved.path-builder';
+import { CurvedPathBuilder, curveHitsObstacle } from './curved.path-builder';
 import { Rect } from './obstacles';
 
 function request(
@@ -186,77 +186,55 @@ describe('CurvedPathBuilder', () => {
         });
     });
 
-    describe('obstacle avoidance', () => {
-        function builderWithObstacles(obstacles: Rect[]): CurvedPathBuilder {
-            const instance = new CurvedPathBuilder();
-            instance.setObstacles(obstacles);
-            return instance;
-        }
-
-        const obstacleInPath: Rect = { left: 100, top: 20, right: 200, bottom: 80 };
-
-        it('uses smooth curve when no obstacles are set', () => {
-            const response = builder.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }, [{ x: 150, y: 50 }]));
+    describe('waypoint-driven fallback', () => {
+        it('uses smooth curve when no waypoints are present', () => {
+            const response = builder.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }));
 
             expect(response.path).toContain('C');
         });
 
-        it('uses smooth curve when obstacles exist but curve does not intersect them', () => {
-            const farObstacle: Rect = { left: 400, top: 400, right: 500, bottom: 500 };
-            const instance = builderWithObstacles([farObstacle]);
-            const response = instance.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }, [{ x: 150, y: 50 }]));
-
-            expect(response.path).toContain('C');
-        });
-
-        it('falls back to rounded orthogonal path when curve intersects an obstacle', () => {
-            const instance = builderWithObstacles([obstacleInPath]);
+        it('uses rounded orthogonal path when waypoints are present', () => {
             const waypoints = [
                 { x: 20, y: 50 },
                 { x: 20, y: 0 },
                 { x: 280, y: 0 },
                 { x: 280, y: 50 },
             ];
-            const response = instance.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }, waypoints));
+            const response = builder.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }, waypoints));
 
-            // Rounded orthogonal path uses Q (quadratic) for rounded corners, not C (cubic Bézier)
             expect(response.path).not.toContain('C');
             expect(response.path).toContain('Q');
             expect(response.points.length).toBe(waypoints.length + 2);
         });
+    });
 
-        it('excludes source and target node obstacles from intersection check', () => {
-            // Obstacle covers the source point — should be excluded
+    describe('curveHitsObstacle', () => {
+        const obstacleInPath: Rect = { left: 100, top: 20, right: 200, bottom: 80 };
+
+        it('returns false when no obstacles', () => {
+            expect(curveHitsObstacle({ x: 0, y: 50 }, { x: 300, y: 50 }, [])).toBe(false);
+        });
+
+        it('returns false when obstacle is far from curve', () => {
+            const farObstacle: Rect = { left: 400, top: 400, right: 500, bottom: 500 };
+
+            expect(curveHitsObstacle({ x: 0, y: 50 }, { x: 300, y: 50 }, [farObstacle])).toBe(false);
+        });
+
+        it('returns true when forward curve passes through obstacle', () => {
+            expect(curveHitsObstacle({ x: 0, y: 50 }, { x: 300, y: 50 }, [obstacleInPath])).toBe(true);
+        });
+
+        it('excludes source and target node obstacles', () => {
             const sourceObstacle: Rect = { left: -10, top: 30, right: 30, bottom: 70 };
-            const instance = builderWithObstacles([sourceObstacle]);
-            const response = instance.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }, [{ x: 150, y: 50 }]));
 
-            expect(response.path).toContain('C');
+            expect(curveHitsObstacle({ x: 0, y: 50 }, { x: 300, y: 50 }, [sourceObstacle])).toBe(false);
         });
 
-        it('uses smooth curve when waypoints are empty even with obstacles', () => {
-            const instance = builderWithObstacles([obstacleInPath]);
-            const response = instance.handle(request({ x: 0, y: 50 }, { x: 300, y: 50 }));
-
-            expect(response.path).toContain('C');
-        });
-
-        it('works with backward S-curve obstacle avoidance', () => {
+        it('detects backward S-curve hitting obstacle', () => {
             const middleObstacle: Rect = { left: 100, top: 50, right: 200, bottom: 150 };
-            const instance = builderWithObstacles([middleObstacle]);
-            const source = { x: 300, y: 200 };
-            const target = { x: 0, y: 0 };
-            const waypoints = [
-                { x: 320, y: 200 },
-                { x: 320, y: -20 },
-                { x: -20, y: -20 },
-                { x: -20, y: 0 },
-            ];
-            const response = instance.handle(request(source, target, waypoints));
 
-            // S-curve points pass through the obstacle area, so it should use waypoints
-            expect(response.path).toContain('Q');
-            expect(response.points.length).toBe(waypoints.length + 2);
+            expect(curveHitsObstacle({ x: 300, y: 200 }, { x: 0, y: 0 }, [middleObstacle])).toBe(true);
         });
     });
 });

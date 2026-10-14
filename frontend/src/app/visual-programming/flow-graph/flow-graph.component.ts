@@ -88,7 +88,7 @@ import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.m
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
-import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
+import { CurvedPathBuilder, curveHitsObstacle } from '../core/routing/curved.path-builder';
 import { routingObstacles } from '../core/routing/obstacles';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
@@ -345,7 +345,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     /** The flow page's store in the live editor, the preview's own (empty) one in a version preview. */
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
-    private readonly curvedPathBuilder = inject(CurvedPathBuilder);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     // Start from the current count so a canvas re-created after an earlier save request
@@ -1231,12 +1230,27 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         const connections = this.flowService.connections();
         const nodes = this.flowService.nodes();
-        this.curvedPathBuilder.setObstacles([...routingObstacles(nodes).values()]);
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        const obstacleRects = [...routingObstacles(nodes).values()];
+        const isAdaptiveCurve = this.flowSettings.edgeStyle() === 'adaptive-curve';
         const routes = routeAll(nodes, connections);
         for (const conn of connections) {
-            const points = routes.get(conn.id);
-            if (points && !waypointsEqual(conn.waypoints ?? [], points)) {
-                this.flowService.updateConnectionWaypoints(conn.id, points);
+            const routePoints = routes.get(conn.id);
+            let targetWaypoints = routePoints;
+
+            // For adaptive-curve: only keep A* waypoints when the smooth curve would hit an obstacle.
+            // When the curve is free, clear waypoints so the builder draws the smooth path.
+            if (isAdaptiveCurve && routePoints && !conn.userAdjustedWaypoints) {
+                const ends = resolveWireEnds(conn, nodesById);
+                if (ends) {
+                    const source = getPortPosition(ends.sourceNode, ends.sourcePort);
+                    const target = getPortPosition(ends.targetNode, ends.targetPort);
+                    targetWaypoints = curveHitsObstacle(source, target, obstacleRects) ? routePoints : [];
+                }
+            }
+
+            if (targetWaypoints && !waypointsEqual(conn.waypoints ?? [], targetWaypoints)) {
+                this.flowService.updateConnectionWaypoints(conn.id, targetWaypoints);
                 this.bumpConnectionRenderVersion(conn.id);
             }
         }

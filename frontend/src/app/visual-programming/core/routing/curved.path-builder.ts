@@ -19,6 +19,27 @@ const ARC_RADIUS_RATIO = 0.12;
 const LOOP_RADIUS_RATIO = 0.1;
 const LOOP_MAX_RADIUS = 40;
 const BEZIER_SAMPLES = 16;
+const ARC_SAMPLES = 8;
+
+/**
+ * Returns true when the smooth curve that `CurvedPathBuilder` would draw between
+ * `source` and `target` passes through at least one obstacle rect.
+ *
+ * Call this **before** setting waypoints on the connection: the caller decides
+ * whether to keep A* waypoints (curve hits obstacle) or clear them (curve is free).
+ */
+export function curveHitsObstacle(source: IPoint, target: IPoint, obstacles: Rect[]): boolean {
+    if (obstacles.length === 0) return false;
+    const relevantObstacles = excludeEndpointObstacles(obstacles, source, target);
+    if (relevantObstacles.length === 0) return false;
+    const exitX = source.x + STUB;
+    const entryX = target.x - STUB;
+    const samplePoints =
+        entryX <= exitX
+            ? backwardSamplePoints(source, target, exitX, entryX)
+            : forwardSamplePoints(source, target, exitX, entryX);
+    return pathHitsObstacle(samplePoints, relevantObstacles);
+}
 
 /**
  * Foblex connection builder `'adaptive-curve'`: draws smooth cubic Bézier
@@ -28,34 +49,20 @@ const BEZIER_SAMPLES = 16;
  * Backward with vertical gap: stub → arc → line → arc → stub (S-curve, both directions).
  * Backward without vertical gap: rounded-rectangle loop above both nodes.
  *
- * When obstacles are set (via `setObstacles`) and waypoints are available, the builder
- * checks whether the smooth curve passes through an obstacle. If it does, it falls back
- * to a rounded orthogonal path through the A*-routed waypoints.
+ * When waypoints are present the builder draws a rounded orthogonal path through them
+ * (the caller is responsible for setting waypoints only when the curve hits an obstacle —
+ * see `curveHitsObstacle`).
  *
  * Candidates are always empty — curved connections are not user-editable.
  */
 export class CurvedPathBuilder implements IFConnectionBuilder {
-    private obstacles: Rect[] = [];
-
-    setObstacles(obstacles: Rect[]): void {
-        this.obstacles = obstacles;
-    }
-
     handle({ source, target, waypoints }: IFConnectionBuilderRequest): IFConnectionBuilderResponse {
-        const exitX = source.x + STUB;
-        const entryX = target.x - STUB;
-
-        if (waypoints?.length && this.obstacles.length > 0) {
-            const relevantObstacles = excludeEndpointObstacles(this.obstacles, source, target);
-            const samplePoints =
-                entryX <= exitX
-                    ? this.backwardSamplePoints(source, target, exitX, entryX)
-                    : this.forwardSamplePoints(source, target, exitX, entryX);
-            if (pathHitsObstacle(samplePoints, relevantObstacles)) {
-                return this.fromWaypoints(source, target, waypoints);
-            }
+        if (waypoints?.length) {
+            return this.fromWaypoints(source, target, waypoints);
         }
 
+        const exitX = source.x + STUB;
+        const entryX = target.x - STUB;
         return entryX <= exitX
             ? this.backward(source, target, exitX, entryX)
             : this.forward(source, target, exitX, entryX);
@@ -74,29 +81,6 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         };
     }
 
-    /** Sample points along the forward Bézier for obstacle checking. */
-    private forwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
-        const gap = entryX - exitX;
-        const offset = clamp(gap * OFFSET_RATIO, MIN_OFFSET, MAX_OFFSET);
-        return [
-            source,
-            ...sampleCubicBezier(
-                { x: exitX, y: source.y },
-                { x: exitX + offset, y: source.y },
-                { x: entryX - offset, y: target.y },
-                { x: entryX, y: target.y },
-                BEZIER_SAMPLES
-            ),
-            target,
-        ];
-    }
-
-    /** Sample points along the backward path (S-curve or loop) for obstacle checking. */
-    private backwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
-        const response = this.backward(source, target, exitX, entryX);
-        return response.points;
-    }
-
     private forward(source: IPoint, target: IPoint, exitX: number, entryX: number): IFConnectionBuilderResponse {
         const gap = entryX - exitX;
         const offset = clamp(gap * OFFSET_RATIO, MIN_OFFSET, MAX_OFFSET);
@@ -108,7 +92,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             `M ${source.x} ${source.y}` +
             ` L ${exitPoint.x} ${exitPoint.y}` +
             ` C ${exitX + offset} ${source.y}, ${entryX - offset} ${target.y}, ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x} ${target.y}`;
+            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
 
         return {
             path,
@@ -234,7 +218,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             ` A ${radius} ${radius} 0 ${largeArc} ${exitSweep} ${tangentExitPoint.x} ${tangentExitPoint.y}` +
             ` L ${tangentEntryPoint.x} ${tangentEntryPoint.y}` +
             ` A ${radius} ${radius} 0 ${largeArc} ${entrySweep} ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x} ${target.y}`;
+            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
 
         return {
             path,
@@ -290,7 +274,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             ` A ${radius} ${radius} 0 0 0 ${afterArc3.x} ${afterArc3.y}` +
             ` L ${beforeArc4.x} ${beforeArc4.y}` +
             ` A ${radius} ${radius} 0 0 0 ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x} ${target.y}`;
+            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
 
         return {
             path,
@@ -301,6 +285,130 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         };
     }
 }
+
+// ── Curve sampling for obstacle detection ──────────────────────────────────────
+
+function forwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+    const gap = entryX - exitX;
+    const offset = clamp(gap * OFFSET_RATIO, MIN_OFFSET, MAX_OFFSET);
+    return [
+        source,
+        ...sampleCubicBezier(
+            { x: exitX, y: source.y },
+            { x: exitX + offset, y: source.y },
+            { x: entryX - offset, y: target.y },
+            { x: entryX, y: target.y },
+            BEZIER_SAMPLES
+        ),
+        target,
+    ];
+}
+
+function backwardSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+    const verticalGap = source.y - target.y;
+    if (Math.abs(verticalGap) < STUB) {
+        return backwardLoopSamplePoints(source, target, exitX, entryX);
+    }
+    return backwardSCurveSamplePoints(source, target, exitX, entryX, verticalGap);
+}
+
+function backwardSCurveSamplePoints(
+    source: IPoint,
+    target: IPoint,
+    exitX: number,
+    entryX: number,
+    verticalGap: number
+): IPoint[] {
+    const absGap = Math.abs(verticalGap);
+    const sign = verticalGap >= 0 ? 1 : -1;
+    const horizontalGap = exitX - entryX;
+    const straightDistance = Math.sqrt(horizontalGap * horizontalGap + absGap * absGap);
+    const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
+
+    if (maxRadiusForSlash < MIN_ARC_RADIUS) {
+        return backwardLoopSamplePoints(source, target, exitX, entryX);
+    }
+
+    let radius = clamp(
+        straightDistance * ARC_RADIUS_RATIO,
+        MIN_ARC_RADIUS,
+        Math.min(MAX_ARC_RADIUS, maxRadiusForSlash)
+    );
+    let cExitY = source.y - sign * radius;
+    let cEntryY = target.y + sign * radius;
+    const centerDx = entryX - exitX;
+    let centerDy = cEntryY - cExitY;
+    let centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+
+    if (centerDistance < 2 * radius) {
+        radius = Math.max(Math.floor(centerDistance / 2) - 1, MIN_ARC_RADIUS);
+        cExitY = source.y - sign * radius;
+        cEntryY = target.y + sign * radius;
+        centerDy = cEntryY - cExitY;
+        centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+        if (centerDistance < 2 * radius) {
+            return backwardLoopSamplePoints(source, target, exitX, entryX);
+        }
+    }
+
+    const theta = Math.atan2(centerDy, centerDx);
+    const alpha = Math.acos(clamp((2 * radius) / centerDistance, -1, 1));
+    const contactAngle = theta + sign * alpha;
+
+    const exitCenter: IPoint = { x: exitX, y: cExitY };
+    const entryCenter: IPoint = { x: entryX, y: cEntryY };
+    const tangentExitPoint: IPoint = {
+        x: exitX + radius * Math.cos(contactAngle),
+        y: cExitY + radius * Math.sin(contactAngle),
+    };
+    const tangentEntryPoint: IPoint = {
+        x: entryX - radius * Math.cos(contactAngle),
+        y: cEntryY - radius * Math.sin(contactAngle),
+    };
+
+    if (sign * (tangentExitPoint.y - tangentEntryPoint.y) <= 0) {
+        return backwardLoopSamplePoints(source, target, exitX, entryX);
+    }
+
+    const exitSweep = sign > 0 ? 0 : 1;
+    const exitArcStart = sign * (Math.PI / 2);
+    const exitArcEnd = contactAngle;
+    const entryArcStart = Math.PI + contactAngle;
+    const entryArcEnd = -sign * (Math.PI / 2);
+
+    return [
+        source,
+        ...sampleArc(exitCenter, radius, exitArcStart, exitArcEnd, exitSweep, ARC_SAMPLES),
+        tangentExitPoint,
+        tangentEntryPoint,
+        ...sampleArc(entryCenter, radius, entryArcStart, entryArcEnd, 1 - exitSweep, ARC_SAMPLES),
+        target,
+    ];
+}
+
+function backwardLoopSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
+    const horizontalGap = exitX - entryX;
+    const verticalDiff = Math.abs(source.y - target.y);
+    const loopSpan = Math.sqrt(horizontalGap * horizontalGap + verticalDiff * verticalDiff);
+    const radius = clamp(loopSpan * LOOP_RADIUS_RATIO, MIN_ARC_RADIUS, LOOP_MAX_RADIUS);
+    const topY = Math.min(source.y, target.y) - 2 * radius;
+
+    const c1: IPoint = { x: exitX + radius, y: source.y - radius };
+    const c2: IPoint = { x: exitX, y: topY + radius };
+    const c3: IPoint = { x: entryX, y: topY + radius };
+    const c4: IPoint = { x: entryX - radius, y: target.y - radius };
+
+    return [
+        source,
+        ...sampleArc(c1, radius, Math.PI / 2, 0, 0, ARC_SAMPLES),
+        ...sampleArc(c2, radius, 0, -Math.PI / 2, 0, ARC_SAMPLES),
+        ...sampleArc(c3, radius, -Math.PI / 2, -Math.PI, 0, ARC_SAMPLES),
+        ...sampleArc(c4, radius, -Math.PI, -Math.PI * 1.5, 0, ARC_SAMPLES),
+        target,
+    ];
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
@@ -317,6 +425,33 @@ function sampleCubicBezier(p0: IPoint, p1: IPoint, p2: IPoint, p3: IPoint, count
         points.push({
             x: u2 * u * p0.x + 3 * u2 * t * p1.x + 3 * u * t2 * p2.x + t2 * t * p3.x,
             y: u2 * u * p0.y + 3 * u2 * t * p1.y + 3 * u * t2 * p2.y + t2 * t * p3.y,
+        });
+    }
+    return points;
+}
+
+/** Evenly spaced points along a circular arc (excluding endpoints). */
+function sampleArc(
+    center: IPoint,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+    sweep: number,
+    count: number
+): IPoint[] {
+    const TAU = 2 * Math.PI;
+    let span = endAngle - startAngle;
+    // Normalize span to match sweep direction: sweep=0 (CCW) → negative, sweep=1 (CW) → positive
+    if (sweep === 0 && span > 0) span -= TAU;
+    if (sweep === 1 && span < 0) span += TAU;
+
+    const points: IPoint[] = [];
+    for (let index = 1; index < count; index++) {
+        const t = index / count;
+        const angle = startAngle + span * t;
+        points.push({
+            x: center.x + radius * Math.cos(angle),
+            y: center.y + radius * Math.sin(angle),
         });
     }
     return points;
