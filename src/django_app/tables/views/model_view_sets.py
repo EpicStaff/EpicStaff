@@ -179,6 +179,8 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.cdt_explain_serializers import (
     CdtExplainRequestSerializer,
     CdtExplainResponseSerializer,
+    CdtExplanationsSaveRequestSerializer,
+    CdtExplanationsSaveResponseSerializer,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.serializers.model_serializers import (
@@ -2115,6 +2117,7 @@ class ClassificationDecisionTableNodeModelViewSet(
         **DEFAULT_ACTION_MAP,
         "export": Permission.EXPORT,
         "explain": Permission.READ,
+        "explanations": Permission.UPDATE,
     }
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.select_related(
@@ -2199,6 +2202,33 @@ class ClassificationDecisionTableNodeModelViewSet(
         )
         return Response(
             {"explanations": result.explanations, "failures": result.failures},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=CdtExplanationsSaveRequestSerializer,
+        responses={200: CdtExplanationsSaveResponseSerializer},
+        description=(
+            "Replace this node's stored step explanations (`metadata.explanations`) and "
+            "nothing else on it. `{}` clears them. Versioned like the flow bulk save: a "
+            "stale `save_version` is a 409 with the bulk-save conflict body, and a "
+            "success returns the flow's new `save_version`."
+        ),
+    )
+    @action(detail=True, methods=["put"], url_path="explanations")
+    def explanations(self, request, pk=None):
+        serializer = CdtExplanationsSaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = self._node_service.save_explanations(
+            self.get_object(),
+            explanations=data["explanations"],
+            expected_save_version=data["save_version"],
+            user=request.user,
+        )
+        return Response(
+            {"explanations": result.explanations, "save_version": result.save_version},
             status=status.HTTP_200_OK,
         )
 
