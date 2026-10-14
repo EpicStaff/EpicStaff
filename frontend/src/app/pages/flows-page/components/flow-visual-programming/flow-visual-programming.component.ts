@@ -57,7 +57,6 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
-import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
@@ -183,7 +182,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly flowTestRunService = inject(FlowTestRunService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
-    public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
     public initialNodeExpand = true;
     public isLoaded = signal(false);
@@ -291,7 +289,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly dialog: CdkDialog,
         private readonly configService: ConfigService,
         private readonly elementRef: ElementRef,
-        private readonly epicChatService: EpicChatService,
         private readonly unsavedChangesDialog: UnsavedChangesDialogService,
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
@@ -302,7 +299,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
         private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
-        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
         this.routeQueryParamMap = toSignal(this.route.queryParamMap, {
             initialValue: this.route.snapshot.queryParamMap,
@@ -439,9 +435,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnInit(): void {
-        this.unsavedChangesRegistry.register(this, {
-            onRefresh: this.refreshCurrentFlow.bind(this),
-        });
+        this.unsavedChangesRegistry.register(this);
     }
 
     protected closeSnakeGame(): void {
@@ -1351,42 +1345,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onToggleAssistant(): void {
         if (!this.graph?.id) return;
         this.flowAssistantService.toggle(this.graph.id);
-    }
-
-    public connectToEpicChat(): void {
-        if (!this.graph?.id) {
-            this.toastService.error('Unable to connect chat: Missing flow ID');
-            return;
-        }
-
-        const flowUrl = this.normalizeApiUrl(this.configService.apiUrl);
-        if (!flowUrl) {
-            this.toastService.error('Unable to connect chat: Missing API URL');
-            return;
-        }
-
-        this.flowApiService
-            .patchGraph(this.graph.id, { epicchat_enabled: true, save_version: this.graphState()!.save_version })
-            .subscribe({
-                next: () => {
-                    this.graph.epicchat_enabled = true;
-                    this.epicChatService.requestCreateAgent({
-                        name: this.graph.name?.trim() || `Flow ${this.graph.id}`,
-                        description: this.graph.description?.trim(),
-                        flowId: this.graph.id,
-                        flowUrl,
-                        selectAfterCreate: true,
-                    });
-                    this.toastService.success('Flow connected to Epic Chat');
-                },
-                error: () => {
-                    this.toastService.error('Failed to save EpicChat connection');
-                },
-            });
-    }
-
-    private normalizeApiUrl(apiUrl: string): string {
-        return (apiUrl || '').trim().replace(/\/+$/, '');
     }
 
     public closeMessagesPanel(): void {

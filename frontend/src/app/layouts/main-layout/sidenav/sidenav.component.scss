@@ -167,10 +167,6 @@
                 &.active .sidenav-link-icon {
                     color: var(--accent-color);
                 }
-
-                &.epic-chat-slot {
-                    overflow: visible;
-                }
             }
         }
     }
@@ -200,8 +196,4 @@
     &.opened {
         background-color: var(--graphite-750);
     }
-}
-
-.epic-chat-host {
-    display: contents;
 }

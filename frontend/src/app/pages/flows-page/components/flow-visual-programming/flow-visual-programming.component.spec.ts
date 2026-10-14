@@ -11,7 +11,6 @@ import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
-import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { VersionHistoryPanelComponent } from '../../../../features/flows/components/version-history-panel/version-history-panel.component';
 import { GetGraphLightRequest, GraphDto, GraphVersionDto } from '../../../../features/flows/models/graph.model';
@@ -223,8 +222,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 { provide: FlowsStorageService, useValue: {} },
                 { provide: ToastService, useValue: toast },
                 { provide: RunGraphService, useValue: runGraph },
-                { provide: ConfigService, useValue: { isEpicChatEnabled: false, apiUrl: '/api/' } },
-                { provide: EpicChatService, useValue: {} },
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
                 { provide: UnsavedChangesDialogService, useValue: unsavedChangesDialog },
                 { provide: CreateGraphWarningsService, useValue: { readPending: () => [] } },
                 {
