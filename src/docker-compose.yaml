@@ -492,6 +492,7 @@ services:
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
+      - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
     networks:
