@@ -6,6 +6,8 @@ AgentData; the knowledge service cannot resolve a Secret id itself.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from services.knowledge_search_service import KnowledgeSearchService
 
 
@@ -36,21 +38,17 @@ def _search_call_kwargs(service, **overrides):
     return mock_client.search.call_args.kwargs
 
 
-def test_the_instance_credential_reaches_the_message():
-    service = KnowledgeSearchService(
-        redis_service=MagicMock(), rag_embedder_api_key="sk-from-agent"
-    )
-    assert _search_call_kwargs(service)["embedding_api_key"] == "sk-from-agent"
+@pytest.mark.parametrize(
+    ("instance_key", "explicit_key", "sent_key"),
+    [
+        ("sk-from-agent", None, "sk-from-agent"),
+        ("sk-instance", "sk-explicit", "sk-explicit"),
+        (None, None, None),
+    ],
+    ids=["instance-credential", "explicit-wins", "no-credential"],
+)
+def test_the_resolved_embedder_credential_is_sent_with_the_search(instance_key, explicit_key, sent_key):
+    service = KnowledgeSearchService(redis_service=MagicMock(), rag_embedder_api_key=instance_key)
+    overrides = {"rag_embedder_api_key": explicit_key} if explicit_key else {}
 
-
-def test_an_explicit_credential_wins_over_the_instance_one():
-    service = KnowledgeSearchService(
-        redis_service=MagicMock(), rag_embedder_api_key="sk-instance"
-    )
-    kwargs = _search_call_kwargs(service, rag_embedder_api_key="sk-explicit")
-    assert kwargs["embedding_api_key"] == "sk-explicit"
-
-
-def test_no_credential_sends_none():
-    service = KnowledgeSearchService(redis_service=MagicMock())
-    assert _search_call_kwargs(service)["embedding_api_key"] is None
+    assert _search_call_kwargs(service, **overrides)["embedding_api_key"] == sent_key

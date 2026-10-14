@@ -13,86 +13,39 @@ still guarding the algorithm against regressions.
 
 from utils.twilio_signature import validate_twilio_signature
 
+import pytest
+
 AUTH_TOKEN = "12345"
+URL = "https://mycompany.com/myapp.php?foo=1&bar=2"
+SIGNATURE = "pA9T74XaVTq8oX3FDhv0CTa4HE4="
 
 
-def test_simple_params():
-    url = "https://mycompany.com/myapp.php?foo=1&bar=2"
-    params = {"Digits": "1234"}
-    signature = "pA9T74XaVTq8oX3FDhv0CTa4HE4="
+@pytest.mark.parametrize(
+    ("url", "params", "signature"),
+    [
+        (URL, {"Digits": "1234"}, SIGNATURE),
+        ("https://mycompany.com/myapp.php", {}, "ZEVhNTf/+0VuA9ofUWb9iscKI5Y="),
+        ("https://mycompany.com/voice", {"CallerName": "José Ééé", "Digits": "ééé"}, "3uQRNEbmDLrQ+deYLdcjPAGi13w="),
+        (
+            "https://mycompany.com/voice?foo=bar&baz=qux",
+            {"CallSid": "CA1234", "From": "+15551234567", "To": "+15557654321"},
+            "4Nv5KQ+XmyGMTLHjs4OHW+zVRBY=",
+        ),
+        ("https://mycompany.com/voice", {"z_param": "last", "a_param": "first", "m_param": "middle"}, "ZcvS09xBY0g6YwbVV/QrGwIPqxI="),
+        # Realtime's x-forwarded-host often lacks the port; Twilio accepts both forms.
+        ("https://realtime.example.com/voice", {"CallSid": "CA5678"}, "q2xHGjOAQiwuZsNawxw0CVH3RVk="),
+        ("https://realtime.example.com:8443/voice", {"CallSid": "CA9999"}, "63cgHAERSAg5q0Dtsr3C5kePAVA="),
+    ],
+    ids=["simple", "no-params", "unicode", "query-string", "unsorted-params", "no-port", "explicit-port"],
+)
+def test_twilios_signature_is_accepted(url, params, signature):
     assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
 
 
-def test_empty_params_dict():
-    url = "https://mycompany.com/myapp.php"
-    params = {}
-    signature = "ZEVhNTf/+0VuA9ofUWb9iscKI5Y="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_unicode_param_values():
-    url = "https://mycompany.com/voice"
-    params = {"CallerName": "José Ééé", "Digits": "ééé"}
-    signature = "3uQRNEbmDLrQ+deYLdcjPAGi13w="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_url_with_query_string():
-    url = "https://mycompany.com/voice?foo=bar&baz=qux"
-    params = {"CallSid": "CA1234", "From": "+15551234567", "To": "+15557654321"}
-    signature = "4Nv5KQ+XmyGMTLHjs4OHW+zVRBY="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_params_needing_sort_reordering():
-    url = "https://mycompany.com/voice"
-    params = {"z_param": "last", "a_param": "first", "m_param": "middle"}
-    signature = "ZcvS09xBY0g6YwbVV/QrGwIPqxI="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_no_port_in_host_matches_proxy_stripped_host():
-    """Realtime's x-forwarded-host often lacks an explicit port; Twilio's
-    validator accepts a signature computed either with or without the
-    scheme's default port appended -- this locks in the "without port" match.
-    """
-    url = "https://realtime.example.com/voice"
-    params = {"CallSid": "CA5678"}
-    signature = "q2xHGjOAQiwuZsNawxw0CVH3RVk="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_explicit_port_in_host():
-    url = "https://realtime.example.com:8443/voice"
-    params = {"CallSid": "CA9999"}
-    signature = "63cgHAERSAg5q0Dtsr3C5kePAVA="
-    assert validate_twilio_signature(url, params, signature, AUTH_TOKEN) is True
-
-
-def test_tampered_signature_is_rejected():
-    url = "https://mycompany.com/myapp.php?foo=1&bar=2"
-    params = {"Digits": "1234"}
-    valid_signature = "pA9T74XaVTq8oX3FDhv0CTa4HE4="
-    tampered_signature = valid_signature[:-1] + (
-        "A" if valid_signature[-1] != "A" else "B"
-    )
-    assert (
-        validate_twilio_signature(url, params, tampered_signature, AUTH_TOKEN)
-        is False
-    )
-
-
-def test_empty_signature_header_is_rejected():
-    url = "https://mycompany.com/myapp.php?foo=1&bar=2"
-    params = {"Digits": "1234"}
-    assert validate_twilio_signature(url, params, "", AUTH_TOKEN) is False
-
-
-def test_wrong_auth_token_is_rejected():
-    url = "https://mycompany.com/myapp.php?foo=1&bar=2"
-    params = {"Digits": "1234"}
-    valid_signature = "pA9T74XaVTq8oX3FDhv0CTa4HE4="
-    assert (
-        validate_twilio_signature(url, params, valid_signature, "wrong-token")
-        is False
-    )
+@pytest.mark.parametrize(
+    ("signature", "auth_token"),
+    [(SIGNATURE[:-1] + "A", AUTH_TOKEN), ("", AUTH_TOKEN), (SIGNATURE, "wrong-token")],
+    ids=["tampered", "empty", "wrong-auth-token"],
+)
+def test_a_forged_signature_is_rejected(signature, auth_token):
+    assert validate_twilio_signature(URL, {"Digits": "1234"}, signature, auth_token) is False

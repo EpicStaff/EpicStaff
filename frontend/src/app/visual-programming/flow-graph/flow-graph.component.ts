@@ -58,7 +58,9 @@ import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-f
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
+import { isRoutePortBlockedByContinue } from '../components/node-panels/classification-decision-table-node-panel/cdt-route-continue.util';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
@@ -114,6 +116,9 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     if (a.length !== b.length) return false;
     return a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
 }
+
+/** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
+const CONNECTION_REFUSED_TOAST_MS = 5000;
 
 @Component({
     selector: 'app-flow-graph',
@@ -645,7 +650,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const targetPortId = isSourceMoved ? conn.targetPortId : nextPortId;
             const error = this.getReassignError(sourcePortId, targetPortId, [...occupied, ...updated]);
             if (error) {
-                this.toastService.warning(error, 5000, 'bottom-right');
+                this.toastService.warning(error, CONNECTION_REFUSED_TOAST_MS, 'bottom-right');
                 return;
             }
             updated.push(
@@ -681,7 +686,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (this.hasOccupiedPort(sourcePortId, targetPortId, connections)) {
             return 'This port already has a connection';
         }
+        if (this.isRoutePortBlockedByContinue(sourcePortId)) {
+            return CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue;
+        }
         return null;
+    }
+
+    /** A Classification Decision Table route-code port whose row has Continue on; see `isRoutePortBlockedByContinue`. */
+    private isRoutePortBlockedByContinue(sourcePortId: CustomPortId): boolean {
+        const sourceNodeId = sourcePortId.split('_')[0];
+        const sourceNode = this.flowService.nodes().find((node) => node.id === sourceNodeId);
+        if (sourceNode?.type !== NodeType.CLASSIFICATION_TABLE) {
+            return false;
+        }
+        return isRoutePortBlockedByContinue(sourceNode.data.table?.condition_groups ?? [], sourceNode.id, sourcePortId);
     }
 
     private hasOccupiedPort(sourcePortId: string, targetPortId: string, connections: ConnectionModel[]): boolean {
@@ -729,6 +747,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         if (this.hasOccupiedPort(pair.sourcePortId, pair.targetPortId, currentConnections)) {
             this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
+            return;
+        }
+
+        if (this.isRoutePortBlockedByContinue(pair.sourcePortId)) {
+            this.toastService.warning(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                CONNECTION_REFUSED_TOAST_MS,
+                'bottom-right'
+            );
             return;
         }
 

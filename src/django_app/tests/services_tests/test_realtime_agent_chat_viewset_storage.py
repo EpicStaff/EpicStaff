@@ -1,258 +1,96 @@
-"""Tests for RealtimeAgentChatViewSet.end() storage credential revocation.
+"""Ending a realtime chat revokes its temporary storage credentials.
 
-Commit 5, Part 9: Realtime chat endpoint revokes temporary storage credentials.
-Tests verify:
-1. RealtimeAgentChatViewSet.end() revokes credentials and deletes DB row on success
-2. RealtimeAgentChatViewSet.end() is no-op when no TemporaryStorageAccount exists
+The realtime service calls POST /realtime-agent-chats/end/ with the system API key
+when a call ends. Who may call it (and the 400) is covered in
+api_tests/realtime_agent_chat_end_test.py; this file covers what ending does to
+the chat's storage account. Only the storage backend's admin API is faked.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
-from django.utils import timezone
+from django.urls import reverse
+from rest_framework import status
 
 from agents.models import AgentDefinition
 from rbac.models import Organization
-from tables.models import (
-    RealtimeAgentChat,
-    RealtimeAgentDefinition,
-    OpenAIRealtimeConfig,
-    Secret,
-)
-from tables.views.model_view_sets import RealtimeAgentChatViewSet
 from storage_credentials.models import TemporaryStorageAccount
-from rest_framework.test import APIRequestFactory, force_authenticate
-from rest_framework.parsers import JSONParser
-from rest_framework.request import Request
-from rest_framework import status
+from tables.models import OpenAIRealtimeConfig, RealtimeAgentChat, RealtimeAgentDefinition, Secret
+
+from .test_run_code_storage_credentials import GATEWAY_PATH, ORG_CREDENTIALS_PATH, FakeStorageGateway
 
 
 @pytest.fixture
-def org(db):
-    return Organization.objects.create(name="Org RealtimeViewSet")
+def gateway():
+    fake = FakeStorageGateway()
+    with (
+        patch(GATEWAY_PATH, fake),
+        patch(ORG_CREDENTIALS_PATH, return_value=SimpleNamespace(access_key="org-access", secret_key="org-secret")),
+    ):
+        yield fake
 
 
 @pytest.fixture
-def agent_definition(org):
-    return AgentDefinition.objects.create(
-        name="Test Agent",
-        org_id=org.id,
-        description="Test agent",
+def chat(db):
+    org = Organization.objects.create(name="Org RealtimeViewSet")
+    agent_definition = AgentDefinition.objects.create(
+        name="Test Agent", org_id=org.id,
         instruction_list=[{"name": "Instruction_1.md", "content": "You are a helpful assistant"}],
     )
-
-
-@pytest.fixture
-def rt_agent_definition(agent_definition):
-    return RealtimeAgentDefinition.objects.create(
-        agent_definition=agent_definition,
-    )
-
-
-@pytest.fixture
-def realtime_agent_chat(rt_agent_definition, org, db):
-    """Create a minimal RealtimeAgentChat with connection_key"""
-    from tables.models import OpenAIRealtimeConfig
-    from tables.models import Secret
-
-    secret = Secret.objects.create(
-        name="openai_api_key", value="encrypted_key", org=org
-    )
     openai_config = OpenAIRealtimeConfig.objects.create(
-        custom_name="openai_test",
-        model_name="gpt-4-realtime-preview",
-        api_key_secret=secret,
-        org=org,
+        custom_name="openai_test", model_name="gpt-4-realtime-preview",
+        api_key_secret=Secret.objects.create(name="openai_api_key", value="encrypted_key", org=org), org=org,
     )
-
-    chat = RealtimeAgentChat.objects.create(
-        rt_agent_definition=rt_agent_definition,
+    return RealtimeAgentChat.objects.create(
+        rt_agent_definition=RealtimeAgentDefinition.objects.create(agent_definition=agent_definition),
         openai_config=openai_config,
         connection_key="conn-key-test-123",
     )
-    return chat
 
 
 @pytest.fixture
-def viewset():
-    return RealtimeAgentChatViewSet()
+def realtime_service(api_client, env_api_key):
+    """The realtime service's view of Django: authenticated with the system API key."""
+    raw_key, _ = env_api_key
+    api_client.credentials(HTTP_X_API_KEY=raw_key)
+    return api_client
+
+
+def _end(client, connection_key, **fields):
+    return client.post(
+        reverse("realtimeagentchat-end"), data={"connection_key": connection_key, **fields}, format="json"
+    )
 
 
 @pytest.mark.django_db
-class TestRealtimeAgentChatViewSetEnd:
-    """Tests for RealtimeAgentChatViewSet.end() method"""
+@pytest.mark.parametrize(
+    ("access_key", "delete_error", "revoked", "row_left"),
+    [
+        ("rt-temp-access-key", None, ["rt-temp-access-key"], False),
+        # A failed revocation never blocks ending the chat; the manager's sweep retries it.
+        ("rt-temp-access-key", RuntimeError("gateway error"), [], True),
+        (None, None, [], False),
+    ],
+    ids=["revoked", "revoke-fails-row-kept", "no-storage-account"],
+)
+def test_ending_a_chat_records_it_and_revokes_its_storage_account(
+    realtime_service, gateway, chat, access_key, delete_error, revoked, row_left
+):
+    gateway.delete_error = delete_error
+    if access_key:
+        TemporaryStorageAccount.objects.create(realtime_agent_chat=chat, access_key=access_key)
 
-    @patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
-    def test_realtime_agent_chat_viewset_end_revokes_credentials(
-        self, mock_gateway_class, viewset, realtime_agent_chat, org
-    ):
-        """RealtimeAgentChatViewSet.end() revokes temp account and deletes DB row on success"""
-        # Create temporary storage account for this chat
-        temp_account = TemporaryStorageAccount.objects.create(
-            realtime_agent_chat=realtime_agent_chat,
-            access_key="rt-temp-access-key",
-        )
+    response = _end(realtime_service, chat.connection_key, duration_seconds=123, end_reason="user_disconnected")
 
-        # Mock the async gateway
-        mock_gateway_instance = AsyncMock()
-        mock_gateway_class.return_value = mock_gateway_instance
-        mock_gateway_instance.delete_service_account = AsyncMock()
-        mock_gateway_instance.close = AsyncMock()
+    assert response.status_code == status.HTTP_200_OK
+    chat.refresh_from_db()
+    assert chat.ended_at is not None
+    assert (chat.duration_seconds, chat.end_reason) == (123, "user_disconnected")
+    assert gateway.deleted == revoked
+    assert TemporaryStorageAccount.objects.filter(realtime_agent_chat=chat).exists() is row_left
 
-        # Mock org credentials
-        mock_org_creds = MagicMock()
-        mock_org_creds.access_key = "org-access"
-        mock_org_creds.secret_key = "org-secret"
 
-        # Create request
-        factory = APIRequestFactory()
-        django_request = factory.post(
-            "/api/realtime-agent-chats/end/",
-            data={
-                "connection_key": "conn-key-test-123",
-                "duration_seconds": 123,
-                "end_reason": "completed",
-            },
-            format="json",
-        )
-        request = Request(django_request, parsers=[JSONParser()])
-
-        with patch(
-            "storage_credentials.services.session_credential_service.org_credential_store.get",
-            return_value=mock_org_creds,
-        ):
-            response = viewset.end(request)
-
-        # Verify the response is successful
-        assert response.status_code == 200
-
-        # Verify delete_service_account was called with the correct access_key
-        mock_gateway_instance.delete_service_account.assert_called_once_with(
-            "rt-temp-access-key"
-        )
-
-        # Verify the TemporaryStorageAccount row was deleted
-        assert not TemporaryStorageAccount.objects.filter(pk=temp_account.pk).exists()
-
-        # Verify the chat was marked as ended
-        realtime_agent_chat.refresh_from_db()
-        assert realtime_agent_chat.ended_at is not None
-        assert realtime_agent_chat.duration_seconds == 123
-        assert realtime_agent_chat.end_reason == "completed"
-
-    def test_realtime_agent_chat_viewset_end_no_revoke_without_temp_account(
-        self, viewset, realtime_agent_chat
-    ):
-        """RealtimeAgentChatViewSet.end() succeeds when no TemporaryStorageAccount exists"""
-        # No temporary storage account created for this chat
-
-        factory = APIRequestFactory()
-        django_request = factory.post(
-            "/api/realtime-agent-chats/end/",
-            data={
-                "connection_key": "conn-key-test-123",
-                "duration_seconds": 60,
-                "end_reason": "completed",
-            },
-            format="json",
-        )
-        request = Request(django_request, parsers=[JSONParser()])
-
-        # Must not raise or fail, even though no temp account exists
-        response = viewset.end(request)
-
-        # Verify the response is still successful
-        assert response.status_code == 200
-
-        # Verify the chat was marked as ended
-        realtime_agent_chat.refresh_from_db()
-        assert realtime_agent_chat.ended_at is not None
-        assert realtime_agent_chat.duration_seconds == 60
-
-    def test_realtime_agent_chat_viewset_end_missing_connection_key(self, viewset):
-        """RealtimeAgentChatViewSet.end() requires connection_key in request"""
-        factory = APIRequestFactory()
-        django_request = factory.post(
-            "/api/realtime-agent-chats/end/",
-            data={
-                "duration_seconds": 60,
-                # connection_key intentionally omitted
-            },
-            format="json",
-        )
-        request = Request(django_request, parsers=[JSONParser()])
-
-        response = viewset.end(request)
-
-        # Should return 400 Bad Request
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_realtime_agent_chat_viewset_end_nonexistent_connection_key(self, viewset):
-        """RealtimeAgentChatViewSet.end() returns 404 for nonexistent connection_key"""
-        factory = APIRequestFactory()
-        django_request = factory.post(
-            "/api/realtime-agent-chats/end/",
-            data={
-                "connection_key": "nonexistent-connection-key",
-                "duration_seconds": 60,
-            },
-            format="json",
-        )
-        request = Request(django_request, parsers=[JSONParser()])
-
-        response = viewset.end(request)
-
-        # Should return 404 Not Found
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-
-    @patch("storage_credentials.services.session_credential_service.StorageAdminGateway")
-    def test_realtime_agent_chat_viewset_end_revocation_failure_logged(
-        self, mock_gateway_class, viewset, realtime_agent_chat
-    ):
-        """When revocation fails, end() still marks the chat as ended (logged but not fatal)"""
-        temp_account = TemporaryStorageAccount.objects.create(
-            realtime_agent_chat=realtime_agent_chat,
-            access_key="rt-temp-access-key",
-        )
-
-        # Mock the gateway to raise an error during revocation
-        mock_gateway_instance = AsyncMock()
-        mock_gateway_class.return_value = mock_gateway_instance
-        mock_gateway_instance.delete_service_account = AsyncMock(
-            side_effect=Exception("Gateway error")
-        )
-        mock_gateway_instance.close = AsyncMock()
-
-        mock_org_creds = MagicMock()
-        mock_org_creds.access_key = "org-access"
-        mock_org_creds.secret_key = "org-secret"
-
-        factory = APIRequestFactory()
-        django_request = factory.post(
-            "/api/realtime-agent-chats/end/",
-            data={
-                "connection_key": "conn-key-test-123",
-                "duration_seconds": 100,
-                "end_reason": "user_disconnected",
-            },
-            format="json",
-        )
-        request = Request(django_request, parsers=[JSONParser()])
-
-        with patch(
-            "storage_credentials.services.session_credential_service.org_credential_store.get",
-            return_value=mock_org_creds,
-        ):
-            response = viewset.end(request)
-
-        # Even though revocation failed, end() should return 200
-        # (revocation failure is not fatal to chat termination)
-        assert response.status_code == 200
-
-        # Chat should still be marked as ended
-        realtime_agent_chat.refresh_from_db()
-        assert realtime_agent_chat.ended_at is not None
-
-        # Revoke failed, so the opportunistic delete never ran -- the row is
-        # deliberately left in place for the manager backstop job to find later.
-        assert TemporaryStorageAccount.objects.filter(pk=temp_account.pk).exists()
+@pytest.mark.django_db
+def test_unknown_connection_key_is_404(realtime_service, gateway):
+    assert _end(realtime_service, "nonexistent-connection-key").status_code == status.HTTP_404_NOT_FOUND

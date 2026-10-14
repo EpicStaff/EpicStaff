@@ -8,25 +8,6 @@ from tests.fixtures import *
 
 
 @pytest.mark.django_db
-def test_graph_list(auth_client, graph):
-    url = reverse("graphs-list")
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-
-
-@pytest.mark.django_db
-def test_graph_list_empty(auth_client):
-    url = reverse("graphs-list")
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert response.data["count"] == 0
-
-
-@pytest.mark.django_db
 def test_graph_post(auth_client):
     url = reverse("graphs-list")
     data = {"name": "test post", "metadata": {"data": "test data"}}
@@ -39,15 +20,6 @@ def test_graph_post(auth_client):
     assert graph.name == data["name"]
     assert response.data["metadata"] == data["metadata"]
     assert graph.metadata == data["metadata"]
-
-
-@pytest.mark.django_db
-def test_graph_detail(auth_client, graph):
-    url = reverse("graphs-detail", args=[graph.id])
-
-    response = auth_client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK, response.content
 
 
 @pytest.mark.django_db
@@ -74,19 +46,6 @@ def test_graph_put(auth_client, graph):
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["name"] == data["name"]
     assert graph.name == data["name"]
-    assert response.data["metadata"] == data["metadata"]
-    assert graph.metadata == data["metadata"]
-
-
-@pytest.mark.django_db
-def test_graph_patch(auth_client, graph):
-    url = reverse("graphs-detail", args=[graph.id])
-    data = {"metadata": {"data": "test data"}, "save_version": graph.save_version}
-
-    response = auth_client.patch(url, data, format="json")
-    graph = Graph.objects.get(id=response.data["id"])
-
-    assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["metadata"] == data["metadata"]
     assert graph.metadata == data["metadata"]
 

@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock
 
+import pytest
+
 from src.shared.models import RealtimeAgentChatData
 from infrastructure.transcription.transcription_client_factory import (
     TranscriptionClientFactory,
@@ -34,48 +36,20 @@ def _make_config(**overrides) -> RealtimeAgentChatData:
     return RealtimeAgentChatData(**defaults)
 
 
-def test_openai_transcription_client_carries_org_id():
-    factory = TranscriptionClientFactory()
-    config = _make_config(rt_provider="openai", org_id=21)
+@pytest.mark.parametrize(
+    ("rt_base_url", "expected_ws_url"),
+    [(None, "wss://api.openai.com/v1/realtime"), ("https://my-proxy.internal", "wss://my-proxy.internal/v1/realtime")],
+    ids=["default", "org-proxy"],
+)
+def test_openai_transcription_client_carries_caller_identity_and_endpoint(rt_base_url, expected_ws_url):
+    config = _make_config(rt_provider="openai", org_id=21, user_id=55, rt_base_url=rt_base_url)
 
-    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
+    client = TranscriptionClientFactory().create(config=config, on_server_event=AsyncMock(), buffer=None)
 
-    assert client is not None
-    assert client.org_id == 21
-
-
-def test_openai_transcription_client_carries_user_id():
-    factory = TranscriptionClientFactory()
-    config = _make_config(rt_provider="openai", user_id=55)
-
-    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
-
-    assert client is not None
-    assert client.user_id == 55
+    assert (client.org_id, client.user_id, client.base_url) == (21, 55, expected_ws_url)
 
 
-def test_elevenlabs_provider_returns_none_regardless_of_org_id():
-    factory = TranscriptionClientFactory()
-    config = _make_config(rt_provider="elevenlabs", org_id=21)
+def test_elevenlabs_has_no_separate_transcription_client():
+    config = _make_config(rt_provider="elevenlabs")
 
-    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
-
-    assert client is None
-
-
-def test_openai_transcription_client_defaults_to_hardcoded_ws_url():
-    factory = TranscriptionClientFactory()
-    config = _make_config(rt_provider="openai")
-
-    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
-
-    assert client.base_url == "wss://api.openai.com/v1/realtime"
-
-
-def test_openai_transcription_client_uses_rt_base_url_override():
-    factory = TranscriptionClientFactory()
-    config = _make_config(rt_provider="openai", rt_base_url="https://my-proxy.internal")
-
-    client = factory.create(config=config, on_server_event=AsyncMock(), buffer=None)
-
-    assert client.base_url == "wss://my-proxy.internal/v1/realtime"
+    assert TranscriptionClientFactory().create(config=config, on_server_event=AsyncMock(), buffer=None) is None

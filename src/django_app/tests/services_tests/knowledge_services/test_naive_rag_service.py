@@ -6,7 +6,6 @@ Real DB, no mocking — these services touch neither Redis nor LLM APIs.
 import pytest
 
 from tables.models.knowledge_models import (
-    SourceCollection,
     DocumentContent,
     DocumentMetadata,
     BaseRagType,
@@ -48,79 +47,46 @@ S = NaiveRagDocumentConfig.NaiveRagDocumentStatus
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateRagStatus:
-    def _rag_with_configs(self, source_collection, test_embedding_config, statuses):
-        """Build a NaiveRag + one config per status entry; return the rag."""
-        base = BaseRagType.objects.create(
-            source_collection=source_collection, rag_type=BaseRagType.RagType.NAIVE
-        )
-        rag = NaiveRag.objects.create(
-            base_rag_type=base,
-            embedder=test_embedding_config,
-            rag_status=NaiveRag.NaiveRagStatus.NEW,
-        )
-        for i, status in enumerate(statuses):
-            doc = _make_doc(source_collection, suffix=f"_status_{i}")
-            make_naive_rag_config(rag, doc, status)
-        return rag
+R = NaiveRag.NaiveRagStatus
 
-    def test_all_completed_gives_completed(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(source_collection, test_embedding_config, [S.COMPLETED])
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.COMPLETED
 
-    def test_all_failed_gives_failed(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(source_collection, test_embedding_config, [S.FAILED])
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.FAILED
-
-    def test_completed_and_failed_gives_partial(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(
-            source_collection, test_embedding_config, [S.COMPLETED, S.FAILED]
-        )
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.PARTIAL
-
-    def test_outdated_present_gives_outdated(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(
-            source_collection, test_embedding_config, [S.OUTDATED, S.COMPLETED]
-        )
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.OUTDATED
-
-    def test_processing_present_gives_processing(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(
-            source_collection, test_embedding_config, [S.PROCESSING]
-        )
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.PROCESSING
-
-    def test_all_new_gives_new(self, source_collection, test_embedding_config):
-        rag = self._rag_with_configs(source_collection, test_embedding_config, [S.NEW])
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.NEW
-
-    def test_no_configs_gives_new(self, source_collection, test_embedding_config):
-        base = BaseRagType.objects.create(
-            source_collection=source_collection, rag_type=BaseRagType.RagType.NAIVE
-        )
-        rag = NaiveRag.objects.create(
-            base_rag_type=base,
-            embedder=test_embedding_config,
-            rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
-        )
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.NEW
-
-    def test_outdated_reasons_nonempty_forces_outdated_even_when_all_completed(
-        self, source_collection, test_embedding_config
-    ):
-        rag = self._rag_with_configs(
-            source_collection, test_embedding_config, [S.COMPLETED]
-        )
+@pytest.mark.parametrize(
+    ("statuses", "outdated_reason", "expected"),
+    [
+        ([S.COMPLETED], False, R.COMPLETED),
+        ([S.FAILED], False, R.FAILED),
+        ([S.COMPLETED, S.FAILED], False, R.PARTIAL),
+        ([S.OUTDATED, S.COMPLETED], False, R.OUTDATED),
+        ([S.PROCESSING], False, R.PROCESSING),
+        ([S.NEW], False, R.NEW),
+        # A rag that lost all its configs goes back to new, whatever it was.
+        ([], False, R.NEW),
+        ([S.COMPLETED], True, R.OUTDATED),
+    ],
+    ids=[
+        "completed", "failed", "completed-and-failed-is-partial", "any-outdated",
+        "any-processing", "new", "no-configs", "outdated-reason-forces-outdated",
+    ],
+)
+def test_rag_status_follows_its_document_configs(
+    source_collection, test_embedding_config, statuses, outdated_reason, expected
+):
+    base = BaseRagType.objects.create(
+        source_collection=source_collection, rag_type=BaseRagType.RagType.NAIVE
+    )
+    rag = NaiveRag.objects.create(
+        base_rag_type=base,
+        embedder=test_embedding_config,
+        rag_status=R.NEW if statuses else R.COMPLETED,
+    )
+    for index, status in enumerate(statuses):
+        make_naive_rag_config(rag, _make_doc(source_collection, suffix=f"_status_{index}"), status)
+    if outdated_reason:
         rag.add_outdated_reason("changed_embedding_config", "Embedding config changed.")
-        rag.update_rag_status()
-        assert rag.rag_status == NaiveRag.NaiveRagStatus.OUTDATED
+
+    rag.update_rag_status()
+
+    assert rag.rag_status == expected
 
 
 # ---------------------------------------------------------------------------

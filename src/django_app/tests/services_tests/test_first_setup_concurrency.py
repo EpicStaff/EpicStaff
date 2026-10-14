@@ -10,6 +10,12 @@ from rbac.identity.first_setup import FirstSetupService
 from rbac.exceptions import SetupAlreadyCompletedError
 
 
+@pytest.fixture(autouse=True)
+def _no_org_storage_provisioning(mocker):
+    """Creating an organization provisions its storage in MinIO/RustFS, a network call."""
+    mocker.patch("rbac.governance.organizations.org_storage_provisioning_service.provision_for_organization")
+
+
 # `transaction=True` truncates every table at teardown, including the built-in
 # Roles seeded once per session. This test does not repair that itself — it
 # cannot, because pytest-django's transactional helper tears down after any

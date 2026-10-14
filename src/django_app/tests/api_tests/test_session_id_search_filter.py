@@ -4,6 +4,7 @@ import json
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 
 from tables.import_export.enums import EntityType
@@ -30,8 +31,14 @@ ALL_ACME = MATCHING_IN_ACME_GRAPH | {SHORTER_ID, UNRELATED_ID, OTHER_GRAPH_ID}
 
 
 def _session(graph, session_id):
+    # Session.save() only stamps status_updated_at when pk is None, so a row created
+    # with an explicit id must carry it itself.
     return Session.objects.create(
-        id=session_id, graph=graph, status=Session.SessionStatus.END, variables={}
+        id=session_id,
+        graph=graph,
+        status=Session.SessionStatus.END,
+        status_updated_at=timezone.now(),
+        variables={},
     )
 
 
