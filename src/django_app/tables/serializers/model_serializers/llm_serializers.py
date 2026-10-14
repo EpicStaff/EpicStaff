@@ -24,7 +24,7 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
-from tables.utils.litellm_model_info import supports_reasoning
+from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
@@ -155,22 +155,7 @@ class LLMConfigSerializer(
         reasoning_effort = attrs.get(
             "reasoning_effort", self.instance.reasoning_effort if self.instance else None
         )
-        if reasoning_effort is None:
-            return attrs
-        if model is None:
-            raise serializers.ValidationError(
-                {"reasoning_effort": "A reasoning effort needs a model; select one or clear it."}
-            )
-        provider = model.llm_provider
-        if not supports_reasoning(provider.name if provider else None, model.name):
-            raise serializers.ValidationError(
-                {
-                    "reasoning_effort": (
-                        f"Model '{model.name}' does not support a reasoning effort; "
-                        "clear it or select a reasoning model."
-                    )
-                }
-            )
+        validate_reasoning_effort(model, reasoning_effort)
         return attrs
 
 
@@ -180,6 +165,7 @@ class LLMModelSerializer(
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
     supports_reasoning = serializers.SerializerMethodField()
+    reasoning_efforts = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMModel
@@ -199,6 +185,7 @@ class LLMModelSerializer(
             "org",
             "created_by",
             "supports_reasoning",
+            "reasoning_efforts",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
         validators = [
@@ -210,5 +197,7 @@ class LLMModelSerializer(
         ]
 
     def get_supports_reasoning(self, model: LLMModel) -> bool:
-        provider = model.llm_provider
-        return supports_reasoning(provider.name if provider else None, model.name)
+        return model_reasoning_support(model).supports_reasoning
+
+    def get_reasoning_efforts(self, model: LLMModel) -> list[str]:
+        return model_reasoning_support(model).ordered_efforts()

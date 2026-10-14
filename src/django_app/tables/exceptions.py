@@ -558,6 +558,23 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class UnsupportedReasoningEffortError(CustomAPIExeption):
+    """Raised when an LLM config's reasoning effort is one its model cannot take.
+
+    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
+    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
+    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The reasoning effort is not supported."
+    default_code = "unsupported_reasoning_effort"
+
+    def __init__(self, reasoning_effort: str, reason: str):
+        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
+        super().__init__(detail=reason)
+
+
 class ToolExecutionError(CustomAPIExeption):
     """Raised when a tool callable raises during execution."""
 

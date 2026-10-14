@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
 import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
@@ -12,14 +13,18 @@ import {
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
+import { validationErrorsInterceptor } from '../../../../core/interceptors/validation-errors.interceptor';
 import { ToastService } from '../../../../services/notifications';
 import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
 import { LlmModelConfigDialogComponent } from './llm-model-config-dialog.component';
 
 const REASONING_MODEL_ID = 1;
 const PLAIN_MODEL_ID = 2;
+const ALWAYS_REASONING_MODEL_ID = 3;
 const MISSING_MODEL_ID = 404;
 const CONFIG_ID = 7;
+const UNSUPPORTED_EFFORT_ERROR =
+    "Model 'model-3' does not support reasoning effort 'xhigh'. Supported: minimal, low, medium, high.";
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -46,7 +51,7 @@ class JsonEditorFormFieldStubComponent implements ControlValueAccessor {
     registerOnTouched(): void {}
 }
 
-function llmModel(id: number, supportsReasoning: boolean): LLMModel {
+function llmModel(id: number, reasoningEfforts: ReasoningEffort[]): LLMModel {
     return {
         id,
         name: `model-${id}`,
@@ -57,14 +62,16 @@ function llmModel(id: number, supportsReasoning: boolean): LLMModel {
         is_visible: true,
         is_custom: false,
         predefined: true,
-        supports_reasoning: supportsReasoning,
+        supports_reasoning: reasoningEfforts.length > 0,
+        reasoning_efforts: reasoningEfforts,
         llm_provider: 1,
     };
 }
 
 const MODELS = new Map<number, LLMModel>([
-    [REASONING_MODEL_ID, llmModel(REASONING_MODEL_ID, true)],
-    [PLAIN_MODEL_ID, llmModel(PLAIN_MODEL_ID, false)],
+    [REASONING_MODEL_ID, llmModel(REASONING_MODEL_ID, ['none', 'low', 'medium', 'high', 'xhigh'])],
+    [PLAIN_MODEL_ID, llmModel(PLAIN_MODEL_ID, [])],
+    [ALWAYS_REASONING_MODEL_ID, llmModel(ALWAYS_REASONING_MODEL_ID, ['minimal', 'low', 'medium', 'high'])],
 ]);
 
 function storedConfig(model: number, reasoningEffort: ReasoningEffort | null): GetLlmConfigRequest {
@@ -175,6 +182,33 @@ function reasoningSelect(fixture: ComponentFixture<LlmModelConfigDialogComponent
     return (fixture.nativeElement as HTMLElement).querySelector('app-llm-reasoning-effort-field app-select');
 }
 
+function reasoningErrorText(fixture: ComponentFixture<LlmModelConfigDialogComponent>): string {
+    return (
+        (fixture.nativeElement as HTMLElement).querySelector('app-llm-reasoning-effort-field app-validation-errors')
+            ?.textContent ?? ''
+    );
+}
+
+/** A 400 in the backend's validation envelope, passed through the interceptor the app registers. */
+function validationErrorResponse(field: string, value: string, reason: string): Observable<never> {
+    const response = new HttpErrorResponse({
+        status: 400,
+        error: {
+            status_code: 400,
+            code: 'validation_error',
+            message: 'Invalid input.',
+            errors: [{ field, value, reason }],
+        },
+    });
+    return validationErrorsInterceptor(new HttpRequest('PUT', '/api/llm-configs/7/', null), () =>
+        throwError(() => response)
+    ) as Observable<never>;
+}
+
+function unsupportedEffortResponse(): Observable<never> {
+    return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
+}
+
 function reasoningControlValue(fixture: ComponentFixture<LlmModelConfigDialogComponent>): ReasoningEffort | null {
     return fixture.componentInstance.form.get('reasoning_effort')!.value;
 }
@@ -208,6 +242,63 @@ describe('LlmModelConfigDialogComponent reasoning effort', () => {
 
         expect(reasoningControlValue(fixture)).toBeNull();
         expect(reasoningSelect(fixture)).toBeNull();
+    });
+
+    it('keeps a stored effort the model does not list on open and sends it on save', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'xhigh'));
+
+        expect(reasoningControlValue(fixture)).toBe('xhigh');
+        expect(reasoningSelect(fixture)!.textContent).toContain('Extra high');
+        fixture.componentInstance.onSave();
+
+        expect(updateConfig).toHaveBeenCalledWith(
+            expect.objectContaining({ id: CONFIG_ID, reasoning_effort: 'xhigh' })
+        );
+    });
+
+    it('shows a rejected effort under the select, keeps the dialog open and clears it when the effort changes', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'xhigh'));
+        updateConfig.mockReturnValueOnce(unsupportedEffortResponse());
+
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+
+        expect(reasoningErrorText(fixture)).toContain(UNSUPPORTED_EFFORT_ERROR);
+        expect(fixture.componentInstance.errorMessage()).toBeNull();
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+        expect(saveButton(fixture).disabled).toBe(true);
+
+        fixture.componentInstance.form.patchValue({ reasoning_effort: 'high' });
+        fixture.detectChanges();
+
+        expect(reasoningErrorText(fixture)).toBe('');
+        expect(saveButton(fixture).disabled).toBe(false);
+    });
+
+    it('clears a rejected effort error when the model changes', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'xhigh'));
+        updateConfig.mockReturnValueOnce(unsupportedEffortResponse());
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+        expect(reasoningErrorText(fixture)).toContain(UNSUPPORTED_EFFORT_ERROR);
+
+        await pickModel(fixture, REASONING_MODEL_ID);
+
+        expect(reasoningErrorText(fixture)).toBe('');
+        expect(reasoningControlValue(fixture)).toBe('xhigh');
+        expect(saveButton(fixture).disabled).toBe(false);
+    });
+
+    it('shows a 400 about another field in the banner, not under the reasoning effort select', async () => {
+        const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'high'));
+        const reason = 'An LLM configuration with this name already exists.';
+        updateConfig.mockReturnValueOnce(validationErrorResponse('custom_name', 'model-3', reason));
+
+        fixture.componentInstance.onSave();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.errorMessage()).toBe(reason);
+        expect(reasoningErrorText(fixture)).toBe('');
     });
 
     it('resolves the stored model by id in edit mode and shows the stored reasoning effort', async () => {

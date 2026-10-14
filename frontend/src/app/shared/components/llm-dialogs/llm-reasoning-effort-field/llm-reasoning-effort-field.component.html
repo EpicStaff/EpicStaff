@@ -8,11 +8,18 @@
             tooltipText="How much the model reasons before answering. Provider default sends nothing and keeps the provider's own setting."
             [items]="items"
         />
+        <div role="alert">
+            @if (hasServerErrors()) {
+                <app-validation-errors [control]="control()" />
+            }
+        </div>
         <app-hint-message>
             Higher effort is slower and costs more, and reasoning tokens count against Max Tokens.
-            @if (usesOpenAiApi()) {
-                <strong>None</strong> on GPT-5.4+ keeps tool calls on Chat Completions; other values use the Responses
-                API, where Temperature and Top P are ignored.
+            @if (openAiHint(); as hint) {
+                {{ hint }}
+            }
+            @if (supportedEffortsHint(); as supportedHint) {
+                {{ supportedHint }}
             }
         </app-hint-message>
     </div>

@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
-from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
+from tables.models import AgentNode, Graph, LLMConfig, LLMModel, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -774,10 +774,13 @@ class TestLLMConfigStrategy:
     def test_reasoning_effort_round_trips(
         self, exportable_agent_definition, export_service, default_org
     ):
-        # The source model (gpt-4o) is not a reasoning model: the import keeps the
-        # value as exported and leaves the model check to the API serializer.
         source_config = exportable_agent_definition.llm_config
-        LLMConfig.objects.filter(pk=source_config.pk).update(reasoning_effort="high")
+        reasoning_model, _ = LLMModel.objects.get_or_create(
+            name="gpt-5-mini", llm_provider=source_config.model.llm_provider, org=None
+        )
+        LLMConfig.objects.filter(pk=source_config.pk).update(
+            model=reasoning_model, reasoning_effort="high"
+        )
         export_data = export_service.export_entities(
             EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
         )

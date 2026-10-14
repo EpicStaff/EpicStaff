@@ -16,7 +16,8 @@ import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes, ReasoningEffort } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage } from '@shared/utils';
+import { startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
@@ -72,12 +73,18 @@ export class LlmModelConfigDialogComponent implements OnInit {
     isSaving = signal<boolean>(false);
     isLoading = signal<boolean>(false);
     errorMessage = signal<string | null>(null);
+    // FormGroup.invalid is a plain property: on this OnPush view it would keep showing the state from before the
+    // reasoning-effort field cleared its server error in the same pass. Fed from statusChanges in ngOnInit.
+    private readonly isFormInvalid = signal(false);
 
     isEditMode = computed(() => !!this.data?.configId);
     // Saving before the model is known would send reasoning_effort as null and erase a stored value.
     readonly isModelResolving = computed(() => this.reasoningEffortField()?.resolving() ?? false);
     title = computed(() => (this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add LLM'));
+    protected readonly isSaveDisabled = computed(
+        () => this.isFormInvalid() || this.isSaving() || this.isLoading() || this.isModelResolving()
+    );
 
     secretItems = computed<SelectItem[]>(() =>
         this.secretsStorageService.secrets().map((secret) => ({
@@ -112,6 +119,9 @@ export class LlmModelConfigDialogComponent implements OnInit {
             reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
         });
+        this.form.statusChanges
+            .pipe(startWith(this.form.status), takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isFormInvalid.set(status === 'INVALID'));
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);
@@ -180,6 +190,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
             },
             error: (err: HttpErrorResponse) => {
                 this.isSaving.set(false);
+                const reasoningEffortErrors = extractFieldErrorMessages(err, 'reasoning_effort');
+                if (
+                    reasoningEffortErrors.length &&
+                    this.reasoningEffortField()?.showServerErrors(reasoningEffortErrors)
+                ) {
+                    return;
+                }
                 this.errorMessage.set(extractHttpErrorMessage(err));
                 console.error(err);
             },

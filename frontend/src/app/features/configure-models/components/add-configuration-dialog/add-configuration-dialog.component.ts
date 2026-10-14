@@ -31,7 +31,7 @@ import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -233,6 +233,13 @@ export class AddConfigurationDialogComponent implements OnInit {
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
+                    const reasoningEffortErrors = extractFieldErrorMessages(error, 'reasoning_effort');
+                    if (
+                        reasoningEffortErrors.length &&
+                        this.reasoningEffortField()?.showServerErrors(reasoningEffortErrors)
+                    ) {
+                        return;
+                    }
                     this.toast.error(extractHttpErrorMessage(error, 'Failed to create LLM configuration.'));
                 },
             });

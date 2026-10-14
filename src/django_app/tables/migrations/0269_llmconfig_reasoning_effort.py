@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='defaultllmconfig',
             name='reasoning_effort',
-            field=models.CharField(blank=True, choices=[('none', 'none'), ('low', 'low'), ('medium', 'medium'), ('high', 'high')], max_length=16, null=True),
+            field=models.CharField(blank=True, choices=[('none', 'none'), ('minimal', 'minimal'), ('low', 'low'), ('medium', 'medium'), ('high', 'high'), ('xhigh', 'xhigh'), ('max', 'max')], max_length=16, null=True),
         ),
         migrations.AddField(
             model_name='llmconfig',
             name='reasoning_effort',
-            field=models.CharField(blank=True, choices=[('none', 'none'), ('low', 'low'), ('medium', 'medium'), ('high', 'high')], max_length=16, null=True),
+            field=models.CharField(blank=True, choices=[('none', 'none'), ('minimal', 'minimal'), ('low', 'low'), ('medium', 'medium'), ('high', 'high'), ('xhigh', 'xhigh'), ('max', 'max')], max_length=16, null=True),
         ),
     ]

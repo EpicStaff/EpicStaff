@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
 import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
@@ -15,6 +15,7 @@ import {
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
+import { validationErrorsInterceptor } from '../../../../core/interceptors/validation-errors.interceptor';
 import { ToastService } from '../../../../services/notifications';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
@@ -23,6 +24,9 @@ import { AddConfigurationDialogComponent } from './add-configuration-dialog.comp
 
 const REASONING_MODEL_ID = 1;
 const PLAIN_MODEL_ID = 2;
+const ALWAYS_REASONING_MODEL_ID = 3;
+const UNSUPPORTED_EFFORT_ERROR =
+    "Model 'model-3' does not support reasoning effort 'xhigh'. Supported: minimal, low, medium, high.";
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -49,7 +53,7 @@ class JsonEditorFormFieldStubComponent implements ControlValueAccessor {
     registerOnTouched(): void {}
 }
 
-function llmModel(id: number, supportsReasoning: boolean): LLMModel {
+function llmModel(id: number, reasoningEfforts: ReasoningEffort[]): LLMModel {
     return {
         id,
         name: `model-${id}`,
@@ -60,14 +64,16 @@ function llmModel(id: number, supportsReasoning: boolean): LLMModel {
         is_visible: true,
         is_custom: false,
         predefined: true,
-        supports_reasoning: supportsReasoning,
+        supports_reasoning: reasoningEfforts.length > 0,
+        reasoning_efforts: reasoningEfforts,
         llm_provider: 1,
     };
 }
 
 const MODELS = new Map<number, LLMModel>([
-    [REASONING_MODEL_ID, llmModel(REASONING_MODEL_ID, true)],
-    [PLAIN_MODEL_ID, llmModel(PLAIN_MODEL_ID, false)],
+    [REASONING_MODEL_ID, llmModel(REASONING_MODEL_ID, ['none', 'low', 'medium', 'high', 'xhigh'])],
+    [PLAIN_MODEL_ID, llmModel(PLAIN_MODEL_ID, [])],
+    [ALWAYS_REASONING_MODEL_ID, llmModel(ALWAYS_REASONING_MODEL_ID, ['minimal', 'low', 'medium', 'high'])],
 ]);
 
 function getCachedModelById(id: number): Observable<LLMModel> {
@@ -140,6 +146,33 @@ function reasoningSelect(fixture: ComponentFixture<AddConfigurationDialogCompone
     return (fixture.nativeElement as HTMLElement).querySelector('app-llm-reasoning-effort-field app-select');
 }
 
+function reasoningErrorText(fixture: ComponentFixture<AddConfigurationDialogComponent>): string {
+    return (
+        (fixture.nativeElement as HTMLElement).querySelector('app-llm-reasoning-effort-field app-validation-errors')
+            ?.textContent ?? ''
+    );
+}
+
+/** A 400 in the backend's validation envelope, passed through the interceptor the app registers. */
+function validationErrorResponse(field: string, value: string, reason: string): Observable<never> {
+    const response = new HttpErrorResponse({
+        status: 400,
+        error: {
+            status_code: 400,
+            code: 'validation_error',
+            message: 'Invalid input.',
+            errors: [{ field, value, reason }],
+        },
+    });
+    return validationErrorsInterceptor(new HttpRequest('POST', '/api/llm-configs/', null), () =>
+        throwError(() => response)
+    ) as Observable<never>;
+}
+
+function unsupportedEffortResponse(): Observable<never> {
+    return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
+}
+
 function setReasoningEffort(fixture: ComponentFixture<AddConfigurationDialogComponent>, value: ReasoningEffort): void {
     fixture.componentInstance.llmForm.patchValue({ reasoning_effort: value });
 }
@@ -173,6 +206,43 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
 
         expect(fixture.componentInstance.llmForm.get('reasoning_effort')!.value).toBeNull();
         expect(reasoningSelect(fixture)).toBeNull();
+    });
+
+    it('shows a rejected effort under the select, keeps the dialog open and clears it when the effort changes', async () => {
+        const createConfig = vi.fn(() => unsupportedEffortResponse());
+        const { fixture, toastError } = await render(getCachedModelById, createConfig);
+        await pickModel(fixture, ALWAYS_REASONING_MODEL_ID);
+        setReasoningEffort(fixture, 'xhigh');
+
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+
+        expect(createConfig).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }));
+        expect(reasoningErrorText(fixture)).toContain(UNSUPPORTED_EFFORT_ERROR);
+        expect(toastError).not.toHaveBeenCalled();
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+
+        setReasoningEffort(fixture, 'high');
+        fixture.detectChanges();
+
+        expect(reasoningErrorText(fixture)).toBe('');
+        expect(fixture.componentInstance.llmForm.valid).toBe(true);
+    });
+
+    it('clears a rejected effort error when the model changes', async () => {
+        const createConfig = vi.fn(() => unsupportedEffortResponse());
+        const { fixture } = await render(getCachedModelById, createConfig);
+        await pickModel(fixture, ALWAYS_REASONING_MODEL_ID);
+        setReasoningEffort(fixture, 'xhigh');
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+        expect(reasoningErrorText(fixture)).toContain(UNSUPPORTED_EFFORT_ERROR);
+
+        await pickModel(fixture, REASONING_MODEL_ID);
+
+        expect(reasoningErrorText(fixture)).toBe('');
+        expect(fixture.componentInstance.llmForm.get('reasoning_effort')!.value).toBe('xhigh');
+        expect(fixture.componentInstance.llmForm.valid).toBe(true);
     });
 
     it('creates the config with the selected reasoning effort for a reasoning model', async () => {
@@ -222,14 +292,27 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
         );
     });
 
-    it("shows the backend's message when creating the config fails", async () => {
-        const message = 'reasoning_effort: this model does not support reasoning.';
-        const createConfig = vi.fn(() => throwError(() => new HttpErrorResponse({ status: 400, error: { message } })));
+    it("shows the backend's reason in a toast when a field other than the effort is rejected", async () => {
+        const reason = 'An LLM configuration with this name already exists.';
+        const createConfig = vi.fn(() => validationErrorResponse('custom_name', 'model-3', reason));
+        const { fixture, toastError } = await render(getCachedModelById, createConfig);
+        await pickModel(fixture, ALWAYS_REASONING_MODEL_ID);
+
+        fixture.componentInstance.onSubmit();
+        fixture.detectChanges();
+
+        expect(toastError).toHaveBeenCalledWith(reason);
+        expect(reasoningErrorText(fixture)).toBe('');
+    });
+
+    it('shows a rejected effort in a toast when the select is hidden', async () => {
+        const reason = "Model 'model-2' does not support reasoning.";
+        const createConfig = vi.fn(() => validationErrorResponse('reasoning_effort', 'high', reason));
         const { fixture, toastError } = await render(getCachedModelById, createConfig);
         await pickModel(fixture, PLAIN_MODEL_ID);
 
         fixture.componentInstance.onSubmit();
 
-        expect(toastError).toHaveBeenCalledWith(message);
+        expect(toastError).toHaveBeenCalledWith(reason);
     });
 });

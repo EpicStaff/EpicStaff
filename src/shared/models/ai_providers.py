@@ -2,7 +2,10 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ReasoningEffort = Literal["none", "low", "medium", "high"]
+# Every level litellm knows, weakest first; the order is the one the UI lists them in.
+# Which levels a given model accepts is decided per model in django_app
+# (tables.utils.litellm_model_info.reasoning_support).
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 REASONING_EFFORT_VALUES: tuple[str, ...] = get_args(ReasoningEffort)
 
 # Allowlist, not denylist: a transport field added to LLMConfigData later
