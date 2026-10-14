@@ -494,12 +494,21 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 
         for telegram_trigger_node in telegram_trigger_node_list:
-            # Persistent-variable merging is owned by run_session.
-            self.session_manager_service.run_session(
-                graph_id=telegram_trigger_node.graph.pk,
-                variables={"telegram_payload": payload},
-                trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
-            )
+            # One flow failing to start must not keep the other flows on this path
+            # from running.
+            try:
+                # Persistent-variable merging is owned by run_session.
+                self.session_manager_service.run_session(
+                    graph_id=telegram_trigger_node.graph_id,
+                    variables={"telegram_payload": payload},
+                    trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
+                )
+            except Exception:
+                logger.exception(
+                    "Telegram trigger node {} could not start graph {}",
+                    telegram_trigger_node.pk,
+                    telegram_trigger_node.graph_id,
+                )
 
     def get_webhook_status(
         self, telegram_trigger_node: TelegramTriggerNode
