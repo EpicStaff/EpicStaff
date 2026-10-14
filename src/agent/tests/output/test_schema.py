@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import jsonschema
 import pytest
 from app.exceptions import InvalidOutputSchemaError
-from app.output.schema import add_usage, as_object_schema, validate_output
+from app.output.schema import _validator, add_usage, as_object_schema, validate_output
 from shared.models.agent_service import TokenUsage
 
 # ---------------------------------------------------------------------------
@@ -12,47 +13,37 @@ from shared.models.agent_service import TokenUsage
 # ---------------------------------------------------------------------------
 
 
-def test_as_object_schema_passthrough_for_object_type():
+@pytest.mark.parametrize(
+    "schema",
+    [{"type": "string"}, {"type": "array", "items": {"type": "integer"}}],
+    ids=["string", "array"],
+)
+def test_non_object_schema_is_wrapped_under_result(schema):
+    result, wrapped = as_object_schema(schema)
+
+    assert wrapped is True
+    assert (result["type"], result["properties"], result["required"]) == ("object", {"result": schema}, ["result"])
+
+
+def test_object_schema_is_used_as_is():
     schema = {"type": "object", "properties": {"name": {"type": "string"}}}
-    result, wrapped = as_object_schema(schema)
-    assert result is schema
-    assert wrapped is False
+
+    assert as_object_schema(schema) == (schema, False)
 
 
-def test_as_object_schema_wraps_non_object_schema():
-    schema = {"type": "string"}
-    result, wrapped = as_object_schema(schema)
-    assert wrapped is True
-    assert result["type"] == "object"
-    assert result["properties"]["result"] == schema
-    assert result["required"] == ["result"]
-
-
-def test_as_object_schema_wraps_array_schema():
-    schema = {"type": "array", "items": {"type": "integer"}}
-    result, wrapped = as_object_schema(schema)
-    assert wrapped is True
-    assert result["properties"]["result"] == schema
-
-
-def test_as_object_schema_raises_on_bare_field_map():
-    """A bare field map (no top-level 'type') is not a recognizable schema."""
-    schema = {"reasoning": {"type": "string", "description": "why"}}
-
+@pytest.mark.parametrize(
+    "schema",
+    [
+        # A bare field map has no top-level type, so it is not a recognizable schema.
+        {"reasoning": {"type": "string", "description": "why"}},
+        {"properties": {"x": {"type": "string"}}},
+        "not-a-schema",
+    ],
+    ids=["bare-field-map", "no-type", "not-a-dict"],
+)
+def test_unrecognizable_schema_is_refused(schema):
     with pytest.raises(InvalidOutputSchemaError):
         as_object_schema(schema)
-
-
-def test_as_object_schema_raises_on_dict_without_type():
-    schema = {"properties": {"x": {"type": "string"}}}
-
-    with pytest.raises(InvalidOutputSchemaError):
-        as_object_schema(schema)
-
-
-def test_as_object_schema_raises_on_non_dict():
-    with pytest.raises(InvalidOutputSchemaError):
-        as_object_schema("not-a-schema")
 
 
 # ---------------------------------------------------------------------------
@@ -104,46 +95,40 @@ def test_validate_output_raises_invalid_output_schema_error_for_meta_invalid_sch
         validate_output({"x": 1}, schema)
 
 
+@pytest.mark.parametrize("obj", [{"x": "a", "y": 1}, {}, {"x": 1, "y": 2}], ids=["two-errors", "missing", "y-wrong"])
+def test_validate_output_reuses_validator_and_matches_jsonschema_message(obj):
+    schema = {"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "string"}}, "required": ["x"]}
+    with pytest.raises(jsonschema.ValidationError) as expected:
+        jsonschema.validate(obj, schema)
+    validate_output({"x": 1}, dict(schema))
+    hits = _validator.cache_info().hits
+
+    outcome = validate_output(obj, dict(schema))
+
+    assert outcome.error == expected.value.message
+    assert _validator.cache_info().hits == hits + 1
+
+
 # ---------------------------------------------------------------------------
 # add_usage
 # ---------------------------------------------------------------------------
 
 
-def test_add_usage_sums_all_fields():
-    a = TokenUsage(
-        prompt_tokens=5,
-        completion_tokens=3,
-        total_tokens=8,
-        cached_prompt_tokens=2,
-        total_cost_usd=0.001,
-    )
-    b = TokenUsage(
-        prompt_tokens=7,
-        completion_tokens=2,
-        total_tokens=9,
-        cached_prompt_tokens=1,
-        total_cost_usd=0.002,
-    )
-    result = add_usage(a, b)
-    assert result.prompt_tokens == 12
-    assert result.completion_tokens == 5
-    assert result.total_tokens == 17
-    assert result.cached_prompt_tokens == 3
-    assert result.total_cost_usd == pytest.approx(0.003)
+@pytest.mark.parametrize(
+    ("other", "expected"),
+    [
+        (
+            TokenUsage(prompt_tokens=7, completion_tokens=2, total_tokens=9, cached_prompt_tokens=1, total_cost_usd=0.002),
+            (12, 5, 17, 3, 0.003),
+        ),
+        (TokenUsage(), (5, 3, 8, 2, 0.001)),
+    ],
+    ids=["sum", "zero"],
+)
+def test_add_usage_sums_every_field(other, expected):
+    usage = TokenUsage(prompt_tokens=5, completion_tokens=3, total_tokens=8, cached_prompt_tokens=2, total_cost_usd=0.001)
 
+    result = add_usage(usage, other)
 
-def test_add_usage_with_zero():
-    a = TokenUsage(
-        prompt_tokens=10,
-        completion_tokens=4,
-        total_tokens=14,
-        cached_prompt_tokens=6,
-        total_cost_usd=0.0025,
-    )
-    b = TokenUsage()
-    result = add_usage(a, b)
-    assert result.prompt_tokens == 10
-    assert result.completion_tokens == 4
-    assert result.total_tokens == 14
-    assert result.cached_prompt_tokens == 6
-    assert result.total_cost_usd == pytest.approx(0.0025)
+    assert (result.prompt_tokens, result.completion_tokens, result.total_tokens, result.cached_prompt_tokens) == expected[:4]
+    assert result.total_cost_usd == pytest.approx(expected[4])

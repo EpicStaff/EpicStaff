@@ -44,6 +44,6 @@ class TestImportOrgThreading:
 
         new_definition_id = id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
         assert (
-            AgentDefinition.objects.get(id=new_definition_id).organization_id
+            AgentDefinition.objects.get(id=new_definition_id).org_id
             == default_org.id
         )

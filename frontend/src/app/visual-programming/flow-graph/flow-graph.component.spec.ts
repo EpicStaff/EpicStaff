@@ -2,22 +2,38 @@ import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FDragStartedEvent } from '@foblex/flow';
+import { FCreateConnectionEvent, FDragStartedEvent, FReassignConnectionEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { of } from 'rxjs';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
+import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
+import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel } from '../core/models/node.model';
+import { ClassificationDecisionTableNodeModel, GraphNoteModel, NodeModel } from '../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
+import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
+import { createFlowConnection } from '../utils/connection.factory';
 import { createStartNode } from '../utils/load';
+import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
+
+const UNKNOWN_AUTHORSHIP = { created_by: null, created_at: null, last_edited_by: null, last_edited_at: null };
+
+const authorshipOfRow = (row: typeof liveStart | typeof liveNote) => ({
+    created_by: row.created_by,
+    created_at: row.created_at,
+    last_edited_by: row.last_edited_by,
+    last_edited_at: row.last_edited_at,
+});
 
 // The real template pulls in the whole Foblex canvas, which jsdom cannot lay out. Every
 // handler under test either returns before it touches a canvas reference or never uses one,
@@ -53,6 +69,13 @@ function mount(
             // Read-only from permissions (a Viewer) only where a test asks for it.
             { provide: PermissionsService, useValue: { can: () => canUpdateFlows } },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
+            // Provided by the flow page (live editor) or by FLOW_EDITOR_STATE_PROVIDERS (version preview).
+            ...(isPreview
+                ? [
+                      VersionPreviewNodeAuthorshipStore,
+                      { provide: NodeAuthorshipStore, useExisting: VersionPreviewNodeAuthorshipStore },
+                  ]
+                : [NodeAuthorshipStore]),
         ],
     });
     TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
@@ -150,7 +173,25 @@ describe('FlowGraphComponent', () => {
             // Opened with this editor's injector, so the dialog sees this editor's read-only state.
             for (const [, config] of dialogOpen.mock.calls) {
                 expect(config.injector.get(FlowReadOnlyService).isReadOnly()).toBe(true);
+                // Nothing filled this preview's own store: the footer shows dashes.
+                expect(config.data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
             }
+        });
+
+        it('passes the Start authorship the version recorded to the domain dialog (toolbar and Start node)', () => {
+            dialogOpen.mockReturnValue({ closed: of(null) });
+            const [start] = flowService.nodes();
+            const recorded = {
+                ...UNKNOWN_AUTHORSHIP,
+                created_by: liveStart.created_by,
+                created_at: liveStart.created_at,
+            };
+            TestBed.inject(VersionPreviewNodeAuthorshipStore).replaceFromVersion(new Map([[start.id, recorded]]));
+
+            component.onDomainClick();
+            component.onOpenNodePanel(start);
+
+            expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([recorded, recorded]);
         });
 
         it('does not open the note dialog', () => {
@@ -174,6 +215,40 @@ describe('FlowGraphComponent', () => {
     });
 
     describe('editable (FLOW_EDITOR_PREVIEW = false)', () => {
+        it('passes the saved Start and Note authorship to their windows (Start node and toolbar Domain button)', () => {
+            const start = { ...createStartNode(), backendId: liveStart.id };
+            const note = { ...noteNode(), backendId: liveNote.id };
+            const fixture = mount(false, { nodes: [start, note], connections: [] }, () =>
+                TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph)
+            );
+            const component = fixture.componentInstance;
+            const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+            dialogOpen.mockReturnValue({ closed: of(null) });
+
+            component.onOpenNodePanel(start);
+            component.onDomainClick();
+            component.onOpenNodePanel(note);
+
+            const startAuthorship = authorshipOfRow(liveStart);
+            expect(dialogOpen.mock.calls.map(([, config]) => config.data.authorship)).toEqual([
+                startAuthorship,
+                startAuthorship,
+                authorshipOfRow(liveNote),
+            ]);
+        });
+
+        it('passes dashes to the window of a node that is not saved yet', () => {
+            const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] }, () =>
+                TestBed.inject(NodeAuthorshipStore).replaceFromGraph(liveGraph)
+            );
+            const dialogOpen = (TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> }).open;
+            dialogOpen.mockReturnValue({ closed: of(null) });
+
+            fixture.componentInstance.onOpenNodePanel(noteNode());
+
+            expect(dialogOpen.mock.calls[0][1].data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
+        });
+
         it('does not replay an earlier full-save request when the canvas is re-created', () => {
             const emitSave = vi.spyOn(FlowGraphComponent.prototype, 'emitSave').mockImplementation(() => undefined);
 
@@ -259,6 +334,144 @@ describe('FlowGraphComponent', () => {
             expect(info).toHaveBeenCalledTimes(1);
             expect(info).toHaveBeenCalledWith('You have read-only access to this flow.');
             expect(copy).toHaveBeenCalled();
+        });
+    });
+
+    // The Continue rule's canvas half: a route-code output whose row has Continue on
+    // cannot be wired, by drawing a connection or by dragging an existing one onto it.
+    describe('Classification Decision Table route ports with Continue on', () => {
+        const BLOCKED_PORT = 'table1_decision-route-approve';
+        const OPEN_PORT = 'table1_decision-route-reject';
+
+        function rule(routeCode: string, continueFlag: boolean, order: number): ConditionGroup {
+            return {
+                group_name: routeCode,
+                group_type: 'simple',
+                expression: null,
+                conditions: [],
+                manipulation: null,
+                next_node: null,
+                order,
+                route_code: routeCode,
+                continue_flag: continueFlag,
+                dock_visible: true,
+            };
+        }
+
+        function tableNode(): ClassificationDecisionTableNodeModel {
+            const rows = [rule('approve', true, 1), rule('reject', false, 2)];
+            return {
+                id: 'table1',
+                backendId: null,
+                type: NodeType.CLASSIFICATION_TABLE,
+                node_name: 'Triage',
+                data: { name: 'Triage', table: { condition_groups: rows } },
+                position: { x: 0, y: 0 },
+                ports: generatePortsForClassificationDecisionTableNode('table1', rows),
+                color: '',
+                icon: '',
+                size: { width: 300, height: 200 },
+                input_map: {},
+                output_variable_path: null,
+            } as unknown as ClassificationDecisionTableNodeModel;
+        }
+
+        function pythonNode(id: string): NodeModel {
+            return {
+                id,
+                backendId: null,
+                type: NodeType.PYTHON,
+                node_name: id,
+                data: {},
+                position: { x: 400, y: 0 },
+                ports: generatePortsForNode(id, NodeType.PYTHON),
+                color: '',
+                icon: '',
+                size: { width: 200, height: 100 },
+                input_map: {},
+                output_variable_path: null,
+            } as unknown as NodeModel;
+        }
+
+        let component: FlowGraphComponent;
+        let flowService: FlowService;
+        let warning: ReturnType<typeof vi.spyOn>;
+
+        function setUp(connections: FlowModel['connections'] = []): void {
+            const fixture = mount(false, {
+                nodes: [tableNode(), pythonNode('py1'), pythonNode('py2')],
+                connections,
+            });
+            component = fixture.componentInstance;
+            flowService = TestBed.inject(FlowService);
+            warning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
+        }
+
+        function connect(fOutputId: string, fInputId: string): void {
+            component.onConnectionAdded({ fOutputId, fInputId } as unknown as FCreateConnectionEvent);
+        }
+
+        it('refuses to wire a route code whose row has Continue on, and says why', () => {
+            setUp();
+
+            connect(BLOCKED_PORT, 'py1_python-in');
+
+            expect(flowService.connections()).toEqual([]);
+            expect(warning).toHaveBeenCalledExactlyOnceWith(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                5000,
+                'bottom-right'
+            );
+        });
+
+        it('wires a route code whose row has Continue off', () => {
+            setUp();
+
+            connect(OPEN_PORT, 'py1_python-in');
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual([OPEN_PORT]);
+            expect(warning).not.toHaveBeenCalled();
+        });
+
+        it('leaves connections from other node types alone', () => {
+            setUp();
+
+            connect('py1_python-out', 'py2_python-in');
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual(['py1_python-out']);
+            expect(warning).not.toHaveBeenCalled();
+        });
+
+        it('refuses to move an existing connection onto a blocked route port', () => {
+            const existing = createFlowConnection('table1', 'py1', OPEN_PORT, 'py1_python-in');
+            setUp([existing]);
+
+            component.onReassignConnection({
+                connectionId: existing.id,
+                endpoint: 'source',
+                nextSourceId: BLOCKED_PORT,
+            } as unknown as FReassignConnectionEvent);
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual([OPEN_PORT]);
+            expect(warning).toHaveBeenCalledExactlyOnceWith(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                5000,
+                'bottom-right'
+            );
+        });
+
+        it('still moves a connection to a new target from an open route port', () => {
+            const existing = createFlowConnection('table1', 'py1', OPEN_PORT, 'py1_python-in');
+            setUp([existing]);
+
+            component.onReassignConnection({
+                connectionId: existing.id,
+                endpoint: 'target',
+                nextTargetId: 'py2_python-in',
+            } as unknown as FReassignConnectionEvent);
+
+            expect(flowService.connections().map((connection) => connection.targetPortId)).toEqual(['py2_python-in']);
+            expect(warning).not.toHaveBeenCalled();
         });
     });
 });

@@ -197,6 +197,7 @@ read `os.getenv(X, "False") in ["True", "true"]` — absent means off. This one 
 ```python
 _DISABLING_VALUES = frozenset({"false", "0", "no", "off", "f", "n"})
 
+
 def masking_enabled() -> bool:
     raw = os.environ.get(MASK_SECRET_ENV_VAR)
     if raw is None:

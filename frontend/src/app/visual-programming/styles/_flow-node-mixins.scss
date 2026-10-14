@@ -204,12 +204,31 @@
 // ====================
 // Node Action Bar (hover chip) Mixins
 // ====================
+$node-actions-fade-duration: 0.2s;
+$node-actions-hide-delay: 0.4s;
+
+// Hover-revealed node actions hide only after a delay, so a pointer that slips off the node
+// on its way to a button still finds the button there. Gated by visibility, not pointer-events:
+// visibility stays `visible` until the delayed transition ends, so the button keeps taking clicks.
+@mixin node-actions-hidden {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+        opacity $node-actions-fade-duration ease $node-actions-hide-delay,
+        visibility 0s linear ($node-actions-hide-delay + $node-actions-fade-duration);
+}
+
+@mixin node-actions-shown {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
 @mixin node-action-bar-base {
+    @include node-actions-hidden;
     position: absolute;
     height: 28px;
-    opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s ease;
 }
 
 @mixin node-action-bar-number-badge($border-color) {

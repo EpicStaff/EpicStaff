@@ -30,17 +30,23 @@ When `SOFT_DELETE` is disabled, `.delete()` on the same roots performs a genuine
 
 ## 2. The `SOFT_DELETE` Setting
 
-Read once at Django startup in `src/django_app/django_app/settings.py`:
+Read once at Django startup in `src/django_app/django_app/settings/base.py`:
 
 ```python
-SOFT_DELETE = os.getenv("SOFT_DELETE", "False").lower() in ("true", "1", "yes", "on")
+SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
 ```
 
-Default is `False` — soft delete is opt-in. It's read from the environment in three places that must be kept consistent for a given deployment:
+The value comes from `DJANGO_SOFT_DELETE`, declared in `src/env.yaml` like every other variable:
 
-- `src/django_app/django_app/settings.py` — the Python-level default (`False`).
-- `src/docker-compose.yaml` — `DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}` for the `django_app` service.
-- `src/.env` — set `DJANGO_SOFT_DELETE=True` here to opt a local dev environment in, since soft-delete behavior is what the team develops/tests against day to day. Generate `src/.env` with `python scripts/envtool.py --dev`.
+- `src/env.yaml` — the source of its defaults: `False` for production, `True` for local
+  development, since soft-delete behavior is what the team develops and tests against day to day.
+  `python scripts/envtool.py --dev` writes `DJANGO_SOFT_DELETE=True` into `src/.env`;
+  `src/.env.example` carries the production value.
+- `src/docker-compose.yaml` — `DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:?}` for the `django_app`
+  service, so a `.env` without the variable fails at `docker compose up` instead of silently
+  picking a mode.
+
+The `False` in the settings line only matters where the variable is absent, such as the test suite.
 
 `SoftDeleteMixin.delete()` (see below) is the only place that reads `settings.SOFT_DELETE`; everything else in the mechanism is agnostic to the flag.
 
@@ -80,6 +86,7 @@ class SoftDeleteMixin(SoftDeleteFields):
 
     def soft_delete(self, using=None):
         from tables.services.soft_delete import DeleteService
+
         return DeleteService.delete(self, using=using)
 
     def hard_delete(self, using=None, keep_parents=False):

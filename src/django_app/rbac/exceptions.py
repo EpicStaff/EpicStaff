@@ -444,3 +444,12 @@ class InvalidVerificationPhraseError(CustomAPIExeption):
     status_code = 400
     default_detail = "The verification phrase does not match the deletion target."
     default_code = "invalid_verification_phrase"
+
+
+class AuthorChangeForbiddenError(Exception):
+    """Raised when a save would replace a resource's set author with another
+    user. Clients cannot write the author, so this signals a server-side bug
+    and is deliberately not an API exception."""
+
+    def __init__(self, message: str = "The author of a resource cannot be changed."):
+        super().__init__(message)

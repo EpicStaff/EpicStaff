@@ -354,6 +354,20 @@ def test_graph_end_in_the_same_batch_creates_the_subgraph_sessions(graph, child_
     ] == [None, nested_execution_id]
 
 
+def test_node_type_is_stored_and_copied_into_subgraph_sessions(graph, child_graph, store):
+    session = _session(graph)
+    start, inner, finish = _subgraph_messages(session, child_graph, str(uuid4()))
+    inner = json.dumps({**json.loads(inner), "node_type": "AGENT"})
+
+    store.persist_batch([start, inner, finish, _payload(session.id, "graph_end")])
+
+    stored = GraphSessionMessage.objects.get(session=session, uuid=_uuid_of(inner))
+    [copy] = GraphSessionMessage.objects.filter(
+        session__parent_session=session, message_data__message_type="agent"
+    )
+    assert (stored.node_type, copy.node_type) == ("AGENT", "AGENT")
+
+
 def test_subgraph_copies_are_not_truncated_for_a_large_run(graph, child_graph, store):
     session = _session(graph)
     execution_id = str(uuid4())
@@ -830,3 +844,26 @@ def test_status_handler_persists_results_after_releasing_the_session_lock(
     session.refresh_from_db()
     assert outcomes == [{"result": "locked"}]
     assert session.status == Session.SessionStatus.END
+
+
+def test_file_data_is_published_as_a_preview_and_stored_whole(graph, store, redis_client):
+    session = _session(graph)
+    subscriber = redis_client.pubsub()
+    subscriber.subscribe(f"session:update:{session.id}:messages")
+    file_data = "A" * 10_000
+    payload = _payload(
+        session.id,
+        message_type="start",
+        input={"files": [{"name": "report.pdf", "base64_data": file_data}]},
+    )
+
+    store.persist_batch([payload])
+
+    published = _published(subscriber)
+    subscriber.close()
+    published_message = json.loads(published[0]["data"])
+    assert published_message["message_data"]["input"]["files"] == [
+        {"name": "report.pdf", "base64_data": "A" * 50}
+    ]
+    stored = GraphSessionMessage.objects.get(session=session)
+    assert stored.message_data["input"]["files"][0]["base64_data"] == file_data

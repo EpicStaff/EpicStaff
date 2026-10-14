@@ -8,82 +8,120 @@ from tables.services.storage_service.dataclasses import (
 from tables.services.storage_service.manager import StorageManager
 
 
-@pytest.fixture(autouse=True)
-def patch_sync(mocker):
-    """Isolate manager from DB sync — sync has its own tests."""
-    return mocker.patch("tables.services.storage_service.manager.StorageFileSync")
+from tests.storage_tests.storage_writes import store_object
 
 
-# --- Path helpers (no DB needed) ---
+@pytest.fixture
+def manager(fake_backend):
+    return StorageManager(fake_backend)
 
 
-class TestPathHelpers:
-    def test_build_storage_key_prepends_org_prefix(self, storage_manager):
-        assert storage_manager._build_storage_key(5, "docs/a.txt") == "org_5/docs/a.txt"
-
-    def test_build_storage_key_strips_leading_slash(self, storage_manager):
-        assert storage_manager._build_storage_key(1, "/a.txt") == "org_1/a.txt"
-
-    def test_strip_org_prefix_removes_matching_prefix(self, storage_manager):
-        assert storage_manager._strip_org_prefix(1, "org_1/a.txt") == "a.txt"
-
-    def test_strip_org_prefix_passthrough_when_no_match(self, storage_manager):
-        assert storage_manager._strip_org_prefix(1, "other/a.txt") == "other/a.txt"
+def _keys(backend, org):
+    return sorted(key.removeprefix(f"org_{org.id}/") for key in backend.list_all_keys(f"org_{org.id}"))
 
 
-# --- Delegation + sync ---
+def _rows(org):
+    return dict(StorageFile.objects.filter(org=org).values_list("path", "item_type"))
 
 
 @pytest.mark.django_db
-class TestDelegation:
-    def test_delete_delegates_to_backend_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        storage_manager.delete(org.id, "old.txt")
-        mock_backend.delete.assert_called_once_with(f"org_{org.id}/old.txt")
-        patch_sync.on_delete.assert_called_once_with(org.id, "old.txt")
+class TestWrites:
+    """Every write changes storage under the org's prefix and keeps the file rows in step."""
 
-    def test_move_builds_both_org_keys_and_syncs(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        mock_backend.move.return_value = f"org_{org.id}/dest/a.txt"
-        storage_manager.move(org.id, "a.txt", "dest")
-        mock_backend.move.assert_called_once_with(
-            f"org_{org.id}/a.txt", f"org_{org.id}/dest"
-        )
-        patch_sync.on_move.assert_called_once_with(org.id, "a.txt", "dest/a.txt")
+    def test_mkdir_creates_the_folder_and_its_row_authored_by_the_user(self, manager, fake_backend, org, org_user):
+        manager.mkdir(org.id, "docs", user=org_user.user)
 
-    def test_rename_delegates_and_syncs_via_on_move(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        storage_manager.rename(org.id, "old.txt", "new.txt")
-        mock_backend.rename.assert_called_once_with(
-            f"org_{org.id}/old.txt", f"org_{org.id}/new.txt"
-        )
-        patch_sync.on_move.assert_called_once_with(org.id, "old.txt", "new.txt")
+        assert fake_backend.exists(f"org_{org.id}/docs/")
+        folder = StorageFile.objects.get(org=org, path="docs/")
+        assert (folder.item_type, folder.created_by) == ("folder", org_user.user)
 
-    def test_rename_raises_file_exists_when_destination_row_exists(
-        self, storage_manager, mock_backend, org, org_user, patch_sync
-    ):
-        StorageFile.objects.create(org=org, path="new.txt", name="new.txt")
+    def test_delete_removes_the_object_and_its_row(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "old.txt", b"x")
+
+        manager.delete(org.id, "old.txt")
+
+        assert _keys(fake_backend, org) == []
+        assert _rows(org) == {}
+
+    def test_move_puts_the_file_inside_the_destination_and_moves_its_row(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "a.txt", b"x")
+        manager.mkdir(org.id, "dest")
+
+        manager.move(org.id, "a.txt", "dest", user=org_user.user)
+
+        assert fake_backend.download(f"org_{org.id}/dest/a.txt") == b"x"
+        assert not fake_backend.exists(f"org_{org.id}/a.txt")
+        assert set(_rows(org)) == {"dest/", "dest/a.txt"}
+
+    def test_rename_moves_the_file_and_its_row(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "old.txt", b"x")
+
+        manager.rename(org.id, "old.txt", "new.txt", user=org_user.user)
+
+        assert _keys(fake_backend, org) == ["new.txt"]
+        assert set(_rows(org)) == {"new.txt"}
+
+    def test_rename_onto_an_existing_file_changes_nothing(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "old.txt", b"old")
+        store_object(fake_backend, org.id, "new.txt", b"new")
+
         with pytest.raises(FileExistsError):
-            storage_manager.rename(org.id, "old.txt", "new.txt")
-        mock_backend.rename.assert_not_called()
+            manager.rename(org.id, "old.txt", "new.txt")
 
-    def test_info_strips_org_prefix_from_result_path(
-        self, storage_manager, org, org_user
-    ):
-        StorageFile.objects.create(
-            org=org,
-            path="docs/f.txt",
-            name="f.txt",
-            item_type="file",
-            parent_path="docs/",
-            size=5,
-        )
-        result = storage_manager.info(org.id, "docs/f.txt")
+        assert fake_backend.download(f"org_{org.id}/new.txt") == b"new"
+        assert set(_rows(org)) == {"old.txt", "new.txt"}
+
+    def test_copy_records_every_copied_file_and_folder(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "src/a.txt", b"a")
+        store_object(fake_backend, org.id, "src/b.txt", b"bb")
+        manager.mkdir(org.id, "dest")
+
+        manager.copy(org.id, "src", "dest", user=org_user.user)
+
+        assert fake_backend.download(f"org_{org.id}/dest/src/b.txt") == b"bb"
+        copied = StorageFile.objects.filter(org=org, path__startswith="dest/src/")
+        assert {(row.path, row.size) for row in copied if row.item_type == "file"} == {
+            ("dest/src/a.txt", 1), ("dest/src/b.txt", 2),
+        }
+        assert all(row.created_by == org_user.user for row in copied)
+        assert fake_backend.exists(f"org_{org.id}/src/a.txt")
+
+    def test_info_reports_the_path_without_the_org_prefix(self, manager, fake_backend, org, org_user):
+        store_object(fake_backend, org.id, "docs/f.txt", b"hello")
+
+        result = manager.info(org.id, "docs/f.txt")
+
         assert isinstance(result, FileInfo)
-        assert result.path == "docs/f.txt"
+        assert (result.path, result.size) == ("docs/f.txt", 5)
+
+
+@pytest.mark.django_db
+class TestCrossOrg:
+    def test_copy_to_another_org_records_the_copies_authored_by_the_copier_and_keeps_the_source(
+        self, manager, fake_backend, org, org_user, second_org
+    ):
+        store_object(fake_backend, org.id, "src.txt", b"abc", user=org_user.user)
+        manager.mkdir(second_org.id, "inbox")
+
+        manager.copy_cross_org(org.id, "src.txt", second_org.id, "inbox", user=org_user.user)
+
+        assert fake_backend.download(f"org_{second_org.id}/inbox/src.txt") == b"abc"
+        copy = StorageFile.objects.get(org=second_org, path="inbox/src.txt")
+        assert (copy.size, copy.created_by) == (3, org_user.user)
+        assert _keys(fake_backend, org) == ["src.txt"]
+
+    def test_move_to_another_org_drops_an_author_who_is_not_a_member_and_removes_the_source(
+        self, manager, fake_backend, org, org_user, second_org
+    ):
+        store_object(fake_backend, org.id, "src.txt", b"abc", user=org_user.user)
+        manager.mkdir(second_org.id, "inbox")
+
+        manager.move_cross_org(org.id, "src.txt", second_org.id, "inbox", user=org_user.user)
+
+        moved = StorageFile.objects.get(org=second_org, path="inbox/src.txt")
+        assert moved.created_by is None
+        assert _keys(fake_backend, org) == []
+        assert _rows(org) == {}
 
 
 @pytest.mark.django_db

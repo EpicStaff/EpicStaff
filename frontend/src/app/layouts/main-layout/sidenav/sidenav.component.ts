@@ -9,21 +9,21 @@ import {
     DestroyRef,
     ElementRef,
     inject,
+    input,
+    output,
     signal,
     ViewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
-import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
-import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
@@ -31,7 +31,11 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
+import { isMainSidenavExpanded } from '../main-sidenav-width';
 import { TooltipComponent } from './tooltip/tooltip.component';
+
+/** Gap between the sidebar edge and the floating (undocked) EpicChat window. */
+const FLOATING_EPIC_CHAT_GAP_PX = 8;
 
 interface NavItem {
     id: string;
@@ -62,6 +66,7 @@ interface NavItem {
         UserAvatarComponent,
         OrgAvatarComponent,
         ClickOutsideDirective,
+        SidebarToggleButtonComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -69,6 +74,16 @@ interface NavItem {
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class LeftSidebarComponent implements AfterViewInit {
+    /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
+    public readonly width = input.required<number>();
+    /** The open/close control was used; the owner of the width decides the new one. */
+    public readonly expandedToggle = output<void>();
+
+    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
+    protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
+    protected readonly showEpicChatTooltip = signal(false);
+
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
@@ -79,7 +94,9 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
     protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
-    public showLogoTooltip = false;
+    /** Shown next to the logo when expanded; names the logo image when collapsed. */
+    protected readonly productName = 'EpicStaff';
+    protected readonly epicChatLabel = 'EpicStaff chat';
     public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
@@ -163,6 +180,23 @@ export class LeftSidebarComponent implements AfterViewInit {
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
     });
 
+    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
+    protected readonly orgSwitcherLabel = computed(() =>
+        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
+    );
+
+    /** Same fallback as the user menu header: the display name, or the email when there is none. */
+    protected readonly accountLabel = computed(() => {
+        const user = this.user();
+        return user ? user.display_name || user.email : '';
+    });
+
+    /** The docked chat starts at the sidebar edge; the floating one opens just beside it. */
+    protected readonly epicChatLeft = computed(() => {
+        const gap = this.epicChatService.isDocked() ? 0 : FLOATING_EPIC_CHAT_GAP_PX;
+        return `${this.width() + gap}px`;
+    });
+
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
@@ -172,14 +206,13 @@ export class LeftSidebarComponent implements AfterViewInit {
         return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
     }
 
-    constructor(
-        public epicChatService: EpicChatService,
-        public activeOrgService: ActiveOrgService,
-        private configService: ConfigService,
-        private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService,
-        private permissionService: PermissionsService
-    ) {
+    public readonly epicChatService = inject(EpicChatService);
+    public readonly activeOrgService = inject(ActiveOrgService);
+    private readonly configService = inject(ConfigService);
+    private readonly authService = inject(AuthService);
+    private readonly permissionService = inject(PermissionsService);
+
+    constructor() {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
         // syncAgentsFromApi call always matches the actual access host (localhost vs 127.0.0.1),
@@ -242,7 +275,9 @@ export class LeftSidebarComponent implements AfterViewInit {
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () => this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () =>
+                    this.configService.isAuditTrailEnabled &&
+                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
             },
         ];
@@ -250,11 +285,11 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.bottomNavItems = [];
         this.bottomNavItems.push({
             id: 'settings',
+            routeLink: 'settings',
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
-            action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
         });
     }
@@ -263,10 +298,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }
-    }
-
-    private onSettingsClick(): void {
-        this.configureModelsDialogService.open();
     }
 
     public onLogoClick(): void {

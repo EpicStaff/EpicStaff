@@ -28,14 +28,14 @@ START → enter (pre-computation) → evaluate (rows + post-computation) → END
 ```python
 class ClassificationDecisionTableNodeData(BaseModel):
     node_name: str
-    pre_python_code: PythonCodeData | None = None    # sandboxed code w/ main()
-    pre_input_map: dict[str, str] = {}               # "local_name": "variables.path"
-    pre_output_variable_path: str | None = None      # where to store main() return
-    post_python_code: PythonCodeData | None = None   # same pattern as pre
+    pre_python_code: PythonCodeData | None = None  # sandboxed code w/ main()
+    pre_input_map: dict[str, str] = {}  # "local_name": "variables.path"
+    pre_output_variable_path: str | None = None  # where to store main() return
+    post_python_code: PythonCodeData | None = None  # same pattern as pre
     post_input_map: dict[str, str] = {}
     post_output_variable_path: str | None = None
     condition_groups: list[ClassificationConditionGroupData] = []
-    prompts: dict[str, PromptConfigData] = {}         # prompt library keyed by id
+    prompts: dict[str, PromptConfigData] = {}  # prompt library keyed by id
     default_next_node: str | None = None
     next_error_node: str | None = None
 ```
@@ -49,15 +49,15 @@ class ClassificationDecisionTableNodeData(BaseModel):
 ```python
 class ClassificationConditionGroupData(BaseModel):
     group_name: str
-    expression: str | None = None                 # main Python expression (optional)
-    prompt_id: str | None = None                  # reference into node `prompts`
-    manipulation: str | None = None               # main Python manipulation code
-    continue_flag: bool = False                   # after a MATCH: True=continue, False=stop
-    next_node: str | None = None                  # routing target (resolved node name)
-    dock_visible: bool = True                     # enabled flag (see below)
-    order: int = 0                                # evaluation order
-    field_expressions: dict[str, str] = {}        # column → expression fragment
-    field_manipulations: dict[str, str] = {}      # column → assignment expression
+    expression: str | None = None  # main Python expression (optional)
+    prompt_id: str | None = None  # reference into node `prompts`
+    manipulation: str | None = None  # main Python manipulation code
+    continue_flag: bool = False  # after a MATCH: True=continue, False=stop
+    next_node: str | None = None  # routing target (resolved node name)
+    dock_visible: bool = True  # enabled flag (see below)
+    order: int = 0  # evaluation order
+    field_expressions: dict[str, str] = {}  # column → expression fragment
+    field_manipulations: dict[str, str] = {}  # column → assignment expression
 ```
 
 ### Field Expression Formats
@@ -76,10 +76,13 @@ Empty/None expressions evaluate as `True` — a row with only field_expressions 
 3. **Match (True):**
    - Execute the LLM prompt if `prompt_id` is set.
    - Execute the combined manipulation (`field_manipulations` + `manipulation`); changes are written back to state.
-   - If `next_node` is set, capture it as the routing target (overwrites any prior).
-   - If `continue_flag` is `False` → **stop**. If `True` → continue to the next row.
+   - If `next_node` is set → take it as the routing target and **stop**. `continue_flag` is not consulted at all.
+   - Otherwise, if `continue_flag` is `False` → **stop**. If `True` → continue to the next row.
 
-`continue_flag` is consulted **only after a row matches**. A non-matching row always falls through to the next row regardless of `continue_flag`.
+Two consequences of that order, both easy to get wrong:
+
+- **An explicit route is terminal.** A matched row with a non-null `next_node` ends evaluation even with `continue_flag = True` — the flag is only reached on rows that capture no target. Covered by `test_explicit_route_is_terminal_continue_ignored`.
+- **`continue_flag` is consulted only after a row matches.** A non-matching row always falls through to the next row regardless of the flag.
 
 ### Routing
 
@@ -88,13 +91,17 @@ There is **no** route-code/route-map lookup. Each matched row's `next_node` (a r
 Priority after all rows are evaluated:
 
 ```
-last matched row's next_node  >  default_next_node  >  END
+first matched row's next_node  >  default_next_node  >  END
 errors (pre-comp / expression / manipulation / prompt / post-comp)  ⇒  next_error_node  >  END
 ```
 
-With `continue_flag = True`, the **last** matching row that has a non-null `next_node` wins; a later matching row whose `next_node` is null does **not** clear a previously-captured target. The engine sets `system_variables[node]["result_node"]`, and `add_classification_decision_table_node` (graph_builder.py) returns `result_node or default_next_node`.
+The **first** matching row with a non-null `next_node` wins, and evaluation stops there — no later row can overwrite it, because there is no later row. `matched_next_node` is assigned exactly once, immediately followed by `break`
+(`classification_decision_table_node.py`, "Step 4: An explicit route is terminal"). The engine sets
+`system_variables[node]["result_node"]`, and `add_classification_decision_table_node` (graph_builder.py) returns `result_node or default_next_node`.
 
-> `route_code` exists on the Django model but is a **frontend-only** identifier (the canvas output-port id). It is not in the runtime pydantic model and the engine never reads it.
+So `continue_flag = True` only keeps evaluation going across rows that match **without** capturing a target — an enrichment row that writes variables and hands over to the next rule.
+
+> `route_code` exists on the Django model but is a **frontend-only** identifier (the canvas output-port id). It is not in the runtime pydantic model and the engine never reads it. A row can therefore carry a `route_code` and still have a null `next_node` — nothing is connected to that output port on the canvas — and such a row does **not** end evaluation: it falls through to the `continue_flag` check like any unrouted row.
 
 ### Enabled / disabled rows (`dock_visible`)
 
@@ -126,12 +133,12 @@ Prompts live in the `prompts` dict on the node, keyed by id:
 
 ```python
 class PromptConfigData(BaseModel):
-    prompt_text: str                       # template with {var_name} interpolation
+    prompt_text: str  # template with {var_name} interpolation
     llm_id: int | None = None
-    output_schema: dict | str = {}         # JSON Schema for structured output
-    result_variable: str = "prompt_result" # state variable to store the result
-    variable_mappings: dict[str, str] = {} # extract fields: state_var → result_field
-    llm_data: LLMData | None = None         # resolved at runtime
+    output_schema: dict | str = {}  # JSON Schema for structured output
+    result_variable: str = "prompt_result"  # state variable to store the result
+    variable_mappings: dict[str, str] = {}  # extract fields: state_var → result_field
+    llm_data: LLMData | None = None  # resolved at runtime
 ```
 
 The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
@@ -218,4 +225,4 @@ API: `POST/GET/DELETE /api/classification-decision-table-node/`
 
 ## Tests
 
-`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, continue/last-match-wins, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, and prompt `output_schema` application. The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.
+`src/crew/tests/graph/subgraphs/test_classification_decision_table_node.py` covers routing (first-match, fall-through, explicit route terminal with `continue_flag=True`, continue-then-route, default, error→next_error_node), `dock_visible` skipping, field expressions, manipulation write-back, and prompt `output_schema` application. The sandbox (`RunPythonCodeService.run_code`) and `litellm.acompletion` are mocked.

@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
@@ -28,7 +29,13 @@ import { getEntityTypeResult, getTotalItemsCount, getVisibleEntityTypes } from '
 
 @Component({
     selector: 'app-import-review-dialog',
-    imports: [ButtonComponent, ImportSummaryTabsComponent, EntityGroupComponent, ReviewNavigatorComponent],
+    imports: [
+        ButtonComponent,
+        ImportSummaryTabsComponent,
+        EntityGroupComponent,
+        ReviewNavigatorComponent,
+        EnterSubmitDirective,
+    ],
     templateUrl: './import-review-dialog.component.html',
     styleUrls: ['./import-review-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -13,12 +13,12 @@ What is NOT duplicated here:
     covered in TestLastSuperadminGuard.test_revoke_last_superadmin_400.
 """
 
-import threading
 
 import pytest
 from django.contrib.auth import get_user_model
 
-from tables.models.graph_models import Graph
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models.graph_models import Graph, GraphNote, GraphVersion
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
@@ -188,12 +188,6 @@ def test_set_user_active_false_on_plain_user_does_not_raise_last_superadmin(
 # ---------------------------------------------------------------------------
 
 
-def test_self_account_deletion_error_shape():
-    error = SelfAccountDeletionError()
-    assert error.status_code == 400
-    assert error.default_code == "cannot_delete_self"
-
-
 @pytest.fixture
 def actor(db, django_user_model):
     user = django_user_model.objects.create_user(
@@ -347,6 +341,79 @@ def test_deleting_a_user_preserves_their_authored_content(actor, target_user):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("target_is_superadmin", [False, True], ids=["member", "superadmin"])
+def test_deleting_a_user_scrubs_them_from_version_snapshots_of_every_org(
+    actor, target_user, django_user_model, target_is_superadmin
+):
+    """A superadmin holds no memberships yet may author flows in any organization."""
+    role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    member_org = Organization.objects.create(name="Scrub Member Org")
+    other_org = Organization.objects.create(name="Scrub Other Org")
+    if target_is_superadmin:
+        target_user.is_superadmin = True
+        target_user.save(update_fields=["is_superadmin"])
+    else:
+        OrganizationUser.objects.create(user=target_user, org=member_org, role=role)
+    colleague = django_user_model.objects.create_user(
+        email="scrub-colleague@x.com", password="StrongPass123!"
+    )
+    member_flow = Graph.objects.create(name="member-flow", org=member_org)
+    GraphNote.objects.create(graph=member_flow, content="note", created_by=target_user)
+    other_flow = Graph.objects.create(name="other-flow", org=other_org)
+    GraphNote.objects.create(graph=other_flow, content="note", created_by=target_user)
+    colleague_flow = Graph.objects.create(name="colleague-flow", org=other_org)
+    GraphNote.objects.create(graph=colleague_flow, content="note", created_by=colleague)
+    versioning_service = GraphVersioningService()
+    member_version = versioning_service.save_version(member_flow, name="member-v1")
+    other_version = versioning_service.save_version(other_flow, name="other-v1")
+    colleague_version = versioning_service.save_version(colleague_flow, name="colleague-v1")
+
+    UserManagementService().delete_user(
+        actor=actor,
+        target_user_id=target_user.pk,
+        verification_phrase=f"delete-{target_user.email}",
+    )
+
+    assert _recorded_node_authors(member_version) == {None}
+    assert _recorded_node_authors(other_version) == {None}
+    assert _recorded_node_authors(colleague_version) == {colleague.id}
+
+
+def _recorded_node_authors(version) -> set[int | None]:
+    snapshot = GraphVersion.objects.get(pk=version.pk).snapshot
+    return {entry["created_by"] for entry in snapshot["node_authorship"].values()}
+
+
+@pytest.mark.django_db
+def test_delete_user_refused_by_the_locked_last_superadmin_recheck_rolls_back_the_scrub(
+    actor, target_user, monkeypatch
+):
+    """The scrub runs before the locked re-check; a refusal there must undo it."""
+    target_user.is_superadmin = True
+    target_user.save(update_fields=["is_superadmin"])
+    get_user_model().objects.filter(pk=actor.pk).update(is_superadmin=False)
+    flow = Graph.objects.create(
+        name="last-superadmin-flow", org=Organization.objects.create(name="Scrub Rollback Org")
+    )
+    GraphNote.objects.create(graph=flow, content="note", created_by=target_user)
+    version = GraphVersioningService().save_version(flow, name="v1")
+    # Lets the call past the unlocked pre-check, as when a concurrent demotion lands
+    # between that check and the locked one.
+    monkeypatch.setattr(
+        UserManagementService, "_assert_deletable_user", staticmethod(lambda actor, instance: None)
+    )
+
+    with pytest.raises(LastSuperadminError):
+        UserManagementService().delete_user(
+            actor=actor,
+            target_user_id=target_user.pk,
+            verification_phrase=f"delete-{target_user.email}",
+        )
+
+    assert _recorded_node_authors(version) == {target_user.pk}
+
+
+@pytest.mark.django_db
 def test_deleting_a_user_removes_their_memberships(actor, target_user):
     org = Organization.objects.create(name="Membership Org")
     role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
@@ -362,53 +429,30 @@ def test_deleting_a_user_removes_their_memberships(actor, target_user):
 
 
 @pytest.mark.django_db
-def test_cannot_delete_self(actor):
-    with pytest.raises(SelfAccountDeletionError):
-        UserManagementService().preview_delete(actor=actor, target_user_id=actor.pk)
+@pytest.mark.parametrize("dry_run", [True, False], ids=["preview", "delete"])
+@pytest.mark.parametrize("target", ["self", "last-superadmin"])
+def test_protected_account_is_refused_with_a_400_and_kept(db, django_user_model, actor, dry_run, target):
+    if target == "self":
+        victim, error, code = actor, SelfAccountDeletionError, "cannot_delete_self"
+    else:
+        victim = django_user_model.objects.create_user(email="last-superadmin@x.com", password="StrongPass123!")
+        victim.is_superadmin = True
+        victim.save(update_fields=["is_superadmin"])
+        # `actor` is the only OTHER superadmin; demote it so the victim is the last one.
+        django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
+        error, code = LastSuperadminError, None
+    service = UserManagementService()
 
+    with pytest.raises(error) as raised:
+        if dry_run:
+            service.preview_delete(actor=actor, target_user_id=victim.pk)
+        else:
+            service.delete_user(actor=actor, target_user_id=victim.pk, verification_phrase=f"delete-{victim.email}")
 
-@pytest.mark.django_db
-def test_cannot_delete_self_in_real_mode_too(actor):
-    """The self-deletion guard applies whether or not dry_run is set."""
-    with pytest.raises(SelfAccountDeletionError):
-        UserManagementService().delete_user(
-            actor=actor, target_user_id=actor.pk, verification_phrase=f"delete-{actor.email}"
-        )
-
-
-@pytest.mark.django_db
-def test_cannot_delete_the_last_superadmin(db, django_user_model, actor):
-    other_actor = django_user_model.objects.create_user(
-        email="delete-other@x.com", password="StrongPass123!"
-    )
-    other_actor.is_superadmin = True
-    other_actor.save(update_fields=["is_superadmin"])
-    # `actor` is the only OTHER superadmin; remove it so the target is last.
-    django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
-
-    with pytest.raises(LastSuperadminError):
-        UserManagementService().preview_delete(actor=actor, target_user_id=other_actor.pk)
-
-
-@pytest.mark.django_db
-def test_cannot_delete_the_last_superadmin_in_real_mode_with_a_correct_phrase(
-    db, django_user_model, actor
-):
-    other_actor = django_user_model.objects.create_user(
-        email="last-superadmin@x.com", password="StrongPass123!"
-    )
-    other_actor.is_superadmin = True
-    other_actor.save(update_fields=["is_superadmin"])
-    django_user_model.objects.filter(pk=actor.pk).update(is_superadmin=False)
-
-    with pytest.raises(LastSuperadminError):
-        UserManagementService().delete_user(
-            actor=actor,
-            target_user_id=other_actor.pk,
-            verification_phrase=f"delete-{other_actor.email}",
-        )
-
-    assert django_user_model.objects.filter(pk=other_actor.pk).exists()
+    assert raised.value.status_code == 400
+    if code:
+        assert raised.value.default_code == code
+    assert django_user_model.objects.filter(pk=victim.pk).exists()
 
 
 @pytest.mark.django_db
@@ -432,29 +476,6 @@ def test_deleting_a_user_blacklists_their_refresh_tokens(actor, target_user):
     )
 
     assert BlacklistedToken.objects.filter(token_id__in=token_ids).count() == len(token_ids)
-
-
-@pytest.mark.django_db
-def test_delete_user_locked_recheck_takes_a_lock_on_the_target_row_even_when_not_a_superadmin(
-    db, actor, target_user, mocker
-):
-    """delete_user's locked recheck always issues a locking query on the target's own row, not just when it's already flagged superadmin."""
-    from tables.models.user import User
-
-    mock_select_for_update = mocker.patch.object(User.objects, "select_for_update")
-    mock_select_for_update.return_value.get.return_value = target_user
-    try:
-        UserManagementService().delete_user(
-            actor=actor,
-            target_user_id=target_user.pk,
-            verification_phrase=f"delete-{target_user.email}",
-        )
-    except Exception:
-        pass
-    assert mock_select_for_update.called, (
-        "delete_user's locked recheck must always take a lock on the target's own "
-        "row, even when instance.is_superadmin is False at the unlocked read"
-    )
 
 
 @pytest.mark.django_db
@@ -515,40 +536,28 @@ def test_avatar_cleanup_failure_does_not_undo_a_committed_delete(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_delete_user_registers_cleanup_via_on_commit_not_synchronously(
-    actor, target_user, mocker
+def test_files_are_only_removed_once_the_delete_commits(
+    actor, target_user, django_user_model, settings, tmp_path
 ):
-    """delete_user's real on_commit(...) call is what defers _cleanup_user_delete_external, not a direct call."""
-    mock_on_commit = mocker.patch(
-        "rbac.governance.users.transaction.on_commit"
-    )
-    UserManagementService().delete_user(
-        actor=actor,
-        target_user_id=target_user.pk,
-        verification_phrase=f"delete-{target_user.email}",
-    )
-    mock_on_commit.assert_called_once()
+    """If the caller's transaction rolls back, the user is back and so must their avatar be."""
+    from pathlib import Path
 
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.db import transaction
 
-@pytest.mark.django_db(transaction=True)
-def test_on_commit_callback_does_not_fire_if_the_enclosing_transaction_rolls_back(
-    actor, target_user, mocker
-):
-    """A cleanup callback registered via delete_user's on_commit before an enclosing rollback never fires."""
-    from django.db import transaction as dj_transaction
-
-    mock_cleanup = mocker.patch.object(UserManagementService, "_cleanup_user_delete_external")
+    settings.MEDIA_ROOT = str(tmp_path)
+    target_user.avatar.save("face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True)
+    stored = Path(settings.MEDIA_ROOT) / target_user.avatar.name
 
     with pytest.raises(RuntimeError):
-        with dj_transaction.atomic():
+        with transaction.atomic():
             UserManagementService().delete_user(
-                actor=actor,
-                target_user_id=target_user.pk,
-                verification_phrase=f"delete-{target_user.email}",
+                actor=actor, target_user_id=target_user.pk, verification_phrase=f"delete-{target_user.email}"
             )
-            raise RuntimeError("force a rollback after on_commit was registered")
+            raise RuntimeError("the caller's transaction fails after the delete")
 
-    mock_cleanup.assert_not_called()
+    assert django_user_model.objects.filter(pk=target_user.pk).exists()
+    assert stored.exists()
 
 
 class _RecordingCredentialRevoker(CredentialRevocationService):
@@ -626,3 +635,98 @@ def test_unknown_user_is_not_found_before_the_phrase_is_checked(actor):
         UserManagementService().delete_user(
             actor=actor, target_user_id=999_999, verification_phrase=None
         )
+
+
+# ---- superadmin revocation releases authorship ----
+
+
+@pytest.fixture
+def authorship_orgs(db):
+    return (
+        Organization.objects.create(name="Authorship-Org-A"),
+        Organization.objects.create(name="Authorship-Org-B"),
+    )
+
+
+@pytest.mark.django_db
+def test_revoke_after_promotion_releases_authorship_in_every_org(
+    service, active_superadmin, authorship_orgs, django_user_model
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    promoted = django_user_model.objects.create_user(
+        email="promoted-author@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=promoted, org=org_a, role=member_role)
+    OrganizationUser.objects.create(user=promoted, org=org_b, role=member_role)
+    flow_a = Graph.objects.create(name="promoted-flow-a", org=org_a, created_by=promoted)
+    flow_b = Graph.objects.create(name="promoted-flow-b", org=org_b, created_by=promoted)
+    note_b = GraphNote.objects.create(graph=flow_b, content="promoted", created_by=promoted)
+
+    service.grant_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+    flow_a.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id == promoted.pk
+    assert note_b.created_by_id == promoted.pk
+
+    service.revoke_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+
+    flow_a.refresh_from_db()
+    flow_b.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id is None
+    assert flow_b.created_by_id is None
+    assert note_b.created_by_id is None
+
+
+@pytest.mark.django_db
+def test_revoke_keeps_authorship_where_membership_remains(
+    service, active_superadmin, second_active_superadmin, authorship_orgs
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    # A superadmin created directly (first setup, create_superadmin) keeps the
+    # memberships it was created with; they were never purged by a promotion.
+    OrganizationUser.objects.create(user=second_active_superadmin, org=org_a, role=member_role)
+    flow_a = Graph.objects.create(
+        name="kept-flow-a", org=org_a, created_by=second_active_superadmin
+    )
+    flow_b = Graph.objects.create(
+        name="released-flow-b", org=org_b, created_by=second_active_superadmin
+    )
+
+    note_a = GraphNote.objects.create(
+        graph=flow_a, content="kept", created_by=second_active_superadmin
+    )
+    note_b = GraphNote.objects.create(
+        graph=flow_b, content="released", created_by=second_active_superadmin
+    )
+
+    service.revoke_superadmin(
+        actor=active_superadmin, target_user_id=second_active_superadmin.pk
+    )
+
+    flow_a.refresh_from_db()
+    flow_b.refresh_from_db()
+    note_a.refresh_from_db()
+    note_b.refresh_from_db()
+    assert flow_a.created_by_id == second_active_superadmin.pk
+    assert note_a.created_by_id == second_active_superadmin.pk
+    assert flow_b.created_by_id is None
+    assert note_b.created_by_id is None
+
+
+@pytest.mark.django_db
+def test_revoke_of_non_superadmin_keeps_authorship(
+    service, active_superadmin, authorship_orgs, django_user_model
+):
+    org_a, _ = authorship_orgs
+    regular = django_user_model.objects.create_user(
+        email="regular-author@example.com", password="StrongPass123!"
+    )
+    flow = Graph.objects.create(name="regular-flow", org=org_a, created_by=regular)
+
+    service.revoke_superadmin(actor=active_superadmin, target_user_id=regular.pk)
+
+    flow.refresh_from_db()
+    assert flow.created_by_id == regular.pk

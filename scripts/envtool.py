@@ -84,7 +84,7 @@ def generate_env_file(
     content = [
         BANNER.format(
             schema_file=schema_file.relative_to(BASE_DIR.parent),
-            timestamp=datetime.now(),  # noqa: DTZ005 (local wall-clock time, unchanged format)
+            timestamp=datetime.now().astimezone(),
         )
     ]
     for group, variables in schema["groups"].items():

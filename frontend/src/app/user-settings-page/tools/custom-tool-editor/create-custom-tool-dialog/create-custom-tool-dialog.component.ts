@@ -33,7 +33,7 @@ import {
     ToggleSwitchComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
 import {
     ActionCode,
     CreatePythonCodeToolPayload,
@@ -126,6 +126,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         TextareaComponent,
         ToggleSwitchComponent,
         ParametersTableViewComponent,
+        EnterSubmitDirective,
         HasPermissionDirective,
         NodeSecretsFieldComponent,
         ValidationErrorsComponent,

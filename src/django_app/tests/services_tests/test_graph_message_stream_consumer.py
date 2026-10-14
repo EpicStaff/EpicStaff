@@ -132,7 +132,7 @@ def _add(redis_client, session_id, text="hello"):
         "message_data": {"message_type": "agent", "text": text},
         "uuid": str(uuid4()),
     }
-    redis_client.xadd(STREAM, graph_message_fields(message))
+    redis_client.xadd(STREAM, graph_message_fields(message["uuid"], json.dumps(message)))
     return message["uuid"]
 
 
@@ -490,29 +490,26 @@ def test_run_resets_the_backoff_after_it_recovers(
 def test_backlog_warning_is_logged_at_most_once_per_interval(
     redis_client, clock, warnings_logged
 ):
+    # Not graph messages, so each process_new() drops one batch of 50.
     pipeline = redis_client.pipeline()
-    for index in range(BACKLOG_WARNING_THRESHOLD + 1):
+    for index in range(BACKLOG_WARNING_THRESHOLD + 200):
         pipeline.xadd(STREAM, {"index": index})
     pipeline.execute()
     consumer = _consumer(redis_client, clock=clock)
+    consumer.start()
 
-    def backlog_warnings():
+    def backlog_warnings_after(seconds):
+        clock.advance(seconds)
+        consumer.process_new(block_milliseconds=None)
         return sum("waiting to be stored" in warning for warning in warnings_logged)
 
-    consumer._warn_on_backlog()
-    after_first_check = backlog_warnings()
-    clock.advance(30)
-    consumer._warn_on_backlog()
-    within_interval = backlog_warnings()
-    clock.advance(30)
-    consumer._warn_on_backlog()
-    after_interval = backlog_warnings()
+    first = backlog_warnings_after(0)
+    within_interval = backlog_warnings_after(30)
+    after_interval = backlog_warnings_after(30)
     redis_client.xtrim(STREAM, maxlen=BACKLOG_WARNING_THRESHOLD)
-    clock.advance(60)
-    consumer._warn_on_backlog()
+    below_threshold = backlog_warnings_after(60)
 
-    assert (after_first_check, within_interval, after_interval) == (1, 1, 2)
-    assert backlog_warnings() == 2
+    assert (first, within_interval, after_interval, below_threshold) == (1, 1, 2, 2)
 
 
 def test_redis_client_raises_instead_of_hanging_on_a_silent_server(settings, monkeypatch):

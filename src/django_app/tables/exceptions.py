@@ -566,10 +566,20 @@ class ToolExecutionError(CustomAPIExeption):
     default_code = "flow_assistant_tool_execution_failed"
 
 
-class PromptNotFoundError(CustomAPIExeption):
-    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+class NodeChildValidationError(CustomAPIExeption):
+    """Base for a node's nested child row that is invalid but can only be detected
+    while the node's children are written.
+
+    Graph bulk save reports a subclass under the failing item's list key and index,
+    like any other item error; the single-node API returns it as a plain 400.
+    """
 
     status_code = 400
+
+
+class PromptNotFoundError(NodeChildValidationError):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
     default_code = "prompt_not_found"
 
     def __init__(self, value: int | str):
@@ -580,10 +590,9 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
-class SectionIdConflictError(CustomAPIExeption):
+class SectionIdConflictError(NodeChildValidationError):
     """Raised when a section id in the payload already belongs to a different CDT node."""
 
-    status_code = 400
     default_code = "section_id_conflict"
 
     def __init__(self, value: str):
@@ -594,10 +603,9 @@ class SectionIdConflictError(CustomAPIExeption):
         )
 
 
-class SectionNotFoundError(CustomAPIExeption):
+class SectionNotFoundError(NodeChildValidationError):
     """Raised when a condition group references a section id not present among this node's sections."""
 
-    status_code = 400
     default_code = "section_not_found"
 
     def __init__(self, value: str):
@@ -643,6 +651,26 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):
+    """Raised instead of `CdtExplainUpstreamError` when the LLM config has no API key.
+
+    Decided after the calls, not before: keyless providers (Ollama, vLLM) are
+    legitimate, and nothing knows reliably which providers need a key — litellm
+    even reports a missing key as a different exception class per provider.
+    """
+
+    status_code = 422
+    default_code = "cdt_explain_llm_config_missing_key"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} has no API key, and no explanation could be "
+            "generated with it. Add an API key to the config, or choose another one.",
+            code=self.default_code,
+        )
 
 
 class StorageQuotaExceeded(CustomAPIExeption):

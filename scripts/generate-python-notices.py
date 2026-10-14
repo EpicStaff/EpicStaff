@@ -38,6 +38,7 @@ Only stdlib is imported by this script itself.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
 import json
@@ -56,11 +57,19 @@ NOTICES_SKELETON_FILE = SCRIPTS_DIR / "notices-skeleton.md"
 BACKEND_BEGIN_MARKER = "<!-- BEGIN GENERATED: backend -->"
 BACKEND_END_MARKER = "<!-- END GENERATED: backend -->"
 
-# Every backend service with a pyproject.toml, discovered the same way as the
-# Makefile's uv_services so a new or renamed service is never silently skipped.
+# Every backend service whose pyproject.toml is tracked by git, so a new or
+# renamed service is never silently skipped. Asking git rather than globbing
+# the filesystem keeps an untracked local service directory out of the notices;
+# CI's checkout never has one, so a glob made local output disagree with --check.
 SERVICES = sorted(
-    pyproject.parent.relative_to(REPO_ROOT).as_posix()
-    for pyproject in REPO_ROOT.glob("src/*/pyproject.toml")
+    Path(pyproject).parent.as_posix()
+    for pyproject in subprocess.run(
+        ["git", "ls-files", "--", ":(glob)src/*/pyproject.toml"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
 )
 
 BOOTSTRAP_PACKAGES = {
@@ -323,7 +332,8 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         log(f"  pip-licenses failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
         return []
     finally:
-        try:
+        # Best-effort cleanup: it must never mask the scan's own result or error.
+        with contextlib.suppress(Exception):
             run(
                 [
                     "uv",
@@ -337,8 +347,6 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
                 ],
                 check=False,
             )
-        except Exception:
-            pass
 
 
 def is_internal_placeholder_package(version: str, entry: dict) -> bool:
@@ -656,7 +664,7 @@ def main() -> int:
     if sys.argv[1:] == ["--check"]:
         return check()
     sha = get_git_sha()
-    date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    date = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     lock_hashes_str = current_lock_hashes()
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")

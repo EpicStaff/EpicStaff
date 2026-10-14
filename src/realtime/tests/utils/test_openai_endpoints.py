@@ -2,57 +2,24 @@ import pytest
 
 from utils.openai_endpoints import derive_chat_http_url, derive_realtime_ws_url
 
-INVALID_BASE_URLS = ["my-proxy.internal", "ftp://my-proxy.internal", "https://"]
+
+@pytest.mark.parametrize(
+    ("base_url", "ws_url", "http_url"),
+    [
+        (None, "wss://api.openai.com/v1/realtime", None),
+        ("", "wss://api.openai.com/v1/realtime", None),
+        ("https://my-proxy.internal", "wss://my-proxy.internal/v1/realtime", "https://my-proxy.internal/v1"),
+        ("https://my-proxy.internal/", "wss://my-proxy.internal/v1/realtime", "https://my-proxy.internal/v1"),
+        ("http://localhost:8080", "ws://localhost:8080/v1/realtime", "http://localhost:8080/v1"),
+    ],
+    ids=["none", "empty", "https", "trailing-slash", "http"],
+)
+def test_org_base_url_becomes_the_realtime_and_chat_endpoints(base_url, ws_url, http_url):
+    assert (derive_realtime_ws_url(base_url), derive_chat_http_url(base_url)) == (ws_url, http_url)
 
 
-class TestDeriveRealtimeWsUrl:
-    def test_none_falls_back_to_hardcoded_default(self):
-        assert derive_realtime_ws_url(None) == "wss://api.openai.com/v1/realtime"
-
-    def test_empty_string_falls_back_to_hardcoded_default(self):
-        assert derive_realtime_ws_url("") == "wss://api.openai.com/v1/realtime"
-
-    def test_https_scheme_swapped_to_wss(self):
-        assert (
-            derive_realtime_ws_url("https://my-proxy.internal")
-            == "wss://my-proxy.internal/v1/realtime"
-        )
-
-    def test_http_scheme_swapped_to_ws(self):
-        assert (
-            derive_realtime_ws_url("http://localhost:8080")
-            == "ws://localhost:8080/v1/realtime"
-        )
-
-    def test_trailing_slash_stripped(self):
-        assert (
-            derive_realtime_ws_url("https://my-proxy.internal/")
-            == "wss://my-proxy.internal/v1/realtime"
-        )
-
-    @pytest.mark.parametrize("base_url", INVALID_BASE_URLS)
-    def test_invalid_scheme_raises(self, base_url):
-        with pytest.raises(ValueError):
-            derive_realtime_ws_url(base_url)
-
-
-class TestDeriveChatHttpUrl:
-    def test_none_returns_none(self):
-        assert derive_chat_http_url(None) is None
-
-    def test_empty_string_returns_none(self):
-        assert derive_chat_http_url("") is None
-
-    def test_appends_v1_and_strips_trailing_slash(self):
-        assert (
-            derive_chat_http_url("https://my-proxy.internal/")
-            == "https://my-proxy.internal/v1"
-        )
-
-    def test_keeps_http_scheme_as_is(self):
-        assert derive_chat_http_url("http://localhost:8080") == "http://localhost:8080/v1"
-
-    @pytest.mark.parametrize("base_url", INVALID_BASE_URLS)
-    def test_invalid_scheme_raises(self, base_url):
-        with pytest.raises(ValueError):
-            derive_chat_http_url(base_url)
+@pytest.mark.parametrize("base_url", ["my-proxy.internal", "ftp://my-proxy.internal", "https://"])
+@pytest.mark.parametrize("derive", [derive_realtime_ws_url, derive_chat_http_url], ids=["realtime", "chat"])
+def test_a_base_url_without_http_scheme_and_host_is_rejected(derive, base_url):
+    with pytest.raises(ValueError):
+        derive(base_url)

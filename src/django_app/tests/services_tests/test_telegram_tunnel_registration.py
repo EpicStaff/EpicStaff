@@ -20,6 +20,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+from src.shared.models import GraphData, SessionData
 import requests
 from loguru import logger as loguru_logger
 
@@ -42,19 +43,16 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data() -> SessionData:
+    """Real session data with an empty graph: only the session's own records are under
+    test, and a hand-made stand-in breaks as soon as production reads a new field."""
+    return SessionData(id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch):
     sm = SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
@@ -70,377 +68,111 @@ class _FakeRedis:
         return []
 
 
-@pytest.mark.django_db
-class TestTunnelRegistrationNameIsAlwaysBarePath:
-    """`tunnel_registration_name` was removed -- both converters
-    now always register the bare `WebhookTrigger.path`, regardless of which
-    (or how many) trigger node types are attached."""
+@pytest.fixture
+def no_registration_side_effects(monkeypatch):
+    """Saving a TelegramTriggerNode fires a signal that pushes the tunnel
+    registration to Redis and calls Telegram's setWebhook; these tests are about
+    the converter and the event fan-out, not that signal (see
+    TestTelegramNodeAttachResyncsTunnelRegistration below)."""
+    monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+    monkeypatch.setattr(
+        TelegramTriggerService,
+        "register_telegram_trigger",
+        lambda self, telegram_trigger_instance=None, **kwargs: None,
+    )
 
-    @pytest.fixture(autouse=True)
-    def _mock_telegram_signal_side_effects(self, monkeypatch):
-        """`TelegramTriggerNode.objects.create()` fires
-        `telegram_signals.telegram_trigger_post_save_handler`, which calls a
-        REAL `WebhookTriggerService().register_webhooks()` (live Redis
-        publish) and a REAL `TelegramTriggerService().register_telegram_trigger()`
-        (outbound Telegram API call) on every save. This suite only cares
-        about the converter's tunnel-name output, not the signal's side
-        effects, so stub both to no-ops -- see
-        `TestTelegramNodeAttachResyncsTunnelRegistration` below for the tests
-        that actually exercise this signal."""
-        monkeypatch.setattr(
-            WebhookTriggerService, "register_webhooks", lambda self: True
-        )
-        monkeypatch.setattr(
-            TelegramTriggerService,
-            "register_telegram_trigger",
-            lambda self, telegram_trigger_instance=None, **kwargs: None,
-        )
 
-    def test_telegram_linked_trigger_keeps_bare_tunnel_name(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="tg-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="tg-node",
-            graph=Graph.objects.create(name="g", org=default_org),
-            webhook_trigger=trigger,
-        )
-        ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-secret"
-            ),
-            trigger=trigger,
-        )
-
-        pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
-            ngrok_config
-        )
-
-        assert pydantic_config.name == trigger.path
-        assert pydantic_config.org_id == trigger.org_id
-        assert (
-            pydantic_config.unique_id
-            == f"ngrok:{trigger.org_id}:{trigger.path}"
-            == ngrok_config.get_redis_key()
-        )
-
-    def test_telegram_linked_localhost_trigger_keeps_bare_tunnel_name(
-        self, default_org
-    ):
-        trigger = WebhookTrigger.objects.create(
-            path="tg-local-path", provider_type=ProviderType.LOCALHOST, org=default_org
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="tg-node-local",
-            graph=Graph.objects.create(name="g-local", org=default_org),
-            webhook_trigger=trigger,
-        )
-        localhost_config = LocalhostWebhookConfig.objects.create(
-            name="cfg-local", trigger=trigger
-        )
-
-        pydantic_config = (
-            ConverterService().convert_localhost_webhook_config_to_pydantic(
-                localhost_config
-            )
-        )
-
-        assert pydantic_config.name == trigger.path
-        assert pydantic_config.org_id == trigger.org_id
-        assert (
-            pydantic_config.unique_id
-            == f"localhost:{trigger.org_id}:{trigger.path}"
-            == localhost_config.get_redis_key()
-        )
-
-    def test_plain_webhook_trigger_node_keeps_bare_tunnel_name(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="plain-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
+def _trigger_with_nodes(org, path, provider, node_kinds) -> tuple[WebhookTrigger, Graph]:
+    trigger = WebhookTrigger.objects.create(path=path, provider_type=provider, org=org)
+    graph = Graph.objects.create(name=f"g-{path}", org=org)
+    if "webhook" in node_kinds:
         WebhookTriggerNode.objects.create(
-            node_name="plain-node",
-            graph=Graph.objects.create(name="g-plain", org=default_org),
-            webhook_trigger=trigger,
-            python_code=python_code,
+            node_name=f"{path}-webhook-node", graph=graph, webhook_trigger=trigger,
+            python_code=PythonCode.objects.create(code="def handler(event, context): return event", entrypoint="handler"),
         )
-        ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-plain",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-plain-secret"
-            ),
-            trigger=trigger,
-        )
+    if "telegram" in node_kinds:
+        TelegramTriggerNode.objects.create(node_name=f"{path}-telegram-node", graph=graph, webhook_trigger=trigger)
+    return trigger, graph
 
-        pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
-            ngrok_config
-        )
 
-        assert pydantic_config.name == "plain-path"
-        assert pydantic_config.org_id == trigger.org_id
-        assert (
-            pydantic_config.unique_id
-            == f"ngrok:{trigger.org_id}:plain-path"
-            == ngrok_config.get_redis_key()
-        )
+def _ngrok_config(org, trigger) -> NgrokWebhookConfig:
+    return NgrokWebhookConfig.objects.create(
+        name=f"cfg-{trigger.path}",
+        auth_token_secret=secret_service.create(text="tok", org=org, name=f"cfg-{trigger.path}-secret"),
+        trigger=trigger,
+    )
 
-    def test_trigger_attached_to_both_node_types_keeps_bare_tunnel_name(
-        self, default_org
-    ):
-        """Dual-attach is now legitimate and must not
-        change the registered tunnel name either."""
-        trigger = WebhookTrigger.objects.create(
-            path="dual-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
-        graph = Graph.objects.create(name="g-dual", org=default_org)
-        WebhookTriggerNode.objects.create(
-            node_name="dual-webhook-node",
-            graph=graph,
-            webhook_trigger=trigger,
-            python_code=python_code,
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="dual-telegram-node", graph=graph, webhook_trigger=trigger
-        )
-        ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-dual",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-dual-secret"
-            ),
-            trigger=trigger,
-        )
 
-        pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
-            ngrok_config
-        )
-
-        assert pydantic_config.name == "dual-path"
-
-    def test_trigger_with_no_linked_node_keeps_bare_tunnel_name(self, default_org):
-        """No node attached yet (config created before the node) -- must not
-        error."""
-        trigger = WebhookTrigger.objects.create(
-            path="unlinked-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-unlinked",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-unlinked-secret"
-            ),
-            trigger=trigger,
-        )
-
-        pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
-            ngrok_config
-        )
-
-        assert pydantic_config.name == "unlinked-path"
+NODE_KINDS = pytest.mark.parametrize(
+    "node_kinds",
+    [(), ("webhook",), ("telegram",), ("webhook", "telegram")],
+    ids=["no-node", "webhook-node", "telegram-node", "both-nodes"],
+)
 
 
 @pytest.mark.django_db
-class TestRedisPubsubTelegramDispatch:
-    """`webhook_events_handler` fans a single inbound event out to
-    both `WebhookTriggerService` and `TelegramTriggerService` independently,
-    keyed by the bare `WebhookTrigger.path` -- no more prefix-based routing
-    exclusivity."""
+@pytest.mark.usefixtures("no_registration_side_effects")
+@NODE_KINDS
+@pytest.mark.parametrize("provider", [ProviderType.NGROK, ProviderType.LOCALHOST])
+def test_tunnel_is_registered_under_the_bare_path_whatever_nodes_are_attached(default_org, node_kinds, provider):
+    trigger, _ = _trigger_with_nodes(default_org, "tg-path", provider, node_kinds)
+    converter = ConverterService()
+    if provider == ProviderType.NGROK:
+        config = _ngrok_config(default_org, trigger)
+        pydantic_config = converter.convert_ngrok_webhook_config_to_pydantic(config)
+    else:
+        config = LocalhostWebhookConfig.objects.create(name="cfg-local", trigger=trigger)
+        pydantic_config = converter.convert_localhost_webhook_config_to_pydantic(config)
 
-    @pytest.fixture(autouse=True)
-    def _mock_telegram_signal_side_effects(self, monkeypatch):
-        """Same isolation concern as `TestTunnelRegistrationNameIsAlwaysBarePath`
-        above: every `TelegramTriggerNode.objects.create()` here fires the
-        real `telegram_trigger_post_save_handler`, which would otherwise
-        publish to live Redis and attempt a real outbound Telegram API call.
-        Stub both to no-ops; this class tests `webhook_events_handler`
-        dispatch, not the attach signal itself."""
+    assert (pydantic_config.name, pydantic_config.org_id) == (trigger.path, trigger.org_id)
+    assert pydantic_config.unique_id == f"{provider}:{trigger.org_id}:{trigger.path}" == config.get_redis_key()
+
+
+@pytest.fixture
+def pubsub(monkeypatch):
+    monkeypatch.setattr(redis_pubsub.RedisPubSub, "_create_redis_client", lambda self: _FakeRedis())
+    monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
+    service = redis_pubsub.RedisPubSub()
+    monkeypatch.setattr(service, "_save_session_storage_files", lambda session: None)
+    _stub_publish(monkeypatch)
+    return service
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("no_registration_side_effects")
+@pytest.mark.parametrize(
+    ("node_kinds", "webhook_branch_raises", "sessions"),
+    [
+        (("webhook",), False, 1),
+        (("telegram",), False, 1),
+        # One event fans out to every node type attached to the path: no exclusivity.
+        (("webhook", "telegram"), False, 2),
+        # One branch failing never stops the other.
+        (("telegram",), True, 1),
+    ],
+    ids=["webhook-node", "telegram-node", "both-nodes", "webhook-branch-raises"],
+)
+def test_inbound_event_starts_a_session_per_attached_node(
+    default_org, pubsub, monkeypatch, node_kinds, webhook_branch_raises, sessions
+):
+    trigger, graph = _trigger_with_nodes(default_org, "e2e-path", ProviderType.NGROK, node_kinds)
+    _ngrok_config(default_org, trigger)
+    if webhook_branch_raises:
         monkeypatch.setattr(
-            WebhookTriggerService, "register_webhooks", lambda self: True
-        )
-        monkeypatch.setattr(
-            TelegramTriggerService,
-            "register_telegram_trigger",
-            lambda self, telegram_trigger_instance=None, **kwargs: None,
-        )
-
-    def _make_svc(self, monkeypatch):
-        monkeypatch.setattr(
-            redis_pubsub.RedisPubSub, "_create_redis_client", lambda self: _FakeRedis()
-        )
-        monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
-        svc = redis_pubsub.RedisPubSub()
-        monkeypatch.setattr(svc, "_save_session_storage_files", lambda session: None)
-        return svc
-
-    def test_telegram_only_trigger_starts_a_session(self, default_org, monkeypatch):
-        graph = Graph.objects.create(name="tg-e2e", org=default_org)
-        trigger = WebhookTrigger.objects.create(
-            path="tg-e2e-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="tg-e2e-node", graph=graph, webhook_trigger=trigger
-        )
-        NgrokWebhookConfig.objects.create(
-            name="cfg-e2e",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-e2e-secret"
-            ),
-            trigger=trigger,
-        )
-
-        _stub_publish(monkeypatch)
-        svc = self._make_svc(monkeypatch)
-
-        # Telegram's registered setWebhook URL always ends in a trailing
-        # slash -- the handler must normalize it before filtering.
-        message = {
-            "data": json.dumps(
-                {
-                    "path": f"{trigger.path}/",
-                    "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
-                }
-            )
-        }
-
-        svc.webhook_events_handler(message)
-
-        assert Session.objects.filter(graph=graph).count() == 1
-
-    def test_webhook_only_trigger_starts_a_session(self, default_org, monkeypatch):
-        graph = Graph.objects.create(name="wh-e2e", org=default_org)
-        trigger = WebhookTrigger.objects.create(
-            path="wh-e2e-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
-        WebhookTriggerNode.objects.create(
-            node_name="wh-e2e-node",
-            graph=graph,
-            webhook_trigger=trigger,
-            python_code=python_code,
-        )
-        NgrokWebhookConfig.objects.create(
-            name="cfg-wh-e2e",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-wh-e2e-secret"
-            ),
-            trigger=trigger,
-        )
-
-        _stub_publish(monkeypatch)
-        svc = self._make_svc(monkeypatch)
-
-        message = {
-            "data": json.dumps(
-                {
-                    "path": trigger.path,
-                    "payload": {"m": 1},
-                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
-                }
-            )
-        }
-
-        svc.webhook_events_handler(message)
-
-        assert Session.objects.filter(graph=graph).count() == 1
-
-    def test_trigger_attached_to_both_node_types_fans_out_to_both(
-        self, default_org, monkeypatch
-    ):
-        """A single event for a `WebhookTrigger` attached to
-        BOTH a `WebhookTriggerNode` and a `TelegramTriggerNode` must start a
-        session for each -- zero/one/two fan-out, no prefix-based exclusivity."""
-        graph = Graph.objects.create(name="dual-e2e", org=default_org)
-        trigger = WebhookTrigger.objects.create(
-            path="dual-e2e-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        python_code = PythonCode.objects.create(
-            code="def handler(event, context): return event", entrypoint="handler"
-        )
-        WebhookTriggerNode.objects.create(
-            node_name="dual-e2e-webhook-node",
-            graph=graph,
-            webhook_trigger=trigger,
-            python_code=python_code,
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="dual-e2e-telegram-node", graph=graph, webhook_trigger=trigger
-        )
-        NgrokWebhookConfig.objects.create(
-            name="cfg-dual-e2e",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-dual-e2e-secret"
-            ),
-            trigger=trigger,
-        )
-
-        _stub_publish(monkeypatch)
-        svc = self._make_svc(monkeypatch)
-
-        message = {
-            "data": json.dumps(
-                {
-                    "path": trigger.path,
-                    "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
-                }
-            )
-        }
-
-        svc.webhook_events_handler(message)
-
-        assert Session.objects.filter(graph=graph).count() == 2
-
-    def test_one_handler_raising_does_not_block_the_other(
-        self, default_org, monkeypatch
-    ):
-        """The generic webhook branch raising must not prevent the telegram
-        branch from still running for the same event."""
-        graph = Graph.objects.create(name="isolation-e2e", org=default_org)
-        trigger = WebhookTrigger.objects.create(
-            path="isolation-e2e-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        TelegramTriggerNode.objects.create(
-            node_name="isolation-e2e-telegram-node",
-            graph=graph,
-            webhook_trigger=trigger,
-        )
-        NgrokWebhookConfig.objects.create(
-            name="cfg-isolation-e2e",
-            auth_token_secret=secret_service.create(
-                text="tok", org=default_org, name="cfg-isolation-e2e-secret"
-            ),
-            trigger=trigger,
-        )
-
-        _stub_publish(monkeypatch)
-        svc = self._make_svc(monkeypatch)
-
-        monkeypatch.setattr(
-            WebhookTriggerService,
-            "handle_webhook_trigger",
+            WebhookTriggerService, "handle_webhook_trigger",
             lambda self, *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
         )
 
-        message = {
-            "data": json.dumps(
-                {
-                    "path": trigger.path,
-                    "payload": {"message": {"text": "hi"}},
-                    "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
-                }
-            )
-        }
+    pubsub.webhook_events_handler({
+        "data": json.dumps({
+            # Telegram's registered setWebhook URL ends in a slash; the handler normalizes it.
+            "path": f"{trigger.path}/",
+            "payload": {"message": {"text": "hi"}},
+            "config_id": f"ngrok:{trigger.org_id}:{trigger.path}",
+        })
+    })
 
-        svc.webhook_events_handler(message)
-
-        assert Session.objects.filter(graph=graph).count() == 1
+    assert Session.objects.filter(graph=graph).count() == sessions
 
 
 @pytest.mark.django_db

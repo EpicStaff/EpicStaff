@@ -3,6 +3,7 @@ export * from './entity-icons.constants';
 export * from './languages-selector.constants';
 export * from './provider-icons.constants';
 export * from './rag.constants';
+export * from './rag-type-labels.constants';
 export * from './realtime-voice.constants';
 export * from './role-labels.constants';
 export * from './sidebar-width.constants';
