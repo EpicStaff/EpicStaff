@@ -73,13 +73,8 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         return binding
 
     def _apply_binding_fields(self, item: dict, binding: SandboxVenvBinding | None) -> None:
-        """Inject the owner and creation date from the binding into a venv payload.
-
-        Mutates `item` in place. Both fields are null when no binding backs the
-        venv; the owner is also null when the binding predates `created_by`.
-        """
+        """Inject the owner from the binding into a venv payload."""
         item["owner"] = self._serialize_owner(binding)
-        item["created_at"] = binding.created_at.isoformat() if binding is not None else None
 
     def _serialize_owner(self, binding: SandboxVenvBinding | None) -> dict | None:
         """The binding's creator as a lightweight embed, or null when unknown."""
