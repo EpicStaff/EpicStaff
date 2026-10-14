@@ -98,8 +98,10 @@
             flex-shrink: 0;
         }
 
+        // A host whose rows open nothing can turn the highlight off with
+        // --flow-node-list-row-hover: transparent.
         &:hover {
-            background: var(--color-ks-hover-row);
+            background: var(--flow-node-list-row-hover, var(--color-ks-hover-row));
         }
     }
 

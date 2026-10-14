@@ -1,4 +1,4 @@
-// Takes the height the tab leaves it, so the header stays put and only the rows scroll.
+// Takes the height the tab leaves it; the table scrolls inside it, under its sticky header.
 :host {
     display: flex;
     flex-direction: column;
@@ -14,9 +14,12 @@
     flex-direction: column;
     width: 100%;
     min-height: 0;
+    // One scroll container for the header and the rows, as in app-table: both get the same width
+    // whether a scrollbar shows or not, so the columns line up and a row's highlight reaches the
+    // table's edge.
+    overflow-y: auto;
     border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
-    overflow: hidden;
 }
 
 .table-header {
@@ -24,13 +27,11 @@
     display: grid;
     align-items: center;
     min-height: 2.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
     background: var(--color-background-body);
     border-bottom: 1px solid var(--color-divider-subtle);
-    // Never scrolls: overflow is only non-visible so scrollbar-gutter can reserve the same
-    // inline-end gutter as .table-body, so the columns stay over theirs when an opened row
-    // makes the rows scroll.
-    overflow: hidden;
-    scrollbar-gutter: stable;
 }
 
 .col-label {
@@ -44,11 +45,6 @@
 .table-body {
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    overflow-y: auto;
-    // The scrollbar's room is kept even when nothing scrolls, so opening a row never narrows
-    // the rows and shifts their columns left of the header's.
-    scrollbar-gutter: stable;
 }
 
 // The divider sits on the wrapper, so an opened row's info and contents stay inside its row's block.
@@ -65,10 +61,6 @@
     align-items: center;
     min-height: 3rem;
     transition: background-color 0.15s ease;
-
-    &:hover {
-        background: var(--transparent-white-4);
-    }
 }
 
 .table-cell {
@@ -107,9 +99,14 @@
     white-space: nowrap;
 }
 
-// The whole row expands it (the name button stays the keyboard way in).
+// The whole row expands it (the name button stays the keyboard way in), so only these rows
+// light up on hover: a row that doesn't open has nothing to click.
 .table-row--expandable {
     cursor: pointer;
+
+    &:hover {
+        background: var(--transparent-white-4);
+    }
 }
 
 .table-row.selected {
@@ -276,9 +273,11 @@
 // The opened info and contents are square: a row below continues them. Only the last row's
 // opening ends rounded, clipped by the table's own rounded border (.table-wrapper).
 // The contents search takes a quarter of the row; the filter keeps its own width.
+// The contents rows don't light up on hover: only a bin row that opens does.
 .bin-expansion__clip > app-flow-node-list {
     --flow-node-list-radius: 0;
     --flow-node-list-search-width: 25%;
+    --flow-node-list-row-hover: transparent;
 }
 
 // Long names end in "…"; the tooltip holds the full name (a storage row's full path).
