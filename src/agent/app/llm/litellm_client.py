@@ -2,8 +2,9 @@
 LiteLLMClient: concrete ``LLMClient`` backed by LiteLLM Router.
 
 Composes ``RouterPool`` (per-deployment rpm enforcement) and ``RetryPolicy``
-(exponential backoff on transient errors).  Normalizes LiteLLM streaming
-chunks into the ``LLMChunk`` schema consumed by ``AgentLoop``.
+(exponential backoff on transient errors).  Normalizes LiteLLM streamed chunks
+or a single non-streamed response into the ``LLMChunk`` schema consumed by
+``AgentLoop``.
 
 Default max-retry count is read from ``AGENT_DEFAULT_MAX_RETRIES`` env var via
 ``settings.load_settings()`` on first need; override via the ``retry`` param.
@@ -132,6 +133,56 @@ def _usage_cost_usd(
         return 0.0
 
 
+def _synthetic_call_id() -> str:
+    """Id for a tool call the provider sent without one."""
+    return f"call_{uuid.uuid4().hex[:8]}"
+
+
+def _usage_chunk(usage, model: str, custom_cost_per_token: CostPerToken | None = None) -> LLMChunk:
+    usage_data = _usage_dict(usage)
+    usage_data["total_cost_usd"] = _usage_cost_usd(model, usage_data, custom_cost_per_token)
+    logger.debug("litellm usage={}", usage_data)
+    return LLMChunk(usage=usage_data)
+
+
+def _response_chunks(
+    response, model: str, custom_cost_per_token: CostPerToken | None = None
+) -> list[LLMChunk]:
+    """Split a non-streamed response into the chunks the stream path would yield."""
+    chunks: list[LLMChunk] = []
+    finish_reason = None
+
+    # The Responses API bridge returns text and tool calls as separate choices.
+    for choice in response.choices or []:
+        message = choice.message
+        finish_reason = choice.finish_reason or finish_reason
+
+        if message.content:
+            chunks.append(LLMChunk(delta_text=message.content))
+
+        for tool_call in message.tool_calls or []:
+            chunks.append(
+                LLMChunk(
+                    tool_call_fragment=ToolCallFragment(
+                        id=tool_call.id or _synthetic_call_id(),
+                        name=tool_call.function.name or "",
+                        arguments_delta=tool_call.function.arguments or "",
+                    )
+                )
+            )
+
+    usage = getattr(response, "usage", None)
+
+    if usage:
+        chunks.append(_usage_chunk(usage, model, custom_cost_per_token))
+
+    if finish_reason:
+        logger.debug("litellm finish_reason={}", finish_reason)
+        chunks.append(LLMChunk(finish_reason=finish_reason))
+
+    return chunks
+
+
 def _kwargs_for_acompletion(model_config: dict) -> dict:
     """Strip Router-owned and runtime keys from model_config before forwarding."""
     return {k: v for k, v in model_config.items() if k not in _STRIPPED_MODEL_CONFIG_KEYS}
@@ -168,15 +219,15 @@ class LiteLLMClient(LLMClient):
         runtime_config: dict | None = None,
     ) -> AsyncIterator[LLMChunk]:
         """Return an async generator of normalized ``LLMChunk`` objects."""
-        assert stream is True, "LiteLLMClient only supports streaming mode"
-        return self._stream(messages, tools, model_config, runtime_config)
+        return self._chat(messages, tools, model_config, runtime_config, stream)
 
-    async def _stream(
+    async def _chat(
         self,
         messages: list[dict],
         tools: list,
         model_config: dict,
         runtime_config: dict | None,
+        stream: bool,
     ) -> AsyncIterator[LLMChunk]:
         litellm_tools = (
             [
@@ -210,13 +261,15 @@ class LiteLLMClient(LLMClient):
         extra_kwargs = _kwargs_for_acompletion(model_config)
         custom_cost_per_token = _custom_cost_per_token(model_config)
 
+        if stream:
+            extra_kwargs["stream_options"] = {"include_usage": True}
+
         async def _call():
             return await router.acompletion(
                 model=synthetic_model,
                 messages=messages,
-                stream=True,
+                stream=stream,
                 tools=litellm_tools,
-                stream_options={"include_usage": True},
                 _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
                 **extra_kwargs,
             )
@@ -226,27 +279,29 @@ class LiteLLMClient(LLMClient):
         _msg_count = len(messages)
         _tool_count = len(litellm_tools or [])
         logger.opt(lazy=True).debug(
-            "litellm request model={} synthetic={} messages={} tools={} kwargs={}",
+            "litellm request model={} synthetic={} stream={} messages={} tools={} kwargs={}",
             lambda: _model,
             lambda: _synthetic,
+            lambda: stream,
             lambda: _msg_count,
             lambda: _tool_count,
             lambda: redact(extra_kwargs),
         )
-        response_stream = await retry.aretry(_call)
+        response = await retry.aretry(_call)
 
+        if not stream:
+            for chunk in _response_chunks(response, model_config["model"], custom_cost_per_token):
+                yield chunk
+            return
+
+        # No caller streams yet (the agent loop uses stream=False); kept for the STREAM-mode chat runner.
         tc_map: dict[int, dict] = {}
 
-        async for chunk in response_stream:
+        async for chunk in response:
             usage = getattr(chunk, "usage", None)
 
             if usage:
-                usage_data = _usage_dict(usage)
-                usage_data["total_cost_usd"] = _usage_cost_usd(
-                    model_config["model"], usage_data, custom_cost_per_token
-                )
-                logger.debug("litellm usage={}", usage_data)
-                yield LLMChunk(usage=usage_data)
+                yield _usage_chunk(usage, model_config["model"], custom_cost_per_token)
 
             choices = chunk.choices or []
 
@@ -264,13 +319,7 @@ class LiteLLMClient(LLMClient):
                 idx = tc.index
 
                 if idx not in tc_map:
-                    tool_id = tc.id
-
-                    if tool_id is None:
-                        # Provider sent no id on the first fragment — synthesize one.
-                        tool_id = f"call_{uuid.uuid4().hex[:8]}"
-
-                    tc_map[idx] = {"id": tool_id, "name": tc.function.name}
+                    tc_map[idx] = {"id": tc.id or _synthetic_call_id(), "name": tc.function.name}
 
                 seeded = tc_map[idx]
 

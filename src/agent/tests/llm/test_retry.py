@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import litellm
 import pytest
 from app.llm.retry import RetryPolicy
@@ -90,4 +91,26 @@ async def test_backoff_doubles_up_to_the_cap(slept, base_delay, max_delay, expec
     with pytest.raises(litellm.RateLimitError):
         await policy.aretry(failing(litellm.RateLimitError, ALWAYS))
 
+    assert slept == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "expected"),
+    [("7", [7]), ("120", [30.0]), ("soon", [1.0]), (None, [1.0])],
+    ids=["header-used", "header-capped", "unparseable-falls-back", "no-header"],
+)
+async def test_retry_after_header_overrides_backoff(slept, retry_after, expected):
+    error = litellm.RateLimitError("throttled", llm_provider="openai", model="gpt-4o")
+    error.litellm_response_headers = httpx.Headers({"retry-after": retry_after} if retry_after else {})
+    calls = [0]
+
+    async def call():
+        calls[0] += 1
+        if calls[0] == 1:
+            raise error
+        return "ok"
+
+    policy = RetryPolicy(max_retries=1, base_delay=1.0, max_delay=30.0, jitter=0.0)
+
+    assert await policy.aretry(call) == "ok"
     assert slept == pytest.approx(expected)
