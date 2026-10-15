@@ -10,7 +10,11 @@ def test_a_path_is_unique_within_an_org_but_free_across_orgs(acme, beta):
     StorageFile.objects.create(org=acme, path="shared.txt", name="shared.txt")
     StorageFile.objects.create(org=beta, path="shared.txt", name="shared.txt")
 
-    with pytest.raises(IntegrityError, match="unique_storage_file_per_org"), transaction.atomic():
+    # Only among live rows: a file in the recycle bin doesn't block a new one at its path.
+    with (
+        pytest.raises(IntegrityError, match="unique_active_storage_file_per_org"),
+        transaction.atomic(),
+    ):
         StorageFile.objects.create(org=acme, path="shared.txt", name="shared.txt")
 
 

@@ -460,7 +460,7 @@ def test_version_preview_nulls_a_renamed_table_and_keeps_the_stored_name(source_
 @pytest.mark.django_db
 def test_version_preview_nulls_a_deleted_table_and_keeps_the_stored_name(source_node):
     version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
-    KeyValueTableService().delete_table(source_node.key_value_table)
+    KeyValueTableService().delete_table(source_node.key_value_table, deleted_by=None)
 
     node = _preview_node(version)
 
@@ -471,7 +471,7 @@ def test_version_preview_nulls_a_deleted_table_and_keeps_the_stored_name(source_
 @pytest.mark.django_db
 def test_version_preview_binds_a_recreated_same_named_table(source_node, source_org):
     version = GraphVersioningService().save_version(graph=source_node.graph, name="v1")
-    KeyValueTableService().delete_table(source_node.key_value_table)
+    KeyValueTableService().delete_table(source_node.key_value_table, deleted_by=None)
     recreated = KeyValueTable.objects.create(org=source_org, name="customers")
 
     assert _preview_node(version)["key_value_table"] == recreated.id

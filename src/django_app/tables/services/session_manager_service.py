@@ -151,8 +151,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             else:
                 variables = start_node_variables
 
-        variables = self._get_actual_variables(variables)
-
         graph = Graph.objects.get(pk=graph_id)
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
@@ -218,13 +216,17 @@ class SessionManagerService(metaclass=SingletonMeta):
         parent_session_id: int | None = None,
         token_budget: int | None = None,
         api_key=None,
+        allow_persistent_override: bool = False,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info("'run_session' got variables: {}", variables)
 
         graph = Graph.objects.get(pk=graph_id)
         run_vars = self.persistent_variables_service.build_run_variables(
-            graph=graph, user=user, payload=variables
+            graph=graph,
+            user=user,
+            payload=variables,
+            allow_persistent_override=allow_persistent_override,
         )
 
         if trigger.trigger_type == SessionTrigger.TriggerType.MANUAL:

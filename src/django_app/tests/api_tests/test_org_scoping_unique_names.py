@@ -6,7 +6,6 @@ rules (no shadowing a built-in, soft-deleted names are free) and built-in tool
 delete protection."""
 
 import pytest
-from django.test import override_settings
 from rest_framework.test import APIClient
 
 from tables.models import Graph
@@ -115,29 +114,22 @@ def test_a_soft_deleted_tools_name_can_be_reused(client_a):
     assert recreated.data["name"] == "dup"
 
 
-@pytest.mark.parametrize("soft_delete", [True, False])
-def test_deleting_a_custom_tool_follows_the_soft_delete_setting(client_a, org_a, soft_delete):
+def test_deleting_a_custom_tool_moves_it_to_the_recycle_bin(client_a, org_a):
     tool = _tool(org=org_a, name="to-delete")
 
-    with override_settings(SOFT_DELETE=soft_delete):
-        resp = client_a.delete(f"/api/python-code-tool/{tool.id}/")
+    resp = client_a.delete(f"/api/python-code-tool/{tool.id}/")
 
     assert resp.status_code == 204, resp.data
     assert not PythonCodeTool.objects.filter(id=tool.id).exists()
-    kept = PythonCodeTool.all_objects.filter(id=tool.id).first()
-    assert (kept is not None) is soft_delete
-    if soft_delete:
-        assert kept.is_soft_deleted is True
-        assert kept.soft_deleted_at is not None
+    kept = PythonCodeTool.all_objects.get(id=tool.id)
+    assert (kept.active, kept.soft_deleted_at is not None) == (False, True)
 
 
-@pytest.mark.parametrize("soft_delete", [True, False])
-def test_a_built_in_tool_cannot_be_deleted(client_a, soft_delete):
+def test_a_built_in_tool_cannot_be_deleted(client_a):
     built_in = _tool(built_in=True, name="builtin")
 
-    with override_settings(SOFT_DELETE=soft_delete):
-        resp = client_a.delete(f"/api/python-code-tool/{built_in.id}/")
+    resp = client_a.delete(f"/api/python-code-tool/{built_in.id}/")
 
     assert resp.status_code == 400
     untouched = PythonCodeTool.all_objects.get(id=built_in.id)
-    assert (untouched.is_soft_deleted, untouched.soft_deleted_at) == (False, None)
+    assert (untouched.active, untouched.soft_deleted_at) == (True, None)

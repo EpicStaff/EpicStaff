@@ -139,7 +139,9 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         request" (see `handle_webhook_trigger`/`handle_telegram_trigger`
         docstrings: `None` preserves today's unrestricted fan-out).
         """
-        filters = {"webhook_trigger__path": path}
+        # Live triggers only: flow nodes keep their link to a binned trigger, and its
+        # path is free for a new trigger (in any org) while it's in the recycle bin.
+        filters = {"webhook_trigger__path": path, "webhook_trigger__active": True}
 
         if not config_id or ":" not in config_id:
             return filters
@@ -190,11 +192,14 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
         for webhook_trigger_node in webhook_trigger_node_list:
-            # Persistent-variable merging is owned by run_session.
+            # Persistent-variable merging is owned by run_session. The external
+            # payload sits under a fixed key, so it reaches a persistent path only
+            # where the flow editor declared one there.
             self.session_manager_service.run_session(
                 graph_id=webhook_trigger_node.graph.pk,
                 variables={"trigger_payload": payload},
                 trigger=TriggerSpec.webhook(webhook_trigger_node, path, config_id),
+                allow_persistent_override=True,
             )
 
     def register_webhooks(self) -> bool:
@@ -327,18 +332,26 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 "Use ngrok or a publicly accessible provider."
             )
 
-        if kind == WebhookTriggerAuthKind.WEBHOOK and trigger.telegram_trigger_nodes.exists():
+        # all_objects: a trigger node in the recycle bin still holds its trigger.
+        if (
+            kind == WebhookTriggerAuthKind.WEBHOOK
+            and trigger.telegram_trigger_nodes(manager="all_objects").exists()
+        ):
             raise ValueError(
                 "This trigger is attached to a Telegram trigger node and "
                 "cannot use kind='webhook' auth; use kind='telegram' instead."
             )
-        if kind == WebhookTriggerAuthKind.TELEGRAM and trigger.webhook_trigger_nodes.exists():
+        if (
+            kind == WebhookTriggerAuthKind.TELEGRAM
+            and trigger.webhook_trigger_nodes(manager="all_objects").exists()
+        ):
             raise ValueError(
                 "This trigger is attached to a webhook trigger node and "
                 "cannot use kind='telegram' auth; use kind='webhook' instead."
             )
         if kind == WebhookTriggerAuthKind.TWILIO and (
-            trigger.webhook_trigger_nodes.exists() or trigger.telegram_trigger_nodes.exists()
+            trigger.webhook_trigger_nodes(manager="all_objects").exists()
+            or trigger.telegram_trigger_nodes(manager="all_objects").exists()
         ):
             raise ValueError(
                 "This trigger already has a webhook or Telegram trigger node "

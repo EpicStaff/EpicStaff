@@ -512,7 +512,7 @@ def test_missing_org_header_returns_400(client_as, admin_acme, cdt_node, graph_a
 @pytest.mark.django_db
 def test_soft_deleted_node_returns_404(acme_client, admin_acme, cdt_node, graph_acme):
     ClassificationDecisionTableNode.all_objects.filter(pk=cdt_node.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     response = acme_client(admin_acme).put(

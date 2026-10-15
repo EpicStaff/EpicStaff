@@ -360,7 +360,7 @@ _WEBHOOK_CONDITIONAL_PATHS: tuple[ConditionalPath, ...] = (
         trigger_field="webhook_trigger_id",
         outer_field="trigger_id",
         org_path="graph__org_id",
-        extra_filter={"is_soft_deleted": False},
+        extra_filter={"active": True},
     ),
     ConditionalPath(
         resource_type=RBAC_FLOWS,
@@ -368,7 +368,7 @@ _WEBHOOK_CONDITIONAL_PATHS: tuple[ConditionalPath, ...] = (
         trigger_field="webhook_trigger_id",
         outer_field="trigger_id",
         org_path="graph__org_id",
-        extra_filter={"is_soft_deleted": False},
+        extra_filter={"active": True},
     ),
     ConditionalPath(
         resource_type=RBAC_VOICE,
