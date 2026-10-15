@@ -6,10 +6,10 @@ AgentLoop ABC and DefaultAgentLoop: single-agent tool-use cycle.
 ``ToolRegistry``, and checks ``StopPolicy``.  It is deliberately ignorant of
 ``RunType``; runners decide *how many* times to invoke it.
 
-``DefaultAgentLoop`` is the canonical concrete implementation: one LLM call
-per iteration, streaming always enabled, tool errors fed back as
-``ToolResult(is_error=True)`` so the model can recover, wall-clock limit
-enforced via ``asyncio.wait_for``.
+``DefaultAgentLoop`` is the canonical concrete implementation: one
+non-streamed LLM call per iteration (no consumer reads token deltas), tool
+errors fed back as ``ToolResult(is_error=True)`` so the model can recover,
+wall-clock limit enforced via ``asyncio.wait_for``.
 """
 
 from __future__ import annotations
@@ -72,14 +72,6 @@ def _safe_context_window(model_str: str) -> int | None:
     try:
         info = litellm.get_model_info(model_str)
         return info.get("max_input_tokens") or info.get("max_tokens")
-    except Exception:
-        return None
-
-
-def _safe_token_count(model_str: str, messages: list[dict]) -> int | None:
-    """Return token count for messages, or None if counting fails."""
-    try:
-        return litellm.token_counter(model=model_str, messages=messages)
     except Exception:
         return None
 
@@ -147,7 +139,7 @@ class _RunState:
 class DefaultAgentLoop(AgentLoop):
     """Canonical single-agent tool-use loop.
 
-    Drives one LLM conversation turn: stream chunks, accumulate tool calls,
+    Drives one LLM conversation turn: read chunks, accumulate tool calls,
     dispatch tools, feed results back, repeat until ``StopPolicy`` says stop.
 
     Tool errors (raises, JSON parse failures, unknown names) are coalesced into
@@ -220,15 +212,6 @@ class DefaultAgentLoop(AgentLoop):
         context_window = _safe_context_window(model_str) if ratio and ratio > 0 else None
 
         while True:
-            if context_window and ratio and not state.context_warned:
-                input_tokens = _safe_token_count(model_str, context.messages)
-                if input_tokens is not None and input_tokens >= ratio * context_window:
-                    await emitter.on_warning(
-                        f"input context >= {int(ratio * 100)}% of model context window "
-                        f"({context_window} tokens) for '{model_str}'; approaching limit"
-                    )
-                    state.context_warned = True
-
             _iter = state.iterations
             _corr_id = context.correlation_id
             _msg_count = len(context.messages)
@@ -246,12 +229,13 @@ class DefaultAgentLoop(AgentLoop):
             text_buf = ""
             tool_buf: dict[str, dict] = {}
             chunks: list[LLMChunk] = []
+            prompt_tokens = 0
 
             async for chunk in self._llm.chat(
                 messages=context.messages,
                 tools=tools.tool_specs(),
                 model_config=_build_model_config(context),
-                stream=True,
+                stream=False,
                 runtime_config={
                     "max_retry_limit": context.agent.max_retry_limit,
                     "max_rpm": context.agent.max_rpm,
@@ -270,6 +254,19 @@ class DefaultAgentLoop(AgentLoop):
 
                 if chunk.usage:
                     state.usage.add(chunk.usage)
+                    prompt_tokens = int(chunk.usage.get("prompt_tokens", 0))
+
+            # Provider-reported input size; avoids re-tokenising the history each iteration.
+            if (
+                context_window
+                and not state.context_warned
+                and prompt_tokens >= ratio * context_window
+            ):
+                await emitter.on_warning(
+                    f"input context >= {int(ratio * 100)}% of model context window "
+                    f"({context_window} tokens) for '{model_str}'; approaching limit"
+                )
+                state.context_warned = True
 
             # Only append the assistant message when there is content to record.
             # An iteration with neither text nor tool calls still counts toward
@@ -474,7 +471,7 @@ class DefaultAgentLoop(AgentLoop):
     ) -> LoopResult:
         """Ask the model to summarize progress after tool execution is cut off.
 
-        Runs one final streamed LLM call with no tools available so the model
+        Runs one final LLM call with no tools available so the model
         cannot attempt further tool calls; the result is a graceful stop, not
         a failure. Used both when the consecutive-failure limit trips and when
         the run-wide tool-call budget is exhausted.
@@ -490,7 +487,7 @@ class DefaultAgentLoop(AgentLoop):
             messages=context.messages,
             tools=[],
             model_config=model_config,
-            stream=True,
+            stream=False,
             runtime_config={
                 "max_retry_limit": context.agent.max_retry_limit,
                 "max_rpm": context.agent.max_rpm,
