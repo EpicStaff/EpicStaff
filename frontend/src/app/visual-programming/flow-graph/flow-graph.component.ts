@@ -68,6 +68,7 @@ import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.di
 import { getPortPosition } from '../core/geometry/port-position';
 import { isStacked } from '../core/geometry/wire-direction';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
+import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
@@ -1267,6 +1268,30 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDragEnded(): void {
+        if (this.draggedNodeIds.size === 1 && !this.flowReadOnly.isReadOnly()) {
+            const draggedNodeId = [...this.draggedNodeIds][0];
+            const connections = this.flowService.connections();
+            const isUnconnected = !connections.some(
+                (conn) => conn.sourceNodeId === draggedNodeId || conn.targetNodeId === draggedNodeId
+            );
+            if (isUnconnected) {
+                const nodes = this.flowService.nodes();
+                const node = nodes.find((n) => n.id === draggedNodeId);
+                if (node && node.type !== NodeType.NOTE) {
+                    const nodesById = new Map(nodes.map((n) => [n.id, n]));
+                    const hit = findConnectionUnderNode(node, connections, nodesById);
+                    if (hit) {
+                        const result = buildInsertionConnections(node, hit);
+                        if (result) {
+                            this.flowService.removeConnection(result.connectionToRemove.id);
+                            this.flowService.addConnection(result.newConnections[0]);
+                            this.flowService.addConnection(result.newConnections[1]);
+                        }
+                    }
+                }
+            }
+        }
+
         const autoAlignedNodeIds = new Set<string>();
 
         for (const id of this.draggedNodeIds) {

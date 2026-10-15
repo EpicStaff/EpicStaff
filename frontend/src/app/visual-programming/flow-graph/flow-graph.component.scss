@@ -246,7 +246,8 @@
 
             .f-waypoint {
                 fill: transparent;
-                stroke: var(--fog-alpha-60);
+                stroke: transparent;
+                pointer-events: none;
             }
         }
     }
