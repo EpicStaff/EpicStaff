@@ -11,6 +11,7 @@ import posixpath
 from typing import Any
 
 from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.resource_names import TRASH_DIRECTORY
 
 # The storage backend treats add/remove/update-service-account as an always-on
 # "self-service" capability of any service account acting for its own parent
@@ -104,6 +105,10 @@ def build_temporary_policy(bucket: str, allowed_folders: set[str]) -> dict[str, 
     a leaked temporary credential could re-mint itself a replacement service
     account before revocation/TTL catches up, defeating the entire
     revocation mechanism this design relies on.
+
+    Statements (5) and (6) deny the org's recycle-bin folder: user code holds
+    these credentials and can call S3 directly, so the policy is the guard, and
+    a Deny wins over any Allow above, even for a folder that contains it.
     """
     if not allowed_folders:
         raise CredentialScopeValidationError(
@@ -114,6 +119,9 @@ def build_temporary_policy(bucket: str, allowed_folders: set[str]) -> dict[str, 
     bucket_arn = f"arn:aws:s3:::{bucket}"
     prefixes = sorted(_normalize_path(folder) for folder in allowed_folders)
     resources = [f"{bucket_arn}/{prefix}" for prefix in prefixes]
+    # Every folder sits under its org prefix (CredentialScopeValidator), so its first
+    # segment is the org whose recycle bin must stay out of reach.
+    trash_folders = sorted({f"{prefix.split('/', 1)[0]}/{TRASH_DIRECTORY}" for prefix in prefixes})
 
     return {
         "Version": "2012-10-17",
@@ -138,6 +146,25 @@ def build_temporary_policy(bucket: str, allowed_folders: set[str]) -> dict[str, 
                 "Effect": "Deny",
                 "Action": list(_TEMPORARY_ACCOUNT_SELF_MINT_ACTIONS),
                 "Resource": ["arn:aws:s3:::*"],
+            },
+            {
+                "Effect": "Deny",
+                "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+                # The bare key too: a file named .recycle-bin would block every key
+                # under it on filesystem-backed stores.
+                "Resource": [
+                    resource
+                    for folder in trash_folders
+                    for resource in (f"{bucket_arn}/{folder}", f"{bucket_arn}/{folder}/*")
+                ],
+            },
+            {
+                "Effect": "Deny",
+                "Action": ["s3:ListBucket"],
+                "Resource": [bucket_arn],
+                "Condition": {
+                    "StringLike": {"s3:prefix": [f"{folder}*" for folder in trash_folders]}
+                },
             },
         ],
     }

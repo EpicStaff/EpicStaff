@@ -36,7 +36,9 @@ from tables.models import (
     Secret,
     WebhookTrigger,
 )
+from tables.models.base_models import without_internal_rows
 from tables.models.graph_models import StartNode, TelegramTriggerNode
+from tables.models.python_models import linked_secrets_prefetch
 from tables.services.copy_services.helpers import next_copy_name
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.persistent_variables_service import (
@@ -69,13 +71,14 @@ class GraphVersioningManager:
             rows = (
                 site.model.objects.filter(graph=graph)
                 .select_related(site.code_field)
-                .prefetch_related(f"{site.code_field}__secrets")
+                .prefetch_related(linked_secrets_prefetch(site.code_field))
             )
             for row in rows:
                 python_code = getattr(row, site.code_field)
                 if python_code is None:
                     continue
-                names = sorted(secret.name for secret in python_code.secrets.all())
+                # Binned secrets too: the code still links to them until they're purged.
+                names = sorted(secret.name for secret in python_code.linked_secrets())
                 if not names:
                     continue
                 nodes.setdefault(str(row.pk), {})[site.code_field] = names
@@ -128,11 +131,14 @@ class GraphVersioningManager:
         """Split recorded names into the Secrets that still exist and those gone.
 
         Scoped to one org, so a name that exists only in another organisation
-        counts as missing rather than re-linking across the boundary.
+        counts as missing rather than re-linking across the boundary. A secret in
+        the recycle bin still exists: links to it are kept until it's purged, so it
+        is linked again (and warned about, see `_binned`).
         """
-        rows = {
-            secret.name: secret for secret in Secret.objects.filter(org_id=org_id, name__in=names)
-        }
+        # Live rows last, so they win: a rotated secret is a binned copy plus a live one.
+        # Never a system secret, even one that shares a recorded name.
+        candidates = without_internal_rows(Secret.all_objects.filter(org_id=org_id, name__in=names))
+        rows = {secret.name: secret for secret in candidates.order_by("active")}
         resolved = [rows[name] for name in names if name in rows]
         missing = [name for name in names if name not in rows]
         return resolved, missing
@@ -230,6 +236,7 @@ class GraphVersioningManager:
                 continue
             node.telegram_bot_api_key_secret = resolved[0]
             node.save(update_fields=["telegram_bot_api_key_secret"])
+            warnings.extend(self._binned(secrets=resolved, node_name=node.node_name))
         return warnings
 
     def _link(
@@ -237,12 +244,29 @@ class GraphVersioningManager:
     ) -> list[dict]:
         """Attach every name that still resolves; warn about every one that does not."""
         resolved, missing = self._resolve_names(names=names, org_id=org_id)
-        python_code.secrets.set(resolved)
-        return self._dropped(
+        # Through all_objects: a binned link the version doesn't have must go too.
+        python_code.secrets(manager="all_objects").set(resolved)
+        return self._binned(secrets=resolved, node_name=node_name) + self._dropped(
             names=missing,
             node_name=node_name,
             reason_suffix="it no longer exists in this organization.",
         )
+
+    @staticmethod
+    def _binned(*, secrets: list[Secret], node_name: str) -> list[dict]:
+        """One warning per restored link to a secret in the recycle bin: linked, but unreadable."""
+        return [
+            {
+                "type": "secret_in_recycle_bin",
+                "node_name": node_name,
+                "reason": (
+                    f'Secret "{secret.name}" is in the recycle bin. It was linked again; '
+                    "restore it from the Recycle Bin for the code to read it."
+                ),
+            }
+            for secret in secrets
+            if not secret.active
+        ]
 
     @staticmethod
     def _dropped(*, names: list[str], node_name: str, reason_suffix: str) -> list[dict]:

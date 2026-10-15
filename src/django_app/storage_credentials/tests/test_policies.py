@@ -87,3 +87,16 @@ def test_org_user_policy_scopes_to_org_prefix_and_grants_self_service_admin():
         if s["Effect"] == "Allow" and "s3:GetObject" in s["Action"]
     )
     assert s3_statement["Resource"] == ["arn:aws:s3:::bucket/org_5/*"]
+
+
+def test_temporary_policy_denies_the_org_recycle_bin():
+    policy = build_temporary_policy("bucket", {"org_1/foo", "org_1"})
+    deny_objects = next(s for s in _deny_statements(policy) if "s3:GetObject" in s["Action"])
+    deny_listing = next(s for s in _deny_statements(policy) if s["Action"] == ["s3:ListBucket"])
+
+    assert deny_objects["Action"] == ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    assert deny_objects["Resource"] == [
+        "arn:aws:s3:::bucket/org_1/.recycle-bin",
+        "arn:aws:s3:::bucket/org_1/.recycle-bin/*",
+    ]
+    assert deny_listing["Condition"] == {"StringLike": {"s3:prefix": ["org_1/.recycle-bin*"]}}

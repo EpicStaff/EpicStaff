@@ -64,11 +64,6 @@ export class FlowsApiService {
         );
     }
 
-    getEpicChatEnabledFlows(): Observable<GraphDto[]> {
-        const params = new HttpParams().set('epicchat_enabled', 'true');
-        return this.getAllFlowPages<GraphDto>(`${this.configService.apiUrl}graph-light/`, params);
-    }
-
     getGraphLightById(id: number): Observable<GetGraphLightRequest> {
         return this.http.get<GetGraphLightRequest>(`${this.configService.apiUrl}graph-light/${id}/`);
     }

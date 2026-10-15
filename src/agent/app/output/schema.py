@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from functools import lru_cache
 
 import jsonschema
+from jsonschema.exceptions import best_match
+from jsonschema.validators import validator_for
 
 from app.exceptions import InvalidOutputSchemaError
 from shared.models.agent_service import TokenUsage
@@ -40,18 +44,30 @@ def as_object_schema(schema: dict) -> tuple[dict, bool]:
     }, True
 
 
-def validate_output(obj, schema: dict) -> ValidationOutcome:
-    try:
-        jsonschema.validate(obj, schema)
-        return ValidationOutcome(ok=True, parsed=obj)
+@lru_cache(maxsize=128)
+def _validator(schema_json: str):
+    schema = json.loads(schema_json)
+    cls = validator_for(schema)
+    cls.check_schema(schema)
+    return cls(schema)
 
-    except jsonschema.ValidationError as error:
-        return ValidationOutcome(ok=False, error=error.message)
+
+def validate_output(obj, schema: dict) -> ValidationOutcome:
+    # Same steps as jsonschema.validate, with the checked validator cached per schema.
+    try:
+        validator = _validator(json.dumps(schema, sort_keys=True))
 
     except jsonschema.exceptions.SchemaError as error:
         raise InvalidOutputSchemaError(
             f"output_schema is not a valid JSON Schema: {error.message}"
         ) from error
+
+    error = best_match(validator.iter_errors(obj))
+
+    if error is not None:
+        return ValidationOutcome(ok=False, error=error.message)
+
+    return ValidationOutcome(ok=True, parsed=obj)
 
 
 def add_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:

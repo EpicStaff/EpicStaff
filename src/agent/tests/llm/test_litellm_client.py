@@ -519,3 +519,46 @@ async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
 
     text_chunks = [c for c in result if c.delta_text]
     assert text_chunks[0].delta_text == "hi"
+
+
+# ---------------------------------------------------------------------------
+# Tests — non-streamed response
+# ---------------------------------------------------------------------------
+
+
+async def test_non_streamed_response_is_split_into_chunks():
+    # Shape of litellm's Responses API bridge: text and tool calls arrive as separate choices.
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="checking", tool_calls=None), finish_reason="stop"),
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(id="call_x", function=SimpleNamespace(name="get_time", arguments='{"tz":"UTC"}')),
+                        SimpleNamespace(id=None, function=SimpleNamespace(name="ping", arguments="{}")),
+                    ],
+                ),
+                finish_reason="tool_calls",
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14),
+    )
+    router = MagicMock()
+    router.model_list = [{"model_name": "synth-model-001"}]
+    router.acompletion = AsyncMock(return_value=response)
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+
+    result = [chunk async for chunk in client.chat(MESSAGES, [], MODEL_CONFIG, stream=False)]
+
+    text, first_call, second_call, usage, finish = result
+    assert text.delta_text == "checking"
+    assert (first_call.tool_call_fragment.id, first_call.tool_call_fragment.name) == ("call_x", "get_time")
+    assert first_call.tool_call_fragment.arguments_delta == '{"tz":"UTC"}'
+    assert second_call.tool_call_fragment.id.startswith("call_")
+    assert usage.usage["total_tokens"] == 14
+    assert "total_cost_usd" in usage.usage
+    assert finish.finish_reason == "tool_calls"
+    request = router.acompletion.call_args.kwargs
+    assert request["stream"] is False
+    assert "stream_options" not in request

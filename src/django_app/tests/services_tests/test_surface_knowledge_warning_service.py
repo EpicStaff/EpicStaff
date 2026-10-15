@@ -21,6 +21,9 @@ from agents.models.surface_models import (
     SurfaceKnowledge,
     SurfaceNaiveSearchConfig,
 )
+from storage_credentials.services.session_credential_service import (
+    session_credential_service,
+)
 from tables.models.graph_models import AgentNode, Graph, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.session_models import SessionWarningMessage
@@ -77,6 +80,9 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
+    )
+    monkeypatch.setattr(
+        session_credential_service, "issue_for_session", lambda **kwargs: None
     )
     return sm
 
@@ -151,7 +157,7 @@ class TestSessionWarningPersistence:
         monkeypatch.setattr(
             sm.persistent_variables_service,
             "build_run_variables",
-            lambda graph, user, payload: type(
+            lambda graph, user, payload, allow_persistent_override=False: type(
                 "RunVariablesResult",
                 (),
                 {
