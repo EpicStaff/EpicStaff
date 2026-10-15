@@ -34,7 +34,7 @@ import { ChatDesksStorageService } from '../../services/chat-desks-storage.servi
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
-import { canTestChats } from '../../utils/chat-permissions.util';
+import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { closedSummary, isClosed } from '../../utils/conversation-close.util';
 import { operatorName } from '../../utils/conversation-row.util';
 import { microseconds, upsertMessage } from '../../utils/inbox-merge.util';
@@ -96,7 +96,7 @@ export class ChatThreadComponent {
         () => this.desksStorage.desks().find((binding) => binding.id === this.conversation().binding_id) ?? null
     );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
-    private readonly canTest = computed(() => canTestChats(this.permissionsService));
+    private readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
     private readonly canReadFlows = computed(() => this.permissionsService.can(ResourceCode.Flows, ActionCode.Read));
     /** Closed: read-only, with no actions, and a banner where the composer was. */
     readonly isClosed = computed(() => isClosed(this.conversation()));
@@ -170,7 +170,7 @@ export class ChatThreadComponent {
     // A closed one takes no more messages.
     private readonly fetchVisitorToken = effect(() => {
         const conversation = this.conversation();
-        if (!conversation.is_test || !this.canTest() || isClosed(conversation)) return;
+        if (!conversation.is_test || !this.canBuildDesks() || isClosed(conversation)) return;
         untracked(() => this.visitorTokens.ensure(conversation.id));
     });
     private readonly loadThreadOnSelect = effect(() => {

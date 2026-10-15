@@ -26,7 +26,7 @@ import { ChatConversationActionsService } from '../../services/chat-conversation
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
-import { canTestChats } from '../../utils/chat-permissions.util';
+import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { ConversationDeskRules, deskRulesOf, visitorName } from '../../utils/conversation-row.util';
 import { tickingNow } from '../../utils/ticking-now.util';
 import { ConversationListToolbarComponent } from '../conversation-list-toolbar/conversation-list-toolbar.component';
@@ -88,7 +88,7 @@ export class ConversationListComponent {
     protected readonly now = tickingNow(NOW_TICK_MS);
     /** Take over, and Mine: both are about conversations the user holds. */
     protected readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
-    private readonly canTest = computed(() => canTestChats(this.permissionsService));
+    private readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
     /** The search as applied: trimmed, once typing settles. Never remembered. */
     protected readonly search = signal('');
     protected readonly order = computed(() => this.preferences.order());
@@ -141,7 +141,7 @@ export class ConversationListComponent {
             search: this.search(),
             order: this.order(),
             holderId: this.holderId(),
-            showsTests: this.canTest(),
+            showsTests: this.canBuildDesks(),
         };
         untracked(() => this.store.load(query));
     });

@@ -43,7 +43,7 @@ import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
 import { OpenConversationSyncService } from '../../services/open-conversation-sync.service';
-import { canTestChats } from '../../utils/chat-permissions.util';
+import { isDeskBuilder } from '../../utils/chat-permissions.util';
 import { ALL_DESKS_ICON } from '../../utils/desk-avatar.util';
 
 const ALL_DESKS_ROUTE: readonly string[] = ['/chat-bindings', 'all'];
@@ -113,7 +113,7 @@ export class ChatPageComponent {
     readonly pauseIcon = computed(() => (this.routeBinding()?.is_active ? 'pause' : 'activate'));
     readonly canStartTest = computed(() => !!this.routeBinding() && !this.isStartingTest());
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
-    readonly canTest = computed(() => canTestChats(this.permissionsService));
+    readonly canBuildDesks = computed(() => isDeskBuilder(this.permissionsService));
     /**
      * The name visitors see on the user's replies on the open desk: their alias there, else its operator name. Null
      * while not known: the My name action then names no one rather than a name that may be wrong.
@@ -139,7 +139,7 @@ export class ChatPageComponent {
         const items: (ChatActionMenuItem<DeskAction> | false)[] = [
             this.canUse() && { id: 'my-name', label: this.myNameLabel() },
             canUpdate && { id: 'settings', label: 'Settings' },
-            { id: 'snippet', label: 'Get snippet' },
+            this.canBuildDesks() && { id: 'snippet', label: 'Get snippet' },
             canUpdate && { id: 'pause', label: this.pauseLabel() },
             this.canDelete() && { id: 'delete', label: 'Delete' },
         ];
@@ -280,7 +280,7 @@ export class ChatPageComponent {
         // Selecting again retries a failed visitor token.
         const hadFailed = this.visitorTokens.clearError(conversation.id);
         this.openConversation.open(conversation);
-        if (hadFailed && conversation.is_test && this.canTest()) this.visitorTokens.ensure(conversation.id);
+        if (hadFailed && conversation.is_test && this.canBuildDesks()) this.visitorTokens.ensure(conversation.id);
     }
 
     // The created row seeds the header: its stream event may already have passed, before it was selected.

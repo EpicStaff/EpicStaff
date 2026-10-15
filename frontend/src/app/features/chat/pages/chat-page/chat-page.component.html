@@ -75,15 +75,17 @@
                             <span class="btn-label">Delete</span>
                         </button>
                     }
-                    <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
-                    <button
-                        type="button"
-                        class="header-action header-action--outline"
-                        aria-label="Get snippet"
-                        (click)="copySnippet()"
-                    >
-                        <span class="btn-label">Get snippet</span>
-                    </button>
+                    @if (canBuildDesks()) {
+                        <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
+                        <button
+                            type="button"
+                            class="header-action header-action--outline"
+                            aria-label="Get snippet"
+                            (click)="copySnippet()"
+                        >
+                            <span class="btn-label">Get snippet</span>
+                        </button>
+                    }
                     @if (canUpdate()) {
                         <button
                             type="button"
@@ -102,7 +104,7 @@
                             <span class="btn-label">{{ pauseLabel() }}</span>
                         </button>
                     }
-                    @if (canTest()) {
+                    @if (canBuildDesks()) {
                         <button
                             type="button"
                             class="header-action header-action--primary"
@@ -173,7 +175,7 @@
                         />
                     }
                     <div class="phone-bar__actions">
-                        @if (routeBinding() && canTest()) {
+                        @if (routeBinding() && canBuildDesks()) {
                             <button
                                 type="button"
                                 class="phone-bar__icon-button phone-bar__icon-button--primary"

@@ -450,7 +450,7 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('copies the binding snippet from Get snippet through the shared binding actions, for any reader', () => {
+    it('copies the binding snippet from Get snippet through the shared binding actions, for a desk builder', () => {
         listBindings([binding]);
         scopeTo('b-1');
         headerButton('Get snippet')!.click();
@@ -506,10 +506,11 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('hides Pause and Settings without chats:update, Delete without chats:delete, My name without chats:use, Test without chats:create or update', () => {
+    it('hides Pause and Settings without chats:update, Delete without chats:delete, My name without chats:use, Test and Get snippet without chats:create or update', () => {
         listBindings([binding]);
         scopeTo('b-1');
         expect(headerButton('Test')).toBeDefined();
+        expect(headerButton('Get snippet')).toBeDefined();
         expect(headerButton('My name')).toBeDefined();
         expect(headerButton('Pause')).toBeUndefined();
         expect(headerButton('Settings')).toBeUndefined();
@@ -522,6 +523,7 @@ describe('ChatPageComponent', () => {
             listBindings([binding]);
             scopeTo('b-1');
             expect(headerButton('Test')).toBeUndefined();
+            expect(headerButton('Get snippet')).toBeUndefined();
             expect(headerButton('My name')).toBeDefined();
 
             permissions.can = () => false;
@@ -1848,8 +1850,8 @@ describe('ChatPageComponent', () => {
                 permissions.can = (_resource, action) => action === ActionCode.Read;
                 renderOnDesk();
                 expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
-                openMenu('.phone-bar');
-                expect(menuItems()).toEqual(['Get snippet']);
+                // An operator's desk has nothing to change or connect: no ⋯ menu at all.
+                expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
             } finally {
                 permissions.can = permitted;
             }
