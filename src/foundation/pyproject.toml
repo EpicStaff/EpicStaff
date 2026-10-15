@@ -7,13 +7,13 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "httpx>=0.28.1",
-    "pydantic>=2.14.1",
+    "httpx==0.28.1",
+    "pydantic==2.13.4",
 ]
 
 [project.optional-dependencies]
 litestar = [
-    "litestar>=2.24.0",
+    "litestar==2.24.0",
 ]
 
 [build-system]
