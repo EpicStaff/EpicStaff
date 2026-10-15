@@ -32,7 +32,7 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
+from tables.exceptions import CodeRunTargetNotFoundError
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -550,24 +550,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs["session_id"]
-        get_accessible_session(request.user, session_id)
-
-        try:
-            required_listeners = 2  # manager and crew
-            received_n = session_manager_service.stop_session(session_id=session_id)
-            if received_n < required_listeners:
-                logger.error(f"Stop session ({session_id}) was sent but not received.")
-                session = Session.objects.get(pk=session_id)
-                session.status = Session.SessionStatus.ERROR
-                session.status_data = {
-                    "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
-                }
-                session.save()
-
-        except Session.DoesNotExist:
-            raise SessionNotFoundError() from None
-
+        session = get_accessible_session(request.user, kwargs["session_id"])
+        session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
