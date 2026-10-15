@@ -16,12 +16,13 @@ import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes, ReasoningEffort } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
 import { startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
@@ -41,6 +42,7 @@ interface DialogData {
     templateUrl: './llm-model-config-dialog.component.html',
     styleUrls: ['./llm-model-config-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         IconButtonComponent,
         ButtonComponent,
         ReactiveFormsModule,
@@ -86,13 +88,9 @@ export class LlmModelConfigDialogComponent implements OnInit {
         () => this.isFormInvalid() || this.isSaving() || this.isLoading() || this.isModelResolving()
     );
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     protected readonly modelControl = new FormControl<number | null>(null, [Validators.required]);
     protected readonly selectedModelId = toSignal(this.modelControl.valueChanges, {
@@ -122,6 +120,7 @@ export class LlmModelConfigDialogComponent implements OnInit {
         this.form.statusChanges
             .pipe(startWith(this.form.status), takeUntilDestroyed(this.destroyRef))
             .subscribe((status) => this.isFormInvalid.set(status === 'INVALID'));
+        trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);

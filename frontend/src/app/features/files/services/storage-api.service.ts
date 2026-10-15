@@ -9,6 +9,7 @@ import { ConfigService } from '../../../services/config';
 import {
     GraphFileRecord,
     SessionOutputFile,
+    StorageCopyResponse,
     StorageFileRecord,
     StorageItem,
     StorageItemInfo,
@@ -139,8 +140,8 @@ export class StorageApiService {
         });
     }
 
-    copy(from: string, to: string): Observable<void> {
-        return this.http.post<void>(`${this.apiUrl}copy/`, {
+    copy(from: string, to: string): Observable<StorageCopyResponse> {
+        return this.http.post<StorageCopyResponse>(`${this.apiUrl}copy/`, {
             from_path: from,
             to_path: this.normalizeCopyTargetPath(to),
         });

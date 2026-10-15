@@ -6,9 +6,11 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, SecretsStorageService } from '@shared/services';
+import { trackPickedSecrets } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
@@ -21,6 +23,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
     styleUrls: ['./embedding-model-config-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+        BinnedSecretNoteComponent,
         ButtonComponent,
         CustomInputComponent,
         IconButtonComponent,
@@ -49,13 +52,9 @@ export class EmbeddingModelConfigDialogComponent {
     title = computed(() => (this.isEditMode() ? 'Edit Embedding Configuration' : 'Add Embedding Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add Embedding'));
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     form!: FormGroup;
 
@@ -65,6 +64,7 @@ export class EmbeddingModelConfigDialogComponent {
             api_key_secret_id: [null, [Validators.required]],
             model: [null, [Validators.required]],
         });
+        trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);

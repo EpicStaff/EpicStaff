@@ -6,15 +6,22 @@ Mocks the FastMCPClientFactory and fastmcp Client to avoid real network I/O.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, MagicMock
 
+import anyio
 import pytest
 from app.exceptions import McpToolError
+from app.tools.mcp import gateway as gateway_module
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
+from fastmcp import Client, Context, FastMCP
+from mcp import McpError
+from mcp.types import INTERNAL_ERROR, ErrorData
 from shared.models.tools import McpToolData
 
 # ---------------------------------------------------------------------------
@@ -89,6 +96,40 @@ def _factory(client) -> FastMCPClientFactory:
     factory = MagicMock(spec=FastMCPClientFactory)
     factory.create.return_value = client
     return factory
+
+
+_IN_FLIGHT_REQUEST_ID = 1
+
+
+def _sdk_read_timeout() -> McpError:
+    """The error mcp's send_request raises when the session read timeout fires."""
+    return McpError(
+        ErrorData(
+            code=408,
+            message="Timed out while waiting for response to ClientRequest. Waited 3.0 seconds.",
+        )
+    )
+
+
+def _make_in_flight_client(call_tool_error: BaseException | None = None):
+    """Fake client whose tools/call takes the session's next request id, then fails.
+
+    Without an error the call never returns, like a long-running remote tool.
+    """
+    client = _make_client()
+    client.session._request_id = _IN_FLIGHT_REQUEST_ID
+
+    async def _call_tool(*args, **kwargs):
+        # The SDK assigns the next id when it sends the request.
+        client.session._request_id += 1
+        if call_tool_error is not None:
+            raise call_tool_error
+        await asyncio.Event().wait()
+
+    client.call_tool = _call_tool
+    client.cancel = AsyncMock()
+    client.ping = AsyncMock(return_value=True)
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -288,3 +329,171 @@ async def test_call_raises_mcp_tool_error_on_connection_failure():
 
     with pytest.raises(McpToolError, match="MCP call failed"):
         await gateway.call(_mcp_data("search"), {})
+
+
+# ---------------------------------------------------------------------------
+# call — cancelling the in-flight request on the server
+# ---------------------------------------------------------------------------
+
+
+async def test_call_cancels_in_flight_request_when_sdk_read_timeout_fires():
+    client = _make_in_flight_client(_sdk_read_timeout())
+    gateway = McpToolGateway(_factory(client))
+
+    with pytest.raises(McpToolError, match=r"MCP call failed.*Timed out"):
+        await gateway.call(_mcp_data("browse"), {})
+
+    client.cancel.assert_awaited_once()
+    assert client.cancel.await_args.args == (_IN_FLIGHT_REQUEST_ID,)
+
+
+@pytest.mark.parametrize(
+    ("call_tool_error", "surfaced_error"),
+    [
+        (_sdk_read_timeout(), McpToolError),
+        (asyncio.CancelledError(), asyncio.CancelledError),
+    ],
+    ids=["sdk_read_timeout", "cancelled"],
+)
+async def test_call_pings_after_cancel_and_before_closing_the_session(
+    call_tool_error, surfaced_error
+):
+    client = _make_in_flight_client(call_tool_error)
+    gateway = McpToolGateway(_factory(client))
+
+    with pytest.raises(surfaced_error):
+        await gateway.call(_mcp_data("browse"), {})
+
+    session_steps = [
+        name for name, _, _ in client.mock_calls if name in {"cancel", "ping", "__aexit__"}
+    ]
+    assert session_steps == ["cancel", "ping", "__aexit__"]
+
+
+async def test_call_cancels_in_flight_request_when_caller_cancels():
+    client = _make_in_flight_client()
+    gateway = McpToolGateway(_factory(client))
+
+    # Same shape as the agent loop's per-tool timeout: wait_for cancels the call.
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(gateway.call(_mcp_data("browse"), {}), timeout=0.05)
+
+    client.cancel.assert_awaited_once()
+    assert client.cancel.await_args.args == (_IN_FLIGHT_REQUEST_ID,)
+
+
+async def test_call_sends_cancel_when_cancelled_by_an_anyio_scope():
+    client = _make_in_flight_client()
+    cancels_delivered = []
+
+    async def _send_cancel(*args, **kwargs):
+        # A checkpoint: an unshielded send is cancelled here by the expired scope.
+        await asyncio.sleep(0)
+        cancels_delivered.append(args)
+
+    client.cancel.side_effect = _send_cancel
+    gateway = McpToolGateway(_factory(client))
+
+    with anyio.move_on_after(0.05):
+        await gateway.call(_mcp_data("browse"), {})
+
+    assert cancels_delivered == [(_IN_FLIGHT_REQUEST_ID,)]
+
+
+@pytest.mark.parametrize(
+    "call_tool_error",
+    [
+        McpError(ErrorData(code=INTERNAL_ERROR, message="server exploded")),
+        ConnectionError("connection reset"),
+    ],
+    ids=["json_rpc_error_response", "connection_error"],
+)
+async def test_call_does_not_cancel_when_request_failed_without_timing_out(call_tool_error):
+    client = _make_in_flight_client(call_tool_error)
+    gateway = McpToolGateway(_factory(client))
+
+    with pytest.raises(McpToolError, match="MCP call failed"):
+        await gateway.call(_mcp_data("browse"), {})
+
+    client.cancel.assert_not_awaited()
+    client.ping.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failing_step", ["cancel", "ping"])
+async def test_call_surfaces_timeout_error_when_cancel_send_fails(failing_step):
+    client = _make_in_flight_client(_sdk_read_timeout())
+    getattr(client, failing_step).side_effect = ConnectionError("server gone")
+    gateway = McpToolGateway(_factory(client))
+
+    with pytest.raises(McpToolError, match="Timed out") as error_info:
+        await gateway.call(_mcp_data("browse"), {})
+
+    assert isinstance(error_info.value.__cause__, McpError)
+
+
+@pytest.mark.parametrize("failing_step", ["cancel", "ping"])
+async def test_call_propagates_cancelled_error_when_cancel_send_fails(failing_step):
+    client = _make_in_flight_client(asyncio.CancelledError())
+    getattr(client, failing_step).side_effect = ConnectionError("server gone")
+    gateway = McpToolGateway(_factory(client))
+
+    with pytest.raises(asyncio.CancelledError):
+        await gateway.call(_mcp_data("browse"), {})
+
+
+@pytest.mark.parametrize(
+    ("call_tool_error", "caller_timeout", "surfaced_error"),
+    [
+        (_sdk_read_timeout(), None, McpToolError),
+        (None, 0.05, TimeoutError),
+    ],
+    ids=["sdk_read_timeout", "caller_cancels"],
+)
+@pytest.mark.parametrize("hanging_step", ["cancel", "ping"])
+async def test_call_gives_up_on_cancel_send_after_deadline(
+    monkeypatch, hanging_step, call_tool_error, caller_timeout, surfaced_error
+):
+    monkeypatch.setattr(gateway_module, "_CANCEL_SEND_TIMEOUT_SECONDS", 0.05)
+    client = _make_in_flight_client(call_tool_error)
+
+    async def _unresponsive_server(*args, **kwargs):
+        await asyncio.Event().wait()
+
+    getattr(client, hanging_step).side_effect = _unresponsive_server
+    gateway = McpToolGateway(_factory(client))
+    started = time.monotonic()
+
+    with pytest.raises(surfaced_error):
+        # Outer bound so a missing deadline fails the test instead of hanging the suite.
+        async with asyncio.timeout(2):
+            await asyncio.wait_for(gateway.call(_mcp_data("browse"), {}), timeout=caller_timeout)
+
+    assert time.monotonic() - started < 1
+
+
+# ---------------------------------------------------------------------------
+# SDK contract the gateway depends on
+# ---------------------------------------------------------------------------
+
+
+async def test_sdk_sends_tools_call_with_the_request_id_read_right_before_it():
+    """Pin the SDK assumption McpToolGateway.call relies on to cancel a tool call.
+
+    The gateway reads the private ClientSession._request_id right before call_tool
+    and treats it as the tools/call JSON-RPC id. A real in-memory server checks
+    that against the id the server actually receives, so an SDK change that
+    renames the counter or changes when ids are assigned fails here.
+    """
+    server = FastMCP("contract")
+    ids_seen_by_server = []
+
+    @server.tool
+    async def echo(ctx: Context) -> str:
+        ids_seen_by_server.append(ctx.request_id)
+        return "ok"
+
+    async with Client(server) as client:
+        expected_request_id = client.session._request_id
+        await client.call_tool("echo", {})
+
+    assert ids_seen_by_server == [str(expected_request_id)]

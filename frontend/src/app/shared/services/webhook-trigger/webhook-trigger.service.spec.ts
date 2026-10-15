@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { WebhookTriggerModel } from '@shared/models';
+import { BinnedWebhookTrigger, WebhookTriggerModel } from '@shared/models';
 
 import { ConfigService } from '../../../services/config';
 import { WebhookTriggerService } from './webhook-trigger.service';
@@ -90,5 +90,54 @@ describe('WebhookTriggerService payloads', () => {
         expect(request.request.body).toHaveProperty('auth_secret_id', 12);
         expect(request.request.body).not.toHaveProperty('auth_kind');
         request.flush(LOADED_TRIGGER);
+    });
+});
+
+describe('WebhookTriggerService recycle bin', () => {
+    const BIN = '/api/webhook-triggers/recycle-bin/';
+    let service: WebhookTriggerService;
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
+        service = TestBed.inject(WebhookTriggerService);
+        httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => httpMock.verify());
+
+    function binEntry(id: number) {
+        return { id, name: `hook-${id}`, deleted_at: '2026-10-01T10:00:00Z', days_left: 5 };
+    }
+
+    it('reads every page of the paged bin and keeps only the id and name', () => {
+        let result: BinnedWebhookTrigger[] | undefined;
+        service.listInRecycleBin().subscribe((triggers) => (result = triggers));
+
+        const first = Array.from({ length: 100 }, (_, index) => binEntry(index + 1));
+        httpMock
+            .expectOne(`${BIN}?limit=100&offset=0`)
+            .flush({ count: 101, next: null, previous: null, results: first });
+        httpMock
+            .expectOne(`${BIN}?limit=100&offset=100`)
+            .flush({ count: 101, next: null, previous: null, results: [binEntry(101)] });
+
+        expect(result).toHaveLength(101);
+        expect(result?.at(-1)).toEqual({ id: 101, name: 'hook-101' });
+    });
+
+    it('returns an empty list for an empty bin', () => {
+        let result: BinnedWebhookTrigger[] | undefined;
+        service.listInRecycleBin().subscribe((triggers) => (result = triggers));
+
+        httpMock.expectOne(`${BIN}?limit=100&offset=0`).flush({ count: 0, next: null, previous: null, results: [] });
+
+        expect(result).toEqual([]);
     });
 });

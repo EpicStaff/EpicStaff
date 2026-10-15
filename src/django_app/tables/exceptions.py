@@ -122,6 +122,53 @@ class BuiltInToolModificationError(CustomAPIExeption):
         super().__init__(detail=detail, code=code, status_code=400)
 
 
+class NotInRecycleBinError(CustomAPIExeption):
+    """The row isn't in the recycle bin (it's live, or was binned before batches existed)."""
+
+    status_code = 404
+    # The exception handler renders the class's default_code, not a per-instance code.
+    default_code = "not_in_recycle_bin"
+    default_detail = "Not found in the recycle bin."
+
+
+class RestoreConflictError(CustomAPIExeption):
+    """A restore picked a free name or number, and something else took it before the restore committed."""
+
+    status_code = 409
+    default_code = "restore_conflict"
+    default_detail = "Something else just took this item's name. Try the restore again."
+
+
+class CrossOrgCascadeError(CustomAPIExeption):
+    """A delete would change a row of another organization than the one it started in.
+
+    409, not 500: the request is valid and the caller did nothing wrong; the data
+    holds a link no API path creates, and the delete can't go ahead while it's there.
+    The message names neither the row nor its organization, so it can't be used to
+    learn what another organization holds; the server log has the details.
+    """
+
+    status_code = 409
+    default_code = "cross_org_cascade"
+    default_detail = (
+        "This item is linked to data it can't be deleted with. Nothing was deleted. "
+        "Contact an administrator."
+    )
+
+
+class StorageRestoreConflictError(CustomAPIExeption):
+    """An object nobody indexed already sits where a restored storage item would go."""
+
+    status_code = 409
+    default_code = "storage_restore_conflict"
+
+    def __init__(self, path: str):
+        super().__init__(
+            detail=f"Can't restore to '{path}': storage already holds a file there that isn't listed. "
+            "Ask an administrator to re-index storage, then try again."
+        )
+
+
 class RegisterTelegramTriggerError(CustomAPIExeption):
     status_code = 400
     default_detail = "Error occurred while registering Telegram trigger"

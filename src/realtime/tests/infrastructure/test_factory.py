@@ -113,3 +113,11 @@ def test_gemini_gets_the_configured_model():
     client = _create(_make_config(rt_provider="gemini", rt_model_name="gemini-3.1-flash-live-preview"))
 
     assert client.model == "gemini-3.1-flash-live-preview"
+
+
+@pytest.mark.parametrize("provider", ["gemini", "elevenlabs"])
+@pytest.mark.parametrize("temperature", [0.0, 1.3, None], ids=["zero", "set", "unset"])
+def test_the_configured_temperature_reaches_the_adapter_unchanged(provider, temperature):
+    client = _create(_make_config(rt_provider=provider, temperature=temperature))
+
+    assert client.temperature == temperature

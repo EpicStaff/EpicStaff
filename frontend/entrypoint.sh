@@ -25,7 +25,6 @@ else
   "apiUrl": "${API_URL}",
   "realtimeApiUrl": "${REALTIME_API_URL}",
   "auditorUrl": "${AUDITOR_API_URL}",
-  "isEpicChatEnabled": $(to_json_boolean "${EPIC_CHAT_ENABLED:-true}"),
   "isAuditTrailEnabled": $(to_json_boolean "${AUDIT_TRAIL_ENABLED:-false}")
 }
 EOF
