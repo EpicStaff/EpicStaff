@@ -12,8 +12,9 @@ the CLA flow operates and lists the configuration it depends on.
   **service account**.
 - Signatures are keyed by **CLA version** (one folder per version), with **one
   JSON file per signer**.
-- On every PR, **all commit authors** must have signed the **current** CLA
-  version before the build is allowed to run.
+- On every PR, **all commit authors and the person who opened the PR** must
+  have signed the **current** CLA version before the build is allowed to run.
+  Only allow-listed bots are exempt (see [Bots and the allow-list](#bots-and-the-allow-list)).
 - The whole system is gated by the `CLA_ENFORCED` repo variable — set it to
   anything other than `true` and the CLA gate is skipped entirely.
 
@@ -78,8 +79,9 @@ credentials. `pull_request_target` runs in the base-repo context and does not
 execute PR code, so this is safe even for pull requests from forks (which is where
 external contributors sign). On each run it:
 
-1. Resolves **all commit authors** of the PR via the GitHub API.
-2. Checks the current version folder in Drive for each author's signature (and
+1. Resolves **all commit authors** of the PR via the GitHub API, and adds the
+   **PR opener** (the account that opened the pull request) to the list.
+2. Checks the current version folder in Drive for each person's signature (and
    that the stored hash still matches).
 3. Posts or updates a single PR comment listing anyone who still needs to sign.
 4. Sets a commit status named **`CLA`** (`success` / `failure`) on the PR head
@@ -101,6 +103,32 @@ the GitHub API and blocks the `build` job until the status is `success`. Reading
 status only needs the read-only `GITHUB_TOKEN`, which is available even on fork
 PRs, so no Drive secret is exposed on the build side. A short retry absorbs the
 race between the two workflows.
+
+### Why the PR opener must sign
+
+A commit is linked to a GitHub account through its git author email, and anyone
+can set that email to any value (`git commit --author=...`). On its own, the
+commit list does not prove who wrote the code. The PR opener comes from the
+GitHub API and cannot be forged, so requiring the opener's signature makes sure
+a real person always gives the licence grant, unless an allow-listed bot opened
+the PR. If the opener is also a commit author, they are listed once.
+
+### Bots and the allow-list
+
+A bot is skipped — as a commit author and as the PR opener — only when **both**
+are true:
+
+- its GitHub account type is `Bot`, and
+- its login is in the allow-list.
+
+The allow-list defaults to `dependabot[bot]`. Any other bot is treated like a
+person: it has no signature, so the check fails. A normal `User` account whose
+login matches an allow-list entry is not skipped either.
+
+To change the list, set the `CLA_ALLOWLIST` repo variable to a comma-separated
+list of bot logins, for example `dependabot[bot],renovate[bot]`. The value
+**replaces** the default, so include `dependabot[bot]` if you still want it.
+An unset or empty variable uses the default.
 
 ### Commits with no linked GitHub account
 
@@ -126,6 +154,7 @@ Set under **Settings → Secrets and variables → Actions**:
 | **Secret**   | `CLA_GDRIVE_SERVICE_ACCOUNT_JSON` | Full JSON key of the service account CI authenticates as       |
 | **Variable** | `CLA_GDRIVE_ROOT_ID`              | ID of the Shared Drive folder that holds the `vX.Y.Z` folders  |
 | **Variable** | `CLA_ENFORCED`                    | `true` enables the CLA gate; anything else disables it         |
+| **Variable** | `CLA_ALLOWLIST`                   | Optional. Comma-separated bot logins exempt from signing; unset/empty = `dependabot[bot]` |
 
 The service account must be a member (Content manager / Editor) of the Shared
 Drive, and the **Google Drive API** must be enabled in its Cloud project.

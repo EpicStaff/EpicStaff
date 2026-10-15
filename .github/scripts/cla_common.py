@@ -184,19 +184,44 @@ def signature_filename(login: str, gid: int) -> str:
     return f"{login}_{gid}.json"
 
 
+def load_bot_allowlist() -> set[str]:
+    """Return the logins of bots that do not need to sign the CLA.
+
+    Read from the comma-separated ``CLA_ALLOWLIST`` env var. A value with no
+    logins in it (unset, empty, whitespace or only commas) falls back to
+    ``DEFAULT_ALLOWLIST``: the workflow passes an unset repo variable through as
+    an empty string, and that must not turn the allow-list off.
+    """
+    raw_allowlist = os.environ.get("CLA_ALLOWLIST", "")
+    logins = {login.strip() for login in raw_allowlist.split(",") if login.strip()}
+
+    return logins or {DEFAULT_ALLOWLIST}
+
+
+def is_allowlisted_bot(user: dict[str, Any], allowlist: set[str]) -> bool:
+    """Return True only for a GitHub Bot account whose login is in the allow-list.
+
+    Both conditions are required. A ``User`` account with an allow-listed login
+    is not a bot, and a bot outside the allow-list has given no licence grant.
+    """
+    return user.get("type") == "Bot" and user.get("login") in allowlist
+
+
 def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str, Any]], list[str]]:
     """Resolve the distinct GitHub authors of a PR's commits.
 
     Returns (authors, unresolved) where authors is a de-duplicated list of
-    {"login": str, "id": int} dicts (bots and allowlisted logins excluded), and
-    unresolved is a list of git author "name <email>" strings for commits whose
-    author could not be linked to a GitHub account.
+    {"login": str, "id": int} dicts and unresolved is a list of git author
+    "name <email>" strings for commits whose author could not be linked to a
+    GitHub account.
+
+    Only allow-listed bots (see ``is_allowlisted_bot``) are left out of authors.
+    Any other bot is returned as a normal author, so it fails the check because
+    it has no signature. The author is linked through the commit's git email,
+    which the committer controls, so this list alone does not prove who wrote
+    the code — callers must also check the PR opener.
     """
-    allowlist = {
-        login.strip()
-        for login in os.environ.get("CLA_ALLOWLIST", DEFAULT_ALLOWLIST).split(",")
-        if login.strip()
-    }
+    allowlist = load_bot_allowlist()
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -226,10 +251,7 @@ def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str
                 unresolved.append(f"{git_author.get('name')} <{git_author.get('email')}>")
                 continue
 
-            if author.get("type") == "Bot":
-                continue
-
-            if author["login"] in allowlist:
+            if is_allowlisted_bot(author, allowlist):
                 continue
 
             authors_by_id[author["id"]] = {"login": author["login"], "id": author["id"]}
