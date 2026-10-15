@@ -123,7 +123,6 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
                 this.closed.emit();
             });
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
-        // The input lives in the overlay portal, so it exists only after the portal renders.
         afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
     }
 

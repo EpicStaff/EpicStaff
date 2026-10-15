@@ -13,6 +13,7 @@ export interface GetMeResponse {
     active_organization_id: number | null;
     active_permissions: ActivePermissions | null;
     avatar_url: string | null;
+    shortcut_overrides: Record<string, string>;
 }
 
 export interface UpdateMeRequest {

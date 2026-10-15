@@ -21,6 +21,8 @@ import { ConfigService } from '../config';
 import { ActiveOrgService } from './active-org.service';
 import { PermissionsService } from './permissions.service';
 
+const NO_SHORTCUT_OVERRIDES: Readonly<Record<string, string>> = {};
+
 @Injectable({
     providedIn: 'root',
 })
@@ -39,6 +41,10 @@ export class ProfileService {
     currentUserSignal = this.currentUser.asReadonly();
 
     isMeSuperAdmin = computed(() => this.currentUser()?.is_superadmin ?? false);
+
+    readonly shortcutOverrides = computed<Readonly<Record<string, string>>>(
+        () => this.currentUser()?.shortcut_overrides ?? NO_SHORTCUT_OVERRIDES
+    );
 
     systemRole = computed(() => {
         const user = this.currentUser();
@@ -92,6 +98,13 @@ export class ProfileService {
 
     updateCurrentUser(dto: UpdateMeRequest): Observable<GetMeResponse> {
         return this.http.patch<GetMeResponse>(this.baseUrl, dto).pipe(tap((user) => this.setUser(user)));
+    }
+
+    updateShortcutOverrides(overrides: Readonly<Record<string, string>>): Observable<Readonly<Record<string, string>>> {
+        return this.http.patch<GetMeResponse>(this.baseUrl, { shortcut_overrides: overrides }).pipe(
+            map((user) => user.shortcut_overrides),
+            tap((saved) => this.updateUser({ shortcut_overrides: saved }))
+        );
     }
 
     updateAvatar(avatar: FormData): Observable<GetMeResponse> {
