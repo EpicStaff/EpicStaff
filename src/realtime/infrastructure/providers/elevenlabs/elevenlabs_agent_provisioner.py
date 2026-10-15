@@ -192,6 +192,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         rt_tools: list[RealtimeTool],
         llm_model: str,
         language: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         # Everything provisioning sends must be in the hash: the agent payload and its tool
         # records, descriptions included. So must the names of the tool records the agent
@@ -211,6 +212,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 "llm": llm_model,
                 "tts_model": tts_model,
                 "language": language,
+                "temperature": temperature,
                 "payload_shape": _AGENT_PAYLOAD_SHAPE,
             },
             sort_keys=True,
@@ -243,20 +245,23 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         rt_tools: list[RealtimeTool],
         llm_model: str,
         language: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         """Return the id of the remote agent `agent_name`, provisioned with this content.
 
         Args:
             agent_name: The configuration's `remote_agent_name`.
             tool_prefix: The same configuration's `remote_tool_prefix`; names its tool records.
+            temperature: The agent LLM's temperature. None is left out of the payload, so a
+                new agent gets the ElevenLabs default and an existing one keeps its value.
         """
         voice = voice or "21m00Tcm4TlvDq8ikWAM"  # default to Rachel if empty/None
         logger.info(
-            f"EL Provisioner: get_or_create_agent | agent_name={agent_name!r} | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
+            f"EL Provisioner: get_or_create_agent | agent_name={agent_name!r} | voice_id={voice!r} | llm={llm_model!r} | language={language!r} | temperature={temperature!r}"
         )
         cache_key = self._cache_key(api_key, agent_name)
         content_hash = self._content_hash(
-            tool_prefix, instructions, voice, rt_tools, llm_model, language
+            tool_prefix, instructions, voice, rt_tools, llm_model, language, temperature
         )
 
         cached_agent_id = await self._cached_agent_id(cache_key, content_hash)
@@ -280,6 +285,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                 rt_tools,
                 llm_model,
                 language,
+                temperature,
             )
             redis = self.redis_service.aioredis_client
             # Only an agent that holds this content may be cached under its hash.
@@ -313,6 +319,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         rt_tools: list[RealtimeTool],
         llm_model: str,
         language: str | None,
+        temperature: float | None,
     ) -> tuple[str, bool]:
         """Create or update the remote agent.
 
@@ -331,7 +338,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
 
             existing_agent_id = await self._find_agent_id(client, headers, agent_name)
             agent_payload = self._build_agent_payload(
-                agent_name, instructions, voice, tool_ids, llm_model, language
+                agent_name, instructions, voice, tool_ids, llm_model, language, temperature
             )
 
             if existing_agent_id:
@@ -371,6 +378,7 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         tool_ids: list[str],
         llm_model: str,
         language: str | None = None,
+        temperature: float | None = None,
     ) -> dict:
         """Build the agent payload for the ElevenLabs API.
 
@@ -378,23 +386,28 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         inline: ElevenLabs deprecates inline `prompt.tools` in favour of
         `prompt.tool_ids`, and an inline definition left a second, plain-named
         record in the workspace next to the agent's own.
+
+        An unset temperature is left out rather than sent as null: ElevenLabs reads
+        `prompt.temperature: null` as "send no temperature to the LLM at all".
         """
         default_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel
         voice_id = voice if voice and voice.lower() not in _OPENAI_VOICE_NAMES else default_voice_id
 
         tts_model = _TTS_MODEL_EN if not language or language == "en" else _TTS_MODEL_MULTILINGUAL
 
+        prompt = {
+            "prompt": instructions,
+            "llm": llm_model,
+            "first_message": "Hello! I am your AI assistant. How can I help you today?",
+            "tool_ids": tool_ids,
+        }
+        if temperature is not None:
+            prompt["temperature"] = temperature
+
         return {
             "name": name,
             "conversation_config": {
-                "agent": {
-                    "prompt": {
-                        "prompt": instructions,
-                        "llm": llm_model,
-                        "first_message": "Hello! I am your AI assistant. How can I help you today?",
-                        "tool_ids": tool_ids,
-                    },
-                },
+                "agent": {"prompt": prompt},
                 "tts": {"voice_id": voice_id, "model_id": tts_model},
             },
         }
