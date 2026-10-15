@@ -256,8 +256,7 @@ class TestPayloadAndInProcessConsumers:
         import asyncio
 
         from tables.models import LLMModel
-        from tables.services.llm_clients import litellm_client
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        from tables.services.llm_clients import get_llm_client, litellm_client
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
@@ -275,7 +274,7 @@ class TestPayloadAndInProcessConsumers:
 
         async def call_the_llm():
             with pytest.raises(_Sent):
-                async for _ in LiteLLMClient(llm_config=config, api_key=api_key).stream_completion(
+                async for _ in get_llm_client(config, api_key=api_key).stream_completion(
                     messages=[{"role": "user", "content": "hi"}], tools=[]
                 ):
                     pass

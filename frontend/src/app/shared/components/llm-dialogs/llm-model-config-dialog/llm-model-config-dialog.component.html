@@ -1,7 +1,7 @@
 <div
     class="dialog"
     (appEnterSubmit)="onSave()"
-    [appEnterSubmitDisabled]="form.invalid || isSaving() || isLoading()"
+    [appEnterSubmitDisabled]="isSaveDisabled()"
 >
     <div class="header">
         <h2 class="title">
@@ -40,6 +40,10 @@
                 />
                 <app-validation-errors [control]="form.get('model')!" />
             </div>
+            <app-llm-reasoning-effort-field
+                [control]="reasoningEffortControl"
+                [modelId]="selectedModelId()"
+            />
             <div>
                 <app-select
                     formControlName="api_key_secret_id"
@@ -189,7 +193,7 @@
         </app-button>
         <app-button
             type="primary"
-            [disabled]="form.invalid || isSaving() || isLoading()"
+            [disabled]="isSaveDisabled()"
             (click)="onSave()"
         >
             {{ saveLabel() }}

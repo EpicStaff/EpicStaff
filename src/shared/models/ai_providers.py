@@ -1,6 +1,33 @@
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Every level litellm knows, weakest first; the order is the one the UI lists them in.
+# Which levels a given model accepts is decided per model in django_app
+# (tables.utils.litellm_model_info.reasoning_support).
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+REASONING_EFFORT_VALUES: tuple[str, ...] = get_args(ReasoningEffort)
+
+# Allowlist, not denylist: a transport field added to LLMConfigData later
+# (credentials, endpoints, headers) must never leak into generation kwargs.
+# A tuple keeps the kwargs order stable across processes.
+LITELLM_GENERATION_FIELDS = (
+    "temperature",
+    "top_p",
+    "stop",
+    "max_tokens",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "timeout",
+    "reasoning_effort",
+)
+
+# Only Anthropic's own API is covered. Claude reached through bedrock, vertex_ai or
+# azure_ai shares a litellm provider prefix with non-Claude models, so the rules below
+# cannot be keyed on the provider there.
+_ANTHROPIC_PROVIDER = "anthropic"
 
 
 class LLMConfigData(BaseModel):
@@ -22,8 +49,47 @@ class LLMConfigData(BaseModel):
     Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
+    reasoning_effort: ReasoningEffort | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    def to_litellm_kwargs(self, *, provider: str, exclude: set[str] | None = None) -> dict:
+        """Return the generation parameters to pass to litellm, omitting unset ones.
+
+        Generation params only. The model string, auth, base_url/api_version,
+        deployment_id, extra_headers, store, response_format and tools stay with
+        each caller.
+
+        On Anthropic, sampling params its API would reject are left out, because litellm
+        forwards them unchanged: current Claude models answer 400 to temperature together
+        with top_p, and to any temperature but 1 while thinking is on. So top_p is dropped
+        whenever temperature is sent or thinking is on, and temperature is dropped while
+        thinking is on unless it is 1. Other providers get every set param.
+
+        Args:
+            provider: The litellm provider the call is routed to (``"anthropic"`` for
+                ``"anthropic/claude-sonnet-4-6"`` and for a bare ``"claude-sonnet-4-6"``).
+            exclude: Generation fields the caller must not send (e.g. a client
+                that sets its own stop sequences or timeout).
+        """
+        excluded = exclude or set()
+        kwargs = {
+            name: value
+            for name in LITELLM_GENERATION_FIELDS
+            if name not in excluded and (value := getattr(self, name)) is not None
+        }
+        if provider == _ANTHROPIC_PROVIDER:
+            _drop_sampling_params_anthropic_rejects(kwargs)
+        return kwargs
+
+
+def _drop_sampling_params_anthropic_rejects(kwargs: dict) -> None:
+    # litellm maps reasoning_effort "none" to no thinking block at all.
+    thinking_enabled = kwargs.get("reasoning_effort", "none") != "none"
+    if thinking_enabled and kwargs.get("temperature", 1) != 1:
+        del kwargs["temperature"]
+    if thinking_enabled or "temperature" in kwargs:
+        kwargs.pop("top_p", None)
 
 
 class EmbedderConfigData(BaseModel):
