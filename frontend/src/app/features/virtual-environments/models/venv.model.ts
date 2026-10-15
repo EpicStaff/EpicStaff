@@ -1,12 +1,21 @@
+// Mirrors VERSION_PATTERN in the sandbox service's Library model; keep in sync.
+export const VENV_LIBRARY_VERSION_PATTERN =
+    /^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_.][a-z0-9]+)*)?$/;
+
 // The sandbox_new venv lifecycle, mirrored from the service's VenvStatus enum.
 export type VenvStatus = 'declared' | 'processing' | 'completed' | 'failed';
 
-// A pinned library. `specification` is a PEP 440 specifier string (e.g. "==1.2.3")
-// and `version` is the bare version the specifier was built from.
+// `version` is resolved and locked by the sandbox service; the user's constraint is `specification`.
 export interface VenvLib {
     name: string;
     specification: string;
     version: string | null;
+}
+
+export interface VenvLibUpdate {
+    name: string;
+    currentVersion: string;
+    latestVersion: string;
 }
 
 // The gateway injects `owner` and `created_at` from its org-scoped binding row; the
