@@ -8,12 +8,10 @@ from services.graph.nodes.agent_output_variable import agent_output_variable_val
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
-from services.graph.remembered_outputs import (
-    RememberedOutputsStore,
-    format_remembered_outputs_preamble,
-)
+from services.graph.remembered_outputs import RememberedOutputsStore
 from src.shared.models import TaskNodeData
 from src.shared.models.storage_scope import StorageCredentials
+from src.shared.prior_task_outputs import format_prior_task_outputs
 
 
 class TaskNode(BaseNode):
@@ -53,7 +51,7 @@ class TaskNode(BaseNode):
 
         rendered_instructions = render_instructions(self.task_node_data.instructions, input_)
         remembered = await self.remembered_outputs_store.fetch_all(self.session_id)
-        preamble = format_remembered_outputs_preamble(remembered)
+        preamble = format_prior_task_outputs(remembered)
         task_node_data = self.task_node_data.model_copy(
             update={"instructions": preamble + rendered_instructions}
         )
