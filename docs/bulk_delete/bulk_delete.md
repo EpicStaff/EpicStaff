@@ -202,7 +202,7 @@ delete. That obligation sits with the client.
 ### Single-object `DELETE`
 
 Single `DELETE` on any of the seven resources runs the exact same check and
-responds `403` (message `in_use_restricted`) when blocked. For `GraphVersion`
+responds `403` (code `in_use_restricted`) when blocked. For `GraphVersion`
 the check can never fire. As in bulk, the check and the delete run in one
 transaction that holds a lock on the row, so a reference added between them
 cannot be silently cleared.
@@ -312,19 +312,23 @@ unparseable, blank or repeated. Standard DRF field validation errors.
 Raised before any usage logic runs when the caller lacks `DELETE` on the
 endpoint's resource type in the active organization.
 
-### `403 permission_denied` — blocked on single-object delete
+### `403 in_use_restricted` — blocked on single-object delete
 
 ```json
 {
   "status_code": 403,
-  "code": "permission_denied",
-  "message": "in_use_restricted"
+  "code": "in_use_restricted",
+  "message": "This item is used somewhere you don't have access to, so it can't be deleted."
 }
 ```
 
 Raised by single `DELETE` on a resource the in-use guard would block. The bulk
 endpoint never raises this — a blocked id is reported in `skipped` instead, so
 one blocked id doesn't fail the rest of the batch.
+
+A fixed business rule on the row, not a change in the caller's own
+permissions — the frontend must not treat it as stale permissions (that is
+what `permission_denied` above is for).
 
 ---
 

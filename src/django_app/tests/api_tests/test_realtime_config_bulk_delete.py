@@ -162,7 +162,7 @@ def test_single_delete_is_blocked_by_an_agent_the_caller_cannot_see(
     resp = client.delete(f"/api/{route}/{config.id}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["message"] == "in_use_restricted"
+    assert resp.data["code"] == "in_use_restricted"
     assert config_model.objects.filter(id=config.id).exists()
 
 

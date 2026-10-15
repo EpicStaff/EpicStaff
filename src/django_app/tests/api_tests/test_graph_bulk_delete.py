@@ -326,7 +326,7 @@ def test_single_destroy_subgraph_usage_hidden_blocked(django_user_model, org_a):
     resp = client.delete(f"/api/graphs/{child.id}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["message"] == "in_use_restricted"
+    assert resp.data["code"] == "in_use_restricted"
     assert Graph.objects.filter(id=child.id).exists()
 
 
@@ -345,7 +345,7 @@ def test_delete_by_uuid_runs_the_same_guard(django_user_model, org_a):
     resp = client.delete(f"/api/graphs/uuid/{child.uuid}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["message"] == "in_use_restricted"
+    assert resp.data["code"] == "in_use_restricted"
     assert Graph.objects.filter(id=child.id).exists()
 
 

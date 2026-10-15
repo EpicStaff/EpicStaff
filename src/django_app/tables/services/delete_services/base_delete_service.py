@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 from django.db import models, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
 from rbac.access.effective import EffectivePermissions
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound
+from tables.exceptions import InUseRestrictedError
 from tables.models.base_models import SoftDeleteMixin
 from tables.services.delete_services.usage import (
     BulkDeleteResult,
@@ -70,7 +71,7 @@ class BaseDeleteService(ABC):
             raise NotFound()
         report = self.collect_usage([instance.pk], org_id, effective)[instance.pk]
         if report.blocked:
-            raise PermissionDenied(SkipReason.IN_USE_RESTRICTED.value)
+            raise InUseRestrictedError()
 
     def bulk_delete(
         self,
