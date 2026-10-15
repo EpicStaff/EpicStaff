@@ -1,10 +1,19 @@
 import asyncio
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
+from loguru import logger
 from packaging.utils import canonicalize_name
 
 from manager.application.ports import AbstractUVProvider
+from manager.domain.errors import (
+    BaseError,
+    UVBuildError,
+    UVDependencyResolutionError,
+    UVPackageNotFoundError,
+    UVVersionNotFoundError,
+)
 from manager.domain.types import LibraryString
 
 __all__ = ["UVProvider"]
@@ -12,6 +21,69 @@ __all__ = ["UVProvider"]
 PIN_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?==(?P<version>[^\s;]+)"
 )
+
+PACKAGE_NAME_RE = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+EXTRAS_RE = r"(?:\[[^\]]*\])?"
+SPECIFICATION_RE = r"(?P<specification>[<>=!~]\S*)"
+
+PARSED_COMMANDS = frozenset({("pip", "compile"), ("pip", "sync")})
+
+RESOLUTION_FAILURE = "No solution found when resolving dependencies"
+
+PACKAGE_NOT_FOUND_PATTERN = re.compile(
+    rf"\b(?P<name>{PACKAGE_NAME_RE}) was not found in the package registry"
+)
+MISSING_VERSION_PATTERN = re.compile(
+    rf"\bthere is no version of (?P<name>{PACKAGE_NAME_RE}){EXTRAS_RE}{SPECIFICATION_RE}"
+)
+UNSATISFIED_RANGE_PATTERN = re.compile(
+    rf"\bis available and you require (?P<name>{PACKAGE_NAME_RE}){EXTRAS_RE}{SPECIFICATION_RE}"
+)
+CONFLICT_PATTERN = re.compile(rf"\b(?P<name>{PACKAGE_NAME_RE}){EXTRAS_RE}\S* depends on ")
+
+
+def _normalize(stderr: str) -> str:
+    """Flatten uv's report onto one line.
+
+    uv wraps its explanation to the terminal width, mid-sentence, so the sentences
+    below cannot be matched line by line. Collapsing whitespace also reduces the
+    markers each uv version decorates the report with (0.11 draws a box, 0.12 writes
+    `error:`/`cause:`) to tokens the patterns step over.
+    """
+    return " ".join(stderr.split())
+
+
+def _parse_stderr(args: Sequence[str], stderr: str) -> BaseError:
+    """Turn the stderr of a failed uv command into a domain error.
+
+    Only dependency resolution (`uv pip compile` and `uv pip sync`) reports failures a
+    user can act on; every other command and every unrecognised cause falls back to the
+    generic build error.
+    """
+    if tuple(args[:2]) not in PARSED_COMMANDS:
+        return UVBuildError()
+
+    cause = _normalize(stderr)
+    if RESOLUTION_FAILURE not in cause:
+        return UVBuildError()
+
+    not_found = PACKAGE_NOT_FOUND_PATTERN.search(cause)
+    if not_found is not None:
+        return UVPackageNotFoundError(package=canonicalize_name(not_found["name"]))
+
+    for pattern in (MISSING_VERSION_PATTERN, UNSATISFIED_RANGE_PATTERN):
+        no_version = pattern.search(cause)
+        if no_version is not None:
+            return UVVersionNotFoundError(
+                package=canonicalize_name(no_version["name"]),
+                specification=no_version["specification"].rstrip(",."),
+            )
+
+    conflict = CONFLICT_PATTERN.search(cause)
+    if conflict is not None:
+        return UVDependencyResolutionError(package=canonicalize_name(conflict["name"]))
+
+    return UVBuildError()
 
 
 class UVProvider(AbstractUVProvider):
@@ -38,7 +110,8 @@ class UVProvider(AbstractUVProvider):
         if process.returncode != 0:
             if stderr == asyncio.subprocess.PIPE:
                 error = error.decode()
-            raise RuntimeError(f"uv {' '.join(args)} failed:\n{error}")
+            logger.error("uv {} failed:\n{}", " ".join(args), error)
+            raise _parse_stderr(args, error or "")
 
     @classmethod
     async def init_venv(cls, venv_path: Path):

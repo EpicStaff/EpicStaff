@@ -1,4 +1,8 @@
 __all__ = [
+    "UVBuildError",
+    "UVDependencyResolutionError",
+    "UVPackageNotFoundError",
+    "UVVersionNotFoundError",
     "VenvNotFoundError",
 ]
 
@@ -16,3 +20,24 @@ class BaseError(Exception):
 
 class VenvNotFoundError(BaseError):
     default_message: str = "Venv(id={venv_id}) not found."
+
+
+class UVBuildError(BaseError):
+    default_message: str = (
+        "Could not build the environment. Check the library names and version specifications."
+    )
+
+
+class UVPackageNotFoundError(BaseError):
+    default_message: str = "Package '{package}' does not exist."
+
+
+class UVVersionNotFoundError(BaseError):
+    default_message: str = "Package '{package}' has no version matching '{specification}'."
+
+
+class UVDependencyResolutionError(BaseError):
+    default_message: str = (
+        "Package '{package}' requires versions of its dependencies "
+        "that conflict with the other requested packages."
+    )
