@@ -4,49 +4,28 @@
         [tooltipText]="tooltipText()"
         [required]="true"
     />
+    <input
+        #timeoutInput
+        type="text"
+        class="execution-timeout__input text-body"
+        aria-label="Execution timeout, hh:mm:ss"
+        placeholder="hh:mm:ss"
+        autocomplete="off"
+        spellcheck="false"
+        [class.execution-timeout__input--invalid]="!!errorMessage()"
+        [class.execution-timeout__input--warning]="!!aboveMaximumWarning()"
+        [attr.aria-invalid]="!!errorMessage()"
+        [attr.aria-describedby]="messageId"
+        [disabled]="isReadOnly()"
+        [value]="text()"
+        (input)="onInput(timeoutInput.value)"
+        (blur)="commit()"
+        (keydown.enter)="commit(); $event.preventDefault()"
+    />
     <div
-        class="execution-timeout__parts"
-        role="group"
-        aria-label="Execution timeout"
+        aria-live="polite"
+        [id]="messageId"
     >
-        <div class="execution-timeout__part">
-            <app-input-number
-                #hoursInput
-                ariaLabel="Hours"
-                placeholder="0"
-                [min]="0"
-                [invalid]="!!errorMessage()"
-                [disabled]="isReadOnly()"
-                (changed)="onPartChange()"
-            />
-            <span class="text-body-small">h</span>
-        </div>
-        <div class="execution-timeout__part">
-            <app-input-number
-                #minutesInput
-                ariaLabel="Minutes"
-                placeholder="0"
-                [min]="0"
-                [invalid]="!!errorMessage()"
-                [disabled]="isReadOnly()"
-                (changed)="onPartChange()"
-            />
-            <span class="text-body-small">min</span>
-        </div>
-        <div class="execution-timeout__part">
-            <app-input-number
-                #secondsInput
-                ariaLabel="Seconds"
-                placeholder="0"
-                [min]="0"
-                [invalid]="!!errorMessage()"
-                [disabled]="isReadOnly()"
-                (changed)="onPartChange()"
-            />
-            <span class="text-body-small">s</span>
-        </div>
-    </div>
-    <div aria-live="polite">
         @if (errorMessage()) {
             <small class="execution-timeout__message execution-timeout__message--error text-body-small">
                 {{ errorMessage() }}

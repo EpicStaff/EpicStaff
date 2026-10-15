@@ -1,36 +1,39 @@
-import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
-import { InputNumberComponent, TooltipComponent } from '@shared/components';
+import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { TooltipComponent } from '@shared/components';
 
 import { FlowReadOnlyService } from '../../../../services/flow-readonly.service';
-import { formatDuration, joinDuration, splitDuration } from '../../../../utils/duration';
+import { formatClockDuration, formatDuration, parseDuration } from '../../../../utils/duration';
 import {
     executionTimeoutMinimumRule,
     isValidExecutionTimeout,
 } from '../../../../utils/validation/execution-timeout.validator';
 import { ExecutionTimeoutFormField } from './execution-timeout-form-field';
 
+export const UNREADABLE_DURATION_MESSAGE = 'Use hh:mm:ss, for example 00:10:00.';
+
+let nextFieldId = 0;
+
 /**
- * The execution timeout of one python code, typed as hours, minutes and seconds and kept in the control as
- * total seconds.
+ * The execution timeout of one python code, typed as `hh:mm:ss` in one input and kept in the control as total
+ * seconds. The text is read on blur and on Enter, not on every keystroke, so a half-typed `00:0` never lands.
  */
 @Component({
     selector: 'app-execution-timeout-field',
-    imports: [InputNumberComponent, TooltipComponent],
+    imports: [TooltipComponent],
     templateUrl: './execution-timeout-field.component.html',
     styleUrls: ['./execution-timeout-field.component.scss'],
 })
 export class ExecutionTimeoutFieldComponent {
     public readonly field = input.required<ExecutionTimeoutFormField>();
 
-    private readonly hoursInput = viewChild.required<InputNumberComponent>('hoursInput');
-    private readonly minutesInput = viewChild.required<InputNumberComponent>('minutesInput');
-    private readonly secondsInput = viewChild.required<InputNumberComponent>('secondsInput');
-
     /**
-     * Never equal to itself: every edit, even one capped back to the total before it, writes the parts again, so
-     * the inputs never keep a typed part the control did not take.
+     * Never equal to itself: every edit, even one capped back to the total before it, writes the text again, so
+     * the input never keeps typed text the control did not take.
      */
     private readonly totalSeconds = signal(0, { equal: () => false });
+
+    protected readonly text = signal('');
+    protected readonly isUnreadable = signal(false);
 
     protected readonly tooltipText = computed(() => {
         const { minSeconds, maxSeconds } = this.field().limits;
@@ -41,6 +44,9 @@ export class ExecutionTimeoutFieldComponent {
         return `How long one run of this code may take before it is stopped (${range}). Installing its libraries does not count.`;
     });
     protected readonly errorMessage = computed(() => {
+        if (this.isUnreadable()) {
+            return UNREADABLE_DURATION_MESSAGE;
+        }
         const { minSeconds } = this.field().limits;
         return isValidExecutionTimeout(this.totalSeconds(), minSeconds)
             ? ''
@@ -48,12 +54,16 @@ export class ExecutionTimeoutFieldComponent {
     });
     protected readonly aboveMaximumWarning = computed(() => {
         const { maxSeconds } = this.field().limits;
-        return maxSeconds !== null && this.totalSeconds() > maxSeconds
+        return !this.errorMessage() && maxSeconds !== null && this.totalSeconds() > maxSeconds
             ? `Runs for at most ${formatDuration(maxSeconds)}, the current limit.`
             : '';
     });
+    protected readonly messageId = `execution-timeout-message-${nextFieldId++}`;
 
     protected readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+
+    /** Whether the text was typed since it was last written: focusing and leaving the input edits nothing. */
+    private isTyped = false;
 
     constructor() {
         effect((onCleanup) => {
@@ -62,24 +72,31 @@ export class ExecutionTimeoutFieldComponent {
             const subscription = control.valueChanges.subscribe((value) => this.totalSeconds.set(value));
             onCleanup(() => subscription.unsubscribe());
         });
-        // The inputs are written directly rather than bound: a binding skips a part that equals its last bound
-        // value, even when the input shows a different one typed since.
-        effect(() => {
-            const { hours, minutes, seconds } = splitDuration(this.totalSeconds());
-            this.hoursInput().value.set(hours);
-            this.minutesInput().value.set(minutes);
-            this.secondsInput().value.set(seconds);
-        });
+        effect(() => this.writeText(this.totalSeconds()));
     }
 
-    protected onPartChange(): void {
-        // A pasted fraction would make the total fractional, and a pasted negative number negative: round it to
-        // whole seconds, from zero up.
-        const totalSeconds = joinDuration({
-            hours: this.hoursInput().value() ?? 0,
-            minutes: this.minutesInput().value() ?? 0,
-            seconds: this.secondsInput().value() ?? 0,
-        });
-        this.field().edit(Math.max(0, Math.round(totalSeconds)));
+    protected onInput(text: string): void {
+        this.isTyped = true;
+        this.text.set(text);
+    }
+
+    protected commit(): void {
+        if (!this.isTyped) {
+            return;
+        }
+        const seconds = parseDuration(this.text());
+        if (seconds === null) {
+            this.isUnreadable.set(true);
+            return;
+        }
+        const field = this.field();
+        field.edit(seconds);
+        this.writeText(field.control.value);
+    }
+
+    private writeText(totalSeconds: number): void {
+        this.isTyped = false;
+        this.isUnreadable.set(false);
+        this.text.set(formatClockDuration(totalSeconds));
     }
 }
