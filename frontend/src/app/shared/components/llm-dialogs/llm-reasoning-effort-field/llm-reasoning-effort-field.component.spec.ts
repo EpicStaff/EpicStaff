@@ -10,25 +10,29 @@ import { LlmReasoningEffortFieldComponent } from './llm-reasoning-effort-field.c
 const OPENAI_PROVIDER_ID = 1;
 const ANTHROPIC_PROVIDER_ID = 2;
 const AZURE_PROVIDER_ID = 3;
+const GEMINI_PROVIDER_ID = 4;
 
 const REASONING_MODEL_ID = 1;
 const PLAIN_MODEL_ID = 2;
 const ANTHROPIC_REASONING_MODEL_ID = 3;
 const AZURE_REASONING_MODEL_ID = 4;
 const ALWAYS_REASONING_MODEL_ID = 5;
+const GEMINI_REASONING_MODEL_ID = 6;
 const MISSING_MODEL_ID = 404;
 
 const PROVIDERS: LLMProvider[] = [
     { id: OPENAI_PROVIDER_ID, name: 'openai' },
     { id: ANTHROPIC_PROVIDER_ID, name: 'anthropic' },
     { id: AZURE_PROVIDER_ID, name: 'azure' },
+    { id: GEMINI_PROVIDER_ID, name: 'gemini' },
 ];
 
 const GENERIC_HINT = 'Higher effort is slower and costs more';
 const OPENAI_HINT_WITH_NONE = 'None keeps Temperature and Top P';
 const OPENAI_HINT_ALWAYS_REASONS = 'This model always reasons';
-// Both OpenAI variants name Top P; the generic hint does not.
-const OPENAI_HINT_ANY_VARIANT = 'Top P';
+const ANTHROPIC_HINT = 'Minimal and above make Claude ignore Temperature';
+// Both OpenAI variants and the Anthropic hint name Top P; the generic hint does not.
+const SAMPLING_HINT_ANY_VARIANT = 'Top P';
 const ALL_OPTIONS = ['Provider default', 'None', 'Minimal', 'Low', 'Medium', 'High', 'Extra high', 'Max'];
 const UNSUPPORTED_EFFORT_ERROR = "Model 'model-5' does not support reasoning effort 'xhigh'.";
 
@@ -54,13 +58,17 @@ const MODELS = new Map<number, LLMModel>([
     [PLAIN_MODEL_ID, llmModel(PLAIN_MODEL_ID, [])],
     [
         ANTHROPIC_REASONING_MODEL_ID,
-        llmModel(ANTHROPIC_REASONING_MODEL_ID, ['low', 'medium', 'high', 'max'], ANTHROPIC_PROVIDER_ID),
+        llmModel(ANTHROPIC_REASONING_MODEL_ID, ['none', 'low', 'medium', 'high', 'max'], ANTHROPIC_PROVIDER_ID),
     ],
     [
         AZURE_REASONING_MODEL_ID,
         llmModel(AZURE_REASONING_MODEL_ID, ['none', 'low', 'medium', 'high'], AZURE_PROVIDER_ID),
     ],
     [ALWAYS_REASONING_MODEL_ID, llmModel(ALWAYS_REASONING_MODEL_ID, ['minimal', 'low', 'medium', 'high'])],
+    [
+        GEMINI_REASONING_MODEL_ID,
+        llmModel(GEMINI_REASONING_MODEL_ID, ['none', 'low', 'medium', 'high'], GEMINI_PROVIDER_ID),
+    ],
 ]);
 
 function getCachedModelById(id: number): Observable<LLMModel> {
@@ -242,12 +250,14 @@ describe('LlmReasoningEffortFieldComponent', () => {
         expect(hintText(fixture)).toContain(GENERIC_HINT);
         expect(hintText(fixture)).toContain(OPENAI_HINT_WITH_NONE);
         expect(hintText(fixture)).not.toContain(OPENAI_HINT_ALWAYS_REASONS);
+        expect(hintText(fixture)).not.toContain(ANTHROPIC_HINT);
     });
 
     it('shows the OpenAI hint for an Azure reasoning model', async () => {
         const { fixture } = await render(AZURE_REASONING_MODEL_ID);
 
         expect(hintText(fixture)).toContain(OPENAI_HINT_WITH_NONE);
+        expect(hintText(fixture)).not.toContain(ANTHROPIC_HINT);
     });
 
     it('shows the always-reasons variant of the OpenAI hint when the model does not support none', async () => {
@@ -256,13 +266,23 @@ describe('LlmReasoningEffortFieldComponent', () => {
         expect(hintText(fixture)).toContain(GENERIC_HINT);
         expect(hintText(fixture)).toContain(OPENAI_HINT_ALWAYS_REASONS);
         expect(hintText(fixture)).not.toContain(OPENAI_HINT_WITH_NONE);
+        expect(hintText(fixture)).not.toContain(ANTHROPIC_HINT);
     });
 
-    it('shows only the generic hint for a reasoning model of another provider', async () => {
+    it('shows the Anthropic hint and neither OpenAI variant for an Anthropic reasoning model', async () => {
         const { fixture } = await render(ANTHROPIC_REASONING_MODEL_ID);
 
         expect(hintText(fixture)).toContain(GENERIC_HINT);
-        expect(hintText(fixture)).not.toContain(OPENAI_HINT_ANY_VARIANT);
+        expect(hintText(fixture)).toContain(ANTHROPIC_HINT);
+        expect(hintText(fixture)).not.toContain(OPENAI_HINT_WITH_NONE);
+        expect(hintText(fixture)).not.toContain(OPENAI_HINT_ALWAYS_REASONS);
+    });
+
+    it('shows only the generic hint for a reasoning model of another provider', async () => {
+        const { fixture } = await render(GEMINI_REASONING_MODEL_ID);
+
+        expect(hintText(fixture)).toContain(GENERIC_HINT);
+        expect(hintText(fixture)).not.toContain(SAMPLING_HINT_ANY_VARIANT);
     });
 
     it('lists the efforts the model supports in the hint', async () => {

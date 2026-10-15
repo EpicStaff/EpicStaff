@@ -17,13 +17,17 @@ const REASONING_EFFORT_ITEMS: SelectItem<ReasoningEffort | null>[] = [
     })),
 ];
 
-/** Providers whose reasoning models ignore sampling settings depending on the effort. */
+/** Providers served through the OpenAI API, whose reasoning models ignore sampling settings depending on the effort. */
 const OPENAI_API_PROVIDERS = new Set(['openai', 'azure']);
 
 const OPENAI_HINT_WITH_NONE =
     'None keeps Temperature and Top P. Any other level makes OpenAI ignore Temperature (unless 1), Top P and the presence/frequency penalties.';
 const OPENAI_HINT_ALWAYS_REASONS =
     'This model always reasons: OpenAI ignores Temperature (unless 1), Top P and the presence/frequency penalties.';
+
+/** Claude rejects Temperature and Top P while thinking, so the backend drops them for Minimal and above. */
+const ANTHROPIC_PROVIDER = 'anthropic';
+const ANTHROPIC_HINT = 'Minimal and above make Claude ignore Temperature (unless 1) and Top P.';
 
 /** Key the backend's rejection of the effort is stored under on the control; `app-validation-errors` renders it. */
 const SERVER_ERROR_KEY = 'server';
@@ -72,16 +76,20 @@ export class LlmReasoningEffortFieldComponent {
         if (!efforts.length) return null;
         return `Supported by this model: ${efforts.map((effort) => REASONING_EFFORT_LABELS[effort] ?? effort).join(', ')}.`;
     });
-    protected readonly usesOpenAiApi = computed(() => {
+    private readonly providerName = computed<string | null>(() => {
         const model = this.selectedModel();
-        if (!model || !this.providersResource.hasValue()) return false;
+        if (!model || !this.providersResource.hasValue()) return null;
         const provider = this.providersResource.value().find((candidate) => candidate.id === model.llm_provider);
-        return !!provider && OPENAI_API_PROVIDERS.has(provider.name.toLowerCase());
+        return provider ? provider.name.toLowerCase() : null;
     });
-    /** Which sampling settings OpenAI drops for this model; null for other providers. */
-    protected readonly openAiHint = computed<string | null>(() => {
-        if (!this.usesOpenAiApi()) return null;
-        return this.supportedEfforts().includes('none') ? OPENAI_HINT_WITH_NONE : OPENAI_HINT_ALWAYS_REASONS;
+    /** Which sampling settings the provider drops for this model; null for providers that keep them all. */
+    protected readonly samplingHint = computed<string | null>(() => {
+        const providerName = this.providerName();
+        if (providerName === null) return null;
+        if (OPENAI_API_PROVIDERS.has(providerName)) {
+            return this.supportedEfforts().includes('none') ? OPENAI_HINT_WITH_NONE : OPENAI_HINT_ALWAYS_REASONS;
+        }
+        return providerName === ANTHROPIC_PROVIDER ? ANTHROPIC_HINT : null;
     });
     // The server error is set from outside on save; a signal of it lets this OnPush view render and drop it.
     protected readonly hasServerErrors = toSignal(

@@ -497,7 +497,7 @@ def main(**kwargs) -> dict:
         )
         params = {
             "model": model,
-            **llm_config.to_litellm_kwargs(),
+            **llm_config.to_litellm_kwargs(provider=litellm_provider),
             "response_format": response_format,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,

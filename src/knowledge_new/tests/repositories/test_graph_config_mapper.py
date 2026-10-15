@@ -13,12 +13,17 @@ from infrastructure.database.mappers.graph import graph_rag_orm_to_graphrag_conf
 
 
 def _make_fake_rag(
-    *, rag_id: int = 1, slot: SlotEnum = SlotEnum.A, **llm_config_fields
+    *,
+    rag_id: int = 1,
+    slot: SlotEnum = SlotEnum.A,
+    provider_name: str = "openai",
+    model_name: str = "gpt-4o",
+    **llm_config_fields,
 ) -> types.SimpleNamespace:
     """Build a minimal fake GraphRag ORM row with the fields _to_graph_rag_config reads."""
-    provider = types.SimpleNamespace(name="openai")
+    provider = types.SimpleNamespace(name=provider_name)
     llm_model = types.SimpleNamespace(
-        name="gpt-4o",
+        name=model_name,
         llm_provider=provider,
         base_url=None,
         api_version=None,
@@ -98,6 +103,18 @@ def _completion_call_args(**llm_config_fields) -> dict:
     rag = _make_fake_rag(**llm_config_fields)
     config = graph_rag_orm_to_graphrag_config(rag, slot=SlotEnum.A)
     return config.completion_models["default_completion_model"].call_args
+
+
+def test_completion_call_args_drop_sampling_params_anthropic_rejects_with_thinking():
+    call_args = _completion_call_args(
+        provider_name="anthropic",
+        model_name="claude-sonnet-4-6",
+        temperature=0.5,
+        top_p=0.9,
+        reasoning_effort="high",
+    )
+
+    assert call_args == {"reasoning_effort": "high"}
 
 
 def test_completion_call_args_carry_reasoning_effort_and_generation_params():

@@ -28,7 +28,7 @@ def test_every_config_field_is_classified():
 
 
 def test_unset_fields_are_omitted():
-    assert LLMConfigData(model="gpt-4o").to_litellm_kwargs() == {}
+    assert LLMConfigData(model="gpt-4o").to_litellm_kwargs(provider="openai") == {}
 
 
 def test_set_fields_are_passed():
@@ -41,7 +41,7 @@ def test_set_fields_are_passed():
         reasoning_effort="none",
     )
 
-    assert config.to_litellm_kwargs() == {
+    assert config.to_litellm_kwargs(provider="openai") == {
         "temperature": 0.0,
         "stop": ["END"],
         "logit_bias": {50256: -100.0},
@@ -62,13 +62,74 @@ def test_transport_fields_are_never_present():
         temperature=0.4,
     )
 
-    assert config.to_litellm_kwargs() == {"temperature": 0.4}
+    assert config.to_litellm_kwargs(provider="openai") == {"temperature": 0.4}
 
 
 def test_exclude_drops_named_fields():
     config = LLMConfigData(model="o3-mini", stop=["END"], timeout=30, reasoning_effort="low")
 
-    assert config.to_litellm_kwargs(exclude={"stop", "timeout"}) == {"reasoning_effort": "low"}
+    assert config.to_litellm_kwargs(provider="openai", exclude={"stop", "timeout"}) == {"reasoning_effort": "low"}
+
+
+@pytest.mark.parametrize(
+    "config_fields, expected",
+    [
+        ({"temperature": 0.5, "top_p": 0.9}, {"temperature": 0.5, "top_p": 0.9}),
+        ({"top_p": 0.9, "reasoning_effort": "high"}, {"top_p": 0.9, "reasoning_effort": "high"}),
+        ({"temperature": 0.5, "top_p": 1.0}, {"temperature": 0.5, "top_p": 1.0}),
+        (
+            {"temperature": 0.5, "top_p": 1.0, "reasoning_effort": "high"},
+            {"temperature": 0.5, "top_p": 1.0, "reasoning_effort": "high"},
+        ),
+    ],
+)
+@pytest.mark.parametrize("provider", ["openai", "ollama", "gemini", "openrouter"])
+def test_other_providers_keep_sampling_params(provider, config_fields, expected):
+    config = LLMConfigData(model="some-model", **config_fields)
+
+    assert config.to_litellm_kwargs(provider=provider) == expected
+
+
+@pytest.mark.parametrize(
+    "config_fields, expected",
+    [
+        # Claude rejects temperature together with top_p: temperature wins.
+        ({"temperature": 0.5, "top_p": 0.9}, {"temperature": 0.5}),
+        # The LLMConfig defaults (top_p 1.0) still send temperature alone.
+        ({"temperature": 0.5, "top_p": 1.0}, {"temperature": 0.5}),
+        # "none" sends no thinking block, so only the temperature/top_p rule applies.
+        (
+            {"temperature": 0.5, "top_p": 0.9, "reasoning_effort": "none"},
+            {"temperature": 0.5, "reasoning_effort": "none"},
+        ),
+        ({"top_p": 0.9}, {"top_p": 0.9}),
+        ({"top_p": 0.9, "reasoning_effort": "none"}, {"top_p": 0.9, "reasoning_effort": "none"}),
+        # Thinking on: top_p never, temperature only when it is 1.
+        ({"temperature": 0.5, "reasoning_effort": "low"}, {"reasoning_effort": "low"}),
+        (
+            {"temperature": 0.5, "top_p": 0.9, "reasoning_effort": "low"},
+            {"reasoning_effort": "low"},
+        ),
+        ({"top_p": 0.9, "reasoning_effort": "max"}, {"reasoning_effort": "max"}),
+        (
+            {"temperature": 1.0, "top_p": 0.9, "reasoning_effort": "minimal"},
+            {"temperature": 1.0, "reasoning_effort": "minimal"},
+        ),
+        ({"temperature": 0.0, "reasoning_effort": "high"}, {"reasoning_effort": "high"}),
+    ],
+)
+def test_anthropic_drops_sampling_params_it_rejects(config_fields, expected):
+    config = LLMConfigData(model="claude-sonnet-4-6", **config_fields)
+
+    assert config.to_litellm_kwargs(provider="anthropic") == expected
+
+
+def test_excluded_reasoning_effort_does_not_count_as_thinking():
+    config = LLMConfigData(model="claude-sonnet-4-6", temperature=0.5, reasoning_effort="high")
+
+    assert config.to_litellm_kwargs(provider="anthropic", exclude={"reasoning_effort"}) == {
+        "temperature": 0.5
+    }
 
 
 @pytest.mark.django_db
@@ -92,7 +153,7 @@ class TestConvertLLMConfigData:
         data = ConverterService().convert_llm_config_data(config)
 
         assert data.reasoning_effort == "high"
-        assert data.to_litellm_kwargs()["reasoning_effort"] == "high"
+        assert data.to_litellm_kwargs(provider="openai")["reasoning_effort"] == "high"
         assert data.model == "o3-mini"
         assert data.deployment_id == "o3-deployment"
         assert data.base_url == "https://example.test"
@@ -104,7 +165,7 @@ class TestConvertLLMConfigData:
         data = ConverterService().convert_llm_config_data(config)
 
         assert data.reasoning_effort is None
-        assert "reasoning_effort" not in data.to_litellm_kwargs()
+        assert "reasoning_effort" not in data.to_litellm_kwargs(provider="openai")
 
     def test_model_without_provider_converts(self, default_org):
         orphan_model = LLMModel.objects.create(name="orphan", llm_provider=None)

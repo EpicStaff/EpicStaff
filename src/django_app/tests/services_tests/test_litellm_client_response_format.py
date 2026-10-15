@@ -205,6 +205,30 @@ def test_generation_params_except_stop_reach_the_request():
     assert kwargs["seed"] == 7
 
 
+@pytest.mark.parametrize(
+    "provider_name, model_name, expected_sampling",
+    [
+        # Anthropic rejects temperature != 1 and top_p while thinking is on.
+        ("anthropic", "claude-sonnet-4-6", {}),
+        # An OpenAI row keeps the name bare, and litellm still routes it to Anthropic.
+        ("openai", "claude-sonnet-4-6", {}),
+        (None, "claude-sonnet-4-6", {}),
+        ("openai", "gpt-4o", {"temperature": 0.5, "top_p": 0.9}),
+        # A model litellm does not know keeps the provider its string names.
+        ("openai", "not-a-known-model", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+def test_sampling_params_follow_the_routed_provider(provider_name, model_name, expected_sampling):
+    client = make_client(
+        provider_name, model_name, temperature=0.5, top_p=0.9, reasoning_effort="high"
+    )
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert {key: kwargs[key] for key in ("temperature", "top_p") if key in kwargs} == expected_sampling
+    assert kwargs["reasoning_effort"] == "high"
+
+
 def test_unset_reasoning_effort_sends_no_key():
     kwargs = sent_request(make_client("openai", "gpt-4o"), MESSAGES, [])
 

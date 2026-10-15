@@ -69,6 +69,15 @@ def _model_str(context: AgentContext) -> str:
     return model if "/" in model else f"{llm.provider}/{model}"
 
 
+def _routed_provider(model: str) -> str:
+    """Return the provider litellm sends ``model`` to (a local lookup, no network I/O)."""
+    try:
+        return litellm.get_llm_provider(model=model)[1]
+    except litellm.exceptions.BadRequestError:
+        # litellm does not know the model: keep the provider prefix it carries.
+        return model.split("/", 1)[0]
+
+
 def _safe_context_window(model_str: str) -> int | None:
     """Return max input tokens for model_str, or None if unavailable."""
     try:
@@ -86,7 +95,9 @@ def _build_model_config(context: AgentContext) -> dict:
     that already carries a provider prefix like ``azure/gpt-4o``).
     """
     llm_config = context.agent.llm.config
-    config = {**llm_config.to_litellm_kwargs(), "model": _model_str(context)}
+    model = _model_str(context)
+    provider = _routed_provider(model)
+    config = {**llm_config.to_litellm_kwargs(provider=provider), "model": model}
 
     # Transport fields are not generation params, so to_litellm_kwargs leaves them out.
     # RouterPool reads api_key/base_url/api_version (LiteLLMClient strips them from the
@@ -96,7 +107,7 @@ def _build_model_config(context: AgentContext) -> dict:
         if value is not None:
             config[transport_field] = value
 
-    if config["model"].split("/", 1)[0] in _STORE_OPT_OUT_PROVIDERS:
+    if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False
 
     if context.tool_choice is not None:

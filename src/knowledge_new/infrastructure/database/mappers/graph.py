@@ -46,6 +46,7 @@ def _parse_logit_bias(llm_config: LLMConfig) -> dict[int, float] | None:
 
 def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     llm_model = llm_config.model
+    provider = llm_model.llm_provider.name
     # stop and timeout are left out here as well as excluded below: stop is unvalidated
     # JSON, and a value GraphRAG discards must not be able to fail the config build.
     llm_config_data = LLMConfigData(
@@ -61,12 +62,14 @@ def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     )
 
     return ModelConfig(
-        model_provider=llm_model.llm_provider.name,
+        model_provider=provider,
         model=llm_model.name,
         api_key="dummy",
         api_base=llm_model.base_url,
         api_version=llm_model.api_version,
-        call_args=llm_config_data.to_litellm_kwargs(exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS),
+        call_args=llm_config_data.to_litellm_kwargs(
+            provider=provider, exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS
+        ),
     )
 
 

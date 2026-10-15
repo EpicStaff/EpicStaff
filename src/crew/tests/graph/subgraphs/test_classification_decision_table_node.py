@@ -316,12 +316,12 @@ async def test_prompt_with_output_schema_calls_llm_and_stores_result(monkeypatch
 
 
 async def run_prompt_row_and_capture_acompletion_kwargs(
-    monkeypatch, llm_config: LLMConfigData
+    monkeypatch, llm_config: LLMConfigData, provider: str = "openai"
 ) -> dict:
     monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
     prompt_config = PromptConfigData(
         prompt_text="Classify the following: {text}",
-        llm_data=LLMData(provider="openai", config=llm_config),
+        llm_data=LLMData(provider=provider, config=llm_config),
         output_schema={
             "type": "object",
             "properties": {"label": {"type": "string"}},
@@ -391,6 +391,24 @@ async def test_prompt_llm_call_omits_unset_generation_params(monkeypatch):
         assert unset_param not in call_kwargs
     assert call_kwargs["stream"] is False
     assert call_kwargs["response_format"]["type"] == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_drops_sampling_params_anthropic_rejects_with_thinking(
+    monkeypatch,
+):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(
+            model="claude-sonnet-4-6", temperature=0.5, top_p=0.9, reasoning_effort="high"
+        ),
+        provider="anthropic",
+    )
+
+    assert call_kwargs["model"] == "anthropic/claude-sonnet-4-6"
+    assert call_kwargs["reasoning_effort"] == "high"
+    assert "temperature" not in call_kwargs
+    assert "top_p" not in call_kwargs
 
 
 async def fake_run_code_raises(

@@ -287,6 +287,27 @@ async def test_llm_call_receives_no_unset_config_field():
     assert config == {"model": "anthropic/claude-sonnet-4-5"}
 
 
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_sampling"),
+    [
+        # Anthropic rejects temperature != 1 and top_p while thinking is on.
+        ("anthropic", "claude-sonnet-4-6", {}),
+        # The rules follow the provider litellm routes to (the model prefix).
+        ("openai", "anthropic/claude-sonnet-4-6", {}),
+        ("anthropic", "openai/gpt-4o", {"temperature": 0.5, "top_p": 0.9}),
+        # A provider litellm does not know is taken from the model prefix.
+        ("my_gateway", "claude-sonnet-4-6", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+async def test_sampling_params_follow_the_routed_provider(provider, model, expected_sampling):
+    llm_config = LLMConfigData(model=model, temperature=0.5, top_p=0.9, reasoning_effort="high")
+
+    config = await _model_config(LLMData(provider=provider, config=llm_config))
+
+    assert {key: config[key] for key in ("temperature", "top_p") if key in config} == expected_sampling
+    assert config["reasoning_effort"] == "high"
+
+
 # ---------------------------------------------------------------------------
 # Tests: loop behaviour
 # ---------------------------------------------------------------------------

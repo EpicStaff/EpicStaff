@@ -29,6 +29,20 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
 
 
+def _routed_provider(model: str) -> str:
+    """Return the provider litellm sends ``model`` to.
+
+    A bare name can belong to any provider: an OpenAI row keeps ``claude-sonnet-4-6``
+    bare (see LiteLLMClient._model_string) and litellm still routes it to Anthropic.
+    get_llm_provider is a local table lookup (no network I/O).
+    """
+    try:
+        return litellm.get_llm_provider(model=model)[1]
+    except litellm.exceptions.BadRequestError:
+        # litellm does not know the model: keep its prefix, and a bare name is OpenAI's.
+        return model.split("/", 1)[0] if "/" in model else "openai"
+
+
 class LiteLLMClient(BaseLLMClient):
     """Unified streaming + tool-calling client for all LiteLLM-supported providers.
 
@@ -68,6 +82,7 @@ class LiteLLMClient(BaseLLMClient):
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
         self._model = self._model_string()
+        self._routed_provider = _routed_provider(self._model)
 
     def _model_string(self) -> str:
         """Build the LiteLLM model string from the config's model and provider.
@@ -123,9 +138,7 @@ class LiteLLMClient(BaseLLMClient):
         # litellm sends OpenAI/Azure gpt-5.4+ calls that carry function tools to the
         # Responses API, which stores every response at the provider by default (Chat
         # Completions does not). Nothing here reuses stored responses, so opt out.
-        # A bare model name is OpenAI (see _model_string).
-        routed_provider = self._model.split("/", 1)[0] if "/" in self._model else "openai"
-        if routed_provider in ("openai", "azure"):
+        if self._routed_provider in ("openai", "azure"):
             kwargs["store"] = False
 
         if self._api_key:
@@ -136,7 +149,7 @@ class LiteLLMClient(BaseLLMClient):
             kwargs["api_version"] = config.api_version
         # Flow Assistant and CDT Explain expect a structured JSON reply; stop sequences
         # set on the config for agents could cut that reply short.
-        kwargs.update(config.to_litellm_kwargs(exclude={"stop"}))
+        kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Structured-output requests pass an output_schema, which becomes the
         # response_format sent to the model.
         if self._output_schema:

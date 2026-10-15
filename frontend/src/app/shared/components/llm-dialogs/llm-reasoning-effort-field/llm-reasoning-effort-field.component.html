@@ -15,7 +15,7 @@
         </div>
         <app-hint-message>
             Higher effort is slower and costs more, and reasoning tokens count against Max Tokens.
-            @if (openAiHint(); as hint) {
+            @if (samplingHint(); as hint) {
                 {{ hint }}
             }
             @if (supportedEffortsHint(); as supportedHint) {

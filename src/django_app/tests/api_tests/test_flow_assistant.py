@@ -2890,6 +2890,8 @@ def test_litellm_client_drops_provider_unsupported_params(llm_config):
         ("azure", "gpt-5.6-luna", False),
         ("azure_openai", "gpt-5.6-luna", False),
         ("anthropic", "claude-sonnet-4-5", None),
+        # The bare name stays on an OpenAI row, but litellm routes it to Anthropic.
+        ("openai", "claude-sonnet-4-5", None),
         ("ollama", "ollama/mistral", None),
     ],
 )
