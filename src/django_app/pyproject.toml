@@ -42,7 +42,7 @@ dependencies = [
     "miniopy-async==1.23.5",
     "pgvector==0.3.6",
     "pillow==12.3.0",
-    "psycopg2==2.9.12",
+    "psycopg[binary,pool]==3.3.4",
     "pydantic==2.13.4",
     "python-docx==1.1.2",
     "redis==5.3.1",

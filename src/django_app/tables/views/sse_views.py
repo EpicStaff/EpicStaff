@@ -101,6 +101,8 @@ class RunSessionSSEView(SSEMixin):
                 .order_by("id")
                 .values()[:MESSAGE_PAGE_SIZE]
             )
+            # A client that stops reading blocks the yield: no pooled connection may wait with it.
+            await self.release_database_connection()
             for message in page:
                 yield message
             if len(page) < MESSAGE_PAGE_SIZE:
@@ -145,6 +147,7 @@ class RunSessionSSEView(SSEMixin):
                 session_id=self.kwargs["session_id"], uuid__in=uuids
             ).values()
         )
+        await self.release_database_connection()
         rows_by_uuid = {str(row["uuid"]): row for row in rows}
         for message_uuid in uuids:
             if message_uuid in rows_by_uuid and message_uuid not in self._sent_message_uuids:
@@ -191,6 +194,8 @@ class RunSessionSSEView(SSEMixin):
         stored_status_data = await (
             Session.objects.filter(id=session_id).values_list("status_data", flat=True).afirst()
         )
+        # The caller yields next: no pooled connection may wait on a client that stops reading.
+        await self.release_database_connection()
         return (stored_status_data or {}).get("variables")
 
     async def get_initial_data(self):
@@ -200,11 +205,12 @@ class RunSessionSSEView(SSEMixin):
             self.__log(event="messages", state="initial", data=message["uuid"])
             yield self._messages_event(message)
 
-        # Session Statuses
-        queryset = (
-            Session.objects.only("id", "status", "status_data").filter(id=session_id).values()
+        # Session Status
+        session = await (
+            Session.objects.filter(id=session_id).values("id", "status", "status_data").afirst()
         )
-        async for session in self.async_orm_generator(queryset):
+        await self.release_database_connection()
+        if session is not None:
             self.__log(event="status", state="initial", data=session["status"])
             self._note_status(session["status"])
             yield {
@@ -219,8 +225,6 @@ class RunSessionSSEView(SSEMixin):
     async def get_live_updates(self, pubsub):
         async for item in self._send_held_live_messages():
             yield item
-        # Sending the held messages read the database again.
-        await self.release_database_connection()
 
         messages = redis_service.redis_get_message(channels=self.get_channels(), pubsub=pubsub)
         try:

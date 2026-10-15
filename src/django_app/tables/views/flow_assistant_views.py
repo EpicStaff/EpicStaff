@@ -307,6 +307,11 @@ class FlowAssistantStreamView(SSEMixin):
                 )
             )()
         except FlowAssistantConversation.DoesNotExist:
+            conversation = None
+        # Every check below may end in an error frame, which a client that stops reading
+        # blocks along with any connection still held.
+        await self.release_database_connection_before_error()
+        if conversation is None:
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": "Conversation not found."},
@@ -334,6 +339,7 @@ class FlowAssistantStreamView(SSEMixin):
         last_user_message = last_user_row.content if last_user_row else ""
 
         if not last_user_message:
+            await self.release_database_connection_before_error()
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": "No pending user message found."},
@@ -361,33 +367,16 @@ class FlowAssistantStreamView(SSEMixin):
                 if terminate:
                     return
 
-        except LLMConfigMissingError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigMissingError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {
-                    "type": "error",
-                    "detail": str(exc),
-                },
-            }
-        except LLMConfigInvalidError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigInvalidError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
-        except SecretResolutionError as exc:
-            logger.warning("FlowAssistant stream error (SecretResolutionError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
+        except (LLMConfigMissingError, LLMConfigInvalidError, SecretResolutionError) as exc:
+            logger.warning("FlowAssistant stream error ({}): {}", type(exc).__name__, exc)
+            error_detail = str(exc)
         except Exception as exc:
             logger.exception("Unexpected error in FlowAssistantStreamView: {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Unexpected error."},
-            }
+            error_detail = "Unexpected error."
+        else:
+            return
+        await self.release_database_connection_before_error()
+        yield {"event": "error", "data": {"type": "error", "detail": error_detail}}
 
 
 # ── Audit endpoint ────────────────────────────────────────────────────────────
