@@ -1,5 +1,6 @@
 import pytest
 
+from src.shared.models import GraphData, SessionData
 from tables.models import PythonCode
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.session_models import Session
@@ -9,25 +10,19 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data(session, **kwargs):
+    graph = GraphData(name="g", entrypoint="__end__", end_node=None)
+    return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
 
 
 @pytest.fixture
 def first_publish_fails(monkeypatch):
     """The first run on the path fails to publish; every later run is received."""
     session_manager = SessionManagerService()
-    monkeypatch.setattr(
-        session_manager, "create_session_data", lambda session, **kwargs: _FakeSessionData()
-    )
+    monkeypatch.setattr(session_manager, "create_session_data", _empty_session_data)
     publish_calls = []
 
-    def publish(*, session_data, org_id):
+    def publish(*, session_data, org_id, storage_credentials=None):
         publish_calls.append(org_id)
         if len(publish_calls) == 1:
             raise RuntimeError("redis is down")

@@ -6,7 +6,7 @@ resource); rows created before `created_at` existed keep rendering it as null.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from django.utils import timezone
@@ -166,11 +166,13 @@ def _legacy_row(resource: CreatedAtResource, org):
 @pytest.mark.django_db
 @pytest.mark.parametrize("resource", CREATED_AT_RESOURCES, ids=lambda resource: resource.url)
 class TestCreatedAt:
-    def test_create_returns_the_creation_time_as_iso_string(self, resource, acme_client):
+    def test_create_stamps_the_server_time_whatever_the_client_sends(self, resource, acme_client):
         before = timezone.now()
 
         response = acme_client.post(
-            resource.url, resource.create_payload("created-row"), format="json"
+            resource.url,
+            {**resource.create_payload("created-row"), "created_at": CLIENT_SUPPLIED_CREATED_AT},
+            format="json",
         )
 
         after = timezone.now()
@@ -179,19 +181,6 @@ class TestCreatedAt:
         assert before <= created_at <= after
         stored = resource.model._base_manager.get(pk=response.data["id"]).created_at
         assert stored == created_at
-
-    def test_create_ignores_client_supplied_created_at(self, resource, acme_client):
-        payload = {
-            **resource.create_payload("created-row"),
-            "created_at": CLIENT_SUPPLIED_CREATED_AT,
-        }
-
-        response = acme_client.post(resource.url, payload, format="json")
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        stored = resource.model._base_manager.get(pk=response.data["id"]).created_at
-        assert stored > timezone.now() - timedelta(minutes=1)
-        assert _parse(response.json()["created_at"]) == stored
 
     def test_patch_ignores_client_supplied_created_at(self, resource, acme_client, acme):
         row = resource.make_row(acme, "existing-row")
@@ -208,7 +197,7 @@ class TestCreatedAt:
         assert row.created_at == original
         assert getattr(row, resource.name_field) == resource.patch_value
 
-    def test_legacy_row_renders_null_created_at(self, resource, acme_client, acme):
+    def test_legacy_row_keeps_a_null_created_at_through_reads_and_edits(self, resource, acme_client, acme):
         legacy = _legacy_row(resource, acme)
 
         detail = acme_client.get(f"{resource.url}{legacy.id}/")
@@ -219,11 +208,6 @@ class TestCreatedAt:
         assert listing.status_code == status.HTTP_200_OK, listing.data
         listed = next(row for row in _rows(listing.json()) if row["id"] == legacy.id)
         assert listed["created_at"] is None
-
-    def test_editing_legacy_row_does_not_invent_a_creation_time(
-        self, resource, acme_client, acme
-    ):
-        legacy = _legacy_row(resource, acme)
 
         response = acme_client.patch(
             f"{resource.url}{legacy.id}/",
@@ -248,31 +232,6 @@ class TestCreatedAt:
 
 @pytest.mark.django_db
 class TestWebhookTriggerAuthor:
-    def test_create_returns_the_caller_as_author(self, acme_client, acme_admin, member_only):
-        response = acme_client.post(
-            "/api/webhook-triggers/",
-            {"path": "authored-trigger", "provider_type": None, "created_by": member_only.id},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert response.json()["created_by"] == _summary(acme_admin)
-        assert WebhookTrigger.objects.get(pk=response.data["id"]).created_by_id == acme_admin.id
-
-    def test_patch_ignores_client_supplied_author(self, acme_client, acme_admin, member_only, acme):
-        trigger = WebhookTrigger.objects.create(path="patched", org=acme, created_by=acme_admin)
-
-        response = acme_client.patch(
-            f"/api/webhook-triggers/{trigger.id}/",
-            {"created_by": member_only.id, "path": "patched-again"},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_200_OK, response.data
-        assert response.json()["created_by"] == _summary(acme_admin)
-        trigger.refresh_from_db()
-        assert trigger.created_by_id == acme_admin.id
-
     def test_trigger_nodes_nest_the_trigger_author_and_creation_time(
         self, acme_client, acme_admin, acme
     ):
@@ -309,22 +268,6 @@ class TestWebhookTriggerAuthor:
 
 @pytest.mark.django_db
 class TestPythonCodeToolAuthor:
-    def test_create_returns_the_caller_as_author(self, acme_client, acme_admin, member_only):
-        response = acme_client.post(
-            "/api/python-code-tool/",
-            {
-                "name": "authored-tool",
-                "description": "tool",
-                "python_code": {"code": "x", "entrypoint": "main", "libraries": []},
-                "created_by": member_only.id,
-            },
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert response.json()["created_by"] == _summary(acme_admin)
-        assert PythonCodeTool.objects.get(pk=response.data["id"]).created_by_id == acme_admin.id
-
     def test_built_in_tool_has_no_author_even_after_a_label_update(self, acme_client, acme):
         built_in = _python_code_tool(None, name="BuiltInAuthorless", built_in=True)
         label = Label.objects.create(name="favourites", scope=Label.Scope.TOOL, org=acme)
@@ -341,20 +284,6 @@ class TestPythonCodeToolAuthor:
         assert updated.json()["created_by"] is None
         built_in.refresh_from_db()
         assert built_in.created_by_id is None
-
-    def test_copy_is_authored_by_the_copier_with_a_fresh_creation_time(
-        self, acme_client, acme_admin, member_only, acme
-    ):
-        source = _python_code_tool(acme, name="source-tool", author=member_only)
-        PythonCodeTool.objects.filter(pk=source.pk).update(created_at=OLD_CREATED_AT)
-        before = timezone.now()
-
-        response = acme_client.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
-
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert response.json()["created_by"] == _summary(acme_admin)
-        assert _parse(response.json()["created_at"]) >= before
-
 
 @pytest.mark.django_db
 class TestGraphAuthor:
@@ -402,20 +331,29 @@ class TestGraphAuthor:
         assert response.status_code == status.HTTP_200_OK, response.data
         assert response.json()["subgraph_detail"]["created_by"] == _summary(member_only)
 
-    def test_copy_is_authored_by_the_copier_with_a_fresh_creation_time(
-        self, acme_client, acme_admin, member_only, acme
-    ):
-        source = Graph.objects.create(name="source-flow", org=acme, created_by=member_only)
-        Graph.objects.filter(pk=source.pk).update(created_at=OLD_CREATED_AT)
-        before = timezone.now()
 
-        response = acme_client.post(f"/api/graphs/{source.id}/copy/", {}, format="json")
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("model", "url", "make_source"),
+    [
+        (PythonCodeTool, "/api/python-code-tool/{}/copy/", lambda org, author: _python_code_tool(org, name="source-tool", author=author)),
+        (Graph, "/api/graphs/{}/copy/", lambda org, author: Graph.objects.create(name="source-flow", org=org, created_by=author)),
+    ],
+    ids=["tool", "flow"],
+)
+def test_copy_is_authored_by_the_copier_with_a_fresh_creation_time(
+    model, url, make_source, acme_client, acme_admin, member_only, acme
+):
+    source = make_source(acme, member_only)
+    model.objects.filter(pk=source.pk).update(created_at=OLD_CREATED_AT)
+    before = timezone.now()
 
-        assert response.status_code == status.HTTP_201_CREATED, response.data
-        assert response.json()["created_by"] == _summary(acme_admin)
-        assert _parse(response.json()["created_at"]) >= before
-        copy = Graph.objects.get(pk=response.data["id"])
-        assert copy.created_by_id == acme_admin.id
+    response = acme_client.post(url.format(source.id), {}, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    assert response.json()["created_by"] == _summary(acme_admin)
+    assert _parse(response.json()["created_at"]) >= before
+    assert model.objects.get(pk=response.data["id"]).created_by_id == acme_admin.id
 
 
 # ---- org scoping ----

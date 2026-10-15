@@ -146,14 +146,6 @@ async def test_on_task_start_labels_subsequent_live_tool_events():
     assert result_payload["task"] == {"name": "task_a", "order": 0}
 
 
-async def test_on_tool_call_still_buffers_event():
-    emitter, _ = _make_emitter()
-    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
-
-    assert len(emitter._buffered_events) == 1
-    assert emitter._buffered_events[0]["event"] == "tool_call"
-
-
 # ---------------------------------------------------------------------------
 # Live tool_result envelope
 # ---------------------------------------------------------------------------
@@ -186,16 +178,6 @@ async def test_on_tool_result_without_prior_call_has_null_name():
     assert payload["name"] is None
 
 
-async def test_on_tool_result_still_buffers_event():
-    emitter, _ = _make_emitter()
-    await emitter.on_tool_result(
-        ToolResult(tool_call_id="call_1", content="result", is_error=False)
-    )
-
-    assert len(emitter._buffered_events) == 1
-    assert emitter._buffered_events[0]["event"] == "tool_result"
-
-
 # ---------------------------------------------------------------------------
 # Truncation
 # ---------------------------------------------------------------------------
@@ -221,20 +203,6 @@ async def test_on_tool_result_truncates_long_content():
     payload = _decode_payload(published[0])
     assert len(payload["content"]) == 2000
     assert payload["truncated"] is True
-
-
-async def test_on_final_keeps_full_untruncated_content():
-    emitter, published = _make_emitter()
-    long_content = "y" * 3000
-    await emitter.on_tool_result(
-        ToolResult(tool_call_id="call_1", content=long_content, is_error=False)
-    )
-    await emitter.on_final(_make_loop_result())
-
-    final_payload = _decode_payload(published[-1])
-    buffered_result = final_payload["events"][0]
-    assert buffered_result["event"] == "tool_result"
-    assert len(buffered_result["data"]["content"]) == 3000
 
 
 # ---------------------------------------------------------------------------
@@ -537,12 +505,13 @@ async def test_on_task_finish_publish_failure_does_not_propagate():
     await emitter.on_task_finish("task_a", 0, _make_loop_result())
 
 
-async def test_on_task_finish_resets_current_task():
-    emitter, _ = _make_emitter()
+async def test_tool_events_after_a_task_finished_carry_no_task():
+    emitter, published = _make_emitter()
     await emitter.on_task_start("task_a", 0)
     await emitter.on_task_finish("task_a", 0, _make_loop_result())
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
 
-    assert emitter._current_task is None
+    assert _decode_payload(published[-1])["task"] is None
 
 
 async def test_on_task_finish_consumes_token_delta_at_task_boundary():
@@ -598,7 +567,6 @@ async def test_full_sequence_terminal_payload_unchanged_by_live_events():
     ]
     final_payload = _decode_payload(published[-1])
     assert final_payload["final_text"] == "done"
-    assert len(final_payload["events"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -606,14 +574,14 @@ async def test_full_sequence_terminal_payload_unchanged_by_live_events():
 # ---------------------------------------------------------------------------
 
 
-async def test_live_publish_failure_does_not_propagate_and_buffering_continues():
+async def test_live_publish_failure_does_not_propagate():
     client = MagicMock()
-    call_count = {"n": 0}
+    published: list[dict] = []
 
     async def flaky_publish(stream: str, fields: dict, **options) -> None:
-        call_count["n"] += 1
-        if call_count["n"] == 1:
+        if fields["type"] == "agent.tool_call":
             raise RuntimeError("redis unavailable")
+        published.append(fields)
 
     client.publish = flaky_publish
 
@@ -626,10 +594,10 @@ async def test_live_publish_failure_does_not_propagate_and_buffering_continues()
 
     # First publish (live tool_call) raises internally but must not propagate.
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
-    assert len(emitter._buffered_events) == 1
-
     await emitter.on_final(_make_loop_result())
-    assert call_count["n"] == 2
+
+    (final,) = published
+    assert final["type"] == "agent.result"
 
 
 # ---------------------------------------------------------------------------
@@ -746,9 +714,6 @@ async def test_registered_knowledge_tool_suppresses_live_tool_events():
     )
 
     assert published == []
-    assert len(emitter._buffered_events) == 2
-    assert emitter._buffered_events[0]["event"] == "tool_call"
-    assert emitter._buffered_events[1]["event"] == "tool_result"
 
 
 async def test_unregistered_tool_still_publishes_live_events():

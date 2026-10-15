@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
+from http import HTTPStatus
+
+import anyio
+from fastmcp import Client
+from loguru import logger
+from mcp import McpError
 
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
@@ -10,6 +17,7 @@ from shared.models.tools import McpToolData
 
 _MAX_MCP_DESCRIPTION_CHARS = 1024
 _C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+_CANCEL_SEND_TIMEOUT_SECONDS = 5
 
 
 @dataclass
@@ -88,13 +96,36 @@ class McpToolGateway:
     async def call(self, data: McpToolData, args: dict) -> str:
         """Invoke the MCP tool and return its output as a string.
 
-        Raises McpToolError on tool-reported errors or connection failures.
+        When the call is abandoned while the server may still be running it (the
+        session read timeout fires, or this coroutine is cancelled), a best-effort
+        notifications/cancelled is sent before the session closes: servers on
+        mcp < 1.27 keep running in-flight tools after the session ends. Sending it
+        can delay the caller's own timeout (tool_timeout / max_execution_time via
+        wait_for) by up to _CANCEL_SEND_TIMEOUT_SECONDS.
+
+        Raises McpToolError on tool-reported errors, connection failures or timeouts.
         """
         client = self._factory.create(data)
 
         try:
             async with client:
-                result = await client.call_tool(data.tool_name, arguments=args)
+                # Private attribute: no public API exposes an in-flight request id
+                # (fastmcp 3.4.7, mcp 1.30). The value read right before the call
+                # is the id the tools/call request is sent with.
+                request_id = client.session._request_id
+                try:
+                    result = await client.call_tool(data.tool_name, arguments=args)
+                except McpError as error:
+                    if error.error.code == HTTPStatus.REQUEST_TIMEOUT:
+                        await self._cancel_in_flight(
+                            client, request_id, data.tool_name, "client read timeout"
+                        )
+                    raise
+                except asyncio.CancelledError:
+                    await self._cancel_in_flight(
+                        client, request_id, data.tool_name, "client cancelled the call"
+                    )
+                    raise
 
         except Exception as error:
             raise McpToolError(
@@ -111,3 +142,30 @@ class McpToolGateway:
             return " ".join(self._render_content_block(c) for c in result.content)
 
         return str(result.data)
+
+    @staticmethod
+    async def _cancel_in_flight(
+        client: Client, request_id: int, tool_name: str, reason: str
+    ) -> None:
+        # Shielded against anyio scope cancellation, which re-fires at every await;
+        # a native asyncio cancel fires once and is already consumed here. Bounded
+        # so an unresponsive server cannot stall the caller.
+        with anyio.move_on_after(_CANCEL_SEND_TIMEOUT_SECONDS, shield=True) as scope:
+            try:
+                await client.cancel(request_id, reason=reason)
+                # cancel() only queues the notification. The transports POST messages
+                # in order, so the ping response proves the cancel POST completed
+                # before the session's DELETE goes out on exit.
+                await client.ping()
+            except Exception as error:
+                logger.warning(
+                    "Failed to cancel MCP tool_name={} request_id={}: {}",
+                    tool_name,
+                    request_id,
+                    error,
+                )
+
+        if scope.cancelled_caught:
+            logger.warning(
+                "Timed out cancelling MCP tool_name={} request_id={}", tool_name, request_id
+            )

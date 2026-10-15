@@ -79,7 +79,7 @@ services:
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
-      DJANGO_SOFT_DELETE: ${DJANGO_SOFT_DELETE:-False}
+      DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
       DJANGO_TIMEZONE: ${DJANGO_TIMEZONE:?}
       DJANGO_JWT_ACCESS_LIFETIME: ${DJANGO_JWT_ACCESS_LIFETIME:?}
@@ -219,7 +219,7 @@ services:
         condition: service_healthy
       # ScheduleService polls tables_scheduletriggernode as soon as it starts. On a
       # fresh volume django_app is still migrating then, and the column it selects
-      # (is_soft_deleted) only arrives at migration 0238 — so the query fails until
+      # (active) only arrives at migration 0258 — so the query fails until
       # migrations pass that point. django_app's healthcheck hits /ht/, which is only
       # served once entrypoint.sh reaches `exec gunicorn` after `migrate`, so waiting
       # for it guarantees the schema is complete.
@@ -313,6 +313,7 @@ services:
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       CREW_KEY_VALUE_TIMEOUT: ${CREW_KEY_VALUE_TIMEOUT:?}
+      CREW_CODE_RESULT_TIMEOUT: ${CREW_CODE_RESULT_TIMEOUT:?}
       CREW_GRAPH_MESSAGE_STREAM_MAXLEN: ${CREW_GRAPH_MESSAGE_STREAM_MAXLEN:-2000}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
@@ -337,7 +338,12 @@ services:
     container_name: sandbox
     init: true
     environment:
-      <<: [*docker-env, *redis-env, *storage-env, *communication-env]
+      # Deliberately no *storage-env here: sandbox must never hold the admin
+      # STORAGE_USER/STORAGE_PASSWORD credential. Only the non-secret
+      # endpoint/bucket connection details are passed explicitly below;
+      # per-execution credentials arrive inside the task payload, already
+      # minted and scoped by django_app.
+      <<: [*docker-env, *redis-env, *communication-env]
       CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH}
       SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
       SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
@@ -347,6 +353,10 @@ services:
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_SSL: ${STORAGE_SSL:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
     volumes:
       - sandbox_venvs:${SANDBOX_BASE_VENV_PATH}
       - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}

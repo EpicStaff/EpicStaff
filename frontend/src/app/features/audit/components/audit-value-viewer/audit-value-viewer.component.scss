@@ -1,0 +1,80 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background-color: var(--color-sidenav-background);
+    color: var(--color-text-primary);
+}
+
+.audit-value-viewer__header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-divider-regular);
+}
+
+.audit-value-viewer__title {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+    white-space: nowrap;
+}
+
+.audit-value-viewer__icon {
+    flex-shrink: 0;
+    // same colour as the brackets icon in the shared app-json-editor header
+    color: var(--gold-500);
+}
+
+.audit-value-viewer__subtitle {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-ks-transparent-text-60);
+    text-overflow: ellipsis;
+}
+
+// app-copy-button floats invisibly over a card by default; here it sits inline next to the close button.
+.audit-value-viewer__copy {
+    position: static;
+    flex-shrink: 0;
+    opacity: 1;
+    --copy-btn-size: 32px;
+}
+
+.audit-value-viewer__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--transparent-white-8);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+app-json-editor {
+    flex: 1;
+    min-height: 0;
+}

@@ -12,7 +12,7 @@ input) so it can be injected into the sandbox as `globals()["org_id"]`.
 
 import pytest
 
-from tables.models import PythonCode, PythonCodeTool, PythonCodeToolConfig, Graph
+from tables.models import Graph, PythonCode, PythonCodeTool, PythonCodeToolConfig, PythonNode
 from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 
@@ -22,81 +22,57 @@ def converter() -> ConverterService:
     return ConverterService()
 
 
-@pytest.mark.django_db
-def test_resolve_authoritative_org_id_returns_graph_org_id(converter):
-    org = Organization.objects.create(name="Org A")
-    graph = Graph.objects.create(name="g1", org=org)
-
-    resolved = converter._resolve_authoritative_org_id_for_graph(graph.pk)
-
-    assert resolved == org.pk
-
-
-@pytest.mark.django_db
-def test_resolve_authoritative_org_id_none_for_missing_graph(converter):
-    resolved = converter._resolve_authoritative_org_id_for_graph(999_999)
-
-    assert resolved is None
-
-
-@pytest.mark.django_db
-def test_convert_python_code_tool_to_pydantic_populates_org_id_from_graph(converter):
-    """org_id must come from Graph.org_id, NOT from the separate
-    GraphOrganization storage-prefix table (which is left untouched/empty
-    here to prove the two are independent)."""
-    org = Organization.objects.create(name="Org B")
-    graph = Graph.objects.create(name="g2", org=org)
-
+def _tool(org):
     code = PythonCode.objects.create(code="def main(**kw): return kw")
-    tool = PythonCodeTool.objects.create(
-        name="tool-b",
-        description="desc",
-        python_code=code,
-        org=org,
-        variables=[],
+    return PythonCodeTool.objects.create(
+        name=f"tool-{org.pk}", description="desc", python_code=code, org=org, variables=[]
     )
 
-    data = converter.convert_python_code_tool_to_pydantic(
-        tool, graph_id=graph.pk, session_id=1
-    )
+
+CONVERSIONS = {
+    "tool": lambda converter, org, graph_id: converter.convert_python_code_tool_to_pydantic(
+        _tool(org), graph_id=graph_id, session_id=1
+    ),
+    "tool-config": lambda converter, org, graph_id: converter.convert_python_code_tool_config_to_pydantic(
+        PythonCodeToolConfig.objects.create(name="cfg", tool=_tool(org), org=org, configuration={}),
+        graph_id=graph_id,
+        session_id=2,
+    ),
+    "python-node": lambda converter, org, graph_id: converter.convert_python_node_to_pydantic(
+        PythonNode.objects.create(
+            graph=Graph.objects.get(pk=graph_id),
+            python_code=PythonCode.objects.create(code="def main(**kw): return kw"),
+        ),
+        graph_id=graph_id,
+    ),
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("conversion", list(CONVERSIONS))
+def test_converted_code_carries_the_graphs_org_id(converter, conversion):
+    """org_id must come from Graph.org_id, NOT from the separate GraphOrganization
+    storage-prefix table (never populated here, so the prefix stays None)."""
+    org = Organization.objects.create(name=f"Org {conversion}")
+    # Push the graph id away from the org id, so reading the wrong column can't pass.
+    Graph.objects.bulk_create(Graph(name=f"filler-{index}", org=org) for index in range(3))
+    graph = Graph.objects.create(name=f"g-{conversion}", org=org)
+    assert graph.pk != org.pk
+
+    data = CONVERSIONS[conversion](converter, org, graph.pk)
 
     assert data.python_code.org_id == org.pk
-    # storage_org_prefix comes from GraphOrganization, which was never
-    # populated in this test — confirms org_id is resolved independently.
     assert data.python_code.storage_org_prefix is None
 
 
 @pytest.mark.django_db
-def test_convert_python_code_tool_to_pydantic_org_id_none_without_graph_id(converter):
+@pytest.mark.parametrize("graph_id", [None, 999_999], ids=["no-graph", "unknown-graph"])
+def test_code_without_a_resolvable_graph_carries_no_org_id(converter, graph_id):
     org = Organization.objects.create(name="Org C")
-    code = PythonCode.objects.create(code="def main(**kw): return kw")
-    tool = PythonCodeTool.objects.create(
-        name="tool-c", description="desc", python_code=code, org=org, variables=[]
-    )
 
-    data = converter.convert_python_code_tool_to_pydantic(tool, graph_id=None)
+    data = converter.convert_python_code_tool_to_pydantic(_tool(org), graph_id=graph_id)
 
     assert data.python_code.org_id is None
-
-
-@pytest.mark.django_db
-def test_convert_python_code_tool_config_to_pydantic_populates_org_id(converter):
-    org = Organization.objects.create(name="Org D")
-    graph = Graph.objects.create(name="g3", org=org)
-
-    code = PythonCode.objects.create(code="def main(**kw): return kw")
-    tool = PythonCodeTool.objects.create(
-        name="tool-d", description="desc", python_code=code, org=org, variables=[]
-    )
-    tool_config = PythonCodeToolConfig.objects.create(
-        name="cfg-d", tool=tool, org=org, configuration={}
-    )
-
-    data = converter.convert_python_code_tool_config_to_pydantic(
-        tool_config, graph_id=graph.pk, session_id=2
-    )
-
-    assert data.python_code.org_id == org.pk
 
 
 @pytest.mark.django_db
@@ -127,18 +103,4 @@ def test_convert_python_code_tool_to_pydantic_honors_storage_overrides_without_g
 
     assert data.python_code.storage_allowed_paths == ["notes/report.txt"]
     assert data.python_code.storage_org_prefix == f"org_{org.pk}"
-    assert data.python_code.org_id == org.pk
-
-
-@pytest.mark.django_db
-def test_convert_python_node_to_pydantic_populates_org_id(converter):
-    from tables.models import PythonNode
-
-    org = Organization.objects.create(name="Org E")
-    graph = Graph.objects.create(name="g4", org=org)
-    code = PythonCode.objects.create(code="def main(**kw): return kw")
-    node = PythonNode.objects.create(graph=graph, python_code=code)
-
-    data = converter.convert_python_node_to_pydantic(node, graph_id=graph.pk)
-
     assert data.python_code.org_id == org.pk

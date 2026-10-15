@@ -9,6 +9,8 @@ and a subgraph node whose subgraph has its own start node.
 import pytest
 
 from rbac.models import Organization
+from storage_credentials.services.org_credential_store import org_credential_store
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, PythonCode, Session
 from tables.models.graph_models import Edge, PythonNode, StartNode, SubGraphNode
 from tables.services.secrets import secret_service
@@ -19,7 +21,7 @@ SECRET_NAME = "query-count-key"
 
 # Exact budget for representative_graph. If a change raises it, find the new
 # query; if it lowers it, update the number.
-RUN_SESSION_QUERY_COUNT = 60
+RUN_SESSION_QUERY_COUNT = 64
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:
@@ -36,8 +38,22 @@ def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -
 
 
 @pytest.fixture
-def org(db):
-    return Organization.objects.create(name="Org RunSessionQueryCount")
+def org(db, monkeypatch):
+    org = Organization.objects.create(name="Org RunSessionQueryCount")
+    # The storage-using node makes run_session issue session credentials. Only the
+    # storage backend call is faked; the credential lookup and the account row it
+    # persists stay real, so their queries count toward the budget.
+    org_credential_store.save(org=org, access_key="org-access", secret_key="org-secret")
+
+    async def mint_temporary_service_account(org_creds, policy, expiration):
+        return "temporary-access", "temporary-secret"
+
+    monkeypatch.setattr(
+        session_credential_service,
+        "_mint_temporary_service_account",
+        mint_temporary_service_account,
+    )
+    return org
 
 
 @pytest.fixture
@@ -80,7 +96,9 @@ def published(monkeypatch):
     monkeypatch.setattr(
         SessionManagerService().redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id: published.append((session_data, org_id)) or 1,
+        lambda *, session_data, org_id, storage_credentials=None: (
+            published.append((session_data, org_id)) or 1
+        ),
     )
     return published
 

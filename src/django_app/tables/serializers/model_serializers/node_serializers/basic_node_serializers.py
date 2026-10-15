@@ -41,6 +41,7 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
@@ -114,6 +115,7 @@ def validate_output_schema(value):
 
 
 class PythonNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -129,6 +131,7 @@ class PythonNodeSerializer(
 
 
 class FileExtractorNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -170,6 +173,7 @@ class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
 
 
 class KeyValueNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -206,6 +210,7 @@ class KeyValueNodeSerializer(
 
 
 class KnowledgeNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -278,6 +283,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
 
 
 class AudioTranscriptionNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -291,7 +297,10 @@ class AudioTranscriptionNodeSerializer(
 
 
 class EdgeSerializer(
-    AuthorStampingSerializerMixin, ContentHashWritableMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -308,6 +317,7 @@ class EdgeSerializer(
 
 
 class TaskNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -421,6 +431,7 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
 
 
 class AgentNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -646,6 +657,7 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
 
 
 class SubGraphNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,

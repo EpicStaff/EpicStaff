@@ -43,9 +43,11 @@ from tables.serializers.model_serializers.node_serializers.trigger_serializers i
     WebhookTriggerNodeSerializer,
 )
 from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
 class GraphNoteSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,

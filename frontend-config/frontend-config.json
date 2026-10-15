@@ -1,6 +1,5 @@
 {
   "apiUrl": "http://127.0.0.1:8000/api/",
   "realtimeApiUrl": "http://127.0.0.1:8050/realtime/",
-  "auditorUrl": "http://127.0.0.1:8060/",
-  "isEpicChatEnabled": true
+  "auditorUrl": "http://127.0.0.1:8060/"
 }

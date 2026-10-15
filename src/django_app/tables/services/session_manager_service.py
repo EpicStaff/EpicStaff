@@ -158,8 +158,6 @@ class SessionManagerService(metaclass=SingletonMeta):
             else:
                 variables = start_node_variables
 
-        variables = self._get_actual_variables(variables)
-
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
         # node id, so generate_node_name returns None and an explicitly passed
@@ -235,6 +233,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         parent_session_id: int | None = None,
         token_budget: int | None = None,
         api_key=None,
+        allow_persistent_override: bool = False,
     ) -> int:
         variables = self._get_actual_variables(variables)
         # Keys only: values hold user input and base64-encoded uploads, and the log
@@ -247,7 +246,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
         run_vars = self.persistent_variables_service.build_run_variables(
-            graph=graph, user=user, payload=variables
+            graph=graph,
+            user=user,
+            payload=variables,
+            allow_persistent_override=allow_persistent_override,
         )
 
         if trigger.trigger_type == SessionTrigger.TriggerType.MANUAL:
@@ -280,12 +282,24 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             # TODO: add ping or waiting for crew to accept connections
 
+            # Issue temporary storage credentials if needed
+            from storage_credentials.services.session_credential_service import (
+                session_credential_service,
+            )
+
+            storage_credentials = session_credential_service.issue_for_session(
+                session_data=session_data,
+                session_orm=session,
+                org=graph.org,
+            )
+
             Session.objects.filter(pk=session.pk).update(
                 graph_schema=session_data.graph.model_dump(mode="json"),
             )
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
+                storage_credentials=storage_credentials,
             )
             if received_n == 0:
                 logger.error(
@@ -546,7 +560,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         webhook_trigger_node_data_list = [
             cv.convert_webhook_trigger_node_to_pydantic(
-                webhook_trigger_node=item, resolver=resolver
+                webhook_trigger_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in webhook_trigger_node_list
         ]

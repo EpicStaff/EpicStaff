@@ -22,11 +22,15 @@ class SessionTestRunService:
         """Start a session at `node` as if `payload` had been delivered to it.
 
         The session is flagged as a test run here rather than in the strategy, so
-        no strategy can record an editor test as a real delivery. Everything else,
-        persistent-variable write-back included, behaves like a regular run.
+        no strategy can record an editor test as a real delivery. Everything else
+        behaves like a real delivery to the node: the payload may set org-persistent
+        paths the flow declares under the trigger's key, and the run's final values
+        are written back.
 
         Args:
             node: Already resolved in the caller's active organization.
+            user: Must hold FLOWS UPDATE in the node's organization, because the
+                payload may override the flow's persistent variables.
 
         Returns:
             The id of the created session.
@@ -41,4 +45,5 @@ class SessionTestRunService:
             trigger=strategy.build_trigger(node, payload).as_test_run(),
             user=user,
             api_key=api_key,
+            allow_persistent_override=True,
         )

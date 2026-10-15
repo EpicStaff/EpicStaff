@@ -129,95 +129,55 @@ def _recording_url(pk=None):
     )
 
 
-# ---- RealtimeAgentChatViewSet: destroy ----
+# ---- The matrix: everyone in the org reads VOICE, only Org Admin deletes ----
 
 
 @pytest.mark.django_db
-class TestRealtimeAgentChatRbac:
-    def test_viewer_cannot_delete_chat(self, client_for, viewer_user, voice_org, voice_chat):
-        response = client_for(viewer_user, voice_org).delete(_chat_url(voice_chat.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert RealtimeAgentChat.objects.filter(id=voice_chat.id).exists()
+@pytest.mark.parametrize(
+    ("resource", "model", "url"),
+    [("voice_chat", RealtimeAgentChat, _chat_url), ("voice_recording", ConversationRecording, _recording_url)],
+    ids=["chat", "recording"],
+)
+@pytest.mark.parametrize(
+    ("caller", "can_delete"),
+    [("viewer_user", False), ("member_user", False), ("org_admin_user", True)],
+    ids=["viewer", "member", "org-admin"],
+)
+def test_voice_history_is_readable_by_members_but_deletable_only_by_org_admins(
+    request, client_for, voice_org, resource, model, url, caller, can_delete
+):
+    target = request.getfixturevalue(resource)
+    client = client_for(request.getfixturevalue(caller), voice_org)
 
-    def test_member_cannot_delete_chat(self, client_for, member_user, voice_org, voice_chat):
-        response = client_for(member_user, voice_org).delete(_chat_url(voice_chat.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert RealtimeAgentChat.objects.filter(id=voice_chat.id).exists()
+    assert client.get(url()).status_code == status.HTTP_200_OK
+    assert client.get(url(target.id)).status_code == status.HTTP_200_OK
+    response = client.delete(url(target.id))
 
-    def test_org_admin_can_delete_chat(self, client_for, org_admin_user, voice_org, voice_chat):
-        response = client_for(org_admin_user, voice_org).delete(_chat_url(voice_chat.id))
-        assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not RealtimeAgentChat.objects.filter(id=voice_chat.id).exists()
-
-    def test_viewer_can_read_chat_list(self, client_for, viewer_user, voice_org, voice_chat):
-        response = client_for(viewer_user, voice_org).get(_chat_url())
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_member_can_read_chat_detail(self, client_for, member_user, voice_org, voice_chat):
-        response = client_for(member_user, voice_org).get(_chat_url(voice_chat.id))
-        assert response.status_code == status.HTTP_200_OK
-
-
-# ---- ConversationRecordingViewSet: destroy / update ----
+    assert response.status_code == (status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN)
+    assert model.objects.filter(id=target.id).exists() is not can_delete
 
 
 @pytest.mark.django_db
-class TestConversationRecordingRbac:
-    def test_viewer_cannot_delete_recording(
-        self, client_for, viewer_user, voice_org, voice_recording
-    ):
-        response = client_for(viewer_user, voice_org).delete(_recording_url(voice_recording.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert ConversationRecording.objects.filter(id=voice_recording.id).exists()
+@pytest.mark.parametrize("caller", ["viewer_user", "member_user"])
+def test_members_cannot_create_or_change_recordings(request, client_for, voice_org, voice_chat, voice_recording, caller):
+    client = client_for(request.getfixturevalue(caller), voice_org)
 
-    def test_member_cannot_delete_recording(
-        self, client_for, member_user, voice_org, voice_recording
-    ):
-        response = client_for(member_user, voice_org).delete(_recording_url(voice_recording.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert ConversationRecording.objects.filter(id=voice_recording.id).exists()
+    created = client.post(
+        _recording_url(),
+        data={
+            "rt_agent_chat": voice_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": SimpleUploadedFile("clip2.wav", b"more-fake-audio"),
+        },
+        format="multipart",
+    )
+    updated = client.patch(
+        _recording_url(voice_recording.id),
+        data={"recording_type": ConversationRecording.RecordingType.OUTBOUND},
+        format="json",
+    )
 
-    def test_org_admin_can_delete_recording(
-        self, client_for, org_admin_user, voice_org, voice_recording
-    ):
-        response = client_for(org_admin_user, voice_org).delete(
-            _recording_url(voice_recording.id)
-        )
-        assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not ConversationRecording.objects.filter(id=voice_recording.id).exists()
-
-    def test_viewer_cannot_update_recording(
-        self, client_for, viewer_user, voice_org, voice_recording
-    ):
-        response = client_for(viewer_user, voice_org).patch(
-            _recording_url(voice_recording.id),
-            data={"recording_type": ConversationRecording.RecordingType.OUTBOUND},
-            format="json",
-        )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_member_cannot_create_recording(
-        self, client_for, member_user, voice_org, voice_chat
-    ):
-        response = client_for(member_user, voice_org).post(
-            _recording_url(),
-            data={
-                "rt_agent_chat": voice_chat.id,
-                "recording_type": ConversationRecording.RecordingType.INBOUND,
-                "file": SimpleUploadedFile("clip2.wav", b"more-fake-audio"),
-            },
-            format="multipart",
-        )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_viewer_can_read_recording_list(
-        self, client_for, viewer_user, voice_org, voice_recording
-    ):
-        response = client_for(viewer_user, voice_org).get(_recording_url())
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_member_can_read_recording_detail(
-        self, client_for, member_user, voice_org, voice_recording
-    ):
-        response = client_for(member_user, voice_org).get(_recording_url(voice_recording.id))
-        assert response.status_code == status.HTTP_200_OK
+    assert (created.status_code, updated.status_code) == (status.HTTP_403_FORBIDDEN, status.HTTP_403_FORBIDDEN)
+    voice_recording.refresh_from_db()
+    assert voice_recording.recording_type == ConversationRecording.RecordingType.INBOUND
+    assert ConversationRecording.objects.count() == 1

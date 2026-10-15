@@ -84,15 +84,7 @@ Input maps support dynamic access keys and default values:
 
 ```python
 def main(chat_id: str) -> dict:
-    return {
-        "shared": {
-            chat_id: {
-                "init_defaults": True,
-                "counter": 0,
-                "active_followers": []
-            }
-        }
-    }
+    return {"shared": {chat_id: {"init_defaults": True, "counter": 0, "active_followers": []}}}
 ```
 
 ### Individual variable

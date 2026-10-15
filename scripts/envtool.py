@@ -65,7 +65,7 @@ def generate_env_file(
     content = [
         BANNER.format(
             schema_file=schema_file.relative_to(BASE_DIR.parent),
-            timestamp=datetime.now(),
+            timestamp=datetime.now().astimezone(),
         )
     ]
     for group, variables in schema["groups"].items():
@@ -77,18 +77,12 @@ def generate_env_file(
             if description:
                 content.append(render_description(description))
 
-            default = (
-                d.get(target)
-                if isinstance(d := declaration.get("default"), dict)
-                else d
-            )
+            default = d.get(target) if isinstance(d := declaration.get("default"), dict) else d
 
             if default is None:
                 content.append(REQUIRED_VARIABLE_PATTERN.format(name=name))
             else:
-                content.append(
-                    DEFAULT_VARIABLE_PATTERN.format(name=name, default=default)
-                )
+                content.append(DEFAULT_VARIABLE_PATTERN.format(name=name, default=default))
 
     content = "".join(content)
     env_file.write_text(content, encoding="utf-8", newline="\n")

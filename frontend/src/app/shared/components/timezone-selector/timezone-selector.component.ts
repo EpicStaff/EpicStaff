@@ -46,7 +46,7 @@ const IANA_ALIASES: Record<string, string> = {
     'Europe/Kiev': 'Europe/Kyiv',
 };
 
-function normalizeIana(iana: string): string {
+export function normalizeIana(iana: string): string {
     return IANA_ALIASES[iana] ?? iana;
 }
 

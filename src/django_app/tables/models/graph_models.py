@@ -38,12 +38,12 @@ class GraphManager(ActiveManager):
                 WITH RECURSIVE subgraph_tree AS (
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
-                    WHERE sn.graph_id = %s AND sn.is_soft_deleted = false
+                    WHERE sn.graph_id = %s AND sn.active = true
                     UNION
                     SELECT sn.subgraph_id
                     FROM tables_subgraphnode sn
                     INNER JOIN subgraph_tree st ON sn.graph_id = st.subgraph_id
-                    WHERE sn.is_soft_deleted = false
+                    WHERE sn.active = true
                 )
                 SELECT subgraph_id FROM subgraph_tree
                 """,
@@ -100,7 +100,7 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_graph_name_per_org",
             ),
         ]
@@ -574,6 +574,7 @@ class WebhookTriggerNode(
         related_name="webhook_trigger_nodes",
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
+    use_storage = models.BooleanField(default=False)
 
     class Meta:
         default_manager_name = "objects"
@@ -852,6 +853,11 @@ class ClassificationConditionGroupSection(BaseGraphEntity, SoftDeleteFields):
     )
     name = models.CharField(max_length=255, blank=True, default="")
 
+    class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
+        constraints = [soft_delete_consistency_constraint()]
+
 
 class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields):
     # A child row of its classification decision table, with no `graph` of its own.
@@ -947,7 +953,7 @@ class GraphVersion(SoftDeleteMixin):
         ordering = ["-created_at"]
 
 
-class StorageFile(OrgScopedModel, LastEditTrackedModel):
+class StorageFile(OrgScopedModel, LastEditTrackedModel, SoftDeleteFields):
     """A file or folder in an organization's storage, mirrored from the storage backend."""
 
     ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
@@ -992,8 +998,17 @@ class StorageFile(OrgScopedModel, LastEditTrackedModel):
     )
 
     class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
-            models.UniqueConstraint(fields=["org", "path"], name="unique_storage_file_per_org")
+            soft_delete_consistency_constraint(),
+            # A binned row keeps its path, so a new upload to the same path must
+            # not clash with it. Two binned rows may share a path too.
+            models.UniqueConstraint(
+                fields=["org", "path"],
+                condition=models.Q(active=True),
+                name="unique_active_storage_file_per_org",
+            ),
         ]
         indexes = [
             *OrgScopedModel.Meta.indexes,
@@ -1003,6 +1018,7 @@ class StorageFile(OrgScopedModel, LastEditTrackedModel):
 
 
 class GraphStorageFile(SoftDeleteFields):
+    soft_delete_reference_fields = ("storage_file",)
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="storage_files")
     storage_file = models.ForeignKey(
         "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"

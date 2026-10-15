@@ -31,6 +31,7 @@ from tables.models.flow_assistant_models import (
 )
 from tables.services.llm_clients import (
     DoneEvent,
+    InvalidLLMConfigError,
     StreamEvent,
     StructuredEvent,
     TokenEvent,
@@ -258,7 +259,7 @@ class FlowAssistantService:
                 output_schema=FLOW_ASSISTANT_OUTPUT_SCHEMA,
                 api_key=api_key,
             )
-        except UnsupportedLLMProviderError as exc:
+        except (UnsupportedLLMProviderError, InvalidLLMConfigError) as exc:
             raise LLMConfigInvalidError(str(exc)) from exc
 
         graph_id = flow_assistant.graph_id

@@ -1,21 +1,13 @@
 import pytest
 
+from src.shared.models import GraphData, SessionData
 from tables.models.graph_models import Graph
 from tables.models.session_models import Session
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from utils.logger import logger
 
-GRAPH_SCHEMA = {"marker": 1}
-
-
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return GRAPH_SCHEMA
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+GRAPH_NAME = "status-writes-schema"
 
 
 @pytest.fixture
@@ -26,11 +18,14 @@ def graph(default_org):
 @pytest.fixture
 def session_manager(monkeypatch):
     session_manager = SessionManagerService()
-    monkeypatch.setattr(
-        session_manager,
-        "create_session_data",
-        lambda session, **kwargs: _FakeSessionData(),
-    )
+
+    # A real, empty SessionData: the test graph has no nodes to build one from, and
+    # code that walks the payload (storage demand, graph_schema) keeps up with new fields.
+    def empty_session_data(session, **kwargs):
+        graph = GraphData(name=GRAPH_NAME, entrypoint="__end__", end_node=None)
+        return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+
+    monkeypatch.setattr(session_manager, "create_session_data", empty_session_data)
     return session_manager
 
 
@@ -48,7 +43,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService, received_
     monkeypatch.setattr(
         session_manager.redis_service,
         "publish_session_data",
-        lambda *, session_data, org_id: received_count,
+        lambda *, session_data, org_id, storage_credentials=None: received_count,
     )
 
 
@@ -77,7 +72,7 @@ def test_run_session_logs_variable_keys_not_values(
 def test_status_written_by_crew_during_publish_is_kept(
     graph, session_manager, monkeypatch
 ):
-    def publish_and_finish_like_a_fast_crew(*, session_data, org_id):
+    def publish_and_finish_like_a_fast_crew(*, session_data, org_id, storage_credentials=None):
         Session.objects.filter(graph=graph).update(status=Session.SessionStatus.END)
         return 1
 
@@ -94,7 +89,7 @@ def test_status_written_by_crew_during_publish_is_kept(
 
 @pytest.mark.django_db
 def test_failure_before_publish_marks_session_error(graph, session_manager, monkeypatch):
-    def fail(*, session_data, org_id):
+    def fail(*, session_data, org_id, storage_credentials=None):
         raise RuntimeError("redis is down")
 
     monkeypatch.setattr(session_manager.redis_service, "publish_session_data", fail)
@@ -115,7 +110,7 @@ def test_graph_schema_is_stored(graph, session_manager, monkeypatch):
 
     session_id = _run(session_manager, graph)
 
-    assert Session.objects.get(pk=session_id).graph_schema == GRAPH_SCHEMA
+    assert Session.objects.get(pk=session_id).graph_schema["name"] == GRAPH_NAME
 
 
 @pytest.mark.django_db

@@ -192,7 +192,7 @@ def test_bulk_delete_fires_pre_delete_signal_per_session(
     s1 = _make_session(org_a, "flow 1")
     s2 = _make_session(org_a, "flow 2")
 
-    # The signal stops each session only after the delete commits.
+    # The pre_delete receiver defers stop_session until the delete commits.
     with patch(
         "tables.signals.session_signals.SessionManagerService.stop_session"
     ) as mock_stop_session, django_capture_on_commit_callbacks(execute=True):

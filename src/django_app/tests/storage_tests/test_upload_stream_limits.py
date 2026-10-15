@@ -121,7 +121,7 @@ async def test_time_spent_sending_parts_to_storage_is_not_client_idle_time(org):
         org.id, "", "a.txt", async_chunks(b"ab", b"cd"), 4, backend=_SlowStorage()
     )
 
-    assert result == {"path": "a.txt", "size": 4}
+    assert result == {"path": "a.txt", "size": 4, "recycle_bin_purged": []}
 
 
 # --- declared size, checked before an upload slot ---------------------------------

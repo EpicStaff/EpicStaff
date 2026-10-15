@@ -1,6 +1,7 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { WebhookTriggerModel, WebhookTriggerPayload } from '@shared/models';
+import { BinnedWebhookTrigger, WebhookTriggerModel, WebhookTriggerPayload } from '@shared/models';
+import { CountedPage, fetchAllPages } from '@shared/utils';
 import { map, Observable, Subject, tap } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
@@ -30,6 +31,19 @@ export class WebhookTriggerService {
 
     getById(id: number): Observable<WebhookTriggerModel> {
         return this.http.get<WebhookTriggerModel>(`${this.apiUrl}${id}/`, { headers: this.headers });
+    }
+
+    /**
+     * Every trigger of the org in the recycle bin (the bin list is paged; this reads all its pages): a node
+     * may still link to one until it's purged.
+     */
+    listInRecycleBin(): Observable<BinnedWebhookTrigger[]> {
+        return fetchAllPages((limit, offset) =>
+            this.http.get<CountedPage<BinnedWebhookTrigger>>(`${this.apiUrl}recycle-bin/`, {
+                headers: this.headers,
+                params: new HttpParams().set('limit', limit).set('offset', offset),
+            })
+        ).pipe(map((entries) => entries.map(({ id, name }) => ({ id, name }))));
     }
 
     create(trigger: WebhookTriggerModel): Observable<WebhookTriggerModel> {

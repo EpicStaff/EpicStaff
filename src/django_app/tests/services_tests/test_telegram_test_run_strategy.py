@@ -144,7 +144,7 @@ class TestTelegramPayloadValidation:
     def test_soft_deleted_field_is_not_selected(self, node_with_fields):
         TelegramTriggerNodeField.objects.filter(
             telegram_trigger_node=node_with_fields, field_name="chat"
-        ).update(is_soft_deleted=True, soft_deleted_at=timezone.now())
+        ).update(active=False, soft_deleted_at=timezone.now())
 
         assert _messages(node_with_fields, {"message": {"chat": {"id": 1}}}) == [
             "'message.chat': field not selected on this node"
@@ -156,7 +156,7 @@ class TestTelegramPayloadValidation:
             parent="message",
             field_name="text",
             variable_path="variables.text",
-            is_soft_deleted=True,
+            active=False,
             soft_deleted_at=timezone.now(),
         )
 
