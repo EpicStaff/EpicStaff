@@ -53,7 +53,7 @@ const FIELD_ERROR_SEPARATOR = '; ';
 // Key of the presets block in the backend import summary.
 const PRESET_IMPORT_ENTITY = 'AuditFilterPreset';
 const SHARE_DIALOG_MESSAGE = 'This preset will become available to your team in Shared Presets.';
-const DIALOG_CONFIG = { width: '485px', panelClass: 'audit-preset-dialog-panel' };
+export const DIALOG_CONFIG = { width: '485px', panelClass: 'audit-preset-dialog-panel' };
 
 interface AuditPresetEditor {
     presetId: number | null;
@@ -77,13 +77,27 @@ function presetCount(count: number): string {
     return `${count} preset${count === 1 ? '' : 's'}`;
 }
 
-// The backend skips a preset with the same search as one already in My or Shared Presets and reports it as reused.
-function importSummaryMessage(created: number, reused: number): string {
-    if (created === 0 && reused > 0) {
-        return `No new presets — ${presetCount(reused)} already existed`;
+const NAMED_EXISTING_PRESETS_LIMIT = 3;
+
+// Names the existing presets, not just a count, so the user can find the one they already have.
+function existingPresetsPhrase(names: string[]): string {
+    const named = names
+        .slice(0, NAMED_EXISTING_PRESETS_LIMIT)
+        .map((name) => `"${name}"`)
+        .join(', ');
+    const unnamedCount = names.length - NAMED_EXISTING_PRESETS_LIMIT;
+    const list = unnamedCount > 0 ? `${named} and ${unnamedCount} more` : named;
+    return `${list} already exist${names.length === 1 ? 's' : ''}`;
+}
+
+// The backend skips a preset with the same search as one already in My or Shared Presets and reports
+// it as reused, under the existing preset's name.
+function importSummaryMessage(created: number, reusedNames: string[]): string {
+    if (created === 0 && reusedNames.length > 0) {
+        return `No new presets — ${existingPresetsPhrase(reusedNames)}`;
     }
     const imported = `Imported ${presetCount(created)} to My Presets`;
-    return reused === 0 ? imported : `${imported}, ${presetCount(reused)} already existed`;
+    return reusedNames.length === 0 ? imported : `${imported}; ${existingPresetsPhrase(reusedNames)}`;
 }
 
 function modeLabel(state: AuditFilterState | null): string {
@@ -381,8 +395,11 @@ export class AuditPresetsComponent implements OnInit {
             .subscribe({
                 next: (summary) => {
                     const created = summary[PRESET_IMPORT_ENTITY]?.created.count ?? 0;
-                    const reused = summary[PRESET_IMPORT_ENTITY]?.reused.count ?? 0;
-                    this.toastService.success(importSummaryMessage(created, reused));
+                    // Two presets in the file can match the same existing one; name it once.
+                    const reusedNames = [
+                        ...new Set(summary[PRESET_IMPORT_ENTITY]?.reused.items.map((item) => item.name) ?? []),
+                    ];
+                    this.toastService.success(importSummaryMessage(created, reusedNames));
                 },
                 error: (error: HttpErrorResponse) => this.toastError(error, 'Could not import presets.'),
             });
