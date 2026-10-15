@@ -93,7 +93,7 @@ import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token
 import { CurvedPathBuilder, curveHitsObstacle } from '../core/routing/curved.path-builder';
 import { obstacleRect, routingObstacles } from '../core/routing/obstacles';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
-import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-shapes';
+import { normalizeOrthogonalWaypoints, refreshFrozenWireWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
@@ -1230,9 +1230,23 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
 
-        const connections = this.flowService.connections();
+        // Collapse short bridges on frozen wires (e.g. after a node move shifted a port).
         const nodes = this.flowService.nodes();
         const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        for (const conn of this.flowService.connections()) {
+            if (!conn.userAdjustedWaypoints || !conn.waypoints?.length) continue;
+            const ends = resolveWireEnds(conn, nodesById);
+            if (!ends) continue;
+            const source = getPortPosition(ends.sourceNode, ends.sourcePort);
+            const target = getPortPosition(ends.targetNode, ends.targetPort);
+            const refreshed = refreshFrozenWireWaypoints(source, conn.waypoints, target);
+            if (!waypointsEqual(conn.waypoints, refreshed)) {
+                this.flowService.updateConnectionWaypoints(conn.id, refreshed);
+                this.bumpConnectionRenderVersion(conn.id);
+            }
+        }
+
+        const connections = this.flowService.connections();
         const obstacleRects = [...routingObstacles(nodes).values()];
         const isAdaptiveCurve = this.flowSettings.edgeStyle() === 'adaptive-curve';
         const routes = routeAll(nodes, connections);
