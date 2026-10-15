@@ -73,12 +73,13 @@ export class ExecutionTimeoutFieldComponent {
     }
 
     protected onPartChange(): void {
-        // A pasted fraction would make the total fractional: round it to whole seconds.
+        // A pasted fraction would make the total fractional, and a pasted negative number negative: round it to
+        // whole seconds, from zero up.
         const totalSeconds = joinDuration({
             hours: this.hoursInput().value() ?? 0,
             minutes: this.minutesInput().value() ?? 0,
             seconds: this.secondsInput().value() ?? 0,
         });
-        this.field().edit(Math.round(totalSeconds));
+        this.field().edit(Math.max(0, Math.round(totalSeconds)));
     }
 }

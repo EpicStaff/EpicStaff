@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
+import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
@@ -11,6 +11,7 @@ import { of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../../../core/helpers/helpers';
 import { CdtExplanation, CdtExplanations } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -44,6 +45,16 @@ import { ClassificationDecisionTableNodePanelComponent } from './classification-
  * the grid alone (the real one has its own DOM spec): renaming or dropping one of the
  * template's grid bindings fails here. Unknown bindings are errors, not warnings.
  */
+
+/** Stands in for the Monaco-backed editor, which needs a browser runtime the tests do not load. */
+@Component({ selector: 'app-code-editor', template: '' })
+class CodeEditorStubComponent {
+    readonly pythonCode = input<unknown>();
+    readonly secretNames = input<unknown>();
+    readonly inputMapKeys = input<unknown>();
+    readonly readOnly = input(false);
+    readonly pythonCodeChange = output<string>();
+}
 
 /**
  * Stands in for the grid, with its inputs and outputs: records what the panel hands it
@@ -136,6 +147,32 @@ function confirmedRows(): ConditionGroup[] {
 const APPROVE_CONNECTION = createFlowConnection(NODE_ID, 'py1', APPROVE_PORT, 'py1_python-in');
 const UNRELATED_CONNECTION = createFlowConnection('py1', 'py2', 'py1_python-out', 'py2_python-in');
 
+/**
+ * The panel's real template with the grid and the code editor stubbed. Unknown bindings are errors, not warnings.
+ */
+function configurePanelTestBed({ isPreview = false, providers = [] as Provider[] } = {}): void {
+    TestBed.configureTestingModule({
+        errorOnUnknownProperties: true,
+        errorOnUnknownElements: true,
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            provideLoadedExecutionTimeoutLimits(),
+            { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+            {
+                provide: FullLLMConfigService,
+                useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
+            },
+            ...providers,
+        ],
+    });
+    TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+        remove: { imports: [ClassificationDecisionTableGridComponent, CodeEditorComponent] },
+        add: { imports: [GridStubComponent, CodeEditorStubComponent] },
+    });
+}
+
 describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on a wired route code', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
     let panel: ClassificationDecisionTableNodePanelComponent;
@@ -144,25 +181,7 @@ describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on
     let toastError: ReturnType<typeof vi.spyOn>;
 
     function create(isPreview = false): void {
-        TestBed.configureTestingModule({
-            errorOnUnknownProperties: true,
-            errorOnUnknownElements: true,
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                provideLoadedExecutionTimeoutLimits(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
-                {
-                    provide: FullLLMConfigService,
-                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
-                },
-            ],
-        });
-        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
-            remove: { imports: [ClassificationDecisionTableGridComponent] },
-            add: { imports: [GridStubComponent] },
-        });
+        configurePanelTestBed({ isPreview });
 
         flowService = TestBed.inject(FlowService);
         flowService.setFlow({
@@ -346,26 +365,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     function create(explanations: CdtExplanations, isPreview = false): void {
         localStorage.clear();
         explainApi = { explain: vi.fn() };
-        TestBed.configureTestingModule({
-            errorOnUnknownProperties: true,
-            errorOnUnknownElements: true,
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                provideLoadedExecutionTimeoutLimits(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
-                {
-                    provide: FullLLMConfigService,
-                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
-                },
-                { provide: CdtExplainApiService, useValue: explainApi },
-            ],
-        });
-        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
-            remove: { imports: [ClassificationDecisionTableGridComponent] },
-            add: { imports: [GridStubComponent] },
-        });
+        configurePanelTestBed({ isPreview, providers: [{ provide: CdtExplainApiService, useValue: explainApi }] });
         TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
             remove: { imports: [FFlowModule, FZoomDirective] },
             add: { schemas: [NO_ERRORS_SCHEMA] },
@@ -554,26 +554,13 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
 
-    function open(preSeconds: number | undefined, postSeconds: number | undefined, preCode = 'def main(): pass'): void {
-        TestBed.configureTestingModule({
-            errorOnUnknownProperties: true,
-            errorOnUnknownElements: true,
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                provideLoadedExecutionTimeoutLimits(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
-                {
-                    provide: FullLLMConfigService,
-                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
-                },
-            ],
-        });
-        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
-            remove: { imports: [ClassificationDecisionTableGridComponent] },
-            add: { imports: [GridStubComponent] },
-        });
+    function open(
+        preSeconds: number | undefined,
+        postSeconds: number | undefined,
+        preCode = 'def main(): pass',
+        preSecretIds: number[] = []
+    ): void {
+        configurePanelTestBed();
         const node = tableNode();
         const timedNode = {
             ...node,
@@ -581,7 +568,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
                 ...node.data,
                 table: {
                     ...node.data.table,
-                    pre_computation: { code: preCode, execution_timeout: preSeconds },
+                    pre_computation: { code: preCode, secret_ids: preSecretIds, execution_timeout: preSeconds },
                     post_computation: { code: 'def main(): pass', execution_timeout: postSeconds },
                 },
             },
@@ -648,5 +635,25 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         panel.activeTab.set('precomputation');
         panel.onPreCodeChange('def main(): pass');
         expect(showsTimeoutOnTab('precomputation')).toBe(true);
+    });
+
+    it('keeps every other edit when the code of a block with an invalid timeout is cleared', () => {
+        open(90, undefined);
+        panel.form.get('node_name')?.setValue('Renamed');
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+        expect(panel.onSaveSilently()).toBeNull();
+
+        panel.onPreCodeChange('');
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(false);
+        expect(panel.onSaveSilently()?.node_name).toBe('Renamed');
+    });
+
+    it('shows and checks the timeout of a block without code but with secrets: the save keeps it', () => {
+        open(90, undefined, '  ', [3]);
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(true);
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+        expect(panel.onSaveSilently()).toBeNull();
     });
 });

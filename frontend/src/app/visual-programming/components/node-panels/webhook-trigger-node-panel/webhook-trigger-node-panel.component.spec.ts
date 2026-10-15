@@ -533,8 +533,8 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         fixture.detectChanges();
     }
 
-    function openExpanded(): RunCodePanel {
-        const runPanel = open();
+    function openExpanded(node: WebhookTriggerNodeModel = mapWebhookTriggerNodeToModel(DTO)): RunCodePanel {
+        const runPanel = open(node);
         fixture.componentRef.setInput('isExpanded', true);
         fixture.detectChanges();
         return runPanel;
@@ -777,10 +777,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
 
         it('waits for the result as long as the stored code may run', () => {
             bindStoredGraph(asStored(TIMED_DTO));
-            fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
-            fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(TIMED_DTO));
-            fixture.componentRef.setInput('isExpanded', true);
-            fixture.detectChanges();
+            openExpanded(mapWebhookTriggerNodeToModel(TIMED_DTO));
 
             runFromEditor();
             start$.next({ execution_id: 'exec-1' });

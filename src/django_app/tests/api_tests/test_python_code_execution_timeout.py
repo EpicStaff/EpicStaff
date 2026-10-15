@@ -27,8 +27,9 @@ STORED_SECONDS = 120
 
 CODE = "def main(**kwargs): return 1"
 
-INVALID_TIMEOUTS = [2, 0, -5, None, 2.5, "ten"]
-INVALID_TIMEOUT_IDS = ["below-minimum", "zero", "negative", "null", "fraction", "text"]
+# 2_147_483_648 does not fit the int4 column.
+INVALID_TIMEOUTS = [2, 0, -5, None, 2.5, "ten", 2_147_483_648]
+INVALID_TIMEOUT_IDS = ["below-minimum", "zero", "negative", "null", "fraction", "text", "above-column"]
 
 
 @pytest.fixture(autouse=True)

@@ -3,8 +3,7 @@
 
 Invariant: a value below the minimum is rejected; a value above the maximum is lowered
 to the maximum rather than rejected, because the maximum is deployment configuration that
-can be lowered after a flow was saved or exported; with no maximum the value is kept, up to
-the largest the column can hold.
+can be lowered after a flow was saved or exported; with no maximum the value is kept.
 """
 
 import pytest
@@ -13,7 +12,6 @@ from rest_framework import serializers
 from tables.validators.execution_timeout_validator import normalize_execution_timeout
 
 MAX_SECONDS = 600
-STORABLE_SECONDS = 2_147_483_647
 
 
 @pytest.mark.parametrize(
@@ -25,8 +23,6 @@ STORABLE_SECONDS = 2_147_483_647
         (MAX_SECONDS, MAX_SECONDS + 1, MAX_SECONDS),
         (None, 3, 3),
         (None, 10_000_000, 10_000_000),
-        (None, STORABLE_SECONDS, STORABLE_SECONDS),
-        (None, STORABLE_SECONDS + 1, STORABLE_SECONDS),
     ],
     ids=[
         "minimum",
@@ -35,8 +31,6 @@ STORABLE_SECONDS = 2_147_483_647
         "above-maximum-is-lowered",
         "no-maximum-minimum",
         "no-maximum-keeps-large",
-        "no-maximum-keeps-storable",
-        "no-maximum-above-storable-is-lowered",
     ],
 )
 def test_accepted_values(settings, max_seconds, requested, expected):

@@ -183,7 +183,7 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
-                            @if (hasPythonCode(preCode)) {
+                            @if (isPythonCodeBlockSaved(preCode, preSelectedSecretIds())) {
                                 <app-execution-timeout-field [field]="preExecutionTimeout" />
                             }
                             <app-node-storage-section
@@ -262,7 +262,7 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
-                            @if (hasPythonCode(postCode)) {
+                            @if (isPythonCodeBlockSaved(postCode, postSelectedSecretIds())) {
                                 <app-execution-timeout-field [field]="postExecutionTimeout" />
                             }
                             <app-node-storage-section

@@ -5,6 +5,10 @@ import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 import { routes } from '../../app.routes';
 import { ToastService } from '../../services/notifications';
 import { ExecutionTimeoutLimits } from '../core/models/execution-timeout-limits.model';
+import {
+    executionTimeoutLimitsResponse,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../utils/testing/execution-timeout-limits.testing';
 import { executionTimeoutLimitsResolver } from './execution-timeout-limits.resolver';
 import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api.service';
 import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
@@ -32,13 +36,12 @@ describe('executionTimeoutLimitsResolver', () => {
     }
 
     it('opens the editor with the limits loaded', async () => {
-        getExecutionTimeoutLimits.mockReturnValue(of({ min_seconds: 5, default_seconds: 120, max_seconds: 3600 }));
+        getExecutionTimeoutLimits.mockReturnValue(of(executionTimeoutLimitsResponse()));
 
         const result = await resolve();
 
-        const limits: ExecutionTimeoutLimits = { minSeconds: 5, defaultSeconds: 120, maxSeconds: 3600 };
-        expect(result).toEqual(limits);
-        expect(TestBed.inject(ExecutionTimeoutLimitsStorageService).limits()).toEqual(limits);
+        expect(result).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
+        expect(TestBed.inject(ExecutionTimeoutLimitsStorageService).limits()).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
         expect(toast.error).not.toHaveBeenCalled();
     });
 

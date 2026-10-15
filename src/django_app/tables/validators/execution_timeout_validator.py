@@ -7,8 +7,8 @@ def normalize_execution_timeout(seconds: int) -> int:
 
     Below the minimum is rejected. Above the maximum is saved as the maximum rather than
     rejected: the maximum is deployment configuration that can be lowered after a flow was
-    saved or exported, and such a flow must still save and import. With no maximum, a
-    value too large for the column is saved as the largest it can hold.
+    saved or exported, and such a flow must still save and import. With no maximum the
+    value is kept; one too large for the column is already rejected by the field itself.
 
     Raises:
         serializers.ValidationError: The timeout is below the minimum.
@@ -18,5 +18,5 @@ def normalize_execution_timeout(seconds: int) -> int:
             f"Execution timeout must be at least {settings.MIN_EXECUTION_TIMEOUT_SECONDS} seconds."
         )
     if settings.MAX_EXECUTION_TIMEOUT_SECONDS is None:
-        return min(seconds, settings.STORABLE_EXECUTION_TIMEOUT_SECONDS)
+        return seconds
     return min(seconds, settings.MAX_EXECUTION_TIMEOUT_SECONDS)

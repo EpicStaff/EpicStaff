@@ -61,7 +61,7 @@ import { ExecutionTimeoutLimitsStorageService } from '../../../services/executio
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
-import { hasPythonCode } from '../../../utils/validation/execution-timeout.validator';
+import { isPythonCodeBlockSaved } from '../../../utils/save/cdt-python-code-block';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
@@ -193,8 +193,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public postCode: string = '';
     protected preExecutionTimeout!: ExecutionTimeoutFormField;
     protected postExecutionTimeout!: ExecutionTimeoutFormField;
-    /** A code block without code is not saved, and neither is its timeout: the field shows only with code. */
-    protected readonly hasPythonCode = hasPythonCode;
+    /** A code block the save drops takes its timeout with it: the field shows only on a block the save keeps. */
+    protected readonly isPythonCodeBlockSaved = isPythonCodeBlockSaved;
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -432,6 +432,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             pre_execution_timeout: this.preExecutionTimeout.control,
             post_execution_timeout: this.postExecutionTimeout.control,
         });
+        this.syncExecutionTimeoutControls();
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
         this.initializeInputMapArray(form, 'post_input_map', postComp.input_map || {});
@@ -1031,12 +1032,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPreCodeChange(code: string): void {
         this.preCode = code;
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
 
     public onPostCodeChange(code: string): void {
         this.postCode = code;
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
@@ -1066,6 +1069,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const prefix = code + '\n\n';
         if (this.preCode.startsWith(prefix)) {
             this.preCode = this.preCode.slice(prefix.length);
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();
@@ -1085,6 +1089,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const prefix = code + '\n\n';
         if (this.postCode.startsWith(prefix)) {
             this.postCode = this.postCode.slice(prefix.length);
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();
@@ -1093,14 +1098,34 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPreSecretsChange(values: number[]): void {
         this.preSelectedSecretIds.set(values);
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
 
     public onPostSecretsChange(values: number[]): void {
         this.postSelectedSecretIds.set(values);
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    /**
+     * A hidden timeout must not block the save: the save drops it with its code block, so its control is disabled
+     * (and left out of the form's validity) while the block would be dropped.
+     */
+    private syncExecutionTimeoutControls(): void {
+        const blocks = [
+            { field: this.preExecutionTimeout, code: this.preCode, secretIds: this.preSelectedSecretIds() },
+            { field: this.postExecutionTimeout, code: this.postCode, secretIds: this.postSelectedSecretIds() },
+        ];
+        for (const { field, code, secretIds } of blocks) {
+            if (!isPythonCodeBlockSaved(code, secretIds)) {
+                field.control.disable({ emitEvent: false });
+            } else if (!this.isReadOnly()) {
+                field.control.enable({ emitEvent: false });
+            }
+        }
     }
 
     // ── Input map helpers ──

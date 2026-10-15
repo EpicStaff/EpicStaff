@@ -3,12 +3,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { InputNumberComponent, TooltipComponent } from '@shared/components';
 
-import { ExecutionTimeoutLimits } from '../../../../core/models/execution-timeout-limits.model';
 import { FlowReadOnlyService } from '../../../../services/flow-readonly.service';
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../../utils/testing/execution-timeout-limits.testing';
 import { ExecutionTimeoutFieldComponent } from './execution-timeout-field.component';
 import { ExecutionTimeoutFormField, MAX_STORABLE_SECONDS } from './execution-timeout-form-field';
-
-const LIMITS: ExecutionTimeoutLimits = { minSeconds: 5, defaultSeconds: 120, maxSeconds: 3600 };
 
 describe('ExecutionTimeoutFieldComponent', () => {
     let fixture: ComponentFixture<ExecutionTimeoutFieldComponent>;
@@ -55,14 +53,14 @@ describe('ExecutionTimeoutFieldComponent', () => {
     }
 
     it('splits the timeout into hours, minutes and seconds', () => {
-        render(new ExecutionTimeoutFormField(3725, LIMITS));
+        render(new ExecutionTimeoutFormField(3725, TEST_EXECUTION_TIMEOUT_LIMITS));
 
         expect(shownParts()).toEqual([1, 2, 5]);
         expect(parts().map((part) => part.ariaLabel())).toEqual(['Hours', 'Minutes', 'Seconds']);
     });
 
     it('names the group of parts for assistive technologies, and announces its message', () => {
-        render(new ExecutionTimeoutFormField(90, LIMITS));
+        render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
         const host = fixture.nativeElement as HTMLElement;
 
         const group = host.querySelector('[role="group"]');
@@ -72,13 +70,13 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('shows the default for a code without a timeout', () => {
-        render(new ExecutionTimeoutFormField(undefined, LIMITS));
+        render(new ExecutionTimeoutFormField(undefined, TEST_EXECUTION_TIMEOUT_LIMITS));
 
         expect(shownParts()).toEqual([0, 2, 0]);
     });
 
     it('puts the parts back together into seconds on an edit', () => {
-        const field = new ExecutionTimeoutFormField(125, LIMITS);
+        const field = new ExecutionTimeoutFormField(125, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(1, 30);
@@ -88,7 +86,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('counts an emptied part as zero', () => {
-        const field = new ExecutionTimeoutFormField(3725, LIMITS);
+        const field = new ExecutionTimeoutFormField(3725, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(0, null);
@@ -97,7 +95,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('normalizes the parts once an edit overflows one of them', () => {
-        const field = new ExecutionTimeoutFormField(60, LIMITS);
+        const field = new ExecutionTimeoutFormField(60, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(2, 90);
@@ -107,7 +105,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('rounds a pasted fraction to whole seconds', () => {
-        const field = new ExecutionTimeoutFormField(60, LIMITS);
+        const field = new ExecutionTimeoutFormField(60, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(2, 0.6);
@@ -116,8 +114,18 @@ describe('ExecutionTimeoutFieldComponent', () => {
         expect(shownParts()).toEqual([0, 1, 1]);
     });
 
+    it('takes a pasted negative number as zero', () => {
+        const field = new ExecutionTimeoutFormField(60, TEST_EXECUTION_TIMEOUT_LIMITS);
+        render(field);
+
+        type(1, -5);
+
+        expect(field.control.value).toBe(0);
+        expect(shownParts()).toEqual([0, 0, 0]);
+    });
+
     it('caps a huge edit at what the backend can store when there is no maximum', () => {
-        const field = new ExecutionTimeoutFormField(60, { ...LIMITS, maxSeconds: null });
+        const field = new ExecutionTimeoutFormField(60, { ...TEST_EXECUTION_TIMEOUT_LIMITS, maxSeconds: null });
         render(field);
 
         type(0, 10_000_000);
@@ -126,19 +134,19 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('names the range in its tooltip', () => {
-        render(new ExecutionTimeoutFormField(90, LIMITS));
+        render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
 
         expect(tooltipText()).toContain('(5 s to 1 h)');
     });
 
     it('names only the minimum in its tooltip when there is no maximum', () => {
-        render(new ExecutionTimeoutFormField(90, { ...LIMITS, maxSeconds: null }));
+        render(new ExecutionTimeoutFormField(90, { ...TEST_EXECUTION_TIMEOUT_LIMITS, maxSeconds: null }));
 
         expect(tooltipText()).toContain('(at least 5 s)');
     });
 
     it('says the timeout is below the minimum, and marks every part invalid', () => {
-        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        const field = new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(1, 0);
@@ -151,14 +159,14 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('shows no message for a timeout within the limits', () => {
-        render(new ExecutionTimeoutFormField(LIMITS.maxSeconds!, LIMITS));
+        render(new ExecutionTimeoutFormField(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds!, TEST_EXECUTION_TIMEOUT_LIMITS));
 
         expect(message('error')).toBeNull();
         expect(message('warning')).toBeNull();
     });
 
     it('warns that a stored timeout above the maximum runs for the maximum, without an error', () => {
-        const field = new ExecutionTimeoutFormField(7200, LIMITS);
+        const field = new ExecutionTimeoutFormField(7200, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         expect(shownParts()).toEqual([2, 0, 0]);
@@ -168,28 +176,31 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('caps an edit above the maximum at the maximum, and shows the capped value', () => {
-        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        const field = new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         type(0, 5);
 
-        expect(field.control.value).toBe(LIMITS.maxSeconds);
+        expect(field.control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds);
         expect(shownParts()).toEqual([1, 0, 0]);
         expect(message('warning')).toBeNull();
     });
 
     it('resets a typed part even when the capped total equals the one before', () => {
-        const field = new ExecutionTimeoutFormField(LIMITS.maxSeconds!, LIMITS);
+        const field = new ExecutionTimeoutFormField(
+            TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds!,
+            TEST_EXECUTION_TIMEOUT_LIMITS
+        );
         render(field);
 
         type(0, 3);
 
-        expect(field.control.value).toBe(LIMITS.maxSeconds);
+        expect(field.control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds);
         expect(shownParts()).toEqual([1, 0, 0]);
     });
 
     it('shows the capped value in every part, without the warning, once a timeout stored above the maximum is edited', () => {
-        render(new ExecutionTimeoutFormField(7200, LIMITS));
+        render(new ExecutionTimeoutFormField(7200, TEST_EXECUTION_TIMEOUT_LIMITS));
 
         type(2, 1);
 
@@ -198,7 +209,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('follows a value set on the control from outside', () => {
-        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        const field = new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS);
         render(field);
 
         field.control.setValue(3661);
@@ -208,7 +219,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     });
 
     it('disables every part while the flow is read-only, and follows it', () => {
-        render(new ExecutionTimeoutFormField(90, LIMITS));
+        render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
         expect(parts().some((part) => part.isDisabled())).toBe(false);
 
         isReadOnly.set(true);

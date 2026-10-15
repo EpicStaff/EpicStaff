@@ -33,7 +33,7 @@ function tableNode(
     name: string,
     preTimeout: number | undefined,
     postTimeout: number | undefined,
-    { preCode = 'def main(): pass', postCode = 'def main(): pass' } = {}
+    { preCode = 'def main(): pass', postCode = 'def main(): pass', preSecretIds = [] as number[] } = {}
 ): NodeModel {
     return {
         id: name,
@@ -41,7 +41,7 @@ function tableNode(
         node_name: name,
         data: {
             table: {
-                pre_computation: { code: preCode, execution_timeout: preTimeout },
+                pre_computation: { code: preCode, secret_ids: preSecretIds, execution_timeout: preTimeout },
                 post_computation: { code: postCode, execution_timeout: postTimeout },
             },
         },
@@ -141,6 +141,12 @@ describe('invalidExecutionTimeoutMessages', () => {
         ];
 
         expect(invalidExecutionTimeoutMessages(nodes, MIN_SECONDS)).toEqual([]);
+    });
+
+    it('checks the timeout of a computation without code but with secrets: the save keeps it', () => {
+        const table = tableNode('Secrets only', 1, 60, { preCode: '', preSecretIds: [3] });
+
+        expect(invalidExecutionTimeoutMessages([table], MIN_SECONDS)).toEqual([message('Secrets only')]);
     });
 
     it('ignores nodes that run no python code', () => {

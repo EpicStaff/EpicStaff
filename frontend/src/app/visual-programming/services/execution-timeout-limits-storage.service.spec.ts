@@ -8,11 +8,15 @@ import { firstValueFrom } from 'rxjs';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { ConfigService } from '../../services/config';
 import { GetExecutionTimeoutLimitsResponse } from '../core/models/execution-timeout-limits.model';
+import {
+    executionTimeoutLimitsResponse,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../utils/testing/execution-timeout-limits.testing';
 import { provideVisualProgrammingStorages } from '../visual-programming.providers';
 import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
 
 const LIMITS_URL = '/api/execution-timeout-limits/';
-const RESPONSE: GetExecutionTimeoutLimitsResponse = { min_seconds: 5, default_seconds: 120, max_seconds: 3600 };
+const RESPONSE = executionTimeoutLimitsResponse();
 
 describe('ExecutionTimeoutLimitsStorageService', () => {
     let storage: ExecutionTimeoutLimitsStorageService;
@@ -48,7 +52,7 @@ describe('ExecutionTimeoutLimitsStorageService', () => {
     it('gives the limits the backend returned, in seconds', async () => {
         await loadWith(RESPONSE);
 
-        expect(storage.limits()).toEqual({ minSeconds: 5, defaultSeconds: 120, maxSeconds: 3600 });
+        expect(storage.limits()).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
     });
 
     it('keeps a missing maximum as none', async () => {

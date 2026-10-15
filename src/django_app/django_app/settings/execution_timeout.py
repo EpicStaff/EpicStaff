@@ -3,8 +3,6 @@ from django.core.exceptions import ImproperlyConfigured
 from django_app.settings import env
 
 MIN_EXECUTION_TIMEOUT_SECONDS = 3
-# The largest value PythonCode.execution_timeout (a Postgres int4) can hold.
-STORABLE_EXECUTION_TIMEOUT_SECONDS = 2_147_483_647
 
 _max_execution_timeout = env.time("SANDBOX_EXECUTION_TIMEOUT")
 _default_execution_timeout = env.time("SANDBOX_DEFAULT_EXECUTION_TIMEOUT")
