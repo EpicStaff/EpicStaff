@@ -31,6 +31,7 @@ import {
 
 import { SecretsStorageService } from '../../services/secrets/secrets-storage.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
+import { BinnedSecretNoteComponent } from '../binned-secret-note/binned-secret-note.component';
 import { CustomInputComponent } from '../form-input/form-input.component';
 import { SelectComponent, SelectItem } from '../select/select.component';
 
@@ -57,7 +58,7 @@ type Mode = 'existing' | 'new';
 
 @Component({
     selector: 'app-webhook-trigger-field',
-    imports: [ReactiveFormsModule, CustomInputComponent, SelectComponent],
+    imports: [BinnedSecretNoteComponent, ReactiveFormsModule, CustomInputComponent, SelectComponent],
     templateUrl: './webhook-trigger-field.component.html',
     styleUrls: ['./webhook-trigger-field.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -90,6 +91,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     providerType = signal<WebhookProviderType | null>(null);
     authKindValue = signal<WebhookTriggerAuthKind | null>(null);
     protected readonly authSecretIdValue = signal<number | null>(null);
+    private readonly ngrokTokenSecretIdValue = signal<number | null>(null);
     triggers = signal<WebhookTriggerModel[]>([]);
     private triggersLoaded = signal(false);
     selectedExistingId = signal<number | null>(null);
@@ -101,13 +103,8 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         const allowed = new Set(this.allowedProviders());
         return WEBHOOK_PROVIDER_ITEMS.filter((i) => allowed.has(i.value as WebhookProviderType));
     });
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** The ngrok token's options: a picked token in the recycle bin keeps its option here only. */
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.ngrokTokenSecretIdValue()));
     readonly regionItems = WEBHOOK_REGION_ITEMS;
     // Localhost can only use the Webhook Node auth strategy — hide the rest to prevent invalid combos.
     authKindItems = computed<SelectItem[]>(() => {
@@ -138,7 +135,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     // Keep the trigger's current secret selectable even when it is missing from the secrets list
     // (e.g. no Secrets read permission), so the pre-selected value still renders instead of looking empty.
     protected readonly authSecretItems = computed<SelectItem[]>(() => {
-        const items = this.secretItems();
+        const items = this.secretsStorageService.selectItems(this.authSecretIdValue());
         const currentSecretId = this.existingAuth()?.secret_id ?? null;
         if (currentSecretId == null || items.some((i) => i.value === currentSecretId)) return items;
         return [
@@ -222,6 +219,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             this.providerType.set((this.form.value.provider_type as WebhookProviderType | null) ?? null);
             this.authKindValue.set((this.form.value.auth_kind as WebhookTriggerAuthKind | null) ?? null);
             this.authSecretIdValue.set(this.form.value.auth_secret_id ?? null);
+            this.ngrokTokenSecretIdValue.set(this.form.value.ngrok_auth_token_secret_id ?? null);
             if (this.mode() === 'new') this.emit();
         });
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -410,6 +408,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             this.providerType.set(value.provider_type ?? null);
             this.authKindValue.set(existingKind);
             this.authSecretIdValue.set(existingSecretId);
+            this.ngrokTokenSecretIdValue.set(value.ngrok_config?.auth_token_secret_id ?? null);
             this.applyProviderValidators(value.provider_type ?? null);
             return;
         }
@@ -420,6 +419,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.providerType.set(null);
         this.authKindValue.set(null);
         this.authSecretIdValue.set(null);
+        this.ngrokTokenSecretIdValue.set(null);
         this.applyProviderValidators(null);
     }
 

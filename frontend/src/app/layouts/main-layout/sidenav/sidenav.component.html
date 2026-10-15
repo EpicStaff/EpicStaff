@@ -131,55 +131,28 @@
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
-        @if (isEpicChatEnabled) {
+        @if (recycleBinNavItem.isPermitted()) {
             <li
                 class="sidenav-nav-item"
-                (mouseenter)="showEpicChatTooltip.set(true)"
-                (mouseleave)="showEpicChatTooltip.set(false)"
+                (mouseenter)="recycleBinNavItem.showTooltip = true"
+                (mouseleave)="recycleBinNavItem.showTooltip = false"
             >
-                <div class="tooltip-wrapper">
-                    <div
-                        class="sidenav-nav-link epic-chat-slot"
-                        [class.active]="epicChatService.isChatOpen()"
+                <div class="tooltip-wrapper recycle-bin-block">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="resolveRouteLink(recycleBinNavItem)"
                     >
-                        <!-- chat-icon-size must match $chat-launcher-size in sidenav.component.scss. -->
-                        <epic-chat
-                            #epicChat
-                            class="epic-chat-host"
-                            theme-preset="epicstaff"
-                            [themeConfig]="epicChatThemeConfig"
-                            chat-icon-path=""
-                            chat-icon-size="32"
-                            message-timeout="180000"
-                            [apiBaseUrl]="apiBaseUrl"
-                            [accessToken]="accessToken()"
-                            [canReadFlows]="canReadFlows()"
-                            [syncAgentsFromApi]="false"
-                            [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-                            [attr.chat-left]="epicChatLeft()"
-                            [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
-                            [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
-                            [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
-                            [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
-                            [dockEnabled]="true"
-                            [fileAttachmentDisabled]="false"
-                            [isDockMode]="epicChatService.isDocked()"
-                            [epChatCommand]="epicChatService.epChatCommand()"
-                            (epChatCommandResult)="onEpChatCommandResult($event)"
-                            (epChatEvent)="onEpChatEvent($event)"
-                        ></epic-chat>
-                        @if (isExpanded()) {
-                            <!-- The widget's own launcher is the keyboard control; the label widens the click target. -->
-                            <span
-                                class="sidenav-row-label epic-chat-label text-body-medium"
-                                (click)="toggleEpicChat()"
-                                >{{ epicChatLabel }}</span
-                            >
-                        }
-                    </div>
+                        <div class="sidenav-link-icon">
+                            <!-- Tabler's outline trash, from the webfont the app ships: the sprite's trash is solid. -->
+                            <i
+                                class="ti ti-trash recycle-bin-icon"
+                                aria-hidden="true"
+                            ></i>
+                        </div>
+                    </a>
                     <app-tooltip
-                        [text]="epicChatLabel"
-                        [visible]="showEpicChatTooltip() && !isExpanded()"
+                        [text]="recycleBinNavItem.label"
+                        [visible]="recycleBinNavItem.showTooltip"
                     ></app-tooltip>
                 </div>
             </li>

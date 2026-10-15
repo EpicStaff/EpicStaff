@@ -48,7 +48,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         model: str = "gemini-2.0-flash-live-001",
         voice: str = "Puck",
         instructions: str = "You are a helpful assistant",
-        temperature: float = 1.0,
+        temperature: float | None = None,
         org_id: int | None = None,
         user_id: int | None = None,
     ):
@@ -152,6 +152,8 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         """Establish session with the Gemini Live API."""
         config = types.LiveConnectConfig(
             response_modalities=[types.Modality.AUDIO],
+            # None leaves the model's own default in place.
+            temperature=self.temperature,
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice)

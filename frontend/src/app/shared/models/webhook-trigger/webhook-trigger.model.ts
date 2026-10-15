@@ -49,3 +49,9 @@ export type WebhookTriggerPayload = Pick<
 // Form value of webhook-trigger-field: an existing trigger's PK or a trigger being edited.
 // Node serializers accept only the PK; new triggers are created via WebhookTriggerService.
 export type WebhookTriggerWrite = number | WebhookTriggerModel;
+
+/** A webhook trigger in the recycle bin, as its bin list names it (`name` is the trigger's path). */
+export interface BinnedWebhookTrigger {
+    id: number;
+    name: string;
+}

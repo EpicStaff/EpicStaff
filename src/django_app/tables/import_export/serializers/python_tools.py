@@ -5,6 +5,7 @@ from tables.models import (
     PythonCodeTool,
     PythonCodeToolConfig,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_libraries_validator import validate_python_library_spec
 
@@ -39,7 +40,9 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
         return result
 
 
-class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     tool_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCodeTool.objects.all(),
         source="tool",
@@ -55,7 +58,7 @@ class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
         extra_kwargs = {"org": {"write_only": True}}
 
 
-class PythonCodeToolImportSerializer(serializers.ModelSerializer):
+class PythonCodeToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     python_code = PythonCodeImportSerializer(required=False, read_only=True)
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
@@ -71,8 +74,6 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-            "is_soft_deleted",
-            "soft_deleted_at",
         ]
 
     def get_python_code_tool_config(self, instance: PythonCodeTool) -> list[dict]:

@@ -1,6 +1,7 @@
 from loguru import logger
 
 from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.resource_names import TRASH_DIRECTORY
 
 
 class CredentialScopeValidator:
@@ -45,6 +46,8 @@ class CredentialScopeValidator:
             if not normalized_path:
                 raise CredentialScopeValidationError("One of the configured file paths is empty.")
             if ".." in normalized_path.split("/"):
+                raise CredentialScopeValidationError(f"This file path isn't allowed: '{path}'.")
+            if normalized_path.split("/", 1)[0] == TRASH_DIRECTORY:
                 raise CredentialScopeValidationError(f"This file path isn't allowed: '{path}'.")
             scoped_folders.add(f"{normalized_org_prefix}/{normalized_path}")
 

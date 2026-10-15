@@ -83,6 +83,7 @@ from tables.services.rag_assignment_service import SearchConfigService
 from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
+from tables.services.secrets.declaration_validator import binned_secret_names
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -311,6 +312,13 @@ class ConverterService(metaclass=SingletonMeta):
                 "likely deleted after this chat was created."
             )
 
+        # The LLM config is where the user sets temperature; the agent's
+        # default_temperature only covers an LLM config that leaves it unset.
+        if ad.llm_config is not None and ad.llm_config.temperature is not None:
+            temperature = ad.llm_config.temperature
+        else:
+            temperature = ad.default_temperature
+
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
             goal=ad.description or "assist the user",
@@ -331,7 +339,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
-            temperature=ad.default_temperature,
+            temperature=temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
             stop_prompt=rt_agent_chat.stop_prompt,
@@ -474,6 +482,7 @@ class ConverterService(metaclass=SingletonMeta):
             tool_name=python_code_tool.name,
             code=python_code_tool.python_code.code,
             declared=set(python_code_data.secret_names),
+            binned=binned_secret_names(python_code_tool.python_code),
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
@@ -543,6 +552,7 @@ class ConverterService(metaclass=SingletonMeta):
             tool_name=python_code_tool.name,
             code=python_code.code,
             declared=set(python_code_data.secret_names),
+            binned=binned_secret_names(python_code),
         )
 
         return PythonCodeToolData(

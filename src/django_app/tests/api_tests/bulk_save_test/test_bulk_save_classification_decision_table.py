@@ -547,17 +547,17 @@ def soft_deleted_foreign_section(other_org) -> ClassificationConditionGroupSecti
         id=uuid.uuid4(), classification_decision_table_node=foreign_node, name="foreign"
     )
     ClassificationConditionGroupSection.all_objects.filter(pk=section.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
     return section
 
 
 def _assert_foreign_section_untouched(section) -> None:
     stored = ClassificationConditionGroupSection.all_objects.get(pk=section.pk)
-    assert (stored.classification_decision_table_node_id, stored.name, stored.is_soft_deleted) == (
+    assert (stored.classification_decision_table_node_id, stored.name, stored.active) == (
         section.classification_decision_table_node_id,
         "foreign",
-        True,
+        False,
     )
 
 

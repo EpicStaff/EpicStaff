@@ -3,10 +3,7 @@ import types
 import fakeredis
 import pytest
 
-from services.graph.remembered_outputs import (
-    RememberedOutputsStore,
-    format_remembered_outputs_preamble,
-)
+from services.graph.remembered_outputs import RememberedOutputsStore
 
 
 @pytest.fixture
@@ -75,18 +72,3 @@ async def test_clear_deletes_key(store):
     await store.clear(session_id=1)
 
     assert await store.fetch_all(session_id=1) == []
-
-
-def test_format_preamble_empty_list_returns_empty_string():
-    assert format_remembered_outputs_preamble([]) == ""
-
-
-def test_format_preamble_exact_string_for_two_entries():
-    preamble = format_remembered_outputs_preamble([("a", "out_a"), ("b", "out_b")])
-
-    assert preamble == (
-        "===== PREVIOUS TASKS OUTPUTS =====\n\n"
-        "Task 'a':\nout_a\n\n"
-        "Task 'b':\nout_b\n\n"
-        "===== END PREVIOUS TASKS OUTPUTS =====\n\n"
-    )

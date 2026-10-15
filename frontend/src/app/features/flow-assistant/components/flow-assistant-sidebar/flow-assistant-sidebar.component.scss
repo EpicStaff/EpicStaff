@@ -1,7 +1,7 @@
 @use '../../_ep-tokens' as ep;
 
 :host {
-    @include ep.epicchat-tokens;
+    @include ep.flow-assistant-tokens;
 
     display: flex;
     flex-direction: column;

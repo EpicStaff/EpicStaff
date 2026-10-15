@@ -697,6 +697,50 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
     )
 
 
+# ---------------------------------------------------------------------------
+# Path resolution safety
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_path_resolves_legitimate_dot_and_bracket_paths():
+    # Legitimate dot, direct lookup, and bracket paths stay working.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {
+        "variables": DotDict(
+            {
+                "chat_id": "abc",
+                "index": 1,
+                "messages": [DotDict({"text": "first"}), DotDict({"text": "second"})],
+            }
+        ),
+        "session_id": 42,
+    }
+
+    assert resolve("variables.chat_id", ctx) == "abc"
+    assert resolve("session_id", ctx) == 42
+    assert resolve("variables.messages[variables.index].text", ctx) == "second"
+
+
+def test_resolve_path_rejects_dunder_dot_token():
+    # A dunder dot token must not reach Python internals.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"chat_id": "abc"})}
+
+    with pytest.raises(KeyError):
+        resolve("variables.__class__", ctx)
+    with pytest.raises(KeyError):
+        resolve("variables.__class__.__init__.__globals__", ctx)
+
+
+def test_resolve_path_allows_bracket_access_to_underscore_domain_key():
+    # Bracket access is item lookup, not getattr — an underscore domain key
+    # must still resolve rather than be over-blocked.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"attr_name": "_secret", "_secret": "leak"})}
+
+    assert resolve("variables[variables.attr_name]", ctx) == "leak"
+
+
 @pytest.mark.asyncio
 async def test_batch_run_failure_names_the_row_range(monkeypatch):
     monkeypatch.setattr(

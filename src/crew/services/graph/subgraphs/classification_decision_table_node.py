@@ -195,6 +195,10 @@ class ClassificationDecisionTableNodeSubgraph:
                 else:
                     raise KeyError(f"'{token}' not found in context")
             else:
+                # Block dunder/underscore tokens: the author-controlled path
+                # could otherwise reach Python internals (e.g. __globals__).
+                if token.startswith("_"):
+                    raise KeyError(f"'{token}' is not an allowed path segment")
                 # Dot access — try getattr, then [] for dict-like objects
                 try:
                     value = getattr(value, token)

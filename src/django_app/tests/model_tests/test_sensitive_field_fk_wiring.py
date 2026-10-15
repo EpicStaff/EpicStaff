@@ -38,7 +38,7 @@ def test_llm_config_has_nullable_api_key_secret_fk(org):
 
 
 @pytest.mark.django_db
-def test_deleting_referenced_secret_nulls_the_fk_not_the_config(admin_client, org):
+def test_binning_a_secret_keeps_the_fk_and_purging_it_nulls_the_fk_not_the_config(admin_client, org):
     model = LLMModel.objects.create(name="gpt-4o", llm_provider=None, org=org)
     secret = Secret(org=org, name="fk-wiring-test-key")
     secret_encryption.encrypt(text="sk-live-abc123").write_to(secret)
@@ -49,6 +49,12 @@ def test_deleting_referenced_secret_nulls_the_fk_not_the_config(admin_client, or
 
     resp = admin_client.delete(f"/api/secrets/{secret.id}/")
     assert resp.status_code == 204
+
+    # In the recycle bin the link stays, so a restore brings the config back working.
+    config.refresh_from_db()
+    assert config.api_key_secret_id == secret.id
+
+    Secret.all_objects.get(pk=secret.pk).purge()
 
     config.refresh_from_db()
     assert config.api_key_secret_id is None

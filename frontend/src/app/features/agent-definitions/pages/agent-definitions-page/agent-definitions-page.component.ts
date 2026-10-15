@@ -29,6 +29,7 @@ import { map } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
@@ -90,6 +91,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     protected readonly storageFacade: StorageTreeFacade = inject(StorageTreeFacade);
     private readonly unsavedChangesDialog: UnsavedChangesDialogService = inject(UnsavedChangesDialogService);
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings: RecycleBinSettingsService = inject(RecycleBinSettingsService);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly route: ActivatedRoute = inject(ActivatedRoute);
@@ -532,7 +534,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
         const ownedSurfaceCount = this.store.surfaces().filter((s) => s.owner_agent === agentId).length;
         const usage = { agents: 0, flows: 0, chats: 0 };
-        const dialog = buildDeleteAgentDialog(agent, usage, ownedSurfaceCount);
+        const dialog = buildDeleteAgentDialog(agent, usage, ownedSurfaceCount, this.recycleBinSettings.retentionDays());
 
         return this.confirmationDialog
             .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
@@ -550,7 +552,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             flows: usageRaw.flows.length,
             chats: usageRaw.chats.length,
         };
-        const dialog = buildDeleteSurfaceDialog(surface, usage, shared);
+        const dialog = buildDeleteSurfaceDialog(surface, usage, shared, this.recycleBinSettings.retentionDays());
 
         return this.confirmationDialog
             .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Prefetch
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
@@ -10,7 +11,21 @@ from tables.models.base_models import (
     SoftDeleteMixin,
     TimestampMixin,
     soft_delete_consistency_constraint,
+    without_internal_rows,
 )
+
+#: Where `linked_secrets_prefetch()` puts a PythonCode's secrets, binned ones included.
+LINKED_SECRETS_ATTR = "prefetched_linked_secrets"
+
+
+def linked_secrets_prefetch(python_code_path: str) -> Prefetch:
+    """Prefetch the secrets the PythonCode at `python_code_path` links to, for `linked_secrets()`."""
+    secret_model = PythonCode.secrets.field.related_model
+    return Prefetch(
+        f"{python_code_path}__secrets",
+        queryset=without_internal_rows(secret_model.all_objects.all()),
+        to_attr=LINKED_SECRETS_ATTR,
+    )
 
 
 def default_execution_timeout() -> int:
@@ -29,6 +44,22 @@ class PythonCode(ContentHashMixin, models.Model):
         default=default_execution_timeout,
         help_text="Seconds a single run of this code may take before it is killed.",
     )
+
+    def linked_secrets(self):
+        """Every secret this code links to, binned ones included: they stay linked until purged.
+
+        For editing only. Running the code reads `secrets` (live only), so a binned secret
+        is never delivered. Uses `linked_secrets_prefetch()` when the query added it; a plain
+        `secrets` prefetch can't be used, since its cache holds live secrets only.
+        """
+        prefetched = getattr(self, LINKED_SECRETS_ATTR, None)
+        if prefetched is not None:
+            return prefetched
+        return list(without_internal_rows(self.secrets.model.all_objects.filter(python_codes=self)))
+
+    def forget_linked_secrets(self) -> None:
+        """Drop the prefetched list after the links change: a plain attribute, so nothing else does."""
+        self.__dict__.pop(LINKED_SECRETS_ATTR, None)
 
     def get_libraries_list(self):
         return list(filter(None, self.libraries.split(" ")))
@@ -55,7 +86,7 @@ class PythonCodeTool(
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]

@@ -96,6 +96,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
 )
+from tables.views.recycle_bin_views import RecycleBinEmptyView, RecycleBinSettingsView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
@@ -239,6 +240,12 @@ urlpatterns = [
     ),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
     path("quickstart/", QuickstartView.as_view(), name="quickstart"),
+    path(
+        "recycle-bin/settings/",
+        RecycleBinSettingsView.as_view(),
+        name="recycle-bin-settings",
+    ),
+    path("recycle-bin/empty/", RecycleBinEmptyView.as_view(), name="recycle-bin-empty"),
     path(
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
