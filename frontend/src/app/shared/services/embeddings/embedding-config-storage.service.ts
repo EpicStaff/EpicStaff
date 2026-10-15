@@ -1,5 +1,11 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from '@shared/models';
+import {
+    BulkDeleteResponse,
+    BulkDeleteTarget,
+    CreateEmbeddingConfigRequest,
+    EmbeddingConfig,
+    GetEmbeddingConfigRequest,
+} from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -9,7 +15,7 @@ import { EmbeddingConfigsService } from './embedding-configs.service';
 @Injectable({
     providedIn: 'root',
 })
-export class EmbeddingConfigStorageService implements StorageService {
+export class EmbeddingConfigStorageService implements StorageService, BulkDeleteTarget {
     private readonly embeddingConfigsService = inject(EmbeddingConfigsService);
 
     private configsRequest$?: Observable<EmbeddingConfig[]>;
@@ -70,13 +76,20 @@ export class EmbeddingConfigStorageService implements StorageService {
         );
     }
 
-    deleteConfig(id: number): Observable<void> {
-        return this.embeddingConfigsService.deleteEmbeddingConfig(id).pipe(
-            tap(() => {
-                this.configsSignal.update((configs) => configs.filter((c) => c.id !== id));
-            }),
-            catchError((err) => throwError(() => err))
-        );
+    previewBulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.embeddingConfigsService.bulkDelete(ids, { dryRun: true });
+    }
+
+    bulkDelete(ids: number[]): Observable<BulkDeleteResponse> {
+        return this.embeddingConfigsService
+            .bulkDelete(ids)
+            .pipe(tap((response) => this.removeFromCache([...response.deleted_ids, ...response.not_found_ids])));
+    }
+
+    removeFromCache(ids: number[]): void {
+        if (ids.length === 0) return;
+        const idSet = new Set(ids);
+        this.configsSignal.update((configs) => configs.filter((c) => !idSet.has(c.id)));
     }
 
     markConfigsOutdated(): void {

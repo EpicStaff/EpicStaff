@@ -10,7 +10,10 @@
             <div class="name-row">
                 @if (selectMode) {
                     <div class="selection-checkbox">
-                        <app-checkbox [checked]="isSelected"></app-checkbox>
+                        <app-checkbox
+                            [checked]="isSelected"
+                            [disabled]="isDeleting"
+                        ></app-checkbox>
                     </div>
                 }
                 <span class="flow-name">{{ flow.name }}</span>

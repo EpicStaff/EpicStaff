@@ -20,14 +20,45 @@
                 />
             </div>
 
-            <app-button
-                class="add-btn"
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                (click)="onAddModel()"
-                leftIcon="plus"
-            >
-                Add Configuration
-            </app-button>
+            @if (!selectMode()) {
+                <app-button
+                    class="add-btn"
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                    (click)="onAddModel()"
+                    leftIcon="plus"
+                >
+                    Add Configuration
+                </app-button>
+                <app-button
+                    type="ghost"
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    (click)="enterSelectMode()"
+                >
+                    Select
+                </app-button>
+            } @else {
+                <app-button
+                    type="ghost"
+                    [disabled]="isDeleting()"
+                    (click)="exitSelectMode()"
+                >
+                    Cancel
+                </app-button>
+                <app-button
+                    type="ghost"
+                    [disabled]="isDeleting()"
+                    (click)="toggleSelectAll()"
+                >
+                    {{ allVisibleSelected() ? 'Deselect all' : 'Select all' }}
+                </app-button>
+                <app-button
+                    type="secondary"
+                    [disabled]="selectedCount() === 0 || isDeleting()"
+                    (click)="deleteSelected()"
+                >
+                    Delete {{ selectedCount() }}
+                </app-button>
+            }
         </div>
     </header>
 
@@ -61,6 +92,10 @@
                                 @for (model of group.models; track model.configType + '-' + model.id) {
                                     <app-llm-library-card
                                         [model]="model"
+                                        [selectMode]="selectMode()"
+                                        [selected]="isModelSelected(model)"
+                                        [isDeleting]="isDeleting()"
+                                        (selectedChange)="onCardSelectedChange(model, $event)"
                                         (editClick)="onEdit($event)"
                                         (deleteClick)="onDelete($event)"
                                     ></app-llm-library-card>
@@ -90,35 +125,53 @@
                 } @else {
                     <div class="grid">
                         @for (c of provider.configs; track c.id) {
-                            <article class="voice-card">
+                            <article
+                                class="voice-card"
+                                [class.voice-card--select-mode]="selectMode()"
+                                [class.voice-card--selected]="selectMode() && isVoiceSelected(provider, c)"
+                                (click)="onVoiceSelectedChange(provider, c)"
+                            >
                                 <div class="top">
                                     <span class="model">{{ c.model_name }}</span>
-                                    <div class="actions">
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
-                                            type="button"
-                                            class="action"
-                                            title="Edit"
-                                            (click)="onEditConfig(provider, c)"
+                                    @if (selectMode()) {
+                                        <div
+                                            class="checkbox"
+                                            (click)="$event.stopPropagation()"
                                         >
-                                            <i
-                                                class="ti ti-pencil"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                        <button
-                                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                                            type="button"
-                                            class="action delete"
-                                            title="Delete"
-                                            (click)="onDeleteConfig(provider, c)"
-                                        >
-                                            <i
-                                                class="ti ti-x"
-                                                aria-hidden="true"
-                                            ></i>
-                                        </button>
-                                    </div>
+                                            <app-checkbox
+                                                [checked]="isVoiceSelected(provider, c)"
+                                                [disabled]="isDeleting()"
+                                                (changed)="onVoiceSelectedChange(provider, c)"
+                                            ></app-checkbox>
+                                        </div>
+                                    } @else {
+                                        <div class="actions">
+                                            <button
+                                                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
+                                                type="button"
+                                                class="action"
+                                                title="Edit"
+                                                (click)="onEditConfig(provider, c)"
+                                            >
+                                                <i
+                                                    class="ti ti-pencil"
+                                                    aria-hidden="true"
+                                                ></i>
+                                            </button>
+                                            <button
+                                                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                                                type="button"
+                                                class="action delete"
+                                                title="Delete"
+                                                (click)="onDeleteConfig(provider, c)"
+                                            >
+                                                <i
+                                                    class="ti ti-x"
+                                                    aria-hidden="true"
+                                                ></i>
+                                            </button>
+                                        </div>
+                                    }
                                 </div>
                                 <div class="name">{{ c.custom_name }}</div>
                             </article>

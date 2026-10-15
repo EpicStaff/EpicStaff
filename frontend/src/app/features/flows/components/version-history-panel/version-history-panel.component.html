@@ -1,16 +1,28 @@
 <div class="dialog-wrapper">
     <div class="panel-header">
         <p class="panel-header__title">Version History</p>
-        <button
-            (click)="closed.emit()"
-            matTooltip="Close"
-            class="panel-header__close"
-        >
-            <app-svg-icon
-                icon="x"
-                size="20px"
-            />
-        </button>
+        <div class="panel-header__actions">
+            @if (!selectMode()) {
+                <app-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                    type="ghost"
+                    mod="small"
+                    (click)="enterSelectMode()"
+                >
+                    Select
+                </app-button>
+            }
+            <button
+                (click)="closed.emit()"
+                matTooltip="Close"
+                class="panel-header__close"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="20px"
+                />
+            </button>
+        </div>
     </div>
     <div class="dialog-content">
         @if (isLoading) {
@@ -30,9 +42,23 @@
         @for (version of versionsList; track version.id) {
             <div
                 class="version-card"
-                [class.version-card--selected]="selectedVersionId === version.id"
-                (click)="selectVersion(version)"
+                [class.version-card--selected]="
+                    selectMode() ? isVersionSelected(version.id) : selectedVersionId === version.id
+                "
+                (click)="onCardClick(version)"
             >
+                @if (selectMode()) {
+                    <div
+                        class="version-checkbox"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <app-checkbox
+                            [checked]="isVersionSelected(version.id)"
+                            [disabled]="isDeleting()"
+                            (changed)="toggleVersionSelection(version.id)"
+                        ></app-checkbox>
+                    </div>
+                }
                 <div class="version-info">
                     @if (editingVersionId === version.id && editingField === 'name') {
                         <input
@@ -58,78 +84,100 @@
                     }
                     <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, HH:mm' }}</div>
                 </div>
-                <div class="version-menu">
-                    <app-icon-button
-                        #menuOrigin="cdkOverlayOrigin"
-                        cdkOverlayOrigin
-                        icon="dots-vertical"
-                        size="1.5rem"
-                        ariaLabel="Version options"
-                        tooltip="Version options"
-                        (onClick)="toggleMenu(version.id)"
-                    ></app-icon-button>
+                @if (!selectMode()) {
+                    <div class="version-menu">
+                        <app-icon-button
+                            #menuOrigin="cdkOverlayOrigin"
+                            cdkOverlayOrigin
+                            icon="dots-vertical"
+                            size="1.5rem"
+                            ariaLabel="Version options"
+                            tooltip="Version options"
+                            (onClick)="toggleMenu(version.id)"
+                        ></app-icon-button>
 
-                    <ng-template
-                        cdkConnectedOverlay
-                        [cdkConnectedOverlayOrigin]="menuOrigin"
-                        [cdkConnectedOverlayOpen]="openMenuId === version.id"
-                        cdkConnectedOverlayPanelClass="action-dropdown-panel"
-                        [cdkConnectedOverlayPositions]="[
-                            {
-                                originX: 'end',
-                                originY: 'bottom',
-                                overlayX: 'end',
-                                overlayY: 'top',
-                                offsetY: 4,
-                            },
-                        ]"
-                        (overlayOutsideClick)="openMenuId = null"
-                        (detach)="openMenuId = null"
-                    >
-                        <div class="action-dropdown-panel__inner">
-                            <button
-                                class="action-dropdown-panel__item"
-                                (click)="restoreVersion(version, $event)"
-                            >
-                                Restore
-                            </button>
-                            <button
-                                class="action-dropdown-panel__item"
-                                (click)="createFlowFromVersion(version, $event)"
-                            >
-                                Create flow from this
-                            </button>
-                            <button
-                                class="action-dropdown-panel__item"
-                                (click)="startEdit(version, 'name')"
-                            >
-                                Rename
-                            </button>
-                            <button
-                                class="action-dropdown-panel__item"
-                                (click)="startEdit(version, 'description')"
-                            >
-                                Change Description
-                            </button>
-                            <button
-                                class="action-dropdown-panel__item action-dropdown-panel__item--danger"
-                                (click)="deleteVersion(version, $event)"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </ng-template>
-                </div>
+                        <ng-template
+                            cdkConnectedOverlay
+                            [cdkConnectedOverlayOrigin]="menuOrigin"
+                            [cdkConnectedOverlayOpen]="openMenuId === version.id"
+                            cdkConnectedOverlayPanelClass="action-dropdown-panel"
+                            [cdkConnectedOverlayPositions]="[
+                                {
+                                    originX: 'end',
+                                    originY: 'bottom',
+                                    overlayX: 'end',
+                                    overlayY: 'top',
+                                    offsetY: 4,
+                                },
+                            ]"
+                            (overlayOutsideClick)="openMenuId = null"
+                            (detach)="openMenuId = null"
+                        >
+                            <div class="action-dropdown-panel__inner">
+                                <button
+                                    class="action-dropdown-panel__item"
+                                    (click)="restoreVersion(version, $event)"
+                                >
+                                    Restore
+                                </button>
+                                <button
+                                    class="action-dropdown-panel__item"
+                                    (click)="createFlowFromVersion(version, $event)"
+                                >
+                                    Create flow from this
+                                </button>
+                                <button
+                                    class="action-dropdown-panel__item"
+                                    (click)="startEdit(version, 'name')"
+                                >
+                                    Rename
+                                </button>
+                                <button
+                                    class="action-dropdown-panel__item"
+                                    (click)="startEdit(version, 'description')"
+                                >
+                                    Change Description
+                                </button>
+                                <button
+                                    *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                                    class="action-dropdown-panel__item action-dropdown-panel__item--danger"
+                                    (click)="deleteVersion(version, $event)"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </ng-template>
+                    </div>
+                }
             </div>
         }
     </div>
     <div class="dialog-footer">
-        <button
-            class="restore-version-btn"
-            [disabled]="!selectedVersionId"
-            (click)="restoreSelectedVersion()"
-        >
-            Restore This Version
-        </button>
+        @if (selectMode()) {
+            <div class="footer-select-actions">
+                <app-button
+                    type="ghost"
+                    [disabled]="isDeleting()"
+                    (click)="cancelSelectMode()"
+                >
+                    Cancel
+                </app-button>
+                <app-button
+                    type="secondary"
+                    [disabled]="selectedCount() === 0 || isDeleting()"
+                    (click)="deleteSelectedVersions()"
+                >
+                    {{ deleteButtonLabel() }}
+                </app-button>
+            </div>
+        } @else {
+            <button
+                class="restore-version-btn"
+                [disabled]="!selectedVersionId"
+                (click)="restoreSelectedVersion()"
+            >
+                Restore This Version
+            </button>
+        }
     </div>
 </div>

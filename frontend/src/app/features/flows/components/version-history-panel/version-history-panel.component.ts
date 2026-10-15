@@ -4,6 +4,7 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
     ElementRef,
     HostListener,
@@ -11,6 +12,7 @@ import {
     input,
     OnInit,
     output,
+    signal,
     ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -19,16 +21,29 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
-    ConfirmationDialogService,
+    ButtonComponent,
+    CheckboxComponent,
     IconButtonComponent,
     SpinnerComponent,
 } from '@shared/components';
-import { filter, switchMap } from 'rxjs';
+import { HasPermissionDirective } from '@shared/directives';
+import {
+    ActionCode,
+    BulkDeleteGroup,
+    BulkDeleteItem,
+    BulkDeleteLabel,
+    BulkDeleteTarget,
+    ResourceCode,
+} from '@shared/models';
+import { BulkDeleteService } from '@shared/services';
+import { finalize, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
 import { FlowsApiService } from '../../services/flows-api.service';
+
+const VERSION_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'version', plural: 'versions' };
 
 @Component({
     selector: 'app-version-history-panel',
@@ -40,6 +55,9 @@ import { FlowsApiService } from '../../services/flows-api.service';
         AppSvgIconComponent,
         MatTooltipModule,
         OverlayModule,
+        ButtonComponent,
+        CheckboxComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './version-history-panel.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -53,12 +71,33 @@ export class VersionHistoryPanelComponent implements OnInit {
     public editingVersionId: number | null = null;
     public editingField: 'name' | 'description' | null = null;
     public editingValue: string = '';
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
+
+    public readonly selectMode = signal(false);
+    public readonly selectedVersionIds = signal<ReadonlySet<number>>(new Set());
+    public readonly isDeleting = signal(false);
+    public readonly selectedCount = computed(() => this.selectedVersionIds().size);
+    public readonly deleteButtonLabel = computed(() => {
+        const count = this.selectedCount();
+        return `Delete ${count} ${count === 1 ? 'version' : 'versions'}`;
+    });
 
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement | HTMLTextAreaElement>;
 
     private destroyRef = inject(DestroyRef);
+    private bulkDeleteService = inject(BulkDeleteService);
+
+    private readonly bulkDeleteTarget: BulkDeleteTarget = {
+        previewBulkDelete: (ids) => this.flowApiService.bulkDeleteGraphVersions(ids, { dryRun: true }),
+        bulkDelete: (ids) =>
+            this.flowApiService
+                .bulkDeleteGraphVersions(ids)
+                .pipe(tap((response) => this.removeVersions([...response.deleted_ids, ...response.not_found_ids]))),
+        removeFromCache: (ids) => this.removeVersions(ids),
+    };
 
     public graphId = input.required<number>();
     public graphSaveVersion = input<number | undefined>();
@@ -79,7 +118,6 @@ export class VersionHistoryPanelComponent implements OnInit {
     constructor(
         private flowApiService: FlowsApiService,
         private toastService: ToastService,
-        private confirmationDialogService: ConfirmationDialogService,
         private cdr: ChangeDetectorRef,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
@@ -95,6 +133,38 @@ export class VersionHistoryPanelComponent implements OnInit {
 
     public selectVersion(version: GraphVersionDto): void {
         this.selectedVersionId = version.id;
+    }
+
+    public onCardClick(version: GraphVersionDto): void {
+        if (this.selectMode()) {
+            this.toggleVersionSelection(version.id);
+        } else {
+            this.selectVersion(version);
+        }
+    }
+
+    public enterSelectMode(): void {
+        this.setSelectMode(true);
+    }
+
+    public cancelSelectMode(): void {
+        this.setSelectMode(false);
+    }
+
+    public isVersionSelected(id: number): boolean {
+        return this.selectedVersionIds().has(id);
+    }
+
+    public toggleVersionSelection(id: number): void {
+        if (this.isDeleting()) return;
+
+        const next = new Set(this.selectedVersionIds());
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        this.selectedVersionIds.set(next);
     }
 
     public restoreVersion(version: GraphVersionDto, event?: MouseEvent): void {
@@ -187,31 +257,29 @@ export class VersionHistoryPanelComponent implements OnInit {
     public deleteVersion(version: GraphVersionDto, event?: MouseEvent): void {
         event?.stopPropagation();
         this.openMenuId = null;
-        this.confirmationDialogService
-            .confirm({
-                title: 'Delete Version',
-                message: `This version will be permanently <strong>removed</strong> from the list and cannot be restored.`,
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-                type: 'danger',
-            })
+
+        this.bulkDeleteService
+            .run([this.buildDeleteGroup([{ id: version.id, name: version.name }])])
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe();
+    }
+
+    public deleteSelectedVersions(): void {
+        const selectedIds = this.selectedVersionIds();
+        const items = this.versionsList
+            .filter((version) => selectedIds.has(version.id))
+            .map((version) => ({ id: version.id, name: version.name }));
+        if (items.length === 0) return;
+
+        this.isDeleting.set(true);
+        this.bulkDeleteService
+            .run([this.buildDeleteGroup(items)])
             .pipe(
-                filter((result) => result === true),
-                switchMap(() => this.flowApiService.deleteGraphVersion(version.id)),
+                tap(() => this.setSelectMode(false)),
+                finalize(() => this.isDeleting.set(false)),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({
-                next: () => {
-                    this.versionsList = this.versionsList.filter((v) => v.id !== version.id);
-                    if (this.selectedVersionId === version.id) {
-                        this.selectedVersionId = null;
-                    }
-                    this.toastService.success('Version deleted');
-                },
-                error: () => {
-                    this.toastService.error('Failed to delete version');
-                },
-            });
+            .subscribe();
     }
 
     public loadVersions(): void {
@@ -247,5 +315,37 @@ export class VersionHistoryPanelComponent implements OnInit {
                 },
                 error: () => this.toastService.error('Failed to create flow'),
             });
+    }
+
+    private buildDeleteGroup(items: BulkDeleteItem[]): BulkDeleteGroup {
+        return { target: this.bulkDeleteTarget, label: VERSION_BULK_DELETE_LABEL, items };
+    }
+
+    /** Single place both `enterSelectMode` and `cancelSelectMode`/delete-completion go through,
+     *  so the open ⋮ menu never survives a select-mode transition and reopens unexpectedly. */
+    private setSelectMode(mode: boolean): void {
+        this.openMenuId = null;
+        this.selectMode.set(mode);
+        if (!mode) {
+            this.selectedVersionIds.set(new Set());
+        }
+    }
+
+    private removeVersions(ids: number[]): void {
+        if (ids.length === 0) return;
+
+        const idSet = new Set(ids);
+        this.versionsList = this.versionsList.filter((version) => !idSet.has(version.id));
+
+        if (this.selectedVersionId !== null && idSet.has(this.selectedVersionId)) {
+            this.selectedVersionId = null;
+        }
+
+        const currentSelection = this.selectedVersionIds();
+        if ([...currentSelection].some((id) => idSet.has(id))) {
+            const nextSelection = new Set(currentSelection);
+            idSet.forEach((id) => nextSelection.delete(id));
+            this.selectedVersionIds.set(nextSelection);
+        }
     }
 }

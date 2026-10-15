@@ -6,6 +6,7 @@ export * from './app-svg-icon/app-svg-icon.component';
 export * from './app-validation-errors/validation-errors.component';
 export * from './avatar-upload/avatar-upload.component';
 export * from './blob-preview/blob-preview.component';
+export * from './bulk-delete-dialog/bulk-delete-dialog.component';
 export * from './button-round/button-round.component';
 export * from './buttons';
 export * from './checkbox/checkbox.component';

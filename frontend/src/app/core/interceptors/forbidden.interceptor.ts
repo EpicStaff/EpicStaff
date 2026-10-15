@@ -16,7 +16,11 @@ let refresh$: Observable<unknown> | null = null;
  * These must not trigger the session refresh/reload below — the caller's own error
  * handling shows the message instead.
  */
-const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>(['built_in_model_immutable', 'permission_escalation_denied']);
+const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
+    'built_in_model_immutable',
+    'permission_escalation_denied',
+    'in_use_restricted',
+]);
 
 /**
  * Extracts the server `message` field from an HttpErrorResponse.

@@ -45,6 +45,12 @@
     }
 }
 
+.panel-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .version-card {
     display: flex;
     align-items: flex-start;
@@ -64,6 +70,13 @@
     &--selected {
         border-color: var(--accent-color);
     }
+}
+
+.version-checkbox {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding-top: 0.125rem;
 }
 
 .version-info {
@@ -133,6 +146,15 @@
     padding: 1rem;
     border-top: 1px solid var(--graphite-940);
     flex-shrink: 0;
+}
+
+.footer-select-actions {
+    display: flex;
+    gap: 0.5rem;
+
+    app-button {
+        flex: 1;
+    }
 }
 
 .restore-version-btn {

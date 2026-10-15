@@ -16,22 +16,33 @@
                 @if (selectMode()) {
                     <app-button
                         type="ghost"
-                        (click)="cancelExport()"
+                        [disabled]="isDeleting()"
+                        (click)="cancelSelection()"
                     >
                         Cancel
                     </app-button>
                     <app-button
                         type="ghost"
+                        [disabled]="isDeleting()"
                         (click)="selectAllFlows()"
                     >
                         {{ isAllSelected() ? 'Deselect all' : 'Select all' }}
                     </app-button>
                     <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         type="primary"
                         [disabled]="selectedFlowIds().length === 0"
                         (click)="confirmExport()"
                     >
                         Export {{ selectedFlowIds().length }} flows
+                    </app-button>
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                        type="secondary"
+                        [disabled]="selectedFlowIds().length === 0 || isDeleting()"
+                        (click)="deleteSelectedFlows()"
+                    >
+                        {{ deleteButtonLabel() }}
                     </app-button>
                 } @else {
                     <app-button
@@ -80,6 +91,13 @@
                         />
                     </ng-container>
 
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, [ActionCode.Delete, ActionCode.Export]]"
+                        type="ghost"
+                        (click)="onSelectClick()"
+                    >
+                        Select
+                    </app-button>
                     <div
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         class="export-group"
@@ -87,7 +105,7 @@
                         <button
                             type="button"
                             class="export-group__main"
-                            (click)="onExportClick()"
+                            (click)="onSelectClick()"
                         >
                             <app-svg-icon
                                 icon="upload"

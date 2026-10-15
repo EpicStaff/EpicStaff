@@ -37,16 +37,4 @@ export class ConfirmationDialogService {
             type: 'danger',
         });
     }
-
-    confirmDeleteWithTruncation(itemName: string, maxLength: number = 50): Observable<ConfirmationResult> {
-        const truncatedName = itemName.length > maxLength ? `${itemName.substring(0, maxLength)}...` : itemName;
-
-        return this.confirm({
-            title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${truncatedName}</strong>? <br> This action cannot be undone.`,
-            confirmText: 'Delete',
-            cancelText: 'Cancel',
-            type: 'danger',
-        });
-    }
 }

@@ -1,3 +1,5 @@
+export * from './bulk-delete-params.util';
+export * from './bulk-delete-preview.util';
 export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';

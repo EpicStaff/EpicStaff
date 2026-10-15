@@ -18,6 +18,20 @@
         border-color: var(--white-alpha-16);
     }
 
+    &--select-mode {
+        cursor: pointer;
+    }
+
+    &--selected {
+        border-color: var(--accent-color);
+    }
+
+    &__checkbox {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
     &__top {
         display: flex;
         align-items: center;

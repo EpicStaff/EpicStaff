@@ -1,0 +1,167 @@
+<div class="dialog-container">
+    <div class="dialog-header">
+        <div class="dialog-title-row">
+            <span class="dialog-icon">
+                <app-svg-icon
+                    icon="warning"
+                    size="1.25rem"
+                />
+            </span>
+            <h2
+                [id]="titleId"
+                class="dialog-title"
+            >
+                {{ title }}
+            </h2>
+        </div>
+        <app-icon-button
+            icon="x"
+            size="2rem"
+            ariaLabel="Close"
+            tooltip="Close"
+            (click)="onClose()"
+            class="close-button"
+        ></app-icon-button>
+    </div>
+
+    <div class="dialog-body">
+        @if (isSingleItemNoUsage) {
+            <p class="hint-message">{{ summaryText }}</p>
+        } @else {
+            @if (!isEmpty) {
+                <p class="hint-message">{{ summaryText }}</p>
+            }
+            @for (group of groups; track $index; let groupIndex = $index) {
+                <div class="group">
+                    <h3 class="group-heading">
+                        {{ groupHeading(group) }}
+                        <span class="group-count">· {{ groupItemCount(group) }}</span>
+                    </h3>
+
+                    @if (group.deletable.length > 0 || group.blocked.length > 0) {
+                        <ul class="item-list">
+                            @for (item of visibleDeletable(group, groupIndex); track item.id) {
+                                <li
+                                    class="item"
+                                    [class.item--in-use]="item.usage.length > 0"
+                                >
+                                    <span class="item-name">{{ item.name }}</span>
+                                    @if (item.usage.length > 0) {
+                                        <ul class="usage-list">
+                                            @for (line of item.usage; track $index) {
+                                                <li class="usage-line">{{ usageLineText(line) }}</li>
+                                            }
+                                        </ul>
+                                    }
+                                </li>
+                            }
+                            @if (hiddenDeletableCount(group) > 0) {
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="show-more-button"
+                                        [class.show-more-button--expanded]="isExpanded('deletable', groupIndex)"
+                                        [attr.aria-expanded]="isExpanded('deletable', groupIndex)"
+                                        (click)="toggleList('deletable', groupIndex)"
+                                    >
+                                        <app-svg-icon
+                                            icon="chevron-down"
+                                            size="0.875rem"
+                                            class="show-more-icon"
+                                        />
+                                        {{ toggleLabel('deletable', groupIndex, hiddenDeletableCount(group)) }}
+                                    </button>
+                                </li>
+                            }
+                            @for (item of group.blocked; track item.id) {
+                                <li class="item item--blocked">
+                                    <span class="item-name-row">
+                                        <app-svg-icon
+                                            icon="lock"
+                                            size="0.875rem"
+                                            class="blocked-icon"
+                                        />
+                                        <span class="item-name">{{ item.name }}</span>
+                                    </span>
+                                    <p class="blocked-reason">
+                                        <span class="blocked-label">Can't be deleted.</span>
+                                        Used somewhere you don't have access to.
+                                    </p>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (groupHasUsage(group)) {
+                        <p class="caution-message">
+                            <app-svg-icon
+                                icon="warning"
+                                size="0.875rem"
+                            />
+                            Where these are used, the reference will be removed.
+                        </p>
+                    }
+
+                    @if (group.notFound.length > 0) {
+                        <div class="sub-section">
+                            <h4 class="sub-heading">Already deleted</h4>
+                            <ul class="item-list">
+                                @for (item of visibleNotFound(group, groupIndex); track item.id) {
+                                    <li class="item">
+                                        <span class="item-name">{{ item.name }}</span>
+                                    </li>
+                                }
+                                @if (hiddenNotFoundCount(group) > 0) {
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="show-more-button"
+                                            [class.show-more-button--expanded]="isExpanded('not-found', groupIndex)"
+                                            [attr.aria-expanded]="isExpanded('not-found', groupIndex)"
+                                            (click)="toggleList('not-found', groupIndex)"
+                                        >
+                                            <app-svg-icon
+                                                icon="chevron-down"
+                                                size="0.875rem"
+                                                class="show-more-icon"
+                                            />
+                                            {{ toggleLabel('not-found', groupIndex, hiddenNotFoundCount(group)) }}
+                                        </button>
+                                    </li>
+                                }
+                            </ul>
+                            <p class="sub-note">These no longer exist and were removed from the list.</p>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="dialog-actions">
+        @if (isEmpty) {
+            <button
+                type="button"
+                class="button close-text-button"
+                (click)="onClose()"
+            >
+                Close
+            </button>
+        } @else {
+            <button
+                type="button"
+                class="button cancel-button"
+                (click)="onCancel()"
+            >
+                Cancel
+            </button>
+            <button
+                type="button"
+                class="button confirm-button"
+                (click)="onConfirm()"
+            >
+                {{ confirmText }}
+            </button>
+        }
+    </div>
+</div>
