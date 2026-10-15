@@ -4,9 +4,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse } from '@shared/models';
 
-import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
-import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
@@ -29,15 +27,8 @@ const USER = {
 describe('LeftSidebarComponent', () => {
     let fixture: ComponentFixture<LeftSidebarComponent>;
     let element: HTMLElement;
-    const isDocked = signal(false);
-    const toggleChat = vi.fn();
 
     beforeEach(() => {
-        // The component reconnects EpicChat agents on a 2s timer after rendering.
-        vi.useFakeTimers({ toFake: ['setTimeout'] });
-        isDocked.set(false);
-        toggleChat.mockReset();
-
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([
@@ -46,7 +37,6 @@ describe('LeftSidebarComponent', () => {
                 ]),
                 { provide: ProfileService, useValue: { currentUserSignal: signal(USER) } },
                 { provide: ActiveOrgService, useValue: { activeOrgId: signal(1) } },
-                { provide: AuthService, useValue: { accessToken: signal('token') } },
                 {
                     provide: PermissionsService,
                     useValue: {
@@ -55,27 +45,12 @@ describe('LeftSidebarComponent', () => {
                         canOpenConfigureModelsDialog: () => true,
                     },
                 },
-                { provide: ConfigService, useValue: { isEpicChatEnabled: true, apiUrl: 'http://api/' } },
-                {
-                    provide: EpicChatService,
-                    useValue: {
-                        isDocked,
-                        isChatOpen: signal(false),
-                        dockWidth: signal(420),
-                        epChatCommand: signal(null),
-                        reconnectAgents: vi.fn(),
-                        toggleChat,
-                    },
-                },
+                { provide: ConfigService, useValue: { isAuditTrailEnabled: false } },
             ],
         });
 
         fixture = TestBed.createComponent(LeftSidebarComponent);
         element = fixture.nativeElement as HTMLElement;
-    });
-
-    afterEach(() => {
-        vi.useRealTimers();
     });
 
     function render(width: number): void {
@@ -108,10 +83,6 @@ describe('LeftSidebarComponent', () => {
             .map((tooltip) => tooltip.text);
     }
 
-    function epicChatLeft(): string | null {
-        return element.querySelector('epic-chat')!.getAttribute('chat-left');
-    }
-
     function logoName(): HTMLElement | null {
         return element.querySelector('.app-logo-name');
     }
@@ -131,15 +102,6 @@ describe('LeftSidebarComponent', () => {
         return count;
     }
 
-    function epicChatLabel(): HTMLElement | null {
-        return element.querySelector('.epic-chat-slot .sidenav-row-label');
-    }
-
-    function hoverEpicChat(): void {
-        element.querySelector('.epic-chat-slot')!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
-        fixture.detectChanges();
-    }
-
     describe('collapsed', () => {
         beforeEach(() => render(COLLAPSED_WIDTH));
 
@@ -151,14 +113,6 @@ describe('LeftSidebarComponent', () => {
         it('offers an "Open sidebar" control that asks the owner of the width to expand', () => {
             expect(sidebarToggle().getAttribute('aria-label')).toBe('Open sidebar');
             expect(emittedToggles()).toBe(1);
-        });
-
-        it('names the EpicChat launcher with a hover tooltip instead of a label', () => {
-            expect(epicChatLabel()).toBeNull();
-
-            hoverEpicChat();
-
-            expect(visibleTooltipTexts()).toContain('EpicStaff chat');
         });
 
         it('renders icons only and names each link with an aria-label', () => {
@@ -186,20 +140,6 @@ describe('LeftSidebarComponent', () => {
             expect(sidebarToggle().getAttribute('aria-label')).toBe('Close sidebar');
             expect(sidebarToggle().classList).toContain('active');
             expect(emittedToggles()).toBe(1);
-        });
-
-        it('labels the EpicChat row, and the label opens and closes the chat like the launcher', () => {
-            expect(epicChatLabel()!.textContent!.trim()).toBe('EpicStaff chat');
-
-            epicChatLabel()!.click();
-
-            expect(toggleChat).toHaveBeenCalledWith(element.querySelector('epic-chat'));
-        });
-
-        it('suppresses the EpicChat tooltip', () => {
-            hoverEpicChat();
-
-            expect(visibleTooltipTexts()).not.toContain('EpicStaff chat');
         });
 
         it('shows the labels as text and drops the aria-label so they are not announced twice', () => {
@@ -230,26 +170,6 @@ describe('LeftSidebarComponent', () => {
 
             const orgLabel = element.querySelector('.org-menu-btn .sidenav-row-label')!;
             expect(orgLabel.textContent!.trim()).toBe('Workspace');
-        });
-    });
-
-    describe('EpicChat position', () => {
-        it('opens the floating chat just beside the sidebar edge', () => {
-            render(COLLAPSED_WIDTH);
-            expect(epicChatLeft()).toBe('68px');
-
-            render(EXPANDED_WIDTH);
-            expect(epicChatLeft()).toBe('248px');
-        });
-
-        it('starts the docked chat exactly at the sidebar edge', () => {
-            isDocked.set(true);
-
-            render(COLLAPSED_WIDTH);
-            expect(epicChatLeft()).toBe('60px');
-
-            render(EXPANDED_WIDTH);
-            expect(epicChatLeft()).toBe('240px');
         });
     });
 });

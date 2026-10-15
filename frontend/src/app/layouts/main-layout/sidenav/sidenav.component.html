@@ -157,59 +157,6 @@
                 </div>
             </li>
         }
-        @if (isEpicChatEnabled) {
-            <li
-                class="sidenav-nav-item"
-                (mouseenter)="showEpicChatTooltip.set(true)"
-                (mouseleave)="showEpicChatTooltip.set(false)"
-            >
-                <div class="tooltip-wrapper">
-                    <div
-                        class="sidenav-nav-link epic-chat-slot"
-                        [class.active]="epicChatService.isChatOpen()"
-                    >
-                        <!-- chat-icon-size must match $chat-launcher-size in sidenav.component.scss. -->
-                        <epic-chat
-                            #epicChat
-                            class="epic-chat-host"
-                            theme-preset="epicstaff"
-                            [themeConfig]="epicChatThemeConfig"
-                            chat-icon-path=""
-                            chat-icon-size="32"
-                            message-timeout="180000"
-                            [apiBaseUrl]="apiBaseUrl"
-                            [accessToken]="accessToken()"
-                            [canReadFlows]="canReadFlows()"
-                            [syncAgentsFromApi]="false"
-                            [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-                            [attr.chat-left]="epicChatLeft()"
-                            [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
-                            [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
-                            [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
-                            [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
-                            [dockEnabled]="true"
-                            [fileAttachmentDisabled]="false"
-                            [isDockMode]="epicChatService.isDocked()"
-                            [epChatCommand]="epicChatService.epChatCommand()"
-                            (epChatCommandResult)="onEpChatCommandResult($event)"
-                            (epChatEvent)="onEpChatEvent($event)"
-                        ></epic-chat>
-                        @if (isExpanded()) {
-                            <!-- The widget's own launcher is the keyboard control; the label widens the click target. -->
-                            <span
-                                class="sidenav-row-label epic-chat-label text-body-medium"
-                                (click)="toggleEpicChat()"
-                                >{{ epicChatLabel }}</span
-                            >
-                        }
-                    </div>
-                    <app-tooltip
-                        [text]="epicChatLabel"
-                        [visible]="showEpicChatTooltip() && !isExpanded()"
-                    ></app-tooltip>
-                </div>
-            </li>
-        }
 
         @for (item of bottomNavItems; track item.id) {
             @if (item.isPermitted()) {

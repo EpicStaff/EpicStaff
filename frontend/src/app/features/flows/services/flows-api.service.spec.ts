@@ -121,11 +121,11 @@ describe('FlowsApiService', () => {
 
     it('keeps only the first occurrence of a flow that appears on two pages', () => {
         let result: unknown;
-        service.getEpicChatEnabledFlows().subscribe((flows) => (result = flows));
+        service.getGraphsLight().subscribe((flows) => (result = flows));
 
         expectFirstPage().flush({
             count: 4,
-            next: '/api/graph-light/?epicchat_enabled=true&limit=2&offset=2',
+            next: '/api/graph-light/?limit=2&offset=2',
             previous: null,
             results: [
                 { id: 1, name: 'first page' },
@@ -143,9 +143,9 @@ describe('FlowsApiService', () => {
         });
 
         expect(result).toEqual([
-            { id: 1, name: 'first page' },
-            { id: 2, name: 'first page' },
             { id: 3, name: 'second page' },
+            { id: 2, name: 'first page' },
+            { id: 1, name: 'first page' },
         ]);
     });
 
@@ -202,27 +202,6 @@ describe('FlowsApiService', () => {
         expect(request.request.params.get('label_id')).toBe('7');
         expect(request.request.params.get('no_label')).toBe('true');
         request.flush({ count: 0, next: null, previous: null, results: [] });
-    });
-
-    it('loads every page of epic chat enabled flows without re-sorting them', () => {
-        let result: unknown;
-        service.getEpicChatEnabledFlows().subscribe((flows) => (result = flows));
-
-        const firstRequest = expectFirstPage();
-        expect(firstRequest.request.params.get('epicchat_enabled')).toBe('true');
-        firstRequest.flush({
-            count: 3,
-            next: 'https://example.com/api/graph-light/?epicchat_enabled=true&limit=2&offset=2',
-            previous: null,
-            results: [{ id: 1 }, { id: 3 }],
-        });
-
-        const secondRequest = expectPageAtOffset(2);
-        expect(secondRequest.request.url).toBe(graphLightUrl);
-        expect(secondRequest.request.params.get('epicchat_enabled')).toBe('true');
-        secondRequest.flush({ count: 3, next: null, previous: graphLightUrl, results: [{ id: 2 }] });
-
-        expect(result).toEqual([{ id: 1 }, { id: 3 }, { id: 2 }]);
     });
 
     describe('getGraphVersions', () => {

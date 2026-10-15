@@ -1,19 +1,6 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
-import {
-    AfterViewInit,
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    CUSTOM_ELEMENTS_SCHEMA,
-    DestroyRef,
-    ElementRef,
-    inject,
-    input,
-    output,
-    signal,
-    ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
@@ -21,22 +8,17 @@ import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
-import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
-import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
 import { isMainSidenavExpanded } from '../main-sidenav-width';
 import { TooltipComponent } from './tooltip/tooltip.component';
-
-/** Gap between the sidebar edge and the floating (undocked) EpicChat window. */
-const FLOATING_EPIC_CHAT_GAP_PX = 8;
 
 interface NavItem {
     id: string;
@@ -72,9 +54,8 @@ interface NavItem {
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class LeftSidebarComponent implements AfterViewInit {
+export class LeftSidebarComponent {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
     public readonly width = input.required<number>();
     /** The open/close control was used; the owner of the width decides the new one. */
@@ -83,7 +64,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
     protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
-    protected readonly showEpicChatTooltip = signal(false);
 
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
@@ -92,72 +72,9 @@ export class LeftSidebarComponent implements AfterViewInit {
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
     public recycleBinNavItem: NavItem;
-    public isEpicChatEnabled: boolean;
-    public apiBaseUrl: string;
-    /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
-    protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
     protected readonly productName = 'EpicStaff';
-    protected readonly epicChatLabel = 'EpicStaff chat';
     public showProfileTooltip = false;
-    public readonly epicChatThemeConfig = {
-        semantic: {
-            surface: 'var(--color-background-body)',
-            surfaceAlt: 'var(--color-nodes-background)',
-            text: 'var(--color-text-primary)',
-            textMuted: 'var(--color-text-secondary)',
-            border: 'var(--color-divider-regular)',
-            borderMuted: 'var(--color-divider-subtle)',
-            accent: 'var(--accent-color)',
-            accentContrast: 'var(--color-text-primary)',
-            accentSoft: 'var(--color-ghost-btn-hover)',
-            danger: 'var(--color-ks-status-failed)',
-            dangerSoft: 'var(--agent-node-accent-color)',
-            disabledBg: 'var(--gray-600)',
-            scrollbar: 'var(--color-scrollbar-thumb)',
-        },
-        components: {
-            chat: {
-                bgQuestion: 'var(--accent-color)',
-                // bgAnswer: 'var(--color-nodes-background)',
-                bgAnswer: '#2b2d30',
-                textQuestion: 'var(--color-text-primary)',
-            },
-            header: {
-                iconColor: 'var(--accent-color)',
-            },
-            table: {
-                headerBg: 'transparent',
-                headerText: 'var(--color-text-secondary)',
-                rowBg: 'transparent',
-                rowAltBg: 'color-mix(in srgb, var(--color-nodes-background) 65%, transparent)',
-                rowHoverBg: 'var(--color-ghost-btn-hover)',
-                border: 'var(--color-divider-subtle)',
-                columnDivider: 'var(--color-divider-regular)',
-                cellText: 'var(--color-text-primary)',
-            },
-            button: {
-                radius: '6px',
-                heightMd: '28px',
-                paddingMd: '6px 10px',
-                fontSizeMd: '12px',
-                secondaryBg: 'transparent',
-                secondaryBorder: 'var(--color-divider-regular)',
-                secondaryText: 'var(--color-text-primary)',
-                secondaryHoverBg: 'var(--color-ghost-btn-hover)',
-                primaryBg: 'var(--color-nodes-background)',
-                primaryBorder: 'var(--accent-color)',
-                primaryText: 'var(--accent-color)',
-                primaryHoverBg: 'color-mix(in srgb, var(--color-nodes-background) 70%, var(--accent-color) 30%)',
-                ghostBg: 'transparent',
-                ghostText: 'var(--color-text-secondary)',
-                ghostHoverBg: 'var(--color-ghost-btn-hover)',
-            },
-        },
-        foundation: {
-            shadowMd: 'rgba(0, 0, 0, 0.6)',
-        },
-    };
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
@@ -193,38 +110,11 @@ export class LeftSidebarComponent implements AfterViewInit {
         return user ? user.display_name || user.email : '';
     });
 
-    /** The docked chat starts at the sidebar edge; the floating one opens just beside it. */
-    protected readonly epicChatLeft = computed(() => {
-        const gap = this.epicChatService.isDocked() ? 0 : FLOATING_EPIC_CHAT_GAP_PX;
-        return `${this.width() + gap}px`;
-    });
-
-    @ViewChild('epicChat', { static: false })
-    private epicChat?: ElementRef<HTMLElement>;
-
-    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
-     *  binding re-evaluates when active-org permissions reload after an org switch. */
-    public canReadFlows(): boolean {
-        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
-    }
-
-    public readonly epicChatService = inject(EpicChatService);
-    public readonly activeOrgService = inject(ActiveOrgService);
+    private readonly activeOrgService = inject(ActiveOrgService);
     private readonly configService = inject(ConfigService);
-    private readonly authService = inject(AuthService);
     private readonly permissionService = inject(PermissionsService);
 
     constructor() {
-        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
-        // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
-        // syncAgentsFromApi call always matches the actual access host (localhost vs 127.0.0.1),
-        // avoiding CORS failures and hardcoded URLs.
-        // this.apiBaseUrl = `${window.location.origin}/api/`;
-
-        // Comment on the comment above:
-        // Bad approach to use window.location because ui and backend can be on different domains
-        // fixed localhost vs 127.0.0.1 problem in widget code
-        this.apiBaseUrl = this.configService.apiUrl;
         this.topNavItems = [
             {
                 id: 'agents',
@@ -308,18 +198,8 @@ export class LeftSidebarComponent implements AfterViewInit {
         };
     }
 
-    public ngAfterViewInit(): void {
-        if (this.isEpicChatEnabled) {
-            setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
-        }
-    }
-
     public onLogoClick(): void {
         this.easterEggTrigger.registerLogoClick();
-    }
-
-    public toggleEpicChat(): void {
-        this.epicChatService.toggleChat(this.epicChat?.nativeElement);
     }
 
     public closeUserMenu(): void {
@@ -338,14 +218,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     public toggleOrgMenu(event: MouseEvent): void {
         event.stopPropagation();
         this.isOrgMenuOpen.update((prev) => !prev);
-    }
-
-    public onEpChatCommandResult(event: Event): void {
-        this.epicChatService.onEpChatCommandResult(event);
-    }
-
-    public onEpChatEvent(event: Event): void {
-        this.epicChatService.onEpChatEvent(event);
     }
 
     public handleItemClick(item: NavItem, event: MouseEvent): void {

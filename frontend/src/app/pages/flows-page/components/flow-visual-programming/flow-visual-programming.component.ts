@@ -59,7 +59,6 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
-import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
@@ -202,7 +201,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly flowTestRunService = inject(FlowTestRunService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
-    public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
     public initialNodeExpand = true;
     public isLoaded = signal(false);
@@ -238,7 +236,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /**
      * Every request that writes the graph with its `save_version` goes through this,
      * one at a time — full saves, single-node saves, explanation saves, the
-     * extract/unpack saves, the Epic Chat flag and a version restore alike. See
+     * extract/unpack saves and a version restore alike. See
      * `SerialSaveQueue` for why.
      */
     private readonly saveQueue = new SerialSaveQueue();
@@ -319,7 +317,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly dialog: CdkDialog,
         private readonly configService: ConfigService,
         private readonly elementRef: ElementRef,
-        private readonly epicChatService: EpicChatService,
         private readonly unsavedChangesDialog: UnsavedChangesDialogService,
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
@@ -330,7 +327,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
         private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
-        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
         this.routeQueryParamMap = toSignal(this.route.queryParamMap, {
             initialValue: this.route.snapshot.queryParamMap,
@@ -485,9 +481,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnInit(): void {
-        this.unsavedChangesRegistry.register(this, {
-            onRefresh: this.refreshCurrentFlow.bind(this),
-        });
+        this.unsavedChangesRegistry.register(this);
     }
 
     protected closeSnakeGame(): void {
@@ -1605,62 +1599,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onToggleAssistant(): void {
         if (!this.graph?.id) return;
         this.flowAssistantService.toggle(this.graph.id);
-    }
-
-    public connectToEpicChat(): void {
-        if (!this.graph?.id) {
-            this.toastService.error('Unable to connect chat: Missing flow ID');
-            return;
-        }
-
-        const flowUrl = this.normalizeApiUrl(this.configService.apiUrl);
-        if (!flowUrl) {
-            this.toastService.error('Unable to connect chat: Missing API URL');
-            return;
-        }
-
-        // Taken now: by the time the patch answers, the page may show another flow.
-        const { id: graphId, name, description } = this.graph;
-        // Queued, and the save_version it returns taken over: the patch bumps it like any save.
-        //
-        // Deliberately not cut off when the page is destroyed: once the user has asked to
-        // connect, the patch and the agent it is for should both happen, and the agent is
-        // created by the app-wide EpicChatService. Cut off in between, the flow would be
-        // flagged for Epic Chat with no agent behind it. A flow the page no longer shows
-        // (another one loaded meanwhile) is not patched at all.
-        this.saveQueue
-            .run(() =>
-                this.isCurrentGraph(graphId)
-                    ? this.flowApiService.patchGraph(graphId, {
-                          epicchat_enabled: true,
-                          save_version: this.graphState()!.save_version,
-                      })
-                    : EMPTY
-            )
-            .subscribe({
-                next: (patchedGraph) => {
-                    this.applyOwnWriteToGraphState(graphId, (graph) => ({
-                        ...graph,
-                        epicchat_enabled: true,
-                        save_version: patchedGraph.save_version,
-                    }));
-                    this.epicChatService.requestCreateAgent({
-                        name: name?.trim() || `Flow ${graphId}`,
-                        description: description?.trim(),
-                        flowId: graphId,
-                        flowUrl,
-                        selectAfterCreate: true,
-                    });
-                    this.toastService.success('Flow connected to Epic Chat');
-                },
-                error: () => {
-                    this.toastService.error('Failed to save EpicChat connection');
-                },
-            });
-    }
-
-    private normalizeApiUrl(apiUrl: string): string {
-        return (apiUrl || '').trim().replace(/\/+$/, '');
     }
 
     public closeMessagesPanel(): void {
