@@ -102,11 +102,6 @@ def foreign_collection(beta, member_only):
 
 
 @pytest.fixture
-def admin_client(client_as, admin_acme, acme):
-    return _client_in(client_as, admin_acme, acme)
-
-
-@pytest.fixture
 def naive_rag(collection, acme, member_only):
     rag = NaiveRag.objects.create(
         base_rag_type=BaseRagType.objects.create(
@@ -145,7 +140,7 @@ def graph_rag(collection, acme, member_only):
 
 @pytest.mark.django_db
 def test_upload_of_several_documents_records_collection_in_one_statement(
-    admin_client, admin_acme, collection
+    acme_admin_client, admin_acme, collection
 ):
     files = [
         SimpleUploadedFile("first.txt", b"one", content_type="text/plain"),
@@ -153,7 +148,7 @@ def test_upload_of_several_documents_records_collection_in_one_statement(
     ]
 
     with CaptureQueriesContext(connection) as context:
-        response = admin_client.post(
+        response = acme_admin_client.post(
             reverse("document-upload", args=[collection.collection_id]),
             {"files": files},
             format="multipart",
@@ -165,10 +160,10 @@ def test_upload_of_several_documents_records_collection_in_one_statement(
 
 
 @pytest.mark.django_db
-def test_delete_of_a_document_records_its_collection(admin_client, admin_acme, collection):
+def test_delete_of_a_document_records_its_collection(acme_admin_client, admin_acme, collection):
     document = _document(collection)
 
-    response = admin_client.delete(reverse("document-detail", args=[document.document_id]))
+    response = acme_admin_client.delete(reverse("document-detail", args=[document.document_id]))
 
     assert response.status_code == status.HTTP_200_OK, response.content
     _assert_edited_by(collection, admin_acme)
@@ -176,7 +171,7 @@ def test_delete_of_a_document_records_its_collection(admin_client, admin_acme, c
 
 @pytest.mark.django_db
 def test_bulk_delete_records_every_affected_collection_in_one_statement(
-    admin_client, admin_acme, acme, member_only, collection
+    acme_admin_client, admin_acme, acme, member_only, collection
 ):
     other_collection = _collection(acme, member_only, name="Other collection")
     document_ids = [
@@ -185,7 +180,7 @@ def test_bulk_delete_records_every_affected_collection_in_one_statement(
     ]
 
     with CaptureQueriesContext(connection) as context:
-        response = admin_client.post(
+        response = acme_admin_client.post(
             "/api/documents/bulk-delete/", {"document_ids": document_ids}, format="json"
         )
 
@@ -197,12 +192,12 @@ def test_bulk_delete_records_every_affected_collection_in_one_statement(
 
 @pytest.mark.django_db
 def test_copy_of_documents_records_the_target_collection_only(
-    admin_client, admin_acme, acme, member_only, collection
+    acme_admin_client, admin_acme, acme, member_only, collection
 ):
     source = _collection(acme, member_only, name="Source collection")
     document = _document(source)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("document-copy"),
         {"collection_id": collection.collection_id, "document_ids": [document.document_id]},
         format="json",
@@ -215,11 +210,11 @@ def test_copy_of_documents_records_the_target_collection_only(
 
 @pytest.mark.django_db
 def test_copy_that_skips_every_document_records_nothing(
-    admin_client, member_only, collection
+    acme_admin_client, member_only, collection
 ):
     document = _document(collection)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("document-copy"),
         {"collection_id": collection.collection_id, "document_ids": [document.document_id]},
         format="json",
@@ -241,9 +236,9 @@ def test_collection_status_update_records_nothing(member_only, collection):
 
 @pytest.mark.django_db
 def test_cross_org_upload_is_404_and_records_nothing(
-    admin_client, member_only, foreign_collection
+    acme_admin_client, member_only, foreign_collection
 ):
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("document-upload", args=[foreign_collection.collection_id]),
         {"files": [SimpleUploadedFile("x.txt", b"x", content_type="text/plain")]},
         format="multipart",
@@ -255,11 +250,11 @@ def test_cross_org_upload_is_404_and_records_nothing(
 
 @pytest.mark.django_db
 def test_cross_org_document_delete_is_404_and_records_nothing(
-    admin_client, member_only, foreign_collection
+    acme_admin_client, member_only, foreign_collection
 ):
     document = _document(foreign_collection)
 
-    response = admin_client.delete(reverse("document-detail", args=[document.document_id]))
+    response = acme_admin_client.delete(reverse("document-detail", args=[document.document_id]))
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert DocumentMetadata.objects.filter(pk=document.pk).exists()
@@ -270,10 +265,10 @@ def test_cross_org_document_delete_is_404_and_records_nothing(
 
 
 @pytest.mark.django_db
-def test_naive_rag_creation_records_collection(admin_client, admin_acme, acme, collection):
+def test_naive_rag_creation_records_collection(acme_admin_client, admin_acme, acme, collection):
     embedder = _embedder(acme)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("naive-rag-collection", args=[collection.collection_id]),
         {"embedder_id": embedder.id},
         format="json",
@@ -285,11 +280,11 @@ def test_naive_rag_creation_records_collection(admin_client, admin_acme, acme, c
 
 @pytest.mark.django_db
 def test_naive_rag_embedder_change_records_collection(
-    admin_client, admin_acme, acme, collection, naive_rag
+    acme_admin_client, admin_acme, acme, collection, naive_rag
 ):
     other_embedder = _embedder(acme, name="other embedder")
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("naive-rag-collection", args=[collection.collection_id]),
         {"embedder_id": other_embedder.id},
         format="json",
@@ -301,9 +296,9 @@ def test_naive_rag_embedder_change_records_collection(
 
 @pytest.mark.django_db
 def test_naive_rag_resave_with_same_embedder_records_nothing(
-    admin_client, member_only, collection, naive_rag
+    acme_admin_client, member_only, collection, naive_rag
 ):
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("naive-rag-collection", args=[collection.collection_id]),
         {"embedder_id": naive_rag.embedder_id},
         format="json",
@@ -315,9 +310,9 @@ def test_naive_rag_resave_with_same_embedder_records_nothing(
 
 @pytest.mark.django_db
 def test_naive_rag_document_config_change_records_collection(
-    admin_client, admin_acme, collection, naive_rag, document_config
+    acme_admin_client, admin_acme, collection, naive_rag, document_config
 ):
-    response = admin_client.put(
+    response = acme_admin_client.put(
         reverse("document-config-detail", args=[naive_rag.pk, document_config.pk]),
         {"chunk_size": 1200},
         format="json",
@@ -329,14 +324,14 @@ def test_naive_rag_document_config_change_records_collection(
 
 @pytest.mark.django_db
 def test_naive_rag_document_config_identical_save_records_nothing(
-    admin_client, member_only, collection, naive_rag, document_config
+    acme_admin_client, member_only, collection, naive_rag, document_config
 ):
-    single = admin_client.put(
+    single = acme_admin_client.put(
         reverse("document-config-detail", args=[naive_rag.pk, document_config.pk]),
         {"chunk_size": 1000, "chunk_overlap": 150},
         format="json",
     )
-    bulk = admin_client.put(
+    bulk = acme_admin_client.put(
         reverse("document-config-bulk-update", args=[naive_rag.pk]),
         [{"id": document_config.pk, "chunk_size": 1000}],
         format="json",
@@ -349,9 +344,9 @@ def test_naive_rag_document_config_identical_save_records_nothing(
 
 @pytest.mark.django_db
 def test_naive_rag_document_config_bulk_change_records_collection(
-    admin_client, admin_acme, collection, naive_rag, document_config
+    acme_admin_client, admin_acme, collection, naive_rag, document_config
 ):
-    response = admin_client.put(
+    response = acme_admin_client.put(
         reverse("document-config-bulk-update", args=[naive_rag.pk]),
         [{"id": document_config.pk, "chunk_size": 1300}],
         format="json",
@@ -363,9 +358,9 @@ def test_naive_rag_document_config_bulk_change_records_collection(
 
 @pytest.mark.django_db
 def test_naive_rag_document_config_delete_records_collection(
-    admin_client, admin_acme, collection, naive_rag, document_config
+    acme_admin_client, admin_acme, collection, naive_rag, document_config
 ):
-    response = admin_client.delete(
+    response = acme_admin_client.delete(
         reverse("document-config-detail", args=[naive_rag.pk, document_config.pk])
     )
 
@@ -374,8 +369,8 @@ def test_naive_rag_document_config_delete_records_collection(
 
 
 @pytest.mark.django_db
-def test_naive_rag_delete_records_collection(admin_client, admin_acme, collection, naive_rag):
-    response = admin_client.delete(reverse("naive-rag-detail", args=[naive_rag.pk]))
+def test_naive_rag_delete_records_collection(acme_admin_client, admin_acme, collection, naive_rag):
+    response = acme_admin_client.delete(reverse("naive-rag-detail", args=[naive_rag.pk]))
 
     assert response.status_code == status.HTTP_200_OK, response.content
     _assert_edited_by(collection, admin_acme)
@@ -413,9 +408,9 @@ def test_cross_org_naive_rag_change_is_404_and_records_nothing(
 
 @pytest.mark.django_db
 def test_graph_rag_index_config_change_records_collection(
-    admin_client, admin_acme, collection, graph_rag
+    acme_admin_client, admin_acme, collection, graph_rag
 ):
-    response = admin_client.put(
+    response = acme_admin_client.put(
         reverse("graph-rag-index-config", args=[graph_rag.pk]),
         {"chunk_size": graph_rag.index_config.chunk_size + 100},
         format="json",
@@ -427,9 +422,9 @@ def test_graph_rag_index_config_change_records_collection(
 
 @pytest.mark.django_db
 def test_graph_rag_identical_index_config_records_nothing(
-    admin_client, member_only, collection, graph_rag
+    acme_admin_client, member_only, collection, graph_rag
 ):
-    response = admin_client.put(
+    response = acme_admin_client.put(
         reverse("graph-rag-index-config", args=[graph_rag.pk]),
         {"chunk_size": graph_rag.index_config.chunk_size},
         format="json",
@@ -466,7 +461,7 @@ def test_graph_rag_creation_and_model_change_record_collection_only_when_changed
 
 @pytest.mark.django_db
 def test_graph_rag_document_removal_records_collection(
-    admin_client, admin_acme, member_only, collection
+    acme_admin_client, admin_acme, member_only, collection
 ):
     document = _document(collection)
     rag = GraphRagService.create_or_update_graph_rag(
@@ -476,7 +471,7 @@ def test_graph_rag_document_removal_records_collection(
     )
     record_last_edit(collection, member_only, edited_at=PREVIOUS_EDIT_AT)
 
-    response = admin_client.delete(
+    response = acme_admin_client.delete(
         reverse("graph-rag-document-delete", args=[rag.pk, document.document_id])
     )
 
@@ -486,9 +481,9 @@ def test_graph_rag_document_removal_records_collection(
 
 @pytest.mark.django_db
 def test_graph_rag_initialize_with_nothing_to_add_records_nothing(
-    admin_client, member_only, collection, graph_rag
+    acme_admin_client, member_only, collection, graph_rag
 ):
-    response = admin_client.post(reverse("graph-rag-documents-initialize", args=[graph_rag.pk]))
+    response = acme_admin_client.post(reverse("graph-rag-documents-initialize", args=[graph_rag.pk]))
 
     assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), response.content
     _assert_untouched(collection, member_only)
@@ -496,11 +491,11 @@ def test_graph_rag_initialize_with_nothing_to_add_records_nothing(
 
 @pytest.mark.django_db
 def test_graph_rag_initialize_adding_documents_records_collection(
-    admin_client, admin_acme, collection, graph_rag
+    acme_admin_client, admin_acme, collection, graph_rag
 ):
     _document(collection)
 
-    response = admin_client.post(reverse("graph-rag-documents-initialize", args=[graph_rag.pk]))
+    response = acme_admin_client.post(reverse("graph-rag-documents-initialize", args=[graph_rag.pk]))
 
     assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), response.content
     _assert_edited_by(collection, admin_acme)
@@ -527,11 +522,11 @@ def test_cross_org_graph_rag_index_config_change_is_404_and_records_nothing(
 
 @pytest.mark.django_db
 def test_graph_rag_delete_records_collection(
-    admin_client, admin_acme, collection, graph_rag, mocker
+    acme_admin_client, admin_acme, collection, graph_rag, mocker
 ):
     mocker.patch("tables.services.knowledge_services.graph_rag_service.KnowledgeClient")
 
-    response = admin_client.delete(reverse("graph-rag-detail", args=[graph_rag.pk]))
+    response = acme_admin_client.delete(reverse("graph-rag-detail", args=[graph_rag.pk]))
 
     assert response.status_code == status.HTTP_200_OK, response.content
     _assert_edited_by(collection, admin_acme)
@@ -539,7 +534,7 @@ def test_graph_rag_delete_records_collection(
 
 @pytest.mark.django_db
 def test_graph_rag_document_bulk_removal_records_collection(
-    admin_client, admin_acme, member_only, collection
+    acme_admin_client, admin_acme, member_only, collection
 ):
     documents = [_document(collection, "a.txt"), _document(collection, "b.txt")]
     rag = GraphRagService.create_or_update_graph_rag(
@@ -549,7 +544,7 @@ def test_graph_rag_document_bulk_removal_records_collection(
     )
     record_last_edit(collection, member_only, edited_at=PREVIOUS_EDIT_AT)
 
-    response = admin_client.post(
+    response = acme_admin_client.post(
         reverse("graph-rag-documents-bulk-delete", args=[rag.pk]),
         {"document_ids": [document.document_id for document in documents]},
         format="json",

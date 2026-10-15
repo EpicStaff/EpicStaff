@@ -1,13 +1,21 @@
 <button
     type="button"
     class="activate-btn"
+    [class.activate-btn--play]="icon() === 'activate'"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"
 >
-    <app-svg-icon
-        icon="activate"
-        width="9px"
-        height="12px"
-    />
+    @if (icon() === 'activate') {
+        <app-svg-icon
+            icon="activate"
+            width="9px"
+            height="12px"
+        />
+    } @else {
+        <app-svg-icon
+            [icon]="icon()"
+            size="14px"
+        />
+    }
 </button>

@@ -1,9 +1,10 @@
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from loguru import logger
-from rest_framework.exceptions import APIException
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTriggerAuthKind
+from tables.services.recycle_bin.restoring import is_restoring
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.signals.webhook_signals import cleanup_orphaned_auth_if_unclaimed
@@ -34,7 +35,9 @@ def _cleanup_orphaned_telegram_node_auth(trigger_id: int | None) -> None:
     cleanup_orphaned_auth_if_unclaimed(
         trigger_id,
         WebhookTriggerAuthKind.TELEGRAM,
-        is_claimed=lambda: TelegramTriggerNode.objects.filter(
+        # all_objects: a binned node still claims the auth, so a restore can
+        # register it again. Only a purge (post_delete) frees it.
+        is_claimed=lambda: TelegramTriggerNode.all_objects.filter(
             webhook_trigger_id=trigger_id
         ).exists(),
     )
@@ -52,14 +55,29 @@ def telegram_trigger_node_pre_save_handler(sender, instance: TelegramTriggerNode
         instance._previous_webhook_trigger_id = None
 
 
+def _register_restored_node(id_: int) -> None:
+    """Register a restored node's bot once the restore has committed, if it's still live."""
+    node = TelegramTriggerNode.objects.filter(pk=id_).first()
+    if node is None:
+        return
+    _resync_tunnel_registration(id_)
+    TelegramTriggerService().register_and_log(node)
+
+
 @receiver(post_save, sender=TelegramTriggerNode)
 def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **kwargs):
     id_ = instance.pk
-    logger.info(f"Triggered post_save signal for TelegramTriggerNode ID: {id_}")
+    logger.info("Triggered post_save signal for TelegramTriggerNode ID: {}", id_)
+
+    if is_restoring(instance):
+        # A restore only flips the soft-delete fields, so there's no old trigger to
+        # clean up: registering is all that's left, and it waits for the commit.
+        transaction.on_commit(lambda: _register_restored_node(id_))
+        return
 
     _resync_tunnel_registration(id_)
 
-    if getattr(instance, "is_soft_deleted", False):
+    if not instance.active:
         _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)
         logger.info(f"TelegramTriggerNode {id_} is soft-deleted, skipping registration")
         return
@@ -69,19 +87,7 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
     if old_trigger_id is not None and old_trigger_id != new_trigger_id:
         _cleanup_orphaned_telegram_node_auth(old_trigger_id)
 
-    try:
-        TelegramTriggerService().register_telegram_trigger(telegram_trigger_instance=instance)
-        logger.info(f"Successfully registered telegram trigger for TelegramTriggerNode : {id_}")
-
-    except APIException as error:
-        # An APIException detail (RegisterTelegramTriggerError,
-        # SecretResolutionError) is a message we wrote to be safe to log; a
-        # traceback adds nothing and would widen what reaches the log
-        # (loguru's `diagnose` prints local variable values, including the
-        # resolved bot token and secret_token).
-        logger.error("Error registering telegram bot {id_}: {detail}", id_=id_, detail=error.detail)
-    except Exception:
-        logger.exception("Error registering telegram bot {id_}", id_=id_)
+    TelegramTriggerService().register_and_log(instance)
 
 
 @receiver(post_delete, sender=TelegramTriggerNode)

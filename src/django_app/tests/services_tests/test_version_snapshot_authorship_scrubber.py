@@ -62,14 +62,14 @@ def _version(org, *, name, snapshot, soft_deleted_flow=False, soft_deleted_versi
     flow = Graph.objects.create(
         name=name,
         org=org,
-        is_soft_deleted=soft_deleted_flow,
+        active=not soft_deleted_flow,
         soft_deleted_at=timezone.now() if soft_deleted_flow else None,
     )
     return GraphVersion.objects.create(
         graph=flow,
         name=name,
         snapshot=snapshot,
-        is_soft_deleted=soft_deleted_version,
+        active=not soft_deleted_version,
         soft_deleted_at=timezone.now() if soft_deleted_version else None,
     )
 

@@ -1,6 +1,7 @@
 from agents.services.surface_content_service import SurfaceContentModels
 from django.core.exceptions import ObjectDoesNotExist
 from tables.models import AgentNode, AgentNodeTask
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 
 # SurfaceKnowledge's optional one-to-one search configs use the same
 # related_name on every inline-surface family; `content_attr` picks the
@@ -15,11 +16,16 @@ _SEARCH_CONFIG_RELATED_NAMES = (
 
 
 def _copy_field_values(instance, exclude: set[str]) -> dict:
-    """Return {field_name: value} for concrete, non-pk fields not in `exclude`."""
+    """Return {field_name: value} for concrete, non-pk fields not in `exclude`.
+
+    The soft-delete state is never copied: a copy starts live.
+    """
     return {
         field.name: getattr(instance, field.name)
         for field in instance._meta.concrete_fields
-        if not field.primary_key and field.name not in exclude
+        if not field.primary_key
+        and field.name not in exclude
+        and field.name not in SOFT_DELETE_FIELD_NAMES
     }
 
 
