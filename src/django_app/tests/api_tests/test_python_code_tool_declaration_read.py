@@ -75,7 +75,7 @@ class TestToolDeclarationReadDoesNotNPlusOne:
         five_tools_secrets_queries = self._secrets_query_count(five_tools)
 
         # Filtered to the secrets M2M table rather than compared as raw totals:
-        # a separate, pre-existing N+1 in org_scoped_label_ids (EST-3773, label
+        # a separate, pre-existing N+1 in org_scoped_label_ids (label
         # org-scoping) also scales with tool count and is out of this phase's
         # scope — do not "helpfully" switch this back to a total-count
         # assertion, it will fail on that unrelated N+1.

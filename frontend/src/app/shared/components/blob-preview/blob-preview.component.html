@@ -19,6 +19,9 @@
             class="blob-preview__scroll"
             [class.blob-preview__scroll--pdf]="previewType() === 'pdf'"
         >
+            @if (partialNotice(); as notice) {
+                <p class="blob-preview__notice">{{ notice }}</p>
+            }
             @if (isLoading()) {
                 <div class="blob-preview__loading">Loading preview...</div>
             } @else if (previewError()) {

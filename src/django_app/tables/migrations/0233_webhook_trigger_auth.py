@@ -5,6 +5,15 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+    # No RunPython backfill from the old WebhookNodeAuth rows into the new
+    # WebhookTriggerAuth table -- accepted loss, not an oversight: at the time this ran,
+    # no install had webhooks in real use, so there was no pre-existing trigger auth
+    # data worth migrating. An install upgrading past this point with a PRE-EXISTING
+    # webhook trigger gets 401 on inbound calls until set_trigger_auth_secret is called
+    # again for that trigger (see converter_service.py's auth resolution and
+    # webhook_routes.py's 401 branch). Known, accepted at filing time (Vinik Pooh,
+    # 2026-09-30) -- do not re-open as a missed backfill without new information (e.g.
+    # evidence that installs upgrading now do carry real pre-existing trigger auth).
 
     dependencies = [
         ('tables', '0232_merge_20260828_1754'),

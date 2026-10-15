@@ -30,6 +30,7 @@ Idempotent — re-running overwrites the backend region in place.
 
 Usage (from repository root):
     python scripts/generate-python-notices.py
+    python scripts/generate-python-notices.py --check   # CI: fail if stale
 
 Requires: Python 3.12+ with uv installed (`uv` must be on PATH).
 Only stdlib is imported by this script itself.
@@ -55,17 +56,12 @@ NOTICES_SKELETON_FILE = SCRIPTS_DIR / "notices-skeleton.md"
 BACKEND_BEGIN_MARKER = "<!-- BEGIN GENERATED: backend -->"
 BACKEND_END_MARKER = "<!-- END GENERATED: backend -->"
 
-SERVICES = [
-    "src/django_app",
-    "src/crew",
-    "src/agent",
-    "src/manager",
-    "src/knowledge",
-    "src/realtime",
-    "src/sandbox",
-    "src/webhook",
-    "src/voice_app",
-]
+# Every backend service with a pyproject.toml, discovered the same way as the
+# Makefile's uv_services so a new or renamed service is never silently skipped.
+SERVICES = sorted(
+    pyproject.parent.relative_to(REPO_ROOT).as_posix()
+    for pyproject in REPO_ROOT.glob("src/*/pyproject.toml")
+)
 
 BOOTSTRAP_PACKAGES = {
     "pip",
@@ -651,12 +647,45 @@ def splice_backend_region(document: str, body: str) -> str:
     return spliced.rstrip("\n") + "\n"
 
 
-def main() -> int:
-    sha = get_git_sha()
-    date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    lock_hashes_str = ", ".join(
+def current_lock_hashes() -> str:
+    return ", ".join(
         f"{Path(svc).name}:{lock_hash(REPO_ROOT / svc)}" for svc in SERVICES
     )
+
+
+def check() -> int:
+    """CI guard: compare the lock hashes stamped in the backend header with
+    the current uv.lock files. Needs no venvs and no network."""
+    stamp = "<!-- lock-hashes: "
+    document = NOTICES_FILE.read_text(encoding="utf-8")
+    stamped = next(
+        (
+            line[len(stamp) : -len(" -->")]
+            for line in document.splitlines()
+            if line.startswith(stamp) and line.endswith(" -->")
+        ),
+        None,
+    )
+    actual = current_lock_hashes()
+    if stamped == actual:
+        log(f"backend notices in sync: {actual}")
+        return 0
+    log(
+        "THIRD-PARTY-NOTICES.md backend region is stale.\n\n"
+        f"  header records  {stamped}\n"
+        f"  uv.lock files   {actual}\n\n"
+        "Regenerate and commit the result:\n\n"
+        "  python scripts/generate-python-notices.py\n"
+    )
+    return 1
+
+
+def main() -> int:
+    if sys.argv[1:] == ["--check"]:
+        return check()
+    sha = get_git_sha()
+    date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    lock_hashes_str = current_lock_hashes()
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")
 

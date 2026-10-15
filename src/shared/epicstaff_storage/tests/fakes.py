@@ -14,7 +14,7 @@ class FakeClientError(Exception):
     ``from botocore.exceptions import ClientError`` and ``isinstance(error, ClientError)``.
     Since botocore *is* installed in this environment (boto3's own dependency),
     we raise the real ClientError so that isinstance check behaves exactly like
-    it would against a real S3/MinIO error response.
+    it would against a real S3 error response.
     """
 
 

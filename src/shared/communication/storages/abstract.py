@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 class AbstractStorage(ABC):
     """Abstraction of a key/value store for offloaded message payloads.
 
-    Implement it to back offloading with a new store (e.g. MinIO, S3); keep
+    Implement it to back offloading with a new store (e.g. S3); keep
     storage-specific configuration in the implementation's constructor.
     """
 

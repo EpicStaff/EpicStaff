@@ -23,6 +23,8 @@ _SENSITIVE_KEYS = {
     "STORAGE_SECRET_KEY",
     "STORAGE_ALLOWED_PATHS",
     "STORAGE_ORG_PREFIX",
+    "STORAGE_USER",
+    "STORAGE_PASSWORD",
 }
 
 
@@ -98,8 +100,10 @@ def test_build_base_env_path_ordering(tmp_path):
 def test_build_base_env_contains_no_sensitive_keys(tmp_path, monkeypatch):
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "root-ak-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "root-sk-must-not-leak")
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
+    monkeypatch.setenv("STORAGE_USER", "root-user-must-not-leak")
+    monkeypatch.setenv("STORAGE_PASSWORD", "root-password-must-not-leak")
     monkeypatch.setenv("REDIS_PASSWORD", "redis-secret")
     monkeypatch.setenv("ARBITRARY_SECRET", "arbitrary")
 
@@ -145,11 +149,13 @@ async def test_execute_code_handler_home_equals_home_path(tmp_path, monkeypatch)
 async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(settings, "STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setattr(settings, "STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setattr(settings, "STORAGE_BUCKET_NAME", "epicstaff")
     # Root credentials — must NOT appear in the subprocess env
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "ROOT-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "ROOT-must-not-leak")
+    monkeypatch.setenv("STORAGE_USER", "ROOT-must-not-leak")
+    monkeypatch.setenv("STORAGE_PASSWORD", "ROOT-must-not-leak")
 
     recorded: dict = {}
     context = _make_execute_context(
@@ -163,19 +169,21 @@ async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
     await ExecuteCodeHandler().handle(context)
 
     env = recorded["env"]
-    assert env["STORAGE_ENDPOINT"] == "http://minio:9000"
+    assert env["STORAGE_ENDPOINT"] == "http://storage:9000"
     assert env["STORAGE_BUCKET_NAME"] == "epicstaff"
     assert env["STORAGE_ACCESS_KEY"] == "scoped-ak"
     assert env["STORAGE_SECRET_KEY"] == "scoped-sk"
     assert env["STORAGE_ACCESS_KEY"] != "ROOT-must-not-leak"
     assert env["STORAGE_SECRET_KEY"] != "ROOT-must-not-leak"
+    assert "STORAGE_USER" not in env
+    assert "STORAGE_PASSWORD" not in env
 
 
 @pytest.mark.asyncio
 async def test_execute_code_handler_use_storage_false_omits_storage_vars(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("STORAGE_ENDPOINT", "http://storage:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "access")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "secret")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")

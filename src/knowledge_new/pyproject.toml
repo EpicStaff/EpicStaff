@@ -14,7 +14,7 @@ dependencies = [
     "granian==2.8.2",
     "graphrag==3.1.1",
     "langchain-text-splitters==1.1.2",
-    "litellm==1.92.0",
+    "litellm==1.92.2",
     "litestar==2.24.0",
     "loguru==0.7.3",
     "minio==7.2.20",
@@ -36,6 +36,12 @@ dev = [
 ]
 
 transitive-pins = [
+    # Exact-version pins for dependencies-of-dependencies (build reproducibility only),
+    # not this service's own declared dependencies -- those live in [project].dependencies
+    # above. An entry here (e.g. defusedxml, pinned because nltk depends on it) does not
+    # mean this service imports or relies on it; check for an actual `import` in src/
+    # before treating anything in this group as a control this service uses. Installed
+    # only with --all-groups (see Dockerfile).
     "annotated-doc==0.0.5",
     "anyio==4.14.2",
     "attrs==26.1.0",
@@ -103,3 +109,5 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+# graphrag 3.1.1 pins litellm==1.92.0 exactly; force the patch bump until graphrag releases a compatible pin.
+override-dependencies = ["litellm==1.92.2"]

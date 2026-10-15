@@ -22,7 +22,7 @@
         box-sizing: border-box;
         cursor: pointer;
 
-        &:hover {
+        &:hover:not(.time-picker__trigger--readonly) {
             border-color: var(--active-color, var(--accent-color, #685fff));
         }
 
@@ -37,6 +37,14 @@
         &--disabled {
             cursor: not-allowed;
             opacity: 0.7;
+        }
+
+        &--readonly {
+            cursor: default;
+            background-color: transparent;
+            border-color: transparent;
+            padding-left: 0;
+            padding-right: 0;
         }
     }
 
@@ -74,6 +82,10 @@
 
         &:disabled {
             cursor: not-allowed;
+        }
+
+        &:read-only {
+            cursor: default;
         }
     }
 

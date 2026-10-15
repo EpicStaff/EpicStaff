@@ -15,6 +15,7 @@ from infrastructure.providers.gemini.gemini_realtime_agent_client import (
     GeminiRealtimeAgentClient,
 )
 from domain.models.realtime_tool import RealtimeTool
+from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +278,51 @@ async def test_call_tool_handles_execute_failure_gracefully(client):
     )
     await client.call_tool("c1", "echo", {"text": "hi"})  # must not raise
     client._session.send_tool_response.assert_awaited_once()
+
+
+def _sent_tool_result(client) -> str:
+    function_responses = client._session.send_tool_response.await_args.kwargs[
+        "function_responses"
+    ]
+    assert len(function_responses) == 1
+    return function_responses[0].response["result"]
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_sends_fixed_result_without_exception_text(client):
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("c1", "echo", {"text": "hi"})
+
+    result = _sent_tool_result(client)
+    assert SECRET_SENTINEL not in result
+    assert result.startswith("Tool execution failed")
+    assert PUBLIC_ERROR_REFERENCE.search(result)
+    assert SECRET_SENTINEL not in str(client._session.send_tool_response.await_args)
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_keeps_exception_text_out_of_replayed_history(client):
+    """History is replayed into the system instruction after a reconnect."""
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("c1", "echo", {"text": "hi"})
+
+    assert SECRET_SENTINEL not in client._build_system_instruction()
+
+
+@pytest.mark.asyncio
+async def test_call_tool_failure_logs_detail_under_the_sent_correlation_id(
+    client, captured_log_messages
+):
+    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
+
+    await client.call_tool("c1", "echo", {"text": "hi"})
+
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(_sent_tool_result(client)).group(1)
+    matching_logs = [message for message in captured_log_messages if correlation_id in message]
+    assert len(matching_logs) == 1
+    assert SECRET_SENTINEL in matching_logs[0]
 
 
 # ---------------------------------------------------------------------------

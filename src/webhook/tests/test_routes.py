@@ -3,7 +3,7 @@ def test_webhook_endpoint_no_auth_configured_is_rejected(
 ):
     """A path with no `WebhookTriggerAuth` row at all (`config.auth is None`)
     must fail closed -- there is no legitimate unauthenticated dispatch case
-    left in this design (see EST-3939)."""
+    left in this design."""
     webhook_path = "payment_success"
     payload = {"status": "ok"}
     register_tunnel_path(webhook_path)

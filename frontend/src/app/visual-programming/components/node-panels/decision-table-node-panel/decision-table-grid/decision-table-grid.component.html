@@ -4,13 +4,15 @@
             Conditions
             <app-help-tooltip text="Evaluate conditions top-to-bottom; first match routes the flow." />
         </h3>
-        <app-button
-            type="primary"
-            [leftIcon]="'plus'"
-            (click)="addConditionGroup()"
-        >
-            Add Condition
-        </app-button>
+        @if (!readonly()) {
+            <app-button
+                type="primary"
+                [leftIcon]="'plus'"
+                (click)="addConditionGroup()"
+            >
+                Add Condition
+            </app-button>
+        }
     </div>
 
     <ag-grid-angular
@@ -18,8 +20,8 @@
         [class.empty-state]="isEmpty()"
         style="width: 100%"
         [rowData]="rowData()"
-        [columnDefs]="columnDefs"
-        [defaultColDef]="defaultColDef"
+        [columnDefs]="columnDefs()"
+        [defaultColDef]="defaultColDef()"
         [gridOptions]="gridOptions"
         (gridReady)="onGridReady($event)"
     >

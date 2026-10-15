@@ -11,20 +11,23 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+from rbac.schemas.admin_surface import admin_read_forbidden_403, admin_write_forbidden_403
 from rbac.serializers.memberships import (
     MembershipCreateRequestSerializer,
     MembershipRoleUpdateRequestSerializer,
 )
 
-_FORBIDDEN_403 = OpenApiResponse(
-    description=(
-        "Caller lacks the required MEMBERSHIPS permission on a row they can "
-        "see (permission_denied — a row they cannot see is a 404), the role "
-        "being assigned grants authority the caller does not hold "
-        "(permission_escalation_denied), a forbidden ?org_ids= entry, or an "
-        "attempt to modify one's own membership "
-        "(cannot_modify_self_membership)."
-    )
+_READ_FORBIDDEN_403 = admin_read_forbidden_403(
+    "Caller holds the required MEMBERSHIPS permission in no org "
+    "(permission_denied), or a forbidden ?org_ids= entry."
+)
+
+_WRITE_FORBIDDEN_403 = admin_write_forbidden_403(
+    "Caller lacks the required MEMBERSHIPS permission on a row they can "
+    "see (permission_denied — a row they cannot see is a 404), the role "
+    "being assigned grants authority the caller does not hold "
+    "(permission_escalation_denied), or an attempt to modify one's own "
+    "membership (cannot_modify_self_membership)."
 )
 
 _NOT_FOUND_404 = OpenApiResponse(
@@ -109,7 +112,7 @@ MEMBERSHIPS_LIST_GET = {
     "responses": {
         200: OpenApiResponse(description="Paginated membership rows."),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _FORBIDDEN_403,
+        403: _READ_FORBIDDEN_403,
     },
 }
 
@@ -128,7 +131,7 @@ MEMBERSHIPS_CREATE_POST = {
             "(membership_already_exists), or non-assignable role."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _FORBIDDEN_403,
+        403: _WRITE_FORBIDDEN_403,
         404: OpenApiResponse(
             description="Unknown account (user_not_found) or org the caller cannot access."
         ),
@@ -147,7 +150,7 @@ MEMBERSHIPS_UPDATE_PATCH = {
         200: OpenApiResponse(description="The updated membership row."),
         400: OpenApiResponse(description="Validation error or non-assignable role."),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _FORBIDDEN_403,
+        403: _WRITE_FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
 }
@@ -162,7 +165,7 @@ MEMBERSHIPS_DESTROY_DELETE = {
     "responses": {
         204: OpenApiResponse(description="Removed"),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _FORBIDDEN_403,
+        403: _WRITE_FORBIDDEN_403,
         404: _NOT_FOUND_404,
     },
 }
@@ -202,6 +205,6 @@ MEMBERSHIPS_ASSIGNABLE_USERS_GET = {
     "responses": {
         200: OpenApiResponse(description="Paginated candidate accounts."),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _FORBIDDEN_403,
+        403: _READ_FORBIDDEN_403,
     },
 }

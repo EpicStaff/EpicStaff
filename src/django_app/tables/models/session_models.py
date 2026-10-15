@@ -19,7 +19,7 @@ class Session(models.Model):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, null=True)
     parent_session = models.ForeignKey(
         "self",
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         default=None,
         related_name="subgraph_sessions",

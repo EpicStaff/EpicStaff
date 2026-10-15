@@ -44,3 +44,8 @@ GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
 # the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
 # opts in, so existing runs are byte-for-byte unchanged.
 DEFAULT_TOKEN_BUDGET = env.int("CREW_TOKEN_BUDGET") or None
+
+DJANGO_HOST = env.str("DJANGO_HOST")
+DJANGO_PORT = env.int("DJANGO_PORT")
+DJANGO_API_KEY = env.str("DJANGO_API_KEY")
+KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")

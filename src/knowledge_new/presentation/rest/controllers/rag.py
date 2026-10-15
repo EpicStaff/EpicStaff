@@ -13,13 +13,28 @@ from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
 from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
+from infrastructure.graphrag.availability import is_graphrag_available
 from litestar import Controller, delete, get, post, status_codes
+from litestar.connection import ASGIConnection
+from litestar.exceptions import HTTPException
+from litestar.handlers.base import BaseRouteHandler
 from presentation.rest import schemas
+
+
+def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) -> None:
+    """Reject GRAPH requests with 503 when graphrag cannot run on this host."""
+    is_graph = connection.path_params.get("strategy") == RAGStrategy.GRAPH.value
+    if is_graph and not is_graphrag_available():
+        raise HTTPException(
+            status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GraphRAG is unavailable on this server: the CPU does not support AVX2.",
+        )
 
 
 class RagController(Controller):
     path = "rags/{strategy:str}/"
     tags = ("RAG",)
+    guards = [require_graphrag_available]
 
     @post(
         path="{rag_id:int}/index/",

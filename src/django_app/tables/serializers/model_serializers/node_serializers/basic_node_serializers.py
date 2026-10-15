@@ -25,11 +25,13 @@ from tables.models.graph_models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     SubGraphNode,
     TaskNode,
 )
+from tables.models.key_value_models import KeyValueTable
 from tables.models.knowledge_models import SourceCollection
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
@@ -41,7 +43,10 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
+from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
+from utils.logger import logger
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
 # "$ref", "allOf"). Used only to tell a bare field map ("reasoning":
@@ -127,6 +132,65 @@ class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSer
     class Meta:
         model = FileExtractorNode
         fields = "__all__"
+
+
+class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
+    """A node's single-FK table reference that saves as no table when the id does not resolve.
+
+    A flow editor left open while its table was deleted still sends that table's id; the
+    database has already cleared it (SET_NULL), so the save stores no table instead of
+    failing the whole flow. A table of another org is not in the queryset either, so it
+    takes the same path: never bound, and indistinguishable from a deleted one. A value
+    that is not a table id at all (`"abc"`) is still a validation error. Single FK only:
+    not for `many=True`.
+
+    Without a request in the context the scoped queryset is empty and nothing resolves;
+    that programming error keeps the original `does_not_exist` error instead of silently
+    saving no table.
+    """
+
+    def to_internal_value(self, data):
+        try:
+            return super().to_internal_value(data)
+        except serializers.ValidationError as error:
+            if error.get_codes() != ["does_not_exist"] or self.context.get("request") is None:
+                raise
+        logger.info(
+            "Key-Value table {} is not in the active organization; saving the node with no table",
+            data,
+        )
+        return None
+
+
+class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+    key_value_table = KeyValueTableReferenceField(
+        queryset=KeyValueTable.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = KeyValueNode
+        fields = "__all__"
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        mode = attrs.get("mode", getattr(self.instance, "mode", KeyValueNode.Mode.READ))
+        entries = attrs.get("entries", getattr(self.instance, "entries", []))
+        attrs["entries"] = KeyValueEntriesValidator().validate(mode, entries)
+        table = attrs.get("key_value_table", getattr(self.instance, "key_value_table", None))
+        # Only a change to what the node does with its table needs the mode's permissions, so
+        # a user who may only view the table can still move or rename someone else's node.
+        if table is not None and self._changes_table_use(table, mode, attrs["entries"]):
+            KeyValueTableService().assert_can_configure(self.context["request"].user, table, mode)
+        return attrs
+
+    def _changes_table_use(self, table: KeyValueTable, mode: str, entries: list[dict]) -> bool:
+        return (
+            self.instance is None
+            or table.pk != self.instance.key_value_table_id
+            or mode != self.instance.mode
+            or entries != self.instance.entries
+        )
 
 
 class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):

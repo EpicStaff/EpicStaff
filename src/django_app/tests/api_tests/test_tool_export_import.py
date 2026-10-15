@@ -15,7 +15,7 @@ from tables.services.secrets import secret_service
 # ---- fixtures ----
 #
 # Both built-in roles now carry the EXPORT bit (16) on the TOOLS resource
-# (EST-3207, migration 0210_seed_tools_export_permission): "Org Admin" is
+# (migration 0210_seed_tools_export_permission): "Org Admin" is
 # 31 (C R U D E) and "Member" is 23 (C R U E, no D — matching the shape
 # `files` already uses for Member). A separate custom role is still used
 # for the export/import-focused tests below (mirroring the pattern in
@@ -140,7 +140,7 @@ def test_mcptool_export_includes_labels_no_favorite_key(client_a, mcp_tool_a):
 
 @pytest.mark.django_db
 def test_mcptool_export_does_not_leak_auth_secret(client_a, mcp_tool_with_auth_a):
-    """EST-3783: exporting an MCP tool must never include the `auth` secret."""
+    """Exporting an MCP tool must never include the `auth` secret."""
     resp = client_a.get(f"/api/mcp-tools/{mcp_tool_with_auth_a.id}/export/")
     assert resp.status_code == 200
 
@@ -197,8 +197,7 @@ def test_mcptool_import_after_export_does_not_carry_over_auth(
 def test_pythoncodetool_import_ignores_stale_created_by_reference(
     client_a, python_tool_a
 ):
-    """
-    EST-3777: an import payload with a `created_by` referencing a user id
+    """An import payload with a `created_by` referencing a user id
     that no longer exists must not blow up with a 400 ValidationError
     ("Invalid pk ... - object does not exist"). `created_by` is
     server-managed (excluded on `PythonCodeToolImportSerializer`) and must
@@ -220,7 +219,8 @@ def test_pythoncodetool_import_ignores_stale_created_by_reference(
 
 @pytest.mark.django_db
 def test_mcptool_import_ignores_stale_created_by_reference(client_a, mcp_tool_a):
-    """EST-3777, MCP tool side of the same fix."""
+    """Same as the PythonCodeTool case: a stale `created_by` in an MCP tool
+    import payload is server-managed and must be ignored, not validated."""
     export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
     assert export_resp.status_code == 200
     payload = export_resp.json()
@@ -475,7 +475,7 @@ def test_mcptool_import_labels_false_skips_labels(client_a, mcp_tool_a):
     assert new_tool.labels.count() == 0
 
 
-# ---- EST-3773: exporting a shared built-in tool must not leak other orgs' label names ----
+# ---- exporting a shared built-in tool must not leak other orgs' label names ----
 
 
 @pytest.fixture
@@ -584,7 +584,7 @@ def _as_upload(content: bytes, filename: str):
     return f
 
 
-# ---- built-in role coverage (EST-3207 / migration 0210) ----
+# ---- built-in role coverage (migration 0210) ----
 
 
 @pytest.fixture

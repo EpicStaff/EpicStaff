@@ -1,0 +1,64 @@
+<!-- Same header as the Knowledge Sources collections sidebar. -->
+<div class="table-list__header">
+    <span class="table-list__header-label"
+        >Tables
+        <span class="table-list__header-count">{{ tables().length }}</span>
+    </span>
+    @if (canCreate()) {
+        <app-button
+            [type]="tables().length ? 'primary' : 'outline-primary'"
+            [leftIcon]="'plus'"
+            (click)="createRequested.emit()"
+        >
+            Add
+        </app-button>
+    }
+</div>
+@if (showFilter()) {
+    <div class="table-list__filter">
+        <app-search
+            mod="small"
+            placeholder="Filter tables..."
+            [(searchTerm)]="filterText"
+        />
+    </div>
+}
+<ul class="table-list">
+    @for (table of visibleTables(); track table.id) {
+        <li
+            class="table-list__row"
+            [class.active]="table.id === selectedId()"
+        >
+            <button
+                type="button"
+                class="table-list__select"
+                (click)="selected.emit(table)"
+            >
+                <span class="table-list__name">{{ table.name }}</span>
+                <span class="table-list__count">{{ table.entry_count }} entries</span>
+            </button>
+            @if (canRename() || canDelete()) {
+                <div class="table-list__actions">
+                    @if (canRename()) {
+                        <app-icon-button
+                            icon="edit"
+                            tooltip="Rename"
+                            ariaLabel="Rename table"
+                            (onClick)="renameRequested.emit(table)"
+                        />
+                    }
+                    @if (canDelete()) {
+                        <app-icon-button
+                            icon="trash"
+                            tooltip="Delete"
+                            ariaLabel="Delete table"
+                            (onClick)="deleteRequested.emit(table)"
+                        />
+                    }
+                </div>
+            }
+        </li>
+    } @empty {
+        <li class="table-list__empty">{{ emptyMessage() }}</li>
+    }
+</ul>

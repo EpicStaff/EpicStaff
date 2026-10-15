@@ -9,11 +9,11 @@ def create_vector_store_config(
     rag_id: int,
     subdir: str | None = None,
     vector_size: int = 1536,
-    type: str = "minio_lancedb",
-    endpoint: str = settings.MINIO_ENDPOINT,
-    bucket: str = settings.MINIO_BUCKET,
-    access_key: str = settings.MINIO_ACCESS_KEY,
-    secret_key: str = settings.MINIO_SECRET_KEY,
+    type: str = "s3_lancedb",
+    endpoint: str = settings.STORAGE_ENDPOINT,
+    bucket: str = settings.KNOWLEDGE_BUCKET,
+    access_key: str = settings.STORAGE_ACCESS_KEY,
+    secret_key: str = settings.STORAGE_SECRET_KEY,
 ) -> VectorStoreConfig:
     if subdir:
         db_uri = f"s3://{bucket}/graphrag/rag_{rag_id}/{subdir}/lancedb"
@@ -43,7 +43,7 @@ def _build_storage_options(
     }
 
 
-class MinioLanceDBVectorStore(LanceDBVectorStore):
+class S3LanceDBVectorStore(LanceDBVectorStore):
     def __init__(
         self,
         *,
@@ -64,4 +64,4 @@ class MinioLanceDBVectorStore(LanceDBVectorStore):
             self.document_collection = self.db_connection.open_table(self.index_name)
 
 
-register_vector_store("minio_lancedb", MinioLanceDBVectorStore)
+register_vector_store("s3_lancedb", S3LanceDBVectorStore)

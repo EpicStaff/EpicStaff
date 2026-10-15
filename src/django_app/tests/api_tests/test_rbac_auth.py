@@ -1,7 +1,7 @@
 """
 Integration tests for the Story 2 auth surface:
 
-- First-setup idempotency + ignores body fields the endpoint no longer accepts
+- First-setup idempotency, optional display_name, ignored organization_name
 - Structured validation errors (AuthValidationService): aggregated + redacted
 - Login valid/invalid + consistent 401 envelope
 - /me via JWT / env ApiKey / user ApiKey
@@ -495,27 +495,114 @@ def test_logout_rejects_refresh_owned_by_another_user(
     assert r2.status_code == 200
 
 
-# ---------------- First-setup: ignored body fields + settings-driven org ----------------
+# ---------------- First-setup: body display_name + settings-driven org ----------------
 
 
 @pytest.mark.django_db
-def test_first_setup_ignores_organization_name_and_display_name_in_body(api_client):
-    """After the M1/M2 cleanup the endpoint silently ignores these fields;
-    the org name comes from settings.DEFAULT_ORGANIZATION_NAME."""
+def test_first_setup_ignores_organization_name_in_body(api_client):
     r = api_client.post(
         reverse("first_setup"),
         data={
             "email": "admin@example.com",
             "password": "StrongPass123!",
             "organization_name": "Rogue Corp",
-            "display_name": "Rogue Name",
         },
         format="json",
     )
     assert r.status_code == 201
-    body = r.json()
-    assert body["user"]["display_name"] is None
-    assert body["organization"]["name"] == settings.DEFAULT_ORGANIZATION_NAME
+    assert r.json()["organization"]["name"] == settings.DEFAULT_ORGANIZATION_NAME
+
+
+@pytest.mark.django_db
+def test_first_setup_saves_trimmed_display_name_from_body(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={
+            "email": "admin@example.com",
+            "password": "StrongPass123!",
+            "display_name": "  Jane Doe  ",
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "Jane Doe"
+    user = get_user_model().objects.get(email="admin@example.com")
+    assert user.display_name == "Jane Doe"
+
+
+@pytest.mark.django_db
+def test_first_setup_derives_display_name_when_null(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={
+            "email": "john.smith@example.com",
+            "password": "StrongPass123!",
+            "display_name": None,
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "John Smith"
+    user = get_user_model().objects.get(email="john.smith@example.com")
+    assert user.display_name == "John Smith"
+
+
+@pytest.mark.django_db
+def test_first_setup_accepts_display_name_of_max_length(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={
+            "email": "admin@example.com",
+            "password": "StrongPass123!",
+            "display_name": "x" * 255,
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert get_user_model().objects.get().display_name == "x" * 255
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("display_name", "reason"),
+    [
+        ("   ", "Must not be blank. Omit it or use null to derive it from the email."),
+        ("x" * 256, "Must be 255 characters or fewer."),
+        (123, "Must be a string or null."),
+    ],
+    ids=["blank", "too-long", "not-a-string"],
+)
+def test_first_setup_rejects_invalid_display_name(api_client, display_name, reason):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={
+            "email": "admin@example.com",
+            "password": "StrongPass123!",
+            "display_name": display_name,
+        },
+        format="json",
+    )
+    assert r.status_code == 400
+    assert r.json()["errors"] == [
+        {"field": "display_name", "value": display_name, "reason": reason}
+    ]
+    assert not get_user_model().objects.exists()
+
+
+@pytest.mark.django_db
+def test_first_setup_aggregates_display_name_error_with_email_error(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={
+            "email": "not-an-email",
+            "password": "StrongPass123!",
+            "display_name": "   ",
+        },
+        format="json",
+    )
+    assert r.status_code == 400
+    fields = {error["field"] for error in r.json()["errors"]}
+    assert {"email", "display_name"} <= fields
 
 
 @pytest.mark.django_db
@@ -528,6 +615,19 @@ def test_first_setup_uses_django_default_org_name_from_settings(api_client):
     )
     assert r.status_code == 201
     assert r.json()["organization"]["name"] == "Override Co"
+
+
+@pytest.mark.django_db
+def test_first_setup_derives_display_name_from_email(api_client):
+    r = api_client.post(
+        reverse("first_setup"),
+        data={"email": "john.smith@example.com", "password": "StrongPass123!"},
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "John Smith"
+    user = get_user_model().objects.get(email="john.smith@example.com")
+    assert user.display_name == "John Smith"
 
 
 # ---------------- AuthValidationService: aggregated + redacted errors ----------------
@@ -1119,7 +1219,7 @@ def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_use
 
 
 # ------------------------------------------------------------------
-# PrintableAsciiPasswordValidator — unit tests (EST-2418)
+# PrintableAsciiPasswordValidator — unit tests
 # ------------------------------------------------------------------
 from django.core.exceptions import ValidationError as _DjangoValidationError
 
@@ -1180,7 +1280,7 @@ class TestPrintableAsciiPasswordValidator:
 
 
 # ------------------------------------------------------------------
-# Password alphabet — integration tests across all 4 endpoints (EST-2418)
+# Password alphabet — integration tests across all 4 endpoints
 # ------------------------------------------------------------------
 
 _BAD_PASSWORDS = [
@@ -1275,7 +1375,7 @@ class TestAdminPasswordResetAlphabet:
 
 
 # ------------------------------------------------------------------
-# Email whitespace + throttle non-string guard (EST-2418)
+# Email whitespace + throttle non-string guard
 # ------------------------------------------------------------------
 
 _BAD_EMAILS_WHITESPACE = [

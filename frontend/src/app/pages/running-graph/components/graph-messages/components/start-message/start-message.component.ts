@@ -1,11 +1,12 @@
-import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
+import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
     selector: 'app-start-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, ViewNestedMessagesButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="start-container">
@@ -30,6 +31,14 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                 <h3>
                     <span class="node-name">{{ message.name }}</span> started
                 </h3>
+
+                @if (showViewNestedMessages) {
+                    <app-view-nested-messages-button
+                        [count]="nestedMessagesCount"
+                        [isOpen]="isNestedMessagesOpen"
+                        (clicked)="viewNestedMessages.emit()"
+                    />
+                }
             </div>
 
             <!-- Collapsible Content -->
@@ -191,6 +200,11 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 })
 export class StartMessageComponent {
     @Input() message!: GraphMessage;
+    @Input() showViewNestedMessages = false;
+    @Input() isNestedMessagesOpen = false;
+    @Input() nestedMessagesCount: number = 0;
+    @Output() viewNestedMessages = new EventEmitter<void>();
+
     isMessageExpanded = false;
     isInputsExpanded = true;
 

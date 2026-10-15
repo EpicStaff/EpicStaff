@@ -2,7 +2,7 @@
     class="flow-files-btn"
     [class.flow-files-btn--active]="attachedCount() > 0"
     (click)="openDialog()"
-    matTooltip="Add files to flow"
+    [matTooltip]="isReadOnly() ? 'View flow files' : 'Add files to flow'"
 >
     <app-svg-icon
         icon="file-upload"
@@ -12,6 +12,6 @@
     @if (attachedCount() > 0) {
         <span class="flow-files-btn__count">{{ attachedCount() }}</span>
     } @else {
-        <span class="flow-files-btn__label">Add Files</span>
+        <span class="flow-files-btn__label">{{ isReadOnly() ? 'View files' : 'Add files' }}</span>
     }
 </button>

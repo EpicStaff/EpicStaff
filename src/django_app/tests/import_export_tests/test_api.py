@@ -1,7 +1,6 @@
 import json
+import uuid
 import pytest
-
-pytestmark = pytest.mark.skip(reason="pre-existing failure, unrelated to EST-1529")
 
 from django.urls import reverse
 
@@ -32,6 +31,45 @@ class TestExportEndpoints:
 
         data = json.loads(response.content)
         assert data["main_entity"] == EntityType.GRAPH
+
+    def test_cdt_node_export_with_sections_returns_json_serializable_data(
+        self, auth_client, default_org, cdt_condition_group_factory
+    ):
+        """Regression test for: `section` in `condition_groups` was serialized
+        as a raw uuid.UUID object, causing "Object of type UUID is not JSON
+        serializable" errors."""
+        graph, *_ = cdt_condition_group_factory(default_org)
+
+        url = reverse("graphs-export", kwargs={"pk": graph.id})
+        response = auth_client.get(url)
+
+        assert response.status_code == 200
+        data = json.loads(response.content)
+        assert json.dumps(data) is not None
+
+    def test_cdt_node_section_field_is_string_or_null(
+        self, auth_client, default_org, cdt_condition_group_factory
+    ):
+        graph, *_ = cdt_condition_group_factory(default_org)
+
+        url = reverse("graphs-export", kwargs={"pk": graph.id})
+        response = auth_client.get(url)
+
+        assert response.status_code == 200
+        data = json.loads(response.content)
+
+        # The CDT node is nested inside the exported Flow entry's flat "nodes"
+        # list, tagged with its node_type, not a separate top-level entity key.
+        exported_flow = data[EntityType.GRAPH][0]
+        exported_cdt = next(
+            node
+            for node in exported_flow["nodes"]
+            if node["node_type"] == EntityType.CLASSIFICATION_DECISION_TABLE_NODE
+        )
+        section_value = exported_cdt["condition_groups"][0]["section"]
+
+        assert isinstance(section_value, str)
+        uuid.UUID(section_value)  # raises ValueError if not a valid UUID string
 
 
 # ──────────────────────────────────────────

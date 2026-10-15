@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 
 from fastapi import FastAPI
@@ -10,12 +9,17 @@ from src.shared.models import WebhookConfigData
 
 from app.controllers import webhook_routes
 from app.core.settings import settings
+from app.providers.tunnels.ngrok_working_directory import remove_stale_working_directories
 from app.services.redis_service import (
     RedisService,
     close_redis_connection,
     get_redis_service,
 )
 from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
+
+# Kept short: Docker kills the container 10s after SIGTERM by default, and uvicorn drains
+# connections before this budget (listener stop plus tunnel unregistering) starts.
+TUNNEL_SHUTDOWN_TIMEOUT_SECONDS = 8
 
 
 async def listen_redis(redis_service: RedisService, tunnel_registry: TunnelRegistry):
@@ -46,6 +50,13 @@ async def lifespan(app: FastAPI):
     # --- STARTUP ---
     logger.info("Application starting up...")
 
+    # Before the Redis listener starts, so no tunnel of this run exists yet. Best effort:
+    # leftover directories must not keep the service from starting.
+    try:
+        await asyncio.to_thread(remove_stale_working_directories)
+    except Exception:
+        logger.exception("Sweeping stale ngrok working directories failed; continuing startup.")
+
     redis_service = await get_redis_service()
     tunnel_registry = get_tunnel_registry(redis_service=redis_service)
 
@@ -62,9 +73,23 @@ async def lifespan(app: FastAPI):
 
     logger.info("Application shutting down...")
 
-    redis_listener_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await redis_listener_task
+    # One deadline covers stopping the listener and unregistering the tunnels: a register()
+    # the listener was in the middle of disconnects its new tunnel before it stops, which
+    # can take as long as a tunnel disconnect. The listener stops first so it starts no
+    # new registrations; all of this runs before Redis closes, because unregistering
+    # deletes each tunnel URL from Redis.
+    try:
+        async with asyncio.timeout(TUNNEL_SHUTDOWN_TIMEOUT_SECONDS):
+            redis_listener_task.cancel()
+            # wait() rather than awaiting the task: the task's own CancelledError must not
+            # be mistaken for this deadline or for an external cancellation.
+            await asyncio.wait([redis_listener_task])
+            await tunnel_registry.unregister_all()
+    except TimeoutError:
+        logger.warning(
+            "Listener and tunnels still stopping after {}s; continuing shutdown.",
+            TUNNEL_SHUTDOWN_TIMEOUT_SECONDS,
+        )
 
     await close_redis_connection()
     logger.info("Cleanup complete.")

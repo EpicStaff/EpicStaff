@@ -39,7 +39,7 @@
     >
         <div class="user-cell">
             <app-user-avatar
-                [name]="row['display_name'] || row['email']"
+                [name]="row['name'] || row['email']"
                 [avatarUrl]="row['avatar']"
             />
             <div class="user-info">
@@ -166,6 +166,7 @@
             }
             @if (showDeactivate(row)) {
                 <app-stop-button
+                    variant="pause"
                     tooltip="Deactivate account"
                     (triggered)="onDeactivate(row)"
                 />
@@ -174,6 +175,12 @@
                 <app-delete-button
                     tooltip="Remove from your organizations"
                     (triggered)="onRemoveFromMyOrgs(row)"
+                />
+            }
+            @if (showHardDelete(row)) {
+                <app-delete-button
+                    tooltip="Delete account permanently"
+                    (triggered)="onHardDeleteUser(row)"
                 />
             }
         </div>

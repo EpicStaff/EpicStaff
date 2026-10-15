@@ -26,7 +26,7 @@ import {
     IconButtonComponent,
     SpinnerComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import {
     ActionCode,
     BulkDeleteGroup,
@@ -45,6 +45,9 @@ import { FlowsApiService } from '../../services/flows-api.service';
 
 const VERSION_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'version', plural: 'versions' };
 
+/** How long a click on the renameable name/description waits for a second click (double-click = rename). */
+const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
+
 @Component({
     selector: 'app-version-history-panel',
     imports: [
@@ -58,6 +61,7 @@ const VERSION_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'version', plural
         ButtonComponent,
         CheckboxComponent,
         HasPermissionDirective,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './version-history-panel.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -67,7 +71,6 @@ export class VersionHistoryPanelComponent implements OnInit {
     public versionsList: GraphVersionDto[] = [];
     public isLoading = true;
     public openMenuId: number | null = null;
-    public selectedVersionId: number | null = null;
     public editingVersionId: number | null = null;
     public editingField: 'name' | 'description' | null = null;
     public editingValue: string = '';
@@ -75,6 +78,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     protected readonly ActionCode = ActionCode;
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
+    private pendingPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 
     public readonly selectMode = signal(false);
     public readonly selectedVersionIds = signal<ReadonlySet<number>>(new Set());
@@ -85,7 +89,7 @@ export class VersionHistoryPanelComponent implements OnInit {
         return `Delete ${count} ${count === 1 ? 'version' : 'versions'}`;
     });
 
-    @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement | HTMLTextAreaElement>;
+    @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
     private destroyRef = inject(DestroyRef);
     private bulkDeleteService = inject(BulkDeleteService);
@@ -102,9 +106,16 @@ export class VersionHistoryPanelComponent implements OnInit {
     public graphId = input.required<number>();
     public graphSaveVersion = input<number | undefined>();
     public hasUnsavedChanges = input<boolean>(false);
+    /** Version currently shown in the canvas preview (owned by the parent); highlights its card. */
+    public readonly previewedVersionId = input<number | null>(null);
+    /** Selected card (owned by the parent, set only once it accepts a preview); the footer "Restore This Version" acts on it. */
+    public readonly selectedVersionId = input<number | null>(null);
 
     public closed = output<void>();
     public restoreRequested = output<GraphVersionDto>();
+    public readonly previewRequested = output<GraphVersionDto>();
+    public readonly versionDeleted = output<GraphVersionDto>();
+    public readonly versionUpdated = output<GraphVersionDto>();
 
     @HostListener('document:mousedown', ['$event'])
     onDocumentMouseDown(event: MouseEvent): void {
@@ -121,7 +132,9 @@ export class VersionHistoryPanelComponent implements OnInit {
         private cdr: ChangeDetectorRef,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
-    ) {}
+    ) {
+        this.destroyRef.onDestroy(() => this.cancelPendingPreview());
+    }
 
     public ngOnInit(): void {
         this.loadVersions();
@@ -131,16 +144,49 @@ export class VersionHistoryPanelComponent implements OnInit {
         this.openMenuId = this.openMenuId === id ? null : id;
     }
 
-    public selectVersion(version: GraphVersionDto): void {
-        this.selectedVersionId = version.id;
-    }
-
-    public onCardClick(version: GraphVersionDto): void {
+    public onCardClick(event: MouseEvent, version: GraphVersionDto): void {
+        // The second click of a double-click; the first one already opened the preview or toggled the card.
+        if (event.detail > 1) return;
         if (this.selectMode()) {
             this.toggleVersionSelection(version.id);
-        } else {
-            this.selectVersion(version);
+            return;
         }
+        this.openPreview(version);
+    }
+
+    /**
+     * A double-click on the name/description starts a rename, and it fires two clicks first.
+     * Wait out the double-click window so a rename never opens the preview (or moves the selection).
+     */
+    public onRenameableTextClick(event: MouseEvent, version: GraphVersionDto): void {
+        event.stopPropagation();
+        if (event.detail > 1) return;
+        if (this.selectMode()) {
+            this.toggleVersionSelection(version.id);
+            return;
+        }
+        this.cancelPendingPreview();
+        this.pendingPreviewTimer = setTimeout(() => {
+            this.pendingPreviewTimer = null;
+            this.openPreview(version);
+        }, RENAME_DOUBLE_CLICK_WINDOW_MS);
+    }
+
+    public onCardKeydown(event: KeyboardEvent, version: GraphVersionDto): void {
+        // Keys typed into the rename inputs or the options button bubble up here — only the card itself reacts.
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        if (this.selectMode()) {
+            this.toggleVersionSelection(version.id);
+            return;
+        }
+        this.openPreview(version);
+    }
+
+    /** In select mode a card shows the bulk selection; otherwise the version the parent selected. */
+    public isCardSelected(id: number): boolean {
+        return this.selectMode() ? this.isVersionSelected(id) : this.selectedVersionId() === id;
     }
 
     public enterSelectMode(): void {
@@ -174,7 +220,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public restoreSelectedVersion(): void {
-        const version = this.versionsList.find((v) => v.id === this.selectedVersionId);
+        const version = this.versionsList.find((v) => v.id === this.selectedVersionId());
         if (!version) return;
 
         const pendingName =
@@ -186,6 +232,9 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public startEdit(version: GraphVersionDto, field: 'name' | 'description'): void {
+        // While selecting, a double-click on the name/description is one toggle, never a rename.
+        if (this.selectMode()) return;
+        this.cancelPendingPreview();
         this.openMenuId = null;
         this.editingVersion = version;
         this.editingVersionId = version.id;
@@ -204,7 +253,12 @@ export class VersionHistoryPanelComponent implements OnInit {
         const value = this.editingValue.trim();
         const originalValue = field === 'name' ? version.name : version.description || '';
 
-        if ((field === 'name' && !value) || value === originalValue) {
+        if (field === 'name' && !value) {
+            this.toastService.warning('Version name is required');
+            this.cancelEdit();
+            return;
+        }
+        if (value === originalValue) {
             this.cancelEdit();
             return;
         }
@@ -225,6 +279,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (idx !== -1) {
                         this.versionsList[idx] = updated;
                     }
+                    this.versionUpdated.emit(updated);
                     this.toastService.success(field === 'name' ? 'Version was renamed' : 'Description was updated');
                     this.cancelEdit();
                 },
@@ -322,24 +377,26 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     /** Single place both `enterSelectMode` and `cancelSelectMode`/delete-completion go through,
-     *  so the open ⋮ menu never survives a select-mode transition and reopens unexpectedly. */
+     *  so the open ⋮ menu never survives a select-mode transition and reopens unexpectedly,
+     *  and a preview waiting out the double-click window never opens after selecting starts. */
     private setSelectMode(mode: boolean): void {
         this.openMenuId = null;
+        this.cancelPendingPreview();
         this.selectMode.set(mode);
         if (!mode) {
             this.selectedVersionIds.set(new Set());
         }
     }
 
+    /** Drops deleted versions from the list. The parent owns the preview and the selected version,
+     *  so it learns of each removal through `versionDeleted`. */
     private removeVersions(ids: number[]): void {
         if (ids.length === 0) return;
 
         const idSet = new Set(ids);
+        const removed = this.versionsList.filter((version) => idSet.has(version.id));
         this.versionsList = this.versionsList.filter((version) => !idSet.has(version.id));
-
-        if (this.selectedVersionId !== null && idSet.has(this.selectedVersionId)) {
-            this.selectedVersionId = null;
-        }
+        removed.forEach((version) => this.versionDeleted.emit(version));
 
         const currentSelection = this.selectedVersionIds();
         if ([...currentSelection].some((id) => idSet.has(id))) {
@@ -347,5 +404,17 @@ export class VersionHistoryPanelComponent implements OnInit {
             idSet.forEach((id) => nextSelection.delete(id));
             this.selectedVersionIds.set(nextSelection);
         }
+    }
+
+    /** Asks the parent to preview the version; the parent selects it only if it accepts, so selection == previewed version. */
+    private openPreview(version: GraphVersionDto): void {
+        this.cancelPendingPreview();
+        this.previewRequested.emit(version);
+    }
+
+    private cancelPendingPreview(): void {
+        if (this.pendingPreviewTimer === null) return;
+        clearTimeout(this.pendingPreviewTimer);
+        this.pendingPreviewTimer = null;
     }
 }

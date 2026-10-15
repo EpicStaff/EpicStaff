@@ -118,6 +118,13 @@
         border-color: var(--accent-color);
     }
 
+    &--readonly {
+        cursor: default;
+        padding: 0;
+        background: transparent;
+        border: none;
+    }
+
     &--invalid {
         border-color: var(--color-error);
     }

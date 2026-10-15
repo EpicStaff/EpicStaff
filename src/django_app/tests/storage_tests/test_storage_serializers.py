@@ -1,12 +1,4 @@
-import io
-import lzma
-import tarfile
 
-import pytest
-from django.conf import settings
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
-from rest_framework.exceptions import ValidationError
 
 from tables.serializers.storage_serializers import (
     _normalize_path,
@@ -16,9 +8,7 @@ from tables.serializers.storage_serializers import (
     StoragePathQuerySerializer,
     StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
-    StorageUploadSerializer,
 )
-from utils.exception_handler import custom_exception_handler
 
 
 class TestNormalizePath:
@@ -55,35 +45,6 @@ class TestStorageRenameSerializer:
         assert ser.validated_data["from"] == "old"
         assert ser.validated_data["to"] == "new"
 
-
-class TestStorageUploadSerializer:
-    def test_rejects_empty_file_list(self):
-        ser = StorageUploadSerializer(data={"path": "", "files": []})
-        assert not ser.is_valid()
-        assert "files" in ser.errors
-
-    @override_settings(MAX_ARCHIVE_UNCOMPRESSED_SIZE=5 * 1024 * 1024)
-    def test_rejection_reaches_the_client_without_a_field_label(self):
-        payload = b"\0" * (6 * 1024 * 1024)
-        raw_tar = io.BytesIO()
-        with tarfile.open(fileobj=raw_tar, mode="w") as tf:
-            info = tarfile.TarInfo(name="big.bin")
-            info.size = len(payload)
-            tf.addfile(info, io.BytesIO(payload))
-
-        archive = SimpleUploadedFile(
-            "5-mb-example-file.tar.xz", lzma.compress(raw_tar.getvalue())
-        )
-        ser = StorageUploadSerializer(data={"files": [archive]})
-
-        with pytest.raises(ValidationError) as excinfo:
-            ser.is_valid(raise_exception=True)
-
-        message = custom_exception_handler(excinfo.value, {}).data["message"]
-        assert message == (
-            "Upload rejected. Archive '5-mb-example-file.tar.xz' expands to "
-            f"more than {settings.MAX_ARCHIVE_UNCOMPRESSED_SIZE} bytes"
-        )
 
 
 class TestStorageBulkDeleteSerializer:

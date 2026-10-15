@@ -2,7 +2,7 @@ name: Dependency scan
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, developer]
   # Weekly, so a CVE published against an unchanged dependency still surfaces on
   # a repository that has had no pull requests. Without this, a quiet week is
   # indistinguishable from a clean one.
@@ -76,8 +76,9 @@ jobs:
 
   scan:
     name: Known-vulnerable dependencies
-    # A docs-only pull request skips the job outright, Drive upload included:
-    # filing an empty report for a README edit is noise in the security folder.
+    # A docs-only pull request skips the job outright. Pull requests never upload
+    # to Drive: only scheduled and manual runs file a report, so the security
+    # folder holds one report per week rather than one per push.
     needs: changes
     if: needs.changes.outputs.py == 'true' || needs.changes.outputs.fe == 'true'
     runs-on: ubuntu-latest
@@ -234,12 +235,12 @@ jobs:
           echo "REPORT_NAME=$(date -u +%Y-%m-%dT%H%M%SZ)-${{ github.event_name }}-${{ github.run_id }}.txt" >> "$GITHUB_ENV"
 
       - name: Install dependencies
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.event_name != 'pull_request'
         run: pip install google-api-python-client google-auth
 
       - name: Upload report to Google Drive
         id: upload
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.event_name != 'pull_request'
         run: python .github/scripts/upload_security_report.py
         env:
           SECURITY_GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.SECURITY_GDRIVE_SERVICE_ACCOUNT_JSON }}
@@ -256,8 +257,8 @@ jobs:
             if [ '${{ steps.upload.outcome }}' = 'success' ]; then
               echo 'Report stored in the private security Drive folder.'
             elif [ '${{ steps.upload.outcome }}' = 'skipped' ]; then
-              echo 'Report NOT stored: fork pull requests have no Drive credentials.'
-              echo 'A maintainer should re-run this scan from a branch in this repository.'
+              echo 'Report NOT stored: pull request runs do not upload.'
+              echo 'The weekly schedule stores one; run the workflow manually for a fresh report.'
             else
               echo ':warning: Report NOT stored -- the upload step failed. Check the job log.'
             fi

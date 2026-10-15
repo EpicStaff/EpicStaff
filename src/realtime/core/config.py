@@ -32,6 +32,10 @@ CONNECTION_KEY_TTL_SECONDS = humanize.to_time("5m")
 STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
 MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
 
+# Off by default: `realtime_session_item` has no retention and is readable with the org's
+# voice permission, and turning this on writes one row per audio frame.
+PERSIST_RAW_AUDIO = env.bool("REALTIME_PERSIST_RAW_AUDIO", False)
+
 DJANGO_HOST = env.str("DJANGO_HOST")
 DJANGO_PORT = env.int("DJANGO_PORT")
 DJANGO_AUTH_URL = env.str("DJANGO_AUTH_URL")

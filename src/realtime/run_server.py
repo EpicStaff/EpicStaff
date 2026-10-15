@@ -1,13 +1,11 @@
-import sys
-
 import uvicorn
 from core import config
+from core.logging_config import build_uvicorn_log_config, configure_logging
 from loguru import logger
 
 
 def main():
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
+    configure_logging()
 
     if config.REALTIME_DEBUG_MODE:
         logger.info("RUNNING IN DEBUG MODE")
@@ -20,6 +18,7 @@ def main():
         reload_dirs=["."] if config.REALTIME_RELOAD else None,
         workers=config.REALTIME_WORKERS,
         log_level="debug" if config.REALTIME_DEBUG_MODE else "info",
+        log_config=build_uvicorn_log_config(),
     )
 
 

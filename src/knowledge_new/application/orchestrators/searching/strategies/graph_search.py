@@ -18,6 +18,7 @@ from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
 from infrastructure.grounding_guard import apply_grounding_guard
+from infrastructure.prompt_patching import patch_graphrag_prompts
 from pydantic import BaseModel as PydanticModel
 
 
@@ -101,6 +102,10 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             extra_kwargs=_drift_extra_kwargs,
         ),
     }
+
+    def __init__(self, uow):
+        patch_graphrag_prompts()
+        super().__init__(uow)
 
     async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:

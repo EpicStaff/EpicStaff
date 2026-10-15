@@ -256,7 +256,7 @@ export class LabelSidebarComponent implements OnInit {
         });
 
         dialogRef.closed.subscribe((result) => {
-            if (result === 'confirm') {
+            if (result?.action === 'confirm') {
                 this.labelsStorage.deleteLabel(label.id).subscribe({
                     next: () => {
                         this.labelDeleted.emit(label.id);

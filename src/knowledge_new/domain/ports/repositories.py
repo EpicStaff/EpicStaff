@@ -1,4 +1,5 @@
 import abc
+from typing import TYPE_CHECKING
 
 from domain.enums import (
     DocumentStatusEnum,
@@ -13,8 +14,10 @@ from domain.models import (
     PreviewChunk,
     Rag,
 )
-from graphrag.config.models.graph_rag_config import GraphRagConfig
-from graphrag_input import TextDocument
+
+if TYPE_CHECKING:
+    from graphrag.config.models.graph_rag_config import GraphRagConfig
+    from graphrag_input import TextDocument
 
 
 class AbstractNaiveRagRepository(abc.ABC):
@@ -160,7 +163,7 @@ class AbstractGraphRagRepository(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list["TextDocument"]:
         """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
 
         Args:
@@ -171,11 +174,13 @@ class AbstractGraphRagRepository(abc.ABC):
     @abc.abstractmethod
     async def get_indexed_documents_excluding(
         self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    ) -> list["TextDocument"]:
         pass
 
     @abc.abstractmethod
-    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> GraphRagConfig | None:
+    async def get_config(
+        self, rag_id: int, slot: SlotEnum | None = None
+    ) -> "GraphRagConfig | None":
         """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
 
         When `slot` is provided the config is built for that slot, overriding the slot

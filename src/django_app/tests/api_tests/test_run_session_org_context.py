@@ -31,13 +31,13 @@ def member_a(db, django_user_model, org_a, role_member):
 
 
 @pytest.mark.django_db
-def test_run_session_rejects_other_orgs_flow(member_a, org_a, org_b):
-    """A member of org A cannot run a flow owned by org B (403, before any
-    session is published)."""
+def test_run_session_hides_other_orgs_flow(member_a, org_a, org_b):
+    """A member of org A cannot run a flow owned by org B: 404, as for a missing
+    graph, before any session is published."""
     graph_b = Graph.objects.create(name="B flow", org=org_b)
     client = APIClient()
     client.force_authenticate(user=member_a)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
 
     resp = client.post("/api/run-session/", {"graph_id": graph_b.id}, format="json")
-    assert resp.status_code == 403
+    assert resp.status_code == 404

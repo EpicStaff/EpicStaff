@@ -59,7 +59,12 @@ class TunnelRegistry:
 
             tunnel._on_url_set = _on_url_set
 
-        await tunnel.connect()
+        try:
+            await tunnel.connect()
+        except asyncio.CancelledError:
+            # The new tunnel is not in the pool yet, so nothing else would ever disconnect it.
+            await asyncio.shield(tunnel.disconnect())
+            raise
 
         async with self._lock:
             old_data = self._tunnel_pool.get(config.unique_id)
@@ -69,7 +74,9 @@ class TunnelRegistry:
             old_tunnel, _ = old_data
             logger.info(f"Replacing existing tunnel {config.unique_id}")
             try:
-                await old_tunnel.disconnect()
+                # Shielded: the old tunnel has already left the pool, so a cancelled caller
+                # must not leave it half disconnected.
+                await asyncio.shield(old_tunnel.disconnect())
             except Exception as e:
                 logger.error(f"Error disconnecting old tunnel {config.unique_id}: {e}")
 
@@ -80,16 +87,30 @@ class TunnelRegistry:
                 return
             tunnel, _ = self._tunnel_pool.pop(unique_id)
 
-        try:
-            await tunnel.disconnect()
-        except Exception as e:
-            logger.error(f"Error disconnecting from tunnel {unique_id}: {e}")
-
+        # Before the disconnect: the tunnel is unroutable once popped, and a cancelled
+        # disconnect (shutdown deadline) must not leave its URL behind.
         if self._redis_service:
             try:
                 await self._redis_service.delete_tunnel_url(unique_id)
             except Exception as e:
                 logger.error(f"Error deleting tunnel URL from Redis for {unique_id}: {e}")
+
+        try:
+            # Shielded for the same reason as the replaced tunnel in register().
+            await asyncio.shield(tunnel.disconnect())
+        except Exception as e:
+            logger.error(f"Error disconnecting from tunnel {unique_id}: {e}")
+
+    async def unregister_all(self) -> None:
+        """Unregister every tunnel concurrently.
+
+        One slow tunnel does not hold up the others; unregister() logs and swallows each
+        tunnel's own errors.
+        """
+        async with self._lock:
+            unique_ids = list(self._tunnel_pool)
+
+        await asyncio.gather(*(self.unregister(unique_id) for unique_id in unique_ids))
 
     async def register_many(self, webhook_config_data: WebhookConfigData):
         all_configs = [

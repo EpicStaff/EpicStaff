@@ -35,6 +35,17 @@ class TestUseIsReportedToTheFrontend:
         assert response.status_code == 200
         assert "use" in response.json()["permissions"]["secrets"]
 
+    def test_permissions_me_reports_crud_without_use_on_key_value_tables(self, admin_client):
+        response = admin_client.get("/api/permissions/me/")
+
+        assert response.status_code == 200
+        assert response.json()["permissions"]["key_value_tables"] == [
+            "create",
+            "read",
+            "update",
+            "delete",
+        ]
+
     def test_catalog_lists_use_as_applicable_to_secrets_only(self, admin_client):
         catalog = admin_client.get("/api/permissions/catalog/").json()
 

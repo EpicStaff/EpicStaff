@@ -20,17 +20,17 @@ def create_storage_config(
     if subdir:
         prefix += f"/{subdir}"
     return StorageConfig(
-        type="minio",
+        type="s3",
         prefix=prefix,
-        endpoint=settings.MINIO_ENDPOINT,
-        bucket=settings.MINIO_BUCKET,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
+        endpoint=settings.STORAGE_ENDPOINT,
+        bucket=settings.KNOWLEDGE_BUCKET,
+        access_key=settings.STORAGE_ACCESS_KEY,
+        secret_key=settings.STORAGE_SECRET_KEY,
         encoding=settings.GRAPHRAG_ENCODING,
     )
 
 
-class MinioStorage(Storage):
+class S3Storage(Storage):
     _MISSING_CODES = frozenset(("NoSuchKey", "NoSuchObject", "NoSuchBucket"))
 
     def __init__(
@@ -50,20 +50,27 @@ class MinioStorage(Storage):
         self._access_key = access_key
         self._secret_key = secret_key
 
+    @asynccontextmanager
+    async def _client_manager(self):
+        """Yield a client owned by one operation and close its session afterwards.
+
+        A client per operation keeps the session's lifetime equal to the operation's,
+        so closing in `finally` never pulls the session out from under another call
+        and a failed operation cannot leak it.
+        """
         secure, endpoint = self._parse_endpoint(self._endpoint)
-        self._client: Minio = Minio(
+        client = Minio(
             endpoint=endpoint,
             secure=secure,
             access_key=self._access_key,
             secret_key=self._secret_key,
         )
-
-    @asynccontextmanager
-    async def _client_manager(self):
-        if not await self._client.bucket_exists(self._bucket):
-            await self._client.make_bucket(self._bucket)
-        yield self._client
-        await self._client.close_session()
+        try:
+            if not await client.bucket_exists(self._bucket):
+                await client.make_bucket(self._bucket)
+            yield client
+        finally:
+            await client.close_session()
 
     def _full_key(self, key: str) -> str:
         return f"{self._prefix}/{key}"
@@ -166,7 +173,7 @@ class MinioStorage(Storage):
         if name is None:
             return self
 
-        return MinioStorage(
+        return S3Storage(
             endpoint=self._endpoint,
             bucket=self._bucket,
             prefix=self._full_key(name),
@@ -205,4 +212,4 @@ class MinioStorage(Storage):
         return get_timestamp_formatted_with_local_tz(stat.last_modified)
 
 
-register_storage("minio", MinioStorage)
+register_storage("s3", S3Storage)

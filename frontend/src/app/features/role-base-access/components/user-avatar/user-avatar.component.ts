@@ -49,11 +49,17 @@ export class UserAvatarComponent {
     name = input.required<string>();
     avatarUrl = input<string | null>(null);
 
+    // Letters first ("j0hn" -> "JH"); no letters falls back to raw characters ("007" -> "00").
     readonly initials = computed(() => {
-        const parts = this.name().trim().split(/\s+/);
-        if (parts.length >= 2) {
-            return (parts[0][0] + parts[1][0]).toUpperCase();
+        const name = this.name().trim();
+        const visibleName = (name.includes('@') && name.slice(0, name.lastIndexOf('@'))) || name;
+        const letterWords = visibleName.split(/\P{L}+/u).filter(Boolean);
+        if (letterWords.length >= 2) {
+            return (letterWords[0][0] + letterWords[1][0]).toUpperCase();
         }
-        return parts[0].substring(0, 2).toUpperCase();
+        if (letterWords.length === 1) {
+            return letterWords[0].substring(0, 2).toUpperCase();
+        }
+        return visibleName.replace(/\s/g, '').substring(0, 2).toUpperCase();
     });
 }

@@ -11,6 +11,7 @@ import {
 } from '../../../features/files/components/select-storage-files-dialog/select-storage-files-dialog.component';
 import { GraphFileRecord } from '../../../features/files/models/storage.models';
 import { StorageApiService } from '../../../features/files/services/storage-api.service';
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 
 @Component({
     selector: 'app-flow-files-button',
@@ -27,6 +28,7 @@ export class FlowFilesButtonComponent implements OnInit {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
 
+    readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
     readonly attachedFiles = signal<GraphFileRecord[]>([]);
     readonly attachedCount = computed(() => this.attachedFiles().length);
 

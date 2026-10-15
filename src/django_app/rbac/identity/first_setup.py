@@ -41,7 +41,14 @@ class FirstSetupService:
         return not get_user_model().objects.exists()
 
     @transaction.atomic
-    def setup(self, *, email: str, password: str, org_name: str | None = None) -> SetupResult:
+    def setup(
+        self,
+        *,
+        email: str,
+        password: str,
+        org_name: str | None = None,
+        display_name: str | None = None,
+    ) -> SetupResult:
         # Before the existence check, not after: the guard is only sound if
         # no other writer can insert a user between the check and our own
         # insert.
@@ -54,6 +61,7 @@ class FirstSetupService:
             email=email,
             password=password,
             org_name=org_name,
+            display_name=display_name,
         )
 
         return SetupResult(

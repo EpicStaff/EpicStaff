@@ -4,9 +4,35 @@ import base64
 import json
 import uuid
 
+from core import config
 from loguru import logger
 
 from infrastructure.persistence.database import save_realtime_session_item_to_db
+
+
+def _carries_only_audio(response) -> bool:
+    """Return whether a Gemini message holds nothing but audio chunks.
+
+    The shape must match exactly: only `server_content.model_turn` is set, and every
+    part is nothing but a non-empty `audio/*` blob. Anything else (transcripts, tool
+    calls, turn or session events, metadata, fields a newer SDK adds) is recorded.
+
+    A field counts as set when it is not None, so an explicit falsy value such as
+    `turn_complete=False` or `thought=False` also keeps the message recorded: the check
+    does not interpret field meanings, it only skips the one shape known to be empty
+    once audio is redacted. `model_turn.role` is not checked; it carries no content.
+    """
+    if set(response.model_dump(exclude_none=True)) != {"server_content"}:
+        return False
+    content = response.server_content
+    if set(content.model_dump(exclude_none=True)) != {"model_turn"}:
+        return False
+    return bool(content.model_turn.parts) and all(
+        set(part.model_dump(exclude_none=True)) == {"inline_data"}
+        and part.inline_data.data
+        and (part.inline_data.mime_type or "").startswith("audio/")
+        for part in content.model_turn.parts
+    )
 
 
 class GeminiServerEventHandler:
@@ -115,12 +141,15 @@ class GeminiServerEventHandler:
             if response.tool_call is not None:
                 await self._handle_tool_call(response.tool_call)
 
-            await save_realtime_session_item_to_db(
-                data={"type": "gemini_event", "raw": str(response)},
-                connection_key=self.client.connection_key,
-                org_id=self.client.org_id,
-                user_id=self.client.user_id,
-            )
+            # A message that is only audio chunks has nothing to record once its audio is
+            # redacted, so skip it like the other providers' audio frames.
+            if config.PERSIST_RAW_AUDIO or not _carries_only_audio(response):
+                await save_realtime_session_item_to_db(
+                    data={"type": "gemini_event", "raw": str(response)},
+                    connection_key=self.client.connection_key,
+                    org_id=self.client.org_id,
+                    user_id=self.client.user_id,
+                )
         except Exception as e:
             logger.exception(f"Gemini server event handler error: {e}")
 

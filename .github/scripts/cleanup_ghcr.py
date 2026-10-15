@@ -62,7 +62,7 @@ def classify(
     retain_main_sha: int,
     branch_max_age_days: int,
 ) -> tuple[list[tuple], list[tuple]]:
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     threshold = now - datetime.timedelta(days=branch_max_age_days)
 
     keep: list[tuple] = []
@@ -74,9 +74,7 @@ def classify(
         created_str = v["created_at"].replace("Z", "+00:00")
         created = datetime.datetime.fromisoformat(created_str)
 
-        is_keep = any(
-            t in KEEP_TAGS or SEMVER_RE.match(t) or SIG_ATT_RE.match(t) for t in tags
-        )
+        is_keep = any(t in KEEP_TAGS or SEMVER_RE.match(t) or SIG_ATT_RE.match(t) for t in tags)
         if is_keep:
             keep.append((v, tags, "protected tag"))
             continue
@@ -87,9 +85,7 @@ def classify(
 
         # branch-slug or untagged
         if created < threshold:
-            delete.append(
-                (v, tags, f"older than {branch_max_age_days}d ({created.date()})")
-            )
+            delete.append((v, tags, f"older than {branch_max_age_days}d ({created.date()})"))
         else:
             keep.append((v, tags, f"recent ({created.date()})"))
 
@@ -98,9 +94,7 @@ def classify(
         if i < retain_main_sha:
             keep.append((v, tags, f"main-sha top-{i + 1}"))
         else:
-            delete.append(
-                (v, tags, f"main-sha beyond top-{retain_main_sha} ({created.date()})")
-            )
+            delete.append((v, tags, f"main-sha beyond top-{retain_main_sha} ({created.date()})"))
 
     return keep, delete
 
@@ -114,9 +108,7 @@ def main() -> int:
         action="append",
         help="Container package name (repeatable).",
     )
-    p.add_argument(
-        "--apply", action="store_true", help="Actually delete (default: dry-run)."
-    )
+    p.add_argument("--apply", action="store_true", help="Actually delete (default: dry-run).")
     p.add_argument("--retain-main-sha", type=int, default=10)
     p.add_argument("--branch-max-age-days", type=int, default=30)
     args = p.parse_args()

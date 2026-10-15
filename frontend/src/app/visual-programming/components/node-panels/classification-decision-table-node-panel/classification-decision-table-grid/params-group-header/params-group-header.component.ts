@@ -11,10 +11,12 @@ import {
 import { IHeaderGroupAngularComp } from 'ag-grid-angular';
 import { IHeaderGroupParams } from 'ag-grid-community';
 
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
 export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
     mode?: 'add-only' | 'full';
+    ownerLabel?: string;
     onAdd?: (event: MouseEvent) => void;
     onFreeze?: () => void;
     onHide?: () => void;
@@ -23,6 +25,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
 
 @Component({
     selector: 'app-params-group-header',
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -37,7 +40,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 <i class="ti ti-plus"></i>
             </button>
             @if (mode === 'full') {
-                <span class="params-label">Params</span>
+                <span class="params-label"
+                    >Params
+                    @if (ownerLabel) {
+                        <span class="params-owner">&nbsp;({{ ownerLabel }})</span>
+                    }
+                </span>
                 <div class="dropdown-wrapper">
                     <button
                         #chevronBtn
@@ -48,6 +56,17 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                         <i class="ti ti-chevron-down"></i>
                     </button>
                 </div>
+                @if (!(isPinned && isPinned())) {
+                    <span
+                        class="drag-grip-btn"
+                        title="Drag to reposition"
+                    >
+                        <app-svg-icon
+                            icon="drag-grip"
+                            size="12px"
+                        />
+                    </span>
+                }
             }
         </div>
 
@@ -136,6 +155,31 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                min-width: 0;
+            }
+            .params-owner {
+                font-size: 12px;
+                font-weight: 500;
+                color: var(--color-ks-transparent-text-60);
+            }
+            .drag-grip-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 24px;
+                height: 28px;
+                border-radius: 4px;
+                flex-shrink: 0;
+                cursor: grab;
+                color: var(--color-ks-transparent-text-60);
+                transition: background 0.15s ease;
+            }
+            .drag-grip-btn:hover {
+                background: var(--color-ghost-btn-hover);
+                color: var(--color-ks-transparent-text-80);
+            }
+            .drag-grip-btn:active {
+                cursor: grabbing;
             }
             .dropdown-wrapper {
             }
@@ -165,6 +209,7 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
     @ViewChild('chevronBtn') chevronBtn!: HTMLButtonElement;
 
     mode: 'add-only' | 'full' = 'full';
+    ownerLabel = '';
 
     private onAdd: ((event: MouseEvent) => void) | undefined;
     private onFreeze: (() => void) | undefined;
@@ -177,6 +222,7 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
 
     agInit(params: ParamsGroupHeaderParams): void {
         this.mode = params.mode ?? 'full';
+        this.ownerLabel = params.ownerLabel ?? '';
         this.onAdd = params.onAdd;
         this.onFreeze = params.onFreeze;
         this.onHide = params.onHide;

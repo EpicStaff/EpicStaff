@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 
+import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
 import { NodeModel } from './node.model';
 
@@ -14,6 +15,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected fb = inject(FormBuilder);
     protected uniqueNameValidator = inject(UniqueNodeNameValidatorService);
     protected destroyRef = inject(DestroyRef);
+    protected readonly flowReadOnly = inject(FlowReadOnlyService);
+    public readonly isReadOnly = this.flowReadOnly.isReadOnly;
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -54,6 +57,10 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
             this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
 
+            if (this.isReadOnly()) {
+                this.form.disable({ emitEvent: false });
+            }
+
             this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
                 this.dirtyCheckTick.update((v) => v + 1);
             });
@@ -61,6 +68,10 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     public onSave(): T | null {
+        if (this.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return null;
+        }
         if (this.form && this.form.invalid) {
             return null;
         }
@@ -72,6 +83,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     // Returns the updated node without emitting outputs or closing the panel
     public onSaveSilently(): T | null {
+        if (this.isReadOnly()) return null;
         if (!this.form) return null;
         if (this.form.invalid) return null;
         try {
@@ -94,6 +106,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      * silently dropped.
      */
     public captureForValidation(): T | null {
+        if (this.isReadOnly()) return null;
         if (!this.form) return null;
         this.form.markAllAsTouched();
         this.notifyExternalChange();

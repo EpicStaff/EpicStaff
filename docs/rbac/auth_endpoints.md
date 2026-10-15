@@ -1,6 +1,6 @@
 # RBAC — Auth Endpoints & Operator Guide
 
-Covers the auth surface delivered by EST-2615: first-time
+Covers the auth surface: first-time
 setup, JWT login, current-user, token introspection, API key validation,
 user reset (destructive), and the `reset_user` management command. Ends with
 a frontend migration checklist.
@@ -23,7 +23,7 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/auth/introspect/` | System ApiKey | Validate a JWT, return claims |
 | GET | `/api/auth/api-key/validate/` | ApiKey (any) | Metadata about the calling key |
 | POST | `/api/auth/swagger-token/` | public (throttled) | OAuth2 password flow for Swagger |
-| POST | `/api/auth/reset-user/` | Bearer JWT or ApiKey (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
+| POST | `/api/auth/reset-user/` | Bearer JWT (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
 | POST | `/api/auth/password-reset/request/` | public (throttled) | Start password-recovery flow — see [password_recovery.md](password_recovery.md) |
 | POST | `/api/auth/password-reset/confirm/` | public | Consume reset token + set new password |
 | ~~POST~~ | ~~`/api/auth/password-change/`~~ | — | **REMOVED in Story 6** → use two-step `/api/profile/password-change/{request,confirm}/`, see [user_profile.md](user_profile.md) § "Two-step password change" |
@@ -167,23 +167,36 @@ create_superadmin` workflow).
   ```json
   {
     "email": "admin@acme.com",
-    "password": "StrongPass123!"
+    "password": "StrongPass123!",
+    "display_name": "Admin"
   }
   ```
-  - `email` — must be a valid email.
+  - `email` — must pass the **new-account email rule**, stricter than the RFC
+    check that login and password reset use:
+    - only letters, digits and `. _ - +` before the `@`, starting and ending
+      with a letter or digit (`---@x.com`, `+john@x.com`, `o'brien@x.com`
+      are rejected);
+    - at most 64 characters before the `@` and 254 in total;
+    - an ASCII domain whose last label is 2+ letters (no `localhost`, no
+      non-ASCII domains).
+
+    Accounts created before this rule keep working: only creation applies it.
   - `password` — must pass Django's `AUTH_PASSWORD_VALIDATORS` (min length,
     not-too-common, not-all-numeric, not-too-similar-to-email).
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
   - Organization name is **not** taken from the request body; it comes from
     the `DEFAULT_ORGANIZATION_NAME` setting (env-driven, default
-    `"Organization"`). Any `organization_name` / `display_name`
-    fields passed in the body are silently ignored.
+    `"Organization"`). An `organization_name` field passed in the body is
+    silently ignored.
 - **Response 201:**
   ```json
   {
     "user": {
       "id": 1,
       "email": "admin@acme.com",
-      "display_name": null,
+      "display_name": "Admin",
       "is_superadmin": true
     },
     "organization": {
@@ -481,10 +494,9 @@ Two entry points, same semantics, different callers.
 
 ### POST `/api/auth/reset-user/` (web, via JWT)
 
-- **Auth:** `IsAuthenticated` + `IsSuperadmin`. Both JWT and ApiKey
-  authentication are accepted (no `DenyApiKeyAuth` here) — the caller just
-  needs `is_superadmin=True`, which a superadmin-owned USER key or the
-  SYSTEM key both satisfy.
+- **Auth:** `IsAuthenticated` + `DenyApiKeyAuth` + `IsSuperadmin` — JWT
+  only. Any API key, including a superadmin-owned USER key and the SYSTEM
+  key, gets `403 permission_denied`.
 - **Behavior** (atomic):
   1. Delete all `User` rows → cascades `OrganizationUser`,
      `PasswordResetToken`, and every `ApiKey` owned by a deleted user
@@ -500,8 +512,12 @@ Two entry points, same semantics, different callers.
   `POST /api/profile/api-keys/` after logging in as the new superadmin.
 - **Request body:**
   ```json
-  { "email": "new@acme.com", "password": "AnotherPass123!" }
+  { "email": "new@acme.com", "password": "AnotherPass123!", "display_name": "New Admin" }
   ```
+  - `email` — same new-account email rule as first setup.
+  - `display_name` — optional. Trimmed; must be a non-blank string of at
+    most 255 characters. Omit it or send `null` to derive it from the email
+    (`john.smith@acme.com` → `"John Smith"`).
 - **Response 201:**
   ```json
   { "access": "<jwt-access>" }
@@ -512,7 +528,12 @@ Two entry points, same semantics, different callers.
 ### `python manage.py reset_user` (CLI / docker exec)
 
 Same functional outcome as the web endpoint, intended for operators who lost
-access to the UI.
+access to the UI. It runs the same validators before deleting anything, so an
+invalid email or password fails the command and leaves every user in place.
+
+Don't use Django's built-in `manage.py createsuperuser`: it skips these
+validators and the default-organization membership. Use `create_superadmin`
+or `reset_user` instead.
 
 ```bash
 # From inside the container

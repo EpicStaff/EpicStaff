@@ -49,9 +49,9 @@ Injected at runtime by the execution stack. Node code does not need to set these
 
 | Variable | Description |
 |----------|-------------|
-| `STORAGE_ENDPOINT` | S3/MinIO endpoint URL |
-| `STORAGE_ACCESS_KEY` | S3 access key |
-| `STORAGE_SECRET_KEY` | S3 secret key |
+| `STORAGE_ENDPOINT` | S3 endpoint URL |
+| `STORAGE_ACCESS_KEY` | Scoped access key, valid only for this execution and its allowed paths |
+| `STORAGE_SECRET_KEY` | Secret for that scoped key |
 | `STORAGE_BUCKET_NAME` | S3 bucket name |
 | `STORAGE_ORG_PREFIX` | Organization prefix (e.g. `org_1`). Auto-prepended to all paths — node code uses relative paths only. |
 | `STORAGE_ALLOWED_PATHS` | JSON array of paths this flow may access. If absent, all paths are accessible. |
@@ -317,6 +317,7 @@ The temp file preserves the original file extension.
 ```python
 with storage.as_local("models/classifier.pkl") as local_path:
     import joblib
+
     model = joblib.load(local_path)
     result = model.predict(data)
 ```
@@ -437,7 +438,7 @@ storage.move("inbox/report.pdf", "archive/report.pdf")
 
 ```python
 meta = storage.info("reports/output.csv")
-print(meta["size"])         # bytes
-print(meta["content_type"]) # e.g. "text/csv"
-print(meta["modified"])     # ISO 8601 string or None
+print(meta["size"])  # bytes
+print(meta["content_type"])  # e.g. "text/csv"
+print(meta["modified"])  # ISO 8601 string or None
 ```

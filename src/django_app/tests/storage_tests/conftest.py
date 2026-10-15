@@ -9,9 +9,17 @@ from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser
 from rbac.models import Role
+from tables.services.storage_service.upload import admission
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+
+
+@pytest.fixture(autouse=True)
+def fresh_upload_admission(monkeypatch):
+    """The upload gate is a per-worker singleton: rebuild it from each test's
+    settings, and keep one test's in-flight uploads out of the next."""
+    monkeypatch.setattr(admission, "_admission", None)
 
 
 @pytest.fixture
@@ -30,6 +38,17 @@ def org_user(db, org):
     role = Role.objects.get(name="Org Admin", is_built_in=True, org__isnull=True)
     user = get_user_model().objects.create_user(
         email="testuser@example.com",
+        password="TestPass123!",
+    )
+    return OrganizationUser.objects.create(user=user, org=org, role=role)
+
+
+@pytest.fixture
+def viewer_org_user(db, org):
+    """Org member whose role grants FILES:READ but not FILES:CREATE."""
+    role = Role.objects.get(name="Viewer", is_built_in=True, org__isnull=True)
+    user = get_user_model().objects.create_user(
+        email="viewer@example.com",
         password="TestPass123!",
     )
     return OrganizationUser.objects.create(user=user, org=org, role=role)
@@ -86,33 +105,6 @@ def sample_tar():
             tf.addfile(info, BytesIO(content))
     buf.seek(0)
     buf.name = "sample.tar"
-    return buf
-
-
-@pytest.fixture
-def password_zip():
-    """ZIP with password-protected (encrypted) entry flag set."""
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("secret.txt", "secret content")
-    # Manually set the encryption flag bit on the first entry
-    buf.seek(0)
-    data = bytearray(buf.read())
-    # Find the local file header flag field and set bit 0 (encrypted)
-    # Local file header signature: PK\x03\x04 at offset 0
-    # General purpose bit flag is at offset 6 from start of local header
-    flag_offset = 6
-    data[flag_offset] |= 0x01
-    # Also update the central directory entry flag
-    # Find central directory: PK\x01\x02
-    cd_sig = b"PK\x01\x02"
-    cd_offset = data.find(cd_sig)
-    if cd_offset >= 0:
-        cd_flag_offset = cd_offset + 8
-        data[cd_flag_offset] |= 0x01
-    buf = BytesIO(bytes(data))
-    buf.seek(0)
-    buf.name = "encrypted.zip"
     return buf
 
 

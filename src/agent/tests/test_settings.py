@@ -20,3 +20,10 @@ def test_truncates_fractional_seconds_above_one():
 def test_rejects_none_and_sub_second_values(seconds):
     with pytest.raises(ValueError, match="AGENT_RESULT_STREAM_TTL"):
         whole_seconds_at_least_one("AGENT_RESULT_STREAM_TTL", seconds)
+
+
+def test_drop_unsupported_llm_params_is_parsed_as_bool():
+    # litellm ignores a non-bool drop_params, so a "True" string would still raise UnsupportedParamsError.
+    import settings
+
+    assert isinstance(settings.AGENT_DROP_UNSUPPORTED_LLM_PARAMS, bool)

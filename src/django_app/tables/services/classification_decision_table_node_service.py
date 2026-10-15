@@ -14,6 +14,7 @@ from tables.import_export.services.partial_export_service import (
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    ClassificationConditionGroupSectionSerializer,
     ClassificationConditionGroupSerializer,
     ClassificationDecisionTableNodeSerializer,
     ClassificationDecisionTablePromptSerializer,
@@ -48,6 +49,7 @@ class ClassificationDecisionTableNodeService:
     ) -> tuple[ClassificationDecisionTableNode, list | None]:
         data = data.copy()
         raw_condition_groups = data.pop("condition_groups", None)
+        raw_sections = data.pop("sections", None)
         raw_prompt_configs = data.pop("prompt_configs", None)
 
         serializer = ClassificationDecisionTableNodeSerializer(
@@ -60,6 +62,11 @@ class ClassificationDecisionTableNodeService:
             raw=raw_prompt_configs,
             request=request,
         )
+        sections_data = self._validate_children(
+            serializer_class=ClassificationConditionGroupSectionSerializer,
+            raw=raw_sections,
+            request=request,
+        )
         condition_groups_data = self._validate_children(
             serializer_class=ClassificationConditionGroupSerializer,
             raw=raw_condition_groups,
@@ -68,13 +75,19 @@ class ClassificationDecisionTableNodeService:
 
         node = serializer.save()
 
-        if partial and condition_groups_data is None and prompt_configs_data is None:
+        if (
+            partial
+            and condition_groups_data is None
+            and prompt_configs_data is None
+            and sections_data is None
+        ):
             return node, None
 
         sync_classification_decision_table_children(
             node,
             prompt_configs_data=prompt_configs_data,
             condition_groups_data=condition_groups_data,
+            sections_data=sections_data,
         )
 
         return node, condition_groups_data
@@ -125,7 +138,8 @@ class ClassificationDecisionTableNodeService:
                     entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
                     node_id=node.id,
                 )
-            ]
+            ],
+            org_id=org_id,
         )
         if result.has_errors:
             return NodeExportResult(errors=result.errors)

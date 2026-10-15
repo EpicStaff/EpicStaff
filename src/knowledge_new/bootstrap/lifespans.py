@@ -4,8 +4,9 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Literal
 
 import settings
+from infrastructure.graphrag.availability import detect_graphrag_availability
 from infrastructure.processing_run import set_process_pool
-from infrastructure.prompt_patching import patch_graphrag_prompts
+from loguru import logger
 
 __all__ = ["get_lifespans"]
 
@@ -33,5 +34,9 @@ def init_process_pool():
 
 
 @on_startup
-def init_graphrag_prompt_patches():
-    patch_graphrag_prompts()
+def check_graphrag_availability():
+    if not detect_graphrag_availability():
+        logger.warning(
+            "AVX2 not detected on this CPU: GraphRAG is unavailable. "
+            "GraphRAG endpoints return HTTP 503."
+        )

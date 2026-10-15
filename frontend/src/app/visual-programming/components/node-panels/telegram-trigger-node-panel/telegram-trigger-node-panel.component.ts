@@ -22,6 +22,7 @@ import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
+import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { DisplayedTelegramField, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
@@ -44,6 +45,7 @@ import { WebhookStatus } from './webhook-status.model';
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
+        IfFlowEditableDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

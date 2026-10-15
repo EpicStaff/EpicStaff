@@ -218,7 +218,10 @@ export const routes: Routes = [
                                 canActivate: [
                                     () => {
                                         const last = inject(LastVisitedTabService).get('/files');
-                                        return inject(Router).parseUrl(last ?? '/files/knowledge-sources');
+                                        const permissions = inject(PermissionsService);
+                                        return inject(Router).parseUrl(
+                                            last ?? permissions.resolveFilesTab() ?? permissions.resolveDefaultRoute()
+                                        );
                                     },
                                 ],
                                 children: [],
@@ -240,6 +243,15 @@ export const routes: Routes = [
                                     ),
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
+                            },
+                            {
+                                path: 'key-value-tables',
+                                loadComponent: () =>
+                                    import('./features/key-value-tables/pages/key-value-tables-page/key-value-tables-page.component').then(
+                                        (m) => m.KeyValueTablesPageComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
                             },
                         ],
                     },

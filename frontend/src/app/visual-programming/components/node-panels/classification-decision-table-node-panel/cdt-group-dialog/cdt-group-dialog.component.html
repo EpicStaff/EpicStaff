@@ -1,0 +1,87 @@
+<div class="dialog">
+    <div class="dialog-header">
+        <h2 class="title">{{ title }}</h2>
+        <button
+            type="button"
+            class="close-btn"
+            aria-label="Close"
+            (click)="cancel()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+                ariaLabel="Close"
+            />
+        </button>
+    </div>
+
+    <div class="dialog-body">
+        <div class="field-group">
+            <label
+                class="field-label"
+                for="cdt-group-name"
+            >
+                Group Name <span class="required">*</span>
+            </label>
+            <input
+                id="cdt-group-name"
+                class="field-input"
+                type="text"
+                autocomplete="off"
+                placeholder="Enter group name"
+                [ngModel]="name()"
+                (ngModelChange)="name.set($event)"
+                (keydown)="onNameKeydown($event)"
+            />
+        </div>
+
+        <div
+            class="field-group"
+            role="radiogroup"
+            aria-label="Group colour"
+        >
+            <span class="field-label">Border Color</span>
+            <div class="swatch-row">
+                @for (option of colorOptions; track option.id) {
+                    <button
+                        type="button"
+                        class="swatch"
+                        role="radio"
+                        [class.selected]="isColorSelected(option)"
+                        [style.background]="option.hex"
+                        [attr.aria-checked]="isColorSelected(option)"
+                        [attr.aria-label]="'Colour: ' + option.id"
+                        [title]="option.id"
+                        (click)="selectColor(option.hex)"
+                    >
+                        @if (isColorSelected(option)) {
+                            <app-svg-icon
+                                icon="check"
+                                size="16px"
+                                ariaLabel="Selected"
+                            />
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-footer">
+        <button
+            type="button"
+            class="btn btn--secondary"
+            (click)="cancel()"
+        >
+            Cancel
+        </button>
+        <button
+            type="button"
+            class="btn btn--primary"
+            [disabled]="isSaveDisabled()"
+            (click)="save()"
+        >
+            Save Changes
+        </button>
+    </div>
+</div>

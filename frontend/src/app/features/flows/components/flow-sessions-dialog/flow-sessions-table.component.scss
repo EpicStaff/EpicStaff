@@ -320,30 +320,6 @@ table {
     border-color: var(--accent-color);
 }
 
-.stop-btn {
-    background: var(--red-580);
-    color: var(--white);
-    border: none;
-    outline: none;
-    padding: 6px 14px;
-    margin-right: 8px;
-    border-radius: 6px;
-    font-size: 0.95em;
-    font-weight: 500;
-    cursor: pointer;
-    transition:
-        background 0.18s,
-        color 0.18s;
-    white-space: nowrap;
-    flex-shrink: 0;
-    min-width: 70px;
-    max-width: 80px;
-}
-.stop-btn:hover {
-    background: var(--red-700);
-    color: var(--white);
-}
-
 .no-sessions-message {
     display: flex;
     flex-direction: column;

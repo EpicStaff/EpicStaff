@@ -1,4 +1,4 @@
-"""Tests for the persistent-state model consolidation (EST-3056).
+"""Tests for the persistent-state model consolidation.
 
 Covers the 1:1 GraphOrganization<->Graph relationship (org derived from
 graph.org, no `organization` FK) and the renamed Graph.enable_persistent_variables

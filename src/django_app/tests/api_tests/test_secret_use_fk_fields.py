@@ -433,7 +433,7 @@ def quickstart_openai_seeded_6b(openai_provider):
         name="text-embedding-3-small", embedding_provider=openai_provider
     )
     RealtimeModel.objects.get_or_create(
-        name="gpt-4o-mini-realtime-preview-2024-12-17", provider=openai_provider
+        name="test-realtime-model", provider=openai_provider
     )
     RealtimeTranscriptionModel.objects.get_or_create(
         name="whisper-1", provider=openai_provider

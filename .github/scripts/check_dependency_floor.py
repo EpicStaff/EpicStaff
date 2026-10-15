@@ -14,9 +14,9 @@ from collections import defaultdict
 from packaging.version import InvalidVersion, Version
 
 FLOOR_FILE = os.path.join(os.path.dirname(__file__), "..", "dependency-floor.toml")
-PACKAGE_RE = re.compile(r"^name = \"(.+?)\"", re.M)
-VERSION_RE = re.compile(r"^version = \"(.+?)\"", re.M)
-SOURCE_RE = re.compile(r"^source = \{ (\w+) = ", re.M)
+PACKAGE_RE = re.compile(r"^name = \"(.+?)\"", re.MULTILINE)
+VERSION_RE = re.compile(r"^version = \"(.+?)\"", re.MULTILINE)
+SOURCE_RE = re.compile(r"^source = \{ (\w+) = ", re.MULTILINE)
 
 
 def read_locks(root: str = "src") -> dict[str, dict[str, str]]:
@@ -24,7 +24,8 @@ def read_locks(root: str = "src") -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for path in sorted(glob.glob(f"{root}/**/uv.lock", recursive=True)):
         service = os.path.relpath(os.path.dirname(path), root).replace(os.sep, "/")
-        text = open(path, encoding="utf-8", errors="replace").read()
+        with open(path, encoding="utf-8", errors="replace") as lock_file:
+            text = lock_file.read()
         versions: dict[str, str] = {}
         for block in re.split(r"\n(?=\[\[package\]\])", text):
             name = PACKAGE_RE.search(block)
@@ -49,12 +50,11 @@ def parse(v: str) -> Version | None:
 
 def update_floors(locks: dict[str, dict[str, str]], floor: dict[str, str]) -> int:
     """Rewrite the [floor] values in place to the highest version now shipped."""
-    text = open(FLOOR_FILE, encoding="utf-8").read()
+    with open(FLOOR_FILE, encoding="utf-8") as floor_file:
+        text = floor_file.read()
     changed = []
     for pkg, want in floor.items():
-        present = [
-            v for versions in locks.values() if (v := versions.get(pkg)) and parse(v)
-        ]
+        present = [v for versions in locks.values() if (v := versions.get(pkg)) and parse(v)]
         if not present:
             continue
         highest = max(present, key=lambda v: parse(v))
@@ -64,13 +64,14 @@ def update_floors(locks: dict[str, dict[str, str]], floor: dict[str, str]) -> in
                 f'{pkg} = "{highest}"',
                 text,
                 count=1,
-                flags=re.M,
+                flags=re.MULTILINE,
             )
             changed.append(f"{pkg}: {want} -> {highest}")
     if not changed:
         print("floors already match what is shipped; nothing to update")
         return 0
-    open(FLOOR_FILE, "w", encoding="utf-8").write(text)
+    with open(FLOOR_FILE, "w", encoding="utf-8") as floor_file:
+        floor_file.write(text)
     for line in changed:
         print(f"  raised {line}")
     print(f"\nupdated {len(changed)} floor(s) in {os.path.normpath(FLOOR_FILE)}")

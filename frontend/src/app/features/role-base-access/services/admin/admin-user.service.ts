@@ -1,6 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { ActionCode, AdminCreateUserRequest, AdminCreateUserResponse, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    AdminCreateUserRequest,
+    AdminCreateUserResponse,
+    ResourceCode,
+    UserDeleteReport,
+} from '@shared/models';
 import { Observable } from 'rxjs';
 
 import { withCrossOrgPermission } from '../../../../core/http/permission-context';
@@ -79,5 +85,14 @@ export class AdminUserService {
 
     resetPassword(userId: number): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}${userId}/reset-password/`, {}, { headers: this.httpHeaders });
+    }
+
+    /** The verification phrase is sent as the request body only when given (the real delete). */
+    deleteUser(userId: number, dryRun: boolean, verificationPhrase?: string): Observable<UserDeleteReport> {
+        return this.http.delete<UserDeleteReport>(`${this.apiUrl}${userId}/`, {
+            headers: this.httpHeaders,
+            params: new HttpParams().set('dry_run', String(dryRun)),
+            body: verificationPhrase === undefined ? undefined : { verification_phrase: verificationPhrase },
+        });
     }
 }

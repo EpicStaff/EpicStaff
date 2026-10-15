@@ -20,6 +20,7 @@
                                 placeholder="Enter node name"
                                 [required]="true"
                                 [activeColor]="activeColor"
+                                [readonly]="isReadOnly()"
                             ></app-custom-input>
                             <app-validation-errors [control]="form.get('node_name')!" />
                         </div>
@@ -34,10 +35,12 @@
                                 [required]="true"
                                 [items]="secretItems()"
                                 [showSearch]="true"
+                                [readonly]="isReadOnly()"
                                 searchPlaceholder="Search a secret..."
                                 (changed)="notifyExternalChange()"
                             />
-                            @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                            <!-- How to pick a secret: only useful while the key can be changed. -->
+                            @if (!isReadOnly() && !form.get('telegram_bot_api_key_secret_id')?.value) {
                                 <app-hint-message>
                                     Choose an existing secret. To add a new one, go to the
                                     <strong>Secrets tab</strong>.
@@ -52,6 +55,7 @@
                             formControlName="webhook_trigger"
                             [disallowedProviderTypes]="['localhost']"
                             [disallowedAuthKinds]="['webhook', 'twilio']"
+                            [readonly]="isReadOnly()"
                             disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
@@ -105,6 +109,7 @@
                                 }
                             </div>
                             <app-button
+                                *appIfFlowEditable
                                 type="primary"
                                 (click)="onEditing()"
                             >
@@ -150,6 +155,7 @@
                             [showHeader]="false"
                             [fullHeight]="true"
                             [editorOptions]="editorOptions"
+                            [readonly]="isReadOnly()"
                         />
                     </div>
                 </div>

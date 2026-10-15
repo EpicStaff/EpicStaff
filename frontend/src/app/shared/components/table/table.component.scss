@@ -80,11 +80,17 @@
     gap: 6px;
     color: var(--text-secondary-60);
 
+    // A <button> for keyboard access; reset so it looks like the plain label group.
     &--clickable {
+        padding: 0;
+        border: none;
+        background: transparent;
+        font: inherit;
         cursor: pointer;
 
         // .col-label sets its own color, which otherwise blocks inheriting this on hover/active.
-        &:hover {
+        &:hover,
+        &:focus-visible {
             color: var(--color-text-primary);
 
             .col-label {

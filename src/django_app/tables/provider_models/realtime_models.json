@@ -1,7 +1,6 @@
 {
   "openai": [
-    "gpt-4o-realtime-preview-2024-12-17",
-    "gpt-4o-mini-realtime-preview-2024-12-17"
+    "gpt-realtime-1.5"
   ],
   "elevenlabs": [
     "eleven_flash_v2_5",

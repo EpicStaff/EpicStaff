@@ -6,11 +6,11 @@ from django.db import transaction
 from agents.exceptions import SurfaceValidationError
 from agents.models.agent_models import AgentDefaultSurface, SurfacePlace
 from agents.models.surface_models import Surface
-from agents.validators.surface_validator import SurfaceValidator
 from agents.services.surface_content_service import (
     CATALOG_SURFACE_CONTENT,
     SurfaceContentService,
 )
+from agents.validators.surface_validator import SurfaceValidator
 
 
 class SurfaceService:

@@ -2949,3 +2949,45 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
     assert not any(
         hint_substring in c for c in token_contents
     ), f"Hint should have been suppressed when a tool was called: {token_contents}"
+
+
+# ── LiteLLMClient request-building tests ─────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "provider_name, model_name, expected_model",
+    [
+        ("openai", "gpt-4o", "gpt-4o"),
+        ("ollama", "ollama/mistral", "ollama/mistral"),
+        (
+            "anthropic",
+            "claude-3-5-sonnet-20241022",
+            "anthropic/claude-3-5-sonnet-20241022",
+        ),
+        (
+            "together-ai",
+            "togethercomputer/llama-2-70b-chat",
+            "together-ai/togethercomputer/llama-2-70b-chat",
+        ),
+    ],
+)
+def test_litellm_client_prefixes_provider_only_when_missing(
+    db, provider_name, model_name, expected_model
+):
+    from tables.services.llm_clients.litellm_client import LiteLLMClient
+
+    provider = Provider.objects.create(name=provider_name)
+    model = LLMModel.objects.create(name=model_name, llm_provider=provider)
+    config = LLMConfig.objects.create(custom_name="test-config", model=model)
+
+    kwargs = LiteLLMClient(config, api_key=None)._build_kwargs([], [])
+
+    assert kwargs["model"] == expected_model
+
+
+def test_litellm_client_drops_provider_unsupported_params(llm_config):
+    from tables.services.llm_clients.litellm_client import LiteLLMClient
+
+    kwargs = LiteLLMClient(llm_config, api_key=None)._build_kwargs([], [])
+
+    assert kwargs["drop_params"] is True

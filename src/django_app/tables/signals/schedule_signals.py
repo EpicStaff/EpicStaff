@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from loguru import logger
@@ -18,7 +19,7 @@ def _publish(message: ScheduleTriggerNodeUpdateMessage) -> None:
 
 @receiver(post_save, sender=ScheduleTriggerNode)
 def schedule_trigger_post_save_handler(sender, instance: ScheduleTriggerNode, created, **kwargs):
-    """Publish a create/update event to the Manager on every node save."""
+    """Publish a create/update event to the Manager after the transaction commits."""
     node_id = instance.pk
     action = "create" if created else "update"
     logger.info(f"[ScheduleSignal] post_save triggered for node ID: {node_id}")
@@ -35,15 +36,23 @@ def schedule_trigger_post_save_handler(sender, instance: ScheduleTriggerNode, cr
                 node=node_payload,
             )
         )
-        _publish(message)
-        logger.info(f"[ScheduleSignal] Published '{action}' for node ID: {node_id}")
     except Exception:
-        logger.exception(f"[ScheduleSignal] Error publishing save event for node {node_id}")
+        logger.exception(f"[ScheduleSignal] Error building save event for node {node_id}")
+        return
+
+    def _after_commit():
+        try:
+            _publish(message)
+            logger.info(f"[ScheduleSignal] Published '{action}' for node ID: {node_id}")
+        except Exception:
+            logger.exception(f"[ScheduleSignal] Error publishing save event for node {node_id}")
+
+    transaction.on_commit(_after_commit)
 
 
 @receiver(post_delete, sender=ScheduleTriggerNode)
 def schedule_trigger_post_delete_handler(sender, instance: ScheduleTriggerNode, **kwargs):
-    """Publish a delete event to the Manager on every node delete."""
+    """Publish a delete event to the Manager after the transaction commits."""
     node_id = instance.pk
     logger.info(f"[ScheduleSignal] post_delete triggered for node ID: {node_id}")
 
@@ -54,7 +63,15 @@ def schedule_trigger_post_delete_handler(sender, instance: ScheduleTriggerNode, 
                 node=ScheduleTriggerNodeDeletePayload(id=node_id),
             )
         )
-        _publish(message)
-        logger.info(f"[ScheduleSignal] Published 'delete' for node ID: {node_id}")
     except Exception:
-        logger.exception(f"[ScheduleSignal] Error publishing delete event for node {node_id}")
+        logger.exception(f"[ScheduleSignal] Error building delete event for node {node_id}")
+        return
+
+    def _after_commit():
+        try:
+            _publish(message)
+            logger.info(f"[ScheduleSignal] Published 'delete' for node ID: {node_id}")
+        except Exception:
+            logger.exception(f"[ScheduleSignal] Error publishing delete event for node {node_id}")
+
+    transaction.on_commit(_after_commit)

@@ -94,8 +94,15 @@
             }
             @if (showDeactivateOrg(row)) {
                 <app-stop-button
+                    variant="pause"
                     tooltip="Deactivate organization"
                     (triggered)="onDeactivateOrganization(row)"
+                />
+            }
+            @if (isSuperadmin) {
+                <app-delete-button
+                    tooltip="Delete organization"
+                    (triggered)="onDeleteOrganization(row)"
                 />
             }
         </div>

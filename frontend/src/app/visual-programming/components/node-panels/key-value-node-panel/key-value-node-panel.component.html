@@ -1,0 +1,230 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            <div class="field-isolated">
+                <app-custom-input
+                    label="Node Name"
+                    tooltipText="The unique identifier used to reference this Key-Value node. This name must be unique within the flow."
+                    formControlName="node_name"
+                    placeholder="Enter node name"
+                    [activeColor]="activeColor"
+                    [readonly]="isReadOnly()"
+                ></app-custom-input>
+                <app-validation-errors [control]="form.get('node_name')!" />
+            </div>
+
+            <!-- Always rendered, so a notice that appears later, e.g. on an org switch, is announced. -->
+            <div class="permission-section">
+                <div
+                    class="permission-notice"
+                    role="status"
+                    [class.permission-notice--shown]="permissionNotice()"
+                >
+                    @if (permissionNotice(); as notice) {
+                        <i
+                            class="ti ti-lock permission-notice__icon"
+                            aria-hidden="true"
+                        ></i>
+                        <span class="permission-notice__text">{{ notice }}</span>
+                    }
+                </div>
+
+                <div class="table-mode-row">
+                    <div class="field-isolated">
+                        <app-tooltip
+                            label="Table"
+                            tooltipText="The key-value table this node reads from, writes to or deletes from."
+                        />
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search tables..."
+                            emptyText="No tables yet"
+                            [items]="tableItems()"
+                            [selected]="selectedTableValue()"
+                            [headerAction]="createTableAction()"
+                            [readonly]="isReadOnly()"
+                            (selectionChange)="onTableSelectionChange($event)"
+                            (headerActionClick)="openCreateTable()"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="dropdown-trigger"
+                                [class.dropdown-trigger--readonly]="isReadOnly()"
+                                [disabled]="configurationLocked()"
+                            >
+                                <span
+                                    class="dropdown-trigger__label"
+                                    [class.dropdown-trigger__label--placeholder]="!selectedTableName()"
+                                    [attr.title]="selectedTableName()"
+                                >
+                                    {{ tableTriggerLabel() }}
+                                </span>
+                                @if (!isReadOnly()) {
+                                    <app-svg-icon
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                }
+                            </button>
+                        </app-select-dropdown>
+                        @if (!isReadOnly() && selectedTableId() === null) {
+                            <div class="table-hint">Select a table for this node to run</div>
+                        }
+                    </div>
+
+                    <app-select
+                        label="Mode"
+                        tooltipText="Read copies stored values into flow variables, Write stores values taken from flow variables, Delete removes keys."
+                        formControlName="mode"
+                        [items]="modeItems()"
+                        [readonly]="isReadOnly()"
+                    />
+                </div>
+            </div>
+
+            <div class="entries">
+                <app-tooltip
+                    [label]="keysLabel()"
+                    tooltipText="Each key names a stored value. Put state paths in braces to build a key at run time, e.g. profile_{variables.user.id}. Read writes the stored value into the variable next to its key; Write stores that variable's value."
+                />
+                <div
+                    formArrayName="entries"
+                    class="entries-list"
+                >
+                    @for (entry of entries.controls; let i = $index; track entry) {
+                        <div
+                            class="entry-row"
+                            [formGroupName]="i"
+                            [class.locked]="configurationLocked()"
+                        >
+                            <ng-template #keyField>
+                                <div class="entry-field">
+                                    <div class="key-highlight">
+                                        <div
+                                            #keyBackdrop
+                                            class="entry-input key-backdrop"
+                                            aria-hidden="true"
+                                            [innerHTML]="keyHighlights()[i]"
+                                        ></div>
+                                        <input
+                                            #keyInput
+                                            type="text"
+                                            class="entry-input key-input"
+                                            formControlName="key"
+                                            aria-label="Key"
+                                            autocomplete="off"
+                                            role="combobox"
+                                            aria-autocomplete="list"
+                                            [placeholder]="keyPlaceholder"
+                                            [class.duplicate]="isDuplicateKey(i)"
+                                            [attr.aria-expanded]="isKeyListOpen(i)"
+                                            [attr.aria-controls]="keyVariablePicker.listboxIdFor(i)"
+                                            [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
+                                            (input)="onKeyInput(i, $event)"
+                                            (keydown)="onKeyKeydown(i, $event)"
+                                            (focus)="onKeyFocus(i)"
+                                            (blur)="onKeyBlur(i, $event)"
+                                            (click)="onKeyCaretMove(i, $event)"
+                                            (keyup)="onKeyCaretMove(i, $event)"
+                                            (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
+                                        />
+                                    </div>
+                                    @if (placeholderHints()[i]; as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (keyHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (existenceHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                    @if (keyHelpFor(i); as help) {
+                                        <div class="entry-help">{{ help }}</div>
+                                    }
+                                </div>
+                            </ng-template>
+                            <ng-template #valueField>
+                                <div class="entry-field">
+                                    <input
+                                        type="text"
+                                        class="entry-input"
+                                        formControlName="value"
+                                        placeholder="variables.user.name"
+                                        aria-label="Variable path"
+                                        autocomplete="off"
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        [class.duplicate]="isConflictingVariable(i)"
+                                        [attr.aria-expanded]="variablePicker.isOpenFor(i)"
+                                        [attr.aria-controls]="variablePicker.listboxIdFor(i)"
+                                        [attr.aria-activedescendant]="variablePicker.activeDescendantFor(i)"
+                                        (focus)="variablePicker.onFocus(i, $event)"
+                                        (input)="variablePicker.onInput(i, $event)"
+                                        (keydown)="onValueKeydown(i, $event)"
+                                        (blur)="variablePicker.onBlur(i, $event)"
+                                    />
+                                    @if (valueHintFor(i); as hint) {
+                                        <div class="entry-hint">{{ hint }}</div>
+                                    }
+                                </div>
+                            </ng-template>
+                            <!-- Read puts the stored value into the variable, so the variable goes first. -->
+                            @switch (mode()) {
+                                @case ('read') {
+                                    <ng-container [ngTemplateOutlet]="valueField" />
+                                    <div class="equals-sign">=</div>
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                }
+                                @case ('write') {
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                    <div class="equals-sign">=</div>
+                                    <ng-container [ngTemplateOutlet]="valueField" />
+                                }
+                                @case ('delete') {
+                                    <ng-container [ngTemplateOutlet]="keyField" />
+                                }
+                            }
+                            @if (!isReadOnly()) {
+                                <button
+                                    type="button"
+                                    class="remove-entry"
+                                    title="Remove"
+                                    [disabled]="configurationLocked()"
+                                    (click)="removeEntry(i)"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="1rem"
+                                    />
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <!-- Hidden in a read-only flow, as the other panels hide what only edits. -->
+                @if (!isReadOnly()) {
+                    <button
+                        type="button"
+                        class="add-entry"
+                        [disabled]="atKeyLimit || configurationLocked()"
+                        (click)="addEntry()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="16px"
+                        />
+                        Add key
+                    </button>
+                }
+                @if (atKeyLimit && !isReadOnly()) {
+                    <div class="entry-hint">{{ keyLimitHint }}</div>
+                }
+            </div>
+        </form>
+    </div>
+</div>

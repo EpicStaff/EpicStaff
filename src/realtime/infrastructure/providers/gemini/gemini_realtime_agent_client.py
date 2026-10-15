@@ -10,6 +10,11 @@ from domain.models.realtime_tool import RealtimeTool
 from google import genai
 from google.genai import types
 from loguru import logger
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.gemini.event_handlers.gemini_client_event_handler import (
@@ -322,8 +327,11 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
             )
             result_str = str(tool_result)
         except Exception as e:
-            logger.error(f"Gemini: Tool execution failed: {e}")
-            result_str = f"Error: {e}"
+            correlation_id = new_error_correlation_id()
+            logger.exception(f"Gemini: Tool execution failed [correlation_id={correlation_id}]: {e}")
+            result_str = build_public_error_message(
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            )
 
         # Save to history so context survives reconnects regardless of outcome
         self._conversation_history.append(

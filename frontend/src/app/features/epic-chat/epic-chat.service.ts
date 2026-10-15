@@ -2,6 +2,7 @@ import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { UnsavedChangesRegistry } from 'src/app/core/services/unsaved-changes-registry.service';
 import { FlowsApiService } from 'src/app/features/flows/services/flows-api.service';
+import { AuthService } from 'src/app/services/auth/auth.service';
 import { ConfigService } from 'src/app/services/config/config.service';
 
 import {
@@ -32,6 +33,7 @@ export class EpicChatService {
     public readonly isChatOpen = this.isChatOpenSignal.asReadonly();
 
     private readonly configService = inject(ConfigService);
+    private readonly authService = inject(AuthService);
 
     constructor(
         private readonly router: Router,
@@ -117,6 +119,19 @@ export class EpicChatService {
                         error: (err) => console.error('[EpicChat] Failed to disable epicchat_enabled:', err),
                     });
                 }
+                return;
+            }
+            case EP_CHAT_EVENT_TYPES.AUTH_TOKEN_EXPIRED: {
+                // The new token reaches the widget through the sidenav's [accessToken] binding.
+                // HTTP completes after one emission, so no explicit unsubscribe is needed.
+                this.authService.refreshToken().subscribe({
+                    next: (token) => {
+                        if (!token) {
+                            this.authService.removeTokenAndNavToLogin();
+                        }
+                    },
+                    error: () => this.authService.removeTokenAndNavToLogin(),
+                });
                 return;
             }
             default:

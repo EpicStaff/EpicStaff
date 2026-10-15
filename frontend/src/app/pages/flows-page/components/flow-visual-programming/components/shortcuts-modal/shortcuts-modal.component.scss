@@ -1,15 +1,20 @@
 @use 'src/styles/_breakpoints.scss' as bp;
 
+// Layers inside the flow page's stacking context (its :host isolates):
+//   canvas (auto) < overlay (1) < canvas toolbar / node panel (10) < docked Sessions and
+//   Version History panels (100) < modal (101) < saving lock (1000).
+// The click-to-close overlay stays under the node panel so a panel opened via Ctrl+/ keeps
+// receiving clicks; the modal sits above the docked side panels it can extend under.
 .shortcuts__overlay {
     position: fixed;
     inset: 0;
-    z-index: 1; // low z-index to avoid covering node editing overlay when opened via Ctrl+/
+    z-index: 1;
     background: transparent;
 }
 
 .shortcuts__modal {
     position: fixed;
-    z-index: 2;
+    z-index: 101;
     box-sizing: border-box;
     background: var(--graphite-900);
     border: 1px solid var(--graphite-700);

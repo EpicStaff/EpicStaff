@@ -405,6 +405,7 @@ Auth via query params `token` (introspected against Django `/api/auth/introspect
 | `INIT_API_URL` | `{DJANGO_API_BASE_URL}/init-realtime/` |
 | `DJANGO_API_KEY` | sent as `X-API-Key` on all Django calls |
 | `VOICE_STREAM_URL` | fallback MediaStream URL when no ngrok live URL / domain |
+| `REALTIME_PERSIST_RAW_AUDIO` | default `false`: audio frames are not stored and audio fields are redacted in `realtime_session_item`; `true` stores events verbatim, one row per audio frame |
 
 ---
 

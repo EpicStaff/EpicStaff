@@ -181,6 +181,7 @@ members of an organization.
 | POST | `/api/admin/users/{id}/revoke-superadmin/` | Set `is_superadmin=false` (last-active-superadmin guard) |
 | POST | `/api/admin/users/{id}/deactivate/` | Set `is_active=false` (last-active-superadmin guard) |
 | POST | `/api/admin/users/{id}/reactivate/` | Set `is_active=true` |
+| DELETE | `/api/admin/users/{id}/` | Permanently delete an account — **JWT only** |
 
 ### GET `/api/admin/users/`
 
@@ -221,8 +222,18 @@ are shown.
 ### POST `/api/admin/users/`
 
 ```json
-{"email": "new@example.com", "password": "StrongPass123!", "organization_id": 1, "role_id": 3}
+{"email": "new@example.com", "password": "StrongPass123!", "display_name": "New User", "organization_id": 1, "role_id": 3}
 ```
+
+`email` must pass the new-account email rule (see `auth_endpoints.md` → first
+setup): only letters, digits and `. _ - +` before the `@`, starting and ending
+with a letter or digit, at most 64 characters before the `@` and 254 in total,
+and an ASCII domain whose last label is 2+ letters. `POST /api/admin/memberships/` with
+`email` only looks up an existing account, so it keeps the RFC check.
+
+`display_name` is optional: it's trimmed and must be a non-blank string of at
+most 255 characters; omit it or send `null` to derive it from the email
+(`anna-maria@x.com` → `"Anna Maria"`).
 
 `organization_id` and `role_id` are optional; with `organization_id` and no
 `role_id` the server assigns the built-in **Member** role. **201** →
@@ -243,6 +254,68 @@ Idempotent, empty body, return `UserResponse`. `revoke-superadmin` and
 
 `grant-superadmin` also clears the target's memberships — see "Superadmins are not
 organization members" above.
+
+### DELETE `/api/admin/users/{id}/`
+
+Permanently removes an account. **Irreversible** — this is not the soft
+`deactivate`. Superadmin only, and **JWT only**: API keys are refused (403),
+so a leaked credential cannot erase accounts.
+
+**Query params:** `dry_run` (`true`/`1` → preview and delete nothing;
+anything else, including absent, → perform the delete).
+
+**Request body (real delete only):**
+
+```json
+{"verification_phrase": "delete-jane@acme.com"}
+```
+
+The phrase is `delete-` followed by the account's `email`, matched exactly:
+case-sensitive, no trimming. It is checked on the current value when the
+delete runs, so an email change between preview and delete makes it fail. The body is
+ignored when `dry_run=true`, so a preview needs none. Swagger does not render
+request bodies on DELETE; send the body from an API client (e.g. Postman) as
+raw JSON.
+
+Returns **200** in both modes:
+
+```json
+{
+  "user_id": 42,
+  "affected_resources": {
+    "memberships": 1,
+    "api_keys": 2
+  }
+}
+```
+
+`affected_resources` maps a short resource name to how many of that
+resource the delete removed (or would remove, under a preview). Only
+nonzero resources appear. The user row itself is not listed — it is
+identified by `user_id`. An avatar file, if present, appears as
+`"avatar": 1`.
+
+**Deleting an account does not delete the content that account created.**
+Flows, agents, tools and secrets they authored stay in their organization
+with `created_by` set to null — but since no rows are destroyed by this,
+it is not reported in `affected_resources` at all. What is destroyed, and
+does appear: memberships, API keys, password-reset tokens, tool
+favorites, and flow-assistant conversations. Their avatar file is deleted.
+Any refresh token they hold is blacklisted, so existing sessions cannot be
+renewed.
+
+- `400 cannot_delete_self` — a superadmin cannot delete their own account.
+- `400 last_superadmin` — cannot delete the last active superadmin.
+- `400 invalid_verification_phrase` — real delete only: `verification_phrase`
+  is missing or does not match the account's current email. Nothing is deleted.
+- `400 invalid` — real delete only: the body is not a JSON object, or
+  `verification_phrase` is not a string.
+- `404 user_not_found` — unknown id.
+
+Blockers apply in **both** modes: a `dry_run=true` call against a blocked
+target returns the same 400, so it doubles as a safe pre-flight check. The
+verification phrase is the exception: it is checked only on the real delete,
+after the `404` and the blockers above.
 
 ---
 
@@ -274,6 +347,8 @@ organization members" above.
 | `organization_not_found` | 404 | No such organization, or you cannot access it |
 | `email_already_exists` | 400 | An account with that email exists |
 | `last_superadmin` | 400 | At least one active superadmin must remain |
+| `cannot_delete_self` | 400 | You cannot permanently delete your own account |
+| `invalid_verification_phrase` | 400 | Permanent delete: `verification_phrase` is missing or is not exactly `delete-<email>` |
 | `permission_denied` | 403 | You can see the membership but lack the required `MEMBERSHIPS` action (one you cannot see is a 404 instead) |
-| `invalid` | 400 | Field validation, or a bad list filter |
+| `invalid` | 400 | Field validation, a bad list filter, or a malformed permanent-delete body (not a JSON object, or a non-string `verification_phrase`) |
 | `org_context_required` | 400 | A non-integer value in `?org_ids=` |

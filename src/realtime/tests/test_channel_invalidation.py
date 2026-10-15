@@ -7,6 +7,7 @@ the channel) would keep being served from `_channel_cache` for up to
 `_CHANNEL_TTL` (60s), since nothing evicted the stale entry early.
 """
 
+import hashlib
 import json
 
 import httpx
@@ -27,6 +28,26 @@ async def test_invalidation_message_evicts_only_the_targeted_cache_entry():
 
     assert TOKEN not in _channel_cache
     assert "other-token" in _channel_cache
+
+
+@pytest.mark.asyncio
+async def test_invalidation_logs_token_fingerprint_not_the_channel_token(captured_log_messages):
+    from api.main import _channel_cache, _handle_channel_invalidation_message
+
+    _channel_cache[TOKEN] = ({"realtime_agent": 1}, 12345.0)
+
+    _handle_channel_invalidation_message(json.dumps({"token": TOKEN}))
+
+    assert TOKEN not in _channel_cache
+    invalidation_messages = [
+        message
+        for message in captured_log_messages
+        if "Invalidated cached channel config" in message
+    ]
+    assert len(invalidation_messages) == 1
+    expected_fingerprint = hashlib.sha256(TOKEN.encode()).hexdigest()[:8]
+    assert f"token_sha256={expected_fingerprint}" in invalidation_messages[0]
+    assert all(TOKEN not in message for message in captured_log_messages)
 
 
 @pytest.mark.asyncio

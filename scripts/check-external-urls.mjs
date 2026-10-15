@@ -3,7 +3,7 @@
  * CI regression guard: fail when a runtime CDN / external font URL reference
  * is (re)introduced into the frontend source tree.
  *
- * Context: EST-3245 removed all runtime CDN dependencies (Google Fonts,
+ * Context: we removed all runtime CDN dependencies (Google Fonts,
  * jsDelivr, Tabler icons CDN). This script keeps them from coming back.
  *
  * Usage:  node scripts/check-external-urls.mjs
@@ -33,7 +33,7 @@ const DENY_PATTERNS = [
   /\.pages\.dev/i, // Cloudflare Pages hosts (e.g. epicstaffchat.pages.dev)
 ];
 
-// frontend/src/index.html is fully vendored: after EST-3245 there is NO
+// frontend/src/index.html is fully vendored: there is NO
 // legitimate external <script src> / <link href> in it. Any active tag
 // pointing at an external origin is a violation regardless of the domain
 // denylist. HTML comments are stripped first, so commented-out examples
@@ -149,7 +149,7 @@ for (const file of files) {
 if (violations.length > 0) {
   console.error(
     `External CDN URL check FAILED: ${violations.length} violation(s) found.\n` +
-      'Runtime CDN references were removed in EST-3245 and must not be reintroduced.\n' +
+      'Runtime CDN references were removed and must not be reintroduced.\n' +
       'Vendor the asset locally instead, or (for benign non-runtime hits) add a\n' +
       'substring to scripts/external-url-allowlist.txt.\n'
   );

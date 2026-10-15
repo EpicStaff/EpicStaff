@@ -5,6 +5,8 @@ import {
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
+    computed,
+    DestroyRef,
     effect,
     inject,
     Injector,
@@ -15,9 +17,11 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IPoint } from '@foblex/2d';
-import { Subscription } from 'rxjs';
+import { filter } from 'rxjs';
 
+import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import {
     CONTEXT_MENU_TAB,
     ContextMenuTab,
@@ -40,6 +44,7 @@ export type { ContextMenuTab };
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();
     public readonly currentFlowId = input<number | null>(null);
+    public readonly availableFlows = input<GetGraphLightRequest[]>([]);
     public readonly nodeSelected = output<CreateNodeRequest>();
     public readonly closed = output<void>();
 
@@ -48,17 +53,24 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
 
     public readonly searchTerm = signal('');
     public readonly selectedMenu = signal<ContextMenuTab>(CONTEXT_MENU_TAB.FLOW_CORE);
+    protected readonly otherFlows = computed(() =>
+        this.availableFlows().filter((flow) => flow.id !== this.currentFlowId())
+    );
+    protected readonly visibleTabs = computed(() =>
+        FLOW_GRAPH_CONTEXT_MENU_ITEMS.filter(
+            (item) => item.type !== CONTEXT_MENU_TAB.FLOWS || this.otherFlows().length > 0
+        )
+    );
     public readonly menuTab = CONTEXT_MENU_TAB;
-    public readonly menuItems = FLOW_GRAPH_CONTEXT_MENU_ITEMS;
     public readonly viewportMargin = 16;
     public readonly overlayPositions = FLOW_GRAPH_CONTEXT_MENU_POSITIONS;
 
     private readonly overlay = inject(Overlay);
     private readonly injector = inject(Injector);
     private readonly viewContainerRef = inject(ViewContainerRef);
+    private readonly destroyRef = inject(DestroyRef);
 
     private overlayRef?: OverlayRef;
-    private backdropSub?: Subscription;
 
     public ngAfterViewInit(): void {
         this.createOverlay();
@@ -66,7 +78,6 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
     }
 
     public ngOnDestroy(): void {
-        this.backdropSub?.unsubscribe();
         this.overlayRef?.dispose();
     }
 
@@ -92,7 +103,22 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
             backdropClass: 'cdk-overlay-transparent-backdrop',
         });
 
-        this.backdropSub = this.overlayRef.backdropClick().subscribe(() => this.closed.emit());
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.closed.emit());
+        this.overlayRef
+            .keydownEvents()
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((event) => {
+                // Esc belongs to the topmost layer: keep it from also reaching the window-level
+                // ShortcutListenerDirective (canvas multi-select reset, node side panel save-and-close).
+                event.stopPropagation();
+                this.closed.emit();
+            });
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
     }
 
@@ -128,6 +154,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
             () => {
                 this.selectedMenu();
                 this.searchTerm();
+                this.visibleTabs();
 
                 if (!this.overlayRef) {
                     return;

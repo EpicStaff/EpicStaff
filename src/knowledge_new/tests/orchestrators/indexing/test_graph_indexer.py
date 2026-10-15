@@ -250,7 +250,7 @@ async def test_is_update_run_computed_correctly(
     config = _make_config()
     repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
     uow = FakeUoW(repo)
-    _make_slot_monkeypatches(monkeypatch)  # noqa: prevent real MinIO calls in _clear_slot_storage
+    _make_slot_monkeypatches(monkeypatch)  # noqa: prevent real S3 calls in _clear_slot_storage
 
     captured_is_update_run: list[bool] = []
 
@@ -488,7 +488,7 @@ class _FakeStorage:
 
 def _make_slot_monkeypatches(monkeypatch):
     """
-    Patch the two names still imported into graph_indexer so no real MinIO work happens.
+    Patch the two names still imported into graph_indexer so no real S3 work happens.
     `create_storage_config` is used only by `_clear_slot_storage`; `create_storage` wraps
     it into a fake storage whose `clear()` is tracked.
 
@@ -562,7 +562,7 @@ async def test_full_reindex_requests_config_for_target_slot(monkeypatch):
 
 async def test_full_reindex_success_promotes_slot(monkeypatch):
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    _make_slot_monkeypatches(monkeypatch)  # prevent real MinIO calls in _clear_slot_storage
+    _make_slot_monkeypatches(monkeypatch)  # prevent real S3 calls in _clear_slot_storage
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph")]

@@ -20,6 +20,7 @@ import {
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { TooltipComponent } from '@shared/components';
 
+import { highlightVariablesHtml } from './highlight-variables';
 import { VariableDropdownOverlayComponent } from './variable-dropdown-overlay/variable-dropdown-overlay.component';
 
 const DROPDOWN_NAV_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape']);
@@ -440,12 +441,8 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
     private renderHighlight(text: string, variableNames: string[]): void {
         if (!this.backdropRef) return;
 
-        const escaped = this.escapeHtml(text ?? '');
         const validNames = new Set(variableNames);
-
-        let highlighted = escaped.replace(/\{([^{}\s]+)\}/g, (match, name: string) =>
-            validNames.has(name) ? `<span class="vht-variable">${match}</span>` : match
-        );
+        let highlighted = highlightVariablesHtml(text ?? '', (name) => validNames.has(name));
 
         if (highlighted.endsWith('\n')) {
             highlighted += '<br>';
@@ -455,14 +452,5 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
         backdrop.innerHTML = highlighted;
         backdrop.scrollTop = this.textareaRef.nativeElement.scrollTop;
         backdrop.scrollLeft = this.textareaRef.nativeElement.scrollLeft;
-    }
-
-    private escapeHtml(text: string): string {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
     }
 }

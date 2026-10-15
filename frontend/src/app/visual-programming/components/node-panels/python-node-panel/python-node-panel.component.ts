@@ -58,11 +58,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
 
-    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
+    public readonly canEditSecrets = computed(
+        () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
+    );
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
             ? "Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-            : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
+            : this.isReadOnly()
+              ? 'Secrets assigned to this Python code.'
+              : "Secrets already assigned to this Python code. You don't have permission to change which secrets are selected."
     );
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>

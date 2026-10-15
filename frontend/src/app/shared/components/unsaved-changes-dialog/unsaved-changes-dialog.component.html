@@ -6,8 +6,9 @@
         <div class="dialog-title-row">
             <span class="dialog-icon">
                 <app-svg-icon
-                    icon="alert-circle"
-                    size="2.2rem"
+                    icon="warning"
+                    width="20.8px"
+                    height="18.29px"
                 />
             </span>
             <h2 class="dialog-title">{{ data.title }}</h2>
@@ -28,23 +29,23 @@
     ></p>
 
     <div class="dialog-actions">
-        <button
-            type="button"
-            class="button cancel-button"
-            (click)="onCancel()"
-        >
-            {{ data.cancelText || 'Cancel' }}
-        </button>
+        @if (data.showDontSave !== false) {
+            <button
+                type="button"
+                class="button dont-save-button"
+                (click)="onDontSave()"
+            >
+                {{ data.dontSaveText || "Don't Save" }}
+            </button>
+        }
         <div class="right-buttons">
-            @if (data.showDontSave !== false) {
-                <button
-                    type="button"
-                    class="button dont-save-button"
-                    (click)="onDontSave()"
-                >
-                    {{ data.dontSaveText || "Don't Save" }}
-                </button>
-            }
+            <button
+                type="button"
+                class="button cancel-button"
+                (click)="onCancel()"
+            >
+                {{ data.cancelText || 'Cancel' }}
+            </button>
             <button
                 type="button"
                 class="button save-button"

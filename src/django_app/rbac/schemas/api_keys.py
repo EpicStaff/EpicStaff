@@ -8,6 +8,12 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
+from rbac.access.gates import DenyApiKeyAuth
+from rbac.schemas.admin_surface import (
+    SYSTEM_KEY_REJECTED_EXAMPLE,
+    admin_write_forbidden_403,
+    permission_denied_example,
+)
 from rbac.serializers.api_keys import (
     ApiKeyAdminSerializer,
     ApiKeyCreateRequestSerializer,
@@ -15,24 +21,30 @@ from rbac.serializers.api_keys import (
     ApiKeySerializer,
 )
 
+_API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE = permission_denied_example(
+    "API key caller", DenyApiKeyAuth.message
+)
+
 _JWT_ONLY_403_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
     description="Key management requires a JWT session — API-key callers are rejected.",
-    examples=[
-        OpenApiExample(
-            "API key caller",
-            value={
-                "status_code": 403,
-                "code": "permission_denied",
-                "message": (
-                    "PermissionDenied: API keys cannot be used to manage API keys. "
-                    "Authenticate with a user session (JWT)."
-                ),
-            },
-            response_only=True,
-            status_codes=["403"],
-        ),
-    ],
+    examples=[_API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE],
+)
+
+_ADMIN_LIST_403_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description=(
+        "Caller holds api_keys read in no organization, or a forbidden ?org_ids= "
+        "entry (permission_denied). No API key can list here: the system key is "
+        "rejected by the admin-surface gate, a USER key by the JWT-only gate."
+    ),
+    examples=[SYSTEM_KEY_REJECTED_EXAMPLE, _API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE],
+)
+
+_ADMIN_RETIRE_403_RESPONSE = admin_write_forbidden_403(
+    "Caller holds api_keys delete in no organization, or can see the key "
+    "(api_keys read in a shared organization) but may not retire it "
+    "(permission_denied)."
 )
 
 _NOT_FOUND_404_RESPONSE = OpenApiResponse(
@@ -220,7 +232,7 @@ API_KEYS_MANAGEMENT_LIST = {
             )
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _JWT_ONLY_403_RESPONSE,
+        403: _ADMIN_LIST_403_RESPONSE,
     },
 }
 
@@ -234,7 +246,7 @@ API_KEYS_MANAGEMENT_REVOKE_POST = {
     "responses": {
         200: ApiKeyAdminSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _JWT_ONLY_403_RESPONSE,
+        403: _ADMIN_RETIRE_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
 }
@@ -248,7 +260,7 @@ API_KEYS_MANAGEMENT_DELETE = {
     "responses": {
         204: OpenApiResponse(description="Deleted"),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: _JWT_ONLY_403_RESPONSE,
+        403: _ADMIN_RETIRE_403_RESPONSE,
         404: _NOT_FOUND_404_RESPONSE,
     },
 }

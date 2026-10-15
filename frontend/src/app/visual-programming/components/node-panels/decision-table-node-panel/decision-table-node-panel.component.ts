@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    ButtonComponent,
     ConfirmationDialogService,
     CustomInputComponent,
-    HelpTooltipComponent,
     SelectComponent,
     SelectItem,
 } from '@shared/components';
@@ -28,7 +28,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         DecisionTableGridComponent,
         MatTooltipModule,
         SelectComponent,
-        HelpTooltipComponent,
+        ButtonComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
@@ -64,7 +64,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 name: node.node_name || node.id,
             }));
 
-        return [{ name: '-- Select Node --', value: '' }, ...nodeItems];
+        return [{ name: 'Unselected', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
@@ -163,6 +163,8 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     }
 
     public convertToCdt(): void {
+        if (this.isReadOnly()) return;
+
         this.confirmationDialogService
             .confirm({
                 title: 'Convert to Classification Decision Table?',
@@ -225,4 +227,6 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             })),
         }));
     }
+
+    protected readonly event = event;
 }

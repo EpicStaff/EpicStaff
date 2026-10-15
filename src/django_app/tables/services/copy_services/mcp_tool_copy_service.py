@@ -1,9 +1,8 @@
 from django.db import transaction
-from tables.import_export.utils import clean_base_name, ensure_unique_identifier
 from tables.models import Label
 from tables.models.mcp_models import McpTool
 from tables.services.copy_services.base_copy_service import BaseCopyService
-from tables.services.copy_services.helpers import acquire_copy_name_lock
+from tables.services.copy_services.helpers import next_copy_name
 
 
 class McpToolCopyService(BaseCopyService):
@@ -12,24 +11,19 @@ class McpToolCopyService(BaseCopyService):
     Duplicates all scalar fields and the tool-scope labels M2M.
     """
 
-    def copy(self, tool: McpTool, name: str | None = None, org_id: int | None = None) -> McpTool:
+    def copy(
+        self,
+        tool: McpTool,
+        name: str | None = None,
+        org_id: int | None = None,
+        user=None,
+    ) -> McpTool:
         target_org_id = org_id if org_id is not None else tool.org_id
         base_name = name if name else tool.name
 
         with transaction.atomic():
-            clean_base = clean_base_name(base_name)
-            acquire_copy_name_lock(target_org_id, clean_base)
-
-            existing_names = McpTool.objects.filter(
-                org_id=target_org_id, name__istartswith=clean_base
-            ).values_list("name", flat=True)
-            new_name = ensure_unique_identifier(
-                base_name=base_name,
-                existing_names=existing_names,
-            )
-
             new_tool = McpTool.objects.create(
-                name=new_name,
+                name=next_copy_name(McpTool, org_id=target_org_id, base_name=base_name),
                 org_id=target_org_id,
                 transport=tool.transport,
                 tool_name=tool.tool_name,

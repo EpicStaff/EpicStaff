@@ -17,6 +17,7 @@ export class DragDropAreaComponent {
 
     allowedTypes = input<readonly string[]>([]);
     permissionResource = input<ResourceCode>();
+    actionCode = input<ActionCode>();
 
     filesDropped = output<FileList>();
 
@@ -24,7 +25,8 @@ export class DragDropAreaComponent {
 
     onDragOver(event: DragEvent): void {
         const res = this.permissionResource();
-        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+        const action = this.actionCode() ?? ActionCode.Update;
+        if (res && !this.permissionService.can(res, action)) {
             return;
         }
 
@@ -35,7 +37,8 @@ export class DragDropAreaComponent {
 
     onDragLeave(event: DragEvent): void {
         const res = this.permissionResource();
-        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+        const action = this.actionCode() ?? ActionCode.Update;
+        if (res && !this.permissionService.can(res, action)) {
             return;
         }
 
@@ -53,7 +56,8 @@ export class DragDropAreaComponent {
 
     onDrop(event: DragEvent): void {
         const res = this.permissionResource();
-        if (res && !this.permissionService.can(res, ActionCode.Update)) {
+        const action = this.actionCode() ?? ActionCode.Update;
+        if (res && !this.permissionService.can(res, action)) {
             return;
         }
 

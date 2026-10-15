@@ -42,10 +42,13 @@
         @for (version of versionsList; track version.id) {
             <div
                 class="version-card"
-                [class.version-card--selected]="
-                    selectMode() ? isVersionSelected(version.id) : selectedVersionId === version.id
-                "
-                (click)="onCardClick(version)"
+                tabindex="0"
+                role="button"
+                [attr.aria-pressed]="isCardSelected(version.id)"
+                [class.version-card--selected]="isCardSelected(version.id)"
+                [class.version-card--previewed]="previewedVersionId() === version.id"
+                (click)="onCardClick($event, version)"
+                (keydown)="onCardKeydown($event, version)"
             >
                 @if (selectMode()) {
                     <div
@@ -64,28 +67,53 @@
                         <input
                             #versionEditInput
                             class="version-edit-input"
+                            maxlength="255"
                             [(ngModel)]="editingValue"
+                            (click)="$event.stopPropagation()"
                             (keydown)="onEditKeydown($event, version)"
                         />
                     } @else {
-                        <div class="version-name">{{ version.name }}</div>
+                        <div
+                            class="version-name"
+                            appTooltipOnOverflow
+                            [matTooltip]="version.name"
+                            matTooltipPosition="left"
+                            matTooltipDisabled
+                            (click)="onRenameableTextClick($event, version)"
+                            (dblclick)="startEdit(version, 'name')"
+                        >
+                            {{ version.name }}
+                        </div>
                     }
                     @if (editingVersionId === version.id && editingField === 'description') {
-                        <textarea
+                        <input
                             #versionEditInput
-                            class="version-edit-input version-edit-textarea"
-                            rows="1"
+                            class="version-edit-input version-edit-input--description"
                             placeholder="Enter description..."
                             [(ngModel)]="editingValue"
+                            (click)="$event.stopPropagation()"
                             (keydown)="onEditKeydown($event, version)"
-                        ></textarea>
+                        />
                     } @else if (version.description) {
-                        <div class="version-description">{{ version.description }}</div>
+                        <div
+                            class="version-description"
+                            appTooltipOnOverflow
+                            [matTooltip]="version.description"
+                            matTooltipPosition="left"
+                            matTooltipDisabled
+                            (click)="onRenameableTextClick($event, version)"
+                            (dblclick)="startEdit(version, 'description')"
+                        >
+                            {{ version.description }}
+                        </div>
                     }
                     <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, HH:mm' }}</div>
                 </div>
                 @if (!selectMode()) {
-                    <div class="version-menu">
+                    <div
+                        class="version-menu"
+                        (click)="$event.stopPropagation()"
+                    >
                         <app-icon-button
                             #menuOrigin="cdkOverlayOrigin"
                             cdkOverlayOrigin
@@ -173,7 +201,7 @@
         } @else {
             <button
                 class="restore-version-btn"
-                [disabled]="!selectedVersionId"
+                [disabled]="!selectedVersionId()"
                 (click)="restoreSelectedVersion()"
             >
                 Restore This Version

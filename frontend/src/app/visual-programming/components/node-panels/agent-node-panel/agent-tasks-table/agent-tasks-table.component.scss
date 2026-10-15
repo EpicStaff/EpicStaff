@@ -130,6 +130,14 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
         &:hover {
             background: var(--white-alpha-3-flat);
         }
+
+        &.att-cell--readonly {
+            cursor: default;
+
+            &:hover {
+                background: transparent;
+            }
+        }
     }
 
     &--delete {

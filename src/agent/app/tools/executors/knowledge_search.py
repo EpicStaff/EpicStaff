@@ -4,12 +4,12 @@ import json
 
 import settings
 from loguru import logger
+
+from app.knowledge.events import KnowledgeEventSink
 from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import ToolResult
 from shared.models.knowledge_new import FoundChunk
-
-from app.knowledge.events import KnowledgeEventSink
 
 
 async def _notify_sink(

@@ -2,10 +2,11 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import LLMConfig, Provider
+from tables.models.default_models import DefaultModels
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.quickstart_service import QuickstartService
 
 
@@ -123,11 +124,88 @@ def test_quickstart_post_denied_without_llm_config_create(db, django_user_model)
 
 
 @pytest.mark.django_db
-def test_quickstart_apply_denied_for_non_superadmin(db, django_user_model):
+def test_quickstart_apply_denied_for_member(db, django_user_model):
     org = Organization.objects.create(name="Org A")
+    member = _member(django_user_model, org, "qmember@example.com")  # llm_configs READ only
+    resp = _client(member, org).post("/api/quickstart/apply/", {}, format="json")
+    assert resp.status_code == 403  # needs LLM_CONFIGS CREATE and UPDATE
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "llm_config_permissions",
+    [Permission.READ | Permission.CREATE, Permission.READ | Permission.UPDATE],
+    ids=["create_without_update", "update_without_create"],
+)
+def test_quickstart_apply_denied_without_both_create_and_update(
+    db, django_user_model, llm_config_permissions
+):
+    org = Organization.objects.create(name="Org A")
+    Provider.objects.create(name="openai")
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
+    role = Role.objects.create(name="LLM half-writer", org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=role,
+        resource_type=ResourceType.LLM_CONFIGS,
+        permissions=int(llm_config_permissions),
+    )
+    user = django_user_model.objects.create_user(
+        email="qhalf@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+
+    resp = _client(user, org).post("/api/quickstart/apply/", {}, format="json")
+
+    assert resp.status_code == 403
+    assert not DefaultModels.objects.filter(org=org).exists()
+
+
+@pytest.mark.django_db
+def test_quickstart_apply_allowed_for_org_admin(db, django_user_model):
+    org = Organization.objects.create(name="Org A")
+    Provider.objects.create(name="openai")
+    QuickstartService().quickstart(provider="openai", api_key="sk-test", org_id=org.id)
     admin = _org_admin(django_user_model, org, "qadmin@example.com")
+
     resp = _client(admin, org).post("/api/quickstart/apply/", {}, format="json")
-    assert resp.status_code == 403  # global DefaultModels write is superadmin-only
+
+    assert resp.status_code == 200, resp.data
+    llm_config = LLMConfig.objects.get(org=org)
+    assert DefaultModels.objects.get(org=org).agent_llm_config_id == llm_config.id
+
+
+@pytest.mark.django_db
+def test_quickstart_apply_writes_only_the_active_orgs_default_models(db, django_user_model):
+    org_a = Organization.objects.create(name="Org A")
+    org_b = Organization.objects.create(name="Org B")
+    Provider.objects.create(name="openai")
+    QuickstartService().quickstart(provider="openai", api_key="sk-a", org_id=org_a.id)
+    QuickstartService().quickstart(provider="openai", api_key="sk-b", org_id=org_b.id)
+    admin_b = _org_admin(django_user_model, org_b, "qadmin-b@example.com")
+
+    resp = _client(admin_b, org_b).post("/api/quickstart/apply/", {}, format="json")
+
+    assert resp.status_code == 200, resp.data
+    assert DefaultModels.objects.get(org=org_b).agent_llm_config_id == (
+        LLMConfig.objects.get(org=org_b).id
+    )
+    assert not DefaultModels.objects.filter(org=org_a).exists()
+
+
+@pytest.mark.django_db
+def test_apply_to_default_models_ignores_same_named_config_of_another_org(db):
+    org_a = Organization.objects.create(name="Org A")
+    org_b = Organization.objects.create(name="Org B")
+    LLMConfig.objects.create(custom_name="shared-name", org=org_a)
+    EmbeddingConfig.objects.create(custom_name="shared-name", org=org_a)
+    own_llm_config = LLMConfig.objects.create(custom_name="shared-name", org=org_b)
+    own_embedding_config = EmbeddingConfig.objects.create(custom_name="shared-name", org=org_b)
+
+    default_models = QuickstartService().apply_to_default_models("shared-name", org_id=org_b.id)
+
+    assert default_models.org_id == org_b.id
+    assert default_models.agent_llm_config_id == own_llm_config.id
+    assert default_models.memory_embedding_config_id == own_embedding_config.id
 
 
 @pytest.mark.django_db

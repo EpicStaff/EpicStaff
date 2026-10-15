@@ -19,8 +19,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { WebhookProviderType, WebhookTriggerAuthKind, WebhookTriggerModel } from '@shared/models';
+import {
+    ActionCode,
+    ResourceCode,
+    WebhookProviderType,
+    WebhookTriggerAuthKind,
+    WebhookTriggerModel,
+} from '@shared/models';
 
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 import {
@@ -49,6 +56,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
     private destroyRef = inject(DestroyRef);
+    private permissionsService = inject(PermissionsService);
 
     icon = input<string>('help_outline');
     label = input<string>('Webhook Trigger');
@@ -58,6 +66,8 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     disallowedProviderTypes = input<WebhookProviderType[]>([]);
     disallowedAuthKinds = input<WebhookTriggerAuthKind[]>([]);
     disallowedProviderMessage = input<string>('This provider is not supported here.');
+    /** Readonly mode: renders the current selection as plain text (no dropdown, no create). */
+    readonly = input<boolean>(false);
 
     /** Emits the resolved trigger model (or null when cleared). */
     triggerResolved = output<WebhookTriggerModel | null>();
@@ -68,6 +78,17 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     searchTerm = signal<string>('');
     open = signal<boolean>(false);
     controlDisabled = signal<boolean>(false);
+
+    /**
+     * Listing webhook triggers needs Webhooks:Read. Without it the list is never requested (a 403
+     * there makes the app reload the session and closes the node panel); the field then shows the
+     * current trigger by id, read-only.
+     */
+    private readonly canListTriggers = computed(() =>
+        this.permissionsService.can(ResourceCode.Webhooks, ActionCode.Read)
+    );
+    /** No dropdown and no create: explicitly read-only, or the triggers cannot be listed. */
+    readonly isReadonlyView = computed(() => this.readonly() || !this.canListTriggers());
 
     selectedTrigger = computed<WebhookTriggerModel | null>(() => {
         const id = this.selectedId();
@@ -95,6 +116,13 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         return list.filter((t) => this.triggerName(t).toLowerCase().includes(term));
     });
 
+    readonly triggerText = computed(() => {
+        const trigger = this.selectedTrigger();
+        if (trigger) return this.displayLabel(trigger);
+        const id = this.selectedId();
+        return id != null && !this.canListTriggers() ? `Webhook trigger #${id}` : this.placeholder();
+    });
+
     private triggerName(t: WebhookTriggerModel): string {
         switch (t.provider_type) {
             case 'ngrok':
@@ -115,6 +143,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     private overlayRef: OverlayRef | null = null;
 
     ngOnInit(): void {
+        if (!this.canListTriggers()) return;
         this.loadTriggers();
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.loadTriggers());
     }
@@ -143,11 +172,12 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     toggle(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.isReadonlyView()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.isReadonlyView()) return;
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
                 .flexibleConnectedTo(this.triggerBtn)
@@ -188,7 +218,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onSelect(trigger: WebhookTriggerModel): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.isReadonlyView()) return;
         if (this.isTriggerDisallowed(trigger)) return;
         const id = trigger.id ?? null;
         this.selectedId.set(id);
@@ -198,7 +228,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     onCreate(): void {
-        if (this.controlDisabled()) return;
+        if (this.controlDisabled() || this.isReadonlyView()) return;
         this.close();
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {

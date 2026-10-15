@@ -23,6 +23,9 @@ SAVE_FLOW_SWAGGER = {
             "file_extractor_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
+            "key_value_node_list": drf_serializers.ListField(
+                child=drf_serializers.DictField(), required=False
+            ),
             "audio_transcription_node_list": drf_serializers.ListField(
                 child=drf_serializers.DictField(), required=False
             ),
@@ -64,6 +67,7 @@ SAVE_FLOW_SWAGGER = {
                 fields={
                     "python_node_ids": _id_list_field,
                     "file_extractor_node_ids": _id_list_field,
+                    "key_value_node_ids": _id_list_field,
                     "audio_transcription_node_ids": _id_list_field,
                     "start_node_ids": _id_list_field,
                     "end_node_ids": _id_list_field,
@@ -100,6 +104,7 @@ SAVE_FLOW_SWAGGER = {
                     }
                 ],
                 "file_extractor_node_list": [],
+                "key_value_node_list": [],
                 "audio_transcription_node_list": [],
                 "start_node_list": [
                     {

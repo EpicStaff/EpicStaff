@@ -14,8 +14,6 @@ try:
 except ImportError:
     _WsClosedOK = None
 
-import contextlib
-
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from src.shared.models import RealtimeAgentChatData
@@ -148,21 +146,40 @@ class VoiceCallService:
                 self._end_reason = "error"
         finally:
             message_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await message_task
+            except asyncio.CancelledError:
+                # message_task's own cancellation is expected; execute()'s own is
+                # detected below.
+                pass
+            except Exception as e:
+                # A provider crash must not skip the teardown and lose the recording.
+                logger.exception(f"Realtime message handler crashed: {e}")
+            # Checked after the await, whatever its outcome: a cancel of execute()
+            # arriving here is forwarded to message_task, and a provider that catches
+            # CancelledError and returns normally would otherwise make it vanish.
+            # Finish the teardown so the recording is saved, then re-raise below.
+            execute_cancelled = asyncio.current_task().cancelling() > 0
             await rt_agent_client.close()
 
-            if self._end_reason == "max_duration_exceeded":
-                # We broke out of the loop ourselves (Twilio didn't hang up) —
+            if self._end_reason in ("max_duration_exceeded", "error"):
+                # We stopped reading ourselves (Twilio didn't hang up) —
                 # actively close so the call actually ends instead of hanging
-                # open with nobody reading Twilio's media frames.
+                # open with nobody reading Twilio's media frames, and before
+                # the awaited recording save below so the caller isn't left
+                # on a dead line while it uploads.
                 try:
                     await self.twilio_ws.close()
                 except Exception as e:
-                    logger.debug(f"Error closing Twilio WebSocket after max duration: {e}")
+                    logger.debug(f"Error closing Twilio WebSocket after {self._end_reason}: {e}")
 
             duration = time.monotonic() - self._start_time
-            asyncio.create_task(self._save_recordings(duration))  # noqa: RUF006
+            # Awaited, not fired-and-forgotten: the loop holds only a weak reference
+            # to tasks, so an unawaited save could be collected before it finished.
+            await self._save_recordings(duration)
+
+            if execute_cancelled:
+                raise asyncio.CancelledError
 
     async def _handle_twilio_message(self, data: dict, client: IRealtimeAgentClient) -> None:
         event = data.get("event")

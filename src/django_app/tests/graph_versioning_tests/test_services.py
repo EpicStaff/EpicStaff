@@ -151,6 +151,21 @@ def test_restore_version_with_backup_true_creates_backup_version(service, graph)
 
 
 @pytest.mark.django_db
+def test_restore_version_with_backup_fits_a_max_length_version_name(service, graph):
+    long_name = "v" * GraphVersion._meta.get_field("name").max_length
+    version = service.save_version(graph, name=long_name)
+
+    result = service.restore_version(
+        version, backup=True, expected_save_version=graph.save_version
+    )
+
+    backup = GraphVersion.objects.get(id=result["auto_backup_version_id"])
+    assert len(backup.name) == GraphVersion._meta.get_field("name").max_length
+    assert backup.name.startswith("Before restore to 'vvv")
+    assert backup.name.endswith("…'")
+
+
+@pytest.mark.django_db
 def test_restore_version_with_backup_false_creates_no_backup(service, graph):
     version = service.save_version(graph, name="original")
     before_count = GraphVersion.objects.count()
@@ -316,3 +331,76 @@ def test_create_graph_from_version_does_not_copy_tool_scope_labels(
     new_graph_label_ids = set(new_graph.labels.values_list("id", flat=True))
     assert flow_label.id in new_graph_label_ids
     assert tool_label.id not in new_graph_label_ids
+
+
+# ---------------------------------------------------------------------------
+# Group G: shared preparation across preview / restore / create-from-version
+# ---------------------------------------------------------------------------
+
+
+def _record_prepare_calls(service, monkeypatch):
+    """Record a deep copy of every PreparedVersion `_prepare` returns, taken before the
+    caller extends or remaps its warnings."""
+    import copy
+
+    recorded = []
+    original_prepare = service._prepare
+
+    def recording_prepare(version):
+        prepared = original_prepare(version)
+        recorded.append(copy.deepcopy(prepared))
+        return prepared
+
+    monkeypatch.setattr(service, "_prepare", recording_prepare)
+    return recorded
+
+
+@pytest.mark.django_db
+def test_preview_restore_and_create_graph_prepare_the_same_result(
+    service, graph, agent_definition, default_org, monkeypatch
+):
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(
+        graph=graph, node_name="an", agent_definition=agent_definition
+    )
+    version = service.save_version(graph, name="snap")
+    agent_definition.delete()
+    recorded = _record_prepare_calls(service, monkeypatch)
+
+    preview = service.preview_version(version)
+    service.create_graph_from_version(version)
+    graph.refresh_from_db()
+    service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
+
+    assert len(recorded) == 3
+    assert recorded[0] == recorded[1] == recorded[2]
+    assert preview["snapshot"] == recorded[0].filtered_snapshot
+    assert preview["warnings"] == list(recorded[0].filter_warnings)
+    assert [warning["type"] for warning in preview["warnings"]] == ["fk_nulled"]
+
+
+@pytest.mark.django_db
+def test_restore_with_stale_save_version_fails_before_preparing(
+    service, graph, agent_definition, monkeypatch
+):
+    from tables.exceptions import GraphSaveVersionConflictError
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(
+        graph=graph, node_name="an", agent_definition=agent_definition
+    )
+    version = service.save_version(graph, name="snap")
+    graph.refresh_from_db()
+    stale_save_version = graph.save_version - 1
+    recorded = _record_prepare_calls(service, monkeypatch)
+
+    with pytest.raises(GraphSaveVersionConflictError):
+        service.restore_version(
+            version, backup=False, expected_save_version=stale_save_version
+        )
+
+    assert recorded == []
+    assert graph.agent_node_list.count() == 1

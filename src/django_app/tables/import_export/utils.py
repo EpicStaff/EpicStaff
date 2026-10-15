@@ -101,7 +101,7 @@ def python_code_equal(code_instance: PythonCode, code_data: dict):
 def attach_tool_labels(instance, id_mapper: IDMapper, label_ids: list) -> None:
     """Attach previously-exported tool labels to a freshly-imported tool instance.
 
-    Mirrors ``GraphStrategy._attach_labels`` (import_export/strategies/graph.py)
+    Same lookup as ``GraphStrategy._set_labels`` (import_export/strategies/graph.py)
     but scoped to ``Label.Scope.TOOL`` instead of ``Scope.FLOW`` — shared between
     ``PythonCodeToolStrategy`` and ``McpToolStrategy`` since both need identical
     logic.

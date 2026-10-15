@@ -1,0 +1,268 @@
+@use '../../../styles/node-panel-controls.scss' as controls;
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+@use '../shared/variable-highlight-textarea/variable-highlight' as highlight;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    // Grows with its rows instead of overflowing, so the bottom padding stays under "Add key" when the panel scrolls.
+    flex: 1 0 auto;
+    padding-bottom: var(--space-2xl);
+}
+
+.form-container {
+    @include mixins.form-container;
+}
+
+@include mixins.field-isolated-spacing;
+
+// Table takes 2/3, mode 1/3; minmax(0, …) lets a long table name truncate instead of widening the row.
+.table-mode-row {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+
+    > * {
+        min-width: 0;
+    }
+}
+
+// The agent panel's picker trigger, with the border and height of the Mode select beside it.
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    height: 40px;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover:not(:disabled) {
+        border-color: var(--accent-color);
+    }
+
+    // Locked by permissions: dimmed as the Mode select beside it is (select.component.scss).
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    // A read-only flow: plain text, as the Mode select beside it shows its value.
+    &--readonly,
+    &--readonly:disabled {
+        height: auto;
+        padding: 0;
+        background: transparent;
+        border: none;
+        opacity: 1;
+        cursor: default;
+    }
+
+    &__label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+}
+
+.permission-section {
+    display: flex;
+    flex-direction: column;
+}
+
+// Muted like the hints: a lock before the text, which wraps beside it.
+.permission-notice {
+    @include controls.hint-text;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+
+    &--shown {
+        margin-bottom: 12px;
+    }
+
+    // The text's line height, so the lock sits on its first line.
+    &__icon {
+        flex-shrink: 0;
+        line-height: inherit;
+    }
+
+    &__text {
+        min-width: 0;
+    }
+}
+
+.table-hint {
+    margin-top: 4px;
+    @include controls.hint-text;
+}
+
+.entries {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.entries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.entry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.entry-field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.entry-input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s ease;
+
+    &:focus {
+        border-color: var(--accent-color);
+    }
+
+    // Locked by permissions, dimmed as the Mode select is.
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    // Both rows of a repeated write key or variable are red at once, touched or not.
+    &.ng-invalid.ng-touched,
+    &.duplicate {
+        border-color: var(--color-status-error);
+    }
+
+    &::placeholder {
+        color: var(--color-text-tertiary);
+    }
+}
+
+// The key input is the task node's highlight field on one line: the key's text is drawn by a
+// backdrop with the same box behind the input, whose own text is transparent. Both take their box
+// from .entry-input and their text metrics from this mixin, or the highlight drifts off the text.
+@mixin key-text-metrics {
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: normal;
+    letter-spacing: normal;
+}
+
+.key-highlight {
+    position: relative;
+    isolation: isolate;
+}
+
+.key-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    @include key-text-metrics;
+    border-color: transparent;
+    white-space: pre;
+    overflow: hidden;
+    pointer-events: none;
+
+    ::ng-deep .vht-variable {
+        @include highlight.variable-token;
+    }
+}
+
+// The key's text is drawn by the backdrop, so a locked row dims it too.
+.entry-row.locked .key-backdrop {
+    opacity: 0.7;
+}
+
+.key-input {
+    position: relative;
+    z-index: 1;
+    display: block;
+    @include key-text-metrics;
+    @include highlight.transparent-text;
+}
+
+// Rows align to the top for the hints under the fields, so the "=" takes an input's height to sit centred.
+.equals-sign {
+    @include controls.equals-sign;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: 34px;
+}
+
+// The key help (.entry-help) is as muted as a hint, which takes its place.
+.entry-hint,
+.entry-help {
+    @include controls.hint-text;
+}
+
+.remove-entry {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 34px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        color: var(--color-status-error);
+    }
+
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+}
+
+.add-entry {
+    @include controls.add-row-button;
+
+    // At the key limit.
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--color-action-btn-background);
+    }
+}

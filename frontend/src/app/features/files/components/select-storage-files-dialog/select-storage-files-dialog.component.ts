@@ -1,6 +1,7 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -9,13 +10,19 @@ import {
     DragDropAreaComponent,
     Spinner2Component,
 } from '@shared/components';
-import { EMPTY, forkJoin, switchMap } from 'rxjs';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { catchError, EMPTY, filter, forkJoin, map, merge, of, switchMap, tap } from 'rxjs';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { GraphFileRecord, StorageTreeNode } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
+import { StorageUploadService } from '../../services/storage-upload.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
+import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.constants';
+import { describeUploadFailures } from '../../utils/upload-error.utils';
+import { describeUploadLimits } from '../../utils/upload-limits.utils';
 import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
@@ -59,10 +66,18 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     private readonly dialogRef = inject<DialogRef<SelectStorageFilesDialogResult | undefined>>(DialogRef);
     private readonly data: SelectStorageFilesDialogData = inject(DIALOG_DATA);
     private readonly storageApiService = inject(StorageApiService);
+    private readonly storageUploadService = inject(StorageUploadService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly permissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+
+    readonly canCreateFiles = computed(() => this.permissionsService.can(ResourceCode.Files, ActionCode.Create));
+    readonly canUpdateFlows = computed(() => this.permissionsService.can(ResourceCode.Flows, ActionCode.Update));
 
     readonly flowId = this.data.flowId;
     readonly flowName = this.data.flowName;
@@ -92,12 +107,23 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     readonly isLoadingRoot = signal(true);
     readonly isSaving = signal(false);
     readonly isUploading = signal(false);
+    /** Size-cap hint under the drop area; null when the limits are unknown. */
+    protected readonly uploadLimitsHint = toSignal(
+        this.storageApiService.getUploadLimits().pipe(
+            map(describeUploadLimits),
+            catchError(() => of(null))
+        ),
+        { initialValue: null }
+    );
+    protected readonly uploadLimitsHintId = 'select-storage-files-dialog-upload-limits';
 
     readonly selectedFilePaths = signal<Set<string>>(new Set());
 
     readonly selectedFolderPaths = signal<Set<string>>(new Set());
 
     private hasMadeChanges = false;
+    /** The "close during upload" question is open. */
+    private isConfirmingClose = false;
 
     private readonly allNodes = signal<TreeNode[]>([]);
 
@@ -142,6 +168,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     });
 
     ngOnInit(): void {
+        this.closeThroughCancelOnDismiss();
         this.loadAttachedFiles(() => {
             const folders = new Set(this.attachedFolderPaths());
             this.selectedFolderPaths.set(folders);
@@ -155,6 +182,11 @@ export class SelectStorageFilesDialogComponent implements OnInit {
         node.isExpanded = !node.isExpanded;
         this.rootNodes.update((n) => [...n]);
         this.rebuildAllNodes();
+    }
+
+    onItemClick(node: TreeNode): void {
+        if (!this.canUpdateFlows()) return;
+        this.toggleCheck(node);
     }
 
     toggleCheck(node: TreeNode): void {
@@ -429,8 +461,21 @@ export class SelectStorageFilesDialogComponent implements OnInit {
             });
     }
 
+    /** Closes the dialog (Cancel, Escape, backdrop), asking first while files are uploading. */
     onCancel(): void {
-        this.dialogRef.close({ changed: this.hasMadeChanges });
+        if (this.isConfirmingClose) return;
+        if (!this.isUploading()) {
+            this.dialogRef.close({ changed: this.hasMadeChanges });
+            return;
+        }
+        this.isConfirmingClose = true;
+        this.confirmationDialogService
+            .confirm(CLOSE_DURING_UPLOAD_CONFIRMATION)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                this.isConfirmingClose = false;
+                if (result === true) this.dialogRef.close({ changed: this.hasMadeChanges });
+            });
     }
 
     onAddFilesToStorage(): void {
@@ -449,34 +494,49 @@ export class SelectStorageFilesDialogComponent implements OnInit {
         const files = Array.from(dropped);
 
         this.isUploading.set(true);
-        this.storageApiService
-            .confirmOverwrite('', files)
+        this.storageUploadService
+            .confirmUploadPlan('', files)
             .pipe(
-                switchMap((confirmed) => {
-                    if (!confirmed) return EMPTY;
-                    return this.storageApiService.handleAddFilesResult({
-                        targetPath: '',
-                        files,
-                        mkdirOnly: false,
-                    });
+                // Files skipped for lack of Files/Update were already named in the dialog; they are not sent.
+                switchMap((filesToUpload) => {
+                    if (!filesToUpload) return EMPTY;
+                    return this.storageUploadService.uploadMany('', filesToUpload);
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: (res) => {
-                    if (res?.type === 'upload') {
+                next: ({ uploaded, failed }) => {
+                    if (uploaded.length) {
                         this.toastService.success(
-                            res.count === 1 ? 'File uploaded successfully' : `${res.count} files uploaded successfully`
+                            uploaded.length === 1
+                                ? 'File uploaded successfully'
+                                : `${uploaded.length} files uploaded successfully`
                         );
+                        this.reloadTree();
                     }
-                    this.reloadTree();
+                    if (failed.length) this.toastService.error(describeUploadFailures(failed));
                 },
+                // uploadMany reports failures in its result; only the overwrite check errors.
                 error: () => {
-                    this.toastService.error('Failed to upload files');
+                    this.toastService.error('Failed to check existing files');
                     this.isUploading.set(false);
                 },
                 complete: () => this.isUploading.set(false),
             });
+    }
+
+    /** Routes backdrop click and Escape through onCancel, so an upload is never dropped unasked. */
+    private closeThroughCancelOnDismiss(): void {
+        this.dialogRef.disableClose = true;
+        merge(
+            this.dialogRef.backdropClick,
+            this.dialogRef.keydownEvents.pipe(
+                filter((event) => event.key === 'Escape' && !hasModifierKey(event)),
+                tap((event) => event.preventDefault())
+            )
+        )
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.onCancel());
     }
 
     private reloadTree(): void {

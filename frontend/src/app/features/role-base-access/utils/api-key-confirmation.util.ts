@@ -1,13 +1,10 @@
 import { ConfirmationDialogData } from '@shared/components';
 import { ApiKeyStatus } from '@shared/models';
+import { escapeHtml } from '@shared/utils';
 
 export interface BulkApiKeyItem {
     name: string;
     status: ApiKeyStatus;
-}
-
-function escapeHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function keyListHtml(items: BulkApiKeyItem[]): string {

@@ -41,7 +41,10 @@
 
         <div class="form-section">
             <span class="section-label">Timezone</span>
-            <app-timezone-selector [formControl]="timezoneControl" />
+            <app-timezone-selector
+                [readonly]="isReadOnly()"
+                [formControl]="timezoneControl"
+            />
         </div>
     </div>
 </div>

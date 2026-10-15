@@ -102,6 +102,25 @@ async def test_function_call_done_calls_tool(mock_db, handler, client):
 
 @pytest.mark.asyncio
 @patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
+async def test_function_call_done_logs_tool_name_and_call_id_but_not_arguments(
+    mock_db, handler, client, captured_log_messages
+):
+    data = {
+        "type": "response.function_call_arguments.done",
+        "call_id": "call_42",
+        "name": "search_tool",
+        "arguments": json.dumps({"query": "my card number is 4111"}),
+    }
+    await handler.handle_event(data)
+
+    tool_call_logs = [message for message in captured_log_messages if "search_tool" in message]
+    assert tool_call_logs
+    assert any("call_42" in message for message in tool_call_logs)
+    assert not any("4111" in message for message in captured_log_messages)
+
+
+@pytest.mark.asyncio
+@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
 async def test_function_call_done_also_forwards_to_client(mock_db, handler, client):
     data = {
         "type": "response.function_call_arguments.done",

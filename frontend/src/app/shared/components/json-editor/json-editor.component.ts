@@ -27,6 +27,24 @@ export interface JsonError {
     message: string;
 }
 
+// The editor's default look; a host that needs one more option spreads these rather than copying them. Frozen: it
+// is every instance's default, so one host changing it would change it for all.
+export const JSON_EDITOR_OPTIONS: Readonly<MonacoEditor.IStandaloneEditorConstructionOptions> = Object.freeze({
+    theme: 'vs-dark',
+    language: 'json',
+    automaticLayout: true,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    wordWrap: 'on',
+    wrappingIndent: 'indent',
+    wordWrapBreakAfterCharacters: ',',
+    wordWrapBreakBeforeCharacters: '}]',
+    formatOnPaste: true,
+    formatOnType: true,
+    tabSize: 2,
+    readOnly: false,
+});
+
 @Component({
     selector: 'app-json-editor',
     imports: [FormsModule, MonacoEditorModule, ResizableDirective, AppSvgIconComponent, MatTooltipModule],
@@ -51,21 +69,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public exampleHint: string = '';
-    @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
-        theme: 'vs-dark',
-        language: 'json',
-        automaticLayout: true,
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        wordWrap: 'on',
-        wrappingIndent: 'indent',
-        wordWrapBreakAfterCharacters: ',',
-        wordWrapBreakBeforeCharacters: '}]',
-        formatOnPaste: true,
-        formatOnType: true,
-        tabSize: 2,
-        readOnly: false,
-    };
+    @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = JSON_EDITOR_OPTIONS;
 
     @Output() public jsonChange = new EventEmitter<string>();
     @Output() public validationChange = new EventEmitter<boolean>();

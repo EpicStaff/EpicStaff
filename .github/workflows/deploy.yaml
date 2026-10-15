@@ -22,6 +22,13 @@ on:
         description: "Reset database (Nuke DB)? Only applies to test3, ignored for test2."
         type: boolean
         default: false
+      # regenerate_env defaulting to true means every push to main rewrites test2's
+      # .env from env.yaml's development defaults (published secret key, debug/
+      # first-setup/masking off). This is accepted as designed for test2 specifically
+      # (VPN/firewall-only dev server, no customer data, no production keys) — safety
+      # comes entirely from deploy.sh's second --env-file (deploy.env), which overrides
+      # every one of these keys on the server. Re-open only if this workflow gains a
+      # production or customer-facing target, or if test2 stops being VPN-only.
       regenerate_env:
         description: "Regenerate .env from env.yaml (envtool.py --dev)?"
         type: boolean

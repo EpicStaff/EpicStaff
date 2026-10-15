@@ -156,12 +156,12 @@ async def test_storage_clear_failure_propagates(monkeypatch):
     repo = FakeGraphRagRepo(rag=rag)
     uow = FakeUoW(repo)
 
-    storage = FakeStorage(clear_error=RuntimeError("minio unavailable"))
+    storage = FakeStorage(clear_error=RuntimeError("storage unavailable"))
 
     monkeypatch.setattr(graph_remover, "create_storage_config", lambda rag_id: object())
     monkeypatch.setattr(graph_remover, "create_storage", lambda cfg: storage)
 
-    with pytest.raises(RuntimeError, match="minio unavailable"):
+    with pytest.raises(RuntimeError, match="storage unavailable"):
         await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=5))
 
     assert uow.commit_count == 0

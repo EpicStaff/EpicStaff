@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from shared.models.agent_service import ToolResult
-from shared.models.tools import McpToolData
-
 from app.exceptions import McpToolError
 from app.tools.mcp.gateway import McpToolGateway
+from shared.models.agent_service import ToolResult
+from shared.models.tools import McpToolData
 
 
 class McpToolExecutor:

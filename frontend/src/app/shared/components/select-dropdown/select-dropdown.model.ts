@@ -42,4 +42,6 @@ export interface SelectDropdownHeaderAction {
     label: string;
     icon?: string;
     disabled?: boolean;
+    /** Shows only the icon, square to the search input; `label` becomes its aria-label and tooltip. */
+    iconOnly?: boolean;
 }

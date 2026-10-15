@@ -47,11 +47,16 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
-    public readonly canEditSecrets = computed(() => this.permissionsService.canEditSecrets(ResourceCode.Flows));
+    /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
+    public readonly canEditSecrets = computed(
+        () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
+    );
     public readonly secretsTooltip = computed(() =>
         this.canEditSecrets()
             ? "Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-            : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
+            : this.isReadOnly()
+              ? "Secrets assigned to this webhook's code."
+              : "Secrets already assigned to this webhook's code. You don't have permission to change which secrets are selected."
     );
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() =>

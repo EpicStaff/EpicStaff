@@ -67,7 +67,7 @@ key) gets:
 {
   "status_code": 403,
   "code": "permission_denied",
-  "message": "PermissionDenied: API keys cannot be used to manage API keys. Authenticate with a user session (JWT)."
+  "message": "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 }
 ```
 
@@ -314,6 +314,50 @@ its owner everywhere that owner is a member. Consequently:
 
 ---
 
+## Governance writes are JWT-only; the system key is rejected on the admin surface
+
+The cross-org governance surface — `/api/admin/roles/`,
+`/api/admin/memberships/`, `/api/admin/organizations/`,
+`/api/admin/users/` and `/api/admin/api-keys/` — runs the
+`RestrictApiKeyToUserKeyReads` gate on every action:
+
+| Caller | Safe methods (`GET`/`HEAD`/`OPTIONS`) | Writes (`POST`/`PUT`/`PATCH`/`DELETE`, incl. custom actions such as `deactivate`, `grant-superadmin`) |
+|---|---|---|
+| JWT | normal RBAC | normal RBAC |
+| `USER` key | the owner's live RBAC, same as a JWT[^admin-api-keys-list] | `403` |
+| `SYSTEM` key | `403` | `403` |
+
+So creating/deleting roles, adding or changing memberships,
+creating/deactivating/reactivating/deleting organizations and every user
+management action (create, grant/revoke superadmin, deactivate, reactivate,
+delete) need a user session. The gate is prepended, first, by the
+`get_permissions` of `CrossOrgAdminViewSet` and of `UserAdminViewSet`, so
+every subclass inherits it — including any action later added to a
+subclass's `superadmin_actions` — and neither a subclass's
+`permission_classes` nor an `@action(permission_classes=...)` can drop it.
+
+[^admin-api-keys-list]: Not on `/api/admin/api-keys/`: it also carries
+    `DenyApiKeyAuth`, so a `USER` key cannot even list there and gets the
+    JWT-only message shown under [Self-service](#self-service-apiprofileapi-keys).
+
+The `SYSTEM` key resolves to a superadmin-equivalent principal, so it is
+rejected on reads too: otherwise whoever holds `DJANGO_API_KEY` could read
+every organization's governance data. Rejections return `403
+permission_denied`:
+
+```json
+{ "status_code": 403, "code": "permission_denied", "message": "The system API key cannot be used on the admin surface. Authenticate with a user session (JWT)." }
+```
+
+```json
+{ "status_code": 403, "code": "permission_denied", "message": "API keys cannot be used to change organizations, users, roles, memberships or API keys. Authenticate with a user session (JWT)." }
+```
+
+`POST /api/auth/reset-user/` and `POST /api/auth/admin/password-reset/`
+are JWT-only as well (`DenyApiKeyAuth`, any key type).
+
+---
+
 ## MCP-style usage (API key + active org)
 
 An external tool (an MCP server, a CI job, a script) authenticates as a
@@ -334,7 +378,9 @@ Invoke-RestMethod http://localhost:8000/api/admin/roles/ `
 
 - If the owner is a member of org `3`, the request is evaluated with that
   membership's role/permissions — identical to what the owner would get
-  authenticating with a JWT and the same header.
+  authenticating with a JWT and the same header. On the `/api/admin/*`
+  governance surface this holds for reads only; writes there are JWT-only
+  (see above).
 - If the owner is **not** a member of org `3`, the request fails with:
   ```json
   { "status_code": 403, "code": "org_membership_required", "message": "OrgMembershipRequiredError: You are not a member of this organization." }
@@ -412,7 +458,7 @@ keys:
 | `invalid` | 400 | Self-service create (bad `name`/`expires_in_days`); management `?status=`/`?user=` filters |
 | `api_key_not_found` | 404 | Self-service revoke/delete on a foreign/unknown id; management revoke/delete on an unknown id, a SYSTEM key's id, a superadmin-owned key seen by a non-superadmin, or a key the caller cannot see — its owner shares no organization with them, or the shared organizations grant neither `api_keys` `READ` nor `DELETE` |
 | `authentication_failed` | 401 | Any request authenticating with a raw key that doesn't match a non-revoked key (`"Invalid API key"`), matches an expired one (`"API key has expired"`), or matches a key whose owner's account is deactivated (`"API key owner is inactive"`) |
-| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint), the `api_keys` door gate, a forbidden `?org_ids=` entry on the management list, or a revoke/delete on a key the caller can **see** (holds `api_keys` `READ` in a shared organization) but not retire |
+| `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint, reset-user or admin password reset), `RestrictApiKeyToUserKeyReads` (an API-key write, or any `SYSTEM`-key request, on `/api/admin/*`), the `api_keys` door gate, a forbidden `?org_ids=` entry on the management list, or a revoke/delete on a key the caller can **see** (holds `api_keys` `READ` in a shared organization) but not retire |
 | `org_membership_required` | 403 | Caller (JWT or API key) sends `X-Organization-Id` pointing to an org they are not a member of — applies to ordinary org-scoped endpoints; the admin API-key surface has no header and never raises this |
 | `org_context_required` | 400 | `X-Organization-Id` missing or not an integer on a header-required endpoint; on the admin API-key list, a non-integer `?org_ids=` value |
 | `not_authenticated` | 401 | No credential supplied at all |

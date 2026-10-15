@@ -3,7 +3,7 @@
  * CI regression guard: fail when THIRD-PARTY-NOTICES.md no longer matches the
  * frontend lockfile it was generated from.
  *
- * Context: EST-3802. The notices file had drifted badly — it listed 402 packages
+ * Context: the notices file had drifted badly — it listed 402 packages
  * against a production tree of 63, including mermaid, katex, prismjs and xlsx,
  * none of which were dependencies any more. It is a licence attribution document,
  * so being wrong in either direction is a compliance problem, not cosmetics.

@@ -69,6 +69,7 @@ db.sqlite3-journal
 db/*sqlite3
 *_stand/
 media/
+src/django_app/tests/tmp/
 
 # Flask stuff:
 instance/

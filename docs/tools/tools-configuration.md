@@ -1,4 +1,4 @@
-# Tool Variables Configuration (EST-1529)
+# Tool Variables Configuration
 
 Python code tools use a unified **`variables`** field to define every input a tool accepts. A single list replaces the old two-table system (`args_schema` + `PythonCodeToolConfigField`) and controls, per-variable, whether the LLM sees it, the user configures it, or both.
 
@@ -409,7 +409,7 @@ Minimal create body:
 
 ## Migration from the old system
 
-Before EST-1529, tools used two separate mechanisms:
+Previously, tools used two separate mechanisms:
 
 | Old | New |
 |-----|-----|

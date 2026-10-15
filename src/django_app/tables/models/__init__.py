@@ -74,6 +74,7 @@ from .graph_models import (
     GraphSessionMessage,
     GraphStorageFile,
     GraphVersion,
+    KeyValueNode,
     KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
@@ -86,6 +87,7 @@ from .graph_models import (
     TelegramTriggerNodeField,
     WebhookTriggerNode,
 )
+from .key_value_models import KeyValueTable, KeyValueTableEntry
 from .knowledge_models.collection_models import (
     BaseRagType,
     DocumentContent,
@@ -223,6 +225,9 @@ __all__ = [
     "GraphStorageFile",
     "GraphTag",
     "GraphVersion",
+    "KeyValueNode",
+    "KeyValueTable",
+    "KeyValueTableEntry",
     "KnowledgeNode",
     "LLMConfig",
     "LLMConfigTag",

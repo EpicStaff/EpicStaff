@@ -20,9 +20,11 @@
                     class="table-cell cell"
                     [class.center]="col.align === 'center'"
                     [class.end]="col.align === 'end'"
+                    [attr.aria-sort]="col.sortDirection ?? null"
                 >
                     @if (col.headerIcon) {
-                        <span
+                        <button
+                            type="button"
                             class="col-label-group col-label-group--clickable"
                             [class.col-label-group--active]="col.headerIconActive"
                             (click)="onHeaderIconClick(col.key, $event)"
@@ -35,7 +37,7 @@
                                 [icon]="col.headerIcon"
                                 size="16px"
                             />
-                        </span>
+                        </button>
                     } @else if (col.filterItems?.length && col.filterKind === 'single') {
                         <app-select
                             #sel

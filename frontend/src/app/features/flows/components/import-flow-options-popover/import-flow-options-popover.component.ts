@@ -18,6 +18,7 @@ export class ImportFlowOptionsPopoverComponent {
 
     private readonly settingsService = inject(ImportFlowSettingsService);
     public readonly settings = this.settingsService.settings;
+    protected readonly canReplaceExisting = this.settingsService.canReplaceExisting;
 
     public readonly positions = [
         {

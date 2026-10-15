@@ -10,10 +10,17 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from starlette.websockets import WebSocketDisconnect
+from utils.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
+    remote_agent_name,
+    remote_tool_prefix,
 )
 from infrastructure.providers.elevenlabs.event_handlers.elevenlabs_client_event_handler import (
     ElevenLabsClientEventHandler,
@@ -52,6 +59,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         language: str | None = None,
         org_id: int | None = None,
         user_id: int | None = None,
+        rt_agent_definition_id: int | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -70,6 +78,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         self.agent_provisioner = agent_provisioner
         self.language = language
         self.llm_model = llm_model
+        self.rt_agent_definition_id = rt_agent_definition_id
 
         self.base_url = "wss://api.elevenlabs.io/v1/convai/conversation"
 
@@ -88,11 +97,30 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 rt_tool = rt_tool.model_dump()
             self.tools.append(rt_tool)
 
+    @property
+    def agent_name(self) -> str:
+        """Remote agent name unique to this organization and realtime configuration."""
+        return remote_agent_name(*self._remote_identity())
+
+    @property
+    def tool_prefix(self) -> str:
+        """Prefix of the remote tool records unique to this organization and realtime configuration."""
+        return remote_tool_prefix(*self._remote_identity())
+
+    def _remote_identity(self) -> tuple[int, int]:
+        if self.org_id is None or self.rt_agent_definition_id is None:
+            raise ValueError(
+                "ElevenLabs agent provisioning needs both org_id and rt_agent_definition_id"
+            )
+        return self.org_id, self.rt_agent_definition_id
+
     async def connect(self) -> None:
         if not self.agent_id:
             logger.info("ElevenLabs: Provisioning agent...")
             self.agent_id = await self.agent_provisioner.get_or_create_agent(
                 api_key=self.api_key,
+                agent_name=self.agent_name,
+                tool_prefix=self.tool_prefix,
                 instructions=self.instructions,
                 voice=self.voice,
                 rt_tools=self.rt_tools,
@@ -123,14 +151,12 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 )
                 await self.agent_provisioner.invalidate_cache(
                     api_key=self.api_key,
-                    instructions=self.instructions,
-                    voice=self.voice,
-                    rt_tools=self.rt_tools,
-                    llm_model=self.llm_model,
-                    language=self.language,
+                    agent_name=self.agent_name,
                 )
                 self.agent_id = await self.agent_provisioner.get_or_create_agent(
                     api_key=self.api_key,
+                    agent_name=self.agent_name,
+                    tool_prefix=self.tool_prefix,
                     instructions=self.instructions,
                     voice=self.voice,
                     rt_tools=self.rt_tools,
@@ -208,11 +234,7 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                         )
                         await self.agent_provisioner.invalidate_cache(
                             api_key=self.api_key,
-                            instructions=self.instructions,
-                            voice=self.voice,
-                            rt_tools=self.rt_tools,
-                            llm_model=self.llm_model,
-                            language=self.language,
+                            agent_name=self.agent_name,
                         )
                         self.agent_id = ""
                         _retried = True
@@ -273,10 +295,13 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
                 tool_name=tool_name,
                 call_arguments=tool_arguments,
             )
-            await self.send_function_result(call_id, tool_result)
         except Exception as e:
-            logger.error(f"Tool execution failed: {e!s}")
-            await self.send_function_result(call_id, f"Error: {e!s}")
+            correlation_id = new_error_correlation_id()
+            logger.exception(f"Tool execution failed [correlation_id={correlation_id}]: {e!s}")
+            tool_result = build_public_error_message(
+                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
+            )
+        await self.send_function_result(call_id, tool_result)
 
     async def request_response(self, data: dict | None = None) -> None:
         """ElevenLabs operates in auto-response mode — no-op."""

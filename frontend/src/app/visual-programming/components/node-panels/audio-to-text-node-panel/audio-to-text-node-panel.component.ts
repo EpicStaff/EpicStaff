@@ -27,13 +27,17 @@ interface InputMapPair {
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
                         ></app-custom-input>
                         <app-validation-errors [control]="form.get('node_name')!" />
                     </div>
 
                     <!-- Input Map Key-Value Pairs -->
                     <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                        <app-input-map
+                            [activeColor]="activeColor"
+                            [readonly]="isReadOnly()"
+                        ></app-input-map>
                     </div>
 
                     <!-- Output Variable Path -->
@@ -43,6 +47,7 @@ interface InputMapPair {
                         formControlName="output_variable_path"
                         placeholder="Enter output variable path (leave empty for null)"
                         [activeColor]="activeColor"
+                        [readonly]="isReadOnly()"
                     ></app-custom-input>
                 </form>
             </div>

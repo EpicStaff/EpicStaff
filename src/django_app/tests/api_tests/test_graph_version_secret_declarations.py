@@ -5,68 +5,19 @@ service layer. This file covers the seam above it: that the view passes the snap
 declarations through, and that a declaration which could not be re-linked reaches the
 caller in the response's existing `warnings` list rather than vanishing.
 
-Builds its own APIClient rather than using the shared `auth_client` fixture: under
-tests/settings.py that fixture is inert and every request 403s, so the whole of
-tests/api_tests/test_graph_versioning.py currently fails for reasons unrelated to
-secrets. Follows tests/api_tests/test_secret_selection_cross_org.py instead.
+Fixtures (org, admin client, a flow with a declared secret) live in
+graph_version_api_fixtures.py, shared with test_graph_version_preview.py.
 """
 
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from tables.models import PythonCode, PythonNode
+from tables.models import PythonNode
 from tables.models.graph_models import Graph
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
-from tables.services.secrets import secret_service
 from tables.services.secrets.declaration_validator import SecretDeclarationValidator
-
-CODE = 'def main(**kwargs):\n    return get_secret("STRIPE_KEY")\n'
-
-
-@pytest.fixture
-def org(db):
-    return Organization.objects.create(name="Org VersionSecrets")
-
-
-@pytest.fixture
-def client(db, django_user_model, org):
-    role = Role.objects.get(
-        name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True
-    )
-    user = django_user_model.objects.create_user(
-        email="admin_versionsecrets@example.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    api_client = APIClient()
-    api_client.force_authenticate(user=user)
-    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
-    return api_client
-
-
-@pytest.fixture
-def graph_with_declared_secret(org):
-    """A flow whose Python node reads STRIPE_KEY and is declared to do so."""
-    graph = Graph.objects.create(name="flow-with-secret", org=org)
-    secret = secret_service.create(text="sk-live-x", org=org, name="STRIPE_KEY")
-    python_code = PythonCode.objects.create(code=CODE)
-    python_code.secrets.set([secret])
-    PythonNode.objects.create(
-        graph=graph, node_name="Python-Node #1", python_code=python_code
-    )
-    return graph, secret
-
-
-def _save_version(*, client, graph, name="with-secret"):
-    response = client.post(
-        reverse("graph-versions-list"),
-        {"graph_id": graph.id, "name": name},
-        format="json",
-    )
-    assert response.status_code == status.HTTP_201_CREATED, response.content
-    return response.data["id"]
+from tests.api_tests.graph_version_api_fixtures import *  # noqa: F401,F403
+from tests.api_tests.graph_version_api_fixtures import save_version
 
 
 def _restore(*, client, graph, version_id):
@@ -88,7 +39,7 @@ def test_restore_reattaches_the_declaration_and_leaves_the_flow_runnable(
     client, graph_with_declared_secret
 ):
     graph, _ = graph_with_declared_secret
-    version_id = _save_version(client=client, graph=graph)
+    version_id = save_version(client=client, graph=graph)
 
     response = _restore(client=client, graph=graph, version_id=version_id)
 
@@ -105,7 +56,7 @@ def test_restore_reports_a_dropped_declaration_in_the_response_warnings(
     """A secret deleted between save and restore must be reported, not silently
     dropped — the caller has no other way to learn the flow is now unrunnable."""
     graph, secret = graph_with_declared_secret
-    version_id = _save_version(client=client, graph=graph)
+    version_id = save_version(client=client, graph=graph)
     secret.delete()
 
     response = _restore(client=client, graph=graph, version_id=version_id)
@@ -123,7 +74,7 @@ def test_create_graph_from_a_version_keeps_the_declaration(
     client, graph_with_declared_secret
 ):
     graph, _ = graph_with_declared_secret
-    version_id = _save_version(client=client, graph=graph)
+    version_id = save_version(client=client, graph=graph)
 
     response = client.post(
         reverse("graph-versions-create-graph", args=[version_id]), format="json"
@@ -144,7 +95,7 @@ def test_the_snapshot_is_never_exposed_by_the_read_endpoints(
     and the code in the same snapshot is user source. Neither belongs in a list or
     detail payload."""
     graph, _ = graph_with_declared_secret
-    version_id = _save_version(client=client, graph=graph)
+    version_id = save_version(client=client, graph=graph)
 
     detail = client.get(reverse("graph-versions-detail", args=[version_id]))
     listed = client.get(reverse("graph-versions-list"))
@@ -158,3 +109,4 @@ def test_the_snapshot_is_never_exposed_by_the_read_endpoints(
         assert "secret_declarations" not in body
         assert "snapshot" not in body
         assert "STRIPE_KEY" not in body
+

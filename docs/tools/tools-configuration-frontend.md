@@ -1,4 +1,4 @@
-# Tool Variables — Frontend Integration Guide (EST-1529)
+# Tool Variables — Frontend Integration Guide
 
 This guide describes what the frontend needs to render and submit for the new `variables`-based Python code tool system.
 
