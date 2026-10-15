@@ -2,6 +2,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
+import { KeymapService } from '../../services/keymap.service';
 import { FlowGraphContextMenuComponent } from './flow-graph-context-menu.component';
 
 const CURRENT_FLOW_ID = 1;
@@ -45,7 +46,7 @@ describe('FlowGraphContextMenuComponent', () => {
             throw new Error('search input is not rendered');
         }
         searchInput.focus();
-        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+        const event = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true });
         searchInput.dispatchEvent(event);
         return event;
     }
@@ -119,5 +120,18 @@ describe('FlowGraphContextMenuComponent', () => {
         }
 
         expect(windowListener).not.toHaveBeenCalled();
+    });
+
+    it('closes only itself on Escape: the editor Escape shortcut does not run', async () => {
+        await openMenu([CURRENT_FLOW]);
+        const closedListener = vi.fn();
+        fixture.componentInstance.closed.subscribe(closedListener);
+        const editorEscape = vi.fn();
+        TestBed.inject(KeymapService).register('editing.escape', editorEscape, { allowInEditable: true });
+
+        pressEscapeInSearchInput();
+
+        expect(closedListener).toHaveBeenCalledTimes(1);
+        expect(editorEscape).not.toHaveBeenCalled();
     });
 });

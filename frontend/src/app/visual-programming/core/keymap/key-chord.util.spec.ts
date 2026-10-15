@@ -5,8 +5,23 @@ function keydown(init: KeyboardEventInit): KeyboardEvent {
 }
 
 describe('chordFromEvent', () => {
-    it('uses event.code so the keyboard layout does not matter', () => {
-        expect(chordFromEvent(keydown({ code: 'KeyZ', key: 'я', ctrlKey: true }), false)).toBe('Mod+KeyZ');
+    it.each([
+        ['German Ctrl+Z', { key: 'z', code: 'KeyY', ctrlKey: true }, 'Mod+KeyZ'],
+        ['German Ctrl+Y', { key: 'y', code: 'KeyZ', ctrlKey: true }, 'Mod+KeyY'],
+        ['French Ctrl+Z', { key: 'z', code: 'KeyW', ctrlKey: true }, 'Mod+KeyZ'],
+        ['Dvorak Ctrl+S', { key: 's', code: 'Semicolon', ctrlKey: true }, 'Mod+KeyS'],
+        ['Cyrillic Ctrl+F', { key: 'а', code: 'KeyF', ctrlKey: true }, 'Mod+KeyF'],
+        ['Cyrillic Ctrl+Z', { key: 'я', code: 'KeyZ', ctrlKey: true }, 'Mod+KeyZ'],
+        ['Shift+P', { key: 'P', code: 'KeyP', shiftKey: true }, 'Shift+KeyP'],
+        ['Shift+1', { key: '!', code: 'Digit1', shiftKey: true }, 'Shift+Digit1'],
+        ['Ctrl+7', { key: '7', code: 'Digit7', ctrlKey: true }, 'Mod+Digit7'],
+        ['Ctrl+/', { key: '/', code: 'Slash', ctrlKey: true }, 'Mod+Slash'],
+    ] as const)('names the key the layout prints, else the physical key: %s', (_label, init, expected) => {
+        expect(chordFromEvent(keydown(init), false)).toBe(expected);
+    });
+
+    it('falls back to the physical key for a mac Alt character', () => {
+        expect(chordFromEvent(keydown({ key: 'π', code: 'KeyP', altKey: true }), true)).toBe('Alt+KeyP');
     });
 
     it('maps Ctrl to Mod outside mac', () => {
@@ -74,6 +89,8 @@ describe('checkUserChord', () => {
         'Mod+Shift+KeyN',
         'Mod+Shift+KeyW',
         'Shift+Tab',
+        'Shift+Space',
+        'Shift+Enter',
     ])('rejects reserved %s', (chord) => {
         expect(checkUserChord(chord, null)).toBe('reserved');
     });

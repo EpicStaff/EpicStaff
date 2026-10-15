@@ -124,6 +124,19 @@ describe('KeymapService', () => {
             expect(event.defaultPrevented).toBe(false);
         });
 
+        it.each([
+            ['US', { key: '/', code: 'Slash', ctrlKey: true }],
+            ['German, where / is Shift+7', { key: '/', code: 'Digit7', ctrlKey: true, shiftKey: true }],
+            ['French, where / is Shift+colon', { key: '/', code: 'Period', ctrlKey: true, shiftKey: true }],
+        ])('opens the shortcuts list on Ctrl+/ on a %s layout', (_layout, init) => {
+            const openShortcuts = vi.fn();
+            keymap().register('navigating.shortcuts', openShortcuts);
+
+            press(init);
+
+            expect(openShortcuts).toHaveBeenCalledOnce();
+        });
+
         it('routes each redo chord to redo', () => {
             const redo = vi.fn();
             const undo = vi.fn();

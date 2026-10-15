@@ -111,6 +111,7 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -196,6 +197,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly keymap = inject(KeymapService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
@@ -334,6 +336,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.flowService.bindSavedGraph(this.storedGraph);
         this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+        this.keymap.register('editing.save', () => this.saveFromShortcut(), {
+            allowInEditable: true,
+            destroyRef: this.destroyRef,
+        });
 
         effect(() => {
             const params = this.routeQueryParamMap();
@@ -1551,22 +1557,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    @HostListener('document:keydown', ['$event'])
-    public handleCtrlS(event: KeyboardEvent): void {
-        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-            event.preventDefault();
-            if (this.previewedVersion()) {
-                this.toastService.info('Exit preview mode to save');
-                return;
-            }
-            if (this.flowReadOnly.isReadOnly()) {
-                this.flowReadOnly.notifyBlocked();
-                return;
-            }
-            this.onHeaderSave();
-        }
-    }
-
     public hasUnsavedChanges(): boolean {
         return this.hasUnsavedChangesSignal();
     }
@@ -2000,6 +1990,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    private saveFromShortcut(): void {
+        if (this.previewedVersion()) {
+            this.toastService.info('Exit preview mode to save');
+            return;
+        }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.onHeaderSave();
     }
 
     /**

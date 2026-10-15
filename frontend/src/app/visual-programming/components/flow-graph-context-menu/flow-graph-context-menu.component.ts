@@ -117,8 +117,8 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((event) => {
-                // Esc belongs to the topmost layer: keep it from also reaching the window-level
-                // ShortcutListenerDirective (canvas multi-select reset, node side panel save-and-close).
+                // Esc belongs to the topmost layer: keep it from also reaching the editor's window-level
+                // keymap (canvas multi-select reset, node side panel save-and-close).
                 event.stopPropagation();
                 this.closed.emit();
             });

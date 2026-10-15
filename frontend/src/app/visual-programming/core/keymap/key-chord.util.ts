@@ -16,6 +16,8 @@ export const RESERVED_CHORDS: ReadonlySet<KeyChord> = new Set([
     'Mod+Shift+KeyN',
     'Mod+Shift+KeyW',
     'Shift+Tab',
+    'Shift+Space',
+    'Shift+Enter',
 ]);
 
 const MODIFIER_CODES: ReadonlySet<string> = new Set([
@@ -72,8 +74,21 @@ export function chordFromEvent(event: KeyboardEvent, isMac: boolean): KeyChord |
     if (isMac && event.ctrlKey) parts.push('Ctrl');
     if (event.altKey) parts.push('Alt');
     if (event.shiftKey) parts.push('Shift');
-    parts.push(event.code);
+    parts.push(mainKeyFromEvent(event));
     return parts.join('+');
+}
+
+export function mainKeyFromEvent(event: Pick<KeyboardEvent, 'key' | 'code'>): string {
+    if (/^[a-z]$/i.test(event.key)) {
+        return `Key${event.key.toUpperCase()}`;
+    }
+    if (/^[0-9]$/.test(event.key)) {
+        return `Digit${event.key}`;
+    }
+    if (event.key === '/') {
+        return 'Slash';
+    }
+    return event.code;
 }
 
 export function formatChord(chord: KeyChord, isMac: boolean): string[] {

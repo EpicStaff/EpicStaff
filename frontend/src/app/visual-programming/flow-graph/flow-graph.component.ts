@@ -6,6 +6,7 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
+    DestroyRef,
     effect,
     ElementRef,
     EventEmitter,
@@ -22,6 +23,7 @@ import {
     SimpleChanges,
     untracked,
     ViewChild,
+    viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -65,7 +67,6 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
-import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { getPortPosition } from '../core/geometry/port-position';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
@@ -98,6 +99,7 @@ import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
+import { KeymapService } from '../services/keymap.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -142,7 +144,6 @@ const CONNECTION_REFUSED_TOAST_MS = 5000;
         FormsModule,
         FlowBaseNodeComponent,
         FlowNodeVariablesOverlayComponent,
-        ShortcutListenerDirective,
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
         FlowActionPanelComponent,
@@ -199,6 +200,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private overlayNodesObserver: MutationObserver | null = null;
 
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+    private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
 
     public closeNodesSearch(): void {
         this.nodesSearchComponent?.closeSearch();
@@ -344,6 +346,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly keymap = inject(KeymapService);
+    private readonly destroyRef = inject(DestroyRef);
 
     // Start from the current count so a canvas re-created after an earlier save request
     // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
@@ -351,6 +355,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private lastSeenFullSaveRequest = untracked(() => this.sidePanelService.fullSaveRequest());
 
     constructor() {
+        this.registerShortcuts();
+
         effect(() => {
             const requestCount = this.sidePanelService.fullSaveRequest();
             if (requestCount > this.lastSeenFullSaveRequest) {
@@ -368,6 +374,21 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.setupOverlayTransformSync();
             },
             { injector: this.injector }
+        );
+    }
+
+    private registerShortcuts(): void {
+        const options = { destroyRef: this.destroyRef };
+        this.keymap.register('editing.copy', () => this.onCopy(), options);
+        this.keymap.register('editing.paste', () => this.onPaste(), options);
+        this.keymap.register('editing.delete', () => this.onDelete(), options);
+        this.keymap.register('editing.undo', () => this.onUndo(), options);
+        this.keymap.register('editing.redo', () => this.onRedo(), options);
+        this.keymap.register('editing.escape', () => this.onEscapeKey(), { ...options, allowInEditable: true });
+        this.keymap.register(
+            'navigating.shortcuts',
+            () => this.onOpenShortcuts(this.shortcutsAnchor().nativeElement),
+            options
         );
     }
 

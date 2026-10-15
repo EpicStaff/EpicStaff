@@ -117,15 +117,13 @@ describe('resolveTreeKeyAction', () => {
             expect(resolveTreeKeyAction(event, state({ targetIsSearch: true })).stopPropagation).toBe(false);
         });
 
-        // The page's `ShortcutListenerDirective` also opens the shortcuts dialog on a
-        // `/` key with a modifier, whatever physical key produced it, and
-        // `NodesSearchComponent` toggles the canvas search on `event.key === 'f'`.
-        // The policy only matches `code`, so on a layout where those characters sit
-        // on another physical key (Dvorak `f` is `KeyY`; a German `/` is `Digit7`)
-        // the shortcut reaches the page from inside the dialog.
-        it('shields Ctrl+/ and Ctrl+F matched by character on a non-QWERTY layout', () => {
-            expect(resolveTreeKeyAction(ctrl('/', 'Digit7'), IDLE).stopPropagation).toBe(true);
-            expect(resolveTreeKeyAction(ctrl('f', 'KeyY'), IDLE).stopPropagation).toBe(true);
+        it.each([
+            ['canvas node search (RU)', ctrl('а', 'KeyF')],
+            ['undo (German)', ctrl('z', 'KeyY')],
+            ['save (Dvorak)', ctrl('s', 'Semicolon')],
+            ['shortcuts dialog (RU)', ctrl('.', 'Slash')],
+        ])('shields %s by the key the keymap matches', (_label, event) => {
+            expect(resolveTreeKeyAction(event, IDLE).stopPropagation).toBe(true);
         });
     });
 

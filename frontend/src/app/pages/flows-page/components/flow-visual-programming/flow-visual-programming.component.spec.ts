@@ -25,6 +25,8 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { NodePanelShellComponent } from '../../../../visual-programming/components/node-panels/node-panel-shell/node-panel-shell.component';
+import { PythonNodePanelComponent } from '../../../../visual-programming/components/node-panels/python-node-panel/python-node-panel.component';
 import { AgentNode, AgentNodeTaskUi } from '../../../../visual-programming/core/models/agent-node.model';
 import {
     CdtExplanation,
@@ -265,7 +267,10 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: RunSessionSSEService,
                     useValue: { ...runSessionSse, isStreaming, status: sessionStatus },
                 },
-                { provide: PermissionsService, useValue: { can: () => canUpdateFlows(), canAny: () => true } },
+                {
+                    provide: PermissionsService,
+                    useValue: { can: () => canUpdateFlows(), canAny: () => true, canEditSecrets: () => false },
+                },
                 { provide: LlmConfigStorageService, useValue: { getAllConfigs: () => of([]) } },
                 { provide: AgentDefinitionsApiService, useValue: { refreshDefinitions: () => of([]) } },
                 { provide: UnsavedChangesRegistry, useValue: { register: vi.fn(), unregister: vi.fn() } },
@@ -278,11 +283,16 @@ describe('FlowVisualProgrammingComponent', () => {
                         disconnect: vi.fn(),
                     },
                 },
-                { provide: ProfileService, useValue: { currentUserSignal: signal(null) } },
+                {
+                    provide: ProfileService,
+                    useValue: { currentUserSignal: signal(null), shortcutOverrides: signal({}) },
+                },
                 { provide: FlowAssistantService, useValue: { isOpen: signal(false), toggle: vi.fn() } },
                 { provide: CdtExplanationsApiService, useValue: explanationsApi },
             ],
         });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        TestBed.overrideComponent(NodePanelShellComponent, { add: { providers: [NodeAuthorshipStore] } });
         TestBed.overrideComponent(FlowVisualProgrammingComponent, {
             set: {
                 imports: [
@@ -307,6 +317,22 @@ describe('FlowVisualProgrammingComponent', () => {
     function liveCanvas(): FlowGraphStubComponent | undefined {
         const element = fixture.nativeElement.querySelector('app-flow-graph');
         return element ? FlowGraphStubComponent.instances.at(-1) : undefined;
+    }
+
+    function pressCtrlS(target: EventTarget = window): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            code: 'KeyS',
+            key: 's',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+    }
+
+    function flowSaveRequestsAcrossAllCanvases(): number {
+        return FlowGraphStubComponent.instances.reduce((count, canvas) => count + canvas.emitSave.mock.calls.length, 0);
     }
 
     function makeLiveFlowDirty(): void {
@@ -503,12 +529,12 @@ describe('FlowVisualProgrammingComponent', () => {
         it('tells the user to exit the preview instead of saving on Ctrl+S', () => {
             makeLiveFlowDirty();
             enterPreview();
-            const event = new KeyboardEvent('keydown', { code: 'KeyS', ctrlKey: true, cancelable: true });
 
-            component.handleCtrlS(event);
+            const event = pressCtrlS();
 
             expect(event.defaultPrevented).toBe(true);
             expect(toast['info']).toHaveBeenCalledWith('Exit preview mode to save');
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(0);
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
         });
 
@@ -568,6 +594,74 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(unsavedChangesDialog.confirm).toHaveBeenCalledWith(
                 expect.objectContaining({ dontSaveText: 'Continue' })
             );
+        });
+    });
+
+    describe('Ctrl+S', () => {
+        const READ_ONLY_MESSAGE = 'You have read-only access to this flow.';
+
+        const pythonNode = {
+            id: 'python-1',
+            backendId: livePython.id,
+            type: NodeType.PYTHON,
+            node_name: 'Python-Node (#1)',
+            python_code_id: 12,
+            data: { code: 'def main(): pass', entrypoint: 'main', libraries: [], secret_ids: [], secret_names: [] },
+            test_input: {},
+            position: { x: 0, y: 0 },
+            ports: null,
+            color: '',
+            icon: '',
+            size: { width: 200, height: 100 },
+            input_map: {},
+            output_variable_path: null,
+        } as unknown as NodeModel;
+
+        async function openNodePanel(): Promise<NodeModel[]> {
+            flowService.setFlow({ nodes: [pythonNode], connections: [] });
+            TestBed.inject(SidePanelService).setSelectedNodeId(pythonNode.id);
+            const panelFixture = TestBed.createComponent(NodePanelShellComponent);
+            panelFixture.componentRef.setInput('node', pythonNode);
+            panelFixture.detectChanges();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            panelFixture.detectChanges();
+            const panelSaves: NodeModel[] = [];
+            panelFixture.componentInstance.save.subscribe((node) => panelSaves.push(node));
+            return panelSaves;
+        }
+
+        it('saves the flow', () => {
+            const event = pressCtrlS();
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
+        });
+
+        it('saves the flow even while typing in a text field', () => {
+            const field = document.body.appendChild(document.createElement('input'));
+
+            pressCtrlS(field);
+            field.remove();
+
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
+        });
+
+        it('says why and saves nothing in a read-only flow', () => {
+            canUpdateFlows.set(false);
+
+            pressCtrlS();
+
+            expect(toast['info']).toHaveBeenCalledWith(READ_ONLY_MESSAGE);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(0);
+        });
+
+        it('saves both the open node panel and the flow', async () => {
+            const panelSaves = await openNodePanel();
+
+            pressCtrlS();
+
+            expect(panelSaves.map((node) => node.id)).toEqual([pythonNode.id]);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
         });
     });
 

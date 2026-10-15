@@ -267,6 +267,107 @@ describe('FlowGraphComponent', () => {
         });
     });
 
+    describe('keyboard shortcuts', () => {
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let flowService: FlowService;
+        const attached: HTMLElement[] = [];
+
+        function press(init: KeyboardEventInit, target: EventTarget = window): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+        }
+
+        function attachInput(): HTMLInputElement {
+            const input = document.createElement('input');
+            document.body.appendChild(input);
+            attached.push(input);
+            return input;
+        }
+
+        function renameNote(name: string): void {
+            const note = flowService.nodes().find((node) => node.id === 'note-1') as NodeModel;
+            flowService.updateNode({ ...note, node_name: name });
+        }
+
+        function noteName(): string | undefined {
+            return flowService.nodes().find((node) => node.id === 'note-1')?.node_name;
+        }
+
+        function startMultiSelect(): void {
+            fixture.componentInstance['fFlowComponent'] = {
+                select: vi.fn(),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+            fixture.componentInstance.onToggleMultiSelect();
+        }
+
+        beforeEach(() => {
+            fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] });
+            flowService = TestBed.inject(FlowService);
+        });
+
+        afterEach(() => attached.splice(0).forEach((element) => element.remove()));
+
+        it('undoes the last change on Ctrl+Z', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Note');
+        });
+
+        it('undoes the last change on Ctrl+Z on a German layout', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press({ code: 'KeyY', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Note');
+        });
+
+        it.each([
+            ['Backspace', { code: 'Backspace', key: 'Backspace' }],
+            ['Delete', { code: 'Delete', key: 'Delete' }],
+            ['Ctrl+Z', { code: 'KeyZ', key: 'z', ctrlKey: true }],
+        ])('leaves the selected node alone on %s typed in a text field', (_label, init) => {
+            fixture.componentInstance['fFlowComponent'] = {
+                getSelection: () => ({ fNodeIds: ['note-1'], fGroupIds: [], fConnectionIds: [] }),
+                select: vi.fn(),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press(init, attachInput());
+
+            expect(noteName()).toBe('Renamed');
+        });
+
+        it('ends multi-select on Escape', () => {
+            startMultiSelect();
+
+            press({ code: 'Escape', key: 'Escape' });
+
+            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+        });
+
+        it('ends multi-select on Escape pressed in a text field', () => {
+            startMultiSelect();
+
+            press({ code: 'Escape', key: 'Escape' }, attachInput());
+
+            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+        });
+
+        it('stops handling keys once the editor is left', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+            fixture.destroy();
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Renamed');
+        });
+    });
+
     describe('viewport', () => {
         function fakeCanvas(): {
             transform: { position: { x: number; y: number }; scaledPosition: { x: number; y: number }; scale: number };
