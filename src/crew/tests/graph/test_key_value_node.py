@@ -222,6 +222,37 @@ async def test_write_value_default_applies_when_path_is_missing():
 
 
 @pytest.mark.asyncio
+async def test_write_value_null_default_writes_null_when_path_is_missing():
+    client = make_client()
+    node = make_node("write", [{"key": "count", "value": "variables.count|null"}], client)
+
+    result = await run(node, {})
+
+    client.write.assert_awaited_once_with(7, 3, {"count": None})
+    assert result == {"count": None}
+
+
+@pytest.mark.asyncio
+async def test_write_value_default_does_not_apply_when_path_holds_null():
+    client = make_client()
+    node = make_node("write", [{"key": "count", "value": "variables.count|0"}], client)
+
+    await run(node, {"count": None})
+
+    client.write.assert_awaited_once_with(7, 3, {"count": None})
+
+
+@pytest.mark.asyncio
+async def test_write_value_inside_a_null_variable_with_default_writes_the_default():
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": "variables.nothing.first|0"}], client)
+
+    await run(node, {"nothing": None})
+
+    client.write.assert_awaited_once_with(7, 3, {"k": 0})
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "values",
     [
@@ -251,6 +282,43 @@ async def test_write_accepts_a_source_that_is_nested_in_another():
     )
     await run(node, {"user": {"id": 1}})
     client.write.assert_awaited_once_with(7, 3, {"k1": {"id": 1}, "k2": 1})
+
+
+@pytest.mark.asyncio
+async def test_write_with_null_value_writes_null():
+    client = make_client(created=["k"])
+    node = make_node("write", [{"key": "k", "value": "variables.profile"}], client)
+    writer = MagicMock()
+
+    result = await node.execute(
+        state=make_state({"profile": None}), writer=writer, execution_order=0, input_={}
+    )
+
+    client.write.assert_awaited_once_with(7, 3, {"k": None})
+    assert result == {"k": None}
+    [message] = key_value_messages(writer)
+    assert message["entries"] == [
+        {"key": "k", "path": "variables.profile", "found": None, "created": True,
+         "value": None, "truncated": False},
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("value_path", "variables"),
+    [
+        ("variables.user.middle_name", {"user": {"middle_name": None}}),
+        ("variables.users[1].middle_name", {"users": [{}, {"middle_name": None}]}),
+        ("variables.middle_names[0]", {"middle_names": [None]}),
+    ],
+)
+async def test_write_with_nested_null_value_writes_null(value_path, variables):
+    client = make_client()
+    node = make_node("write", [{"key": "k", "value": value_path}], client)
+
+    await run(node, variables)
+
+    client.write.assert_awaited_once_with(7, 3, {"k": None})
 
 
 @pytest.mark.asyncio
@@ -652,10 +720,22 @@ REJECTED = [
             ("variables.user._secret|0", {"user": {"_secret": 1}}, re.compile(r"'variables\.user\._secret\|0'.*'_'")),
             ("variables.cart.items", {"cart": {"total": 3}}, re.compile(r"'variables.cart.items'.*method")),
             ("profile", {"profile": "Ann"}, re.compile(r"'profile'.*variables.user.id")),
-            # Writing null would overwrite a previously stored value.
-            ("variables.profile", {}, "variables.profile"),
-            ("variables.profile", {"profile": None}, "null"),
-            ("variables.count|null", {}, "variables.count"),
+            # A missing path would write null over a previously stored value.
+            ("variables.profile", {}, "'variables.profile' is missing from the flow state"),
+            ("variables.user.middle_name", {"user": {"name": "Ann"}}, "'variables.user.middle_name' is missing from the flow state"),
+            ("variables.users[0].middle_name", {"users": [{"name": "Ann"}]}, "'variables.users[0].middle_name' is missing from the flow state"),
+            ("variables.user.profile.middle_name", {"user": {}}, "'variables.user.profile.middle_name' is missing from the flow state"),
+            ("variables.nothing.first", {"nothing": None}, "'variables.nothing' is null, so it cannot hold 'first'"),
+            # getattr on a DotDict finds a dict method before a stored key of the same name, so the
+            # resolver cannot read past such a segment: it must raise rather than store null or the
+            # default over the real value.
+            ("variables.values.total", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
+            ("variables.items.count", {"items": {"count": 5}}, "uses 'items', the name of a built-in method"),
+            ("variables.order.items.count", {"order": {"items": {"count": 5}}}, "uses 'items', the name of a built-in method"),
+            ("variables.values.total|0", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
+            ("variables.values.total|null", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
+            ("variables.name.upper", {"name": "Ann"}, "'variables.name.upper' resolves to a built-in method"),
+            ("variables.tags.count", {"tags": ["x"]}, "'variables.tags.count' resolves to a built-in method"),
         ]
     ],
     *[
@@ -678,6 +758,7 @@ REJECTED = [
             ("profile_{variables.}", {"user": {"id": 1}}, re.compile(r"'variables.'.*whole flow state")),
             ("k_{variables._properties}", {"user": {"id": 1}}, re.compile(r"'variables._properties'.*'_'")),
             ("cart_{variables.cart.items}", {"cart": {"total": 3}}, re.compile(r"'variables.cart.items'.*method")),
+            ("k_{variables.values.id}", {"values": {"id": 1}}, "uses 'values', the name of a built-in method"),
             ("profile_{}", {"x": 1}, "unbalanced placeholder"),
             ("{{variables.x}}", {"x": 1}, "unbalanced placeholder"),
             ("profile_{variables.x", {"x": 1}, "unbalanced placeholder"),

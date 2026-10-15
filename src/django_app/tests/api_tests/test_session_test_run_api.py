@@ -472,7 +472,7 @@ class TestTriggerTestRunAccess:
 
     def test_soft_deleted_node_is_404(self, acme_client, webhook_node, redis_client_mock):
         WebhookTriggerNode.all_objects.filter(pk=webhook_node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
 
         response = acme_client.post(

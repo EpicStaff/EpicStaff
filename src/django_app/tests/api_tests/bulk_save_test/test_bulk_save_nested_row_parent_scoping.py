@@ -24,6 +24,7 @@ from tables.constants.decision_table_constants import (
     CONDITION_GROUP_INPUT_FIELDS,
     CONDITION_INPUT_FIELDS,
 )
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -322,7 +323,7 @@ def test_cdt_group_section_id_cannot_attach_other_org_section(
 
 # ---- Allow-list drift guards ----
 
-_SOFT_DELETE_COLUMNS = {"is_soft_deleted", "soft_deleted_at"}
+_SOFT_DELETE_COLUMNS = set(SOFT_DELETE_FIELD_NAMES)
 
 
 @pytest.mark.parametrize(

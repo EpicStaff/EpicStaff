@@ -26,8 +26,8 @@ class Emitter(ABC):
     """Abstract output transport for agent execution events.
 
     Subclasses must implement all six lifecycle hooks.  Implementations may
-    buffer events internally (``RedisStreamBatchEmitter``), buffer while also
-    publishing select events live (``RedisStreamToolEventEmitter``), or
+    publish only the final result (``RedisStreamBatchEmitter``), also
+    publish select events live (``RedisStreamToolEventEmitter``), or
     publish each event immediately (future ``RedisStreamDeltaEmitter``).
 
     ``RequestHandler`` holds a reference to the emitter and also constructs

@@ -8,6 +8,7 @@ import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
+import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
@@ -70,6 +71,7 @@ export class LeftSidebarComponent {
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
+    public recycleBinNavItem: NavItem;
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
     protected readonly productName = 'EpicStaff';
     public showProfileTooltip = false;
@@ -182,6 +184,18 @@ export class LeftSidebarComponent {
             showTooltip: false,
             customClass: 'settings-tooltip',
         });
+
+        // Hidden when no bin tab is readable, the same rule as Files. It has no active (purple) state
+        // by design: it stays gray on /recycle-bin/*. No `icon`: that names a sprite icon, and the
+        // template draws Tabler's outline trash instead (the sprite's trash is solid).
+        this.recycleBinNavItem = {
+            id: 'recycle-bin',
+            routeLink: 'recycle-bin',
+            label: 'Recycle Bin',
+            isPermitted: () =>
+                visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
+            showTooltip: false,
+        };
     }
 
     public onLogoClick(): void {

@@ -121,7 +121,7 @@ def _own_table_the_flow_does_not_use(session, default_org, table):
 
 
 def _table_of_a_soft_deleted_node(session, default_org, table):
-    KeyValueNode.objects.filter(graph=session.graph).update(is_soft_deleted=True, soft_deleted_at=timezone.now())
+    KeyValueNode.objects.filter(graph=session.graph).update(active=False, soft_deleted_at=timezone.now())
     return table
 
 

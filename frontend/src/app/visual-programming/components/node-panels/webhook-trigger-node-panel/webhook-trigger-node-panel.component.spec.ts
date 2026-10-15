@@ -80,7 +80,13 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
             ],
         });
@@ -367,7 +373,13 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
                 { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
@@ -448,7 +460,13 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: PythonCodeRunService, useValue: runService },
             ],
