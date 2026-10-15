@@ -86,8 +86,8 @@
     }
 
     &__libs-table {
-        border: 1px solid var(--color-input-border);
-        border-radius: 4px;
+        border: 1px solid var(--color-table-border);
+        border-radius: 10px;
         overflow: hidden;
 
         table {
@@ -102,16 +102,24 @@
         td {
             height: 32px;
             padding: 0;
-            border: 1px solid var(--color-divider-subtle);
+            border: 1px solid var(--color-table-border);
         }
 
         th {
             padding: 0 8px;
             text-align: left;
             font-weight: inherit;
-            color: var(--color-ks-transparent-text-60);
-            background-color: var(--color-input-background);
-            border-bottom-color: var(--color-input-border);
+            color: var(--color-text-primary);
+            background-color: var(--color-ks-background);
+            border-bottom: 4px solid var(--color-table-border);
+        }
+
+        tbody tr:nth-child(odd) {
+            background-color: var(--color-ks-background);
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: var(--color-ks-transparent-black-28);
         }
     }
 
@@ -243,7 +251,7 @@
             color: var(--color-ks-transparent-text-60);
 
             &:hover:not(:disabled) {
-                color: var(--color-error);
+                color: var(--color-text-primary);
             }
         }
     }
