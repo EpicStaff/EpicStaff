@@ -1,5 +1,6 @@
 """
-RetryPolicy: exponential backoff with jitter for transient LiteLLM errors.
+RetryPolicy: exponential backoff with jitter for transient LiteLLM errors,
+or the provider's Retry-After when the error carries one.
 
 Retryable exceptions are resolved at import time so a missing class in the
 installed LiteLLM version degrades to ``litellm.APIError`` with a warning
@@ -15,6 +16,7 @@ from typing import TypeVar
 
 import litellm
 from litellm.exceptions import APIError as LiteLLMAPIError
+from litellm.utils import _get_retry_after_from_exception_header
 from loguru import logger
 
 T = TypeVar("T")
@@ -58,6 +60,19 @@ def _resolve_exception_classes(
 
 RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_RETRYABLE_NAMES)
 NON_RETRYABLE: tuple[type[BaseException], ...] = _resolve_exception_classes(_NON_RETRYABLE_NAMES)
+
+
+def _retry_after_seconds(error: BaseException) -> int | None:
+    # Same header lookup order as litellm's Router.
+    headers = getattr(error, "litellm_response_headers", None) or getattr(
+        getattr(error, "response", None), "headers", None
+    )
+
+    if headers is None:
+        return None
+
+    retry_after = _get_retry_after_from_exception_header(headers)
+    return retry_after if retry_after and retry_after > 0 else None
 
 
 class RetryPolicy:
@@ -106,8 +121,10 @@ class RetryPolicy:
     async def aretry(self, func: Callable[..., Awaitable[T]], *args, **kwargs) -> T:
         """Call ``await func(*args, **kwargs)``, retrying on retryable exceptions.
 
-        Non-retryable exceptions re-raise immediately.  Last attempt re-raises
-        whatever the final exception was.
+        Waits the error's Retry-After when present, else the exponential
+        backoff; both capped at ``max_delay``.  Non-retryable exceptions
+        re-raise immediately.  Last attempt re-raises whatever the final
+        exception was.
         """
         for attempt in range(self._max_retries + 1):
             try:
@@ -116,15 +133,16 @@ class RetryPolicy:
             except NON_RETRYABLE:
                 raise
 
-            except RETRYABLE:
+            except RETRYABLE as error:
                 if attempt == self._max_retries:
                     raise
 
-                delay = min(
-                    self._base_delay * (2**attempt) + random.uniform(0, self._jitter),
-                    self._max_delay,
-                )
-                await asyncio.sleep(delay)
+                delay = _retry_after_seconds(error)
+
+                if delay is None:
+                    delay = self._base_delay * (2**attempt) + random.uniform(0, self._jitter)
+
+                await asyncio.sleep(min(delay, self._max_delay))
 
             except Exception:
                 raise

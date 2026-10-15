@@ -4,8 +4,6 @@ import pytest
 from django.urls import reverse
 
 from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.strategies.audit_filter_preset import AuditFilterPresetStrategy
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tests.helpers import data_to_json_file
 
@@ -196,7 +194,7 @@ class TestAuditFilterPresetImport:
             == 2
         )
 
-    def test_import_duplicate_name_skipped(self, auth_client, preset):
+    def test_import_duplicate_name_creates_numbered_copy(self, auth_client, preset):
         payload = _envelope(
             [{"id": 1, "name": preset.name, "filter_body": {"query": "new"}}]
         )
@@ -204,17 +202,19 @@ class TestAuditFilterPresetImport:
 
         assert response.status_code == 200
         entity_summary = self._entity_summary(response.json())
-        assert entity_summary["created"]["count"] == 0
-        assert entity_summary["reused"]["count"] == 1
-        assert entity_summary["reused"]["items"][0]["name"] == preset.name
-        assert AuditFilterPreset.objects.filter(name=preset.name).count() == 1
-        # existing row untouched - reused, not overwritten
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["reused"]["count"] == 0
+        assert entity_summary["created"]["items"][0]["name"] == "my preset (2)"
+        assert AuditFilterPreset.objects.get(name="my preset (2)").filter_body == {
+            "query": "new"
+        }
+        # existing row untouched - never reused or overwritten
         preset.refresh_from_db()
         assert preset.filter_body == {"query": "status = failed"}
 
     def test_import_missing_name_400s_not_500(self, auth_client):
         """A malformed item (missing the required "name") is rejected with
-        a 400 via AuditFilterPresetStrategy.find_existing's validation, not
+        a 400 via AuditFilterPresetStrategy.create_entity's validation, not
         an unhandled 500. Per the shared ImportService's single atomic
         transaction, this aborts the whole request rather than reporting
         that one item independently in `failed` - see the import_presets
@@ -301,12 +301,3 @@ class TestAuditFilterPresetImport:
         response = auth_client.post(url, {"file": file}, format="multipart")
 
         assert response.status_code == 400
-
-
-@pytest.mark.django_db
-def test_find_existing_without_owner_never_matches_another_users_preset(preset, default_org):
-    found = AuditFilterPresetStrategy().find_existing(
-        {"name": preset.name}, IDMapper(), org_id=default_org.id
-    )
-
-    assert found is None

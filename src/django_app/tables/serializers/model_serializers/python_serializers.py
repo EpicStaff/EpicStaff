@@ -33,6 +33,10 @@ from tables.serializers.utils.org_scoped_labels import (
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
@@ -51,11 +55,15 @@ class PythonCodeSerializer(
     secrets = SecretNameSerializer(
         many=True,
         read_only=True,
-        help_text="Secrets this code is allowed to read, by name.",
+        source="linked_secrets",
+        help_text=(
+            "Secrets this code is allowed to read, by name. Includes a secret in the "
+            "recycle bin, which stays linked until it's purged."
+        ),
     )
-    secret_ids = OrgScopedPrimaryKeyRelatedField(
+    secret_ids = KeptLinkPrimaryKeyRelatedField(
         many=True,
-        queryset=Secret.objects.all(),
+        queryset=Secret.all_objects.all(),
         source="secrets",
         write_only=True,
         required=False,
@@ -119,7 +127,7 @@ class PythonCodeSerializer(
         else:
             current = self._current_python_code()
             declared = (
-                set(current.secrets.values_list("name", flat=True))
+                {secret.name for secret in current.linked_secrets()}
                 if current is not None
                 else set()
             )
@@ -255,7 +263,9 @@ class PythonCodeToolSerializer(
         return instance
 
 
-class PythonCodeToolConfigSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
+class PythonCodeToolConfigSerializer(
+    ExcludeSoftDeleteFieldsMixin, AuthorSummarySerializerMixin, serializers.ModelSerializer
+):
     # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
     tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
 

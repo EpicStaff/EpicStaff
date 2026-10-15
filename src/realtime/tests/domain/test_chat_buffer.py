@@ -1,177 +1,95 @@
+"""The listen-mode transcript buffer: token budget, wake-word input, and the text handed
+to the agent (summaries first, then what was said since)."""
+
 import pytest
-from tests.fixtures import FakeTokenizer
+
 from domain.services.chat_buffer import ChatBuffer, ChatSummarizedBuffer
+from tests.fixtures import FakeTokenizer  # one token per character
 
 
 @pytest.fixture
-def tokenizer():
-    return FakeTokenizer()
+def buffer():
+    return ChatSummarizedBuffer(FakeTokenizer(), max_buffer_tokens=10, max_chunks_tokens=20)
 
 
-@pytest.fixture
-def buffer(tokenizer):
-    return ChatBuffer(tokenizer, max_buffer_tokens=10)
+@pytest.mark.parametrize(
+    ("appended", "tokens", "has_room"),
+    [([], 0, True), (["ab", "cde"], 5, True), (["a" * 10], 10, False), (["a" * 15], 15, False)],
+    ids=["empty", "under-limit", "at-limit", "over-limit"],
+)
+def test_buffer_counts_tokens_against_its_limit(appended, tokens, has_room):
+    buffer = ChatBuffer(FakeTokenizer(), max_buffer_tokens=10)
+    for text in appended:
+        buffer.append(text)
+
+    assert (len(buffer), buffer.check_free_buffer()) == (tokens, has_room)
+    assert buffer.get_buffer() == appended
 
 
-@pytest.fixture
-def summ_buffer(tokenizer):
-    return ChatSummarizedBuffer(tokenizer, max_buffer_tokens=10, max_chunks_tokens=20)
+@pytest.mark.parametrize(
+    ("appended", "words"),
+    [
+        (["hello, world!"], ["hello", "world"]),
+        # A spoken "Agent," still matches the wake word "agent".
+        (["Stop! Agent, please."], ["stop", "agent", "please"]),
+        # Only the latest transcript is checked for the wake word.
+        (["agent", "what time is it"], ["what", "time", "is", "it"]),
+        ([], []),
+    ],
+)
+def test_last_input_is_the_latest_transcript_as_normalized_words(buffer, appended, words):
+    for text in appended:
+        buffer.append(text)
+
+    assert buffer.get_last_input() == words
 
 
-# ---------------------------------------------------------------------------
-# ChatBuffer
-# ---------------------------------------------------------------------------
-
-
-def test_initial_length_is_zero(buffer):
-    assert len(buffer) == 0
-
-
-def test_append_increases_token_count(buffer):
-    buffer.append("hello")  # 5 chars → 5 tokens with FakeTokenizer
-    assert len(buffer) == 5
-
-
-def test_append_multiple(buffer):
-    buffer.append("ab")   # 2 tokens
-    buffer.append("cde")  # 3 tokens
-    assert len(buffer) == 5
-
-
-def test_check_free_buffer_true_when_under_limit(buffer):
-    buffer.append("hi")   # 2 tokens, limit=10
-    assert buffer.check_free_buffer() is True
-
-
-def test_check_free_buffer_false_when_at_limit(buffer):
-    buffer.append("a" * 10)  # 10 tokens == limit
-    assert buffer.check_free_buffer() is False
-
-
-def test_check_free_buffer_false_when_over_limit(buffer):
-    buffer.append("a" * 15)
-    assert buffer.check_free_buffer() is False
-
-
-def test_get_buffer_returns_appended_items(buffer):
+def test_returned_buffers_are_copies(buffer):
     buffer.append("foo")
-    buffer.append("bar")
-    result = buffer.get_buffer()
-    assert result == ["foo", "bar"]
+    buffer.append_chunk("summary")
+
+    buffer.get_buffer().append("mutated")
+    buffer.get_chunks().append("mutated")
+
+    assert (buffer.get_buffer(), buffer.get_chunks()) == (["foo"], ["summary"])
 
 
-def test_get_buffer_returns_copy(buffer):
-    buffer.append("foo")
-    result = buffer.get_buffer()
-    result.append("mutated")
-    assert buffer.get_buffer() == ["foo"]  # internal state unchanged
+def test_summaries_stop_being_added_once_their_budget_is_used(buffer):
+    buffer.append_chunk("short")
+    assert buffer.check_free_chunks() is True
+
+    buffer.append_chunk("a" * 15)
+    buffer.append_chunk("overflow")
+
+    assert buffer.check_free_chunks() is False
+    assert buffer.get_chunks() == ["short", "a" * 15]
 
 
-def test_get_last_input_returns_cleaned_words(buffer):
-    buffer.append("hello, world!")
-    words = buffer.get_last_input()
-    assert "hello" in words
-    assert "world" in words
+@pytest.mark.parametrize(
+    ("chunks", "inputs", "final"),
+    [
+        ([], [], ""),
+        ([], ["line one", "line two"], "line one\nline two"),
+        (["summary one", "summary two"], ["current input"], "summary one\n\nsummary two\n\ncurrent input"),
+    ],
+    ids=["empty", "inputs-only", "summaries-then-inputs"],
+)
+def test_final_buffer_puts_summaries_before_what_was_said_since(buffer, chunks, inputs, final):
+    for chunk in chunks:
+        buffer.append_chunk(chunk)
+    for text in inputs:
+        buffer.append(text)
+
+    assert buffer.get_final_buffer() == final
 
 
-def test_get_last_input_strips_punctuation(buffer):
-    buffer.append("stop! please.")
-    words = buffer.get_last_input()
-    assert "stop" in words
-    assert "please" in words
-    assert "stop!" not in words
+def test_flush_chunks_keeps_the_inputs_and_flush_clears_everything(buffer):
+    buffer.append("data")
+    buffer.append_chunk("summary")
 
+    buffer.flush_chunks()
+    assert (buffer.get_buffer(), buffer.get_chunks(), buffer.check_free_chunks()) == (["data"], [], True)
 
-def test_flush_buffer_resets_length(buffer):
-    buffer.append("hello world")
-    buffer.flush_buffer()
-    assert len(buffer) == 0
-
-
-def test_flush_buffer_clears_items(buffer):
-    buffer.append("item1")
-    buffer.flush_buffer()
-    assert buffer.get_buffer() == []
-
-
-def test_flush_buffer_resets_last_input(buffer):
-    buffer.append("some text")
-    buffer.flush_buffer()
-    assert buffer.get_last_input() == []
-
-
-# ---------------------------------------------------------------------------
-# ChatSummarizedBuffer
-# ---------------------------------------------------------------------------
-
-
-def test_summ_buffer_inherits_append(summ_buffer):
-    summ_buffer.append("hello")
-    assert len(summ_buffer) == 5
-
-
-def test_append_chunk_adds_to_chunks(summ_buffer):
-    summ_buffer.append_chunk("summary text")
-    chunks = summ_buffer.get_chunks()
-    assert chunks == ["summary text"]
-
-
-def test_append_chunk_increases_chunks_token_count(summ_buffer):
-    summ_buffer.append_chunk("abc")  # 3 tokens
-    assert summ_buffer._chunks_tokens_count == 3
-
-
-def test_check_free_chunks_true_when_under_limit(summ_buffer):
-    summ_buffer.append_chunk("short")  # 5 tokens, limit=20
-    assert summ_buffer.check_free_chunks() is True
-
-
-def test_check_free_chunks_false_when_at_limit(summ_buffer):
-    summ_buffer.append_chunk("a" * 20)  # 20 tokens == limit
-    assert summ_buffer.check_free_chunks() is False
-
-
-def test_append_chunk_ignored_when_chunks_full(summ_buffer):
-    summ_buffer.append_chunk("a" * 20)  # fills chunks
-    summ_buffer.append_chunk("overflow")
-    chunks = summ_buffer.get_chunks()
-    assert len(chunks) == 1  # overflow was ignored
-
-
-def test_get_final_buffer_no_chunks(summ_buffer):
-    summ_buffer.append("line one")
-    summ_buffer.append("line two")
-    result = summ_buffer.get_final_buffer()
-    assert "line one" in result
-    assert "line two" in result
-
-
-def test_get_final_buffer_with_chunks(summ_buffer):
-    summ_buffer.append_chunk("chunk summary")
-    summ_buffer.append("current input")
-    result = summ_buffer.get_final_buffer()
-    # chunks come first, then buffer
-    chunk_pos = result.index("chunk summary")
-    input_pos = result.index("current input")
-    assert chunk_pos < input_pos
-
-
-def test_get_final_buffer_empty(summ_buffer):
-    result = summ_buffer.get_final_buffer()
-    assert result == ""
-
-
-def test_flush_clears_buffer_and_chunks(summ_buffer):
-    summ_buffer.append("data")
-    summ_buffer.append_chunk("summary")
-    summ_buffer.flush()
-    assert len(summ_buffer) == 0
-    assert summ_buffer.get_chunks() == []
-
-
-def test_flush_chunks_only_clears_chunks(summ_buffer):
-    summ_buffer.append("data")
-    summ_buffer.append_chunk("summary")
-    summ_buffer.flush_chunks()
-    assert summ_buffer.get_chunks() == []
-    assert summ_buffer.get_buffer() == ["data"]
+    buffer.append_chunk("summary")
+    buffer.flush()
+    assert (len(buffer), buffer.get_buffer(), buffer.get_chunks(), buffer.get_last_input()) == (0, [], [], [])

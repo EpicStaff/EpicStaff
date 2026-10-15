@@ -1,12 +1,25 @@
 @for (chip of chips(); track chip.key) {
     <span class="filter-chip">
-        <span class="filter-chip__label">{{ chip.label }}:</span>
+        <!-- a query names its own fields, which are highlighted inside the value instead -->
+        <span
+            class="filter-chip__label"
+            [class.filter-chip__label--plain]="chip.key === 'query'"
+            >{{ chip.label }}</span
+        >
         <span
             class="filter-chip__value"
             [class.filter-chip__value--wide]="isConditionChip(chip.key)"
-            [title]="chip.value"
-            >{{ chip.value }}</span
+            [matTooltip]="chip.value"
+            matTooltipPosition="above"
         >
+            @if (chip.parts) {
+                @for (part of chip.parts; track $index) {
+                    <span [class.filter-chip__keyword]="part.isKeyword">{{ part.text }}</span>
+                }
+            } @else {
+                {{ chip.value }}
+            }
+        </span>
         <button
             class="filter-chip__remove"
             type="button"

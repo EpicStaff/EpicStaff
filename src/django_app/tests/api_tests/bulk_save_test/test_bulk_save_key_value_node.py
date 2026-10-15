@@ -647,35 +647,51 @@ def _entry_with_key(mode: str, key: str) -> dict:
     return {"key": key} if mode == "delete" else {"key": key, "value": "variables.customer"}
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize("mode", ["read", "write", "delete"])
-@pytest.mark.parametrize("key", VALID_KEY_TEMPLATES)
-def test_valid_key_templates_are_saved(auth_client, graph, table, mode, key):
+def _save_with_key(client, graph, table, mode, key):
     payload = {
         "save_version": graph.save_version,
         "key_value_node_list": [
             _node_payload(graph, table, mode=mode, entries=[_entry_with_key(mode, key)])
         ],
     }
-    response = auth_client.post(_save_url(graph.id), payload, format="json")
+    return client.post(_save_url(graph.id), payload, format="json")
+
+
+def _assert_key_saved(response, graph, key):
     assert response.status_code == status.HTTP_200_OK, response.content
     assert KeyValueNode.objects.get(graph=graph).entries[0]["key"] == key
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize("mode", ["read", "write", "delete"])
-@pytest.mark.parametrize("key", INVALID_KEY_TEMPLATES)
-def test_invalid_key_templates_are_rejected(auth_client, graph, table, mode, key):
-    payload = {
-        "save_version": graph.save_version,
-        "key_value_node_list": [
-            _node_payload(graph, table, mode=mode, entries=[_entry_with_key(mode, key)])
-        ],
-    }
-    response = auth_client.post(_save_url(graph.id), payload, format="json")
+def _assert_key_rejected(response, graph):
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "Entry 0: 'key' " in str(response.data)
     assert not KeyValueNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("key", VALID_KEY_TEMPLATES)
+def test_valid_key_templates_are_saved(auth_client, graph, table, key):
+    _assert_key_saved(_save_with_key(auth_client, graph, table, "write", key), graph, key)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("key", INVALID_KEY_TEMPLATES)
+def test_invalid_key_templates_are_rejected(auth_client, graph, table, key):
+    _assert_key_rejected(_save_with_key(auth_client, graph, table, "write", key), graph)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", ["read", "write", "delete"])
+@pytest.mark.parametrize("valid", [True, False], ids=["valid-key", "invalid-key"])
+def test_key_template_rules_apply_in_every_mode(auth_client, graph, table, mode, valid):
+    key = "profile_{variables.user.id}" if valid else "user-id"
+
+    response = _save_with_key(auth_client, graph, table, mode, key)
+
+    if valid:
+        _assert_key_saved(response, graph, key)
+    else:
+        _assert_key_rejected(response, graph)
 
 
 @pytest.mark.django_db

@@ -4,7 +4,6 @@ import { AuditFilterNode } from './audit-filter.models';
 export type AuditEventKind = 'session' | 'node' | 'event';
 export type AuditEventStatus = 'completed' | 'failed';
 export type AuditSessionRowStatus = AuditEventStatus | 'running';
-export type AuditRunType = 'manual' | 'schedule' | 'webhook' | 'telegram' | 'parent_flow';
 export type AuditNodeType =
     | 'AGENT'
     | 'TASK'
@@ -29,7 +28,6 @@ export interface AuditSessionEvent {
     name: string;
     flow_name: string;
     node_type: string;
-    run_type: string;
     input: Record<string, unknown> | null;
     output: Record<string, unknown> | null;
     error: string | null;
@@ -66,7 +64,6 @@ export interface AuditSessionRow {
     identityId: string;
     name: string;
     flowName: string;
-    runType: string;
     status: AuditSessionRowStatus;
     startTime: string | null;
     endTime: string | null;

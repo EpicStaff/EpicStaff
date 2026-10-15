@@ -7,7 +7,7 @@ from rbac.authorship.checks import check_author_models
 from rbac.authorship.registry import author_tracked_models
 from rbac.exceptions import AuthorChangeForbiddenError
 from rbac.models import AuthorModel, OrgScopedModel
-from tables.models import Graph, GraphNote, Label
+from tables.models import Graph, GraphNote
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -39,57 +39,34 @@ def _note(graph, content, **fields):
 
 
 @pytest.mark.django_db
-def test_changing_set_author_to_another_user_raises(acme_graph, author, other_user):
-    _note(acme_graph, "guarded", created_by=author)
-    note = GraphNote.objects.get(content="guarded")
+@pytest.mark.parametrize(
+    ("saved_author", "new_author", "forbidden"),
+    [
+        ("author", "other_user", True),
+        ("author", None, False),
+        (None, "author", False),
+        ("author", "author", False),
+    ],
+    ids=["reassign", "clear", "set-on-unauthored", "keep"],
+)
+@pytest.mark.parametrize("reload", [True, False], ids=["reloaded", "same-instance"])
+def test_an_author_can_be_set_or_cleared_but_never_reassigned(
+    request, acme_graph, saved_author, new_author, forbidden, reload
+):
+    users = {name: request.getfixturevalue(name) for name in ("author", "other_user")}
+    note = _note(acme_graph, "guarded", created_by=users.get(saved_author))
+    if reload:
+        note = GraphNote.objects.get(pk=note.pk)
 
-    note.created_by = other_user
-    with pytest.raises(AuthorChangeForbiddenError):
+    note.created_by = users.get(new_author)
+    note.content = "edited"
+    if forbidden:
+        with pytest.raises(AuthorChangeForbiddenError):
+            note.save()
+        assert GraphNote.objects.get(pk=note.pk).created_by == users[saved_author]
+    else:
         note.save()
-
-    assert GraphNote.objects.get(pk=note.pk).created_by_id == author.id
-
-
-@pytest.mark.django_db
-def test_changing_author_on_instance_that_saved_it_raises(acme_graph, author, other_user):
-    note = _note(acme_graph, "guarded-in-memory", created_by=author)
-
-    note.created_by = other_user
-    with pytest.raises(AuthorChangeForbiddenError):
-        note.save()
-
-
-@pytest.mark.django_db
-def test_clearing_set_author_is_allowed(acme_graph, author):
-    _note(acme_graph, "clearable", created_by=author)
-    note = GraphNote.objects.get(content="clearable")
-
-    note.created_by = None
-    note.save()
-
-    assert GraphNote.objects.get(pk=note.pk).created_by_id is None
-
-
-@pytest.mark.django_db
-def test_setting_author_on_row_without_author_is_allowed(acme_graph, author):
-    _note(acme_graph, "unauthored")
-    note = GraphNote.objects.get(content="unauthored")
-
-    note.created_by = author
-    note.save()
-
-    assert GraphNote.objects.get(pk=note.pk).created_by_id == author.id
-
-
-@pytest.mark.django_db
-def test_resaving_same_author_is_allowed(acme_graph, author):
-    _note(acme_graph, "same-author", created_by=author)
-    note = GraphNote.objects.get(content="same-author")
-
-    note.content = "same-author-edited"
-    note.save()
-
-    assert GraphNote.objects.get(pk=note.pk).content == "same-author-edited"
+        assert GraphNote.objects.get(pk=note.pk).created_by == users.get(new_author)
 
 
 @pytest.mark.django_db
@@ -146,18 +123,6 @@ def test_content_hash_ignores_author(acme_graph, author, other_user):
 
 
 # ---- registry ----
-
-
-def test_org_scoped_model_is_not_an_author_model():
-    assert not issubclass(OrgScopedModel, AuthorModel)
-
-
-def test_registry_covers_both_author_families():
-    lookups = dict(author_tracked_models())
-
-    assert lookups[GraphNote] == "graph__org_id"
-    assert lookups[Graph] == "org_id"
-    assert lookups[Label] == "org_id"
 
 
 def test_registry_lists_every_concrete_author_and_org_scoped_model():

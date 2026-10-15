@@ -2,10 +2,11 @@ from rest_framework import serializers
 
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import Graph, PythonCode, WebhookTrigger, WebhookTriggerNode
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
-class WebhookTriggerNodeImportSerializer(serializers.ModelSerializer):
+class WebhookTriggerNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     python_code = PythonCodeImportSerializer(required=False)

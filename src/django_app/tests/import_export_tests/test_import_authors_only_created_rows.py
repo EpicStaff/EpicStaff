@@ -319,7 +319,10 @@ def test_import_authors_python_tool_configs_with_the_importing_user(
     acme, beta, admin_acme, beta_author, openai_provider
 ):
     source = _python_code_tool(beta, beta_author, openai_provider)
-    export_data = _export(EntityType.PYTHON_CODE_TOOL, source)
+    # Tool configs are only exported org-scoped: an unscoped export cannot tell whose they are.
+    export_data = ExportService(entity_registry).export_entities(
+        EntityType.PYTHON_CODE_TOOL, [source.id], org_id=beta.id
+    )
 
     _import(export_data, EntityType.PYTHON_CODE_TOOL, acme, admin_acme)
 

@@ -9,22 +9,23 @@ accounting / stop-triggering logic that lives in run_session() itself.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 from datetime import datetime
+from functools import partial
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import redis
 from dotdict import DotDict
+from fakeredis import FakeAsyncRedis
 
 from models.graph_models import FinishMessageData, GraphMessage
 from services.graph.events import StopEvent
-from services.graph.graph_session_manager_service import (
-    GraphSessionManagerService,
-    _extract_finish_token_total,
-)
-from services.graph.exceptions import StopSession
+from services.graph.graph_session_manager_service import GraphSessionManagerService
+from services.redis_service import RedisService
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
@@ -143,61 +144,38 @@ def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
     )
 
 
-def test_extract_finish_token_total_reads_output_token_usage():
-    message_data = {
-        "message_type": "finish",
-        "output": {"token_usage": {"total_tokens": 42}},
-    }
-    assert _extract_finish_token_total(message_data) == 42
-
-
-def test_extract_finish_token_total_ignores_messages_without_tokens():
-    assert _extract_finish_token_total({"message_type": "start"}) == 0
-    assert _extract_finish_token_total({}) == 0
-    assert _extract_finish_token_total(None) == 0  # type: ignore[arg-type]
-
-
 @pytest.mark.asyncio
-async def test_budget_exceeded_stops_session(service, monkeypatch):
+@pytest.mark.parametrize(
+    ("finish_tokens", "budget", "expected_statuses"),
+    [
+        pytest.param([100, 100], 150, ["run", "stop"], id="over-budget-stops"),
+        pytest.param([60], 100, ["run", "end"], id="under-budget-ends"),
+        pytest.param([10_000_000], None, ["run", "end"], id="no-budget-never-stops"),
+        # A subgraph's finish messages are re-streamed through the parent and count too.
+        pytest.param([("nested", 90), 90], 150, ["run", "stop"], id="subgraph-tokens-count"),
+    ],
+)
+async def test_token_budget(service, monkeypatch, finish_tokens, budget, expected_statuses):
     session_id = 1
     chunks = [
-        make_finish_chunk(session_id, total_tokens=100),
-        make_finish_chunk(session_id, total_tokens=100),
+        make_finish_chunk(session_id, total_tokens=tokens[1], subgraph_execution_ids=["exec-1"])
+        if isinstance(tokens, tuple)
+        else make_finish_chunk(session_id, total_tokens=tokens)
+        for tokens in finish_tokens
     ]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
-
     stop_event = StopEvent()
-    session_data = _session_data(session_id, token_budget=150)
 
-    await service.run_session(session_data, stop_event)
-
-    assert stop_event.is_set()
-    assert stop_event.reason == "token budget exceeded"
+    await service.run_session(_session_data(session_id, token_budget=budget), stop_event)
 
     status_calls = service.redis_service.aupdate_session_status.call_args_list
-    stop_calls = [c for c in status_calls if c.kwargs.get("status") == "stop"]
-    assert stop_calls, f"expected a status='stop' update, got: {status_calls}"
-    assert stop_calls[-1].kwargs.get("reason") == "token budget exceeded"
-
-
-@pytest.mark.asyncio
-async def test_no_budget_configured_is_inert(service, monkeypatch):
-    session_id = 2
-    chunks = [
-        make_finish_chunk(session_id, total_tokens=10_000_000),
-    ]
-    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
-
-    stop_event = StopEvent()
-    session_data = _session_data(session_id, token_budget=None)
-
-    await service.run_session(session_data, stop_event)
-
-    assert not stop_event.is_set()
-    status_calls = service.redis_service.aupdate_session_status.call_args_list
-    statuses = [c.kwargs.get("status") for c in status_calls]
-    assert "end" in statuses
-    assert "stop" not in statuses
+    assert [call.kwargs["status"] for call in status_calls] == expected_statuses
+    stopped = expected_statuses[-1] == "stop"
+    assert stop_event.is_set() is stopped
+    if stopped:
+        assert stop_event.reason == status_calls[-1].kwargs["reason"] == "token budget exceeded"
+        # A stopped session has no final variables to hand over.
+        service.redis_service.aset_session_final_variables.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -252,9 +230,8 @@ async def test_handle_stop_session_skips_status_publish_when_not_in_pool(service
 @pytest.mark.asyncio
 async def test_handle_stop_session_publishes_status_when_in_pool(service):
     session_id = 998
-    fake_entry = Mock()
-    fake_entry.stop_event = Mock()
-    service.session_graph_pool[session_id] = fake_entry
+    running_session = SimpleNamespace(stop_event=StopEvent())
+    service.session_graph_pool[session_id] = running_session
 
     data = json.dumps({"session_id": session_id})
     await service._handle_stop_session(data)
@@ -262,41 +239,8 @@ async def test_handle_stop_session_publishes_status_when_in_pool(service):
     service.redis_service.aupdate_session_status.assert_called_once_with(
         session_id=session_id, status="stop"
     )
-    fake_entry.stop_event.set.assert_called_once()
+    assert running_session.stop_event.is_set()
     assert session_id not in service.session_graph_pool
-
-
-@pytest.mark.asyncio
-async def test_subgraph_finish_messages_count_toward_budget(service, monkeypatch):
-    """Subgraph finish messages are re-streamed through the parent's writer
-    (subgraphs/subgraph_node.py::_execute_subgraph) and tagged with
-    subgraph_execution_ids, but land in run_session()'s custom-stream loop
-    just like top-level agent/task node messages. They must count toward
-    the same running total."""
-    session_id = 30
-    chunks = [
-        # A nested subgraph's own AgentNode finish message, as it would
-        # appear after being re-streamed by SubGraphNode._execute_subgraph.
-        make_finish_chunk(
-            session_id,
-            total_tokens=90,
-            name="nested_task_node",
-            subgraph_execution_ids=["exec-1"],
-        ),
-        make_finish_chunk(session_id, total_tokens=90, name="top_level_agent_node"),
-    ]
-    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
-
-    stop_event = StopEvent()
-    session_data = _session_data(session_id, token_budget=150)
-
-    await service.run_session(session_data, stop_event)
-
-    assert stop_event.is_set(), (
-        "subgraph token usage (90) + top-level token usage (90) = 180 "
-        "must exceed the 150 budget"
-    )
-    assert stop_event.reason == "token budget exceeded"
 
 
 @pytest.mark.asyncio
@@ -395,12 +339,10 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
     }
     _patch_builder(monkeypatch, FakeCompiledGraph([], final_state=final_state))
 
-    # Serialises like the real RedisService.aset_session_final_variables does.
-    def _serialise_like_redis_service(session_id, variables):
-        json.dumps(variables)
-
-    service.redis_service.aset_session_final_variables.side_effect = (
-        _serialise_like_redis_service
+    # The real write, onto fake Redis (RedisService is a singleton, so bind it by hand).
+    service.redis_service.aset_session_final_variables.side_effect = partial(
+        RedisService.aset_session_final_variables,
+        SimpleNamespace(aioredis_client=FakeAsyncRedis()),
     )
 
     await service.run_session(_session_data(session_id), StopEvent())
@@ -408,25 +350,6 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
     status_calls = service.redis_service.aupdate_session_status.call_args_list
     assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
     assert "not JSON serializable" in status_calls[-1].kwargs["error"]
-
-
-@pytest.mark.asyncio
-async def test_stopped_session_does_not_write_final_variables(service, monkeypatch):
-    session_id = 42
-    chunks = [
-        make_finish_chunk(session_id, total_tokens=100),
-        make_finish_chunk(session_id, total_tokens=100),
-    ]
-    _patch_builder(monkeypatch, FakeCompiledGraph(chunks))
-
-    await service.run_session(_session_data(session_id, token_budget=150), StopEvent())
-
-    service.redis_service.aset_session_final_variables.assert_not_called()
-    statuses = [
-        call.kwargs["status"]
-        for call in service.redis_service.aupdate_session_status.call_args_list
-    ]
-    assert statuses == ["run", "stop"]
 
 
 @pytest.mark.asyncio
@@ -534,4 +457,50 @@ async def test_streamed_message_state_is_sent_without_being_rebuilt(service, mon
     first_added = service.redis_service.aadd_graph_message.await_args_list[0]
     assert json.loads(first_added.args[1])["message_data"]["state"]["variables"] == {
         "customer": {"name": "Ada"}
+    }
+
+
+@pytest.mark.asyncio
+async def test_session_stopped_while_queued_does_not_run(service, monkeypatch):
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+
+    stop_event = StopEvent(default_status="expired")
+    stop_event.set()
+
+    await service.session_runner(_session_data(session_id=3), stop_event)
+
+    service.redis_service.aupdate_session_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_session_stopped_while_queued_is_audited_as_skipped(service, monkeypatch):
+    audit_calls: list[tuple[str, dict]] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(("start", kwargs))
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(("end", kwargs))
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, FakeCompiledGraph([]))
+    stop_event = StopEvent(default_status="expired")
+    stop_event.set()
+
+    await service.session_runner(_session_data(session_id=4), stop_event)
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    assert [kind for kind, _ in audit_calls] == ["start", "end"]
+    end_call = audit_calls[1][1]
+    assert end_call["session_id"] == 4
+    assert end_call["name"] == "Session Skipped"
+    assert end_call["details"] == {
+        "reason": "stopped while queued",
+        "session_status": "expired",
     }

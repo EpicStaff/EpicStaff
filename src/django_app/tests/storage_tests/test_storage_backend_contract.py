@@ -1,0 +1,312 @@
+"""The storage backend contract, run against both backends.
+
+`InMemoryStorageBackend` stands in for `S3StorageBackend` in every manager, view and
+upload test, so it must behave like the real one: each test here runs against the
+in-memory fake and against `S3StorageBackend` over the dict-backed S3 client.
+"""
+
+import pytest
+from botocore.exceptions import ClientError
+
+from tables.services.storage_service.dataclasses import FileInfo, FolderInfo
+from tests.storage_tests.in_memory_backend import FakeS3Client, InMemoryStorageBackend, make_s3_backend
+
+
+@pytest.fixture(params=["in-memory", "s3"])
+def fake_backend(request):
+    if request.param == "in-memory":
+        return InMemoryStorageBackend(organization_prefix="")
+    return make_s3_backend(FakeS3Client())
+
+
+@pytest.fixture
+def in_memory_backend():
+    return InMemoryStorageBackend(organization_prefix="")
+
+
+class TestList:
+    def test_list_returns_empty_for_nonexistent_directory(self, fake_backend):
+        assert fake_backend.list_("nonexistent") == []
+
+    def test_list_returns_files_and_folders(self, fake_backend):
+        fake_backend.put_bytes("b_file.txt", b"data")
+        fake_backend.mkdir("a_folder")
+        items = fake_backend.list_("")
+        names_by_type = {i.name: i.type for i in items}
+        assert names_by_type == {"a_folder": "folder", "b_file.txt": "file"}
+
+    def test_list_reports_correct_size_for_files(self, fake_backend):
+        content = b"hello world"
+        fake_backend.put_bytes("sized.txt", content)
+        items = fake_backend.list_("")
+        assert items[0].size == len(content)
+
+    def test_list_marks_empty_folder_is_empty_true(self, fake_backend):
+        fake_backend.mkdir("empty_dir")
+        items = fake_backend.list_("")
+        assert items[0].is_empty is True
+
+    def test_a_folder_holding_only_a_subfolder_is_not_empty(self, fake_backend):
+        fake_backend.mkdir("outer/inner")
+
+        (outer,) = fake_backend.list_("")
+
+        assert (outer.name, outer.is_empty) == ("outer", False)
+
+    def test_list_marks_nonempty_folder_is_empty_false(self, fake_backend):
+        fake_backend.mkdir("full_dir")
+        fake_backend.put_bytes("full_dir/child.txt", b"x")
+        items = fake_backend.list_("")
+        folder = next(i for i in items if i.name == "full_dir")
+        assert folder.is_empty is False
+
+
+class TestUploadDownload:
+    def test_upload_creates_file_and_returns_correct_size(self, fake_backend):
+        content = b"file content here"
+        result = fake_backend.put_bytes("test.txt", content)
+        assert result == len(content)
+        assert fake_backend.download("test.txt") == content
+
+    def test_upload_creates_parent_directories_implicitly(self, fake_backend):
+        fake_backend.put_bytes("deep/nested/file.txt", b"data")
+        assert fake_backend.exists("deep/nested/file.txt")
+
+    def test_download_returns_uploaded_bytes(self, fake_backend):
+        content = b"round trip content"
+        fake_backend.put_bytes("round.txt", content)
+        assert fake_backend.download("round.txt") == content
+
+    def test_download_raises_file_not_found_for_missing_path(self, fake_backend):
+        with pytest.raises(FileNotFoundError):
+            fake_backend.download("ghost.txt")
+
+
+class TestDelete:
+    def test_delete_removes_file(self, fake_backend):
+        fake_backend.put_bytes("doomed.txt", b"bye")
+        fake_backend.delete("doomed.txt")
+        assert not fake_backend.exists("doomed.txt")
+
+    def test_delete_removes_directory_recursively(self, fake_backend):
+        fake_backend.mkdir("doomed_dir")
+        fake_backend.put_bytes("doomed_dir/child.txt", b"x")
+        fake_backend.delete("doomed_dir")
+        assert fake_backend.list_all_keys("doomed_dir") == []
+        assert not fake_backend.exists("doomed_dir/")
+
+
+class TestMkdir:
+    def test_mkdir_creates_nested_directories(self, fake_backend):
+        fake_backend.mkdir("a/b/c")
+        assert fake_backend.exists("a/b/c/")
+
+    def test_mkdir_is_idempotent(self, fake_backend):
+        fake_backend.mkdir("repeat")
+        fake_backend.mkdir("repeat")  # no error
+
+
+class TestMove:
+    def test_move_places_source_inside_destination_directory(self, fake_backend):
+        fake_backend.put_bytes("src.txt", b"data")
+        fake_backend.mkdir("dest_dir")
+        actual_path = fake_backend.move("src.txt", "dest_dir")
+        assert actual_path == "dest_dir/src.txt"
+        assert fake_backend.download("dest_dir/src.txt") == b"data"
+        assert not fake_backend.exists("src.txt")
+
+    def test_move_returns_deduped_folder_base_ending_in_slash(self, fake_backend):
+        fake_backend.put_bytes("docs/a.txt", b"a")
+        fake_backend.mkdir("archive/docs")
+        actual_base = fake_backend.move("docs", "archive")
+        assert actual_base == "archive/docs (1)/"
+        assert fake_backend.download("archive/docs (1)/a.txt") == b"a"
+
+    def test_move_raises_file_not_found_for_missing_source(self, fake_backend):
+        with pytest.raises(FileNotFoundError):
+            fake_backend.move("ghost.txt", "dest")
+
+
+class TestRename:
+    def test_rename_moves_to_exact_destination_path(self, fake_backend):
+        fake_backend.put_bytes("old.txt", b"data")
+        fake_backend.rename("old.txt", "new.txt")
+        assert fake_backend.download("new.txt") == b"data"
+        assert not fake_backend.exists("old.txt")
+
+    def test_rename_raises_file_exists_when_destination_exists(self, fake_backend):
+        fake_backend.put_bytes("a.txt", b"a")
+        fake_backend.put_bytes("b.txt", b"b")
+        with pytest.raises(FileExistsError):
+            fake_backend.rename("a.txt", "b.txt")
+
+    def test_rename_raises_file_not_found_for_missing_source(self, fake_backend):
+        with pytest.raises(FileNotFoundError):
+            fake_backend.rename("ghost.txt", "new.txt")
+
+    def test_rename_raises_value_error_for_same_path(self, fake_backend):
+        fake_backend.put_bytes("same.txt", b"x")
+        with pytest.raises(ValueError):
+            fake_backend.rename("same.txt", "same.txt")
+
+
+class TestCopy:
+    def test_copy_file_into_destination_returns_single_path(self, fake_backend):
+        fake_backend.put_bytes("orig.txt", b"data")
+        fake_backend.mkdir("target")
+        copied = fake_backend.copy("orig.txt", "target")
+        assert copied == [("target/orig.txt", 4)]
+        assert fake_backend.download("target/orig.txt") == b"data"
+
+    def test_copy_folder_returns_all_nested_file_paths(self, fake_backend):
+        fake_backend.put_bytes("folder/a.txt", b"a")
+        fake_backend.put_bytes("folder/sub/b.txt", b"b")
+        fake_backend.mkdir("dest")
+        copied = fake_backend.copy("folder", "dest")
+        assert set(copied) == {("dest/folder/a.txt", 1), ("dest/folder/sub/b.txt", 1)}
+
+    def test_copy_appends_increment_suffix_on_name_conflict(self, fake_backend):
+        fake_backend.put_bytes("file.txt", b"data")
+        fake_backend.mkdir("dest")
+        fake_backend.copy("file.txt", "dest")
+        copied = fake_backend.copy("file.txt", "dest")
+        assert copied == [("dest/file (1).txt", 4)]
+
+    def test_copy_raises_file_not_found_for_missing_source(self, fake_backend):
+        with pytest.raises(FileNotFoundError):
+            fake_backend.copy("ghost.txt", "dest")
+
+
+class TestInfo:
+    def test_info_returns_file_info_with_size_and_content_type(self, fake_backend):
+        content = b"info test"
+        fake_backend.put_bytes("doc.txt", content)
+        info = fake_backend.info("doc.txt")
+        assert isinstance(info, FileInfo)
+        assert info.size == len(content)
+        assert info.name == "doc.txt"
+        assert "text" in info.content_type
+
+    def test_info_returns_folder_info_with_trailing_slash(self, fake_backend):
+        fake_backend.mkdir("mydir")
+        info = fake_backend.info("mydir")
+        assert isinstance(info, FolderInfo)
+        assert info.path.endswith("/")
+
+    def test_info_finds_a_folder_that_has_files_but_no_marker(self, fake_backend):
+        fake_backend.put_bytes("implicit/file.txt", b"x")
+
+        info = fake_backend.info("implicit")
+
+        assert isinstance(info, FolderInfo)
+        assert (info.name, info.path) == ("implicit", "implicit/")
+
+    def test_info_raises_file_not_found_for_missing_path(self, fake_backend):
+        with pytest.raises(FileNotFoundError):
+            fake_backend.info("ghost")
+
+
+class TestExists:
+    def test_exists_true_for_existing_file(self, fake_backend):
+        fake_backend.put_bytes("here.txt", b"x")
+        assert fake_backend.exists("here.txt") is True
+
+    def test_exists_false_for_missing_path(self, fake_backend):
+        assert fake_backend.exists("nope.txt") is False
+
+
+class TestListAllKeys:
+    def test_list_all_keys_returns_files_recursively_excludes_dirs(self, fake_backend):
+        fake_backend.put_bytes("root/a.txt", b"a")
+        fake_backend.put_bytes("root/sub/b.txt", b"b")
+        keys = fake_backend.list_all_keys("root")
+        assert len(keys) == 2
+        assert all("txt" in k for k in keys)
+
+    def test_list_all_keys_returns_empty_for_missing_directory(self, fake_backend):
+        assert fake_backend.list_all_keys("nope") == []
+
+
+class TestListTree:
+    def test_tree_returns_empty_for_empty_folder(self, fake_backend):
+        fake_backend.mkdir("empty")
+        root, truncated = fake_backend.list_tree("empty")
+        assert root.type == "folder"
+        assert root.children == []
+        assert truncated is False
+
+    def test_tree_nests_files_and_folders(self, fake_backend):
+        fake_backend.put_bytes("reports/q1.pdf", b"x" * 10)
+        fake_backend.put_bytes("reports/2025/summary.txt", b"s")
+
+        root, _ = fake_backend.list_tree("reports")
+        names = sorted(c.name for c in root.children)
+        assert names == ["2025", "q1.pdf"]
+        year = next(c for c in root.children if c.name == "2025")
+        assert year.children[0].name == "summary.txt"
+
+    def test_tree_respects_max_depth(self, fake_backend):
+        fake_backend.put_bytes("a/b/c/d/x.txt", b"x")
+
+        root, _ = fake_backend.list_tree("a", max_depth=2)
+        depth = 0
+        cur = root
+        while cur.children:
+            cur = cur.children[0]
+            depth += 1
+        assert depth == 2
+
+    def test_tree_sets_truncated_when_over_max_entries(self, fake_backend):
+        for i in range(10):
+            fake_backend.put_bytes(f"f{i}.txt", b"")
+        root, truncated = fake_backend.list_tree("", max_entries=3)
+        assert truncated is True
+        assert len(root.children) <= 3
+
+
+def test_a_key_under_a_file_is_refused_like_minio_reports_it(in_memory_backend):
+    """MinIO refuses a key under an existing object; the dict-backed S3 client cannot."""
+    in_memory_backend.put_bytes("org_7/report", b"keep me")
+
+    with pytest.raises(ClientError) as caught:
+        in_memory_backend.put_bytes("org_7/report/a.txt", b"a")
+    assert caught.value.response["Error"]["Code"] == "XMinioParentIsObject"
+    assert caught.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+    assert in_memory_backend.list_all_keys("org_7") == ["org_7/report"]
+
+
+class TestTreeDepth:
+    """Regression: every key below max_depth used to disappear, ancestors included."""
+
+    @pytest.mark.parametrize(
+        "keys",
+        [["a/b/c/d/e/f/g/"], ["a/b/c/x.txt", "a/b/d/y.txt", "a/b/e/z.txt"]],
+        ids=["deep-folder-marker", "deep-files-sharing-an-ancestor"],
+    )
+    def test_deep_keys_keep_their_ancestors_once_up_to_max_depth(self, fake_backend, keys):
+        for key in keys:
+            if key.endswith("/"):
+                fake_backend.mkdir(key)
+            else:
+                fake_backend.put_bytes(key, b"x")
+
+        root, _ = fake_backend.list_tree("", max_depth=2)
+
+        (a,) = root.children
+        (b,) = a.children
+        assert (a.name, b.name, b.children) == ("a", "b", [])
+
+
+@pytest.mark.parametrize("operation", ["mkdir", "info", "put_bytes", "download", "delete"])
+@pytest.mark.parametrize(
+    "path",
+    ["../malicious", "a/../../b", "files/../../../etc/passwd", "/absolute/path", "file\x00name"],
+    ids=["parent", "parent-in-middle", "deep-escape", "absolute", "null-byte"],
+)
+def test_a_path_escaping_the_org_folder_is_refused_before_touching_storage(fake_backend, operation, path):
+    args = (path, b"x") if operation == "put_bytes" else (path,)
+
+    with pytest.raises(ValueError):
+        getattr(fake_backend, operation)(*args)
+
+    assert fake_backend.list_all_keys("") == []

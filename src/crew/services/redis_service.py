@@ -54,8 +54,14 @@ class AsyncPubSubGroup:
                 if msg is None:
                     continue
 
+                # A failing callback must not count as a disconnect: reconnecting
+                # drops this message for the other subscribers and every message
+                # published during the reconnect.
                 for sub in self._subscribers:
-                    await sub.update(msg)
+                    try:
+                        await sub.update(msg)
+                    except Exception:
+                        logger.exception("Subscriber callback failed on channel {}", self._channel)
             except Exception as e:
                 logger.error(f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}")
                 with contextlib.suppress(Exception):
@@ -141,6 +147,11 @@ class SyncPubSubGroup:
             logger.info(f"Unsubscribed from channel {self._channel}")
         else:
             logger.warning(f"Subscriber not found in channel {self._channel}")
+
+
+def _encode(message: dict | str) -> str:
+    # A str must already be JSON (e.g. from model_dump_json); it is sent as is.
+    return message if isinstance(message, str) else json.dumps(message)
 
 
 class RedisService(metaclass=SingletonMeta):
@@ -233,12 +244,12 @@ class RedisService(metaclass=SingletonMeta):
                 self._sync_pubsub_groups[channel].subscribe(subscriber)
             logger.info(f"Subscribed to channels: {', '.join(channels)}")
 
-    async def apublish(self, channel: str, message: object):
-        await self.aioredis_client.publish(channel=channel, message=json.dumps(message))
+    async def apublish(self, channel: str, message: dict | str):
+        await self.aioredis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
-    def publish(self, channel: str, message: object):
-        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
+    def publish(self, channel: str, message: dict | str):
+        self.sync_redis_client.publish(channel=channel, message=_encode(message))
         logger.info(f"Message published to channel '{channel}'.")
 
     async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:

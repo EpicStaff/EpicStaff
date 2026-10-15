@@ -9,6 +9,7 @@ from src.shared.models import (
     args_schema_to_variables as _shared_args_schema_to_variables,
 )
 from tables.models import PythonCode, PythonCodeTool
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 
 
 @dataclass
@@ -152,8 +153,9 @@ def upload_tools():
         to_delete = db_tools.difference(tool_name_set)
 
         # Queryset .delete() bypasses Model.delete() entirely (Django never calls
-        # instance delete() for queryset-level deletes), so it always hard-deletes
-        # regardless of settings.SOFT_DELETE. Delete per-instance instead so
-        # SoftDeleteMixin.delete() (and thus DeleteService) fires.
-        for tool in PythonCodeTool.objects.filter(name__in=to_delete):
-            tool.delete()
+        # instance delete() for queryset-level deletes), so it would hard-delete.
+        # Delete per-instance instead so SoftDeleteMixin.delete() (and thus
+        # DeleteService) moves each removed tool to the recycle bin. No person
+        # asked for it, so no one is recorded as the deleter.
+        for tool in PythonCodeTool.objects.filter(built_in=True, name__in=to_delete):
+            move_to_recycle_bin(tool, None)

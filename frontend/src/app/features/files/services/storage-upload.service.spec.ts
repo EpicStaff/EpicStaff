@@ -6,7 +6,13 @@ import { Subscription } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
 import { ToastService } from '../../../services/notifications';
-import { StorageUploadBatchResult, StorageUploadLimits, StorageUploadOutcome } from '../models/storage.models';
+import {
+    RecycleBinPurgedEntry,
+    StorageStreamUploadResponse,
+    StorageUploadBatchResult,
+    StorageUploadLimits,
+    StorageUploadOutcome,
+} from '../models/storage.models';
 import { FileTooLargeError, UploadSkippedError } from '../utils/upload-error.utils';
 import { StorageUploadService, UPLOAD_CONCURRENCY } from './storage-upload.service';
 
@@ -69,7 +75,17 @@ describe('StorageUploadService', () => {
     }
 
     function succeed(request: TestRequest): void {
-        request.flush({ status: 'DONE', path: uploadedFileName(request), size: 7 });
+        succeedPurging(request, []);
+    }
+
+    function succeedPurging(request: TestRequest, purged: RecycleBinPurgedEntry[]): void {
+        const response: StorageStreamUploadResponse = {
+            status: 'DONE',
+            path: uploadedFileName(request),
+            size: 7,
+            recycle_bin_purged: purged,
+        };
+        request.flush(response);
     }
 
     function toFiles(files: (string | File)[]): File[] {
@@ -396,6 +412,71 @@ describe('StorageUploadService', () => {
             expect(vi.getTimerCount()).toBe(0);
             vi.advanceTimersByTime(60_000);
             expect(takeStreamRequests().length).toBe(0);
+        });
+    });
+
+    describe('recycle-bin purge toast', () => {
+        it('shows no toast when every response has an empty list', () => {
+            const batch = startBatch(['a.txt', 'b.txt']);
+            takeStreamRequests().forEach(succeed);
+
+            expect(uploadedNames(batch.result())).toEqual(['a.txt', 'b.txt']);
+            expect(toastWarning).not.toHaveBeenCalled();
+        });
+
+        it('names the entry when one file was purged', () => {
+            const batch = startBatch(['a.txt']);
+            succeedPurging(takeStreamRequests()[0], [{ name: 'old/report.pdf', size: 100 }]);
+
+            expect(batch.result()).toBeDefined();
+            expect(toastWarning).toHaveBeenCalledTimes(1);
+            expect(toastWarning).toHaveBeenCalledWith(
+                'Storage was full, so "old/report.pdf" was permanently deleted from the recycle bin.'
+            );
+        });
+
+        it('speaks of the oldest item when the purged entry has no readable name', () => {
+            const batch = startBatch(['a.txt']);
+            succeedPurging(takeStreamRequests()[0], [{ name: null, size: 100 }]);
+
+            expect(batch.result()).toBeDefined();
+            expect(toastWarning).toHaveBeenCalledTimes(1);
+            expect(toastWarning).toHaveBeenCalledWith(
+                'Storage was full, so the oldest item in the recycle bin was permanently deleted.'
+            );
+        });
+
+        it('aggregates the whole batch into one toast once the last file settles', () => {
+            const batch = startBatch(['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+            const [first, second, third] = takeStreamRequests();
+            succeedPurging(first, [{ name: 'old/1.bin', size: 10 }]);
+            succeedPurging(second, [
+                { name: 'old/2.bin', size: 20 },
+                { name: 'old/3.bin', size: 30 },
+            ]);
+            third.flush(errorEnvelope(500, 'server_error'), { status: 500, statusText: 'Server Error' });
+            expect(toastWarning).not.toHaveBeenCalled();
+
+            succeedPurging(takeStreamRequests()[0], [{ name: 'old/4.bin', size: 40 }]);
+
+            expect(failedNames(batch.result())).toEqual(['c.txt']);
+            expect(toastWarning).toHaveBeenCalledTimes(1);
+            expect(toastWarning).toHaveBeenCalledWith(
+                'Storage was full, so the 4 oldest items in the recycle bin were permanently deleted.'
+            );
+        });
+
+        it('still reports what was purged when the caller unsubscribes mid-batch', () => {
+            const batch = startBatch(['a.txt', 'b.txt']);
+            const [first] = takeStreamRequests();
+            succeedPurging(first, [{ name: 'old/1.bin', size: 10 }]);
+
+            batch.subscription.unsubscribe();
+
+            expect(toastWarning).toHaveBeenCalledTimes(1);
+            expect(toastWarning).toHaveBeenCalledWith(
+                'Storage was full, so "old/1.bin" was permanently deleted from the recycle bin.'
+            );
         });
     });
 });

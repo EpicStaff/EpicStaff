@@ -3,18 +3,23 @@ import tarfile
 import zipfile
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.db import connection
 from django.test import override_settings
+from loguru import logger
 from rest_framework.exceptions import ValidationError
 
 from tables.exceptions import StoragePathIsFile, StorageQuotaExceeded, StorageUnavailable
 from tables.models import StorageFile
-from tables.services.storage_service.upload import archive_upload, file_upload
 from tables.services.storage_service.base import StorageUnreachable
+from tables.services.storage_service.dataclasses import BinPurgeGrant
+from tables.services.storage_service.manager import StorageManager
+from tables.services.storage_service.upload import archive_upload, file_upload
 from tests.storage_tests.in_memory_backend import (
     FailingInMemoryBackend,
     InMemoryStorageBackend,
     async_chunks,
+    seed_file,
     zip_bytes,
 )
 
@@ -65,7 +70,7 @@ async def test_upload_file_stores_the_object_and_its_row(org, fake_backend):
         org.id, "docs", "a.txt", async_chunks(b"01234", b"56789"), 10, backend=fake_backend
     )
 
-    assert result == {"path": "docs/a.txt", "size": 10}
+    assert result == {"path": "docs/a.txt", "size": 10, "recycle_bin_purged": []}
     assert fake_backend._objects[f"org_{org.id}/docs/a.txt"][0] == b"0123456789"
     assert (await StorageFile.objects.aget(org=org, path="docs/a.txt")).size == 10
 
@@ -139,7 +144,7 @@ async def test_an_overwrite_is_charged_only_the_size_difference(org, fake_backen
         org.id, "", "a.txt", async_chunks(b"y" * 90), 90, backend=fake_backend
     )
 
-    assert result == {"path": "a.txt", "size": 90}
+    assert result == {"path": "a.txt", "size": 90, "recycle_bin_purged": []}
     assert fake_backend._objects[f"org_{org.id}/a.txt"][0] == b"y" * 90
 
 
@@ -175,6 +180,47 @@ async def test_a_failed_commit_after_the_row_restores_the_row(org, monkeypatch):
 
     assert (await StorageFile.objects.aget(org=org, path="a.txt")).size == 3
     assert not await StorageFile.objects.filter(org=org, path="b.txt").aexists()
+
+
+@pytest.mark.asyncio
+@override_settings(MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_a_failed_commit_after_a_quota_purge_warns_and_the_entries_stay_purged(
+    org, settings, monkeypatch
+):
+    backend = InMemoryStorageBackend()
+
+    @sync_to_async
+    def bin_old_file():
+        seed_file(backend, org.id, "old.txt", b"x" * 10)
+        StorageManager(backend).delete(org.id, "old.txt", user=None)
+
+    await bin_old_file()
+    settings.ORG_STORAGE_QUOTA = 25
+
+    def _commit_fails(*_args, **_kwargs):
+        raise StorageUnreachable("storage went away")
+
+    monkeypatch.setattr(backend, "put_bytes", _commit_fails)
+    warnings = []
+    sink_id = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
+    try:
+        with pytest.raises(StorageUnavailable):
+            await file_upload.upload_file(
+                org.id,
+                "",
+                "note.txt",
+                async_chunks(b"y" * 20),
+                20,
+                backend=backend,
+                bin_purge=BinPurgeGrant(actor="user 7"),
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert not await StorageFile.all_objects.filter(org=org, path__in=["old.txt", "note.txt"]).aexists()
+    stay_purged = [line for line in warnings if "stay purged" in line]
+    assert len(stay_purged) == 1
+    assert "old.txt (10 bytes)" in stay_purged[0] and "by user 7" in stay_purged[0]
 
 
 # --- archives ---
@@ -249,7 +295,11 @@ async def test_a_non_archive_with_an_archive_name_is_stored_as_a_plain_file(org,
         org.id, "docs", "notes.zip", async_chunks(body), None, backend=fake_backend
     )
 
-    assert result == {"path": "docs/notes.zip", "size": len(body)}
+    assert result == {
+        "path": "docs/notes.zip",
+        "size": len(body),
+        "recycle_bin_purged": [],
+    }
     assert fake_backend._objects[f"org_{org.id}/docs/notes.zip"][0] == body
     assert (await StorageFile.objects.aget(org=org, path="docs/notes.zip")).size == len(body)
 
@@ -357,7 +407,11 @@ async def test_an_archive_named_like_a_file_unpacks_into_the_next_free_folder(or
         backend=fake_backend,
     )
 
-    assert result == {"path": "report (1)", "extracted": ["report (1)/a.txt"]}
+    assert result == {
+        "path": "report (1)",
+        "extracted": ["report (1)/a.txt"],
+        "recycle_bin_purged": [],
+    }
     assert fake_backend._objects[report_key][0] == b"keep me"
     assert _keys_under(fake_backend, report_key) == []
     assert fake_backend._objects[f"{report_key} (1)/a.txt"][0] == b"a"

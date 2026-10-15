@@ -83,6 +83,8 @@ export class DatePickerComponent implements ControlValueAccessor {
     errorMessage = input<string>('');
     required = input<boolean>(false);
     allowPastDates = input<boolean>(false);
+    /** Lets the calendar grow wider than a narrow trigger; by default it matches the trigger width. */
+    dropdownMinWidth = input<number | null>(null);
     /** Readonly mode: renders the current date as plain text (no calendar, no editing). */
     readonly = input<boolean>(false);
 
@@ -275,6 +277,21 @@ export class DatePickerComponent implements ControlValueAccessor {
                     originX: 'start',
                     originY: 'top',
                     overlayX: 'start',
+                    overlayY: 'bottom',
+                    offsetY: -4,
+                },
+                // Right-aligned fallbacks for a calendar wider than its trigger near the viewport edge.
+                {
+                    originX: 'end',
+                    originY: 'bottom',
+                    overlayX: 'end',
+                    overlayY: 'top',
+                    offsetY: 4,
+                },
+                {
+                    originX: 'end',
+                    originY: 'top',
+                    overlayX: 'end',
                     overlayY: 'bottom',
                     offsetY: -4,
                 },

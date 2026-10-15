@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
-from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
+from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -727,51 +727,6 @@ class TestLLMConfigStrategy:
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
 
-    def test_export_entity_omits_created_at(self, rich_seeded_db):
-        strategy = _get_strategy(EntityType.LLM_CONFIG)
-
-        data = strategy.export_entity(rich_seeded_db["llm_config"])
-
-        assert "created_at" not in data
-
-    def test_imported_config_gets_its_own_creation_time(
-        self, exportable_agent_definition, export_service, default_org
-    ):
-        source_config = exportable_agent_definition.llm_config
-        source_created_at = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
-        LLMConfig.objects.filter(pk=source_config.pk).update(created_at=source_created_at)
-        export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
-        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
-        # A hand-edited file carrying the field must not set it either.
-        config_data["created_at"] = source_created_at.isoformat()
-        before = timezone.now()
-
-        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
-            config_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        new_config.refresh_from_db()
-        assert new_config.created_at >= before
-
-    def test_import_of_pre_created_at_export_succeeds(
-        self, exportable_agent_definition, export_service, default_org
-    ):
-        export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
-        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
-        config_data.pop("created_at", None)
-
-        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
-            config_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        new_config.refresh_from_db()
-        assert new_config.created_at is not None
-
-    @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service
     ):
@@ -789,7 +744,7 @@ class TestLLMConfigStrategy:
 
 
 # ──────────────────────────────────────────
-# created_at: EmbeddingConfig and AgentDefinition
+# created_at on import
 # ──────────────────────────────────────────
 
 SOURCE_CREATED_AT = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
@@ -801,104 +756,56 @@ def _exported_with_old_creation_time(export_service, entity_type, instance) -> d
 
 
 @pytest.mark.django_db
-class TestEmbeddingConfigCreatedAt:
-    def test_export_entity_omits_created_at(self, embedding_config):
-        data = _get_strategy(EntityType.EMBEDDING_CONFIG).export_entity(embedding_config)
+def test_reimport_finds_the_existing_embedding_config(embedding_config, export_service, default_org):
+    export_data = _exported_with_old_creation_time(export_service, EntityType.EMBEDDING_CONFIG, embedding_config)
+    config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
 
-        assert "created_at" not in data
+    found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
+        config_data, _build_identity_mapper(export_data), org_id=default_org.id
+    )
 
-    def test_imported_config_gets_its_own_creation_time(
-        self, embedding_config, export_service, default_org
-    ):
-        export_data = _exported_with_old_creation_time(
-            export_service, EntityType.EMBEDDING_CONFIG, embedding_config
-        )
-        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
-        # A hand-edited file carrying the field must not set it either.
-        config_data["created_at"] = SOURCE_CREATED_AT.isoformat()
-        before = timezone.now()
+    assert found is not None
+    assert found.id == embedding_config.id
 
-        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
-            config_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
 
-        new_config.refresh_from_db()
-        assert new_config.pk != embedding_config.pk
-        assert new_config.created_at >= before
-
-    def test_import_of_pre_created_at_export_gets_a_creation_time(
-        self, embedding_config, export_service, default_org
-    ):
-        export_data = export_service.export_entities(
-            EntityType.EMBEDDING_CONFIG, [embedding_config.id]
-        )
-        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
-        config_data.pop("created_at", None)
-
-        new_config = _get_strategy(EntityType.EMBEDDING_CONFIG).create_entity(
-            config_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        new_config.refresh_from_db()
-        assert new_config.created_at is not None
-
-    def test_reimport_finds_the_existing_config(
-        self, embedding_config, export_service, default_org
-    ):
-        export_data = _exported_with_old_creation_time(
-            export_service, EntityType.EMBEDDING_CONFIG, embedding_config
-        )
-        config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
-
-        found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
-            config_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        assert found is not None
-        assert found.id == embedding_config.id
+CREATED_AT_ENTITIES = pytest.mark.parametrize(
+    ("entity_type", "source"),
+    [
+        (EntityType.LLM_CONFIG, lambda request: request.getfixturevalue("rich_seeded_db")["llm_config"]),
+        (EntityType.EMBEDDING_CONFIG, lambda request: request.getfixturevalue("embedding_config")),
+        (EntityType.AGENT_DEFINITION, lambda request: request.getfixturevalue("agent_definition")),
+    ],
+    ids=["llm-config", "embedding-config", "agent-definition"],
+)
 
 
 @pytest.mark.django_db
-class TestAgentDefinitionCreatedAt:
-    def test_export_entity_omits_created_at(self, agent_definition):
-        data = _get_strategy(EntityType.AGENT_DEFINITION).export_entity(agent_definition)
+@CREATED_AT_ENTITIES
+@pytest.mark.parametrize(
+    "file_created_at",
+    [SOURCE_CREATED_AT.isoformat(), None],
+    ids=["file-carries-an-old-creation-time", "export-from-before-created-at"],
+)
+def test_an_imported_row_gets_its_own_creation_time(
+    request, export_service, default_org, entity_type, source, file_created_at
+):
+    """Exports omit created_at; whatever a (hand-edited or old) file says, the
+    imported row is stamped when it is created."""
+    instance = source(request)
+    export_data = _exported_with_old_creation_time(export_service, entity_type, instance)
+    entity_data = deepcopy(export_data[entity_type][0])
+    assert "created_at" not in entity_data
+    if file_created_at is not None:
+        entity_data["created_at"] = file_created_at
+    before = timezone.now()
 
-        assert "created_at" not in data
+    created = _get_strategy(entity_type).create_entity(
+        entity_data, _build_identity_mapper(export_data), org_id=default_org.id
+    )
 
-    def test_imported_agent_gets_its_own_creation_time(
-        self, agent_definition, export_service, default_org
-    ):
-        export_data = _exported_with_old_creation_time(
-            export_service, EntityType.AGENT_DEFINITION, agent_definition
-        )
-        agent_data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
-        # A hand-edited file carrying the field must not set it either.
-        agent_data["created_at"] = SOURCE_CREATED_AT.isoformat()
-        before = timezone.now()
-
-        new_agent = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
-            agent_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        new_agent.refresh_from_db()
-        assert new_agent.pk != agent_definition.pk
-        assert new_agent.created_at >= before
-
-    def test_import_of_pre_created_at_export_gets_a_creation_time(
-        self, agent_definition, export_service, default_org
-    ):
-        export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
-        agent_data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
-        agent_data.pop("created_at", None)
-
-        new_agent = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
-            agent_data, _build_identity_mapper(export_data), org_id=default_org.id
-        )
-
-        new_agent.refresh_from_db()
-        assert new_agent.created_at is not None
+    created.refresh_from_db()
+    assert created.pk != instance.pk
+    assert created.created_at >= before
 
 
 # ──────────────────────────────────────────

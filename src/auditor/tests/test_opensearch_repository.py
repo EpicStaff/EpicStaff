@@ -40,52 +40,19 @@ _VALID_SOURCE = {
 
 
 @pytest.mark.asyncio
-async def test_query_skips_malformed_status_without_raising():
-    """A document with a `status` outside the SessionAuditEvent Literal
-    (e.g. a legacy/manually-written value) must not 500 the whole page -
-    it should be skipped, and every other valid row on the same page must
-    still come back."""
+async def test_malformed_document_is_skipped_without_breaking_the_page_or_pagination():
+    """A `status` outside the SessionAuditEvent Literal (a legacy or hand-written
+    value) must not 500 the whole page - the row is skipped, the rest come back."""
     bad_source = dict(_VALID_SOURCE, id="evt-bad", status="warning")
     client = _FakeOpenSearchClient(
         [_hit("evt-good", _VALID_SOURCE), _hit("evt-bad", bad_source)]
     )
     repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
 
-    events, _ = await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
+    events, next_cursor = await repository.query({"bool": {"filter": []}}, cursor=None, size=2)
 
     assert [e.id for e in events] == ["evt-good"]
-
-
-@pytest.mark.asyncio
-async def test_query_returns_all_events_when_none_malformed():
-    client = _FakeOpenSearchClient(
-        [
-            _hit("evt-good", _VALID_SOURCE),
-            _hit("evt-good-2", dict(_VALID_SOURCE, id="evt-good-2")),
-        ]
-    )
-    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
-
-    events, _ = await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
-
-    assert {e.id for e in events} == {"evt-good", "evt-good-2"}
-
-
-@pytest.mark.asyncio
-async def test_query_next_cursor_still_advances_when_a_row_is_skipped():
-    """next_cursor is derived from the raw `hits` (size-based), not from the
-    filtered `events` list - a skipped malformed row must not desync
-    pagination for the caller."""
-    bad_source = dict(_VALID_SOURCE, id="evt-bad", status="warning")
-    hits = [_hit("evt-good", _VALID_SOURCE), _hit("evt-bad", bad_source)]
-    client = _FakeOpenSearchClient(hits)
-    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
-
-    events, next_cursor = await repository.query(
-        {"bool": {"filter": []}}, cursor=None, size=2
-    )
-
-    assert len(events) == 1
+    # The cursor follows the raw hits, so a skipped row does not end pagination early.
     assert next_cursor is not None
 
 

@@ -191,6 +191,7 @@ export class SecretUsageDialogComponent implements OnInit {
                 this.dialog.open(target.dialog, {
                     height: '90vh',
                     width: '600px',
+                    autoFocus: false,
                     data: { configId: match.id },
                 });
             });

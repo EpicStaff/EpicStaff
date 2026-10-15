@@ -1,18 +1,14 @@
-"""
-Tests for AgentTaskService using an in-process fake Redis Streams double
-instead of fakeredis.
+"""AgentTaskService: crew's adapter to the agent microservice over Redis Streams.
 
-Each run reads only its own result stream ``<prefix>:<correlation_id>``;
-the isolation tests below publish to another run's stream and assert the
-service never reads it.
+A run publishes `agent.run` on the request stream with the request blob under a
+Redis key, then reads only its own result stream `<prefix>:<correlation_id>`
+until a result, an error, a timeout or a stop. A fake agent below plays the
+other side of that contract.
 
-fakeredis's async blocking XREAD implementation was verified (via isolated
-repro scripts) to block the whole event loop until its own block timeout
-elapses, starving sibling asyncio tasks — so a concurrent "fake agent"
-producer task never gets scheduled while AgentTaskService's consumer is
-blocked. FakeStreamClient below cooperatively yields control on every call,
-giving deterministic, non-flaky interleaving between the service under
-test and the simulated agent producer.
+The Redis double is an in-process fake rather than fakeredis: fakeredis's async
+blocking XREAD was verified (via isolated repro scripts) to block the whole event
+loop until its own block timeout elapses, so the fake agent task would never get
+scheduled. FakeStreamClient yields control on every call instead.
 """
 
 import asyncio
@@ -21,11 +17,7 @@ import types
 
 import pytest
 
-from services.agent_task_service import (
-    AgentTaskError,
-    AgentTaskService,
-    AgentTaskTimeoutError,
-)
+from services.agent_task_service import AgentTaskError, AgentTaskService, AgentTaskTimeoutError
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from src.shared.models import (
@@ -37,55 +29,56 @@ from src.shared.models import (
     TaskNodeData,
 )
 from src.shared.models.agent_service import AgentRequest
+from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.surfaces import CombinedSurfaceData
 from src.shared.redis_streams import StreamEnvelope, agent_result_stream
 
+pytestmark = pytest.mark.asyncio
+
+LLM = LLMData(provider="openai", config=LLMConfigData(model="gpt-4o"))
+COMPLETED = ("agent.result", {"final_text": "done", "stop_reason": "completed"})
+
 
 class FakeStreamClient:
-    """Minimal cooperative in-memory double for the subset of the aioredis
-    client API AgentTaskService relies on (set/get/delete/xadd/xread).
-
-    ``read_stream_names`` records every stream name passed to ``xread``."""
+    """In-memory, cooperative stand-in for the aioredis calls the service makes
+    (set/get/delete/xadd/xread). Records every stream read and its block time."""
 
     def __init__(self):
-        self._streams: dict[str, list[tuple[str, dict]]] = {}
-        self._kv: dict[str, str] = {}
+        self.streams: dict[str, list[tuple[str, dict]]] = {}
+        self.keys: dict[str, str] = {}
         self._next_message_id = 1
-        self.read_stream_names: list[str] = []
+        self.reads: list[tuple[str, int | None]] = []
 
     async def set(self, key: str, value: str, ex: int | None = None):
-        self._kv[key] = value
+        self.keys[key] = value
 
     async def get(self, key: str) -> str | None:
-        return self._kv.get(key)
+        return self.keys.get(key)
 
     async def delete(self, *keys: str):
         for key in keys:
-            self._kv.pop(key, None)
-            self._streams.pop(key, None)
+            self.keys.pop(key, None)
+            self.streams.pop(key, None)
 
-    async def xadd(self, stream: str, fields: dict) -> str:
+    async def xadd(self, stream: str, fields: dict, **options) -> str:
         message_id = str(self._next_message_id)
         self._next_message_id += 1
-        self._streams.setdefault(stream, []).append((message_id, fields))
+        self.streams.setdefault(stream, []).append((message_id, fields))
         await asyncio.sleep(0)
         return message_id
 
-    async def xread(
-        self, streams: dict, block: int | None = None, count: int | None = None
-    ):
+    async def xread(self, streams: dict, block: int | None = None, count: int | None = None):
         await asyncio.sleep(0)
         response = []
         for name, after_id in streams.items():
-            self.read_stream_names.append(name)
-            entries = self._streams.get(name, [])
+            self.reads.append((name, block))
             new_entries = [
                 (message_id, fields)
-                for message_id, fields in entries
+                for message_id, fields in self.streams.get(name, [])
                 if int(message_id) > int(after_id)
             ]
             if new_entries:
-                response.append([name, new_entries])
+                response.append([name, new_entries[:count] if count else new_entries])
         if response:
             return response
         if block:
@@ -94,751 +87,294 @@ class FakeStreamClient:
 
 
 @pytest.fixture
-def fake_stream_client():
+def client():
     return FakeStreamClient()
 
 
 @pytest.fixture
-def redis_service_stub(fake_stream_client):
-    return types.SimpleNamespace(aioredis_client=fake_stream_client)
+def service(client):
+    return AgentTaskService(redis_service=types.SimpleNamespace(aioredis_client=client), poll_block_ms=50)
 
 
-@pytest.fixture
-def llm_data() -> LLMData:
-    return LLMData(provider="openai", config=LLMConfigData(model="gpt-4o"))
-
-
-@pytest.fixture
-def task_node_data(llm_data) -> TaskNodeData:
+def _task_node(name="task_node_1", **agent_fields) -> TaskNodeData:
     return TaskNodeData(
-        node_name="task_node_1",
+        node_name=name,
         agent_definition=AgentDefinitionData(
-            id=1,
-            name="researcher",
-            instructions="Research the topic.",
-            llm=llm_data,
+            id=1, name="researcher", instructions="Research the topic.", llm=LLM, **agent_fields
         ),
-        instructions="Summarize the findings.",
+        instructions=f"instructions for {name}",
     )
 
 
-async def _read_one_request(client, request_stream: str) -> StreamEnvelope:
-    while True:
-        response = await client.xread({request_stream: "0"}, block=100, count=1)
-        if response:
-            break
-    _stream_name, entries = response[0]
-    _message_id, fields = entries[0]
-    return StreamEnvelope.from_fields(fields)
+class FakeAgent:
+    """Answers the next request with `replies`, keeping the request blob it received."""
+
+    def __init__(self, client: FakeStreamClient, service: AgentTaskService, replies=(COMPLETED,)):
+        self.client = client
+        self.service = service
+        self.replies = replies
+        self.request: dict | None = None
+
+    async def reply_to(self, correlation_id: str, replies) -> None:
+        for event_type, payload in replies:
+            envelope = StreamEnvelope(type=event_type, correlation_id=correlation_id, payload=payload)
+            await self.client.xadd(
+                agent_result_stream(self.service.result_stream_prefix, correlation_id),
+                envelope.to_fields(),
+            )
+
+    async def __call__(self) -> None:
+        while not (response := await self.client.xread({self.service.request_stream: "0"}, block=100, count=1)):
+            pass
+        (_, [(_, fields)]) = response[0]
+        request = StreamEnvelope.from_fields(fields)
+        self.request = json.loads(await self.client.get(request.payload["request_key"]))
+        await self.reply_to(request.correlation_id, self.replies)
 
 
-def _result_stream(service: AgentTaskService, correlation_id: str) -> str:
-    return agent_result_stream(service.result_stream_prefix, correlation_id)
+async def _run(service, client, run=None, replies=(COMPLETED,), **kwargs):
+    """Run a task against a fake agent; returns (result or raised error, the agent)."""
+    agent = FakeAgent(client, service, replies)
+    responder = asyncio.create_task(agent())
+    try:
+        result = await (run or (lambda: service.run_task(_task_node(), StopEvent(), **kwargs)))()
+    except Exception as error:
+        result = error
+    finally:
+        responder.cancel()
+    return result, agent
 
 
-def _result_streams(client: FakeStreamClient, service: AgentTaskService) -> list[str]:
+def _leftover_run_keys(client, service) -> list[str]:
+    """Request keys and per-run result streams; a finished run must leave none."""
     prefix = f"{service.result_stream_prefix}:"
-    return [name for name in client._streams if name.startswith(prefix)]
+    return list(client.keys) + [name for name in client.streams if name.startswith(prefix)]
 
 
-async def _publish_result(
-    client,
-    service: AgentTaskService,
-    correlation_id: str,
-    payload: dict,
-    event_type: str = "agent.result",
-):
-    """Publish the way the agent does: to the run's own per-run stream."""
-    envelope = StreamEnvelope(
-        type=event_type, correlation_id=correlation_id, payload=payload
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        (COMPLETED, {"final_text": "done", "stop_reason": "completed"}),
+        # Hitting the failure limit still produced a summary the flow can use.
+        (
+            ("agent.result", {"stop_reason": "max_consecutive_failures", "final_text": "summary"}),
+            {"stop_reason": "max_consecutive_failures", "final_text": "summary"},
+        ),
+        (("agent.result", {"stop_reason": "llm_error", "error": "LLM call failed"}), AgentTaskError("LLM call failed")),
+        (("agent.error", {"error": "boom"}), AgentTaskError("boom")),
+    ],
+    ids=["completed", "max-consecutive-failures", "failure-stop-reason", "agent-error"],
+)
+async def test_run_ends_with_the_agents_answer_and_leaves_no_keys(service, client, reply, expected):
+    result, _ = await _run(service, client, replies=[reply])
+
+    if isinstance(expected, Exception):
+        assert isinstance(result, type(expected)) and str(result) == str(expected)
+    else:
+        assert result == expected
+    assert _leftover_run_keys(client, service) == []
+
+
+async def test_live_events_reach_on_event_in_order_and_others_are_skipped(service, client):
+    collected: list[str] = []
+    events = [
+        ("agent.task_start", {"task": {"name": "task_a", "order": 0}}),
+        ("agent.tool_call", {"id": "call_1", "name": "search", "arguments": "{}"}),
+        ("agent.heartbeat", {}),
+        ("agent.knowledge_search", {"collection_id": 7, "chunks": []}),
+        ("agent.tool_result", {"tool_call_id": "call_1", "content": "result"}),
+        ("agent.task_finish", {"task": {"name": "task_a", "order": 0}, "message": "done"}),
+    ]
+
+    result, _ = await _run(
+        service, client, replies=[*events, COMPLETED],
+        on_event=lambda envelope: collected.append(envelope.type),
     )
-    await client.xadd(_result_stream(service, correlation_id), envelope.to_fields())
+
+    assert collected == [
+        "agent.task_start", "agent.tool_call", "agent.knowledge_search",
+        "agent.tool_result", "agent.task_finish",
+    ]
+    assert result["final_text"] == "done"
 
 
-@pytest.mark.asyncio
-async def test_run_task_happy_path(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+@pytest.mark.parametrize(
+    "on_event",
+    [None, lambda envelope: (_ for _ in ()).throw(RuntimeError("callback exploded"))],
+    ids=["no-callback", "callback-raises"],
+)
+async def test_live_events_never_break_the_run(service, client, on_event):
+    tool_call = ("agent.tool_call", {"id": "call_1", "name": "search", "arguments": "{}"})
 
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        blob = await fake_stream_client.get(request_envelope.payload["request_key"])
-        AgentRequest(correlation_id="ignored", **json.loads(blob))
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {
-                "final_text": "done",
-                "stop_reason": "completed",
-                "tool_invocations": 0,
-                "iterations": 1,
-                "token_usage": {"total_tokens": 10},
-            },
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(task_node_data, StopEvent())
-    await responder
+    result, _ = await _run(service, client, replies=[tool_call, COMPLETED], on_event=on_event)
 
     assert result["final_text"] == "done"
-    assert fake_stream_client._kv == {}
-    assert _result_streams(fake_stream_client, service) == []
 
 
-@pytest.mark.asyncio
-async def test_run_task_never_reads_another_runs_result_stream(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-    foreign_stream = _result_stream(service, "foreign-run")
+async def test_run_never_reads_another_runs_result_stream(service, client):
+    """Another run's stream may hold another org's answer."""
     collected: list[StreamEnvelope] = []
+    agent = FakeAgent(client, service, replies=[])
+    foreign_stream = agent_result_stream(service.result_stream_prefix, "foreign-run")
 
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            "foreign-run",
-            {"id": "call_x", "name": "leak", "arguments": "{}"},
-            event_type="agent.tool_call",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            "foreign-run",
-            {"final_text": "another org's answer", "stop_reason": "completed"},
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "correct", "stop_reason": "completed"},
-        )
+    async def agent_that_also_answers_another_run():
+        await agent()
+        await agent.reply_to("foreign-run", [
+            ("agent.tool_call", {"id": "call_x", "name": "leak", "arguments": "{}"}),
+            ("agent.result", {"final_text": "another org's answer", "stop_reason": "completed"}),
+        ])
+        own_request_key = next(iter(client.keys))
+        await agent.reply_to(own_request_key.rsplit(":", 1)[1], [
+            ("agent.result", {"final_text": "correct", "stop_reason": "completed"}),
+        ])
 
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(
-        task_node_data, StopEvent(), on_event=collected.append
-    )
+    responder = asyncio.create_task(agent_that_also_answers_another_run())
+    result = await service.run_task(_task_node(), StopEvent(), on_event=collected.append)
     await responder
 
     assert result["final_text"] == "correct"
     assert collected == []
-    assert foreign_stream not in fake_stream_client.read_stream_names
-    assert len(fake_stream_client._streams[foreign_stream]) == 2
+    assert foreign_stream not in [name for name, _ in client.reads]
+    assert len(client.streams[foreign_stream]) == 2
 
 
-@pytest.mark.asyncio
-async def test_concurrent_runs_each_receive_only_their_own_result(
-    redis_service_stub, llm_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    def task_node(name: str) -> TaskNodeData:
-        return TaskNodeData(
-            node_name=name,
-            agent_definition=AgentDefinitionData(
-                id=1, name="researcher", instructions="Research.", llm=llm_data
-            ),
-            instructions=f"instructions for {name}",
-        )
-
-    async def fake_agent():
-        answered_message_ids: set[str] = set()
-        while len(answered_message_ids) < 2:
-            response = await fake_stream_client.xread(
-                {service.request_stream: "0"}, block=100
-            )
-            for _stream_name, entries in response:
+async def test_concurrent_runs_each_receive_only_their_own_result(service, client):
+    async def agent_echoing_instructions():
+        answered: set[str] = set()
+        while len(answered) < 2:
+            for _, entries in await client.xread({service.request_stream: "0"}, block=100):
                 for message_id, fields in entries:
-                    if message_id in answered_message_ids:
+                    if message_id in answered:
                         continue
-                    answered_message_ids.add(message_id)
-                    request_envelope = StreamEnvelope.from_fields(fields)
-                    blob = json.loads(
-                        await fake_stream_client.get(
-                            request_envelope.payload["request_key"]
-                        )
-                    )
-                    await _publish_result(
-                        fake_stream_client,
-                        service,
-                        request_envelope.correlation_id,
-                        {
-                            "final_text": blob["payload"]["task_instructions"],
-                            "stop_reason": "completed",
-                        },
-                    )
+                    answered.add(message_id)
+                    request = StreamEnvelope.from_fields(fields)
+                    blob = json.loads(await client.get(request.payload["request_key"]))
+                    await FakeAgent(client, service).reply_to(request.correlation_id, [
+                        ("agent.result", {"final_text": blob["payload"]["task_instructions"], "stop_reason": "completed"}),
+                    ])
 
-    responder = asyncio.create_task(fake_agent())
+    responder = asyncio.create_task(agent_echoing_instructions())
     first, second = await asyncio.gather(
-        service.run_task(task_node("run_a"), StopEvent()),
-        service.run_task(task_node("run_b"), StopEvent()),
+        service.run_task(_task_node("run_a"), StopEvent()),
+        service.run_task(_task_node("run_b"), StopEvent()),
     )
     await responder
 
-    assert first["final_text"] == "instructions for run_a"
-    assert second["final_text"] == "instructions for run_b"
-    assert _result_streams(fake_stream_client, service) == []
+    assert (first["final_text"], second["final_text"]) == ("instructions for run_a", "instructions for run_b")
+    assert _leftover_run_keys(client, service) == []
 
 
-@pytest.mark.asyncio
-async def test_run_task_raises_on_agent_error(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"error": "boom"},
-            event_type="agent.error",
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    with pytest.raises(AgentTaskError, match="boom"):
-        await service.run_task(task_node_data, StopEvent())
-    await responder
-
-    assert fake_stream_client._kv == {}
-    assert _result_streams(fake_stream_client, service) == []
-
-
-@pytest.mark.asyncio
-async def test_run_task_raises_on_failure_stop_reason(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"stop_reason": "llm_error", "error": "LLM call failed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    with pytest.raises(AgentTaskError, match="LLM call failed"):
-        await service.run_task(task_node_data, StopEvent())
-    await responder
-
-
-@pytest.mark.asyncio
-async def test_run_task_times_out(redis_service_stub, task_node_data):
+async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(client):
     service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=0.05, poll_block_ms=20
+        redis_service=types.SimpleNamespace(aioredis_client=client), default_timeout=0.2, poll_block_ms=20
+    )
+    collected: list[str] = []
+
+    result, _ = await _run(
+        service, client, replies=[("agent.task_start", {"task": {"name": "task_a", "order": 0}})],
+        on_event=lambda envelope: collected.append(envelope.type),
     )
 
-    with pytest.raises(AgentTaskTimeoutError):
-        await service.run_task(task_node_data, StopEvent())
+    assert isinstance(result, AgentTaskTimeoutError)
+    assert collected == ["agent.task_start"]
+    assert _leftover_run_keys(client, service) == []
 
 
-@pytest.mark.asyncio
-async def test_run_task_timeout_deletes_per_run_stream(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=0.2, poll_block_ms=20
-    )
-    collected: list[StreamEnvelope] = []
-
-    async def fake_agent_that_never_finishes():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"task": {"name": "task_a", "order": 0}},
-            event_type="agent.task_start",
-        )
-
-    responder = asyncio.create_task(fake_agent_that_never_finishes())
-    with pytest.raises(AgentTaskTimeoutError):
-        await service.run_task(task_node_data, StopEvent(), on_event=collected.append)
-    await responder
-
-    assert [envelope.type for envelope in collected] == ["agent.task_start"]
-    assert fake_stream_client._kv == {}
-    assert _result_streams(fake_stream_client, service) == []
-
-
-@pytest.mark.asyncio
-async def test_run_task_stops_mid_wait(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+async def test_stop_mid_wait_raises_stop_session_and_leaves_no_keys(service, client):
     stop_event = StopEvent()
-    collected: list[StreamEnvelope] = []
 
-    def stop_after_first_live_event(envelope: StreamEnvelope) -> None:
-        collected.append(envelope)
+    def stop_on_first_event(envelope):
         stop_event.set()
 
-    async def fake_agent_that_never_finishes():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"task": {"name": "task_a", "order": 0}},
-            event_type="agent.task_start",
-        )
-
-    responder = asyncio.create_task(fake_agent_that_never_finishes())
-    with pytest.raises(StopSession):
-        await service.run_task(
-            task_node_data, stop_event, on_event=stop_after_first_live_event
-        )
-    await responder
-
-    assert [envelope.type for envelope in collected] == ["agent.task_start"]
-    assert fake_stream_client._kv == {}
-    assert _result_streams(fake_stream_client, service) == []
-
-
-@pytest.mark.asyncio
-async def test_run_task_forwards_live_events_to_on_event_in_order(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-    collected: list[StreamEnvelope] = []
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"id": "call_1", "name": "search", "arguments": "{}"},
-            event_type="agent.tool_call",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"tool_call_id": "call_1", "content": "result"},
-            event_type="agent.tool_result",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(
-        task_node_data, StopEvent(), on_event=collected.append
-    )
-    await responder
-
-    assert [envelope.type for envelope in collected] == [
-        "agent.tool_call",
-        "agent.tool_result",
-    ]
-    assert result["final_text"] == "done"
-    assert _result_streams(fake_stream_client, service) == []
-
-
-@pytest.mark.asyncio
-async def test_run_task_forwards_task_lifecycle_events_to_on_event_in_order(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-    collected: list[StreamEnvelope] = []
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"task": {"name": "task_a", "order": 0}},
-            event_type="agent.task_start",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"id": "call_1", "name": "search", "arguments": "{}"},
-            event_type="agent.tool_call",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"tool_call_id": "call_1", "content": "result"},
-            event_type="agent.tool_result",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"task": {"name": "task_a", "order": 0}, "message": "done"},
-            event_type="agent.task_finish",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(
-        task_node_data, StopEvent(), on_event=collected.append
-    )
-    await responder
-
-    assert [envelope.type for envelope in collected] == [
-        "agent.task_start",
-        "agent.tool_call",
-        "agent.tool_result",
-        "agent.task_finish",
-    ]
-    assert result["final_text"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_run_task_forwards_knowledge_search_events_and_does_not_end_wait(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-    collected: list[StreamEnvelope] = []
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"collection_id": 7, "chunks": []},
-            event_type="agent.knowledge_search",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(
-        task_node_data, StopEvent(), on_event=collected.append
-    )
-    await responder
-
-    assert [envelope.type for envelope in collected] == ["agent.knowledge_search"]
-    assert result["final_text"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_run_task_on_event_raising_logs_warning_and_still_returns_final(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    def bad_on_event(envelope):
-        raise RuntimeError("callback exploded")
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"id": "call_1", "name": "search", "arguments": "{}"},
-            event_type="agent.tool_call",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(task_node_data, StopEvent(), on_event=bad_on_event)
-    await responder
-
-    assert result["final_text"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_run_task_skips_unknown_event_type_on_own_stream(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {},
-            event_type="agent.heartbeat",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(task_node_data, StopEvent())
-    await responder
-
-    assert result["final_text"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_run_task_live_events_fine_with_on_event_none(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"id": "call_1", "name": "search", "arguments": "{}"},
-            event_type="agent.tool_call",
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"final_text": "done", "stop_reason": "completed"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(task_node_data, StopEvent())
-    await responder
-
-    assert result["final_text"] == "done"
-
-
-def test_build_request_blob_appends_surface_instructions(redis_service_stub, llm_data):
-    service = AgentTaskService(redis_service=redis_service_stub)
-    task_node_data = TaskNodeData(
-        node_name="task_node_1",
-        agent_definition=AgentDefinitionData(
-            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
-        ),
-        instructions="Summarize the findings.",
-        surface=CombinedSurfaceData(instructions="Never reveal secrets."),
+    result, _ = await _run(
+        service, client,
+        run=lambda: service.run_task(_task_node(), stop_event, on_event=stop_on_first_event),
+        replies=[("agent.task_start", {"task": {"name": "task_a", "order": 0}})],
     )
 
-    blob = json.loads(service._build_request_blob(task_node_data))
-
-    instructions = blob["agents"][0]["instructions"]
-    assert "Research the topic." in instructions
-    assert "Never reveal secrets." in instructions
+    assert isinstance(result, StopSession)
+    assert _leftover_run_keys(client, service) == []
 
 
-def test_build_request_blob_carries_tool_limit_fields(redis_service_stub, llm_data):
-    service = AgentTaskService(redis_service=redis_service_stub)
-    task_node_data = TaskNodeData(
-        node_name="task_node_1",
-        agent_definition=AgentDefinitionData(
-            id=1,
-            name="researcher",
-            instructions="Research the topic.",
-            llm=llm_data,
-            max_tool_calls=5,
-            tool_timeout=30,
-            max_consecutive_failures=2,
-            schema_max_retries=4,
-        ),
-        instructions="Summarize the findings.",
+async def test_task_request_carries_the_agent_spec_and_task(service, client):
+    credentials = StorageCredentials(access_key="scoped-ak", secret_key="scoped-sk")
+    node = _task_node(max_tool_calls=5, tool_timeout=30, max_consecutive_failures=2, schema_max_retries=4)
+    node = node.model_copy(
+        update={
+            "surface": CombinedSurfaceData(instructions="Never reveal secrets."),
+            "output_schema": {"type": "object"},
+        }
     )
 
-    blob = json.loads(service._build_request_blob(task_node_data))
-
-    agent_spec = blob["agents"][0]
-    assert agent_spec["max_tool_calls"] == 5
-    assert agent_spec["tool_timeout"] == 30
-    assert agent_spec["max_consecutive_failures"] == 2
-    assert agent_spec["schema_max_retries"] == 4
-
-
-@pytest.mark.asyncio
-async def test_run_task_returns_result_on_max_consecutive_failures_stop_reason(
-    redis_service_stub, task_node_data, fake_stream_client
-):
-    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
-
-    async def fake_agent():
-        request_envelope = await _read_one_request(
-            fake_stream_client, service.request_stream
-        )
-        await _publish_result(
-            fake_stream_client,
-            service,
-            request_envelope.correlation_id,
-            {"stop_reason": "max_consecutive_failures", "final_text": "summary"},
-        )
-
-    responder = asyncio.create_task(fake_agent())
-    result = await service.run_task(task_node_data, StopEvent())
-    await responder
-
-    assert result["final_text"] == "summary"
-
-
-def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
-    service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
-    )
-    agent_definition = AgentDefinitionData(
-        id=1, name="researcher", instructions="Research.", max_execution_time=10
+    _, agent = await _run(
+        service, client, run=lambda: service.run_task(node, StopEvent(), storage_credentials=credentials)
     )
 
-    single_task_timeout = service._resolve_timeout_s(agent_definition, task_count=1)
-    multi_task_timeout = service._resolve_timeout_s(agent_definition, task_count=3)
-
-    assert single_task_timeout == 10 + 60.0
-    assert multi_task_timeout == 10 * 3 + 60.0
-
-
-def test_resolve_timeout_s_defaults_unchanged_for_single_task(redis_service_stub):
-    service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=600.0
-    )
-
-    assert service._resolve_timeout_s(None) == 600.0
-    assert service._resolve_timeout_s(None, task_count=1) == 600.0
-    assert service._resolve_timeout_s(None, task_count=3) == 600.0 * 3
+    request = AgentRequest(correlation_id="unused", **agent.request)
+    assert request.run_type == "SINGLE_TASK"
+    (spec,) = request.agents
+    # Surface instructions are appended to the agent's own.
+    assert spec.instructions == "Research the topic.\n\nNever reveal secrets."
+    assert (spec.max_tool_calls, spec.tool_timeout, spec.max_consecutive_failures, spec.schema_max_retries) == (5, 30, 2, 4)
+    assert request.payload == {"task_instructions": "instructions for task_node_1", "output_schema": {"type": "object"}}
+    assert request.storage_credentials == credentials
 
 
-@pytest.mark.asyncio
-async def test_run_task_resolves_timeout_for_single_task(
-    redis_service_stub, task_node_data, monkeypatch
-):
-    service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
-    )
-    task_node_data.agent_definition.max_execution_time = 10
-    captured_timeout = {}
-
-    async def fake_dispatch(blob, timeout_s, stop_event, on_event=None):
-        captured_timeout["value"] = timeout_s
-        return {"final_text": "done"}
-
-    monkeypatch.setattr(service, "_dispatch", fake_dispatch)
-
-    await service.run_task(task_node_data, StopEvent())
-
-    assert captured_timeout["value"] == 10 + 60.0
-
-
-@pytest.mark.asyncio
-async def test_run_agent_node_resolves_timeout_scaled_by_task_count(
-    redis_service_stub, llm_data, monkeypatch
-):
-    service = AgentTaskService(
-        redis_service=redis_service_stub, default_timeout=600.0, timeout_buffer_s=60.0
-    )
-    agent_node_data = AgentNodeData(
+async def test_agent_node_request_lists_every_task_with_its_context(service, client):
+    node = AgentNodeData(
         node_name="agent_node_1",
-        agent_definition=AgentDefinitionData(
-            id=1,
-            name="researcher",
-            instructions="Research the topic.",
-            llm=llm_data,
-            max_execution_time=10,
-        ),
-        tasks=[
-            AgentNodeTaskData(name="task_a", order=0, instructions="Write draft."),
-            AgentNodeTaskData(name="task_b", order=1, instructions="Polish draft."),
-            AgentNodeTaskData(name="task_c", order=2, instructions="Review draft."),
-        ],
-    )
-    captured_timeout = {}
-
-    async def fake_dispatch(blob, timeout_s, stop_event, on_event=None):
-        captured_timeout["value"] = timeout_s
-        return {"final_text": "done"}
-
-    monkeypatch.setattr(service, "_dispatch", fake_dispatch)
-
-    await service.run_agent_node(agent_node_data, StopEvent())
-
-    assert captured_timeout["value"] == 10 * 3 + 60.0
-
-
-def test_build_agent_node_request_blob(redis_service_stub, llm_data):
-    service = AgentTaskService(redis_service=redis_service_stub)
-    agent_node_data = AgentNodeData(
-        node_name="agent_node_1",
-        agent_definition=AgentDefinitionData(
-            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
-        ),
-        surface=CombinedSurfaceData(instructions="Never reveal secrets."),
+        agent_definition=AgentDefinitionData(id=1, name="researcher", instructions="Research the topic.", llm=LLM),
         tasks=[
             AgentNodeTaskData(name="task_a", order=0, instructions="Write draft."),
             AgentNodeTaskData(
-                name="task_b",
-                order=1,
-                instructions="Polish draft.",
-                output_schema={"type": "object"},
-                context_tasks=["task_a"],
+                name="task_b", order=1, instructions="Polish draft.",
+                output_schema={"type": "object"}, context_tasks=["task_a"],
             ),
         ],
     )
 
-    blob = json.loads(service._build_agent_node_request_blob(agent_node_data))
+    _, agent = await _run(service, client, run=lambda: service.run_agent_node(node, StopEvent()))
 
-    assert blob["run_type"] == "LIST_OF_TASKS"
-    assert len(blob["agents"]) == 1
-    instructions = blob["agents"][0]["instructions"]
-    assert "Research the topic." in instructions
-    assert "Never reveal secrets." in instructions
+    assert agent.request["run_type"] == "LIST_OF_TASKS"
+    assert agent.request["payload"]["tasks"] == [
+        {"name": "task_a", "instructions": "Write draft.", "output_schema": None, "context": []},
+        {"name": "task_b", "instructions": "Polish draft.", "output_schema": {"type": "object"}, "context": ["task_a"]},
+    ]
 
-    tasks = blob["payload"]["tasks"]
-    assert tasks[0] == {
-        "name": "task_a",
-        "instructions": "Write draft.",
-        "output_schema": None,
-        "context": [],
-    }
-    assert tasks[1] == {
-        "name": "task_b",
-        "instructions": "Polish draft.",
-        "output_schema": {"type": "object"},
-        "context": ["task_a"],
-    }
+
+def _agent_node(task_count: int, max_execution_time: int | None) -> AgentNodeData:
+    return AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=LLM, max_execution_time=max_execution_time
+        ),
+        tasks=[AgentNodeTaskData(name=f"task_{index}", order=index, instructions="Do.") for index in range(task_count)],
+    )
+
+
+@pytest.mark.parametrize(
+    ("max_execution_time", "task_count", "expected_timeout_s"),
+    [
+        (10, None, 10 + 60),
+        (10, 3, 10 * 3 + 60),
+        (None, None, 600),
+        (None, 3, 600 * 3),
+    ],
+    ids=["task-own-limit-plus-buffer", "agent-node-scales-by-tasks", "task-default", "agent-node-default-scaled"],
+)
+async def test_wait_is_bounded_by_the_agents_execution_limit(client, max_execution_time, task_count, expected_timeout_s):
+    # A poll block longer than any timeout makes the first wait equal to the whole timeout.
+    service = AgentTaskService(
+        redis_service=types.SimpleNamespace(aioredis_client=client),
+        default_timeout=600.0, timeout_buffer_s=60.0, poll_block_ms=10**9,
+    )
+    if task_count is None:
+        node = _task_node(max_execution_time=max_execution_time)
+        run = lambda: service.run_task(node, StopEvent())  # noqa: E731
+    else:
+        run = lambda: service.run_agent_node(_agent_node(task_count, max_execution_time), StopEvent())  # noqa: E731
+
+    await _run(service, client, run=run)
+
+    first_wait_ms = next(block for name, block in client.reads if name.startswith(service.result_stream_prefix))
+    assert first_wait_ms / 1000 == pytest.approx(expected_timeout_s, abs=1)

@@ -12,11 +12,38 @@ from tables.import_export.enums import EntityType
 from tables.import_export.utils import (
     compared_values,
     ensure_unique_identifier,
+    ensure_unique_slug,
+    slug_base,
     create_filters,
     filter_by_name_or_renamed_copy,
     import_values,
     nest_owned_surface_entries,
 )
+
+
+@pytest.mark.parametrize(
+    ("base", "taken", "expected"),
+    [
+        ("orders", [], "orders"),
+        ("orders", ["orders"], "orders-2"),
+        ("orders", ["orders", "orders-2"], "orders-3"),
+        ("orders-2024", ["orders-2024"], "orders-2024-2"),
+    ],
+)
+def test_ensure_unique_slug(base, taken, expected):
+    assert ensure_unique_slug(base, taken) == expected
+
+
+def test_ensure_unique_slug_keeps_the_suffix_within_the_max_length():
+    base = "a" * 255
+    assert ensure_unique_slug(base, [base], max_length=255) == "a" * 253 + "-2"
+
+
+@pytest.mark.parametrize(
+    ("name", "family"), [("orders", "orders"), ("orders-2", "orders"), ("orders-2024", "orders")]
+)
+def test_slug_base_shares_one_lock_family_across_dash_numbers(name, family):
+    assert slug_base(name) == family
 
 
 @pytest.mark.django_db

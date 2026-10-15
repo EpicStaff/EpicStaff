@@ -18,6 +18,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import (
@@ -32,7 +33,7 @@ from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
 from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
-from tables.filters import SessionFilter
+from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
     CsvExportFormatStrategy,
@@ -318,6 +319,8 @@ class SessionViewSet(
             qs = qs.filter(finished_at__gte=data["finished_at_after"])
         if "finished_at_before" in data:
             qs = qs.filter(finished_at__lte=data["finished_at_before"])
+        if "id_search" in data:
+            qs = filter_sessions_by_id_search(qs, data["id_search"])
 
         node_name = data.get("node_name")
         if node_name:
@@ -451,6 +454,16 @@ class RunSession(APIView):
             else TriggerSpec.manual()
         )
         api_key = request.auth if isinstance(request.auth, ApiKey) else None
+        # Running needs only FLOWS READ, but a payload value at a declared org path
+        # is written back to the flow's shared memory: overriding one is managing
+        # the flow's persistent variables, which takes FLOWS UPDATE. A sub-flow
+        # payload is built by the parent's agent from whoever started the chain,
+        # so the tool key's permissions say nothing about who chose the values.
+        allow_persistent_override = parent_session_id is None and (
+            PermissionResolver()
+            .resolve(user=request.user, org_id=graph.org_id)
+            .can(ResourceType.FLOWS, Permission.UPDATE)
+        )
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
@@ -461,6 +474,7 @@ class RunSession(APIView):
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
+                allow_persistent_override=allow_persistent_override,
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:

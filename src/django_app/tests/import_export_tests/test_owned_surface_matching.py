@@ -100,7 +100,7 @@ def _soft_deleted_tool_row(agent, tools):
     surface = _owned_surface(agent, "a", "k", python=[(tools["python"], ToolMode.DENY)])
     entry = yield
     SurfacePythonTool.all_objects.filter(surface=surface).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
     _owned_entry(entry, "a")["tools"][EntityType.PYTHON_CODE_TOOL] = []
 
@@ -109,7 +109,7 @@ def _soft_deleted_tool_row_still_in_file(agent, tools):
     surface = _owned_surface(agent, "a", "k", python=[(tools["python"], ToolMode.DENY)])
     yield
     SurfacePythonTool.all_objects.filter(surface=surface).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
 

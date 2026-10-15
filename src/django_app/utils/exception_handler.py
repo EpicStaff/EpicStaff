@@ -7,8 +7,9 @@ from foundation.transport.http.errors import (
     ClientRateLimitError,
     ClientValidationError,
 )
-from rest_framework import exceptions, status
-from rest_framework.exceptions import APIException
+from rest_framework import status
+from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
+from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
 
@@ -57,11 +58,11 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     detail = _upstream_detail(exc)
 
     if isinstance(exc, ClientNotFoundError):
-        return exceptions.NotFound(detail)
+        return NotFound(detail)
     if isinstance(exc, ClientValidationError):
-        return exceptions.ValidationError(detail)
+        return ValidationError(detail)
     if isinstance(exc, ClientRateLimitError):
-        return exceptions.Throttled(detail=detail)
+        return Throttled(detail=detail)
 
     upstream_error = APIException(detail)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
@@ -72,10 +73,17 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
+    # DRF's own `exception_handler()` converts Django's `Http404`/
+    # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,
+    # but only on its own local `exc` binding -- the caller's `exc` here is
+    # left untouched. Without mirroring that conversion, the `isinstance`
+    # check below always misses for these two (e.g. `get_object_or_404()`
+    # on a queryset the caller isn't allowed to see), and a correct 404/403
+    # response falls through to the generic 500 branch.
     if isinstance(exc, Http404):
-        exc = exceptions.NotFound(*exc.args)
+        exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
-        exc = exceptions.PermissionDenied(*exc.args)
+        exc = DRFPermissionDenied(*exc.args)
     elif isinstance(exc, ClientError):
         exc = _client_error_as_api_exception(exc)
 

@@ -1,0 +1,111 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterOutlet } from '@angular/router';
+import { ButtonComponent, ConfirmationDialogService, RouteTab, RouteTabsComponent } from '@shared/components';
+import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { filter, finalize, switchMap } from 'rxjs';
+
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { RECYCLE_BIN_TABS } from '../../constants/recycle-bin-tabs.constants';
+import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
+import { RecycleBinReloadService } from '../../services/recycle-bin-reload.service';
+import {
+    bulkActionErrorMessage,
+    emptyRecycleBinConfirmationDialog,
+    failedItemsMessage,
+    leftInBinMessage,
+    purgeResultMessage,
+} from '../../utils/recycle-bin-messages.util';
+import { visibleRecycleBinTabs } from '../../utils/visible-recycle-bin-tabs.util';
+
+@Component({
+    selector: 'app-recycle-bin-page',
+    imports: [RouterOutlet, RouteTabsComponent, ButtonComponent, HideInlineSubtitleOnOverflowDirective],
+    templateUrl: './recycle-bin-page.component.html',
+    styleUrls: ['./recycle-bin-page.component.scss'],
+    providers: [RecycleBinReloadService],
+})
+export class RecycleBinPageComponent {
+    protected readonly visibleTabs = computed(() =>
+        visibleRecycleBinTabs((resource, action) => this.permissionsService.can(resource, action))
+    );
+    /** The visible tabs, as the settings page shows its own (already filtered by permission). */
+    protected readonly routeTabs = computed<RouteTab[]>(() =>
+        this.visibleTabs().map((tab) => ({
+            routerLink: tab.key,
+            label: tab.label,
+            isPermitted: () => true,
+        }))
+    );
+    /** Superadmin-only; a global flag (not per org) that follows the /me reload after a 403 and logout's clear(). */
+    protected readonly canEmpty = computed(() => this.permissionsService.isSuperadmin);
+    protected readonly subtitle = computed(() => {
+        const days = this.recycleBinSettings.retentionDays();
+        return days === null
+            ? "Deleted items stay here for a while, then they're removed for good."
+            : `Deleted items stay here for ${days} ${days === 1 ? 'day' : 'days'}, then they're removed for good.`;
+    });
+    protected readonly emptying = signal(false);
+    /** Items left while a large bin empties over several requests; null before the first answer. */
+    protected readonly emptyingLeft = signal<number | null>(null);
+    /** "Emptying…" from the click on (the first answer can take a while), with the count once known. */
+    protected readonly emptyButtonLabel = computed(() => {
+        if (!this.emptying()) return 'Empty recycle bin';
+        const left = this.emptyingLeft();
+        return left === null ? 'Emptying…' : `Emptying… ${left} left`;
+    });
+
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
+    private readonly bulk = inject(RecycleBinBulkService);
+    private readonly confirmationDialog = inject(ConfirmationDialogService);
+    private readonly toastService = inject(ToastService);
+    private readonly reloadRequests = inject(RecycleBinReloadService);
+    private readonly destroyRef = inject(DestroyRef);
+
+    protected onEmptyRecycleBin(): void {
+        // A superadmin empties the whole bin: every tab.
+        const tabs = RECYCLE_BIN_TABS;
+        this.confirmationDialog
+            .confirm(emptyRecycleBinConfirmationDialog(tabs))
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() => {
+                    this.emptying.set(true);
+                    return this.bulk
+                        .emptyAll((left) => this.emptyingLeft.set(left))
+                        .pipe(
+                            finalize(() => {
+                                this.emptying.set(false);
+                                this.emptyingLeft.set(null);
+                            })
+                        );
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (result) => {
+                    const success = purgeResultMessage(result);
+                    if (success !== null) this.toastService.success(success);
+                    else if (result.failed.length === 0 && result.leftCount === 0) {
+                        this.toastService.success('The recycle bin is already empty.');
+                    }
+                    const failure = failedItemsMessage('delete', result.failed);
+                    if (failure !== null) this.toastService.error(failure);
+                    const left = leftInBinMessage(result.leftCount);
+                    if (left !== null) this.toastService.warning(left);
+                    this.reloadRequests.request();
+                },
+                error: (error: HttpErrorResponse) => {
+                    // A 403 is handled by the forbidden interceptor, which also reloads the page.
+                    if (error.status === 403) return;
+                    const message = bulkActionErrorMessage(error, 'delete');
+                    if (message !== null) this.toastService.error(message);
+                    this.reloadRequests.request();
+                },
+            });
+    }
+}
