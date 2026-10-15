@@ -10,6 +10,7 @@ export interface VenvLib {
     name: string;
     specification: string;
     version: string | null;
+    description: string | null;
 }
 
 export interface VenvLibUpdate {

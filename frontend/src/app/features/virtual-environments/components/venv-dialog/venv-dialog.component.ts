@@ -26,6 +26,7 @@ import { TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { merge, Observable, take } from 'rxjs';
 
+import { ToastService } from '../../../../services/notifications';
 import { CreateVenvRequest, Venv, VENV_LIBRARY_VERSION_PATTERN, VenvLib } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
@@ -52,6 +53,7 @@ const SPECIFIER_OPERATOR_LABELS: Record<SpecifierOperator, string> = {
 
 interface LibraryRowGroup {
     name: FormControl<string>;
+    description: FormControl<string>;
     operator: FormControl<SpecifierOperator>;
     version: FormControl<string>;
     // Unparseable stored specifier, sent back unchanged until the row is edited.
@@ -90,7 +92,6 @@ function compatibleReleaseValidator(control: AbstractControl): ValidationErrors 
 })
 export class VenvDialogComponent {
     readonly isSubmitting = signal(false);
-    readonly errorMessage = signal<string | null>(null);
 
     readonly data = inject<VenvDialogData | null>(DIALOG_DATA, { optional: true }) ?? {};
     readonly isEdit = !!this.data.venv;
@@ -116,6 +117,7 @@ export class VenvDialogComponent {
 
     private readonly dialogRef = inject<DialogRef<Venv | null>>(DialogRef);
     private readonly venvsApi = inject(VenvsApiService);
+    private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
@@ -152,7 +154,6 @@ export class VenvDialogComponent {
         if (this.isSubmitting()) return;
 
         this.isSubmitting.set(true);
-        this.errorMessage.set(null);
         const body = this.buildPayload();
         const request$: Observable<Venv> = this.data.venv
             ? this.venvsApi.updateVenv(this.data.venv.id, body)
@@ -162,7 +163,7 @@ export class VenvDialogComponent {
             next: (venv) => this.dialogRef.close(venv),
             error: (error: HttpErrorResponse) => {
                 this.isSubmitting.set(false);
-                this.errorMessage.set(extractHttpErrorMessage(error));
+                this.toastService.error(extractHttpErrorMessage(error));
             },
         });
     }
@@ -188,6 +189,7 @@ export class VenvDialogComponent {
                     nonNullable: true,
                     validators: [Validators.required],
                 }),
+                description: new FormControl(lib?.description ?? '', { nonNullable: true }),
                 operator: new FormControl(parsed?.operator ?? '==', { nonNullable: true }),
                 version: new FormControl(parsed?.version ?? '', {
                     nonNullable: true,
@@ -227,6 +229,7 @@ export class VenvDialogComponent {
                     name: row.name.trim(),
                     specification: row.preservedSpecification ?? built,
                     version: null,
+                    description: row.description.trim() || null,
                 };
             }),
         };

@@ -24,12 +24,6 @@
         (ngSubmit)="submit()"
     >
         <section class="venv-dialog__section venv-dialog__section--name">
-            @if (errorMessage()) {
-                <div class="venv-dialog__error-message">
-                    <p class="text-body">{{ errorMessage() }}</p>
-                </div>
-            }
-
             <div class="venv-dialog__name-row">
                 <div class="venv-dialog__name-label">
                     <label
@@ -57,8 +51,9 @@
                 <table>
                     <colgroup>
                         <col class="venv-dialog__col-index" />
+                        <col class="venv-dialog__col-name" />
                         <col />
-                        <col />
+                        <col class="venv-dialog__col-version" />
                         <col class="venv-dialog__col-spec" />
                         <col class="venv-dialog__col-action" />
                     </colgroup>
@@ -66,6 +61,7 @@
                         <tr class="text-body-small">
                             <th class="venv-dialog__cell--center">#</th>
                             <th>Library Name<span class="venv-dialog__required">*</span></th>
+                            <th>Description</th>
                             <th>Version</th>
                             <th>Specification</th>
                             <th class="venv-dialog__cell--center">
@@ -108,6 +104,18 @@
                                         [class.venv-dialog__cell-input--invalid]="
                                             row.controls.name.invalid && row.controls.name.touched
                                         "
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="description"
+                                        placeholder="e.g. HTTP client"
+                                        aria-label="Description"
+                                        appTooltipOnOverflow
+                                        matTooltipPosition="above"
+                                        [matTooltip]="row.controls.description.value"
                                     />
                                 </td>
                                 <td>

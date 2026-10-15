@@ -48,17 +48,6 @@
         }
     }
 
-    &__error-message {
-        background-color: var(--red-450-alpha-10);
-        color: var(--color-error);
-        padding: 12px;
-        border-radius: 4px;
-
-        p {
-            margin: 0;
-        }
-    }
-
     &__name-row {
         display: flex;
         align-items: flex-start;
@@ -128,6 +117,14 @@
 
     &__col-index {
         width: 28px;
+    }
+
+    &__col-name {
+        width: 30%;
+    }
+
+    &__col-version {
+        width: 15%;
     }
 
     &__col-spec {
