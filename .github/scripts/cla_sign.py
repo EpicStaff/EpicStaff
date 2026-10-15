@@ -4,12 +4,14 @@
 Triggered by cla.yml on `pull_request_target` (opened/closed/synchronize) and on
 `issue_comment` (created) for PR comments. Records a signature in Google Drive
 when the commenter posts the sign phrase, then always re-evaluates the CLA
-status of every commit author on the PR and of the PR opener, posts/updates a
-single tracking comment, and sets a `CLA` commit status on the PR head SHA.
+status of every commit author and `Co-authored-by:` co-author on the PR and of
+the PR opener, posts/updates a single tracking comment, and sets a `CLA` commit
+status on the PR head SHA.
 
-The opener is checked because commit authors are matched by git email, which
-anyone can forge. The opener comes from the GitHub API and cannot be forged, so
-a real person always gives the licence grant. Only allow-listed bots (Bot
+The opener is checked because commit authors are matched by git email, and
+co-authors by commit-message trailers, which anyone can forge or leave out.
+The opener comes from the GitHub API and cannot be forged, so a real person
+always gives the licence grant. Only allow-listed bots (Bot
 account type and login in `CLA_ALLOWLIST`) are exempt, as commit authors and as
 the opener.
 
@@ -47,6 +49,9 @@ GH = "https://api.github.com"
 SIGN_PHRASE = "I have read the CLA Document and I hereby sign the CLA"
 RECHECK_PHRASE = "recheck"
 COMMENT_MARKER = "<!-- cla-bot -->"
+# Keeps the comment under GitHub's size limit and stops it from mentioning
+# hundreds of accounts at once.
+MAX_LISTED_ENTRIES = 25
 
 
 def _github_headers(token: str) -> dict[str, str]:
@@ -167,6 +172,25 @@ def set_commit_status(
     response.raise_for_status()
 
 
+def _as_inline_code(text: str) -> str:
+    """Wrap untrusted text in inline code so it cannot @-mention, link or format.
+
+    Backticks are replaced first, because one would close the code span early.
+    """
+    safe_text = " ".join(text.replace("`", "'").split())
+    return f"`{safe_text}`"
+
+
+def _bullet_list(entries: list[str]) -> list[str]:
+    """Return markdown list lines for at most MAX_LISTED_ENTRIES entries, then a count."""
+    lines = [f"- {entry}" for entry in entries[:MAX_LISTED_ENTRIES]]
+    hidden_count = len(entries) - MAX_LISTED_ENTRIES
+    if hidden_count > 0:
+        lines.append(f"- and {hidden_count} more")
+
+    return lines
+
+
 def build_comment_body(version: str, unsigned: list[dict[str, Any]], unresolved: list[str]) -> str:
     """Build the tracking-comment markdown for the current CLA status."""
     if not unsigned and not unresolved:
@@ -189,18 +213,19 @@ def build_comment_body(version: str, unsigned: list[dict[str, Any]], unresolved:
     if unsigned:
         lines.append("")
         lines.append("The following contributors still need to sign:")
-        for author in unsigned:
-            lines.append(f"- @{author['login']}")
+        lines.extend(_bullet_list([f"@{author['login']}" for author in unsigned]))
 
     if unresolved:
         lines.append("")
         lines.append(
-            "Some commits on this PR have an author that could not be linked to a "
-            "GitHub account. Please set your commit email to one associated with "
-            "your GitHub account and force-push:"
+            "Some commit authors or co-authors on this PR could not be linked to a "
+            "GitHub account. For a commit author, set your commit email to one "
+            "linked to your GitHub account. For a `Co-authored-by:` trailer, use "
+            "the co-author's GitHub noreply email "
+            "(`<id>+<login>@users.noreply.github.com`) or remove the trailer. "
+            "Then rewrite the commits and force-push:"
         )
-        for git_author in unresolved:
-            lines.append(f"- {git_author}")
+        lines.extend(_bullet_list([_as_inline_code(person) for person in unresolved]))
 
     return "\n".join(lines)
 

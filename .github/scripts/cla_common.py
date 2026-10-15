@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sys
 from typing import Any
 
@@ -34,6 +35,24 @@ GH = "https://api.github.com"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 DEFAULT_ALLOWLIST = "dependabot[bot]"
+# Each new co-author costs one GitHub API call, and the workflow token's rate limit
+# is shared by the whole repository. A PR could otherwise list hundreds of fake
+# co-authors and use up that limit on every push.
+MAX_CO_AUTHOR_LOOKUPS_PER_RUN = 20
+
+PARAGRAPH_SEPARATOR_RE = re.compile(r"\n[ \t]*\n")
+CO_AUTHOR_TRAILER_RE = re.compile(r"^\s*co-authored-by\s*:(?P<value>.*)$", re.IGNORECASE)
+NAME_AND_EMAIL_RE = re.compile(r"(?P<name>[^<>]*?)\s*<\s*(?P<email>[^<>\s]+)\s*>")
+# GitHub logins: letters, digits and hyphens, at most 39 characters; app bots end in "[bot]".
+# Keeping to this charset also stops a crafted email from changing the lookup URL path.
+GITHUB_LOGIN_PATTERN = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\[bot\])?"
+NOREPLY_EMAIL_WITH_ID_RE = re.compile(
+    rf"(?P<id>[0-9]{{1,20}})\+(?P<login>{GITHUB_LOGIN_PATTERN})@users\.noreply\.github\.com",
+    re.IGNORECASE,
+)
+NOREPLY_EMAIL_LOGIN_ONLY_RE = re.compile(
+    rf"(?P<login>{GITHUB_LOGIN_PATTERN})@users\.noreply\.github\.com", re.IGNORECASE
+)
 
 
 def drive_service():
@@ -207,19 +226,128 @@ def is_allowlisted_bot(user: dict[str, Any], allowlist: set[str]) -> bool:
     return user.get("type") == "Bot" and user.get("login") in allowlist
 
 
-def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str, Any]], list[str]]:
-    """Resolve the distinct GitHub authors of a PR's commits.
+def parse_co_authors(message: str) -> list[str]:
+    """Return the values of the ``Co-authored-by:`` trailers in a commit message.
 
-    Returns (authors, unresolved) where authors is a de-duplicated list of
-    {"login": str, "id": int} dicts and unresolved is a list of git author
-    "name <email>" strings for commits whose author could not be linked to a
-    GitHub account.
+    Only the last paragraph of the message is read as trailers, so a
+    ``Co-authored-by:`` line quoted in the body is ignored. Unlike git, a
+    message whose only paragraph is a trailer also counts — stricter on purpose.
+    The key is matched loosely: any case (``Co-Authored-By``) and spaces before
+    the colon. A line that starts with whitespace right after a trailer is a
+    folded continuation of it. Each value is returned with its whitespace
+    collapsed to single spaces, and is not validated here.
+    """
+    paragraphs = PARAGRAPH_SEPARATOR_RE.split(message.replace("\r\n", "\n").strip())
+    last_paragraph = paragraphs[-1]
+
+    values: list[str] = []
+    is_inside_trailer = False
+    for line in last_paragraph.split("\n"):
+        if is_inside_trailer and line[:1].isspace() and line.strip():
+            values[-1] = f"{values[-1]} {line}"
+            continue
+
+        match = CO_AUTHOR_TRAILER_RE.match(line)
+        is_inside_trailer = match is not None
+        if match:
+            values.append(match.group("value"))
+
+    return [" ".join(value.split()) for value in values]
+
+
+def parse_name_and_email(trailer_value: str) -> tuple[str, str] | None:
+    """Split a ``Name <email>`` trailer value into (name, email); None if it is malformed."""
+    match = NAME_AND_EMAIL_RE.fullmatch(trailer_value.strip())
+    if match is None:
+        return None
+
+    return match.group("name"), match.group("email")
+
+
+def parse_noreply_email(email: str) -> int | str | None:
+    """Return what a GitHub noreply email identifies an account by.
+
+    ``<id>+<login>@users.noreply.github.com`` returns the numeric id: the id
+    never changes, while the login in the email is stale after a rename. The
+    older ``<login>@users.noreply.github.com`` form returns the login. Any other
+    email returns None, because it cannot be tied to an account reliably.
+    """
+    match = NOREPLY_EMAIL_WITH_ID_RE.fullmatch(email)
+    if match:
+        return int(match.group("id"))
+
+    match = NOREPLY_EMAIL_LOGIN_ONLY_RE.fullmatch(email)
+    if match:
+        return match.group("login")
+
+    return None
+
+
+def user_cache_key(identifier: int | str) -> int | str:
+    """Return the cache key for a user id or login; logins are case-insensitive on GitHub."""
+    if isinstance(identifier, str):
+        return identifier.lower()
+
+    return identifier
+
+
+def fetch_github_user(
+    identifier: int | str,
+    headers: dict[str, str],
+    cache: dict[int | str, dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    """Return the GitHub account for an id (int) or login (str), or None if it does not exist.
+
+    Results, including "not found", are stored in ``cache`` under
+    ``user_cache_key`` so a co-author named on many commits costs one API call
+    per run.
+    """
+    identifier = user_cache_key(identifier)
+
+    if identifier in cache:
+        return cache[identifier]
+
+    if isinstance(identifier, int):
+        url = f"{GH}/user/{identifier}"
+    else:
+        url = f"{GH}/users/{identifier}"
+
+    response = requests.get(url, headers=headers, timeout=30)
+    if response.status_code == 404:
+        user = None
+    else:
+        response.raise_for_status()
+        user = response.json()
+
+    cache[identifier] = user
+    return user
+
+
+def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Resolve the distinct GitHub authors and co-authors of a PR's commits.
+
+    Returns (authors, unresolved). authors is a de-duplicated list of
+    {"login": str, "id": int} dicts: every commit author linked to a GitHub
+    account, plus every person named in a ``Co-authored-by:`` trailer whose
+    email is a GitHub noreply address. unresolved lists, once each, the people
+    who could not be linked to a GitHub account: commit authors as
+    "name <email>", co-authors as "<trailer value> (Co-authored-by trailer)".
+    A trailer value that is not ``Name <email>`` is unresolved too.
+
+    At most ``MAX_CO_AUTHOR_LOOKUPS_PER_RUN`` distinct co-authors are looked up;
+    any further co-author is unresolved without an API call, so the check still
+    fails.
+
+    A co-author is looked up by the id (or, for the older email form, the login)
+    in their noreply email, and the account's current login is used. Any other
+    co-author email is unresolved — including the emails AI tools add, which is
+    deliberate: such a trailer has to be removed.
 
     Only allow-listed bots (see ``is_allowlisted_bot``) are left out of authors.
     Any other bot is returned as a normal author, so it fails the check because
-    it has no signature. The author is linked through the commit's git email,
-    which the committer controls, so this list alone does not prove who wrote
-    the code — callers must also check the PR opener.
+    it has no signature. Commit emails and trailers are free text that the
+    committer controls and can add or omit, so this list alone does not prove
+    who wrote the code — callers must also check the PR opener.
     """
     allowlist = load_bot_allowlist()
 
@@ -229,9 +357,15 @@ def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str
     }
 
     authors_by_id: dict[int, dict[str, Any]] = {}
-    unresolved: list[str] = []
-    page = 1
+    unresolved: dict[str, None] = {}
+    user_cache: dict[int | str, dict[str, Any] | None] = {}
 
+    def add_author(user: dict[str, Any]) -> None:
+        if is_allowlisted_bot(user, allowlist):
+            return
+        authors_by_id[user["id"]] = {"login": user["login"], "id": user["id"]}
+
+    page = 1
     while True:
         response = requests.get(
             f"{GH}/repos/{repo}/pulls/{pr_no}/commits",
@@ -248,14 +382,32 @@ def resolve_pr_authors(repo: str, pr_no: int, token: str) -> tuple[list[dict[str
             author = commit.get("author")
             if author is None:
                 git_author = commit["commit"]["author"]
-                unresolved.append(f"{git_author.get('name')} <{git_author.get('email')}>")
-                continue
+                unresolved[f"{git_author.get('name')} <{git_author.get('email')}>"] = None
+            else:
+                add_author(author)
 
-            if is_allowlisted_bot(author, allowlist):
-                continue
+            for trailer_value in parse_co_authors(commit["commit"].get("message") or ""):
+                co_author = None
+                name_and_email = parse_name_and_email(trailer_value)
+                identifier = None
+                if name_and_email is not None:
+                    identifier = parse_noreply_email(name_and_email[1])
 
-            authors_by_id[author["id"]] = {"login": author["login"], "id": author["id"]}
+                if identifier is not None:
+                    is_new_lookup = user_cache_key(identifier) not in user_cache
+                    if is_new_lookup and len(user_cache) >= MAX_CO_AUTHOR_LOOKUPS_PER_RUN:
+                        unresolved[
+                            f"{trailer_value} (Co-authored-by trailer, not checked: more than "
+                            f"{MAX_CO_AUTHOR_LOOKUPS_PER_RUN} co-authors on this PR)"
+                        ] = None
+                        continue
+                    co_author = fetch_github_user(identifier, headers, user_cache)
+
+                if co_author is None:
+                    unresolved[f"{trailer_value} (Co-authored-by trailer)"] = None
+                else:
+                    add_author(co_author)
 
         page += 1
 
-    return list(authors_by_id.values()), unresolved
+    return list(authors_by_id.values()), list(unresolved)
