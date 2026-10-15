@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
-import { Component, forwardRef, input, signal } from '@angular/core';
+import { Component, forwardRef, input } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { GetLlmConfigRequest, LLMModel, ReasoningEffort } from '@shared/models';
@@ -9,7 +9,7 @@ import {
     LLMLibraryService,
     LlmModelsStorageService,
     LlmProvidersStorageService,
-    SecretsStorageService,
+    SecretsApiService,
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -142,13 +142,14 @@ async function render(
                 useValue: { getProvidersByType: () => of([]) } as unknown as LlmProvidersStorageService,
             },
             { provide: LLMLibraryService, useValue: { loadModels: () => of([]) } as unknown as LLMLibraryService },
+            // The real SecretsStorageService over a fake API: a hand-written storage fake falls behind whenever
+            // the dialog starts using another storage method.
             {
-                provide: SecretsStorageService,
+                provide: SecretsApiService,
                 useValue: {
-                    secrets: signal([]),
                     getSecrets: () => of([]),
-                    maskTail: () => '',
-                } as unknown as SecretsStorageService,
+                    getBinnedSecrets: () => of([]),
+                } as unknown as SecretsApiService,
             },
             { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } as unknown as ToastService },
         ],
