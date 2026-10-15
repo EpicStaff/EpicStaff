@@ -102,7 +102,7 @@
                             <span class="btn-label">{{ pauseLabel() }}</span>
                         </button>
                     }
-                    @if (canUse()) {
+                    @if (canTest()) {
                         <button
                             type="button"
                             class="header-action header-action--primary"
@@ -173,7 +173,7 @@
                         />
                     }
                     <div class="phone-bar__actions">
-                        @if (routeBinding() && canUse()) {
+                        @if (routeBinding() && canTest()) {
                             <button
                                 type="button"
                                 class="phone-bar__icon-button phone-bar__icon-button--primary"

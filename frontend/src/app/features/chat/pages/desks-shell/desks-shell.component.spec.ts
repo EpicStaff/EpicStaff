@@ -141,10 +141,10 @@ describe('DesksShellComponent', () => {
         localStorage.clear();
     });
 
-    it('heads the whole screen with the one h1, "Chat", and its subtitle, above the rail and the page', () => {
+    it('heads the whole screen with the one h1, "Conversations", and its subtitle, above the rail and the page', () => {
         const headings = host().querySelectorAll('h1');
         expect(headings.length).toBe(1);
-        expect(headings[0].childNodes[0].textContent?.trim()).toBe('Chat');
+        expect(headings[0].childNodes[0].textContent?.trim()).toBe('Conversations');
         expect(host().querySelector('h1 .subtitle-inline')?.textContent?.trim()).toBe(
             'Publish flows as website chats and step in when a visitor needs a person.'
         );
@@ -262,12 +262,12 @@ describe('DesksShellComponent', () => {
 
         afterEach(() => switcher.remove());
 
-        it('keeps only the h1 "Chat", for screen readers, and no rail beside the page', () => {
+        it('keeps only the h1 "Conversations", for screen readers, and no rail beside the page', () => {
             expect(host().querySelector('header.header')).toBeNull();
             const headings = host().querySelectorAll('h1');
             expect(headings.length).toBe(1);
             expect(headings[0].classList).toContain('visually-hidden');
-            expect(headings[0].textContent?.trim()).toBe('Chat');
+            expect(headings[0].textContent?.trim()).toBe('Conversations');
             expect(host().querySelector('app-desk-rail')).toBeNull();
             expect(host().querySelector('.stub-page')).not.toBeNull();
         });

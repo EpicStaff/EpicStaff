@@ -27,9 +27,17 @@ export interface ConversationListQuery {
     order: ChatInboxOrder;
     // Mine: the user whose conversations are listed; null lists everyone's.
     holderId: number | null;
+    // Tests are for whoever builds desks (chats create or update), not for support staff.
+    showsTests: boolean;
 }
 
-const EVERYTHING: ConversationListQuery = { bindingId: null, search: '', order: 'newest', holderId: null };
+const EVERYTHING: ConversationListQuery = {
+    bindingId: null,
+    search: '',
+    order: 'newest',
+    holderId: null,
+    showsTests: false,
+};
 
 export interface ConversationSectionState {
     rows: ChatConversation[];
@@ -106,9 +114,9 @@ export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
 // done.
 const MINE_SECTIONS: ReadonlySet<ChatInboxSection> = new Set(['waiting', 'in_progress']);
 
-/** Whether a query lists a section at all: Mine hides Bot, Tests and Closed. */
+/** Whether a query lists a section at all: Mine hides Bot, Tests and Closed; Tests also need `showsTests`. */
 export const listsSection = (query: ConversationListQuery, section: ChatInboxSection): boolean =>
-    query.holderId === null || MINE_SECTIONS.has(section);
+    (query.holderId === null || MINE_SECTIONS.has(section)) && (section !== 'test' || query.showsTests);
 
 const emptySection = (): ConversationSectionState => ({
     rows: [],

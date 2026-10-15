@@ -262,13 +262,13 @@ export class LeftSidebarComponent implements AfterViewInit {
                 id: 'chat',
                 routeLink: 'chat-bindings',
                 activePaths: ['/chat-bindings'],
-                icon: 'message-circle',
-                label: 'Chat',
+                icon: 'messages',
+                label: 'Conversations',
                 isPermitted: () =>
                     this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read),
                 badge: () => this.chatInboxStream.waitingCount(),
                 badgeLink: '/chat-bindings/all',
-                badgeLabel: (count) => `Chat inbox: ${count} waiting for a person`,
+                badgeLabel: (count) => `Conversations inbox: ${count} waiting for a person`,
                 showTooltip: false,
             },
             {

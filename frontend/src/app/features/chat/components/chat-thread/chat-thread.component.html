@@ -56,25 +56,38 @@
                         <div class="message__content">{{ message.content }}</div>
                     }
                 }
-                @if (message.action) {
-                    <div class="message__action">Action: {{ actionLabel(message.action) }}</div>
-                }
-                @if (message.actions?.length) {
-                    <ul class="message__actions">
-                        @for (action of message.actions; track $index) {
-                            <li>{{ actionLabel(action) }}</li>
+                <!-- Test conversations only: what the widget sent with the message, or what the bot sent to it. -->
+                @if (conversation().is_test && rawData(message); as raw) {
+                    <details
+                        class="message__raw"
+                        (toggle)="onRawToggle(message.id, $event)"
+                    >
+                        <summary>Raw data</summary>
+                        <!-- Mounted on open only: one Monaco editor per message would be heavy. -->
+                        @if (openRawIds().has(message.id)) {
+                            <app-json-editor
+                                [jsonData]="raw"
+                                [readonly]="true"
+                                [showHeader]="false"
+                                [editorHeight]="160"
+                            />
                         }
-                    </ul>
+                    </details>
                 }
                 <div class="message__time">
                     {{ message.created_at | date: 'mediumTime' }}
-                    @if (sessionLink(message); as link) {
+                    @if (message.session_id) {
                         ·
-                        <a
-                            class="message__session"
-                            [routerLink]="link"
-                            >run #{{ message.session_id }}</a
-                        >
+                        <!-- Plain text without flows read: the run page would refuse them, the id is still worth sharing. -->
+                        @if (sessionLink(message); as link) {
+                            <a
+                                class="message__session"
+                                [routerLink]="link"
+                                >run #{{ message.session_id }}</a
+                            >
+                        } @else {
+                            run #{{ message.session_id }}
+                        }
                     }
                 </div>
             </div>

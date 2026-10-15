@@ -179,7 +179,8 @@ describe('ConversationListComponent', () => {
         release: vi.fn(),
     };
     const permissions: { can: (resource: ResourceCode, action: ActionCode) => boolean } = {
-        can: (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use,
+        can: (resource, action) =>
+            resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create),
     };
 
     const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -1283,9 +1284,11 @@ describe('ConversationListComponent', () => {
                 fixture.detectChanges();
                 expect(toolbarButton('Mine')).toBeUndefined();
                 expect(sentParams().every(({ mine }) => mine === false)).toBe(true);
-                expect(sectionLabels()).toHaveLength(5);
+                // Nor Tests, which need chats create or update.
+                expect(sectionLabels()).toHaveLength(4);
             } finally {
-                permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+                permissions.can = (resource, action) =>
+                    resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
             }
         });
 
@@ -1643,6 +1646,21 @@ describe('ConversationListComponent', () => {
             expect(document.activeElement).toBe(rowButtons()[0]);
         });
 
+        it('lists no Tests and asks for none without chats create or update', () => {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Read || action === ActionCode.Use);
+            try {
+                chatApi.getConversations.mockClear();
+                fixture = TestBed.createComponent(ConversationListComponent);
+                fixture.detectChanges();
+                expect(sectionLabels()).toEqual(['Waiting for a person', 'In progress', 'Closed', 'Bot']);
+                expect(requestedSections()).not.toContain('test');
+            } finally {
+                permissions.can = (resource, action) =>
+                    resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+            }
+        });
+
         it('offers no Take over without chats use', () => {
             permissions.can = () => false;
             try {
@@ -1653,7 +1671,8 @@ describe('ConversationListComponent', () => {
                 expect(host().querySelector('.conversation-row__take-over')).toBeNull();
                 expect(toolbarButton('Mine')).toBeUndefined();
             } finally {
-                permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+                permissions.can = (resource, action) =>
+                    resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
             }
         });
 

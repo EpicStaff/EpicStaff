@@ -174,7 +174,7 @@ RESOURCE_TYPE_METADATA = [
     },
     {
         "code": ResourceType.CHATS.value,
-        "label": "Chats",
+        "label": "Conversations",
         "group": "workspace",
         "description": "Flows exposed as chats, their conversations and the operator inbox",
         # read: inbox and bindings. use: support work (claim, release, reply, test
@@ -311,7 +311,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "delete": (("key_value_tables", "read"),),
     },
     ResourceType.CHATS.value: {
-        "read": (("flows", "read"),),
+        # No flows:read for read: the inbox shows a run's id as text without it.
         "use": (("chats", "read"),),
         "create": (("chats", "read"), ("flows", "read")),
         "update": (("chats", "read"), ("flows", "read")),

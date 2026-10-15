@@ -39,9 +39,9 @@ describe('DeskAvatarComponent', () => {
     });
 
     it('draws a given icon instead of the initials, on the neutral fill when it is not a desk', () => {
-        const host = render({ name: 'All desks', icon: 'message-circle' });
+        const host = render({ name: 'All desks', icon: 'messages' });
         expect(query(host, '.desk-avatar__initials')).toBeNull();
-        expect(query(host, 'app-svg-icon use')?.getAttribute('href')).toBe('#icon-message-circle');
+        expect(query(host, 'app-svg-icon use')?.getAttribute('href')).toBe('#icon-messages');
         expect(query(host, '.desk-avatar__picture--neutral')).not.toBeNull();
     });
 

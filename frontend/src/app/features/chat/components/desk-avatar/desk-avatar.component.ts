@@ -4,8 +4,8 @@ import { AppSvgIconComponent } from '@shared/components';
 import { ChatBindingStatus } from '../../utils/binding-status.util';
 import { deskAccessibleName, deskAvatarColor, deskBadgeText, deskInitials } from '../../utils/desk-avatar.util';
 
-// Shown for a blank name; the same picture as the sidenav's Chat item.
-const FALLBACK_ICON = 'message-circle';
+// Shown for a blank name; the same picture as the sidenav's Conversations item.
+const FALLBACK_ICON = 'messages';
 
 /**
  * A desk's square: its picture (an icon when given, else the initials of its name, on a fill picked by its id), a

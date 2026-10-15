@@ -172,7 +172,8 @@ describe('ChatPageComponent', () => {
     };
     const confirmation = { confirm: vi.fn() };
     const permissions: { can: (resource: ResourceCode, action: ActionCode) => boolean } = {
-        can: (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use,
+        can: (resource, action) =>
+            resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create),
     };
     const bindingActions = {
         pause: vi.fn(),
@@ -416,7 +417,8 @@ describe('ChatPageComponent', () => {
             expect(bindingActions.openSettings).toHaveBeenCalledWith({ ...binding, is_active: false });
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 2);
         } finally {
-            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
@@ -443,7 +445,8 @@ describe('ChatPageComponent', () => {
                 ['header-action header-action--primary', 'Test'],
             ]);
         } finally {
-            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
@@ -478,7 +481,8 @@ describe('ChatPageComponent', () => {
             headerButton('Delete')!.click();
             expect(navigate).not.toHaveBeenCalled();
         } finally {
-            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
@@ -497,11 +501,12 @@ describe('ChatPageComponent', () => {
             expect(navigate).not.toHaveBeenCalled();
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
         } finally {
-            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
-    it('hides Pause and Settings without chats:update, Delete without chats:delete, Test and My name without chats:use', () => {
+    it('hides Pause and Settings without chats:update, Delete without chats:delete, My name without chats:use, Test without chats:create or update', () => {
         listBindings([binding]);
         scopeTo('b-1');
         expect(headerButton('Test')).toBeDefined();
@@ -511,8 +516,15 @@ describe('ChatPageComponent', () => {
         expect(headerButton('Delete')).toBeUndefined();
 
         const can = permissions.can;
-        permissions.can = () => false;
         try {
+            permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+            fixture = TestBed.createComponent(ChatPageComponent);
+            listBindings([binding]);
+            scopeTo('b-1');
+            expect(headerButton('Test')).toBeUndefined();
+            expect(headerButton('My name')).toBeDefined();
+
+            permissions.can = () => false;
             fixture = TestBed.createComponent(ChatPageComponent);
             listBindings([binding]);
             scopeTo('b-1');
@@ -1488,7 +1500,8 @@ describe('ChatPageComponent', () => {
                 expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
                 expect(header().querySelector('app-button')).toBeNull();
             } finally {
-                permissions.can = (resource, action) => resource === ResourceCode.Chats && action === ActionCode.Use;
+                permissions.can = (resource, action) =>
+                    resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
             }
         });
     });

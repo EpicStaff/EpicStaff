@@ -43,7 +43,7 @@ describe('LeftSidebarComponent chat item', () => {
         expect(component.resolveRouteLink(chat)).toBe('chat-bindings');
         expect(chat.badgeLink).toBe('/chat-bindings/all');
         expect(component.badgeCount(chat)).toBe(4);
-        expect(chat.badgeLabel?.(4)).toBe('Chat inbox: 4 waiting for a person');
+        expect(chat.badgeLabel?.(4)).toBe('Conversations inbox: 4 waiting for a person');
 
         await TestBed.inject(Router).navigateByUrl('/chat-bindings/b-1');
         expect(component.isItemActive(chat)).toBe(true);

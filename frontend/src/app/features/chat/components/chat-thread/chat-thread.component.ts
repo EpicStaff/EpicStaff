@@ -17,7 +17,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, JsonEditorComponent, SpinnerComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, Subscription } from 'rxjs';
@@ -34,7 +34,7 @@ import { ChatDesksStorageService } from '../../services/chat-desks-storage.servi
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store';
-import { actionLabel } from '../../utils/action-label.util';
+import { canTestChats } from '../../utils/chat-permissions.util';
 import { closedSummary, isClosed } from '../../utils/conversation-close.util';
 import { operatorName } from '../../utils/conversation-row.util';
 import { microseconds, upsertMessage } from '../../utils/inbox-merge.util';
@@ -63,6 +63,7 @@ const CLOCK_TICK_MS = 60_000;
         ChatMarkdownPipe,
         ChatThreadComposerComponent,
         ChatThreadHeaderComponent,
+        JsonEditorComponent,
         SpinnerComponent,
     ],
     templateUrl: './chat-thread.component.html',
@@ -85,6 +86,8 @@ export class ChatThreadComponent {
 
     readonly messages = signal<ChatOperatorMessage[]>([]);
     readonly hasOlderMessages = signal(false);
+    /** Messages whose raw data is open. */
+    protected readonly openRawIds = signal<ReadonlySet<string>>(new Set());
     readonly isLoadingOlder = signal(false);
 
     private readonly conversationId = computed(() => this.conversation().id);
@@ -93,6 +96,8 @@ export class ChatThreadComponent {
         () => this.desksStorage.desks().find((binding) => binding.id === this.conversation().binding_id) ?? null
     );
     readonly canUse = computed(() => this.permissionsService.can(ResourceCode.Chats, ActionCode.Use));
+    private readonly canTest = computed(() => canTestChats(this.permissionsService));
+    private readonly canReadFlows = computed(() => this.permissionsService.can(ResourceCode.Flows, ActionCode.Read));
     /** Closed: read-only, with no actions, and a banner where the composer was. */
     readonly isClosed = computed(() => isClosed(this.conversation()));
     // The current time, for the banner's: it shows a date once the close is no longer today.
@@ -165,7 +170,7 @@ export class ChatThreadComponent {
     // A closed one takes no more messages.
     private readonly fetchVisitorToken = effect(() => {
         const conversation = this.conversation();
-        if (!conversation.is_test || !this.canUse() || isClosed(conversation)) return;
+        if (!conversation.is_test || !this.canTest() || isClosed(conversation)) return;
         untracked(() => this.visitorTokens.ensure(conversation.id));
     });
     private readonly loadThreadOnSelect = effect(() => {
@@ -173,9 +178,13 @@ export class ChatThreadComponent {
         this.chatInboxStream.readyEpoch();
         untracked(() => this.loadThread(id));
     });
+    // Not on a reconnect: the same messages stay on screen, open.
+    private readonly closeRawDataOnSelect = effect(() => {
+        this.conversationId();
+        untracked(() => this.openRawIds.set(new Set()));
+    });
 
     protected readonly isActionPending = inject(ChatConversationActionsService).isPending;
-    protected readonly actionLabel = actionLabel;
     protected readonly isPhone = inject(PhoneLayoutService).isPhone;
     protected readonly visitorTokens = inject(ChatVisitorTokensStore);
 
@@ -290,9 +299,31 @@ export class ChatThreadComponent {
         return visibleName && visibleName !== message.author_name ? `${author} · as ${visibleName}` : author;
     }
 
+    /** The message's action payloads as JSON; null when it carries none. */
+    rawData(message: ChatOperatorMessage): string | null {
+        const { action, actions } = message;
+        if (!action && !actions?.length) return null;
+        const raw: Record<string, unknown> = {};
+        if (action) raw['action'] = action;
+        if (actions?.length) raw['actions'] = actions;
+        return JSON.stringify(raw, null, 2);
+    }
+
+    onRawToggle(messageId: string, event: Event): void {
+        const isOpen = (event.target as HTMLDetailsElement).open;
+        this.openRawIds.update((ids) => {
+            const next = new Set(ids);
+            if (isOpen) next.add(messageId);
+            else next.delete(messageId);
+            return next;
+        });
+    }
+
     sessionLink(message: ChatOperatorMessage): unknown[] | null {
         const graphId = this.binding()?.graph_id;
-        return message.session_id && graphId ? ['/graph', graphId, 'session', message.session_id] : null;
+        return message.session_id && graphId && this.canReadFlows()
+            ? ['/graph', graphId, 'session', message.session_id]
+            : null;
     }
 
     private operatorAuthor(message: ChatOperatorMessage): string {

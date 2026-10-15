@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='rolepermission',
             name='resource_type',
-            field=models.CharField(choices=[('organizations', 'Organizations'), ('roles', 'Roles'), ('memberships', 'Members'), ('api_keys', 'API Keys'), ('flows', 'Flows'), ('agents', 'Agents'), ('tools', 'Tools'), ('knowledge_sources', 'Knowledge Sources'), ('files', 'Files'), ('projects', 'Projects'), ('llm_configs', 'LLM Configs'), ('secrets', 'Secrets'), ('audit', 'Audit'), ('voice', 'Voice'), ('surfaces', 'Surfaces'), ('webhooks', 'Webhooks'), ('key_value_tables', 'Key-Value Tables'), ('chats', 'Chats')], max_length=32),
+            field=models.CharField(choices=[('organizations', 'Organizations'), ('roles', 'Roles'), ('memberships', 'Members'), ('api_keys', 'API Keys'), ('flows', 'Flows'), ('agents', 'Agents'), ('tools', 'Tools'), ('knowledge_sources', 'Knowledge Sources'), ('files', 'Files'), ('projects', 'Projects'), ('llm_configs', 'LLM Configs'), ('secrets', 'Secrets'), ('audit', 'Audit'), ('voice', 'Voice'), ('surfaces', 'Surfaces'), ('webhooks', 'Webhooks'), ('key_value_tables', 'Key-Value Tables'), ('chats', 'Conversations')], max_length=32),
         ),
     ]

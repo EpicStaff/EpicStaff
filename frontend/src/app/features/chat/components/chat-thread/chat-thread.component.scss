@@ -147,26 +147,26 @@
         }
     }
 
-    &__actions {
-        margin: 4px 0 0;
-        padding-left: 16px;
-        font-size: var(--text-body-small-size);
-        font-weight: var(--text-body-small-weight);
-        line-height: var(--text-body-small-line-height);
-        color: var(--color-ks-transparent-text-80);
-    }
-
     &__session {
         color: var(--accent-color);
     }
 
-    // The widget's action reply on a user message.
-    &__action {
+    // Test conversations: the message's action payloads, closed by default.
+    &__raw {
+        margin-top: 4px;
         font-size: var(--text-body-small-size);
         font-weight: var(--text-body-small-weight);
         line-height: var(--text-body-small-line-height);
         color: var(--color-ks-transparent-text-80);
-        word-break: break-word;
+
+        summary {
+            cursor: pointer;
+        }
+
+        app-json-editor {
+            display: block;
+            margin-top: 4px;
+        }
     }
 
     &__time {
