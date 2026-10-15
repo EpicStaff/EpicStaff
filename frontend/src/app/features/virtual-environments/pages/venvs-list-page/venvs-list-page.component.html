@@ -1,44 +1,144 @@
 <div class="venvs-page">
-    <header class="venvs-page__header">
-        <div class="venvs-page__titles">
-            <h1 class="venvs-page__title">Virtual Environments</h1>
-            <p class="venvs-page__subtitle">
-                Isolated Python environments with pinned libraries, reusable across flows, tools and agents.
-            </p>
-        </div>
-        <app-button
-            *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
-            type="primary"
-            leftIcon="plus"
-            (click)="onCreate()"
-        >
-            Create venv
-        </app-button>
-    </header>
-
-    <div class="venvs-page__toolbar">
-        <app-search
-            class="venvs-page__search"
-            mod="small"
-            placeholder="Search by name..."
-            [(searchTerm)]="searchTerm"
-        />
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Virtual Environments
+                    <span class="subtitle-inline"
+                        >Isolated Python environments with pinned libraries, reusable across flows, tools and
+                        agents.</span
+                    >
+                </h1>
+            </div>
+            <div class="header-actions">
+                <app-button
+                    *appHasPermission="[ResourceCode.Venvs, ActionCode.Create]"
+                    type="primary"
+                    leftIcon="plus"
+                    (click)="onCreate()"
+                >
+                    Create venv
+                </app-button>
+            </div>
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                <app-tab-button
+                    mod="sm"
+                    [active]="true"
+                >
+                    Venvs
+                </app-tab-button>
+            </div>
+            <div class="tabs-right">
+                <button
+                    #filterTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    type="button"
+                    class="filter-trigger"
+                    [class.active]="hasActiveFilter() || filterMenuOpen()"
+                    (click)="toggleFilterMenu()"
+                >
+                    <app-svg-icon
+                        icon="filter-outline"
+                        size="1rem"
+                    />
+                    <span>Filter</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.7rem"
+                        class="filter-chevron"
+                        [class.open]="filterMenuOpen()"
+                    />
+                </button>
+                @if (hasActiveFilter()) {
+                    <button
+                        type="button"
+                        class="filter-clear"
+                        matTooltip="Clear all filters"
+                        matTooltipPosition="above"
+                        (click)="clearAllFilters()"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="0.85rem"
+                        />
+                    </button>
+                }
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="filterTrigger"
+                    [cdkConnectedOverlayOpen]="filterMenuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetY]="6"
+                    [cdkConnectedOverlayPositions]="filterMenuPositions"
+                    (backdropClick)="closeFilterMenu()"
+                    (detach)="closeFilterMenu()"
+                >
+                    <div
+                        class="filter-menu"
+                        role="menu"
+                    >
+                        <button
+                            type="button"
+                            class="menu-item"
+                            role="menuitem"
+                            (click)="applySort('name_asc')"
+                        >
+                            Sort from A to Z
+                        </button>
+                        <button
+                            type="button"
+                            class="menu-item"
+                            role="menuitem"
+                            (click)="applySort('name_desc')"
+                        >
+                            Sort from Z to A
+                        </button>
+                    </div>
+                </ng-template>
+                <app-search
+                    class="search"
+                    mod="small"
+                    placeholder="Search by name..."
+                    [(searchTerm)]="searchTerm"
+                />
+            </div>
+        </nav>
     </div>
 
     <section class="venvs-page__body">
         @if (isLoading()) {
             <div class="venvs-page__list">
                 @for (placeholder of [0, 1, 2, 3]; track placeholder) {
-                    <div class="venvs-page__skeleton"></div>
+                    <div class="venvs-page__skeleton">
+                        <div class="venvs-page__skeleton-row">
+                            <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--name"></span>
+                        </div>
+                        <div class="venvs-page__skeleton-row">
+                            <div class="venvs-page__skeleton-chips">
+                                @for (chip of [0, 1, 2, 3]; track chip) {
+                                    <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--chip"></span>
+                                }
+                            </div>
+                            <span class="venvs-page__skeleton-bar venvs-page__skeleton-bar--meta"></span>
+                        </div>
+                    </div>
                 }
             </div>
         } @else if (filteredVenvs().length === 0) {
-            <div class="venvs-page__empty">
-                @if (searchTerm().trim()) {
-                    <p>No venvs match "{{ searchTerm() }}".</p>
-                } @else {
-                    <p>No venvs found. Create your first venv to get started.</p>
-                }
+            <div class="venvs-page__list">
+                <div class="venvs-page__empty text-body">
+                    @if (searchTerm().trim()) {
+                        <p>No venvs match "{{ searchTerm() }}".</p>
+                    } @else {
+                        <p>No venvs found. Create your first venv to get started.</p>
+                    }
+                </div>
             </div>
         } @else {
             <div class="venvs-page__list">

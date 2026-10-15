@@ -1,9 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    SearchComponent,
+    TabButtonComponent,
+} from '@shared/components';
+import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 import { filter, finalize, switchMap } from 'rxjs';
@@ -15,9 +23,21 @@ import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialo
 import { Venv } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
+type VenvSortOrder = 'default' | 'name_asc' | 'name_desc';
+
 @Component({
     selector: 'app-venvs-list-page',
-    imports: [ButtonComponent, SearchComponent, HasPermissionDirective, VenvCardComponent],
+    imports: [
+        OverlayModule,
+        MatTooltipModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        SearchComponent,
+        TabButtonComponent,
+        HasPermissionDirective,
+        HideInlineSubtitleOnOverflowDirective,
+        VenvCardComponent,
+    ],
     templateUrl: './venvs-list-page.component.html',
     styleUrls: ['./venvs-list-page.component.scss'],
 })
@@ -30,18 +50,27 @@ export class VenvsListPageComponent {
     // until it ends, so a double click cannot open two dialogs or send two deletes.
     readonly deletePending = signal(false);
 
+    readonly sortOrder = signal<VenvSortOrder>('default');
+    readonly filterMenuOpen = signal(false);
+
     readonly filteredVenvs = computed<Venv[]>(() => {
         const term = this.searchTerm().trim().toLowerCase();
-        const venvs = this.venvs();
-        if (!term) return venvs;
-        return venvs.filter((venv) => venv.name.toLowerCase().includes(term));
+        const venvs = term ? this.venvs().filter((venv) => venv.name.toLowerCase().includes(term)) : this.venvs();
+        const sortOrder = this.sortOrder();
+        if (sortOrder === 'default') return venvs;
+        const direction = sortOrder === 'name_asc' ? 1 : -1;
+        return [...venvs].sort((a, b) => direction * a.name.localeCompare(b.name));
     });
+    readonly hasActiveFilter = computed(() => this.sortOrder() !== 'default');
 
     readonly canUpdate = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Update));
     readonly canDelete = computed(() => this.permissions.can(ResourceCode.Venvs, ActionCode.Delete));
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly filterMenuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+    ];
 
     private readonly venvsApi = inject(VenvsApiService);
     private readonly permissions = inject(PermissionsService);
@@ -54,12 +83,28 @@ export class VenvsListPageComponent {
         this.loadVenvs();
     }
 
+    toggleFilterMenu(): void {
+        this.filterMenuOpen.update((open) => !open);
+    }
+
+    closeFilterMenu(): void {
+        this.filterMenuOpen.set(false);
+    }
+
+    applySort(sortOrder: VenvSortOrder): void {
+        this.sortOrder.set(sortOrder);
+        this.closeFilterMenu();
+    }
+
+    clearAllFilters(): void {
+        this.sortOrder.set('default');
+    }
+
     onCreate(): void {
         this.dialog
-            // disableClose: the Operator `app-select` opens a CDK overlay with its own
-            // backdrop; without this the dialog closes the moment that dropdown is clicked.
-            // The dialog closes only via Cancel/X/submit, which call dialogRef.close().
-            .open<Venv | null>(VenvDialogComponent, { width: '640px', disableClose: true })
+            // disableClose: the Specification `app-select` overlay has its own backdrop; a click on it
+            // would otherwise close the dialog.
+            .open<Venv | null>(VenvDialogComponent, { disableClose: true })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((venv) => {
                 if (!venv) return;
@@ -71,7 +116,6 @@ export class VenvsListPageComponent {
     onEdit(venv: Venv): void {
         this.dialog
             .open<Venv | null, VenvDialogData>(VenvDialogComponent, {
-                width: '640px',
                 disableClose: true,
                 data: { venv },
             })

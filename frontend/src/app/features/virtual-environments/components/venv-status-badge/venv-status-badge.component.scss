@@ -1,31 +1,37 @@
 .venv-status {
     display: inline-flex;
     align-items: center;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: var(--text-caption-size);
-    font-weight: 500;
+    gap: 4px;
+    height: 28px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border-radius: 4px;
     flex-shrink: 0;
     white-space: nowrap;
 }
 
 .venv-status--processing {
-    color: var(--color-ks-status-processing);
-    background-color: color-mix(in srgb, var(--color-ks-status-processing) 15%, transparent);
-}
+    color: var(--color-status-info);
+    background-color: var(--sky-alpha-6);
 
-.venv-status--completed {
-    color: var(--color-ks-status-new);
-    background-color: color-mix(in srgb, var(--color-ks-status-new) 15%, transparent);
+    .venv-status__icon {
+        animation: venv-status-spin 1.2s linear infinite;
+    }
 }
 
 .venv-status--failed {
-    color: var(--color-ks-status-failed);
-    background-color: color-mix(in srgb, var(--color-ks-status-failed) 15%, transparent);
+    color: var(--color-status-error);
+    background-color: var(--red-alpha-6);
     cursor: help;
 }
 
 .venv-status--declared {
     color: var(--color-ks-transparent-text-60);
-    background-color: var(--color-divider-subtle);
+    background-color: var(--transparent-white-8);
+}
+
+@keyframes venv-status-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }

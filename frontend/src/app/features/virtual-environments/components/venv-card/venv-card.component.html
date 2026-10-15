@@ -1,101 +1,146 @@
 <article class="venv-card">
-    <div class="venv-card__main">
-        <div class="venv-card__title-row">
+    <div class="venv-card__row">
+        <div class="venv-card__title">
             <span
-                class="venv-card__name"
-                [matTooltip]="venv().name"
+                class="venv-card__name text-body-medium"
+                appTooltipOnOverflow
                 matTooltipPosition="above"
+                [matTooltip]="venv().name"
+                >{{ venv().name }}</span
             >
-                {{ venv().name }}
-            </span>
             <app-venv-status-badge
                 [status]="venv().status"
                 [error]="venv().error"
             />
         </div>
 
-        <div class="venv-card__libs">
-            @for (lib of visibleLibs(); track lib.name) {
-                <span class="venv-card__chip">{{ libLabel(lib) }}</span>
-            } @empty {
-                <span class="venv-card__no-libs">No libraries pinned</span>
-            }
-            @if (overflowCount() > 0) {
-                <span
-                    class="venv-card__chip venv-card__chip--overflow"
-                    [matTooltip]="overflowTooltip()"
-                    matTooltipPosition="above"
+        <div class="venv-card__actions">
+            @if (updates().length) {
+                <button
+                    type="button"
+                    class="venv-card__icon-btn venv-card__icon-btn--accent"
+                    aria-label="Updates available"
+                    cdkOverlayOrigin
+                    #updatesOrigin="cdkOverlayOrigin"
+                    (mouseenter)="updatesOpen.set(true)"
+                    (mouseleave)="updatesOpen.set(false)"
                 >
-                    +{{ overflowCount() }}
-                </span>
+                    <app-svg-icon
+                        icon="arrow-up"
+                        size="16px"
+                    />
+                </button>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="updatesOrigin"
+                    [cdkConnectedOverlayOpen]="updatesOpen()"
+                    [cdkConnectedOverlayPositions]="updatesPositions"
+                >
+                    <div
+                        class="venv-card__tooltip text-body-small"
+                        role="tooltip"
+                    >
+                        <span class="venv-card__tooltip-header">{{ updates().length }} update available:</span>
+                        @for (update of updates(); track $index) {
+                            <span>{{ update.name }}</span>
+                            <span class="venv-card__tooltip-accent"
+                                >{{ update.currentVersion }} → {{ update.latestVersion }}</span
+                            >
+                        }
+                    </div>
+                </ng-template>
+            }
+            @if (canEdit()) {
+                <button
+                    type="button"
+                    class="venv-card__icon-btn"
+                    aria-label="Edit"
+                    matTooltip="Edit"
+                    matTooltipPosition="above"
+                    (click)="onEdit()"
+                >
+                    <app-svg-icon
+                        icon="edit-pencil"
+                        size="14px"
+                    />
+                </button>
+            }
+            @if (canDelete()) {
+                <button
+                    type="button"
+                    class="venv-card__icon-btn"
+                    aria-label="Delete"
+                    matTooltip="Delete"
+                    matTooltipPosition="above"
+                    (click)="onDelete()"
+                >
+                    <app-svg-icon
+                        icon="close"
+                        size="16px"
+                    />
+                </button>
             }
         </div>
     </div>
 
-    <div class="venv-card__meta">
-        @if (ownerName(); as owner) {
-            <span class="venv-card__owner">{{ owner }}</span>
-        }
-        @if (venv().created_at; as createdAt) {
-            <span class="venv-card__date">{{ createdAt | date: 'mediumDate' }}</span>
-        }
-    </div>
-
-    <div class="venv-card__actions">
-        @if (canDelete()) {
-            <button
-                type="button"
-                class="venv-card__icon-btn"
-                matTooltip="Delete"
-                matTooltipPosition="above"
-                (click)="onDelete()"
+    <div class="venv-card__row text-body-small">
+        @if (venv().libs.length) {
+            <div
+                class="venv-card__libs"
+                appOverflowItems
+                #libsOverflow="overflowItems"
             >
-                <app-svg-icon
-                    icon="close"
-                    size="16px"
-                />
-            </button>
-        }
-        @if (canEdit()) {
-            <button
-                #menuTrigger="cdkOverlayOrigin"
-                cdkOverlayOrigin
-                type="button"
-                class="venv-card__icon-btn"
-                [class.venv-card__icon-btn--active]="menuOpen()"
-                matTooltip="More"
-                matTooltipPosition="above"
-                (click)="toggleMenu()"
-            >
-                <app-svg-icon
-                    icon="dots-vertical"
-                    size="16px"
-                />
-            </button>
-            <ng-template
-                cdkConnectedOverlay
-                [cdkConnectedOverlayOrigin]="menuTrigger"
-                [cdkConnectedOverlayOpen]="menuOpen()"
-                [cdkConnectedOverlayHasBackdrop]="true"
-                cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-                [cdkConnectedOverlayPositions]="menuPositions"
-                (backdropClick)="closeMenu()"
-                (detach)="closeMenu()"
-            >
-                <div
-                    class="venv-card__menu"
-                    role="menu"
-                >
-                    <button
-                        type="button"
-                        class="venv-card__menu-item"
-                        role="menuitem"
-                        (click)="onEdit()"
+                @for (lib of venv().libs; track $index) {
+                    <span
+                        class="venv-card__chip"
+                        appOverflowItem
                     >
-                        Edit
-                    </button>
-                </div>
-            </ng-template>
+                        @if (updatableLibNames().has(lib.name)) {
+                            <span class="venv-card__dot"></span>
+                        }
+                        {{ libLabel(lib) }}
+                    </span>
+                }
+                <span
+                    class="venv-card__chip venv-card__chip--overflow"
+                    appOverflowBadge
+                    cdkOverlayOrigin
+                    #hiddenLibsOrigin="cdkOverlayOrigin"
+                    (mouseenter)="hiddenLibsOpen.set(true)"
+                    (mouseleave)="hiddenLibsOpen.set(false)"
+                    >+{{ libsOverflow.overflowCount() }}</span
+                >
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="hiddenLibsOrigin"
+                    [cdkConnectedOverlayOpen]="hiddenLibsOpen() && libsOverflow.overflowCount() > 0"
+                    [cdkConnectedOverlayPositions]="hiddenLibsPositions"
+                >
+                    <div
+                        class="venv-card__tooltip text-body-small"
+                        role="tooltip"
+                    >
+                        @for (lib of hiddenLibs(libsOverflow.overflowCount()); track $index) {
+                            <span class="venv-card__tooltip-name">
+                                @if (updatableLibNames().has(lib.name)) {
+                                    <span class="venv-card__dot"></span>
+                                }
+                                {{ lib.name }}
+                            </span>
+                            <span class="venv-card__tooltip-accent">{{ lib.specification }}</span>
+                        }
+                    </div>
+                </ng-template>
+            </div>
+        } @else {
+            <span class="venv-card__muted">No libraries pinned</span>
+        }
+
+        @if (meta(); as meta) {
+            <span class="venv-card__meta"
+                >{{ meta.lead }}<span class="venv-card__meta-date">{{ meta.date }}</span
+                >{{ meta.trail }}</span
+            >
         }
     </div>
 </article>
