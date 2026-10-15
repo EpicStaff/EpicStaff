@@ -90,8 +90,13 @@ export function normalizeOrthogonalWaypoints(source: IPoint, waypoints: IPoint[]
 
 /**
  * Light cleanup for a frozen (user-adjusted) wire after a node move: snap the first/last
- * waypoints to the current port rows, then collapse short bridges. Does not do full
- * normalization (moveDraggedStretches, keepStubs) to preserve the user's layout.
+ * waypoints to the current port rows, collapse short bridges, and orthogonalize to stabilize.
+ * Does not do full normalization (moveDraggedStretches, keepStubs) to preserve the user's layout.
+ *
+ * The final orthogonalize ensures the stored waypoints match what the builder renders. Without it,
+ * a collapse that removes points can leave a non-orthogonal gap (the last waypoint no longer on the
+ * target's row); the builder fills it with an elbow on every render, silently recreating the bend
+ * the collapse just removed. For an already-orthogonal wire this is the identity.
  */
 export function refreshFrozenWireWaypoints(source: IPoint, waypoints: IPoint[], target: IPoint): IPoint[] {
     const anchors = snappedAnchors(source, waypoints, target);

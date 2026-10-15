@@ -7,6 +7,7 @@ import {
     fallbackRoutePoints,
     normalizeOrthogonalWaypoints,
     orthogonalize,
+    refreshFrozenWireWaypoints,
 } from './orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from './route-all';
 
@@ -285,5 +286,66 @@ describe('normalizeOrthogonalWaypoints', () => {
                 expect({ id, points: normalized }).toEqual({ id, points });
             }
         }
+    });
+});
+
+describe('refreshFrozenWireWaypoints', () => {
+    it('is the identity for an already-orthogonal wire', () => {
+        const source = { x: 0, y: 100 };
+        const target = { x: 600, y: 200 };
+        const waypoints = [
+            { x: 200, y: 100 },
+            { x: 200, y: 400 },
+            { x: 500, y: 400 },
+            { x: 500, y: 200 },
+        ];
+
+        expect(refreshFrozenWireWaypoints(source, waypoints, target)).toEqual(waypoints);
+    });
+
+    it('collapses a short bridge and stabilizes the waypoints so they do not recreate the bend', () => {
+        // U-shaped wire: source right, down to 400, across, up to 398 (near target), right to target.
+        // W4 at y=398 is within 3 px of the target at y=398.
+        const source = { x: 0, y: 100 };
+        const waypoints = [
+            { x: 200, y: 100 },
+            { x: 200, y: 400 },
+            { x: 500, y: 400 },
+            { x: 500, y: 398 },
+        ];
+
+        // Step 1: target moves down to y=396. W4 (y=398) snaps to target (y=396, within 3 px).
+        // Bridge (500,400) to (500,396) = 4 px < MIN_BRIDGE (10) triggers collapse.
+        const targetDown = { x: 600, y: 396 };
+        const afterCollapse = refreshFrozenWireWaypoints(source, waypoints, targetDown);
+
+        // The bridge is collapsed and orthogonalized: a simple Z-shape (2 interior waypoints).
+        expect(afterCollapse.length).toBeLessThan(waypoints.length);
+        // Every consecutive pair shares one coordinate (orthogonal).
+        for (let i = 0; i < afterCollapse.length - 1; i++) {
+            const shared =
+                afterCollapse[i].x === afterCollapse[i + 1].x || afterCollapse[i].y === afterCollapse[i + 1].y;
+            expect(shared).toBe(true);
+        }
+
+        // Step 2: target moves back up. The collapsed shape must NOT recreate the original bend.
+        const targetUp = { x: 600, y: 200 };
+        const afterMoveBack = refreshFrozenWireWaypoints(source, afterCollapse, targetUp);
+
+        // The wire stays a simple Z-shape (2 interior waypoints), not the original 4.
+        expect(afterMoveBack.length).toBeLessThanOrEqual(afterCollapse.length);
+        expect(afterMoveBack.length).toBeLessThan(waypoints.length);
+    });
+
+    it('snaps a first waypoint within 3 px of the source row', () => {
+        const source = { x: 0, y: 100 };
+        const target = { x: 200, y: 200 };
+        const waypoints = [
+            { x: 80, y: 102 },
+            { x: 80, y: 200 },
+        ];
+
+        const result = refreshFrozenWireWaypoints(source, waypoints, target);
+        expect(result[0].y).toBe(100);
     });
 });
