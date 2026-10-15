@@ -192,3 +192,36 @@ def test_venv_apply_resolved_versions_does_not_touch_the_build_status():
     venv.apply_resolved_versions({"pandas": "2.2.3"})
 
     assert venv.status is VenvStatus.PROCESSING
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("pydantic", "pydantic"),
+        ("Pydantic", "pydantic"),
+        ("zope.interface", "zope-interface"),
+    ],
+)
+def test_venv_rejects_the_same_library_declared_twice(first, second):
+    with pytest.raises(ValidationError):
+        make_venv(
+            libs=[
+                make_library(name=first, specification="==2.0"),
+                make_library(name=second, specification="==2.1"),
+            ]
+        )
+
+
+def test_venv_accepts_two_different_libraries():
+    venv = make_venv(
+        libs=[make_library(name="pydantic"), make_library(name="requests")]
+    )
+
+    assert [lib.name for lib in venv.libs] == ["pydantic", "requests"]
+
+
+def test_venv_set_libs_rejects_a_repeated_library_too():
+    venv = make_venv()
+
+    with pytest.raises(ValidationError):
+        venv.set_libs([make_library(name="pydantic"), make_library(name="pydantic")])

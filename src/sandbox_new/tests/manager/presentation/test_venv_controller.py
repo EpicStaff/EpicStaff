@@ -199,3 +199,20 @@ def test_update_returns_the_bumped_updated_at_and_keeps_created_at(client, venv_
 
     assert datetime.fromisoformat(body["created_at"]) == stamped
     assert datetime.fromisoformat(body["updated_at"]) > stamped
+
+
+def test_create_rejects_the_same_library_declared_twice(client, venv_repository):
+    response = client.post(
+        "/venvs",
+        json={
+            "name": "data",
+            "libs": [
+                {"name": "pydantic", "specification": "==2.0"},
+                {"name": "pydantic", "specification": "==2.1"},
+            ],
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "pydantic" in response.json()["errors"][0]["detail"]
+    assert venv_repository.rows == {}

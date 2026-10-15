@@ -68,6 +68,25 @@ class Venv(Entity):
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
 
+    @field_validator("libs")
+    @classmethod
+    def reject_repeated_libraries(cls, value: list[Library]) -> list[Library]:
+        """Reject a library declared twice, whatever spelling each entry used.
+
+        Two entries for one package give the resolver two requirements it cannot both
+        honour, and it fails the whole build over it. Names reach here canonicalized,
+        so `Pydantic` and `pydantic` count as the same package.
+
+        Raises:
+            ValueError: Some package is declared more than once.
+        """
+        seen: set[str] = set()
+        for library in value:
+            if library.name in seen:
+                raise ValueError(f"Library '{library.name}' is declared more than once.")
+            seen.add(library.name)
+        return value
+
     def rename(self, value: str, /):
         self.name = value
 
