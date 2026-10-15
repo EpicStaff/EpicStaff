@@ -50,60 +50,90 @@ describe('CdtExportImportService route code import', () => {
     });
 });
 
-describe('CdtExportImportService execution timeout', () => {
+describe('CdtExportImportService execution timeouts', () => {
     const service = new CdtExportImportService();
 
-    function exportData(executionTimeout: number | null) {
+    function exportData(preExecutionTimeout: number | undefined, postExecutionTimeout: number | undefined) {
         return service.buildExportData({
             nodeName: 'Triage',
-            preCode: '',
+            preCode: 'def main(): pass',
             preLibraries: [],
+            preExecutionTimeout,
             preInputMap: {},
             preOutputVariablePath: null,
             preUseStorage: false,
-            postCode: '',
+            postCode: 'def main(): pass',
             postLibraries: [],
+            postExecutionTimeout,
             postInputMap: {},
             postOutputVariablePath: null,
             postUseStorage: false,
             defaultLlmConfig: null,
-            executionTimeout,
             conditionGroups: [],
             prompts: {},
         });
     }
 
-    function importedTimeout(fileContent: Record<string, unknown>): number | null {
-        const result = service.parseJson(JSON.stringify({ condition_groups: [], ...fileContent }));
-        if (!('data' in result)) throw new Error(`Import failed: ${result.errors.join('; ')}`);
-        return result.data.execution_timeout;
+    function csvRows(data: ReturnType<typeof exportData>): string[] {
+        return service.exportToCsv(data).split('\n');
     }
 
-    it('keeps the timeout through a JSON export and import', () => {
-        const result = service.parseJson(service.exportToJson(exportData(7)));
+    it('keeps the pre- and post-computation timeouts through a JSON export and import', () => {
+        const result = service.parseJson(service.exportToJson(exportData(90, 45)));
+        if (!('data' in result)) throw new Error(`Import failed: ${result.errors.join('; ')}`);
 
-        expect('data' in result && result.data.execution_timeout).toBe(7);
+        expect(result.data.pre_python_code.execution_timeout).toBe(90);
+        expect(result.data.post_python_code.execution_timeout).toBe(45);
     });
 
-    it('writes the timeout into the CSV metadata, and leaves it empty for a node without one', () => {
-        expect(service.exportToCsv(exportData(7)).split('\n')).toContain('execution_timeout,7');
-        expect(service.exportToCsv(exportData(null)).split('\n')).toContain('execution_timeout,');
+    it('imports no timeout for a code without one', () => {
+        const result = service.parseJson(service.exportToJson(exportData(undefined, 45)));
+        if (!('data' in result)) throw new Error(`Import failed: ${result.errors.join('; ')}`);
+
+        expect(result.data.pre_python_code.execution_timeout).toBeNull();
+        expect(result.data.post_python_code.execution_timeout).toBe(45);
     });
 
-    it('reads no timeout from a file exported before nodes had one', () => {
-        expect(importedTimeout({})).toBeNull();
+    it.each([0, -30, 7.5, '90', 'soon'])(
+        'imports %s as no timeout: only a positive whole number of seconds is one',
+        (value) => {
+            const json = JSON.parse(service.exportToJson(exportData(90, 45))) as Record<
+                string,
+                Record<string, unknown>
+            >;
+            json['pre_python_code']['execution_timeout'] = value;
+            const result = service.parseJson(JSON.stringify(json));
+            if (!('data' in result)) throw new Error(`Import failed: ${result.errors.join('; ')}`);
+
+            expect(result.data.pre_python_code.execution_timeout).toBe(value === '90' ? 90 : null);
+        }
+    );
+
+    it('writes each timeout into the CSV metadata, and leaves it empty for a code without one', () => {
+        expect(csvRows(exportData(90, 45))).toEqual(
+            expect.arrayContaining(['pre_python_code_execution_timeout,90', 'post_python_code_execution_timeout,45'])
+        );
+        expect(csvRows(exportData(undefined, undefined))).toEqual(
+            expect.arrayContaining(['pre_python_code_execution_timeout,', 'post_python_code_execution_timeout,'])
+        );
     });
 
-    it.each([0, -2, 2.5, 'soon', true])('reads no timeout from a file holding %s, which no node may set', (value) => {
-        expect(importedTimeout({ execution_timeout: value })).toBeNull();
-    });
-
-    it('carries the timeout of a node exported by the backend into the CSV of selected nodes', () => {
+    it('carries the timeouts of a node exported by the backend into the CSV of selected nodes', () => {
         const data = service.partialExportNodeToCdtExportData({
-            ClassificationDecisionTableNode: [{ node_name: 'Triage', condition_groups: [], execution_timeout: 12 }],
+            ClassificationDecisionTableNode: [
+                {
+                    node_name: 'Triage',
+                    condition_groups: [],
+                    pre_python_code: { code: 'def main(): pass', libraries: '', execution_timeout: 90 },
+                    post_python_code: { code: 'def main(): pass', libraries: '' },
+                },
+            ],
         });
 
-        expect(data.execution_timeout).toBe(12);
-        expect(service.exportToCsv(data).split('\n')).toContain('execution_timeout,12');
+        expect(data.pre_python_code.execution_timeout).toBe(90);
+        expect(data.post_python_code.execution_timeout).toBeNull();
+        expect(csvRows(data)).toEqual(
+            expect.arrayContaining(['pre_python_code_execution_timeout,90', 'post_python_code_execution_timeout,'])
+        );
     });
 });

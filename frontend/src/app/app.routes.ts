@@ -23,7 +23,7 @@ import { MainLayoutComponent } from './layouts/main-layout/main-layout.component
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
-import { sandboxLimitsResolver } from './visual-programming/services/sandbox-limits.resolver';
+import { executionTimeoutLimitsResolver } from './visual-programming/services/execution-timeout-limits.resolver';
 
 export const routes: Routes = [
     {
@@ -193,7 +193,7 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
-                        resolve: { sandboxLimits: sandboxLimitsResolver },
+                        resolve: { executionTimeoutLimits: executionTimeoutLimitsResolver },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {

@@ -8,12 +8,10 @@ import { ConfigService } from '../../services/config';
 /** Poll cadence and limits for python-code-result. */
 const POLL_INITIAL_DELAY_MS = 1000;
 const POLL_INTERVAL_MS = 2000;
-/**
- * How long past the node's execution timeout the panel keeps waiting for a result: the sandbox stops the code
- * at the timeout, but queueing, installing the libraries (not limited by the timeout) and publishing the
- * result come on top of it.
- */
+/** How long past the code's execution timeout to wait: queueing, installing the libraries and publishing the result come on top. */
 const POLL_DEADLINE_GRACE_MS = 60_000;
+/** The longest delay `setTimeout` keeps: a longer one overflows and fires at once. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const MAX_NOT_FOUND_RETRIES = 3;
 
@@ -75,11 +73,8 @@ export class PythonCodeRunService {
         );
     }
 
-    /**
-     * Polls the result of run `executionId` of code whose node allows `executionTimeoutMinutes` per execution,
-     * giving up a grace period after that timeout.
-     */
-    pollResultWithEvents(executionId: string, executionTimeoutMinutes: number): Observable<PollEvent> {
+    /** Polls the result of run `executionId`, giving up a grace period after the code's `executionTimeoutSeconds`. */
+    pollResultWithEvents(executionId: string, executionTimeoutSeconds: number): Observable<PollEvent> {
         let attempt = 0;
         let notFoundRetries = 0;
 
@@ -123,12 +118,14 @@ export class PythonCodeRunService {
             )
         );
 
-        const deadline$: Observable<PollEvent> = timer(executionTimeoutMinutes * 60_000 + POLL_DEADLINE_GRACE_MS).pipe(
+        const deadline$: Observable<PollEvent> = timer(
+            Math.min(executionTimeoutSeconds * 1000 + POLL_DEADLINE_GRACE_MS, MAX_TIMER_DELAY_MS)
+        ).pipe(
             switchMap(() =>
                 throwError(
                     () =>
                         new Error(
-                            `No result within ${executionTimeoutMinutes} min (the node's execution timeout) and a grace period. The code may still be running on the server.`
+                            `No result within the execution timeout of ${executionTimeoutSeconds} s and a grace period. The code may still be running on the server.`
                         )
                 )
             )

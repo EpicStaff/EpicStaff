@@ -1,7 +1,33 @@
-@use '../../../../styles/node-panel-mixins.scss' as mixins;
-
 :host {
     display: block;
 }
 
-@include mixins.field-isolated-spacing;
+.execution-timeout {
+    display: flex;
+    flex-direction: column;
+
+    &__parts {
+        display: flex;
+        gap: 8px;
+    }
+
+    &__part {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 4px;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__message {
+        margin-top: 4px;
+
+        &--error {
+            color: var(--color-ks-status-failed);
+        }
+
+        &--warning {
+            color: var(--color-ks-status-warning);
+        }
+    }
+}

@@ -39,6 +39,7 @@ import {
     ClassificationDecisionTableNodeModel,
     GraphNoteModel,
     NodeModel,
+    PythonNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
 import { SubGraphNode } from '../../../../visual-programming/core/models/subgraph-node.model';
@@ -54,8 +55,11 @@ import { SidePanelService } from '../../../../visual-programming/services/side-p
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../visual-programming/utils/testing/execution-timeout-limits.testing';
 import { livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
-import { provideLoadedSandboxLimits } from '../../../../visual-programming/utils/testing/sandbox-limits.testing';
 import {
     extractParentNotUpdatedMessage,
     FlowVisualProgrammingComponent,
@@ -249,7 +253,7 @@ describe('FlowVisualProgrammingComponent', () => {
         TestBed.configureTestingModule({
             imports: [FlowVisualProgrammingComponent],
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 {
                     provide: ActivatedRoute,
                     useValue: {
@@ -590,7 +594,6 @@ describe('FlowVisualProgrammingComponent', () => {
             webhook_trigger: null,
             test_payload: {},
             use_storage: false,
-            execution_timeout: 3,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,
@@ -1213,42 +1216,38 @@ describe('FlowVisualProgrammingComponent', () => {
         });
     });
 
-    describe('full save of a node with an execution timeout', () => {
-        function loadPythonNodeWithTimeout(executionTimeout: number | null): void {
+    describe('full save of a python code with an execution timeout', () => {
+        function loadPythonNodeWithTimeout(executionTimeout: number | undefined): void {
             flowsApi['getGraphById'].mockReturnValue(of(graphDto({ python_node_list: [livePython] })));
             component.refreshCurrentFlow();
-            const python = flowService.nodes().find((node) => node.backendId === livePython.id)!;
-            flowService.updateNode({ ...python, execution_timeout: executionTimeout } as NodeModel);
+            const python = flowService.nodes().find((node) => node.backendId === livePython.id) as PythonNodeModel;
+            flowService.updateNode({ ...python, data: { ...python.data, execution_timeout: executionTimeout } });
         }
 
-        it('refuses to save a node whose timeout was emptied, and names it', () => {
-            loadPythonNodeWithTimeout(null);
+        it('refuses to save a code whose timeout is below the minimum, and names its node', () => {
+            loadPythonNodeWithTimeout(0);
 
             component.onGraphSave(flowService.getFlowState());
 
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
             expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least 1 whole minute.`
+                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} s.`
             );
         });
 
-        it('refuses to save a fractional timeout', () => {
-            loadPythonNodeWithTimeout(2.5);
-
-            component.onGraphSave(flowService.getFlowState());
-
-            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
-        });
-
-        it('saves a timeout above the ceiling for the backend to lower, so a lowered ceiling never blocks a save', () => {
-            loadPythonNodeWithTimeout(1000);
+        it('saves a timeout above the maximum for the backend to lower, so a lowered maximum never blocks a save', () => {
+            const aboveMaximum = TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds! + 600;
+            loadPythonNodeWithTimeout(aboveMaximum);
 
             component.onGraphSave(flowService.getFlowState());
 
             expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
             const payload = flowsApi['bulkSaveGraph'].mock.calls[0][1] as Record<string, unknown>;
             expect(payload['python_node_list']).toEqual([
-                expect.objectContaining({ id: livePython.id, execution_timeout: 1000 }),
+                expect.objectContaining({
+                    id: livePython.id,
+                    python_code: expect.objectContaining({ execution_timeout: aboveMaximum }),
+                }),
             ]);
         });
     });
@@ -1349,7 +1348,6 @@ describe('FlowVisualProgrammingComponent', () => {
                 default_llm_config: null,
                 default_next_node_id: null,
                 next_error_node_id: null,
-                execution_timeout: 3,
                 condition_groups: [
                     {
                         id: id * 10,

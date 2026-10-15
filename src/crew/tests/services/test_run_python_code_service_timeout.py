@@ -1,11 +1,8 @@
-"""RunPythonCodeService carries the execution timeout to the sandbox and the
-timeout outcome back to the node.
+"""RunPythonCodeService sends the code's own execution timeout to the sandbox.
 
-Invariant: a node's timeout in minutes becomes seconds (None stays None, so the
-sandbox applies its ceiling); `run_code(timeout=...)` publishes it as
-`CodeTaskData.timeout`; and a `code_results` message reporting a kill hands
-`timed_out` and `effective_timeout_seconds` back unchanged, so the node can tell a
-timeout apart from an ordinary failure.
+Invariant: `run_code` publishes `PythonCodeData.execution_timeout` (seconds) as
+`CodeTaskData.timeout` unchanged; a code without a timeout (None) publishes None, so the
+sandbox applies its SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
 
 Only Redis is faked (`FakeRedisService`); the service and the shared models are real.
 """
@@ -16,10 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.run_python_code_service import (
-    RunPythonCodeService,
-    execution_timeout_seconds,
-)
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import CodeResultData, PythonCodeData
 
 
@@ -43,18 +37,10 @@ class FakeRedisService:
         self.published = json.loads(message)
 
 
-def _python_code_data() -> PythonCodeData:
-    return PythonCodeData(
-        venv_name="default", code="def main(**kw): return kw", entrypoint="main", libraries=[]
-    )
-
-
-async def _run_and_answer(redis: FakeRedisService, answer: dict, **run_code_kwargs) -> dict:
-    """Run run_code() and answer its published task with `answer` fields."""
+async def _run_and_capture(redis: FakeRedisService, python_code_data: PythonCodeData) -> dict:
+    """Run run_code() and answer its published task, returning the published task."""
     service = RunPythonCodeService(redis_service=redis)
-    task = asyncio.ensure_future(
-        service.run_code(python_code_data=_python_code_data(), inputs={}, **run_code_kwargs)
-    )
+    task = asyncio.ensure_future(service.run_code(python_code_data=python_code_data, inputs={}))
     for _ in range(1000):
         if redis.published is not None:
             break
@@ -62,46 +48,34 @@ async def _run_and_answer(redis: FakeRedisService, answer: dict, **run_code_kwar
     assert redis.published is not None, "run_code() never published a task"
 
     subscriber = (
-        redis.asubscribe.await_args.kwargs.get("subscriber")
-        or redis.asubscribe.await_args.args[-1]
+        redis.asubscribe.await_args.kwargs.get("subscriber") or redis.asubscribe.await_args.args[-1]
     )
     await subscriber._callback(
         {
             "data": CodeResultData(
-                execution_id=redis.published["execution_id"], stderr="", stdout="", **answer
+                execution_id=redis.published["execution_id"],
+                result_data="1",
+                stderr="",
+                stdout="",
+                returncode=0,
             ).model_dump_json()
         }
     )
-    return await task
-
-
-@pytest.mark.parametrize(
-    ("minutes", "seconds"), [(1, 60), (5, 300), (None, None)], ids=["one", "five", "unset"]
-)
-def test_execution_timeout_seconds_converts_minutes(minutes, seconds):
-    assert execution_timeout_seconds(minutes) == seconds
+    await task
+    return redis.published
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("timeout", [180, None], ids=["node-timeout", "sandbox-ceiling"])
-async def test_run_code_publishes_the_requested_timeout(timeout):
-    redis = FakeRedisService()
-
-    await _run_and_answer(redis, {"returncode": 0, "result_data": "1"}, timeout=timeout)
-
-    assert redis.published["timeout"] == timeout
-
-
-@pytest.mark.asyncio
-async def test_run_code_returns_the_timeout_outcome_from_the_sandbox():
-    redis = FakeRedisService()
-
-    result = await _run_and_answer(
-        redis,
-        {"returncode": 124, "timed_out": True, "effective_timeout_seconds": 60.0},
-        timeout=600,
+@pytest.mark.parametrize("execution_timeout", [42, None], ids=["code-timeout", "no-timeout"])
+async def test_run_code_publishes_the_code_execution_timeout(execution_timeout):
+    python_code_data = PythonCodeData(
+        venv_name="default",
+        code="def main(**kwargs): return 1",
+        entrypoint="main",
+        libraries=[],
+        execution_timeout=execution_timeout,
     )
 
-    assert result["returncode"] == 124
-    assert result["timed_out"] is True
-    assert result["effective_timeout_seconds"] == 60.0
+    published = await _run_and_capture(FakeRedisService(), python_code_data)
+
+    assert published["timeout"] == execution_timeout

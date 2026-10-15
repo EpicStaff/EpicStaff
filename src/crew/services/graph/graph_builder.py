@@ -267,7 +267,6 @@ class SessionGraphBuilder:
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
                 storage_credentials=session_data.storage_credentials,
-                execution_timeout=python_node_data.execution_timeout,
             )
             self.add_node(python_node)
 
@@ -300,7 +299,6 @@ class SessionGraphBuilder:
                 storage_org_prefix=file_extractor_node_data.storage_org_prefix,
                 org_id=file_extractor_node_data.org_id,
                 storage_credentials=session_data.storage_credentials,
-                execution_timeout=file_extractor_node_data.execution_timeout,
             )
             self.add_node(file_extractor_node)
 
@@ -329,7 +327,6 @@ class SessionGraphBuilder:
                 storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
                 org_id=audio_transcription_node_data.org_id,
                 storage_credentials=session_data.storage_credentials,
-                execution_timeout=audio_transcription_node_data.execution_timeout,
             )
             self.add_node(audio_transcription_node)
 
@@ -365,7 +362,6 @@ class SessionGraphBuilder:
                     python_code_executor_service=self.python_code_executor_service,
                     python_code_data=webhook_trigger_node_data.python_code,
                     storage_credentials=session_data.storage_credentials,
-                    execution_timeout=webhook_trigger_node_data.execution_timeout,
                 )
             )
         for telegram_trigger_node_data in schema.telegram_trigger_node_data_list:

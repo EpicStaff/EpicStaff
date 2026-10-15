@@ -43,11 +43,6 @@ export interface PythonNodeModel extends BaseNodeModel {
     type: NodeType.PYTHON;
     data: CustomPythonCode;
     test_input: Record<string, string | number | boolean>;
-    /**
-     * Minutes one sandbox execution of this node's code may run before the sandbox stops it. Null only for a
-     * node from a version saved before nodes had a timeout: its panel shows the sandbox ceiling.
-     */
-    execution_timeout: number | null;
 }
 
 export interface TaskNodeModel extends BaseNodeModel {
@@ -83,21 +78,11 @@ export interface GraphNoteModel extends BaseNodeModel {
 export interface FileExtractorNodeModel extends BaseNodeModel {
     type: NodeType.FILE_EXTRACTOR;
     data: unknown;
-    /**
-     * Minutes one sandbox execution of this node's code may run before the sandbox stops it. Null only for a
-     * node from a version saved before nodes had a timeout: its panel shows the sandbox ceiling.
-     */
-    execution_timeout: number | null;
 }
 
 export interface AudioToTextNodeModel extends BaseNodeModel {
     type: NodeType.AUDIO_TO_TEXT;
     data: unknown;
-    /**
-     * Minutes one sandbox execution of this node's code may run before the sandbox stops it. Null only for a
-     * node from a version saved before nodes had a timeout: its panel shows the sandbox ceiling.
-     */
-    execution_timeout: number | null;
 }
 
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
@@ -110,11 +95,6 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
         /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
         use_storage: boolean;
     };
-    /**
-     * Minutes one sandbox execution of this node's code may run before the sandbox stops it. Null only for a
-     * node from a version saved before nodes had a timeout: its panel shows the sandbox ceiling.
-     */
-    execution_timeout: number | null;
 }
 
 export interface TelegramTriggerNodeModel extends BaseNodeModel {
@@ -139,12 +119,6 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
         name?: string;
         table: ClassificationDecisionTableData;
     };
-    /**
-     * Minutes one sandbox execution of this node's code may run before the sandbox stops it; it applies to
-     * each of them separately (pre-computation, row expressions, manipulations, post-computation). Null only
-     * for a node from a version saved before nodes had a timeout: its panel shows the sandbox ceiling.
-     */
-    execution_timeout: number | null;
     /**
      * Generated step explanations, persisted in the node's `metadata`.
      *

@@ -122,7 +122,6 @@ async def fake_run_code(
     stop_event=None,
     additional_global_kwargs=None,
     storage_credentials=None,
-    timeout=None,
 ):
     ns: dict = {}
     exec(_SANDBOX_MODULE_PRELUDE + python_code_data.code, ns)  # noqa: S102
@@ -143,15 +142,12 @@ async def fake_run_code_error(
     stop_event=None,
     additional_global_kwargs=None,
     storage_credentials=None,
-    timeout=None,
 ):
     return {
         "returncode": 1,
         "result_data": "null",
         "stderr": "boom",
         "execution_id": "test",
-        "timed_out": False,
-        "effective_timeout_seconds": None,
     }
 
 
@@ -326,7 +322,6 @@ async def fake_run_code_raises(
     stop_event=None,
     additional_global_kwargs=None,
     storage_credentials=None,
-    timeout=None,
 ):
     raise RuntimeError("sandbox unreachable")
 
@@ -404,7 +399,6 @@ def record_run_code(monkeypatch) -> list[dict]:
         stop_event=None,
         additional_global_kwargs=None,
         storage_credentials=None,
-        timeout=None,
     ):
         calls.append(inputs)
         return await fake_run_code(self, python_code_data, inputs, stop_event)

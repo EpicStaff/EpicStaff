@@ -16,11 +16,6 @@ export interface GetWebhookTriggerNodeRequest extends AuthorshipFields {
     test_payload: Record<string, unknown>;
     /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
     use_storage: boolean;
-    /**
-     * Minutes one sandbox execution of the node's code may run (1 to the sandbox ceiling). The API always sends
-     * it; a version snapshot saved before nodes had a timeout does not.
-     */
-    execution_timeout?: number;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -35,6 +30,4 @@ export interface CreateWebhookTriggerNodeRequest {
     webhook_trigger: number | null;
     test_payload: Record<string, unknown>;
     use_storage: boolean;
-    /** Minutes, 1 to the sandbox ceiling; the backend uses the ceiling when it is left out. */
-    execution_timeout?: number;
 }

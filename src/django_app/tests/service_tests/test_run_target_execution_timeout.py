@@ -1,9 +1,9 @@
-"""A panel test-run of a node's code is killed at the same limit as a real run.
+"""A panel test run of a node's code is killed at the same limit as a real run.
 
-Invariant: `RunPythonCodeService.run_target` publishes the node's own
-`execution_timeout`, converted from minutes to the seconds `CodeTaskData.timeout`
-expects, so the sandbox applies it (clamped to its ceiling) instead of its default.
-Only the Redis client is mocked (`redis_client_mock`).
+Invariant: `RunPythonCodeService.run_target` publishes the timeout of the resolved
+`PythonCodeData` the node's real run would send, in seconds, as `CodeTaskData.timeout`, so the
+sandbox applies it (capped at its maximum) instead of its default. Only the Redis client is
+mocked (`redis_client_mock`).
 """
 
 import json
@@ -34,29 +34,19 @@ def user(django_user_model):
     )
 
 
-@pytest.fixture
-def service():
-    return RunPythonCodeService(redis_service=RedisService())
-
-
-def _python_code() -> PythonCode:
-    return PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-
-
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("target_type", "model"),
     [("python_node", PythonNode), ("webhook_trigger_node", WebhookTriggerNode)],
 )
-def test_test_run_publishes_the_node_timeout_in_seconds(
-    service, org, graph, user, redis_client_mock, settings, target_type, model
+def test_test_run_publishes_the_code_timeout(
+    org, graph, user, redis_client_mock, settings, target_type, model
 ):
-    settings.SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES = 10
-    node = model.objects.create(
-        graph=graph, node_name="timed", python_code=_python_code(), execution_timeout=3
-    )
+    settings.MAX_EXECUTION_TIMEOUT_SECONDS = 600
+    python_code = PythonCode.objects.create(code="def main(): return 1", execution_timeout=42)
+    node = model.objects.create(graph=graph, node_name="timed", python_code=python_code)
 
-    service.run_target(
+    RunPythonCodeService(redis_service=RedisService()).run_target(
         target_type=target_type,
         target_id=node.pk,
         variables={},
@@ -65,4 +55,4 @@ def test_test_run_publishes_the_node_timeout_in_seconds(
     )
 
     [published] = [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
-    assert published["timeout"] == 180
+    assert published["timeout"] == 42

@@ -38,7 +38,6 @@ from tables.serializers.base_serializer import (
 from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import (
-    ExecutionTimeoutSerializerMixin,
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
@@ -119,7 +118,6 @@ class PythonNodeSerializer(
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
     NestedPythonCodeMixin,
-    ExecutionTimeoutSerializerMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
@@ -134,7 +132,6 @@ class FileExtractorNodeSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
-    ExecutionTimeoutSerializerMixin,
     serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -284,7 +281,6 @@ class AudioTranscriptionNodeSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
-    ExecutionTimeoutSerializerMixin,
     serializers.ModelSerializer,
 ):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())

@@ -14,8 +14,8 @@ import { FlowService } from '../../../services/flow.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
+import { provideLoadedExecutionTimeoutLimits } from '../../../utils/testing/execution-timeout-limits.testing';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
-import { provideLoadedSandboxLimits } from '../../../utils/testing/sandbox-limits.testing';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
 import { SubGraphNodePanelComponent } from '../subgraph-node-panel/subgraph-node-panel.component';
@@ -41,7 +41,7 @@ const endNode: EndNodeModel = {
 async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
         providers: [
-            provideLoadedSandboxLimits(),
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             // A user who may edit flows: read-only below comes from the preview alone.
             { provide: PermissionsService, useValue: { can: () => true } },
@@ -259,7 +259,7 @@ describe('NodePanelShellComponent', () => {
         const shellFor = (type: NodeType): NodePanelShellComponent => {
             TestBed.configureTestingModule({
                 providers: [
-                    provideLoadedSandboxLimits(),
+                    provideLoadedExecutionTimeoutLimits(),
                     {
                         provide: SidePanelService,
                         useValue: {
@@ -335,7 +335,7 @@ describe('NodePanelShellComponent', () => {
             const open = vi.fn();
             TestBed.configureTestingModule({
                 providers: [
-                    provideLoadedSandboxLimits(),
+                    provideLoadedExecutionTimeoutLimits(),
                     { provide: FLOW_EDITOR_PREVIEW, useValue: options.isPreview ?? false },
                     {
                         provide: PermissionsService,

@@ -1,40 +1,84 @@
-import { Component, computed, input } from '@angular/core';
-import { ReactiveFormsModule } from '@angular/forms';
-import { InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
+import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
+import { InputNumberComponent, TooltipComponent } from '@shared/components';
 
-import { MIN_EXECUTION_TIMEOUT_MINUTES } from '../../../../core/constants/execution-timeout';
-import { ExecutionTimeoutFormField } from './execution-timeout-control';
+import { FlowReadOnlyService } from '../../../../services/flow-readonly.service';
+import { formatDuration, joinDuration, splitDuration } from '../../../../utils/duration';
+import {
+    executionTimeoutMinimumRule,
+    isValidExecutionTimeout,
+} from '../../../../utils/validation/execution-timeout.validator';
+import { ExecutionTimeoutFormField } from './execution-timeout-form-field';
 
-/** A node's execution timeout in minutes, bounded by the sandbox ceiling. Create the field with `createExecutionTimeoutField`. */
+/**
+ * The execution timeout of one python code, typed as hours, minutes and seconds and kept in the control as
+ * total seconds.
+ */
 @Component({
     selector: 'app-execution-timeout-field',
-    imports: [ReactiveFormsModule, InputNumberComponent, ValidationErrorsComponent],
+    imports: [InputNumberComponent, TooltipComponent],
     templateUrl: './execution-timeout-field.component.html',
     styleUrls: ['./execution-timeout-field.component.scss'],
 })
 export class ExecutionTimeoutFieldComponent {
     public readonly field = input.required<ExecutionTimeoutFormField>();
-    /** For a node that runs its code several times per node run: which runs the limit applies to. */
-    public readonly perExecutionNote = input<string>('');
 
-    protected readonly tooltipText = computed(() => {
-        const limit = `How long one execution of this node's code may run before the sandbox stops it, in minutes (${MIN_EXECUTION_TIMEOUT_MINUTES} to ${this.field().maxMinutes}).`;
-        const note = this.perExecutionNote();
-        return note ? `${limit} ${note}` : limit;
-    });
-    protected readonly aboveCeilingWarning = computed(
-        () => `Will be saved as ${this.field().maxMinutes} min, the current limit.`
-    );
-
-    protected readonly minMinutes = MIN_EXECUTION_TIMEOUT_MINUTES;
+    private readonly hoursInput = viewChild.required<InputNumberComponent>('hoursInput');
+    private readonly minutesInput = viewChild.required<InputNumberComponent>('minutesInput');
+    private readonly secondsInput = viewChild.required<InputNumberComponent>('secondsInput');
 
     /**
-     * The input's upper bound: the ceiling, which stops its stepper there. Left out while the value is above it
-     * (a timeout saved under a higher ceiling), as the input shows a value beyond its bound as an error; the
-     * value is valid and gets a warning instead.
+     * Never equal to itself: every edit, even one capped back to the total before it, writes the parts again, so
+     * the inputs never keep a typed part the control did not take.
      */
-    protected inputMax(): number | null {
-        const { control, maxMinutes } = this.field();
-        return control.value != null && control.value > maxMinutes ? null : maxMinutes;
+    private readonly totalSeconds = signal(0, { equal: () => false });
+
+    protected readonly tooltipText = computed(() => {
+        const { minSeconds, maxSeconds } = this.field().limits;
+        const range =
+            maxSeconds === null
+                ? executionTimeoutMinimumRule(minSeconds)
+                : `${formatDuration(minSeconds)} to ${formatDuration(maxSeconds)}`;
+        return `How long one run of this code may take before it is stopped (${range}). Installing its libraries does not count.`;
+    });
+    protected readonly errorMessage = computed(() => {
+        const { minSeconds } = this.field().limits;
+        return isValidExecutionTimeout(this.totalSeconds(), minSeconds)
+            ? ''
+            : `Must be ${executionTimeoutMinimumRule(minSeconds)}.`;
+    });
+    protected readonly aboveMaximumWarning = computed(() => {
+        const { maxSeconds } = this.field().limits;
+        return maxSeconds !== null && this.totalSeconds() > maxSeconds
+            ? `Runs for at most ${formatDuration(maxSeconds)}, the current limit.`
+            : '';
+    });
+
+    protected readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+
+    constructor() {
+        effect((onCleanup) => {
+            const { control } = this.field();
+            this.totalSeconds.set(control.value);
+            const subscription = control.valueChanges.subscribe((value) => this.totalSeconds.set(value));
+            onCleanup(() => subscription.unsubscribe());
+        });
+        // The inputs are written directly rather than bound: a binding skips a part that equals its last bound
+        // value, even when the input shows a different one typed since.
+        effect(() => {
+            const { hours, minutes, seconds } = splitDuration(this.totalSeconds());
+            this.hoursInput().value.set(hours);
+            this.minutesInput().value.set(minutes);
+            this.secondsInput().value.set(seconds);
+        });
+    }
+
+    protected onPartChange(): void {
+        // A pasted fraction would make the total fractional: round it to whole seconds.
+        const totalSeconds = joinDuration({
+            hours: this.hoursInput().value() ?? 0,
+            minutes: this.minutesInput().value() ?? 0,
+            seconds: this.secondsInput().value() ?? 0,
+        });
+        this.field().edit(Math.round(totalSeconds));
     }
 }

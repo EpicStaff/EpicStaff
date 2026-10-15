@@ -33,6 +33,7 @@ def _set_env_defaults() -> None:
         "STORAGE_SSL": "false",
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
+        "SANDBOX_DEFAULT_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
         "SANDBOX_BLOCK_PRIVATE_NETWORK": "true",
@@ -54,8 +55,6 @@ def _ensure_src_shared_stub() -> None:
         stderr: str = ""
         stdout: str = ""
         returncode: int = 0
-        timed_out: bool = False
-        effective_timeout_seconds: float | None = None
 
     @dataclasses.dataclass
     class CodeTaskData:

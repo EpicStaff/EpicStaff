@@ -14,12 +14,8 @@ from src.crew.models.graph_models import (
 from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.exceptions import timeout_message
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
-from src.crew.services.run_python_code_service import (
-    RunPythonCodeService,
-    execution_timeout_seconds,
-)
+from src.crew.services.run_python_code_service import RunPythonCodeService
 from src.shared.models import LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
@@ -140,16 +136,6 @@ class ClassificationDecisionTableNodeSubgraph:
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.storage_credentials = storage_credentials
-        # One limit for every sandbox run of this node: pre, each row-expression
-        # batch, each manipulation and post each get the full timeout.
-        self.execution_timeout_seconds = execution_timeout_seconds(node_data.execution_timeout)
-
-    @staticmethod
-    def _sandbox_failure_reason(result: dict) -> str:
-        """Return why a failed sandbox run failed, naming the timeout when it killed the run."""
-        if result["timed_out"]:
-            return timeout_message(result["effective_timeout_seconds"])
-        return result["stderr"]
 
     def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
@@ -258,12 +244,11 @@ class ClassificationDecisionTableNodeSubgraph:
             inputs=inputs,
             stop_event=self.stop_event,
             storage_credentials=self.storage_credentials,
-            timeout=self.execution_timeout_seconds,
         )
 
         if result["returncode"] != 0:
             raise ClassificationDecisionTableNodeError(
-                f"{label} execution failed: {self._sandbox_failure_reason(result)}"
+                f"{label} execution failed: {result['stderr']}"
             )
 
         if output_variable_path:
@@ -364,7 +349,7 @@ class ClassificationDecisionTableNodeSubgraph:
         Only a matched row changes state, so every row up to the next match sees the
         same variables and can share one run. Evaluation stops at the first True or the
         first failing expression; later expressions are never compiled or run. The
-        whole batch shares one execution timeout: the node's.
+        whole batch shares one SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
 
         Returns:
             The result of each evaluated row, and the error message of the row right
@@ -387,12 +372,11 @@ class ClassificationDecisionTableNodeSubgraph:
             },
             stop_event=self.stop_event,
             storage_credentials=self.storage_credentials,
-            timeout=self.execution_timeout_seconds,
         )
 
         if result["returncode"] != 0:
             raise ClassificationDecisionTableNodeError(
-                f"Expression execution failed: {self._sandbox_failure_reason(result)}"
+                f"Expression execution failed: {result['stderr']}"
             )
         try:
             evaluation = json.loads(result["result_data"])
@@ -449,12 +433,11 @@ def main(**kwargs) -> dict:
             inputs={"variables": variables_dict},
             stop_event=self.stop_event,
             storage_credentials=self.storage_credentials,
-            timeout=self.execution_timeout_seconds,
         )
 
         if result["returncode"] != 0:
             raise ClassificationDecisionTableNodeError(
-                f"Manipulation execution failed: {self._sandbox_failure_reason(result)}"
+                f"Manipulation execution failed: {result['stderr']}"
             )
 
         variables = json.loads(result["result_data"])

@@ -14,9 +14,10 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
 import {
-    provideLoadedSandboxLimits,
-    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
-} from '../../../utils/testing/sandbox-limits.testing';
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../utils/testing/execution-timeout-limits.testing';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -52,7 +53,7 @@ const pythonNode = {
 function create(isPreview: boolean): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
-            provideLoadedSandboxLimits(),
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
@@ -111,7 +112,7 @@ describe('PythonNodePanelComponent test run', () => {
         };
         TestBed.configureTestingModule({
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 { provide: PythonCodeRunService, useValue: runService },
@@ -269,7 +270,14 @@ describe('PythonNodePanelComponent test run', () => {
     });
 
     describe('execution timeout', () => {
-        const TIMED_NODE: PythonNode = { ...STORED_NODE, execution_timeout: 3 };
+        const TIMED_NODE: PythonNode = {
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, execution_timeout: 90 },
+        };
+
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
 
         function startRun(): void {
             const start$ = new Subject<{ execution_id: string }>();
@@ -278,52 +286,73 @@ describe('PythonNodePanelComponent test run', () => {
             start$.next({ execution_id: 'exec-1' });
         }
 
-        it('shows the stored timeout, and the ceiling for a node saved before nodes had one', () => {
+        it('shows the stored timeout of the code', () => {
             bindStoredGraph(TIMED_NODE);
             open(mapPythonNodeToModel(TIMED_NODE));
-            expect(panel.form.value.execution_timeout).toBe(3);
 
-            open(mapPythonNodeToModel(STORED_NODE));
-            expect(panel.form.value.execution_timeout).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+            expect(timeoutField().control.value).toBe(90);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(90);
         });
 
-        it('blocks the run after a timeout edit until the stored node has it, then waits that long for the result', () => {
+        it('shows the default for a code without a timeout, and keeps none on it until edited', () => {
+            open();
+
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBeUndefined();
+        });
+
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(300);
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
             bindStoredGraph(TIMED_NODE);
             open(mapPythonNodeToModel(TIMED_NODE));
 
-            panel.form.patchValue({ execution_timeout: 5 });
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
+        });
+
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
+            open();
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
+        });
+
+        it('blocks the run after an unsaved timeout edit, until it is back to the stored one', () => {
+            open();
+
+            timeoutField().edit(300);
             expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
 
-            bindStoredGraph({ ...TIMED_NODE, execution_timeout: 5 });
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(blocker()).toBeNull();
+        });
+
+        it('runs a stored timeout above the maximum for the maximum, without asking to save it', () => {
+            const longNode: PythonNode = {
+                ...STORED_NODE,
+                python_code: { ...STORED_NODE.python_code, execution_timeout: 7200 },
+            };
+            bindStoredGraph(longNode);
+            open(mapPythonNodeToModel(longNode));
+
             expect(blocker()).toBeNull();
             startRun();
-
-            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 5);
-        });
-
-        it('waits for a stored node without a timeout as long as the ceiling the backend applies to it', () => {
-            open();
-
-            startRun();
-
-            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
-        });
-
-        it('puts the edited timeout on the node it saves', () => {
-            open();
-
-            panel.form.patchValue({ execution_timeout: 7 });
-
-            expect(panel.onSaveSilently()?.execution_timeout).toBe(7);
-        });
-
-        it('hands an emptied timeout to the flow save, which refuses it', () => {
-            open();
-
-            panel.form.patchValue({ execution_timeout: null });
-
-            expect(panel.onSaveSilently()).toBeNull();
-            expect(panel.captureForValidation()?.execution_timeout).toBeNull();
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds
+            );
         });
     });
 });

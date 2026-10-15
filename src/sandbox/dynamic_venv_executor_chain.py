@@ -702,12 +702,7 @@ except Exception:
             **drop_kwargs,
         )
 
-        # The requested timeout is optional in the context: the ceiling alone
-        # applies when the task did not ask for a shorter one.
-        timeout = effective_execution_timeout(
-            requested_seconds=context.get("requested_timeout"),
-            ceiling_seconds=settings.EXECUTION_TIMEOUT,
-        )
+        timeout = effective_execution_timeout(context.get("requested_timeout"))
         comm_task = asyncio.ensure_future(process.communicate())
         done, _ = await asyncio.wait({comm_task}, timeout=timeout)
 
@@ -816,25 +811,22 @@ except Exception:
             stdout=stdout,
             stderr=stderr,
             returncode=124,
-            timed_out=True,
-            effective_timeout_seconds=timeout,
         )
 
 
-def effective_execution_timeout(
-    requested_seconds: float | None, ceiling_seconds: float | None
-) -> float | None:
-    """Return the execution timeout to apply, never above the sandbox ceiling.
+def effective_execution_timeout(requested_seconds: float | None) -> float | None:
+    """Return the execution timeout to apply: the requested one, never above the maximum.
 
-    The requested value comes from the task message and is untrusted, so it can
-    only shorten the ceiling. None on either side means "no limit from this side";
-    None from both means the execution is unbounded.
+    A task without a timeout gets SANDBOX_DEFAULT_EXECUTION_TIMEOUT, or the maximum when
+    that is none. The requested value comes from the task message and is untrusted, so it
+    is capped at SANDBOX_EXECUTION_TIMEOUT; None there means no upper limit.
     """
-    if ceiling_seconds is None:
-        return requested_seconds
-    if requested_seconds is None:
-        return ceiling_seconds
-    return min(requested_seconds, ceiling_seconds)
+    timeout = settings.DEFAULT_EXECUTION_TIMEOUT if requested_seconds is None else requested_seconds
+    if timeout is None:
+        return settings.EXECUTION_TIMEOUT
+    if settings.EXECUTION_TIMEOUT is None:
+        return timeout
+    return min(timeout, settings.EXECUTION_TIMEOUT)
 
 
 class DynamicVenvExecutorChain:
@@ -879,9 +871,10 @@ class DynamicVenvExecutorChain:
         """Run the complete workflow asynchronously.
 
         Args:
-            timeout: Requested execution timeout in seconds, clamped to
-                SANDBOX_EXECUTION_TIMEOUT. Bounds only the code run itself;
-                venv creation and library installation are not limited by it.
+            timeout: Requested execution timeout in seconds, capped at
+                SANDBOX_EXECUTION_TIMEOUT; None applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+                Bounds only the code run itself; venv creation and library
+                installation are not limited by it.
         """
         if func_kwargs is None:
             func_kwargs = {}

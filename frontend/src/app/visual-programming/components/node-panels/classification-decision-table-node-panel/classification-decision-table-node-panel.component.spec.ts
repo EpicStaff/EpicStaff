@@ -3,10 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { AbstractControl } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
-import { InputNumberComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
@@ -24,9 +22,11 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
 import {
-    provideLoadedSandboxLimits,
-    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
-} from '../../../utils/testing/sandbox-limits.testing';
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../utils/testing/execution-timeout-limits.testing';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -108,7 +108,6 @@ function tableNode(): ClassificationDecisionTableNodeModel {
         size: { width: 300, height: 200 },
         input_map: {},
         output_variable_path: null,
-        execution_timeout: 3,
     } as unknown as ClassificationDecisionTableNodeModel;
 }
 
@@ -151,7 +150,7 @@ describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 {
@@ -353,7 +352,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 {
@@ -544,18 +543,25 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     });
 });
 
-describe('ClassificationDecisionTableNodePanelComponent — execution timeout', () => {
-    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+describe('ClassificationDecisionTableNodePanelComponent — execution timeouts of the pre- and post-computation', () => {
     let panel: ClassificationDecisionTableNodePanelComponent;
 
-    function open(executionTimeout: number | null): void {
+    /** The panel's two timeout fields. */
+    interface TimeoutPanel {
+        preExecutionTimeout: ExecutionTimeoutFormField;
+        postExecutionTimeout: ExecutionTimeoutFormField;
+    }
+
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    function open(preSeconds: number | undefined, postSeconds: number | undefined, preCode = 'def main(): pass'): void {
         TestBed.configureTestingModule({
             errorOnUnknownProperties: true,
             errorOnUnknownElements: true,
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 {
@@ -568,8 +574,20 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeout', 
             remove: { imports: [ClassificationDecisionTableGridComponent] },
             add: { imports: [GridStubComponent] },
         });
+        const node = tableNode();
+        const timedNode = {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: preCode, execution_timeout: preSeconds },
+                    post_computation: { code: 'def main(): pass', execution_timeout: postSeconds },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel;
         const flowService = TestBed.inject(FlowService);
-        flowService.setFlow({ nodes: [{ ...tableNode(), execution_timeout: executionTimeout }], connections: [] });
+        flowService.setFlow({ nodes: [timedNode], connections: [] });
 
         fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
         fixture.componentRef.setInput('node', flowService.nodes()[0]);
@@ -577,60 +595,58 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeout', 
         panel = fixture.componentInstance;
     }
 
-    function timeoutInput(): InputNumberComponent {
-        return fixture.debugElement.query(By.css('app-execution-timeout-field app-input-number'))
-            .componentInstance as InputNumberComponent;
+    function showsTimeoutOnTab(tab: 'precomputation' | 'postcomputation'): boolean {
+        panel.activeTab.set(tab);
+        fixture.detectChanges();
+        return fixture.debugElement.query(By.directive(ExecutionTimeoutFieldComponent)) !== null;
     }
 
-    function timeoutControl(): AbstractControl {
-        return panel.form.get('execution_timeout')!;
+    function fields(): TimeoutPanel {
+        return panel as unknown as TimeoutPanel;
     }
 
-    it('shows the stored timeout and says it applies to each code step separately', () => {
-        open(3);
+    it('shows each stored timeout, and the default for a code without one', () => {
+        open(90, undefined);
 
-        expect(timeoutInput().value()).toBe(3);
-        expect(timeoutInput().max()).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
-        expect(timeoutInput().tooltipText()).toContain('each code step separately');
+        expect(fields().preExecutionTimeout.control.value).toBe(90);
+        expect(fields().postExecutionTimeout.control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
     });
 
-    it('shows a table saved before nodes had a timeout at the ceiling', () => {
-        open(null);
+    it('puts each edited timeout on its own code, and keeps none on a code whose timeout was not edited', () => {
+        open(undefined, undefined);
 
-        expect(timeoutInput().value()).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+        fields().preExecutionTimeout.edit(300);
+        const table = panel.onSaveSilently()?.data.table;
+
+        expect(table?.pre_computation?.execution_timeout).toBe(300);
+        expect(table?.post_computation?.execution_timeout).toBeUndefined();
+
+        fields().postExecutionTimeout.edit(45);
+        expect(panel.onSaveSilently()?.data.table.post_computation?.execution_timeout).toBe(45);
     });
 
-    it('puts an edited timeout on the node it saves', () => {
-        open(3);
-
-        timeoutControl().setValue(8);
-
-        expect(panel.onSaveSilently()?.execution_timeout).toBe(8);
-    });
-
-    it('keeps a timeout saved under a higher ceiling, with a warning, and closes with it and the other edits', () => {
-        const aboveCeiling = TEST_MAX_EXECUTION_TIMEOUT_MINUTES + 30;
-        open(aboveCeiling);
-
-        expect(timeoutControl().valid).toBe(true);
-        expect(timeoutInput().isAboveWarning()).toBe(true);
-        panel.form.patchValue({ node_name: 'Renamed' });
-        const saved = panel.onSave();
-
-        expect(saved?.execution_timeout).toBe(aboveCeiling);
-        expect(saved?.node_name).toBe('Renamed');
-    });
-
-    it('exports the edited timeout to CSV', () => {
-        open(3);
+    it('exports the edited timeouts to CSV', () => {
+        open(90, undefined);
         const downloadFile = vi
             .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
             .mockImplementation(() => undefined);
 
-        timeoutControl().setValue(8);
+        fields().postExecutionTimeout.edit(45);
         panel.exportAsCsv();
 
-        expect(downloadFile).toHaveBeenCalledTimes(1);
-        expect((downloadFile.mock.calls[0][0] as string).split('\n')).toContain('execution_timeout,8');
+        const rows = (downloadFile.mock.calls[0][0] as string).split('\n');
+        expect(rows).toContain('pre_python_code_execution_timeout,90');
+        expect(rows).toContain('post_python_code_execution_timeout,45');
+    });
+
+    it('shows the timeout of a code block only while it has code: the save drops the timeout of an empty one', () => {
+        open(90, undefined, '  ');
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(false);
+        expect(showsTimeoutOnTab('postcomputation')).toBe(true);
+
+        panel.activeTab.set('precomputation');
+        panel.onPreCodeChange('def main(): pass');
+        expect(showsTimeoutOnTab('precomputation')).toBe(true);
     });
 });

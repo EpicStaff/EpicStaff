@@ -96,6 +96,7 @@ def copy_python_code(python_code: PythonCode) -> PythonCode:
         entrypoint=python_code.entrypoint,
         libraries=python_code.libraries,
         global_kwargs=python_code.global_kwargs,
+        execution_timeout=python_code.execution_timeout,
     )
     # Copy stays inside one org, so the ids remain valid and the duplicate must be
     # runnable. Dropping the declaration would leave a copy that fails validation.

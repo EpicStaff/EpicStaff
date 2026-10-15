@@ -3,7 +3,6 @@ import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
-import { defaultExecutionTimeoutMinutes, isExecutionTimeoutNodeType } from '../core/constants/execution-timeout';
 import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode } from '../core/helpers/helpers';
 import { findNearestFreePosition, getCollisionBounds, snapPointToGrid } from '../core/helpers/node-placement.utils';
@@ -13,13 +12,11 @@ import { ViewPort } from '../core/models/port.model';
 import { ScheduleTriggerNodeData } from '../core/models/schedule-trigger.model';
 import { FlowService } from './flow.service';
 import { FlowSettingsService } from './flow-settings.service';
-import { SandboxLimitsStorageService } from './sandbox-limits-storage.service';
 
 @Injectable({ providedIn: 'root' })
 export class NodeFactoryService {
     private readonly flowService = inject(FlowService);
     private readonly flowSettings = inject(FlowSettingsService);
-    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
 
     createNode(type: NodeType, overrides?: Partial<NodeModel>): NodeModel {
         const id = generateUuid();
@@ -36,14 +33,6 @@ export class NodeFactoryService {
             type === NodeType.START || type === NodeType.END ? undefined : this.flowService.getNextNodeNumber();
         const nodeName = generateNodeDisplayName(type, nodeNumber);
         const snappedPosition = snapPointToGrid(overrides?.position ?? { x: 0, y: 0 });
-        const executionTimeout = isExecutionTimeoutNodeType(type)
-            ? {
-                  execution_timeout: defaultExecutionTimeoutMinutes(
-                      type,
-                      this.sandboxLimits.maxExecutionTimeoutMinutes()
-                  ),
-              }
-            : {};
 
         return {
             id,
@@ -58,7 +47,6 @@ export class NodeFactoryService {
             input_map: {},
             output_variable_path: null,
             size,
-            ...executionTimeout,
             ...overrides,
             position: findNearestFreePosition(
                 snappedPosition,

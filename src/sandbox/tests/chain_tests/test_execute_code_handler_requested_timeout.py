@@ -1,16 +1,16 @@
-"""A task's requested execution timeout can only shorten the sandbox ceiling.
+"""The execution timeout the sandbox applies to a task, and how a run killed by it is reported.
 
-`CodeTaskData.timeout` comes from the node (or the panel test-run) and is
-untrusted, so ExecuteCodeHandler applies `min(requested, SANDBOX_EXECUTION_TIMEOUT)`
-and the ceiling alone when nothing was requested. A run killed for running past
-that limit is reported with `timed_out=True` and the limit actually applied in
-`effective_timeout_seconds`, so crew names the real limit rather than the one it
-asked for. A run that finished reports neither.
+Invariant: a task's requested timeout (`CodeTaskData.timeout`, seconds) applies as asked,
+capped at SANDBOX_EXECUTION_TIMEOUT because the request is untrusted; a task without one
+gets SANDBOX_DEFAULT_EXECUTION_TIMEOUT, also capped, or the maximum when there is no default
+(never unbounded while a maximum is set). SANDBOX_EXECUTION_TIMEOUT=none means no cap. A run
+killed for running past the applied timeout says so in its stderr, naming the limit that was
+applied rather than the one requested.
 
-The handler tests spawn a real hanging process, but without launcher.py: Landlock
-is reported absent (`abi_version` -> 0) with isolation not required, so the child
-runs unconfined. That keeps them independent of the uid the launcher needs, while
-the timeout, the kill and the result are the real code paths.
+The handler tests spawn a real hanging process, but without launcher.py: Landlock is
+reported absent (`abi_version` -> 0) with isolation not required, so the child runs
+unconfined. That keeps them independent of the uid the launcher needs, while the timeout,
+the kill and the result are the real code paths.
 """
 
 import asyncio
@@ -38,39 +38,45 @@ from conftest import copy_shared_libs_into_jail, make_execute_context
 
 HANGING_CODE = "def main(**kwargs):\n    import time\n    while True:\n        time.sleep(0.05)\n"
 FINISHING_CODE = "def main(**kwargs):\n    return 'done'\n"
-# Long enough that only the requested timeout can end a hanging run inside the bound.
-LONG_CEILING_SECONDS = 120
+# Long enough that only the timeout under test can end a hanging run inside the bound.
+LONG_SECONDS = 120
 # Bounds every handler run so a timeout that is not applied fails the test instead of
 # hanging the suite.
 RUN_BOUND_SECONDS = 15
 
 
 @pytest.mark.parametrize(
-    ("requested_seconds", "ceiling_seconds", "expected"),
+    ("requested_seconds", "max_seconds", "default_seconds", "expected"),
     [
-        (30, 300, 30),
-        (300, 300, 300),
-        (600, 300, 300),
-        (None, 300, 300),
-        (30, None, 30),
-        (None, None, None),
+        (30, 300, 60, 30),
+        (300, 300, 60, 300),
+        (600, 300, 60, 300),
+        (None, 300, 60, 60),
+        (None, 30, 60, 30),
+        (None, 300, None, 300),
+        (600, None, 60, 600),
+        (None, None, 60, 60),
+        (None, None, None, None),
     ],
     ids=[
-        "below-ceiling",
-        "equal-to-ceiling",
-        "above-ceiling-is-clamped",
-        "not-requested-takes-ceiling",
-        "no-ceiling-takes-request",
-        "neither-is-unbounded",
+        "requested-below-maximum",
+        "requested-equal-to-maximum",
+        "requested-above-maximum-is-capped",
+        "not-requested-takes-default",
+        "default-above-maximum-is-capped",
+        "no-default-takes-maximum",
+        "no-maximum-keeps-request",
+        "no-maximum-not-requested-takes-default",
+        "no-maximum-no-default-is-unbounded",
     ],
 )
-def test_effective_execution_timeout(requested_seconds, ceiling_seconds, expected):
-    assert (
-        effective_execution_timeout(
-            requested_seconds=requested_seconds, ceiling_seconds=ceiling_seconds
-        )
-        == expected
-    )
+def test_effective_execution_timeout(
+    monkeypatch, requested_seconds, max_seconds, default_seconds, expected
+):
+    monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", max_seconds)
+    monkeypatch.setattr(settings, "DEFAULT_EXECUTION_TIMEOUT", default_seconds)
+
+    assert effective_execution_timeout(requested_seconds) == expected
 
 
 @pytest.fixture
@@ -112,46 +118,31 @@ def _run_bounded(context: dict[str, Any]):
 
 
 @pytest.mark.usefixtures("unconfined_execution")
-class TestHandlerAppliesTheEffectiveTimeout:
-    def test_requested_timeout_below_the_ceiling_kills_the_run(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", LONG_CEILING_SECONDS)
+@pytest.mark.parametrize(
+    ("requested_seconds", "max_seconds", "default_seconds"),
+    [(1, LONG_SECONDS, LONG_SECONDS), (LONG_SECONDS, 1, LONG_SECONDS), (None, LONG_SECONDS, 1)],
+    ids=["requested", "requested-capped-at-maximum", "default"],
+)
+def test_killed_run_names_the_applied_timeout(
+    tmp_path, monkeypatch, requested_seconds, max_seconds, default_seconds
+):
+    monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", max_seconds)
+    monkeypatch.setattr(settings, "DEFAULT_EXECUTION_TIMEOUT", default_seconds)
 
-        result = _run_bounded(_context(tmp_path, HANGING_CODE, requested_timeout=1))
+    result = _run_bounded(_context(tmp_path, HANGING_CODE, requested_timeout=requested_seconds))
 
-        assert result.returncode == 124
-        assert result.timed_out is True
-        assert result.effective_timeout_seconds == 1
-        assert "Execution exceeded 1 seconds and was terminated." in result.stderr
+    assert result.returncode == 124
+    assert result.stderr.endswith("Execution exceeded 1 seconds and was terminated.")
 
-    def test_requested_timeout_above_the_ceiling_is_cut_to_the_ceiling(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
 
-        result = _run_bounded(
-            _context(tmp_path, HANGING_CODE, requested_timeout=LONG_CEILING_SECONDS)
-        )
+@pytest.mark.usefixtures("unconfined_execution")
+def test_run_finishing_within_the_timeout_is_not_killed(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", LONG_SECONDS)
 
-        assert result.returncode == 124
-        assert result.timed_out is True
-        assert result.effective_timeout_seconds == 1
+    result = _run_bounded(_context(tmp_path, FINISHING_CODE, requested_timeout=5))
 
-    def test_no_requested_timeout_applies_the_ceiling(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
-
-        result = _run_bounded(_context(tmp_path, HANGING_CODE, requested_timeout=None))
-
-        assert result.timed_out is True
-        assert result.effective_timeout_seconds == 1
-
-    def test_finished_run_is_not_reported_as_timed_out(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", LONG_CEILING_SECONDS)
-
-        result = _run_bounded(_context(tmp_path, FINISHING_CODE, requested_timeout=5))
-
-        assert result.returncode == 0, result.stderr
-        assert result.timed_out is False
-        assert result.effective_timeout_seconds is None
+    assert result.returncode == 0, result.stderr
+    assert "terminated" not in result.stderr
 
 
 class _RecordingHandler(AbstractHandler):

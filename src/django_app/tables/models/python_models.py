@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
@@ -12,12 +13,22 @@ from tables.models.base_models import (
 )
 
 
+def default_execution_timeout() -> int:
+    # A callable, so the default follows deployment configuration instead of being frozen
+    # into the migration. NOTE: migrations reference it by import path; never rename or move.
+    return settings.DEFAULT_EXECUTION_TIMEOUT_SECONDS
+
+
 class PythonCode(ContentHashMixin, models.Model):
     code = models.TextField()
     entrypoint = models.TextField(default="main")
     libraries = models.TextField(default="")  # sep: space
     global_kwargs = models.JSONField(default=dict)
     secrets = models.ManyToManyField("Secret", blank=True, related_name="python_codes")
+    execution_timeout = models.PositiveIntegerField(
+        default=default_execution_timeout,
+        help_text="Seconds a single run of this code may take before it is killed.",
+    )
 
     def get_libraries_list(self):
         return list(filter(None, self.libraries.split(" ")))

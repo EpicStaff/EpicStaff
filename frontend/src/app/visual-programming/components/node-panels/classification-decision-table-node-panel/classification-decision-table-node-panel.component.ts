@@ -57,10 +57,11 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
+import { ExecutionTimeoutLimitsStorageService } from '../../../services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../services/flow.service';
-import { SandboxLimitsStorageService } from '../../../services/sandbox-limits-storage.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import { hasPythonCode } from '../../../utils/validation/execution-timeout.validator';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
@@ -69,11 +70,8 @@ import {
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import {
-    createExecutionTimeoutField,
-    ExecutionTimeoutFormField,
-} from '../shared/execution-timeout-field/execution-timeout-control';
 import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -193,9 +191,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
-    protected executionTimeout!: ExecutionTimeoutFormField;
-    protected readonly executionTimeoutNote =
-        'The limit applies to each code step separately: the pre-computation, every row expression and manipulation, the post-computation.';
+    protected preExecutionTimeout!: ExecutionTimeoutFormField;
+    protected postExecutionTimeout!: ExecutionTimeoutFormField;
+    /** A code block without code is not saved, and neither is its timeout: the field shows only with code. */
+    protected readonly hasPythonCode = hasPythonCode;
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -239,7 +238,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private readonly sandboxLimits = inject(SandboxLimitsStorageService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly explanationStore = inject(CdtExplanationStoreService);
 
@@ -414,10 +413,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
-        this.executionTimeout = createExecutionTimeoutField(
-            node.execution_timeout,
-            this.sandboxLimits.maxExecutionTimeoutMinutes()
-        );
+        const executionTimeoutLimits = this.executionTimeoutLimits.limits();
+        this.preExecutionTimeout = new ExecutionTimeoutFormField(preComp.execution_timeout, executionTimeoutLimits);
+        this.postExecutionTimeout = new ExecutionTimeoutFormField(postComp.execution_timeout, executionTimeoutLimits);
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             pre_computation_code: [this.preCode],
@@ -431,7 +429,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
-            execution_timeout: this.executionTimeout.control,
+            pre_execution_timeout: this.preExecutionTimeout.control,
+            post_execution_timeout: this.postExecutionTimeout.control,
         });
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
@@ -514,6 +513,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
                 secret_names: this.preSecretNames(),
+                execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
                 code: this.postCode,
@@ -522,6 +522,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
                 secret_names: this.postSecretNames(),
+                execution_timeout: this.postExecutionTimeout.value,
             },
             condition_groups: conditionGroups,
             sections: this.cloneSections(this.sections() || []),
@@ -557,7 +558,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 name: this.form.value.node_name || 'Classification Decision Table',
                 table: tableData,
             },
-            execution_timeout: this.executionTimeout.control.value,
         };
     }
 
@@ -922,16 +922,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             postUseStorage: this.postUseStorage(),
             defaultLlmConfig: this.form.value.default_llm_config || null,
-            executionTimeout: this.executionTimeout.control.value,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
             sections: this.sections(),

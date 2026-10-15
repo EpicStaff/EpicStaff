@@ -68,6 +68,8 @@ export interface CDTPythonCodeBlock {
     content_hash?: string;
     secret_ids?: number[];
     secrets?: DeclaredSecretRef[];
+    /** Seconds one run of the code may take; the backend applies its default when it is left out. */
+    execution_timeout?: number;
 }
 
 export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {
@@ -90,12 +92,6 @@ export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFie
     condition_groups: ClassificationConditionGroupBackend[];
     sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
-    /**
-     * Minutes each sandbox execution of the node's code (pre-computation, row expressions, manipulations,
-     * post-computation) may run, 1 to the sandbox ceiling. The API always sends it; a version snapshot saved
-     * before nodes had a timeout does not.
-     */
-    execution_timeout?: number;
 }
 
 export interface CreateClassificationDecisionTableNodeRequest {
@@ -118,6 +114,4 @@ export interface CreateClassificationDecisionTableNodeRequest {
     condition_groups: CreateClassificationConditionGroupRequest[];
     sections?: ClassificationDecisionTableSectionBackend[];
     metadata?: unknown;
-    /** Minutes, 1 to the sandbox ceiling; the backend uses the ceiling when it is left out. */
-    execution_timeout?: number;
 }

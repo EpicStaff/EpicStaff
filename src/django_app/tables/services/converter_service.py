@@ -402,6 +402,7 @@ class ConverterService(metaclass=SingletonMeta):
             entrypoint=python_code.entrypoint,
             libraries=libraries,
             global_kwargs=python_code.global_kwargs,
+            execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -664,7 +665,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
-            execution_timeout=python_node.execution_timeout,
         )
 
     def convert_condition_to_pydantic(self, condition: Condition) -> ConditionData:
@@ -785,7 +785,6 @@ class ConverterService(metaclass=SingletonMeta):
             prompts=prompts_dict,
             default_next_node=resolver(node.default_next_node_id),
             next_error_node=resolver(node.next_error_node_id),
-            execution_timeout=node.execution_timeout,
         )
 
     def convert_decision_table_node_to_pydantic(
@@ -857,7 +856,6 @@ class ConverterService(metaclass=SingletonMeta):
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
             python_code=python_code_data,
-            execution_timeout=webhook_trigger_node.execution_timeout,
         )
 
     def convert_telegram_trigger_node_to_pydantic(
@@ -932,7 +930,6 @@ class ConverterService(metaclass=SingletonMeta):
             node_name=resolver(file_extractor_node.id),
             input_map=file_extractor_node.input_map,
             output_variable_path=file_extractor_node.output_variable_path,
-            execution_timeout=file_extractor_node.execution_timeout,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
@@ -976,7 +973,6 @@ class ConverterService(metaclass=SingletonMeta):
             node_name=resolver(audio_transcription_node.id),
             input_map=audio_transcription_node.input_map,
             output_variable_path=audio_transcription_node.output_variable_path,
-            execution_timeout=audio_transcription_node.execution_timeout,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,

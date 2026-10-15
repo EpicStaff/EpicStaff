@@ -1,16 +1,60 @@
-<div class="field-isolated">
-    <app-input-number
-        label="Execution Timeout (min)"
-        ariaLabel="Execution Timeout (min)"
-        placeholder="Minutes"
+<div class="execution-timeout">
+    <app-tooltip
+        label="Execution Timeout"
         [tooltipText]="tooltipText()"
         [required]="true"
-        [min]="minMinutes"
-        [max]="inputMax()"
-        [warningMax]="field().maxMinutes"
-        [warningMessage]="aboveCeilingWarning()"
-        [invalid]="field().control.invalid && field().control.touched"
-        [formControl]="field().control"
     />
-    <app-validation-errors [control]="field().control" />
+    <div
+        class="execution-timeout__parts"
+        role="group"
+        aria-label="Execution timeout"
+    >
+        <div class="execution-timeout__part">
+            <app-input-number
+                #hoursInput
+                ariaLabel="Hours"
+                placeholder="0"
+                [min]="0"
+                [invalid]="!!errorMessage()"
+                [disabled]="isReadOnly()"
+                (changed)="onPartChange()"
+            />
+            <span class="text-body-small">h</span>
+        </div>
+        <div class="execution-timeout__part">
+            <app-input-number
+                #minutesInput
+                ariaLabel="Minutes"
+                placeholder="0"
+                [min]="0"
+                [invalid]="!!errorMessage()"
+                [disabled]="isReadOnly()"
+                (changed)="onPartChange()"
+            />
+            <span class="text-body-small">min</span>
+        </div>
+        <div class="execution-timeout__part">
+            <app-input-number
+                #secondsInput
+                ariaLabel="Seconds"
+                placeholder="0"
+                [min]="0"
+                [invalid]="!!errorMessage()"
+                [disabled]="isReadOnly()"
+                (changed)="onPartChange()"
+            />
+            <span class="text-body-small">s</span>
+        </div>
+    </div>
+    <div aria-live="polite">
+        @if (errorMessage()) {
+            <small class="execution-timeout__message execution-timeout__message--error text-body-small">
+                {{ errorMessage() }}
+            </small>
+        } @else if (aboveMaximumWarning()) {
+            <small class="execution-timeout__message execution-timeout__message--warning text-body-small">
+                {{ aboveMaximumWarning() }}
+            </small>
+        }
+    </div>
 </div>

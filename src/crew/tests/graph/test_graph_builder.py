@@ -51,7 +51,6 @@ class FakePythonCodeExecutorService:
         additional_global_kwargs: dict | None = None,
         stop_event=None,
         storage_credentials=None,
-        timeout=None,
     ) -> dict:
         namespace: dict = {"DotDict": DotDict}
         namespace.update(python_code_data.global_kwargs or {})
@@ -72,8 +71,6 @@ class FakePythonCodeExecutorService:
                 "returncode": 1,
                 "stderr": str(e),
                 "result_data": "null",
-                "timed_out": False,
-                "effective_timeout_seconds": None,
             }
 
 
@@ -345,7 +342,6 @@ class FakeStorageAwarePythonCodeExecutorService(FakePythonCodeExecutorService):
         additional_global_kwargs: dict | None = None,
         stop_event=None,
         storage_credentials=None,
-        timeout=None,
     ) -> dict:
         self.received_storage_credentials.append(storage_credentials)
 

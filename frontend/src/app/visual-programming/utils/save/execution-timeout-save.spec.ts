@@ -1,71 +1,119 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { ExecutionTimeoutNodeType } from '../../core/constants/execution-timeout';
 import { FlowModel } from '../../core/models/flow.model';
-import { NodeModel } from '../../core/models/node.model';
-import { buildFlowModelFromGraphDto } from '../load/build-flow-model-from-graph-dto';
-import { mapAudioToTextNodeToModel } from '../load/nodes/audio-to-text-node.mapper';
-import { mapClassificationDecisionTableNodeToModel } from '../load/nodes/classification-decision-table-node.mapper';
-import { mapFileExtractorNodeToModel } from '../load/nodes/file-extractor-node.mapper';
-import { mapPythonNodeToModel } from '../load/nodes/python-node.mapper';
-import { mapWebhookTriggerNodeToModel } from '../load/nodes/webhook-trigger-node.mapper';
 import {
-    liveAudio,
-    liveClassificationTable,
-    liveFileExtractor,
-    liveGraph,
-    livePython,
-    liveWebhook,
-} from '../testing/live-graph.fixture';
+    ClassificationDecisionTableNodeModel,
+    NodeModel,
+    PythonNodeModel,
+    WebhookTriggerNodeModel,
+} from '../../core/models/node.model';
+import { buildFlowModelFromGraphDto } from '../load/build-flow-model-from-graph-dto';
+import { liveClassificationTable, liveGraph, livePython, liveWebhook } from '../testing/live-graph.fixture';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from './diff';
 import { buildBulkSavePayload } from './payload';
 import { NodeDiffByType } from './types';
 
-interface TimeoutNodeCase {
-    type: ExecutionTimeoutNodeType;
+const STORED_SECONDS = 90;
+const EDITED_SECONDS = 300;
+
+/** One python code of a node: where the flow model keeps its timeout and where the bulk save sends it. */
+interface TimedCodeCase {
+    name: string;
+    type: NodeType;
     listKey: keyof GraphDto & string;
     diffKey: keyof NodeDiffByType;
-    /** The loader of the node type, fed its fixture DTO with `execution_timeout` replaced. */
-    load(executionTimeout: number | undefined): { execution_timeout: number | null };
+    timeoutOf(node: NodeModel): number | undefined;
+    withTimeout(node: NodeModel, seconds: number | undefined): NodeModel;
+    sentTimeout(item: Record<string, unknown>): unknown;
 }
 
-const CASES: TimeoutNodeCase[] = [
+const POST_CODE = { code: 'def main(): return 1', entrypoint: 'main', libraries: [], global_kwargs: {}, secrets: [] };
+
+function cdtWithComputation(
+    node: NodeModel,
+    key: 'pre_computation' | 'post_computation',
+    seconds: number | undefined
+): NodeModel {
+    const table = (node as ClassificationDecisionTableNodeModel).data.table;
+    return {
+        ...node,
+        data: {
+            ...(node as ClassificationDecisionTableNodeModel).data,
+            table: { ...table, [key]: { ...table[key], execution_timeout: seconds } },
+        },
+    } as NodeModel;
+}
+
+const CASES: TimedCodeCase[] = [
     {
+        name: 'Python node code',
         type: NodeType.PYTHON,
         listKey: 'python_node_list',
         diffKey: 'pythonNodes',
-        load: (minutes) => mapPythonNodeToModel({ ...livePython, execution_timeout: minutes }),
+        timeoutOf: (node) => (node as PythonNodeModel).data.execution_timeout,
+        withTimeout: (node, seconds) =>
+            ({ ...node, data: { ...(node as PythonNodeModel).data, execution_timeout: seconds } }) as NodeModel,
+        sentTimeout: (item) => (item['python_code'] as Record<string, unknown>)['execution_timeout'],
     },
     {
+        name: 'Webhook trigger code',
         type: NodeType.WEBHOOK_TRIGGER,
         listKey: 'webhook_trigger_node_list',
         diffKey: 'webhookNodes',
-        load: (minutes) => mapWebhookTriggerNodeToModel({ ...liveWebhook, execution_timeout: minutes }),
+        timeoutOf: (node) => (node as WebhookTriggerNodeModel).data.python_code.execution_timeout,
+        withTimeout: (node, seconds) => {
+            const data = (node as WebhookTriggerNodeModel).data;
+            return {
+                ...node,
+                data: { ...data, python_code: { ...data.python_code, execution_timeout: seconds } },
+            } as NodeModel;
+        },
+        sentTimeout: (item) => (item['python_code'] as Record<string, unknown>)['execution_timeout'],
     },
     {
+        name: 'classification table pre-computation',
         type: NodeType.CLASSIFICATION_TABLE,
         listKey: 'classification_decision_table_node_list',
         diffKey: 'classificationDecisionTableNodes',
-        load: (minutes) =>
-            mapClassificationDecisionTableNodeToModel({ ...liveClassificationTable, execution_timeout: minutes }),
+        timeoutOf: (node) =>
+            (node as ClassificationDecisionTableNodeModel).data.table.pre_computation?.execution_timeout,
+        withTimeout: (node, seconds) => cdtWithComputation(node, 'pre_computation', seconds),
+        sentTimeout: (item) => (item['pre_python_code'] as Record<string, unknown>)['execution_timeout'],
     },
     {
-        type: NodeType.FILE_EXTRACTOR,
-        listKey: 'file_extractor_node_list',
-        diffKey: 'fileExtractorNodes',
-        load: (minutes) => mapFileExtractorNodeToModel({ ...liveFileExtractor, execution_timeout: minutes }),
-    },
-    {
-        type: NodeType.AUDIO_TO_TEXT,
-        listKey: 'audio_transcription_node_list',
-        diffKey: 'audioToTextNodes',
-        load: (minutes) => mapAudioToTextNodeToModel({ ...liveAudio, execution_timeout: minutes }),
+        name: 'classification table post-computation',
+        type: NodeType.CLASSIFICATION_TABLE,
+        listKey: 'classification_decision_table_node_list',
+        diffKey: 'classificationDecisionTableNodes',
+        timeoutOf: (node) =>
+            (node as ClassificationDecisionTableNodeModel).data.table.post_computation?.execution_timeout,
+        withTimeout: (node, seconds) => cdtWithComputation(node, 'post_computation', seconds),
+        sentTimeout: (item) => (item['post_python_code'] as Record<string, unknown>)['execution_timeout'],
     },
 ];
 
-const loadedFlow: FlowModel = buildFlowModelFromGraphDto(liveGraph, [{ id: 99 }]);
-const emptyFlow: FlowModel = { nodes: [], connections: [] };
+/** The live graph with every code above stored with `seconds` (or without a timeout). */
+function storedGraph(seconds: number | undefined): GraphDto {
+    return {
+        ...liveGraph,
+        python_node_list: [{ ...livePython, python_code: { ...livePython.python_code, execution_timeout: seconds } }],
+        webhook_trigger_node_list: [
+            { ...liveWebhook, python_code: { ...liveWebhook.python_code, execution_timeout: seconds } },
+        ],
+        classification_decision_table_node_list: [
+            {
+                ...liveClassificationTable,
+                pre_python_code: { ...liveClassificationTable.pre_python_code!, execution_timeout: seconds },
+                post_python_code: { ...POST_CODE, execution_timeout: seconds },
+            },
+        ],
+    };
+}
+
+function load(graph: GraphDto): FlowModel {
+    return buildFlowModelFromGraphDto(graph, [{ id: 99 }]);
+}
 
 function nodeOf(flow: FlowModel, type: NodeType): NodeModel {
     const found = flow.nodes.find((node) => node.type === type);
@@ -73,12 +121,10 @@ function nodeOf(flow: FlowModel, type: NodeType): NodeModel {
     return found;
 }
 
-function withTimeout(flow: FlowModel, type: NodeType, minutes: number | null): FlowModel {
+function edited(flow: FlowModel, testCase: TimedCodeCase, seconds: number | undefined): FlowModel {
     return {
         ...flow,
-        nodes: flow.nodes.map((node) =>
-            node.type === type ? ({ ...node, execution_timeout: minutes } as NodeModel) : node
-        ),
+        nodes: flow.nodes.map((node) => (node.type === testCase.type ? testCase.withTimeout(node, seconds) : node)),
     };
 }
 
@@ -94,48 +140,55 @@ function bulkSavePayload(previous: FlowModel, current: FlowModel): Record<string
     );
 }
 
-describe.each(CASES)('execution timeout of a $type node', ({ type, listKey, diffKey, load }) => {
+function sentItems(payload: Record<string, unknown>, testCase: TimedCodeCase): Record<string, unknown>[] {
+    return payload[testCase.listKey] as Record<string, unknown>[];
+}
+
+describe.each(CASES)('execution timeout of a $name', (testCase) => {
+    const timedFlow = load(storedGraph(STORED_SECONDS));
+    const untimedFlow = load(storedGraph(undefined));
+    const emptyFlow: FlowModel = { nodes: [], connections: [] };
+
     it('loads the stored timeout', () => {
-        expect(load(7).execution_timeout).toBe(7);
+        expect(testCase.timeoutOf(nodeOf(timedFlow, testCase.type))).toBe(STORED_SECONDS);
     });
 
-    it('loads a node from a version saved before nodes had a timeout without one', () => {
-        expect(load(undefined).execution_timeout).toBeNull();
+    it('loads a code stored without a timeout without one', () => {
+        expect(testCase.timeoutOf(nodeOf(untimedFlow, testCase.type))).toBeUndefined();
     });
 
-    it('saves a node whose only change is its timeout', () => {
-        const edited = withTimeout(loadedFlow, type, 9);
+    it('saves a node whose only change is the timeout', () => {
+        const diff = getNodeDiff(timedFlow, edited(timedFlow, testCase, EDITED_SECONDS));
 
-        const diff = getNodeDiff(loadedFlow, edited);
-
-        expect(diff[diffKey].toUpdate.map((update) => update.current.backendId)).toEqual([
-            nodeOf(loadedFlow, type).backendId,
+        expect(diff[testCase.diffKey].toUpdate.map((update) => update.current.backendId)).toEqual([
+            nodeOf(timedFlow, testCase.type).backendId,
         ]);
     });
 
     it('does not save an unchanged timeout', () => {
-        const diff = getNodeDiff(loadedFlow, { ...loadedFlow, nodes: loadedFlow.nodes.map((node) => ({ ...node })) });
+        const copy: FlowModel = { ...timedFlow, nodes: timedFlow.nodes.map((node) => ({ ...node })) };
 
-        expect(diff[diffKey].toUpdate).toEqual([]);
+        expect(getNodeDiff(timedFlow, copy)[testCase.diffKey].toUpdate).toEqual([]);
     });
 
-    it('sends the timeout of an updated node', () => {
-        const payload = bulkSavePayload(loadedFlow, withTimeout(loadedFlow, type, 9));
+    it('sends the edited timeout of an updated node', () => {
+        const payload = bulkSavePayload(timedFlow, edited(timedFlow, testCase, EDITED_SECONDS));
 
-        expect(payload[listKey]).toEqual([
-            expect.objectContaining({ id: nodeOf(loadedFlow, type).backendId, execution_timeout: 9 }),
-        ]);
+        const [item] = sentItems(payload, testCase);
+        expect(item['id']).toBe(nodeOf(timedFlow, testCase.type).backendId);
+        expect(testCase.sentTimeout(item)).toBe(EDITED_SECONDS);
     });
 
     it('sends the timeout of a new node', () => {
-        const payload = bulkSavePayload(emptyFlow, withTimeout(loadedFlow, type, 4));
+        const payload = bulkSavePayload(emptyFlow, timedFlow);
 
-        expect(payload[listKey]).toEqual([expect.objectContaining({ execution_timeout: 4 })]);
+        expect(sentItems(payload, testCase).map((item) => testCase.sentTimeout(item))).toEqual([STORED_SECONDS]);
     });
 
-    it('refuses to build a payload for a node without a timeout instead of sending none', () => {
-        expect(() => bulkSavePayload(loadedFlow, withTimeout(loadedFlow, type, null))).toThrow(
-            /has no execution timeout/
-        );
+    it('sends no timeout for a code without one, so the backend applies its default', () => {
+        const payload = bulkSavePayload(emptyFlow, untimedFlow);
+
+        const [item] = sentItems(payload, testCase);
+        expect(testCase.sentTimeout(JSON.parse(JSON.stringify(item)) as Record<string, unknown>)).toBeUndefined();
     });
 });

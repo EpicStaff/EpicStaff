@@ -2,7 +2,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.db.models import Model
-from django_app.settings.sandbox import SECONDS_PER_MINUTE
 from src.shared.models import PythonCodeData
 from tables.models import PythonCode
 from tables.models.graph_models import PythonNode, WebhookTriggerNode
@@ -22,8 +21,6 @@ class CodeRunTarget:
 
     Attributes:
         model: Graph-owned model holding the slot; looked up through `graph__org_id`.
-            It must carry `execution_timeout`, so a test run is killed at the same
-            limit as a real run.
         code_field: The slot's `PythonCode` foreign key. It is the single source of
             the slot's code: the lookup requires it to be set, so an empty
             nullable slot is "not found", and the result row references it.
@@ -51,9 +48,6 @@ class CodeRunTarget:
 
     def python_code_of(self, owner: Model) -> PythonCode:
         return getattr(owner, self.code_field)
-
-    def execution_timeout_seconds_of(self, owner: Model) -> int:
-        return owner.execution_timeout * SECONDS_PER_MINUTE
 
 
 def storage_path_for_test_run(target_type: str, target_id: int) -> str:

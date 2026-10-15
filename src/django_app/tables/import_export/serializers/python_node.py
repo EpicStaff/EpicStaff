@@ -2,10 +2,9 @@ from rest_framework import serializers
 
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import Graph, PythonCode, PythonNode
-from tables.serializers.utils.mixins import ExecutionTimeoutSerializerMixin
 
 
-class PythonNodeImportSerializer(ExecutionTimeoutSerializerMixin, serializers.ModelSerializer):
+class PythonNodeImportSerializer(serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     python_code = PythonCodeImportSerializer(read_only=True)

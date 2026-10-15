@@ -76,19 +76,6 @@ function buildDecisionTableNodePayload(
     } satisfies CreateDecisionTableNodeRequest & Record<string, unknown>;
 }
 
-/**
- * The node's execution timeout for the payload. Every save path refuses a node without one before it gets
- * here (the flow save's node validation; a panel's own Save only on a valid form). The only nodes without one
- * are those of a version preview, which is never saved. A value above the sandbox ceiling is sent as it is: the
- * backend lowers it to the ceiling.
- */
-function requireExecutionTimeout(node: { node_name: string; execution_timeout: number | null }): number {
-    if (node.execution_timeout == null) {
-        throw new Error(`Node "${node.node_name}" has no execution timeout: its save should have been refused.`);
-    }
-    return node.execution_timeout;
-}
-
 function buildScheduleBlock(node: ScheduleTriggerNodeModel): Record<string, unknown> {
     const d = node.data;
 
@@ -222,6 +209,7 @@ function buildCdtNodePayload(
                       entrypoint: 'main',
                       global_kwargs: {},
                       secret_ids: preSecretIds,
+                      execution_timeout: preComp?.execution_timeout,
                   },
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
@@ -235,6 +223,7 @@ function buildCdtNodePayload(
                       entrypoint: 'main',
                       global_kwargs: {},
                       secret_ids: postSecretIds,
+                      execution_timeout: postComp?.execution_timeout,
                   },
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
@@ -261,7 +250,6 @@ function buildCdtNodePayload(
             name: s.name,
             metadata: { color: normalizeCdtSectionColor(s.metadata?.color) },
         })),
-        execution_timeout: requireExecutionTimeout(node),
         // Built in the same order as `toCdtComparable`, so what the diff compared is
         // what the server receives.
         metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
@@ -391,7 +379,6 @@ export function buildBulkSavePayload(
                 output_variable_path: n.output_variable_path || null,
                 use_storage: use_storage ?? false,
                 test_input: n.test_input ?? {},
-                execution_timeout: requireExecutionTimeout(n),
                 metadata: toNodeMetadata(n),
             };
         }),
@@ -424,7 +411,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
-            execution_timeout: requireExecutionTimeout(n),
             metadata: toNodeMetadata(n),
         })),
         audio_transcription_node_list: nodeItems(nodeDiff.audioToTextNodes, (n) => ({
@@ -432,7 +418,6 @@ export function buildBulkSavePayload(
             graph: graphId,
             input_map: n.input_map || {},
             output_variable_path: n.output_variable_path || null,
-            execution_timeout: requireExecutionTimeout(n),
             metadata: toNodeMetadata(n),
         })),
         end_node_list: nodeItems(nodeDiff.endNodes, (n) => ({
@@ -458,7 +443,6 @@ export function buildBulkSavePayload(
             webhook_trigger: n.data.webhook_trigger,
             test_payload: n.data.test_payload ?? {},
             use_storage: n.data.use_storage ?? false,
-            execution_timeout: requireExecutionTimeout(n),
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({

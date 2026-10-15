@@ -31,7 +31,6 @@ const DTO: GetClassificationDecisionTableNodeRequest = {
     default_llm_config: null,
     default_next_node_id: null,
     next_error_node_id: null,
-    execution_timeout: 3,
     condition_groups: [
         {
             id: 1,

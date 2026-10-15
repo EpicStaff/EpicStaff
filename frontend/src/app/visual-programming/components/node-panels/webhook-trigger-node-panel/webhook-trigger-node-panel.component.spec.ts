@@ -21,10 +21,11 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
 import {
-    provideLoadedSandboxLimits,
-    TEST_MAX_EXECUTION_TIMEOUT_MINUTES,
-} from '../../../utils/testing/sandbox-limits.testing';
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../utils/testing/execution-timeout-limits.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -75,7 +76,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: toast },
@@ -261,7 +262,7 @@ describe('WebhookTriggerNodePanelComponent storage', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
@@ -364,7 +365,7 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: {} },
@@ -448,7 +449,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         runService = { runPythonCode: vi.fn(() => start$), pollResultWithEvents: vi.fn(() => poll$) };
         TestBed.configureTestingModule({
             providers: [
-                provideLoadedSandboxLimits(),
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
                 {
                     provide: PermissionsService,
@@ -720,51 +721,65 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
     });
 
     describe('execution timeout', () => {
-        const TIMED_DTO: GetWebhookTriggerNodeRequest = { ...DTO, execution_timeout: 3 };
+        const TIMED_DTO: GetWebhookTriggerNodeRequest = {
+            ...DTO,
+            python_code: { ...DTO.python_code, execution_timeout: 90 },
+        };
 
-        it('shows the stored timeout, and the ceiling for a node saved before nodes had one', () => {
-            bindStoredGraph(asStored(TIMED_DTO));
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel() as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
+
+        it('shows the stored timeout of the code, and the default for a code without one', () => {
             open(mapWebhookTriggerNodeToModel(TIMED_DTO));
-            expect(panel().form.value.execution_timeout).toBe(3);
+            expect(timeoutField().control.value).toBe(90);
 
             open(mapWebhookTriggerNodeToModel(DTO));
-            expect(panel().form.value.execution_timeout).toBe(TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBeUndefined();
         });
 
-        it('asks to save after a timeout edit, and runs once the saved graph has it, waiting that long', () => {
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('asks to save after a timeout edit, and clears once it is back to the stored one', () => {
+            const runPanel = open();
+
+            timeoutField().edit(300);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(runPanel.runCodeBlocker()).toBeNull();
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
             bindStoredGraph(asStored(TIMED_DTO));
             fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
             fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(TIMED_DTO));
             fixture.componentRef.setInput('isExpanded', true);
             fixture.detectChanges();
-            const runPanel = fixture.componentInstance as unknown as RunCodePanel;
 
-            panel().form.patchValue({ execution_timeout: 5 });
-            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-            bindStoredGraph(asStored({ ...TIMED_DTO, execution_timeout: 5 }));
-            expect(runPanel.runCodeBlocker()).toBeNull();
             runFromEditor();
             start$.next({ execution_id: 'exec-1' });
 
-            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 5);
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
         });
 
-        it('waits for a stored node without a timeout as long as the ceiling the backend applies to it', () => {
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
             openExpanded();
 
             runFromEditor();
             start$.next({ execution_id: 'exec-1' });
 
-            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', TEST_MAX_EXECUTION_TIMEOUT_MINUTES);
-        });
-
-        it('puts the edited timeout on the node it saves', () => {
-            open();
-
-            panel().form.patchValue({ execution_timeout: 7 });
-
-            expect(panel().onSaveSilently()?.execution_timeout).toBe(7);
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
         });
     });
 

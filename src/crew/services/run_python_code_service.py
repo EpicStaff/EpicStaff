@@ -12,19 +12,6 @@ from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from utils.singleton_meta import SingletonMeta
 
-SECONDS_PER_MINUTE = 60
-
-
-def execution_timeout_seconds(execution_timeout_minutes: int | None) -> int | None:
-    """Convert a node's execution timeout to the seconds the sandbox expects.
-
-    None (a graph schema stored before nodes had a timeout) stays None, so the
-    sandbox applies its own ceiling.
-    """
-    if execution_timeout_minutes is None:
-        return None
-    return execution_timeout_minutes * SECONDS_PER_MINUTE
-
 
 def build_state_globals(state: State) -> dict[str, Any]:
     """Build the `state` global that user Python code can read in the sandbox."""
@@ -47,18 +34,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         additional_global_kwargs: dict[str, Any] | None = None,
         stop_event: StopEvent | None = None,
         storage_credentials: StorageCredentials | None = None,
-        timeout: float | None = None,
     ) -> dict[str, Any]:
-        """Run code in the sandbox and wait for its result.
-
-        Args:
-            timeout: Execution timeout in seconds; the sandbox clamps it to its own
-                ceiling. None applies the ceiling.
-
-        Returns:
-            `CodeResultData` as a dict. `timed_out` is True when the sandbox killed
-            the code, with the limit it applied in `effective_timeout_seconds`.
-        """
         additional_global_kwargs = additional_global_kwargs or {}
         venv_name = python_code_data.venv_name
         code = python_code_data.code
@@ -91,7 +67,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 secrets=python_code_data.secrets,
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
-                timeout=timeout,
+                timeout=python_code_data.execution_timeout,
             )
         except ValidationError:
             # Never log or return `error` itself: ValidationError's repr embeds the

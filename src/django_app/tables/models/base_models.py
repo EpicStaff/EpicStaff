@@ -8,7 +8,6 @@ from typing import ClassVar, Self
 
 from django.apps import apps
 from django.conf import settings
-from django.core.validators import MinValueValidator
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
@@ -264,33 +263,6 @@ class TimestampMixin(models.Model):
 
 class MetadataMixin(models.Model):
     metadata = models.JSONField(default=dict, blank=True)
-
-    class Meta:
-        abstract = True
-
-
-def default_execution_timeout_minutes() -> int:
-    """Return the default per-node execution timeout: the sandbox ceiling in whole minutes.
-
-    NOTE: migrations reference this callable by its import path, so it must never be
-    renamed or moved.
-    """
-    return settings.SANDBOX_MAX_EXECUTION_TIMEOUT_MINUTES
-
-
-class SandboxExecutionTimeoutMixin(models.Model):
-    """Per-node limit for each sandbox code execution the node triggers.
-
-    The upper bound is the sandbox ceiling, which is deployment configuration and can
-    change after a row is saved, so it is enforced on input (serializers, import) rather
-    than by a model validator.
-    """
-
-    execution_timeout = models.PositiveIntegerField(
-        default=default_execution_timeout_minutes,
-        validators=[MinValueValidator(1)],
-        help_text="Minutes a single code execution of this node may run before it is killed.",
-    )
 
     class Meta:
         abstract = True

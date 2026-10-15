@@ -55,6 +55,9 @@ class PythonCodeData(StorageScopedData):
     entrypoint: str
     libraries: list[str]
     global_kwargs: dict[str, Any] | None = None
+    execution_timeout: int | None = None
+    """Seconds a single run of this code may take. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -149,11 +152,6 @@ class CodeResultData(BaseModel):
     stderr: str
     stdout: str
     returncode: int = 0
-    timed_out: bool = False
-    effective_timeout_seconds: float | None = None
-    """The execution timeout the sandbox actually applied, after clamping the
-    requested one to its own ceiling. Set only when `timed_out` is True, so the
-    caller reports the limit that killed the code rather than the one it asked for."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -167,8 +165,9 @@ class CodeTaskData(StorageScopedData):
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
     timeout: float | None = Field(default=None, gt=0)
-    """Requested execution timeout in seconds. Untrusted: the sandbox clamps it to
-    its own SANDBOX_EXECUTION_TIMEOUT ceiling. None means the ceiling applies."""
+    """Requested execution timeout in seconds. Untrusted: the sandbox caps it at
+    SANDBOX_EXECUTION_TIMEOUT. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     storage_credentials: StorageCredentials | None = None
     """Ephemeral temporary storage credentials for sandbox execution.

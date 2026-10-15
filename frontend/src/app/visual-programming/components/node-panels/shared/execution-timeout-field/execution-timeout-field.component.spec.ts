@@ -1,117 +1,219 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { InputNumberComponent } from '@shared/components';
+import { InputNumberComponent, TooltipComponent } from '@shared/components';
 
-import { createExecutionTimeoutField, ExecutionTimeoutFormField } from './execution-timeout-control';
+import { ExecutionTimeoutLimits } from '../../../../core/models/execution-timeout-limits.model';
+import { FlowReadOnlyService } from '../../../../services/flow-readonly.service';
 import { ExecutionTimeoutFieldComponent } from './execution-timeout-field.component';
+import { ExecutionTimeoutFormField, MAX_STORABLE_SECONDS } from './execution-timeout-form-field';
+
+const LIMITS: ExecutionTimeoutLimits = { minSeconds: 5, defaultSeconds: 120, maxSeconds: 3600 };
 
 describe('ExecutionTimeoutFieldComponent', () => {
     let fixture: ComponentFixture<ExecutionTimeoutFieldComponent>;
+    const isReadOnly = signal(false);
 
-    function render(field: ExecutionTimeoutFormField, perExecutionNote?: string): void {
+    beforeEach(() => {
+        isReadOnly.set(false);
+        TestBed.configureTestingModule({
+            providers: [{ provide: FlowReadOnlyService, useValue: { isReadOnly } }],
+        });
+    });
+
+    function render(field: ExecutionTimeoutFormField): void {
         fixture = TestBed.createComponent(ExecutionTimeoutFieldComponent);
         fixture.componentRef.setInput('field', field);
-        if (perExecutionNote !== undefined) fixture.componentRef.setInput('perExecutionNote', perExecutionNote);
         fixture.detectChanges();
     }
 
-    function input(): InputNumberComponent {
-        return fixture.debugElement.query(By.directive(InputNumberComponent)).componentInstance as InputNumberComponent;
+    /** The hours, minutes and seconds inputs, in that order. */
+    function parts(): InputNumberComponent[] {
+        return fixture.debugElement
+            .queryAll(By.directive(InputNumberComponent))
+            .map((debugElement) => debugElement.componentInstance as InputNumberComponent);
     }
 
-    function warning(): string | null {
-        const element = (fixture.nativeElement as HTMLElement).querySelector('.input__message--warning');
+    function shownParts(): (number | null)[] {
+        return parts().map((part) => part.value());
+    }
+
+    function type(partIndex: number, value: number | null): void {
+        parts()[partIndex].onInputChange(value as number);
+        fixture.detectChanges();
+    }
+
+    function message(kind: 'error' | 'warning'): string | null {
+        const element = (fixture.nativeElement as HTMLElement).querySelector(`.execution-timeout__message--${kind}`);
         return element?.textContent?.trim() ?? null;
     }
 
-    function errors(): string[] {
-        return fixture.debugElement
-            .queryAll(By.css('.validation-errors__item'))
-            .map((item) => (item.nativeElement as HTMLElement).textContent?.trim() ?? '');
+    function tooltipText(): string {
+        return (
+            fixture.debugElement.query(By.directive(TooltipComponent)).componentInstance as TooltipComponent
+        ).tooltipText();
     }
 
-    it('shows the timeout, bounded from 1 minute to the ceiling', () => {
-        render(createExecutionTimeoutField(5, 45));
+    it('splits the timeout into hours, minutes and seconds', () => {
+        render(new ExecutionTimeoutFormField(3725, LIMITS));
 
-        expect(input().value()).toBe(5);
-        expect(input().min()).toBe(1);
-        expect(input().max()).toBe(45);
-        expect(input().required()).toBe(true);
-        expect(input().tooltipText()).toContain('(1 to 45)');
+        expect(shownParts()).toEqual([1, 2, 5]);
+        expect(parts().map((part) => part.ariaLabel())).toEqual(['Hours', 'Minutes', 'Seconds']);
     });
 
-    it('adds which executions the limit applies to, for a node that runs its code several times', () => {
-        render(createExecutionTimeoutField(5, 45), 'Each step separately.');
+    it('names the group of parts for assistive technologies, and announces its message', () => {
+        render(new ExecutionTimeoutFormField(90, LIMITS));
+        const host = fixture.nativeElement as HTMLElement;
 
-        expect(input().tooltipText()).toMatch(/\(1 to 45\)\. Each step separately\.$/);
+        const group = host.querySelector('[role="group"]');
+        expect(group?.getAttribute('aria-label')).toBe('Execution timeout');
+        expect(group?.querySelectorAll('input')).toHaveLength(3);
+        expect(host.querySelector('[aria-live="polite"]')).not.toBeNull();
     });
 
-    it('writes an edit into the form control', () => {
-        const field = createExecutionTimeoutField(5, 45);
+    it('shows the default for a code without a timeout', () => {
+        render(new ExecutionTimeoutFormField(undefined, LIMITS));
+
+        expect(shownParts()).toEqual([0, 2, 0]);
+    });
+
+    it('puts the parts back together into seconds on an edit', () => {
+        const field = new ExecutionTimeoutFormField(125, LIMITS);
         render(field);
 
-        input().onInputChange(12);
+        type(1, 30);
 
-        expect(field.control.value).toBe(12);
+        expect(field.control.value).toBe(30 * 60 + 5);
+        expect(field.value).toBe(30 * 60 + 5);
     });
 
-    it('warns that a timeout saved under a higher ceiling will be saved as the ceiling, without an error', () => {
-        render(createExecutionTimeoutField(90, 45));
-
-        expect(input().isInvalid()).toBe(false);
-        expect(input().isAboveWarning()).toBe(true);
-        expect(warning()).toBe('Will be saved as 45 min, the current limit.');
-        expect(errors()).toEqual([]);
-    });
-
-    it('shows no warning up to the ceiling, and stops the stepper there', () => {
-        render(createExecutionTimeoutField(45, 45));
-
-        expect(warning()).toBeNull();
-        expect(input().canStepUp()).toBe(false);
-    });
-
-    it('drops the warning once the value is brought down to the ceiling', () => {
-        render(createExecutionTimeoutField(90, 45));
-
-        input().onStep(-1);
-        fixture.detectChanges();
-
-        expect(input().value()).toBe(45);
-        expect(warning()).toBeNull();
-    });
-
-    it('caps a typed timeout above the ceiling at the ceiling', () => {
-        const field = createExecutionTimeoutField(5, 45);
+    it('counts an emptied part as zero', () => {
+        const field = new ExecutionTimeoutFormField(3725, LIMITS);
         render(field);
 
-        input().onInputChange(90);
-        fixture.detectChanges();
+        type(0, null);
 
-        expect(field.control.value).toBe(45);
-        expect(input().value()).toBe(45);
+        expect(field.control.value).toBe(2 * 60 + 5);
     });
 
-    it('gives the input an accessible name that contains its visible label', () => {
-        render(createExecutionTimeoutField(5, 45));
-
-        const label = (fixture.nativeElement as HTMLElement).querySelector('.tooltip-label-text')?.textContent?.trim();
-        const accessibleName = (fixture.nativeElement as HTMLElement)
-            .querySelector('input')
-            ?.getAttribute('aria-label');
-
-        expect(label).toBe('Execution Timeout (min)');
-        expect(accessibleName).toContain(label);
-    });
-
-    it('says a fractional timeout must be whole once the field was touched', () => {
-        const field = createExecutionTimeoutField(5, 45);
+    it('normalizes the parts once an edit overflows one of them', () => {
+        const field = new ExecutionTimeoutFormField(60, LIMITS);
         render(field);
 
-        field.control.setValue(1.5);
-        field.control.markAsTouched();
+        type(2, 90);
+
+        expect(field.control.value).toBe(150);
+        expect(shownParts()).toEqual([0, 2, 30]);
+    });
+
+    it('rounds a pasted fraction to whole seconds', () => {
+        const field = new ExecutionTimeoutFormField(60, LIMITS);
+        render(field);
+
+        type(2, 0.6);
+
+        expect(field.control.value).toBe(61);
+        expect(shownParts()).toEqual([0, 1, 1]);
+    });
+
+    it('caps a huge edit at what the backend can store when there is no maximum', () => {
+        const field = new ExecutionTimeoutFormField(60, { ...LIMITS, maxSeconds: null });
+        render(field);
+
+        type(0, 10_000_000);
+
+        expect(field.control.value).toBe(MAX_STORABLE_SECONDS);
+    });
+
+    it('names the range in its tooltip', () => {
+        render(new ExecutionTimeoutFormField(90, LIMITS));
+
+        expect(tooltipText()).toContain('(5 s to 1 h)');
+    });
+
+    it('names only the minimum in its tooltip when there is no maximum', () => {
+        render(new ExecutionTimeoutFormField(90, { ...LIMITS, maxSeconds: null }));
+
+        expect(tooltipText()).toContain('(at least 5 s)');
+    });
+
+    it('says the timeout is below the minimum, and marks every part invalid', () => {
+        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        render(field);
+
+        type(1, 0);
+        type(2, 3);
+
+        expect(field.control.value).toBe(3);
+        expect(field.control.invalid).toBe(true);
+        expect(message('error')).toBe('Must be at least 5 s.');
+        expect(parts().every((part) => part.isInvalid())).toBe(true);
+    });
+
+    it('shows no message for a timeout within the limits', () => {
+        render(new ExecutionTimeoutFormField(LIMITS.maxSeconds!, LIMITS));
+
+        expect(message('error')).toBeNull();
+        expect(message('warning')).toBeNull();
+    });
+
+    it('warns that a stored timeout above the maximum runs for the maximum, without an error', () => {
+        const field = new ExecutionTimeoutFormField(7200, LIMITS);
+        render(field);
+
+        expect(shownParts()).toEqual([2, 0, 0]);
+        expect(field.control.valid).toBe(true);
+        expect(message('warning')).toBe('Runs for at most 1 h, the current limit.');
+        expect(message('error')).toBeNull();
+    });
+
+    it('caps an edit above the maximum at the maximum, and shows the capped value', () => {
+        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        render(field);
+
+        type(0, 5);
+
+        expect(field.control.value).toBe(LIMITS.maxSeconds);
+        expect(shownParts()).toEqual([1, 0, 0]);
+        expect(message('warning')).toBeNull();
+    });
+
+    it('resets a typed part even when the capped total equals the one before', () => {
+        const field = new ExecutionTimeoutFormField(LIMITS.maxSeconds!, LIMITS);
+        render(field);
+
+        type(0, 3);
+
+        expect(field.control.value).toBe(LIMITS.maxSeconds);
+        expect(shownParts()).toEqual([1, 0, 0]);
+    });
+
+    it('shows the capped value in every part, without the warning, once a timeout stored above the maximum is edited', () => {
+        render(new ExecutionTimeoutFormField(7200, LIMITS));
+
+        type(2, 1);
+
+        expect(shownParts()).toEqual([1, 0, 0]);
+        expect(message('warning')).toBeNull();
+    });
+
+    it('follows a value set on the control from outside', () => {
+        const field = new ExecutionTimeoutFormField(90, LIMITS);
+        render(field);
+
+        field.control.setValue(3661);
         fixture.detectChanges();
 
-        expect(errors()).toEqual(['Must be a whole number.']);
+        expect(shownParts()).toEqual([1, 1, 1]);
+    });
+
+    it('disables every part while the flow is read-only, and follows it', () => {
+        render(new ExecutionTimeoutFormField(90, LIMITS));
+        expect(parts().some((part) => part.isDisabled())).toBe(false);
+
+        isReadOnly.set(true);
+        fixture.detectChanges();
+
+        expect(parts().every((part) => part.isDisabled())).toBe(true);
     });
 });

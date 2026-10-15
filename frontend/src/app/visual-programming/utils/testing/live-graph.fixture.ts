@@ -102,7 +102,6 @@ export const livePython: PythonNode = {
     created_at: persisted.created_at,
     node_name: 'Python',
     test_input: {},
-    execution_timeout: 3,
     // The export has no python-code id; the preview uses 0.
     python_code: {
         id: 0,
@@ -150,7 +149,6 @@ export const liveFileExtractor: GetFileExtractorNodeRequest = {
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Files',
-    execution_timeout: 60,
 };
 export const liveAudio: GetAudioToTextNodeRequest = {
     ...nodeBase,
@@ -159,7 +157,6 @@ export const liveAudio: GetAudioToTextNodeRequest = {
     created_at: persisted.created_at,
     graph: 1,
     node_name: 'Audio',
-    execution_timeout: 60,
 };
 export const liveSubgraph: SubGraphNode = {
     ...nodeBase,
@@ -182,7 +179,6 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
     test_payload: { id: '104' },
     use_storage: false,
-    execution_timeout: 3,
 };
 export const liveTelegram: GetTelegramTriggerNodeRequest = {
     ...authored,
@@ -244,7 +240,6 @@ export const liveClassificationTable: GetClassificationDecisionTableNodeRequest 
     graph: 1,
     node_name: 'Classify',
     metadata: {},
-    execution_timeout: 3,
     pre_python_code: {
         code: 'def main(): pass',
         entrypoint: 'main',

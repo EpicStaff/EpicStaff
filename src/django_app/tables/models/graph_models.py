@@ -16,7 +16,6 @@ from tables.models.base_models import (
     BaseGraphEntity,
     ContentHashMixin,
     GraphAuthorModel,
-    SandboxExecutionTimeoutMixin,
     SoftDeleteFields,
     SoftDeleteMixin,
     TestPayloadMixin,
@@ -141,7 +140,7 @@ class CrewNode(BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class PythonNode(GraphAuthorModel, BaseNode, SandboxExecutionTimeoutMixin, SoftDeleteFields):
+class PythonNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="python_node_list")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     test_input = models.JSONField(default=dict, blank=True)
@@ -211,7 +210,7 @@ class KnowledgeNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class FileExtractorNode(GraphAuthorModel, BaseNode, SandboxExecutionTimeoutMixin, SoftDeleteFields):
+class FileExtractorNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
@@ -247,9 +246,7 @@ class KeyValueNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
         constraints = [soft_delete_consistency_constraint()]
 
 
-class AudioTranscriptionNode(
-    GraphAuthorModel, BaseNode, SandboxExecutionTimeoutMixin, SoftDeleteFields
-):
+class AudioTranscriptionNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
@@ -564,12 +561,7 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
 
 
 class WebhookTriggerNode(
-    GraphAuthorModel,
-    BaseGraphEntity,
-    TestPayloadMixin,
-    BaseGlobalNode,
-    SandboxExecutionTimeoutMixin,
-    SoftDeleteFields,
+    GraphAuthorModel, BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields
 ):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
@@ -749,11 +741,7 @@ class ScheduleTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Sof
 
 
 class ClassificationDecisionTableNode(
-    GraphAuthorModel,
-    BaseGraphEntity,
-    BaseGlobalNode,
-    SandboxExecutionTimeoutMixin,
-    SoftDeleteFields,
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields
 ):
     graph = models.ForeignKey(
         "Graph",

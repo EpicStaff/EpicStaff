@@ -73,6 +73,8 @@ export interface SnapshotPythonCode {
     libraries: string;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
+    /** Seconds; absent in versions saved before code had an execution timeout. */
+    execution_timeout?: number;
 }
 
 export type SnapshotStartNode = SnapshotNodeOf<'StartNode', StartNode>;
@@ -111,8 +113,6 @@ export interface SnapshotPythonNode extends SnapshotNodeBase<'PythonNode'> {
     output_variable_path: string | null;
     test_input: Record<string, string | number | boolean>;
     use_storage?: boolean;
-    /** Minutes; absent in versions saved before nodes had an execution timeout. */
-    execution_timeout?: number;
     python_code: SnapshotPythonCode;
 }
 
@@ -126,8 +126,6 @@ export interface SnapshotWebhookTriggerNode extends SnapshotNodeBase<'WebhookTri
     test_payload?: Record<string, unknown>;
     /** Absent in versions saved before webhook trigger code could use storage. */
     use_storage?: boolean;
-    /** Minutes; absent in versions saved before nodes had an execution timeout. */
-    execution_timeout?: number;
 }
 
 export interface SnapshotTelegramTriggerNode extends SnapshotNodeBase<'TelegramTriggerNode'> {
