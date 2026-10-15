@@ -38,7 +38,7 @@ DEFAULT_ALLOWLIST = "dependabot[bot]"
 # Each new co-author costs one GitHub API call, and the workflow token's rate limit
 # is shared by the whole repository. A PR could otherwise list hundreds of fake
 # co-authors and use up that limit on every push.
-MAX_CO_AUTHOR_LOOKUPS_PER_RUN = 20
+MAX_CO_AUTHOR_LOOKUPS_PER_RUN = 2
 
 PARAGRAPH_SEPARATOR_RE = re.compile(r"\n[ \t]*\n")
 CO_AUTHOR_TRAILER_RE = re.compile(r"^\s*co-authored-by\s*:(?P<value>.*)$", re.IGNORECASE)
