@@ -6,6 +6,7 @@ the envelopes a real run would; everything else (message writer, remembered-outp
 store on fake Redis, variable mapping) is real.
 """
 
+import re
 import types
 
 import fakeredis
@@ -312,10 +313,14 @@ async def test_remembered_outputs_are_prepended_to_the_next_tasks_instructions(r
 
     await _run(_task_node(service, remembered_outputs, instructions="Summarize."))
 
-    instructions = service.dispatched.instructions
-    assert instructions.startswith("===== PREVIOUS TASKS OUTPUTS =====")
-    assert "Task 'earlier_task':\nearlier output" in instructions
-    assert instructions.endswith("Summarize.")
+    fenced_block_then_instructions = re.compile(
+        r"===== PREVIOUS TASKS OUTPUTS (?P<nonce>[0-9a-f]{16}) =====\n"
+        r".*Task 'earlier_task':\nearlier output\n"
+        r".*===== END PREVIOUS TASKS OUTPUTS (?P=nonce) =====\n+"
+        r"Summarize\.",
+        re.DOTALL,
+    )
+    assert fenced_block_then_instructions.fullmatch(service.dispatched.instructions)
 
 
 # --- AgentNode --------------------------------------------------------------
