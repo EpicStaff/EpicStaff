@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.utils import timezone
 from tables.exceptions import (
@@ -347,6 +347,10 @@ class FlowAssistantService:
                 iteration_finish_reason: str | None = None
 
                 payload = _messages_for_llm(working_messages)
+                # Return the database connection to the pool before waiting on the LLM:
+                # Django would otherwise keep it until the stream ends, for the whole reply.
+                # Thread-sensitive, so it closes the connection of the thread that holds it.
+                await sync_to_async(close_old_connections)()
                 async for event in client.stream_completion(payload, TOOL_SPECS):
                     if isinstance(event, DoneEvent):
                         if event.reasoning_observed:

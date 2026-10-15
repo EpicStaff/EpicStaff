@@ -80,13 +80,6 @@ class SSEMixin(View, ABC):
         """
         self.held_live_messages.append(message)
 
-    async def async_orm_generator(self, queryset):
-        # NOTE: for small results only. Outside a transaction Django declares this
-        # cursor WITH HOLD, so PostgreSQL computes the whole result first, and each
-        # fetch holds chunk_size rows in memory.
-        async for entity in queryset.aiterator(chunk_size=200):
-            yield entity
-
     @abstractmethod
     async def get_initial_data(self):
         """
@@ -217,6 +210,7 @@ class SSEMixin(View, ABC):
             raise
         except Exception as e:
             logger.error(f"Sending fatal-error event due to error: {e}")
+            await self.release_database_connection_before_error()
             yield "\n\nevent: fatal-error\ndata: unexpected error\n\n"
         finally:
             if pubsub is not None:
@@ -237,6 +231,15 @@ class SSEMixin(View, ABC):
         connections Postgres allows. Call it before waiting for live updates.
         """
         await sync_to_async(_close_database_connection)()
+
+    async def release_database_connection_before_error(self) -> None:
+        """Release the connection before yielding an error frame, whatever state it is in.
+
+        A client that stops reading blocks that yield, and with it a pooled connection the
+        failed work may still hold. A close that fails too must not stop the frame.
+        """
+        with contextlib.suppress(Exception):
+            await self.release_database_connection()
 
     async def _hold_published_messages(self, pubsub) -> None:
         # Read what was published meanwhile rather than leaving it in Redis: past
