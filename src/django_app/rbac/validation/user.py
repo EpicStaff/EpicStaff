@@ -1,6 +1,11 @@
+from collections.abc import Mapping
 from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
+from tables.models.user import (
+    SHORTCUT_OVERRIDES_MAX_ENTRIES,
+    SHORTCUT_OVERRIDES_MAX_KEY_LENGTH,
+)
 
 from rbac.validation.base import BaseRBACValidator, FieldError
 
@@ -185,16 +190,20 @@ class UserValidationService(BaseRBACValidator):
 
     # ---- Story 6: profile ----
 
-    def validate_profile_patch(self, data: dict) -> dict:
+    def validate_profile_patch(self, data: Any) -> dict:
         """`PATCH /api/profile/`.
 
         Returns a cleaned dict containing only the keys that were in
         `data` and that passed validation. Unknown keys are silently
         ignored — they cannot reach the service.
 
-        Now: display_name is the only mutable field. Future fields
-        land here as additional branches.
+        Mutable fields: display_name and shortcut_overrides. The view
+        writes nothing until this returns, so one invalid field rejects
+        the whole PATCH.
         """
+        if not isinstance(data, Mapping):
+            self._raise_if_any([FieldError("body", None, "Request body must be a JSON object.")])
+
         cleaned: dict = {}
         errors: list[FieldError] = []
 
@@ -206,8 +215,34 @@ class UserValidationService(BaseRBACValidator):
             if not display_name_errors:
                 cleaned["display_name"] = display_name
 
+        if "shortcut_overrides" in data:
+            overrides_reason = self._shortcut_overrides_error(data["shortcut_overrides"])
+            if overrides_reason is None:
+                cleaned["shortcut_overrides"] = data["shortcut_overrides"]
+            else:
+                errors.append(FieldError("shortcut_overrides", None, overrides_reason))
+
         self._raise_if_any(errors)
         return cleaned
+
+    @staticmethod
+    def _shortcut_overrides_error(value: Any) -> str | None:
+        if not isinstance(value, dict):
+            return "Must be an object of action id to keys."
+        if len(value) > SHORTCUT_OVERRIDES_MAX_ENTRIES:
+            return f"Must have {SHORTCUT_OVERRIDES_MAX_ENTRIES} entries or fewer."
+        for action_id, keys in value.items():
+            for text in (action_id, keys):
+                if (
+                    not isinstance(text, str)
+                    or not 0 < len(text) <= SHORTCUT_OVERRIDES_MAX_KEY_LENGTH
+                    or not (text.isascii() and text.isprintable())
+                ):
+                    return (
+                        "Action ids and keys must be non-empty printable ASCII strings "
+                        f"of {SHORTCUT_OVERRIDES_MAX_KEY_LENGTH} characters or fewer."
+                    )
+        return None
 
     def validate_avatar_upload(self, data) -> UploadedFile:
         """`POST /api/profile/avatar/`.

@@ -20,6 +20,9 @@ from django.db import models
 
 DISPLAY_NAME_MAX_LENGTH = 255
 
+SHORTCUT_OVERRIDES_MAX_ENTRIES = 100
+SHORTCUT_OVERRIDES_MAX_KEY_LENGTH = 64
+
 _DIGITS = re.compile(r"\d")
 
 # Any character that is not a letter or an apostrophe starts a new word.
@@ -107,6 +110,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    shortcut_overrides = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

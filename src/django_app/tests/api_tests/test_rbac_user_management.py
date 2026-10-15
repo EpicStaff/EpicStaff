@@ -211,6 +211,18 @@ def test_list_ordering(superadmin, member_acme, ordering, expected):
     assert _emails(response) == expected
 
 
+@pytest.mark.django_db
+def test_the_user_directory_never_shows_shortcut_overrides(superadmin, member_acme):
+    member_acme.shortcut_overrides = {"node.agent": "Alt+KeyG"}
+    member_acme.save(update_fields=["shortcut_overrides"])
+
+    response = client_for(superadmin).get(USERS_LIST)
+
+    assert response.status_code == status.HTTP_200_OK
+    row = next(user for user in response.data["results"] if user["email"] == member_acme.email)
+    assert "shortcut_overrides" not in row
+
+
 # ---- Creating ----
 
 

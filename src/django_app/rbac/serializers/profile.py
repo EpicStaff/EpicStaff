@@ -10,7 +10,9 @@ class ProfileResponseSerializer(UserResponseSerializer):
     """GET / PATCH / POST-avatar response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `avatar_url`, `active_organization_id`, `active_permissions`. The
+    `avatar_url`, `active_organization_id`, `active_permissions` and
+    `shortcut_overrides` (the user's own preference, so it stays off the
+    admin user directory's UserResponseSerializer). The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
     organization with the built-in Superadmin role — so the response shape is
@@ -34,6 +36,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "avatar_url",
             "active_organization_id",
             "active_permissions",
+            "shortcut_overrides",
         ]
         read_only_fields = fields
 
@@ -45,6 +48,11 @@ class ProfilePatchRequestSerializer(serializers.Serializer):
     """`PATCH /api/profile/` — schema for drf-spectacular only."""
 
     display_name = serializers.CharField(required=False, allow_null=True)
+    shortcut_overrides = serializers.DictField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="Replaces the whole map of action id to keys.",
+    )
 
 
 class PasswordChangeRequestRequestSerializer(serializers.Serializer):

@@ -1,6 +1,8 @@
 """/api/profile/: the signed-in user's own profile, avatar and password change."""
 
 import io
+import json
+from unittest.mock import ANY
 
 import pytest
 from django.core.cache import cache
@@ -15,6 +17,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from rbac.signals import profile_updated
 
 PROFILE_URL = "/api/profile/"
 AVATAR_URL = "/api/profile/avatar/"
@@ -246,6 +249,188 @@ def test_patch_rejects_an_invalid_display_name(member_acme, display_name):
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["code"] == "invalid"
     assert any(error["field"] == "display_name" for error in response.json()["errors"])
+
+
+@pytest.mark.django_db
+def test_shortcut_overrides_default_to_an_empty_map(member_acme):
+    response = client_for(member_acme).get(PROFILE_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["shortcut_overrides"] == {}
+
+
+@pytest.mark.django_db
+def test_patch_replaces_the_whole_shortcut_map(member_acme):
+    member_acme.shortcut_overrides = {"node.agent": "Shift+KeyA", "node.task": "Shift+KeyT"}
+    member_acme.save(update_fields=["shortcut_overrides"])
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, {"shortcut_overrides": {"node.agent": "Alt+KeyG"}}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["shortcut_overrides"] == {"node.agent": "Alt+KeyG"}
+    member_acme.refresh_from_db()
+    assert member_acme.shortcut_overrides == {"node.agent": "Alt+KeyG"}
+
+
+@pytest.mark.django_db
+def test_patch_without_shortcut_overrides_keeps_them(member_acme):
+    member_acme.shortcut_overrides = {"node.agent": "Alt+KeyG"}
+    member_acme.save(update_fields=["shortcut_overrides"])
+
+    response = client_for(member_acme).patch(PROFILE_URL, {"display_name": "Renamed"}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["shortcut_overrides"] == {"node.agent": "Alt+KeyG"}
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.shortcut_overrides) == ("Renamed", {"node.agent": "Alt+KeyG"})
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"anything.the.frontend.wants": "Shift+KeyQ"},
+        {"x" * 64: "Shift+KeyA"},
+        {"node.agent": "x" * 64},
+        {f"action.{index}": "Shift+KeyA" for index in range(100)},
+    ],
+    ids=["empty", "unknown-action-id", "key-at-limit", "chord-at-limit", "entries-at-limit"],
+)
+def test_patch_accepts_shortcut_overrides_up_to_the_limits(member_acme, payload):
+    response = client_for(member_acme).patch(PROFILE_URL, {"shortcut_overrides": payload}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["shortcut_overrides"] == payload
+    member_acme.refresh_from_db()
+    assert member_acme.shortcut_overrides == payload
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        "Shift+KeyA",
+        {"node.agent": 1},
+        {"node.agent": None},
+        {"node.agent": ""},
+        {"": "Shift+KeyA"},
+        {"x" * 65: "Shift+KeyA"},
+        {"node.agent": "x" * 65},
+        {f"action.{index}": "Shift+KeyA" for index in range(101)},
+        {"node.agent": "\u0000"},
+        {"node.\u0000": "Shift+KeyA"},
+        {"node.agent": "\ud800"},
+        {"node.agent": "Shift+КейА"},
+        {"node.agent": "Shift+\tKeyA"},
+    ],
+    ids=[
+        "null", "list", "string", "non-string-chord", "null-chord", "empty-chord", "empty-key",
+        "key-over-limit", "chord-over-limit", "entries-over-limit",
+        "nul-chord", "nul-key", "lone-surrogate-chord", "non-ascii-chord", "control-character-chord",
+    ],
+)
+def test_patch_rejects_a_malformed_shortcut_map(member_acme, payload):
+    member_acme.shortcut_overrides = {"node.agent": "Alt+KeyG"}
+    member_acme.save(update_fields=["shortcut_overrides"])
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, json.dumps({"shortcut_overrides": payload}), content_type="application/json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"] == [
+        {"field": "shortcut_overrides", "value": None, "reason": ANY}
+    ]
+    member_acme.refresh_from_db()
+    assert member_acme.shortcut_overrides == {"node.agent": "Alt+KeyG"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "shortcut_overrides", [[], {"node.agent": "\u0000"}], ids=["not-a-map", "nul-chord"]
+)
+def test_a_rejected_shortcut_patch_does_not_change_the_display_name(member_acme, shortcut_overrides):
+    member_acme.display_name = "Keep"
+    member_acme.shortcut_overrides = {"node.agent": "Alt+KeyG"}
+    member_acme.save(update_fields=["display_name", "shortcut_overrides"])
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, {"display_name": "New", "shortcut_overrides": shortcut_overrides}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.shortcut_overrides) == ("Keep", {"node.agent": "Alt+KeyG"})
+
+
+@pytest.mark.django_db
+def test_patch_sets_the_display_name_and_shortcut_overrides_together(member_acme):
+    response = client_for(member_acme).patch(
+        PROFILE_URL,
+        {"display_name": "Renamed", "shortcut_overrides": {"node.agent": "Alt+KeyG"}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert (response.json()["display_name"], response.json()["shortcut_overrides"]) == (
+        "Renamed", {"node.agent": "Alt+KeyG"},
+    )
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.shortcut_overrides) == ("Renamed", {"node.agent": "Alt+KeyG"})
+
+
+@pytest.fixture
+def profile_updated_receipts():
+    receipts = []
+
+    def record(sender, user, **kwargs):
+        receipts.append(user.pk)
+
+    profile_updated.connect(record, weak=False)
+    yield receipts
+    profile_updated.disconnect(record)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("body", "expected_signals"),
+    [
+        ({"shortcut_overrides": {"node.agent": "Alt+KeyG"}}, 0),
+        ({"display_name": "Renamed"}, 1),
+        ({"display_name": "Renamed", "shortcut_overrides": {"node.agent": "Alt+KeyG"}}, 1),
+    ],
+    ids=["shortcut-only", "display-name-only", "both"],
+)
+def test_only_a_display_name_change_announces_the_profile_not_a_shortcut_change(
+    member_acme, profile_updated_receipts, body, expected_signals
+):
+    response = client_for(member_acme).patch(PROFILE_URL, body, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert profile_updated_receipts == [member_acme.pk] * expected_signals
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "raw_body", ['"shortcut_overrides"', '["display_name"]', "42"], ids=["string", "list", "number"]
+)
+def test_patch_rejects_a_body_that_is_not_an_object_before_reading_shortcut_overrides(member_acme, raw_body):
+    member_acme.display_name = "Keep"
+    member_acme.save(update_fields=["display_name"])
+
+    response = client_for(member_acme).patch(PROFILE_URL, raw_body, content_type="application/json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid"
+    assert [error["field"] for error in response.json()["errors"]] == ["body"]
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.shortcut_overrides) == ("Keep", {})
 
 
 @pytest.mark.django_db
