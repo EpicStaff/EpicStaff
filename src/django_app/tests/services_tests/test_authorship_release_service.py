@@ -33,7 +33,7 @@ def test_release_clears_author_only_in_target_org(acme, beta, author, other_user
         name="acme-deleted-flow",
         org=acme,
         created_by=author,
-        is_soft_deleted=True,
+        active=False,
         soft_deleted_at=timezone.now(),
     )
     beta_graph = Graph.objects.create(name="beta-flow", org=beta, created_by=author)
@@ -163,7 +163,7 @@ def test_release_outside_memberships_without_memberships_releases_every_org(
         name="orphan-acme-flow",
         org=acme,
         created_by=author,
-        is_soft_deleted=True,
+        active=False,
         soft_deleted_at=timezone.now(),
     )
     beta_graph = Graph.objects.create(name="orphan-beta-flow", org=beta, created_by=author)

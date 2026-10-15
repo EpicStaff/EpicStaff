@@ -1,9 +1,5 @@
-// EpicChat token alias layer — scoped to the FA panel host.
-// Maps EpicChat --ep-color-* / --ep-radius-* / --ep-button-* variables onto the
-// project's existing CSS variables so FA SCSS can be read side-by-side with
-// EpicChat's source without any global theme drift.
-// Source reference: epicstaffchat-master/src/app/chat.component.scss:101-167
-@mixin epicchat-tokens {
+// Scoped to each Flow Assistant host so the --ep-* aliases never leak into the global theme.
+@mixin flow-assistant-tokens {
     // surface + text
     --ep-color-surface: var(--color-nodes-sidepanel-bg);
     --ep-color-surface-alt: var(--color-input-background);

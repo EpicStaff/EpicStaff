@@ -116,7 +116,7 @@ def test_clears_the_author_who_is_not_a_member_of_the_rows_org(acme, acme_flow, 
         name="deleted-outsider-flow",
         org=acme,
         created_by=outsider,
-        is_soft_deleted=True,
+        active=False,
         soft_deleted_at=timezone.now(),
     )
 
@@ -202,7 +202,7 @@ def test_scrubs_snapshot_entries_of_non_members_and_keeps_members_and_superadmin
         graph=acme_flow,
         name="acme-deleted",
         snapshot=_snapshot(authors={"1": outsider.id}, editors={}),
-        is_soft_deleted=True,
+        active=False,
         soft_deleted_at=timezone.now(),
     )
     beta_version = GraphVersion.objects.create(

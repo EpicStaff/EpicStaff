@@ -60,16 +60,6 @@ def test_build_run_variables_flag_off_passes_payload_through(default_org):
 
 
 @pytest.mark.django_db
-def test_build_run_variables_merges_org_below_payload(default_org):
-    graph = _make_graph(
-        default_org, flag=True, org_stored={"counter": 5, "nested": {"x": 1}}
-    )
-    # payload wins on conflicting paths, deep-merges siblings
-    result = svc.build_run_variables(graph, None, {"counter": 9, "nested": {"y": 2}})
-    assert result.variables == {"counter": 9, "nested": {"x": 1, "y": 2}}
-
-
-@pytest.mark.django_db
 def test_build_run_variables_superadmin_has_no_graph_user(default_org, superadmin_user):
     graph = _make_graph(default_org, flag=True, org_stored={"counter": 5})
     result = svc.build_run_variables(graph, superadmin_user, {})
@@ -99,6 +89,133 @@ def _graph_with_start(default_org, *, flag, org_paths, defaults, org_stored=None
     )
     GraphOrganization.objects.create(graph=graph, persistent_variables=org_stored or {})
     return graph
+
+
+def _memory_graph(default_org, *, flag=True):
+    return _graph_with_start(
+        default_org,
+        flag=flag,
+        org_paths=["memory.company_facts"],
+        defaults={"memory": {"company_facts": ""}},
+        org_stored={"memory": {"company_facts": "stored"}},
+    )
+
+
+@pytest.mark.django_db
+def test_build_run_variables_without_override_takes_declared_leaf_from_storage(default_org):
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["counter"],
+        defaults={"counter": 0},
+        org_stored={"counter": 5},
+    )
+    result = svc.build_run_variables(graph, None, {"counter": 9, "topic": "news"})
+    assert result.variables == {"counter": 5, "topic": "news"}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_without_override_keeps_siblings_of_declared_path(default_org):
+    graph = _memory_graph(default_org)
+    result = svc.build_run_variables(
+        graph, None, {"memory": {"company_facts": "forged", "notes": 2}}
+    )
+    assert result.variables == {"memory": {"company_facts": "stored", "notes": 2}}
+
+
+@pytest.mark.parametrize("ancestor_value", ["forged", None, 0, ["forged"]])
+@pytest.mark.django_db
+def test_build_run_variables_without_override_drops_non_dict_ancestor(
+    default_org, ancestor_value
+):
+    graph = _memory_graph(default_org)
+    result = svc.build_run_variables(graph, None, {"memory": ancestor_value, "topic": "news"})
+    assert result.variables == {"memory": {"company_facts": "stored"}, "topic": "news"}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_without_override_drops_non_dict_intermediate(default_org):
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["profile.memory.facts"],
+        defaults={"profile": {"memory": {"facts": ""}}},
+        org_stored={"profile": {"memory": {"facts": "stored"}}},
+    )
+    result = svc.build_run_variables(graph, None, {"profile": {"memory": None, "name": "x"}})
+    assert result.variables == {"profile": {"memory": {"facts": "stored"}, "name": "x"}}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_does_not_mutate_payload(default_org):
+    graph = _memory_graph(default_org)
+    payload = {"memory": {"company_facts": "forged", "notes": 2}, "topic": None}
+    svc.build_run_variables(graph, None, payload)
+    assert payload == {"memory": {"company_facts": "forged", "notes": 2}, "topic": None}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_without_override_lets_payload_win_on_undeclared_stored_keys(
+    default_org,
+):
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["counter"],
+        defaults={"counter": 0},
+        org_stored={"counter": 5, "legacy": {"x": 1}},
+    )
+    result = svc.build_run_variables(graph, None, {"legacy": {"y": 2}})
+    assert result.variables == {"counter": 5, "legacy": {"x": 1, "y": 2}}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_with_override_lets_payload_win_on_declared_path(default_org):
+    graph = _memory_graph(default_org)
+    result = svc.build_run_variables(
+        graph,
+        None,
+        {"memory": {"company_facts": "seeded", "notes": 2}},
+        allow_persistent_override=True,
+    )
+    assert result.variables == {"memory": {"company_facts": "seeded", "notes": 2}}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_without_override_fills_unstored_declared_path_with_raw_default(
+    default_org,
+):
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["counter"],
+        defaults={"counter": "{seed}", "seed": ""},
+        org_stored={},
+    )
+    result = svc.build_run_variables(graph, None, {"seed": "forged"})
+    assert result.variables == {"counter": "{seed}", "seed": "forged"}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_with_override_leaves_unstored_declared_path_unset(default_org):
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["counter"],
+        defaults={"counter": "{seed}", "seed": ""},
+        org_stored={},
+    )
+    result = svc.build_run_variables(
+        graph, None, {"seed": "chosen"}, allow_persistent_override=True
+    )
+    assert result.variables == {"seed": "chosen"}
+
+
+@pytest.mark.django_db
+def test_build_run_variables_flag_off_passes_declared_path_through(default_org):
+    graph = _memory_graph(default_org, flag=False)
+    result = svc.build_run_variables(graph, None, {"memory": "anything"})
+    assert result.variables == {"memory": "anything"}
 
 
 class _FakeSession:

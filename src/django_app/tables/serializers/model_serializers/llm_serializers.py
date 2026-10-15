@@ -4,7 +4,6 @@ from rbac.authorship import (
     LastEditFieldsSerializerMixin,
 )
 from rbac.scoping.fields import (
-    OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
     OrgScopedUniqueValidator,
     OrgVisiblePrimaryKeyRelatedField,
@@ -24,6 +23,7 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
@@ -48,8 +48,8 @@ class RealtimeConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -85,8 +85,8 @@ class RealtimeTranscriptionConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -111,8 +111,8 @@ class LLMConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,

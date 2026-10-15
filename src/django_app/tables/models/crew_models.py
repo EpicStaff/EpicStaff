@@ -190,6 +190,8 @@ class AgentPythonCodeTools(SoftDeleteFields, models.Model):
     Agent rows.
     """
 
+    soft_delete_reference_fields = ("pythoncodetool",)
+
     agent = models.ForeignKey(
         "Agent",
         on_delete=models.CASCADE,
@@ -211,6 +213,8 @@ class AgentPythonCodeToolConfigs(SoftDeleteFields, models.Model):
     agents.AgentDefinition + AgentNode instead. Exists only for backward
     compatibility with existing Agent rows.
     """
+
+    soft_delete_reference_fields = ("pythoncodetoolconfig",)
 
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="python_code_tool_configs"
@@ -388,6 +392,8 @@ class TaskPythonCodeTools(SoftDeleteFields, models.Model):
     instead. Exists only for backward compatibility with existing Task rows.
     """
 
+    soft_delete_reference_fields = ("tool",)
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_python_code_tool_list"
     )
@@ -405,6 +411,8 @@ class TaskPythonCodeToolConfigs(SoftDeleteFields, models.Model):
     DEPRECATED: TaskPythonCodeToolConfigs is deprecated. Use TaskNode/AgentNodeTask
     instead. Exists only for backward compatibility with existing Task rows.
     """
+
+    soft_delete_reference_fields = ("tool",)
 
     task = models.ForeignKey(
         "Task",

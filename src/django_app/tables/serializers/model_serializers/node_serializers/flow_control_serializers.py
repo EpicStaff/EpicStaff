@@ -23,6 +23,7 @@ from tables.serializers.base_serializer import (
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -108,7 +109,9 @@ class EndNodeSerializer(
         return "__end_node__"
 
 
-class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -116,7 +119,9 @@ class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         fields = "__all__"
 
 
-class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionGroupSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     conditions = ConditionSerializer(many=True, required=False)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -126,6 +131,7 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
 
 
 class DecisionTableNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,

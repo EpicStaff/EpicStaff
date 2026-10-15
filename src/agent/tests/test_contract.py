@@ -253,7 +253,6 @@ async def test_agent_result_payload_key_set_includes_tasks():
         "stop_reason",
         "token_usage",
         "error",
-        "events",
         "warnings",
         "tasks",
     }
