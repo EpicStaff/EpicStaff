@@ -240,8 +240,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         # truncation runs after the whole message has been formatted.
         logger.info("'run_session' got variables with keys: {}", list(variables))
 
-        # Nothing on the run path reads the canvas JSON in metadata.
-        graph = Graph.objects.defer("metadata").get(pk=graph_id)
+        # Nothing on the run path reads the canvas JSON in metadata; org is joined
+        # here because issuing session storage credentials reads graph.org.
+        graph = Graph.objects.defer("metadata").select_related("org").get(pk=graph_id)
         # The server does not require a start node (the editor only hides its delete
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
@@ -564,6 +565,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 resolver=resolver,
                 graph_id=graph.pk,
                 session_id=session.pk if session else None,
+                org_id=org_id,
             )
             for item in webhook_trigger_node_list
         ]

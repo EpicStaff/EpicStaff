@@ -6,13 +6,23 @@ node with its edge, two Python nodes declaring a secret (one with storage)
 and a subgraph node whose subgraph has its own start node.
 """
 
+import itertools
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from rbac.models import Organization
 from storage_credentials.services.org_credential_store import org_credential_store
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import Graph, PythonCode, Session
-from tables.models.graph_models import Edge, PythonNode, StartNode, SubGraphNode
+from tables.models.graph_models import (
+    Edge,
+    PythonNode,
+    StartNode,
+    SubGraphNode,
+    WebhookTriggerNode,
+)
 from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -21,7 +31,7 @@ SECRET_NAME = "query-count-key"
 
 # Exact budget for representative_graph. If a change raises it, find the new
 # query; if it lowers it, update the number.
-RUN_SESSION_QUERY_COUNT = 64
+RUN_SESSION_QUERY_COUNT = 63
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:
@@ -37,6 +47,11 @@ def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -
     )
 
 
+def _webhook_trigger_node(graph: Graph, node_name: str) -> WebhookTriggerNode:
+    python_code = PythonCode.objects.create(code="def main(**kwargs):\n    return 1\n", entrypoint="main")
+    return WebhookTriggerNode.objects.create(graph=graph, python_code=python_code, node_name=node_name)
+
+
 @pytest.fixture
 def org(db, monkeypatch):
     org = Organization.objects.create(name="Org RunSessionQueryCount")
@@ -45,8 +60,12 @@ def org(db, monkeypatch):
     # persists stay real, so their queries count toward the budget.
     org_credential_store.save(org=org, access_key="org-access", secret_key="org-secret")
 
+    # Access keys are unique per stored account, so a test running twice needs a
+    # fresh key each time.
+    account_numbers = itertools.count()
+
     async def mint_temporary_service_account(org_creds, policy, expiration):
-        return "temporary-access", "temporary-secret"
+        return f"temporary-access-{next(account_numbers)}", "temporary-secret"
 
     monkeypatch.setattr(
         session_credential_service,
@@ -160,3 +179,22 @@ def test_payload_carries_org_and_secrets_read_from_the_graph_rows(
     assert inner_python.python_code.secret_names == []
 
     assert Session.objects.get(pk=session_id).status == Session.SessionStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_another_webhook_trigger_node_adds_no_queries(
+    representative_graph, published, django_assert_num_queries
+):
+    _webhook_trigger_node(representative_graph, "first_webhook")
+    with CaptureQueriesContext(connection) as one_webhook_trigger_node:
+        _run(representative_graph)
+
+    _webhook_trigger_node(representative_graph, "second_webhook")
+
+    with django_assert_num_queries(len(one_webhook_trigger_node.captured_queries)):
+        _run(representative_graph)
+
+    [_, (session_data, _)] = published
+    assert {
+        node.python_code.org_id for node in session_data.graph.webhook_trigger_node_data_list
+    } == {representative_graph.org_id}
