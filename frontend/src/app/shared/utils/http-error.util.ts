@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
  * Extracts a human-readable message from an HttpErrorResponse
  */
 
-export function extractHttpErrorMessage(err: HttpErrorResponse, fallback = 'Unknown error'): string {
+export function extractHttpErrorMessage(err: HttpErrorResponse, fallback?: string): string {
     // Structured validation errors attached by validationErrorsInterceptor.
     if (Array.isArray(err.validationErrors) && err.validationErrors.length > 0) {
         const reasons = err.validationErrors.map((e) => e.reason).filter(Boolean);
@@ -13,7 +13,13 @@ export function extractHttpErrorMessage(err: HttpErrorResponse, fallback = 'Unkn
 
     const body = err?.error;
     if (body) {
-        if (typeof body === 'string') return simplifyKnownMessage(body);
+        if (typeof body === 'string') {
+            if (!HTML_DOCUMENT.test(body)) return simplifyKnownMessage(body);
+            return fallback ?? (err.status >= 500 ? `Server error (${err.status})` : `Request failed (${err.status})`);
+        }
+
+        const details = collectErrorDetails(body.errors);
+        if (details.length) return joinErrorMessages(details.map(simplifyKnownMessage));
 
         // Nested DRF validation errors (object), e.g.
         // { errors: { <node>_list: [ { index, errors: { prompt_configs: [ {}, { result_variable: ["..."] } ] } } ] } }
@@ -32,7 +38,19 @@ export function extractHttpErrorMessage(err: HttpErrorResponse, fallback = 'Unkn
         if (collected.length) return joinErrorMessages(collected.map(simplifyKnownMessage));
     }
 
-    return err?.message || fallback;
+    return err?.message || (fallback ?? 'Unknown error');
+}
+
+const HTML_DOCUMENT = /^\s*<(!doctype|html)/i;
+
+function collectErrorDetails(errors: unknown): string[] {
+    if (!Array.isArray(errors) || !errors.length) return [];
+    const details = errors.map((item: unknown) =>
+        item != null && typeof item === 'object' && typeof (item as { detail?: unknown }).detail === 'string'
+            ? (item as { detail: string }).detail
+            : null
+    );
+    return details.every((detail) => detail) ? (details as string[]) : [];
 }
 
 const UNDECLARED_SECRET_CALLS =
