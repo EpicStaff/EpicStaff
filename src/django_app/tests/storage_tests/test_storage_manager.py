@@ -6,8 +6,7 @@ from tables.services.storage_service.dataclasses import (
     FolderInfo,
 )
 from tables.services.storage_service.manager import StorageManager
-
-
+from tables.services.storage_service.path_utils import trash_storage_key
 from tests.storage_tests.storage_writes import store_object
 
 
@@ -35,13 +34,15 @@ class TestWrites:
         folder = StorageFile.objects.get(org=org, path="docs/")
         assert (folder.item_type, folder.created_by) == ("folder", org_user.user)
 
-    def test_delete_removes_the_object_and_its_row(self, manager, fake_backend, org, org_user):
+    def test_delete_moves_the_object_and_its_row_to_the_recycle_bin(self, manager, fake_backend, org, org_user):
         store_object(fake_backend, org.id, "old.txt", b"x")
 
-        manager.delete(org.id, "old.txt")
+        batch = manager.delete(org.id, "old.txt", user=org_user.user)
 
-        assert _keys(fake_backend, org) == []
+        assert not fake_backend.exists(f"org_{org.id}/old.txt")
+        assert fake_backend.download(trash_storage_key(org.id, batch, "old.txt")) == b"x"
         assert _rows(org) == {}
+        assert StorageFile.deleted_objects.filter(org=org, path="old.txt").exists()
 
     def test_move_puts_the_file_inside_the_destination_and_moves_its_row(self, manager, fake_backend, org, org_user):
         store_object(fake_backend, org.id, "a.txt", b"x")

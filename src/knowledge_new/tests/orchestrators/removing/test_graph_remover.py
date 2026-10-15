@@ -7,7 +7,7 @@ from application.orchestrators.removing.strategies.graph_remover import (
     GraphRagRemoveOrchestrator,
 )
 from domain.enums import IndexStatusEnum
-from domain.errors import RagInProcessingError, RagNotFoundError
+from domain.errors import RagInProcessingError
 from domain.models import Rag
 
 
@@ -73,18 +73,22 @@ async def test_removing_a_rag_clears_only_that_rags_index_storage(storage_servic
     ]
 
 
-@pytest.mark.parametrize(
-    ("rag", "expected_error"),
-    [
-        (None, RagNotFoundError),
-        (_rag(3, IndexStatusEnum.PROCESSING), RagInProcessingError),
-    ],
-    ids=["missing-rag", "rag-being-indexed"],
-)
-async def test_removal_is_refused_without_touching_storage(storage_service, rag, expected_error):
-    uow = FakeUoW(FakeGraphRagRepo(rag=rag))
+async def test_a_missing_rag_row_still_clears_its_index_storage(storage_service):
+    # Django deletes a collection for good first and asks for the index removal
+    # after its commit, so the row is already gone when this runs.
+    uow = FakeUoW(FakeGraphRagRepo(rag=None))
 
-    with pytest.raises(expected_error):
+    await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=7))
+
+    assert [(storage.prefix, storage.cleared) for storage in storage_service.opened] == [
+        ("graphrag/rag_7", True)
+    ]
+
+
+async def test_removal_of_a_rag_being_indexed_is_refused_without_touching_storage(storage_service):
+    uow = FakeUoW(FakeGraphRagRepo(rag=_rag(3, IndexStatusEnum.PROCESSING)))
+
+    with pytest.raises(RagInProcessingError):
         await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=3))
 
     assert storage_service.opened == []

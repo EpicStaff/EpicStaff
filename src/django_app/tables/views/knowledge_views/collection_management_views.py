@@ -23,6 +23,7 @@ from tables.serializers.knowledge_serializers import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTION_AVAILABLE_RAGS_GET,
@@ -35,12 +36,15 @@ from tables.swagger_schemas.knowledge_schemas.collection_management_schemas impo
     SOURCE_COLLECTION_PUT,
     SOURCE_COLLECTIONS_GET,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
 
 redis_service = RedisService()
 
 
-class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+class SourceCollectionViewSet(
+    OrgScopedResolverMixin, RecycleBinActionsMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for SourceCollection CRUD operations.
 
@@ -54,6 +58,9 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     - DELETE /source-collections/{id}/ - Delete collection (cleans unreferenced content)
     - POST /source-collections/bulk-delete/ - Bulk delete source collections
     - GET /source-collections/{id}/available-rags/ - Get available RAG configurations for a collection
+    - GET /source-collections/recycle-bin/ - List the org's binned collections
+    - POST /source-collections/{id}/restore/ - Restore a binned collection
+    - DELETE /source-collections/{id}/purge/ - Delete a binned collection for good (superadmin only)
 
     """
 
@@ -63,10 +70,12 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "bulk_delete": Permission.DELETE,
         "copy": Permission.CREATE,
         "available_rags": Permission.READ,
     }
+    recycle_bin_resource_key = RecycleBinSource.COLLECTION
 
     def get_queryset(self):
         """Active-org collections only, optimized per action."""
@@ -168,7 +177,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
 
         try:
             result = CollectionManagementService.delete_collection(
-                collection_id=instance.collection_id
+                collection_id=instance.collection_id, deleted_by=request.user
             )
 
             return Response(
@@ -210,7 +219,9 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         )
 
         try:
-            result = CollectionManagementService.bulk_delete_collections(collection_ids)
+            result = CollectionManagementService.bulk_delete_collections(
+                collection_ids, deleted_by=request.user
+            )
 
             return Response(
                 {

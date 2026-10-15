@@ -10,6 +10,8 @@ import { WebhookTriggerFieldComponent } from './webhook-trigger-field.component'
 
 const BOT_SECRET = { id: 7, name: 'Bot secret', tail: 'eqwe' } as Secret;
 const OTHER_SECRET = { id: 8, name: 'Other secret', tail: 'zzzz' } as Secret;
+/** TELEGRAM_TRIGGER's ngrok token (id 5), in the recycle bin. */
+const BINNED_TOKEN = { id: 5, name: 'Old tunnel token' };
 
 const TELEGRAM_TRIGGER: WebhookTriggerModel = {
     id: 3,
@@ -55,6 +57,18 @@ function render(trigger: WebhookTriggerModel, options: RenderOptions = {}) {
                     secrets,
                     getSecrets: () => of(secrets()),
                     maskTail: (tail: string) => `••••${tail}`,
+                    // Like the real storage: live secrets, plus the selected binned one.
+                    selectItems: (selected: number | null) => [
+                        ...secrets().map((secret) => ({
+                            name: secret.name,
+                            value: secret.id,
+                            tip: `••••${secret.tail}`,
+                        })),
+                        ...(selected === BINNED_TOKEN.id
+                            ? [{ name: `${BINNED_TOKEN.name} (in the recycle bin)`, value: BINNED_TOKEN.id }]
+                            : []),
+                    ],
+                    isBinned: (id: number) => id === BINNED_TOKEN.id,
                 },
             },
         ],
@@ -91,6 +105,19 @@ function emittedTrigger(control: FormControl<WebhookTriggerWrite | null>): Webho
 }
 
 describe('WebhookTriggerFieldComponent', () => {
+    it('names a binned tunnel token, with the note, though the trigger was loaded without events', () => {
+        const { fixture } = render(TELEGRAM_TRIGGER);
+
+        expect(selectButtonText(fixture, 'ngrok_auth_token_secret_id')).toBe('Old tunnel token (in the recycle bin)');
+        expect(text(fixture, '.binned-secret-note')).toContain('This secret is in the recycle bin');
+    });
+
+    it('never offers the binned tunnel token as an auth secret', () => {
+        const { field } = render(TELEGRAM_TRIGGER);
+
+        expect(field['authSecretItems']().map((item) => item.value)).not.toContain(BINNED_TOKEN.id);
+    });
+
     describe('existing telegram trigger', () => {
         it('pre-selects both the auth kind and the current secret', () => {
             const { fixture, field, control } = render(TELEGRAM_TRIGGER);

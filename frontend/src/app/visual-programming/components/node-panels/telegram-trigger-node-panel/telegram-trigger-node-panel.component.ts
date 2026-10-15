@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    BinnedSecretNoteComponent,
     ButtonComponent,
     ColumnResizeDividerComponent,
     ConfirmationDialogService,
@@ -68,6 +69,7 @@ export const INSERT_EXAMPLE_NO_FIELDS_REASON = 'Select fields first';
         AppSvgIconComponent,
         SelectComponent,
         ValidationErrorsComponent,
+        BinnedSecretNoteComponent,
         HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
@@ -94,11 +96,15 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
     selectedFields = signal<DisplayedTelegramField[]>([]);
-    webhookRegistered = signal<boolean>(false);
+    /** The picked trigger as the select resolved it: null with none, or with one in the recycle bin. */
+    private readonly resolvedTrigger = signal<WebhookTriggerModel | null>(null);
 
-    webhookStatusDisplay = computed<WebhookStatus>(() =>
-        this.webhookRegistered() ? WebhookStatus.SUCCESS : WebhookStatus.FAIL
-    );
+    /** No status without a live trigger: "not connected" would blame the tunnel for a missing or binned one. */
+    webhookStatusDisplay = computed<WebhookStatus | null>(() => {
+        const trigger = this.resolvedTrigger();
+        if (trigger == null) return null;
+        return trigger.live_url ? WebhookStatus.SUCCESS : WebhookStatus.FAIL;
+    });
 
     /**
      * This node as last saved to the backend; null until its first save. Not `node()`: switching
@@ -154,12 +160,18 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     protected readonly insertExampleLabel = INSERT_EXAMPLE_PAYLOAD_LABEL;
     protected readonly insertExampleIcon = INSERT_EXAMPLE_PAYLOAD_ICON;
 
+    /**
+     * The bot key options, plus the binned key this node holds. A binned key comes from the backend
+     * (savedBotKeySecretId: re-picking it is an unchanged link, which a save keeps) or from the canvas
+     * node (node(): switching panels autosaves the form there, unsent). Both are signals: the form is
+     * built later, in an effect.
+     */
     secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
+        this.secretsStorageService.selectItems(
+            [this.node().data.telegram_bot_api_key_secret_id, this.savedBotKeySecretId()].filter(
+                (id): id is number => typeof id === 'number'
+            )
+        )
     );
 
     constructor() {
@@ -301,7 +313,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     }
 
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
-        this.webhookRegistered.set(!!trigger?.live_url);
+        this.resolvedTrigger.set(trigger);
     }
 
     /** The saved payload, or a sample of the picked fields while none is saved. */

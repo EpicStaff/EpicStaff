@@ -22,6 +22,7 @@ from rest_framework.response import Response
 from tables.exceptions import OverwriteNotPermitted
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.archive_unpacking.names import is_archive_name
+from tables.views.storage_bin_purge_access import StorageBinPurgeAccess
 from tables.views.storage_views import StorageAPIView
 from utils.exception_handler import custom_exception_handler
 from utils.logger import logger
@@ -56,6 +57,7 @@ async def _serve_upload(scope, receive, send) -> None:
         _reject_non_utf8_query(scope)
         # Check auth, permissions (FILES:CREATE) and throttling the same way StorageAPIView does.
         request, org_id = await sync_to_async(_check_access)(scope)
+        bin_access = await sync_to_async(StorageBinPurgeAccess.for_request)(request, org_id)
 
         path = request.query_params.get("path", "")
         filename = request.query_params.get("filename", "")
@@ -83,7 +85,9 @@ async def _serve_upload(scope, receive, send) -> None:
             declared_size,
             authorize_overwrite=_overwrite_authorizer(user, org_id),
             user=user,
+            bin_purge=bin_access.grant,
         )
+        result["recycle_bin_purged"] = bin_access.render(result["recycle_bin_purged"])
 
         await _send_json(send, scope, 200, {"status": "DONE", **result})
 

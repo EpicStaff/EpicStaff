@@ -75,3 +75,9 @@ def test_a_missing_scope_is_explained_to_the_client_without_internals_but_logged
     logged = "".join(warning_logs)
     assert "org_id=7" in logged
     assert "session_id" in logged
+
+
+@pytest.mark.parametrize("path", [".recycle-bin", "/.recycle-bin/batch/report.pdf"])
+def test_a_path_inside_the_recycle_bin_is_rejected(validator, path):
+    with pytest.raises(CredentialScopeValidationError):
+        validator.validate(org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[path])

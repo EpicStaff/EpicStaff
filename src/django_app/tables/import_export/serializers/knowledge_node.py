@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.models import Graph, KnowledgeNode
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.knowledge_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagDriftSearchConfig,
@@ -8,39 +9,40 @@ from tables.models.knowledge_models import (
     KnowledgeNodeGraphRagLocalSearchConfig,
     KnowledgeNodeNaiveRagSearchConfig,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
 class _NaiveSearchConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeNodeNaiveRagSearchConfig
-        exclude = ["id", "knowledge_node"]
+        exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
 class _GraphBasicSearchConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeNodeGraphRagBasicSearchConfig
-        exclude = ["id", "knowledge_node"]
+        exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
 class _GraphLocalSearchConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeNodeGraphRagLocalSearchConfig
-        exclude = ["id", "knowledge_node"]
+        exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
 class _GraphGlobalSearchConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeNodeGraphRagGlobalSearchConfig
-        exclude = ["id", "knowledge_node"]
+        exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
 class _GraphDriftSearchConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeNodeGraphRagDriftSearchConfig
-        exclude = ["id", "knowledge_node"]
+        exclude = ["id", "knowledge_node", *SOFT_DELETE_FIELD_NAMES]
 
 
-class KnowledgeNodeImportSerializer(serializers.ModelSerializer):
+class KnowledgeNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     naive_search_config = _NaiveSearchConfigImportSerializer(read_only=True)

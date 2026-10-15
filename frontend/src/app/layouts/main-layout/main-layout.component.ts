@@ -1,11 +1,10 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
 import { filter } from 'rxjs/operators';
 
-import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
 import { MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS } from './main-sidenav-width';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
@@ -33,23 +32,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
             .sidebar-wrapper {
                 position: relative;
                 flex-shrink: 0;
-            }
-
-            .chat-dock-spacer {
-                position: relative;
-                flex-shrink: 0;
-                border-right: 1px solid var(--color-divider-subtle);
-                background: var(--color-background-body);
-            }
-
-            .chat-dock-resizer {
-                position: absolute;
-                top: 0;
-                right: -4px;
-                width: 8px;
-                height: 100%;
-                cursor: col-resize;
-                z-index: 10;
             }
 
             /* The main-content area flexes to fill all remaining horizontal space. */
@@ -83,18 +65,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
             ></div>
         </div>
 
-        @if (epicChatService.isDocked() && epicChatService.isChatOpen()) {
-            <div
-                class="chat-dock-spacer"
-                [style.width.px]="epicChatService.dockWidth()"
-            >
-                <div
-                    class="chat-dock-resizer"
-                    (mousedown)="onDockResizeStart($event)"
-                ></div>
-            </div>
-        }
-
         <div class="main-content">
             <router-outlet></router-outlet>
         </div>
@@ -113,15 +83,9 @@ export class MainLayoutComponent implements OnInit {
     protected readonly sidenavWidthKey = MAIN_SIDENAV_WIDTH_KEY;
     protected readonly sidenavWidthOptions = MAIN_SIDENAV_WIDTH_OPTIONS;
 
-    private isDockResizing = false;
-    private dockResizeStartX = 0;
-    private dockResizeStartWidth = 0;
-
     private router = inject(Router);
     private destroyRef = inject(DestroyRef);
     private lastVisitedTabService = inject(LastVisitedTabService);
-
-    constructor(public epicChatService: EpicChatService) {}
 
     ngOnInit(): void {
         this.router.events
@@ -143,29 +107,5 @@ export class MainLayoutComponent implements OnInit {
     /** The sidenav's open/close control: the layout owns the width, so it applies and persists the change. */
     protected toggleSidenav(): void {
         this.sidebarWidthService.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
-    }
-
-    public onDockResizeStart(event: MouseEvent): void {
-        if (!this.epicChatService.isDocked()) {
-            return;
-        }
-        event.preventDefault();
-        this.isDockResizing = true;
-        this.dockResizeStartX = event.clientX;
-        this.dockResizeStartWidth = this.epicChatService.dockWidth();
-    }
-
-    @HostListener('window:mousemove', ['$event'])
-    public onDockResizeMove(event: MouseEvent): void {
-        if (!this.isDockResizing) {
-            return;
-        }
-        const delta = event.clientX - this.dockResizeStartX;
-        this.epicChatService.setDockWidth(this.dockResizeStartWidth + delta);
-    }
-
-    @HostListener('window:mouseup')
-    public onDockResizeEnd(): void {
-        this.isDockResizing = false;
     }
 }

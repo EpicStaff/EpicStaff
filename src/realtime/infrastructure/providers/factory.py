@@ -55,7 +55,7 @@ class RealtimeAgentClientFactory:
                 model=config.rt_model_name,
                 voice=config.voice,
                 instructions=instructions,
-                temperature=config.temperature or 1.0,
+                temperature=config.temperature,
                 org_id=config.org_id,
                 user_id=config.user_id,
             )

@@ -12,7 +12,6 @@ import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
-import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { VersionHistoryPanelComponent } from '../../../../features/flows/components/version-history-panel/version-history-panel.component';
 import { GetGraphLightRequest, GraphDto, GraphVersionDto } from '../../../../features/flows/models/graph.model';
@@ -218,7 +217,6 @@ describe('FlowVisualProgrammingComponent', () => {
     let sessionStatus: ReturnType<typeof signal<GraphSessionStatus>>;
     let explanationsApi: { saveExplanations: ReturnType<typeof vi.fn> };
     let flowsStorage: { deleteFlow: ReturnType<typeof vi.fn> };
-    let epicChat: { requestCreateAgent: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         explanationsApi = { saveExplanations: vi.fn() };
@@ -234,7 +232,6 @@ describe('FlowVisualProgrammingComponent', () => {
             getSubflowUsage: vi.fn(),
         };
         flowsStorage = { deleteFlow: vi.fn().mockReturnValue(of(undefined)) };
-        epicChat = { requestCreateAgent: vi.fn() };
         unsavedChangesDialog = { confirm: vi.fn(), confirmUnsavedChanges: vi.fn() };
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         runGraph = { runGraph: vi.fn(), runTestSession: vi.fn() };
@@ -261,8 +258,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 { provide: FlowsStorageService, useValue: flowsStorage },
                 { provide: ToastService, useValue: toast },
                 { provide: RunGraphService, useValue: runGraph },
-                { provide: ConfigService, useValue: { isEpicChatEnabled: false, apiUrl: '/api/' } },
-                { provide: EpicChatService, useValue: epicChat },
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
                 { provide: UnsavedChangesDialogService, useValue: unsavedChangesDialog },
                 { provide: CreateGraphWarningsService, useValue: { readPending: () => [] } },
                 {
@@ -1625,24 +1621,6 @@ describe('FlowVisualProgrammingComponent', () => {
                 explanationSave.next({ explanations: { 'rule:route:spam': SPAM }, save_version: 2 });
                 explanationSave.complete();
             }
-
-            it('sends the Epic Chat flag once the save before it answered, and takes over the version it returns', () => {
-                flowsApi['patchGraph'].mockReturnValue(of({ ...CDT_GRAPH, epicchat_enabled: true, save_version: 3 }));
-                explanationSaveInFlight();
-
-                component.connectToEpicChat();
-                expect(flowsApi['patchGraph']).not.toHaveBeenCalled();
-
-                answerExplanationSave();
-
-                expect(flowsApi['patchGraph']).toHaveBeenCalledExactlyOnceWith(1, {
-                    epicchat_enabled: true,
-                    save_version: 2,
-                });
-                expect(component.versionHistoryGraphSaveVersion()).toBe(3);
-                expect(component.graph.epicchat_enabled).toBe(true);
-                expect(epicChat.requestCreateAgent).toHaveBeenCalledTimes(1);
-            });
 
             it('sends a version restore once the save before it answered, with the version it returned', () => {
                 unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
