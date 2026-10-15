@@ -91,6 +91,12 @@ describe('FlowGraphContextMenuComponent', () => {
         expect(menuHeader()).not.toBeNull();
     });
 
+    it('puts the caret in the search input when it opens', async () => {
+        await openMenu([CURRENT_FLOW]);
+
+        expect(document.activeElement).toBe(overlayElement.querySelector('.context-menu .search-container input'));
+    });
+
     it('emits closed once when Escape is pressed while the search input has focus', async () => {
         await openMenu([CURRENT_FLOW]);
         const closedListener = vi.fn();

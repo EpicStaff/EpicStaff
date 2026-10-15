@@ -8,6 +8,7 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     Injector,
     input,
@@ -15,6 +16,7 @@ import {
     signal,
     TemplateRef,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -50,6 +52,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
 
     @ViewChild('menuTemplate', { static: true })
     private menuTemplate!: TemplateRef<unknown>;
+    private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     public readonly searchTerm = signal('');
     public readonly selectedMenu = signal<ContextMenuTab>(CONTEXT_MENU_TAB.FLOW_CORE);
@@ -120,6 +123,8 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
                 this.closed.emit();
             });
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
+        // The input lives in the overlay portal, so it exists only after the portal renders.
+        afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
     }
 
     private createPositionStrategy(position: IPoint): FlexibleConnectedPositionStrategy {
