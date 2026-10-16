@@ -246,11 +246,7 @@ class RedisService(metaclass=SingletonMeta):
 
     async def apublish(self, channel: str, message: dict | str):
         await self.aioredis_client.publish(channel=channel, message=_encode(message))
-        logger.info(f"Message published to channel '{channel}'.")
-
-    def publish(self, channel: str, message: dict | str):
-        self.sync_redis_client.publish(channel=channel, message=_encode(message))
-        logger.info(f"Message published to channel '{channel}'.")
+        logger.debug("Message published to channel {}", channel)
 
     async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:
         """Append a graph session message, already encoded as JSON, to the stream
@@ -259,16 +255,6 @@ class RedisService(metaclass=SingletonMeta):
         Unlike a publish, the entry waits in Redis until django_app has stored it.
         """
         await self.aioredis_client.xadd(
-            GRAPH_MESSAGE_STREAM,
-            graph_message_fields(message_uuid, encoded_message),
-            maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
-            approximate=True,
-        )
-        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
-
-    def add_graph_message(self, message_uuid: str, encoded_message: str) -> None:
-        """Synchronous ``aadd_graph_message`` for code without an event loop to await on."""
-        self.sync_redis_client.xadd(
             GRAPH_MESSAGE_STREAM,
             graph_message_fields(message_uuid, encoded_message),
             maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
@@ -295,15 +281,6 @@ class RedisService(metaclass=SingletonMeta):
             json.dumps(variables),
             ex=SESSION_FINAL_VARIABLES_TTL_SECONDS,
         )
-
-    def update_session_status(self, session_id: int, status: str, **kwargs):
-        message = {
-            "session_id": session_id,
-            "status": status,
-            "status_data": kwargs,
-        }
-
-        self.publish(channel=session_status_channel(session_id), message=message)
 
     def unsubscribe(self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber):
         if isinstance(subscriber, AsyncPubsubSubscriber):

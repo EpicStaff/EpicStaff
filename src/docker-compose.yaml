@@ -304,6 +304,7 @@ services:
     container_name: crew
     environment:
       <<: [*docker-env, *redis-env, *communication-env]
+      CREW_LOG_LEVEL: ${CREW_LOG_LEVEL:?}
       CREW_MAX_CONCURRENT_SESSIONS: ${CREW_MAX_CONCURRENT_SESSIONS:?}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
