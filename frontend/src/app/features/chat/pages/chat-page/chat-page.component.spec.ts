@@ -882,6 +882,8 @@ describe('ChatPageComponent', () => {
     ])(
         'keeps streamed action replies in $conversationKind conversation, raw data only for a test one',
         ({ isTest, rawDataCount }) => {
+            // The page shows the list's row over the selected one, so the list must know it too.
+            conversationUpdated$.next(row({ id: 'c-1', is_test: isTest }));
             fixture.componentInstance.selectConversation(row({ id: 'c-1', is_test: isTest }));
             fixture.detectChanges();
             const event: ChatInboxMessageEvent = {
