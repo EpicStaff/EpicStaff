@@ -29,7 +29,7 @@ import {
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
-import { catchError, EMPTY, filter, map, Observable, of, switchMap } from 'rxjs';
+import { catchError, EMPTY, filter, map, Observable, of, switchMap, tap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -42,6 +42,7 @@ import {
     ChatBindingLimits,
     ChatBindingWithSecret,
     ChatBudgetExhaustedBehaviour,
+    ChatContractMissing,
     ChatConversationStyle,
     ChatErrorBody,
     ChatIdentityMode,
@@ -49,7 +50,9 @@ import {
 } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { bindingPatch } from '../../utils/binding-patch.util';
+import { hasContractGaps } from '../../utils/contract-fix.util';
 import { normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
+import { ChatContractFixComponent } from '../chat-contract-fix/chat-contract-fix.component';
 
 const IDENTITY_ITEMS: SelectItem<ChatIdentityMode>[] = [
     { name: 'Anonymous visitors', value: 'anonymous' },
@@ -123,6 +126,13 @@ const TEXT_FIELD_LABELS: Record<TextField, string> = {
 const TEXT_FIELDS = Object.keys(TEXT_FIELD_LABELS) as TextField[];
 const PAUSED_ON_SAVE_MESSAGE = 'Saved but paused: the flow does not meet the chat contract.';
 
+/** What a checked flow lacks for the chat contract; `gaps` is null when it lacks nothing (or was not found). */
+interface CheckedContract {
+    errors: string[];
+    gaps: { graphId: number; missing: ChatContractMissing } | null;
+}
+const NO_CONTRACT_CHECK: CheckedContract = { errors: [], gaps: null };
+
 let nextDialogId = 0;
 
 type BindingTab = 'general' | 'limits' | 'handoff' | 'inactivity';
@@ -173,6 +183,7 @@ export interface ChatBindingsDialogData {
         AppSvgIconComponent,
         ButtonComponent,
         ChipsInputComponent,
+        ChatContractFixComponent,
         CopyFieldComponent,
         CustomInputComponent,
         HintMessageComponent,
@@ -196,6 +207,7 @@ export class ChatBindingsDialogComponent {
     /** The server's refusals of named fields, said once for screen readers; each also shows under its field. */
     readonly fieldRefusalAnnouncement = signal('');
     readonly contractErrors = signal<string[]>([]);
+    readonly contractGaps = signal<CheckedContract['gaps']>(null);
     /** The identity secret the last save issued; shown once instead of the form, gone when the dialog closes. */
     readonly revealedSecret = signal<string | null>(null);
     readonly flowItems = toSignal(
@@ -411,10 +423,18 @@ export class ChatBindingsDialogComponent {
         // The contract of the picked flow, checked live; a newer pick or a cleared flow cancels the pending check.
         this.form.controls.graph_id.valueChanges
             .pipe(
-                switchMap((graphId) => (graphId === null ? of([]) : this.checkContract(graphId))),
+                // The fix belongs to the flow it was checked for. A check of the same flow again (after a fix) keeps
+                // it, so a failed check leaves the errors and the fix of the last one that answered, together.
+                tap((graphId) => {
+                    if (this.contractGaps()?.graphId !== graphId) this.contractGaps.set(null);
+                }),
+                switchMap((graphId) => (graphId === null ? of(NO_CONTRACT_CHECK) : this.checkContract(graphId))),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe((errors) => this.contractErrors.set(errors));
+            .subscribe(({ errors, gaps }) => {
+                this.contractErrors.set(errors);
+                this.contractGaps.set(gaps);
+            });
         const binding = this.binding();
         if (binding) this.fillFrom(binding);
         else this.fillDefaults();
@@ -490,6 +510,11 @@ export class ChatBindingsDialogComponent {
 
     close(): void {
         this.dialogRef.close(this.saved ?? undefined);
+    }
+
+    /** Checks the picked flow's contract again, through the live check (the same flow, emitted once more). */
+    recheckContract(): void {
+        this.form.controls.graph_id.updateValueAndValidity();
     }
 
     textFieldError(field: TextField): string {
@@ -637,12 +662,17 @@ export class ChatBindingsDialogComponent {
     }
 
     /** Contract errors of a flow; a missing flow is one error, any other failure is a toast and keeps the shown ones. */
-    private checkContract(graphId: number): Observable<string[]> {
+    private checkContract(graphId: number): Observable<CheckedContract> {
         return this.chatApi.checkContract(graphId).pipe(
-            map(({ contract_errors }) => contract_errors),
+            map(({ contract_errors, contract_missing }) => ({
+                errors: contract_errors,
+                gaps: hasContractGaps(contract_missing) ? { graphId, missing: contract_missing } : null,
+            })),
             catchError((error: HttpErrorResponse) => {
                 const body = error.error as ChatErrorBody | null;
-                if (body?.code === 'unknown_flow') return of([body.message || 'The flow no longer exists.']);
+                if (body?.code === 'unknown_flow') {
+                    return of({ errors: [body.message || 'The flow no longer exists.'], gaps: null });
+                }
                 this.toastService.error(extractHttpErrorMessage(error));
                 return EMPTY;
             })

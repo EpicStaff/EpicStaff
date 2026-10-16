@@ -10,8 +10,16 @@ import { of, Subject, throwError } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { FlowsApiService } from '../../../flows/services/flows-api.service';
-import { CHAT_BINDING_DEFAULTS, ChatBinding, ChatBindingLimits, ChatBindingWithSecret } from '../../models/chat.model';
+import {
+    CHAT_BINDING_DEFAULTS,
+    ChatBinding,
+    ChatBindingLimits,
+    ChatBindingWithSecret,
+    ChatContractCheck,
+    ChatContractMissing,
+} from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
+import { ChatContractFixComponent } from '../chat-contract-fix/chat-contract-fix.component';
 import { ChatBindingsDialogComponent, ChatBindingsDialogData } from './chat-bindings-dialog.component';
 
 class ResizeObserverStub {
@@ -41,6 +49,18 @@ const binding = (overrides: Partial<ChatBinding>): ChatBinding => ({
     daily_token_budget: 1_000_000,
     ...overrides,
 });
+
+const NOTHING_MISSING: ChatContractMissing = {
+    missing_start_node: false,
+    missing_end_node: false,
+    start_variables: [],
+    end_outputs: [],
+};
+
+const contractCheck = (
+    contract_errors: string[] = [],
+    contract_missing: ChatContractMissing = NOTHING_MISSING
+): ChatContractCheck => ({ contract_errors, contract_missing });
 
 const LIMITS: ChatBindingLimits = {
     defaults: {
@@ -111,7 +131,7 @@ describe('ChatBindingsDialogComponent', () => {
         vi.clearAllMocks();
         chatApi.getBindings.mockReturnValue(of([binding({})]));
         chatApi.getBindingLimits.mockReturnValue(of(LIMITS));
-        chatApi.checkContract.mockReturnValue(of({ contract_errors: [] }));
+        chatApi.checkContract.mockReturnValue(of(contractCheck()));
         TestBed.configureTestingModule({
             imports: [ChatBindingsDialogComponent],
             providers: [
@@ -139,7 +159,7 @@ describe('ChatBindingsDialogComponent', () => {
     it('checks the contract of a picked flow live and shows a missing flow as an error', () => {
         const component = open(null);
         fixture.detectChanges();
-        chatApi.checkContract.mockReturnValueOnce(of({ contract_errors: ['end node lacks reply'] }));
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['end node lacks reply'])));
         component.form.controls.graph_id.setValue(5);
         fixture.detectChanges();
         expect(chatApi.checkContract).toHaveBeenCalledWith(5);
@@ -155,6 +175,55 @@ describe('ChatBindingsDialogComponent', () => {
         expect(text('.bindings-dialog__contract-error')).toEqual([]);
     });
 
+    it('offers the fix for what the picked flow lacks, and checks the flow again once it is applied', () => {
+        const component = open(null);
+        const missing = { ...NOTHING_MISSING, start_variables: ['chat_history'] };
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['start node lacks chat_history'], missing)));
+        component.form.controls.graph_id.setValue(5);
+        fixture.detectChanges();
+        // Without the right to edit flows the panel only says what is missing and who can apply it.
+        const [panel] = text('app-chat-contract-fix');
+        expect(panel).toContain('Start node Domain variables: chat_history');
+        expect(panel).toContain('Someone who can edit this flow must apply these changes.');
+
+        fixture.debugElement.query(By.directive(ChatContractFixComponent)).triggerEventHandler('applied');
+        fixture.detectChanges();
+
+        expect(chatApi.checkContract).toHaveBeenLastCalledWith(5);
+        expect(text('.bindings-dialog__contract-error')).toEqual([]);
+        expect(text('app-chat-contract-fix')).toEqual([]);
+    });
+
+    it('keeps the errors and the fix together when checking the flow again fails', () => {
+        const component = open(null);
+        const missing = { ...NOTHING_MISSING, start_variables: ['chat_history'] };
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['start node lacks chat_history'], missing)));
+        component.form.controls.graph_id.setValue(5);
+        fixture.detectChanges();
+
+        chatApi.checkContract.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 502 })));
+        fixture.debugElement.query(By.directive(ChatContractFixComponent)).triggerEventHandler('applied');
+        fixture.detectChanges();
+
+        expect(text('.bindings-dialog__contract-error')).toEqual(['start node lacks chat_history']);
+        expect(text('app-chat-contract-fix').length).toBe(1);
+    });
+
+    it('drops the fix of a flow as soon as another one is picked', () => {
+        const component = open(null);
+        const missing = { ...NOTHING_MISSING, end_outputs: ['reply'] };
+        chatApi.checkContract.mockReturnValueOnce(of(contractCheck(['end node lacks reply'], missing)));
+        component.form.controls.graph_id.setValue(5);
+        fixture.detectChanges();
+        expect(text('app-chat-contract-fix').length).toBe(1);
+
+        chatApi.checkContract.mockReturnValueOnce(new Subject<ChatContractCheck>());
+        component.form.controls.graph_id.setValue(6);
+        fixture.detectChanges();
+
+        expect(text('app-chat-contract-fix')).toEqual([]);
+    });
+
     it('refuses a whitespace-only binding name and says so under Name', () => {
         const component = open(null);
         component.form.patchValue({ name: '   ', graph_id: 5 });
@@ -168,8 +237,8 @@ describe('ChatBindingsDialogComponent', () => {
 
     it('drops the check of a flow that was picked again before it answered', () => {
         const component = open(null);
-        const slow$ = new Subject<{ contract_errors: string[] }>();
-        chatApi.checkContract.mockReturnValueOnce(slow$).mockReturnValueOnce(of({ contract_errors: [] }));
+        const slow$ = new Subject<ChatContractCheck>();
+        chatApi.checkContract.mockReturnValueOnce(slow$).mockReturnValueOnce(of(contractCheck()));
         component.form.controls.graph_id.setValue(5);
         component.form.controls.graph_id.setValue(6);
         expect(slow$.observed).toBe(false);

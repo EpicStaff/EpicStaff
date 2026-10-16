@@ -96,7 +96,14 @@
                     tooltipText="The start node must declare chat_history and user_message; the end node must return reply."
                 />
                 @for (contractError of contractErrors(); track contractError) {
-                    <div class="bindings-dialog__contract-error">{{ contractError }}</div>
+                    <div class="bindings-dialog__contract-error text-body-small">{{ contractError }}</div>
+                }
+                @if (contractGaps(); as gaps) {
+                    <app-chat-contract-fix
+                        [graphId]="gaps.graphId"
+                        [missing]="gaps.missing"
+                        (applied)="recheckContract()"
+                    />
                 }
                 <!--
                     Native radios sharing a name, so the pair is one group: one Tab stop, the arrow keys move between

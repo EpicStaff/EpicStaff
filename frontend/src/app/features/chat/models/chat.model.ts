@@ -154,9 +154,19 @@ export interface ChatMyAliasResult {
     visible_name: string;
 }
 
+// What a flow lacks for the chat contract, item by item: a start or end node, the start node's Domain variables, the
+// end node's `output_map` keys. Nothing missing when it can serve chat.
+export interface ChatContractMissing {
+    missing_start_node: boolean;
+    missing_end_node: boolean;
+    start_variables: string[];
+    end_outputs: string[];
+}
+
 // `GET /bindings/contract?graph_id=`: what keeps a flow from serving chat; empty when it can.
 export interface ChatContractCheck {
     contract_errors: string[];
+    contract_missing: ChatContractMissing;
 }
 
 export interface ChatSnippet {
@@ -281,14 +291,16 @@ export interface ChatTicket {
     expires_in: number;
 }
 
-// Every chat service error body; `retry_after` on 429, `contract_errors` on 400 `contract_failed` (resume),
-// `field` and `max` on 400 `budget_above_cap` and `duration_above_cap` (`max` in the field's own unit: tokens,
-// seconds), `close_reason` on 409 `conversation_closed`.
+// Every chat service error body; `retry_after` on 429, `contract_errors` and `contract_missing` on 400
+// `contract_failed` (resume), `field` and `max` on 400 `budget_above_cap` and `duration_above_cap` (`max` in the
+// field's own unit: tokens, seconds), `close_reason` on 409 `conversation_closed`.
 export interface ChatErrorBody {
     code: string;
     message: string;
     retry_after?: number;
     contract_errors?: string[];
+    // Null on a `contract_failed` built from stored errors only: then there is no fix to offer.
+    contract_missing?: ChatContractMissing | null;
     field?: string;
     max?: number;
     close_reason?: ChatCloseReason;

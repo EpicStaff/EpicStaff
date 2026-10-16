@@ -90,8 +90,8 @@ class OperatorController(Controller):
         bindings: BindingOrchestrator,
         graph_id: int = Parameter(ge=1),
     ) -> schemas.ContractCheckOutput:
-        errors = await bindings.check_contract(_caller(request, operator), graph_id)
-        return schemas.ContractCheckOutput(contract_errors=errors)
+        errors, missing = await bindings.check_contract(_caller(request, operator), graph_id)
+        return schemas.ContractCheckOutput(contract_errors=errors, contract_missing=missing)
 
     @post(
         path="/bindings", status_code=status_codes.HTTP_201_CREATED, opt={"chats_action": "create"}

@@ -238,10 +238,25 @@ class BindingWithSecretOutput(BindingOutput):
     identity_secret: str | None
 
 
+class ContractMissing(BaseSchema):
+    """What a flow lacks to serve chat, by name: no flag set and empty lists mean it can."""
+
+    missing_start_node: bool
+    missing_end_node: bool
+    start_variables: list[str] = Field(
+        description="Start node variables to declare, of `chat_history` and `user_message`; "
+        "empty when the start node is missing."
+    )
+    end_outputs: list[str] = Field(
+        description="End node output map keys to add (`reply`); empty when the end node is missing."
+    )
+
+
 class ContractCheckOutput(BaseSchema):
     """What stops a flow from serving chat; empty means it can."""
 
     contract_errors: list[str]
+    contract_missing: ContractMissing
 
 
 class LimitCaps(BaseSchema):

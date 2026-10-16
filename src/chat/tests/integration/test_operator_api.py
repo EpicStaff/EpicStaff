@@ -29,16 +29,19 @@ ALL = ["create", "read", "update", "delete", "use"]
 @pytest.fixture
 def people(django):
     """admin: all chats actions and flows:read in org 1 and 2; agent: read+use in org 1 only;
-    viewer: member of org 1 with nothing; binder: all chats actions in org 1 but no flows:read."""
+    viewer: member of org 1 with nothing; binder: all chats actions in org 1 but no flows:read;
+    watcher: chats:read only in org 1, so it sees the inbox but must not act on a conversation."""
     django.users["admin"] = {"active": True, "user_id": 1, "email": "a@x", "scopes": [], "org_ids": [1, 2], "is_superadmin": False}
     django.users["agent"] = {"active": True, "user_id": 2, "email": "b@x", "scopes": [], "org_ids": [1], "is_superadmin": False}
     django.users["viewer"] = {"active": True, "user_id": 3, "email": "c@x", "scopes": [], "org_ids": [1], "is_superadmin": False}
     django.users["binder"] = {"active": True, "user_id": 4, "email": "d@x", "scopes": [], "org_ids": [1], "is_superadmin": False}
+    django.users["watcher"] = {"active": True, "user_id": 5, "email": "e@x", "scopes": [], "org_ids": [1], "is_superadmin": False}
     django.permissions[("admin", 1)] = {"chats": ALL, "flows": ["read"]}
     django.permissions[("admin", 2)] = {"chats": ALL, "flows": ["read"]}
     django.permissions[("binder", 1)] = {"chats": ALL}
     django.permissions[("agent", 1)] = {"chats": ["read", "use"]}
     django.permissions[("viewer", 1)] = {"chats": []}
+    django.permissions[("watcher", 1)] = {"chats": ["read"]}
     django.graphs[5] = CHAT_FLOW
     django.graphs[6] = {"org_id": 2, **{k: v for k, v in CHAT_FLOW.items() if k != "org_id"}}
     django.graphs[7] = {"org_id": 1, "start_variables": {"variables": {}}, "output_map": {"x": "y"}}
@@ -49,6 +52,8 @@ def h(user, org=1):
 
 
 NEW_BINDING = {"name": "Support", "graph_id": 5, "allowed_origins": [ORIGIN], "identity_mode": "anonymous"}
+# Graph 7 has both nodes but declares none of the names the chat contract needs.
+GRAPH_7_MISSING = {"missing_start_node": False, "missing_end_node": False, "start_variables": ["chat_history", "user_message"], "end_outputs": ["reply"]}
 
 
 # ---- auth and scoping --------------------------------------------------------------------------
@@ -696,6 +701,7 @@ async def test_resume_with_a_failing_flow_stores_fresh_errors_and_stays_paused(c
     django.graphs[5] = django.graphs[7]
     refused = await client.post(f"{BASE}/bindings/{binding['id']}/resume", headers=h("admin"))
     assert (refused.status_code, refused.json()["code"]) == (400, "contract_failed") and len(refused.json()["contract_errors"]) == 3
+    assert refused.json()["contract_missing"] == GRAPH_7_MISSING
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert stored["is_active"] is False and stored["contract_errors"] == refused.json()["contract_errors"]
 
@@ -737,11 +743,15 @@ async def test_saving_or_resuming_without_flows_read_is_forbidden_and_stores_not
 
 # ---- contract read ------------------------------------------------------------------------------
 
-async def test_contract_read_answers_the_flows_errors(client, people):
+async def test_contract_read_answers_the_flows_errors_and_what_is_missing(client, people):
     passing = await client.get(f"{BASE}/bindings/contract?graph_id=5", headers=h("admin"))
-    assert passing.status_code == 200 and passing.json() == {"contract_errors": []}
+    assert passing.status_code == 200 and passing.json() == {
+        "contract_errors": [],
+        "contract_missing": {"missing_start_node": False, "missing_end_node": False, "start_variables": [], "end_outputs": []},
+    }
     failing = await client.get(f"{BASE}/bindings/contract?graph_id=7", headers=h("admin"))
     assert failing.status_code == 200 and len(failing.json()["contract_errors"]) == 3
+    assert failing.json()["contract_missing"] == GRAPH_7_MISSING
 
 
 @pytest.mark.parametrize("query", ["?graph_id=6", "?graph_id=999", "?graph_id=0", ""])
@@ -911,6 +921,29 @@ async def test_every_route_hides_other_orgs_and_needs_permission(client, people,
     expected = 200 if path.startswith(("/conversations?", "/inbox/badges", "/bindings/my-aliases")) else 404
     assert other_org.status_code == expected, other_org.text
     assert (await getattr(client, method)(url, headers=h("viewer"), **kwargs)).status_code == 403
+
+
+USE_ROUTES = [
+    ("post", "/conversations/{conversation}/claim", {}),
+    ("post", "/conversations/{conversation}/messages", {"content": "hi"}),
+    ("post", "/conversations/{conversation}/release", None),
+    ("post", "/conversations/{conversation}/close", {}),
+    ("put", "/bindings/{binding}/my-alias", {"alias": "Mike"}),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body"), USE_ROUTES)
+async def test_read_without_use_sees_the_conversation_but_cannot_take_it_over(client, people, method, path, body):
+    binding = await _active_binding(client)
+    test = (await client.post(f"{BASE}/bindings/{binding['id']}/test-conversation", headers=h("admin"))).json()
+    conversation_id = test["conversation"]["id"]
+    assert (await client.get(f"{BASE}/conversations/{conversation_id}", headers=h("watcher"))).status_code == 200
+    url = BASE + path.format(binding=binding["id"], conversation=conversation_id)
+    kwargs = {"json": body} if body is not None else {}
+
+    refused = await getattr(client, method)(url, headers=h("watcher"), **kwargs)
+
+    assert (refused.status_code, refused.json()["code"]) == (403, "forbidden")
 
 
 # ---- action replies in the operator view -------------------------------------------------------

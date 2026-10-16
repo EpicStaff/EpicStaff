@@ -226,8 +226,9 @@ class DurationAboveCapError(ChatError):
 class ContractFailedError(ChatError):
     code, status_code, default_message = "contract_failed", 400, "The flow cannot serve chat."
 
-    def __init__(self, errors: list[str]):
-        super().__init__(contract_errors=errors)
+    def __init__(self, errors: list[str], missing: dict | None):
+        """`missing` is the structured form of `errors` (see `contract_missing`); None when unknown."""
+        super().__init__(contract_errors=errors, contract_missing=missing)
 
 
 class BindingBrokenError(ChatError):

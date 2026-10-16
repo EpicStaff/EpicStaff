@@ -108,7 +108,7 @@ class Binding:
             ContractFailedError: The flow cannot serve chat; the binding stays paused.
         """
         if self.contract_errors:
-            raise ContractFailedError(self.contract_errors)
+            raise ContractFailedError(self.contract_errors, None)
         self.is_active = True
 
 

@@ -44,19 +44,39 @@ _ENUM_FIELDS = {
 SNIPPET = '<script src="{base}/chat/widget.js" data-public-key="{public_key}" data-chat-url="{base}/chat/" async></script>'
 
 
-def contract_errors(contract: GraphContract) -> list[str]:
-    """What stops this flow from serving chat; empty means it can."""
+CONTRACT_START_VARIABLES = ("chat_history", "user_message")
+CONTRACT_END_OUTPUTS = ("reply",)
+
+
+def contract_missing(contract: GraphContract) -> dict:
+    """What this flow lacks to serve chat, by name; no flag set and empty lists mean it can.
+
+    A missing node sets its flag and leaves its list empty. Lists follow the contract's order.
+    """
+    start, end = contract.start_variables, contract.output_map
+    return {
+        "missing_start_node": start is None,
+        "missing_end_node": end is None,
+        "start_variables": [
+            name for name in CONTRACT_START_VARIABLES if start is not None and name not in start
+        ],
+        "end_outputs": [
+            name for name in CONTRACT_END_OUTPUTS if end is not None and name not in end
+        ],
+    }
+
+
+def contract_errors(missing: dict) -> list[str]:
+    """The `contract_missing` result as sentences for the operator; empty means the flow can serve chat."""
     errors = []
-    if contract.start_variables is None:
+    if missing["missing_start_node"]:
         errors.append("The flow has no start node.")
-    else:
-        for name in ("chat_history", "user_message"):
-            if name not in contract.start_variables:
-                errors.append(f"Start node variables must declare `{name}`.")
-    if contract.output_map is None:
+    errors += [
+        f"Start node variables must declare `{name}`." for name in missing["start_variables"]
+    ]
+    if missing["missing_end_node"]:
         errors.append("The flow has no end node.")
-    elif "reply" not in contract.output_map:
-        errors.append("End node output map must contain `reply`.")
+    errors += [f"End node output map must contain `{name}`." for name in missing["end_outputs"]]
     return errors
 
 
@@ -114,31 +134,37 @@ class BindingOrchestrator:
             raise NotFoundError()
         return binding
 
-    async def _check(self, caller: CallerCredentials, graph_id: int) -> list[str]:
+    async def _check(self, caller: CallerCredentials, graph_id: int) -> dict:
         try:
             contract = await self._flows.graph_contract(caller, graph_id)
         except FlowNotFoundError as error:
             raise UnknownFlowError() from error
-        return contract_errors(contract)
+        return contract_missing(contract)
 
     async def _check_stored(
         self, caller: CallerCredentials, graph_id: int
-    ) -> tuple[list[str], str | None]:
-        """(errors, broken_reason) for a graph the binding already points at: a deleted flow is
-        recorded on the binding instead of refusing the call."""
+    ) -> tuple[list[str], dict | None, str | None]:
+        """(contract_errors, contract_missing, broken_reason) for a graph the binding already
+        points at: a deleted flow is recorded on the binding instead of refusing the call, and has
+        no contract to report."""
         try:
-            return await self._check(caller, graph_id), None
+            missing = await self._check(caller, graph_id)
         except UnknownFlowError as error:
-            return [], error.message
+            return [], None, error.message
+        return contract_errors(missing), missing, None
 
-    async def check_contract(self, caller: CallerCredentials, graph_id: int) -> list[str]:
-        """What stops `graph_id` from serving chat, read as `caller`; empty means it can.
+    async def check_contract(
+        self, caller: CallerCredentials, graph_id: int
+    ) -> tuple[list[str], dict]:
+        """What stops `graph_id` from serving chat, read as `caller`, as (`contract_errors`,
+        `contract_missing`); nothing in either means it can.
 
         Raises:
             UnknownFlowError: The graph is not in the caller's org (or does not exist).
             FlowForbiddenError: The caller lacks flows:read.
         """
-        return await self._check(caller, graph_id)
+        missing = await self._check(caller, graph_id)
+        return contract_errors(missing), missing
 
     async def create(self, caller: CallerCredentials, values: dict) -> Binding:
         """`values` are the request fields; the graph is read as `caller`, in the caller's org.
@@ -156,7 +182,7 @@ class BindingOrchestrator:
         values = self._limits.with_defaults(values)
         self._limits.check(values)
         org_id = caller.org_id
-        errors = await self._check(caller, values["graph_id"])
+        errors = contract_errors(await self._check(caller, values["graph_id"]))
         now = utcnow()
         signed = values["identity_mode"] == IdentityMode.SIGNED
         binding = Binding(
@@ -224,9 +250,12 @@ class BindingOrchestrator:
         checked_graph_id = changes.get("graph_id", current.graph_id)
         # Checked before the row lock: no Django call inside the transaction.
         if checked_graph_id != current.graph_id:
-            errors, broken_reason = await self._check(caller, checked_graph_id), None
+            errors, broken_reason = (
+                contract_errors(await self._check(caller, checked_graph_id)),
+                None,
+            )
         else:
-            errors, broken_reason = await self._check_stored(caller, checked_graph_id)
+            errors, _, broken_reason = await self._check_stored(caller, checked_graph_id)
         async with self._uow() as uow:
             binding = await uow.bindings.get(binding_id, org_id=org_id, for_update=True)
             if binding is None:
@@ -281,19 +310,22 @@ class BindingOrchestrator:
             FlowForbiddenError: The caller lacks flows:read; nothing is stored.
         """
         current = await self.get(binding_id, caller.org_id)
-        errors, broken_reason = await self._check_stored(caller, current.graph_id)
+        errors, missing, broken_reason = await self._check_stored(caller, current.graph_id)
         failure = None
         async with self._uow() as uow:
             binding = await uow.bindings.get(binding_id, org_id=caller.org_id, for_update=True)
             if binding is None:
                 raise NotFoundError()
             # shortcut: as in update, a graph changed since the check keeps its stored contract fields.
-            if binding.graph_id == current.graph_id:
+            checked = binding.graph_id == current.graph_id
+            if checked:
                 binding.record_contract(errors, broken_reason)
             if binding.broken_reason:
                 failure = UnknownFlowError()
             elif binding.contract_errors:
-                failure = ContractFailedError(binding.contract_errors)
+                # shortcut: the stored errors of a graph changed since the check come without their
+                # structured form (it is not stored), so `contract_missing` is None; store it if this matters.
+                failure = ContractFailedError(binding.contract_errors, missing if checked else None)
             else:
                 binding.resume()
             binding.updated_at = utcnow()
