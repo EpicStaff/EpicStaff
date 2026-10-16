@@ -31891,11 +31891,13 @@ The generator invokes `npx --yes license-checker --production --json` internally
 
 Whenever any backend service's `pyproject.toml` dependencies change (`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`):
 
-```powershell
+```bash
 python scripts/generate-python-notices.py
 ```
 
-Stdlib only; `pip-licenses` is installed into a throwaway venv at `scripts/.tmp_notices_venv/` and removed afterwards. `uv` must be on `PATH`. It rewrites ONLY the `backend` region of this file.
+**Run it on Linux**, the platform CI and the shipped images use. The output depends on the platform it runs on: the script records what is actually installed in each service's venv, so on Windows Linux-only packages (such as `uvloop`) drop out, Windows-only ones appear, and a wheel whose metadata lists its files with Windows-style paths can lose its licence text. `--check` compares only the lockfile hashes, so it does not catch a file generated on Windows. On Windows, run it in WSL or a Linux container against a separate copy of the repository, not your working tree: the script syncs every `src/*/.venv` and would replace your Windows venvs.
+
+Stdlib only. For each service it syncs `src/<service>/.venv` from the lockfile (dev and test groups excluded), installs `pip-licenses` into it for the scan and removes it afterwards. `uv` must be on `PATH`. It rewrites ONLY the `backend` region of this file.
 
 ## Manual overrides applied
 
