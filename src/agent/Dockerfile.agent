@@ -52,7 +52,7 @@ RUN groupadd --system --gid 1000 app \
 # Add virtualenv to PATH.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
-# trace, see docs/backend-runtime-fetch-audit.md item 7).
+# trace, see the litellm finding in docs/backend-runtime-fetch-audit.md).
 ENV PATH="/app/src/agent/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
