@@ -3,7 +3,7 @@ import { ESCAPE } from '@angular/cdk/keycodes';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     AuthorshipDetailsDialogService,
@@ -17,6 +17,7 @@ import { of, Subject } from 'rxjs';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { WebhookTriggersSectionComponent } from './webhook-triggers-section.component';
 
 const TRIGGER: WebhookTriggerModel = {
@@ -191,6 +192,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: {} },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 {
                     provide: PermissionsService,
                     useValue: {
