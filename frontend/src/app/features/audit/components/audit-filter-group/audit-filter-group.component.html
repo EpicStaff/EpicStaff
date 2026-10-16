@@ -6,25 +6,48 @@
     [matTooltip]="disabled() ? hint() : ''"
     matTooltipPosition="above"
 >
-    <button
-        class="filter-group__header"
-        type="button"
-        [attr.aria-expanded]="isOpen()"
-        [attr.aria-description]="disabled() && hint() ? hint() : null"
-        [disabled]="disabled()"
-        (click)="toggle()"
-    >
-        <app-svg-icon
-            class="filter-group__chevron"
-            [class.filter-group__chevron--collapsed]="!isOpen()"
-            icon="chevron-down-filled"
-            size="8px"
-        />
-        <span class="filter-group__title">{{ label() }}</span>
-        @if (hint() && !disabled()) {
-            <span class="filter-group__hint">{{ hint() }}</span>
+    <div class="filter-group__header-row">
+        <button
+            class="filter-group__header"
+            type="button"
+            [attr.aria-expanded]="isOpen()"
+            [attr.aria-description]="disabled() && hint() ? hint() : null"
+            [disabled]="disabled()"
+            (click)="toggle()"
+        >
+            <app-svg-icon
+                class="filter-group__chevron"
+                [class.filter-group__chevron--collapsed]="!isOpen()"
+                icon="chevron-down-filled"
+                size="8px"
+            />
+            <span class="filter-group__title">{{ label() }}</span>
+            @if (hint() && !disabled()) {
+                <span class="filter-group__hint">{{ hint() }}</span>
+            }
+            @if (summary()) {
+                <span
+                    class="filter-group__summary"
+                    [title]="summary()"
+                    >{{ summary() }}</span
+                >
+            }
+        </button>
+        <!-- a sibling of the header, since a button cannot sit inside another button -->
+        @if (summary()) {
+            <button
+                class="filter-group__clear"
+                type="button"
+                [attr.aria-label]="'Clear ' + label()"
+                (click)="cleared.emit()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="12px"
+                />
+            </button>
         }
-    </button>
+    </div>
 
     <div
         class="filter-group__body"

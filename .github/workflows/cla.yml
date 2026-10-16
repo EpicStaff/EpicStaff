@@ -41,3 +41,5 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           CLA_GDRIVE_ROOT_ID: ${{ vars.CLA_GDRIVE_ROOT_ID }}
           CLA_GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.CLA_GDRIVE_SERVICE_ACCOUNT_JSON }}
+          # Comma-separated bot logins exempt from signing. Unset/empty = dependabot[bot].
+          CLA_ALLOWLIST: ${{ vars.CLA_ALLOWLIST }}
