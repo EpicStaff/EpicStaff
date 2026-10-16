@@ -519,8 +519,6 @@ services:
         condition: service_started
       realtime:
         condition: service_started
-      auditor:
-        condition: service_started
     restart: always
 
 
@@ -570,9 +568,13 @@ services:
     networks:
       - backend-network
 
+  # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
+  # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
+  # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
+    profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
@@ -602,6 +604,7 @@ services:
   auditor:
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
+    profiles: ["auditor"]
     build:
       context: .
       dockerfile: ./auditor/Dockerfile.auditor
