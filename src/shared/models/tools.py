@@ -55,6 +55,9 @@ class PythonCodeData(StorageScopedData):
     entrypoint: str
     libraries: list[str]
     global_kwargs: dict[str, Any] | None = None
+    execution_timeout: int | None = None
+    """Seconds a single run of this code may take. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -161,6 +164,10 @@ class CodeTaskData(StorageScopedData):
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
+    timeout: float | None = Field(default=None, gt=0)
+    """Requested execution timeout in seconds. Untrusted: the sandbox caps it at
+    SANDBOX_EXECUTION_TIMEOUT. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     storage_credentials: StorageCredentials | None = None
     """Ephemeral temporary storage credentials for sandbox execution.
@@ -208,6 +215,7 @@ class CodeTaskData(StorageScopedData):
         return (
             f"execution_id={self.execution_id} venv={self.venv_name} "
             f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"timeout={self.timeout} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 

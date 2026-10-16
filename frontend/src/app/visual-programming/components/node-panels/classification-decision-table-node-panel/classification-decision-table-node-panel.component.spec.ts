@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, signal } from '@angular/core';
+import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
@@ -11,6 +11,7 @@ import { of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../../../core/helpers/helpers';
 import { CdtExplanation, CdtExplanations } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -21,9 +22,16 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../utils/testing/execution-timeout-limits.testing';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
+import { CdtExportImportService } from './cdt-export-import.service';
 import {
     CdtEnableContinueRequest,
     CdtRuleIdentityEdit,
@@ -37,6 +45,16 @@ import { ClassificationDecisionTableNodePanelComponent } from './classification-
  * the grid alone (the real one has its own DOM spec): renaming or dropping one of the
  * template's grid bindings fails here. Unknown bindings are errors, not warnings.
  */
+
+/** Stands in for the Monaco-backed editor, which needs a browser runtime the tests do not load. */
+@Component({ selector: 'app-code-editor', template: '' })
+class CodeEditorStubComponent {
+    readonly pythonCode = input<unknown>();
+    readonly secretNames = input<unknown>();
+    readonly inputMapKeys = input<unknown>();
+    readonly readOnly = input(false);
+    readonly pythonCodeChange = output<string>();
+}
 
 /**
  * Stands in for the grid, with its inputs and outputs: records what the panel hands it
@@ -129,6 +147,32 @@ function confirmedRows(): ConditionGroup[] {
 const APPROVE_CONNECTION = createFlowConnection(NODE_ID, 'py1', APPROVE_PORT, 'py1_python-in');
 const UNRELATED_CONNECTION = createFlowConnection('py1', 'py2', 'py1_python-out', 'py2_python-in');
 
+/**
+ * The panel's real template with the grid and the code editor stubbed. Unknown bindings are errors, not warnings.
+ */
+function configurePanelTestBed({ isPreview = false, providers = [] as Provider[] } = {}): void {
+    TestBed.configureTestingModule({
+        errorOnUnknownProperties: true,
+        errorOnUnknownElements: true,
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            provideLoadedExecutionTimeoutLimits(),
+            { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+            { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+            {
+                provide: FullLLMConfigService,
+                useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
+            },
+            ...providers,
+        ],
+    });
+    TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
+        remove: { imports: [ClassificationDecisionTableGridComponent, CodeEditorComponent] },
+        add: { imports: [GridStubComponent, CodeEditorStubComponent] },
+    });
+}
+
 describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on a wired route code', () => {
     let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
     let panel: ClassificationDecisionTableNodePanelComponent;
@@ -137,24 +181,7 @@ describe('ClassificationDecisionTableNodePanelComponent — enabling Continue on
     let toastError: ReturnType<typeof vi.spyOn>;
 
     function create(isPreview = false): void {
-        TestBed.configureTestingModule({
-            errorOnUnknownProperties: true,
-            errorOnUnknownElements: true,
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
-                {
-                    provide: FullLLMConfigService,
-                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
-                },
-            ],
-        });
-        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
-            remove: { imports: [ClassificationDecisionTableGridComponent] },
-            add: { imports: [GridStubComponent] },
-        });
+        configurePanelTestBed({ isPreview });
 
         flowService = TestBed.inject(FlowService);
         flowService.setFlow({
@@ -338,25 +365,7 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
     function create(explanations: CdtExplanations, isPreview = false): void {
         localStorage.clear();
         explainApi = { explain: vi.fn() };
-        TestBed.configureTestingModule({
-            errorOnUnknownProperties: true,
-            errorOnUnknownElements: true,
-            providers: [
-                provideHttpClient(),
-                provideHttpClientTesting(),
-                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
-                {
-                    provide: FullLLMConfigService,
-                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => of([]) },
-                },
-                { provide: CdtExplainApiService, useValue: explainApi },
-            ],
-        });
-        TestBed.overrideComponent(ClassificationDecisionTableNodePanelComponent, {
-            remove: { imports: [ClassificationDecisionTableGridComponent] },
-            add: { imports: [GridStubComponent] },
-        });
+        configurePanelTestBed({ isPreview, providers: [{ provide: CdtExplainApiService, useValue: explainApi }] });
         TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
             remove: { imports: [FFlowModule, FZoomDirective] },
             add: { schemas: [NO_ERRORS_SCHEMA] },
@@ -531,5 +540,143 @@ describe('ClassificationDecisionTableNodePanelComponent — explanations of a ru
         expect(treeDetail().querySelector('.cdt-tree-detail__outdated')).not.toBeNull();
         // Only the generation asked for a persist; the move rides with the table edit.
         expect(persistRequests).toEqual([NODE_ID]);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — execution timeouts of the pre- and post-computation', () => {
+    let panel: ClassificationDecisionTableNodePanelComponent;
+
+    /** The panel's two timeout fields. */
+    interface TimeoutPanel {
+        preExecutionTimeout: ExecutionTimeoutFormField;
+        postExecutionTimeout: ExecutionTimeoutFormField;
+    }
+
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    function open(
+        preSeconds: number | undefined,
+        postSeconds: number | undefined,
+        preCode = 'def main(): pass',
+        preSecretIds: number[] = []
+    ): void {
+        configurePanelTestBed();
+        const node = tableNode();
+        const timedNode = {
+            ...node,
+            data: {
+                ...node.data,
+                table: {
+                    ...node.data.table,
+                    pre_computation: { code: preCode, secret_ids: preSecretIds, execution_timeout: preSeconds },
+                    post_computation: { code: 'def main(): pass', execution_timeout: postSeconds },
+                },
+            },
+        } as ClassificationDecisionTableNodeModel;
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({ nodes: [timedNode], connections: [] });
+
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+    }
+
+    function showsTimeoutOnTab(tab: 'precomputation' | 'postcomputation'): boolean {
+        panel.activeTab.set(tab);
+        fixture.detectChanges();
+        return fixture.debugElement.query(By.directive(ExecutionTimeoutFieldComponent)) !== null;
+    }
+
+    function fields(): TimeoutPanel {
+        return panel as unknown as TimeoutPanel;
+    }
+
+    it('shows each stored timeout, and the default for a code without one', () => {
+        open(90, undefined);
+
+        expect(fields().preExecutionTimeout.control.value).toBe(90);
+        expect(fields().postExecutionTimeout.control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+    });
+
+    it('puts each edited timeout on its own code, and keeps none on a code whose timeout was not edited', () => {
+        open(undefined, undefined);
+
+        fields().preExecutionTimeout.edit(300);
+        const table = panel.onSaveSilently()?.data.table;
+
+        expect(table?.pre_computation?.execution_timeout).toBe(300);
+        expect(table?.post_computation?.execution_timeout).toBeUndefined();
+
+        fields().postExecutionTimeout.edit(45);
+        expect(panel.onSaveSilently()?.data.table.post_computation?.execution_timeout).toBe(45);
+    });
+
+    it('exports the edited timeouts to CSV', () => {
+        open(90, undefined);
+        const downloadFile = vi
+            .spyOn(TestBed.inject(CdtExportImportService), 'downloadFile')
+            .mockImplementation(() => undefined);
+
+        fields().postExecutionTimeout.edit(45);
+        panel.exportAsCsv();
+
+        const rows = (downloadFile.mock.calls[0][0] as string).split('\n');
+        expect(rows).toContain('pre_python_code_execution_timeout,90');
+        expect(rows).toContain('post_python_code_execution_timeout,45');
+    });
+
+    /** Types into the timeout input of `tab`, as the user does, and stays in it: no blur, no Enter. */
+    function typeTimeout(tab: 'precomputation' | 'postcomputation', text: string): void {
+        panel.activeTab.set(tab);
+        fixture.detectChanges();
+        const input = fixture.debugElement.query(By.css('app-execution-timeout-field input'))
+            .nativeElement as HTMLInputElement;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    it('saves timeouts still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+        open(undefined, undefined);
+
+        typeTimeout('precomputation', '00:05:00');
+        typeTimeout('postcomputation', '45');
+
+        expect(panel.isDirty()).toBe(true);
+        const table = panel.onSave()?.data.table;
+        expect(table?.pre_computation?.execution_timeout).toBe(300);
+        expect(table?.post_computation?.execution_timeout).toBe(45);
+    });
+
+    it('shows the timeout of a code block only while it has code: the save drops the timeout of an empty one', () => {
+        open(90, undefined, '  ');
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(false);
+        expect(showsTimeoutOnTab('postcomputation')).toBe(true);
+
+        panel.activeTab.set('precomputation');
+        panel.onPreCodeChange('def main(): pass');
+        expect(showsTimeoutOnTab('precomputation')).toBe(true);
+    });
+
+    it('keeps every other edit when the code of a block with an invalid timeout is cleared', () => {
+        open(90, undefined);
+        panel.form.get('node_name')?.setValue('Renamed');
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+        expect(panel.onSaveSilently()).toBeNull();
+
+        panel.onPreCodeChange('');
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(false);
+        expect(panel.onSaveSilently()?.node_name).toBe('Renamed');
+    });
+
+    it('shows and checks the timeout of a block without code but with secrets: the save keeps it', () => {
+        open(90, undefined, '  ', [3]);
+
+        expect(showsTimeoutOnTab('precomputation')).toBe(true);
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+        expect(panel.onSaveSilently()).toBeNull();
     });
 });

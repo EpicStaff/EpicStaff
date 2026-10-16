@@ -75,6 +75,8 @@
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
 
+                    <app-execution-timeout-field [field]="executionTimeout" />
+
                     <app-node-storage-section
                         [readonly]="isReadOnly()"
                         [useStorage]="useStorage()"

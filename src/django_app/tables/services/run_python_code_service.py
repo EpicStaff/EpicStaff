@@ -232,6 +232,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 org_id=resolved.org_id,
                 secrets=resolved.secrets,
                 storage_credentials=storage_credentials,
+                timeout=resolved.execution_timeout,
             )
         except ValidationError:
             return self._fail_execution(

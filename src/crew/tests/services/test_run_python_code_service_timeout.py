@@ -139,3 +139,23 @@ async def test_run_code_returns_the_sandbox_result_and_unsubscribes_once():
     assert result["returncode"] == 0
     assert result["result_data"] == "ok"
     assert fake_redis.unsubscribe.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("execution_timeout", [42, None], ids=["code-timeout", "no-timeout"])
+async def test_run_code_publishes_the_code_execution_timeout(execution_timeout):
+    """The code's own execution timeout reaches the sandbox unchanged; None lets the
+    sandbox apply SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
+    fake_redis = FakeRedisService()
+    service = RunPythonCodeService(redis_service=fake_redis)
+
+    task = asyncio.ensure_future(
+        service.run_code(
+            python_code_data=make_python_code_data(execution_timeout=execution_timeout),
+            inputs={},
+        )
+    )
+    await _deliver_result(fake_redis)
+    await asyncio.wait_for(task, timeout=5)
+
+    assert fake_redis.published["timeout"] == execution_timeout

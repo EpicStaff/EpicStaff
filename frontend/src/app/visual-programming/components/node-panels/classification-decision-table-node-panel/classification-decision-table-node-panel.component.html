@@ -183,6 +183,9 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
+                            @if (isPythonCodeBlockSaved(preCode, preSelectedSecretIds())) {
+                                <app-execution-timeout-field [field]="preExecutionTimeout" />
+                            }
                             <app-node-storage-section
                                 [useStorage]="preUseStorage()"
                                 (onToggleChange)="onPreStorageToggle($event)"
@@ -259,6 +262,9 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
+                            @if (isPythonCodeBlockSaved(postCode, postSelectedSecretIds())) {
+                                <app-execution-timeout-field [field]="postExecutionTimeout" />
+                            }
                             <app-node-storage-section
                                 [useStorage]="postUseStorage()"
                                 (onToggleChange)="onPostStorageToggle($event)"

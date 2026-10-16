@@ -14,6 +14,12 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
 import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../utils/testing/execution-timeout-limits.testing';
+import { typeIntoExecutionTimeout } from '../shared/execution-timeout-field/execution-timeout-field.testing';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
+import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
     SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
@@ -48,6 +54,7 @@ const pythonNode = {
 function create(isPreview: boolean): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
@@ -106,6 +113,7 @@ describe('PythonNodePanelComponent test run', () => {
         };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 { provide: PythonCodeRunService, useValue: runService },
@@ -260,5 +268,101 @@ describe('PythonNodePanelComponent test run', () => {
         open();
 
         expect(blocker()).toBe(STORED_GRAPH_OUTDATED_MESSAGE);
+    });
+
+    describe('execution timeout', () => {
+        const TIMED_NODE: PythonNode = {
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, execution_timeout: 90 },
+        };
+
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
+
+        function startRun(): void {
+            const start$ = new Subject<{ execution_id: string }>();
+            runService.runPythonCode.mockReturnValue(start$);
+            panel.onRunTest({ count: '3' });
+            start$.next({ execution_id: 'exec-1' });
+        }
+
+        it('shows the stored timeout of the code', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+
+            expect(timeoutField().control.value).toBe(90);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(90);
+        });
+
+        it('shows the default for a code without a timeout, and keeps none on it until edited', () => {
+            open();
+
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBeUndefined();
+        });
+
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel.isDirty()).toBe(true);
+            expect(panel.onSave()?.data.execution_timeout).toBe(300);
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
+        });
+
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
+            open();
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
+        });
+
+        it('blocks the run after an unsaved timeout edit, until it is back to the stored one', () => {
+            open();
+
+            timeoutField().edit(300);
+            expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(blocker()).toBeNull();
+        });
+
+        it('runs a stored timeout above the maximum for the maximum, without asking to save it', () => {
+            const longNode: PythonNode = {
+                ...STORED_NODE,
+                python_code: { ...STORED_NODE.python_code, execution_timeout: 7200 },
+            };
+            bindStoredGraph(longNode);
+            open(mapPythonNodeToModel(longNode));
+
+            expect(blocker()).toBeNull();
+            startRun();
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds
+            );
+        });
     });
 });

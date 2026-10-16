@@ -108,6 +108,7 @@ import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
+import { ExecutionTimeoutLimitsStorageService } from '../../../../visual-programming/services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
@@ -137,6 +138,7 @@ import {
     toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
+import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
@@ -199,6 +201,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -878,6 +881,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 ...this.getInvalidClassificationTableMessages(flowState),
                 // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
                 ...invalidKeyValueNodeMessages(flowState.nodes),
+                // As for key-value nodes: a panel commits an invalid timeout to the flow for the save to stop it here.
+                ...invalidExecutionTimeoutMessages(flowState.nodes, this.executionTimeoutLimits.limits().minSeconds),
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);

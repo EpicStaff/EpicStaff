@@ -57,9 +57,11 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
+import { ExecutionTimeoutLimitsStorageService } from '../../../services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import { isPythonCodeBlockSaved } from '../../../utils/save/cdt-python-code-block';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
@@ -68,6 +70,8 @@ import {
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
+import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
@@ -108,6 +112,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         JsonEditorComponent,
         HasPermissionDirective,
         IfFlowEditableDirective,
+        ExecutionTimeoutFieldComponent,
         MatTooltipModule,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -186,6 +191,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    protected preExecutionTimeout!: ExecutionTimeoutFormField;
+    protected postExecutionTimeout!: ExecutionTimeoutFormField;
+    /** A code block the save drops takes its timeout with it: the field shows only on a block the save keeps. */
+    protected readonly isPythonCodeBlockSaved = isPythonCodeBlockSaved;
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -229,6 +238,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly explanationStore = inject(CdtExplanationStoreService);
 
@@ -403,6 +413,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
+        const executionTimeoutLimits = this.executionTimeoutLimits.limits();
+        this.preExecutionTimeout = new ExecutionTimeoutFormField(preComp.execution_timeout, executionTimeoutLimits);
+        this.postExecutionTimeout = new ExecutionTimeoutFormField(postComp.execution_timeout, executionTimeoutLimits);
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             pre_computation_code: [this.preCode],
@@ -416,7 +429,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
+            pre_execution_timeout: this.preExecutionTimeout.control,
+            post_execution_timeout: this.postExecutionTimeout.control,
         });
+        this.syncExecutionTimeoutControls();
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
         this.initializeInputMapArray(form, 'post_input_map', postComp.input_map || {});
@@ -498,6 +514,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
                 secret_names: this.preSecretNames(),
+                execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
                 code: this.postCode,
@@ -506,6 +523,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
                 secret_names: this.postSecretNames(),
+                execution_timeout: this.postExecutionTimeout.value,
             },
             condition_groups: conditionGroups,
             sections: this.cloneSections(this.sections() || []),
@@ -905,11 +923,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             postUseStorage: this.postUseStorage(),
@@ -1012,12 +1032,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPreCodeChange(code: string): void {
         this.preCode = code;
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
 
     public onPostCodeChange(code: string): void {
         this.postCode = code;
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
@@ -1047,6 +1069,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const prefix = code + '\n\n';
         if (this.preCode.startsWith(prefix)) {
             this.preCode = this.preCode.slice(prefix.length);
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();
@@ -1066,6 +1089,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const prefix = code + '\n\n';
         if (this.postCode.startsWith(prefix)) {
             this.postCode = this.postCode.slice(prefix.length);
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();
@@ -1074,14 +1098,34 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPreSecretsChange(values: number[]): void {
         this.preSelectedSecretIds.set(values);
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
     }
 
     public onPostSecretsChange(values: number[]): void {
         this.postSelectedSecretIds.set(values);
+        this.syncExecutionTimeoutControls();
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    /**
+     * A hidden timeout must not block the save: the save drops it with its code block, so its control is disabled
+     * (and left out of the form's validity) while the block would be dropped.
+     */
+    private syncExecutionTimeoutControls(): void {
+        const blocks = [
+            { field: this.preExecutionTimeout, code: this.preCode, secretIds: this.preSelectedSecretIds() },
+            { field: this.postExecutionTimeout, code: this.postCode, secretIds: this.postSelectedSecretIds() },
+        ];
+        for (const { field, code, secretIds } of blocks) {
+            if (!isPythonCodeBlockSaved(code, secretIds)) {
+                field.control.disable({ emitEvent: false });
+            } else if (!this.isReadOnly()) {
+                field.control.enable({ emitEvent: false });
+            }
+        }
     }
 
     // ── Input map helpers ──
