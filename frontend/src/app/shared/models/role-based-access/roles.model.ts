@@ -15,6 +15,8 @@ export interface GetRoleResponse {
     org: { id: number; name: string } | null;
     assigned_count: number;
     permissions: RolePermission[];
+    /** How far back members with this role see audit history; 0 means unlimited. */
+    audit_history_days: number;
 }
 
 /** Envelope returned by `GET /api/admin/roles/`.
@@ -32,12 +34,14 @@ export interface CreateRoleRequest {
     name: string;
     description?: string | null;
     permissions: RolePermission[];
+    audit_history_days?: number;
 }
 
 export interface UpdateRoleRequest {
     name?: string;
     description?: string | null;
     permissions?: RolePermission[];
+    audit_history_days?: number;
 }
 
 export interface AffectedUser {

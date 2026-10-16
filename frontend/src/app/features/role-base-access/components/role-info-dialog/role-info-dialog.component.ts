@@ -62,6 +62,7 @@ export class RoleInfoDialogComponent implements OnInit {
             description: this.role.description,
             permissions: Array.from(this.selectedPermissions()),
             orgId: this.role.org_id,
+            auditHistoryDays: this.role.audit_history_days,
         };
         this.dialogRef.close();
         this.dialog.open<CreateRoleDialogResult, CreateRoleDialogData>(CreateRoleDialogComponent, {

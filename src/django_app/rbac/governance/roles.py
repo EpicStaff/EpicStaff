@@ -53,10 +53,13 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- writes ----
 
-    def create_role(self, actor, org_id, name, description, permissions) -> Role:
+    def create_role(
+        self, actor, org_id, name, description, permissions, audit_history_days: int = 0
+    ) -> Role:
         """Create an org-scoped custom role. `permissions` is a list of
-        {resource_type, bitmask}. Enforces the ceiling rule and per-org
-        CREATE. Atomic."""
+        {resource_type, bitmask}; `audit_history_days` caps how far back its
+        holders see audit data (0 = unlimited). Enforces the ceiling rule and
+        per-org CREATE. Atomic."""
         with transaction.atomic():
             effective = self._resolver.resolve(user=actor, org_id=org_id)
             self.assert_can(effective=effective, action=Permission.CREATE)
@@ -70,7 +73,11 @@ class RoleManagementService(CrossOrgResourceService):
                 raise OrganizationNotFoundError()
             try:
                 role = Role.objects.create(
-                    name=name, description=description, org_id=org_id, is_built_in=False
+                    name=name,
+                    description=description,
+                    org_id=org_id,
+                    is_built_in=False,
+                    audit_history_days=audit_history_days,
                 )
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
@@ -78,7 +85,7 @@ class RoleManagementService(CrossOrgResourceService):
         return self._build_role_response(role_id=role.id)
 
     def update_role(self, actor, role_id, changes) -> Role:
-        """Apply a partial update (subset of name/description/permissions).
+        """Apply a partial update (subset of name/description/permissions/audit_history_days).
         `permissions`, if present, is a full replacement. Atomic + row-locked.
 
         A role the caller cannot see raises RoleNotFoundError (404) from
@@ -100,8 +107,10 @@ class RoleManagementService(CrossOrgResourceService):
                 role.name = changes["name"]
             if "description" in changes:
                 role.description = changes["description"]
+            if "audit_history_days" in changes:
+                role.audit_history_days = changes["audit_history_days"]
             try:
-                role.save(update_fields=["name", "description", "updated_at"])
+                role.save(update_fields=["name", "description", "audit_history_days", "updated_at"])
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
             if "permissions" in changes:

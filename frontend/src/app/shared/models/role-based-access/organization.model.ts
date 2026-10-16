@@ -1,6 +1,5 @@
 export interface CreateOrganizationRequest {
     name: string;
-    audit_retention_days?: number;
 }
 
 export interface GetOrganizationResponse {
@@ -11,13 +10,10 @@ export interface GetOrganizationResponse {
     admins: OrgAdmin[];
     created_at: string;
     updated_at: string;
-    // left out by the backend when the org has no config row yet
-    config?: { audit_retention_days: number };
 }
 
 export interface UpdateOrganizationRequest {
     name?: string;
-    audit_retention_days?: number;
 }
 
 export interface OrgAdmin {

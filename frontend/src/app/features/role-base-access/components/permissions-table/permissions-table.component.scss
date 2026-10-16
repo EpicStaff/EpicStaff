@@ -158,6 +158,36 @@
         background: var(--color-ks-background);
     }
 
+    .resource-cell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+        padding-right: 12px;
+    }
+
+    // a chip, not a full-height button: shorter than the small button so it sits inside the 40px row
+    .audit-history-button ::ng-deep .btn--mod-small {
+        height: 24px;
+
+        &:disabled:hover {
+            border-color: var(--color-input-border);
+            color: var(--color-ks-text);
+        }
+    }
+
+    .audit-history-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-ks-transparent-text-60);
+    }
+
     .resource-info {
         line-height: 100%;
         display: flex;

@@ -51,6 +51,7 @@ class RoleResponseSerializer(serializers.Serializer):
     org = serializers.DictField(allow_null=True)
     assigned_count = serializers.IntegerField()
     assigned_by_org = serializers.ListField(child=serializers.DictField())
+    audit_history_days = serializers.IntegerField()
     permissions = RolePermissionEntrySerializer(many=True)
 
     def to_representation(self, instance):
@@ -59,6 +60,7 @@ class RoleResponseSerializer(serializers.Serializer):
             "name": instance.name,
             "description": instance.description,
             "is_built_in": instance.is_built_in,
+            "audit_history_days": instance.audit_history_days,
             "scope": self._derive_scope(instance),
             "org_id": getattr(instance, "_effective_org_id", instance.org_id),
             "org": self._org_obj(instance),

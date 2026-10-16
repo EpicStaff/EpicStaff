@@ -93,6 +93,12 @@
     }
 }
 
+.cdk-overlay-pane.audit-history-unit-panel .selector__option {
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+}
+
 .cdk-overlay-pane.audit-select-panel {
     .select-dropdown__panel {
         padding: 6px;
