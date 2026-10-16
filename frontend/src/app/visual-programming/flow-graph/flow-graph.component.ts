@@ -325,6 +325,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
     private isDragging = false;
+    private draggingWaypointConnectionIds = new Set<string>();
     protected readonly connectionRenderVersions = signal<Record<string, number>>({});
     private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
     protected readonly reassignSuppressedConnectionIds = signal<ReadonlySet<string>>(new Set<string>());
@@ -898,13 +899,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connection = this.flowService.connections().find((c) => c.id === connectionId);
         if (!connection) return;
 
-        // A candidate insert starts a drag: Foblex keeps moving the point inside this very array, so
-        // it is stored as is (the 'orthogonal' builder draws it normalized meanwhile).
         const existingCount = connection.waypoints?.length ?? 0;
-        if (waypoints.length > existingCount) {
-            this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
+
+        // A candidate insert starts a drag. Do NOT update the Angular signal here — pushing
+        // a new waypoints array back to Foblex via [waypoints] would overwrite the internal
+        // reference that the drag handler mutates on every mousemove, killing the preview.
+        // Instead, just track the connection ID so the release event below is recognized.
+        if (!this.draggingWaypointConnectionIds.has(connectionId) && waypoints.length > existingCount) {
+            this.draggingWaypointConnectionIds.add(connectionId);
             return;
         }
+
+        // Release: drag ended or a right-click removed a bend.
+        this.draggingWaypointConnectionIds.delete(connectionId);
 
         const nodesById = new Map(this.flowService.nodes().map((node) => [node.id, node]));
         const ends = resolveWireEnds(connection, nodesById);
@@ -1216,10 +1223,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private rerouteSegmentConnections(): void {
         const backwardIds = this.backwardConnectionIds();
-
-        // A hand-edited wire whose backward/forward classification flipped no longer fits its
-        // points: un-freeze it so the router takes it over below. A wire seen for the first time
-        // (just loaded or added) has not flipped.
         for (const conn of this.flowService.connections()) {
             const previousBackward = this.previousBackwardClassification.get(conn.id);
             const classificationFlipped =
@@ -1230,7 +1233,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
 
-        // Collapse short bridges on frozen wires (e.g. after a node move shifted a port).
         const nodes = this.flowService.nodes();
         const nodesById = new Map(nodes.map((node) => [node.id, node]));
         for (const conn of this.flowService.connections()) {

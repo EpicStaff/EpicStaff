@@ -100,7 +100,13 @@ export function normalizeOrthogonalWaypoints(source: IPoint, waypoints: IPoint[]
  */
 export function refreshFrozenWireWaypoints(source: IPoint, waypoints: IPoint[], target: IPoint): IPoint[] {
     const anchors = snappedAnchors(source, waypoints, target);
-    return removeRedundantPoints(collapseShortBridges(anchors)).slice(1, -1);
+    const collapsed = collapseShortBridges(anchors);
+    // Orthogonalize snaps all segments to axes, so removeRedundantPoints can detect
+    // collinear points that a node move made redundant (e.g. two horizontal segments
+    // that now sit on the same line). Without this, handle() normalizes them away for
+    // rendering but the extra points survive in storage and reappear as visible bends.
+    const ortho = orthogonalize(collapsed[0], collapsed.slice(1, -1), collapsed[collapsed.length - 1]);
+    return removeRedundantPoints(ortho).slice(1, -1);
 }
 
 /**
