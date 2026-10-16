@@ -4,7 +4,6 @@ import os
 import shutil
 
 import egress_firewall
-import isolation
 import landlock
 import settings
 from dynamic_venv_executor_chain import SANDBOX_UID, DynamicVenvExecutorChain
@@ -62,8 +61,8 @@ def log_secret_masking_state():
         logger.info("Secret masking is ON: secret values are redacted from output.")
     else:
         logger.warning(
-            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext secret values will appear "
-            "in stdout, stderr, execution results and these logs. Do not use this "
+            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext user secret values "
+            "will appear in stdout, stderr, execution results and these logs. Do not use this "
             "with real credentials."
         )
 
@@ -75,18 +74,18 @@ def log_isolation_state():
     abi = landlock.abi_version()
     if abi >= 1:
         logger.info("Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi)
-    elif isolation.isolation_required():
+    elif settings.REQUIRE_ISOLATION:
         logger.warning(
             "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
             "{} is not false: executions will be refused until this is resolved.",
-            isolation.REQUIRE_ISOLATION_ENV_VAR,
+            settings.REQUIRE_ISOLATION_ENV_VAR,
         )
     else:
         logger.warning(
             "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
             "{}=false: executions will run UNCONFINED. Do not use this in "
             "production.",
-            isolation.REQUIRE_ISOLATION_ENV_VAR,
+            settings.REQUIRE_ISOLATION_ENV_VAR,
         )
 
     # Private-network isolation log
