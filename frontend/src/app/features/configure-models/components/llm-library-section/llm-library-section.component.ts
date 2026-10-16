@@ -292,7 +292,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     public onAddModel(): void {
-        this.dialog.open(AddConfigurationDialogComponent);
+        this.dialog.open(AddConfigurationDialogComponent, { autoFocus: false });
     }
 
     public onEdit(model: LlmLibraryModel): void {

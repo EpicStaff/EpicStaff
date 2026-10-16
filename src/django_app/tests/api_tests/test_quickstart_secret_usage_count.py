@@ -13,11 +13,7 @@ from rest_framework.test import APIClient
 
 from tables.models import Secret
 from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import (
-    LLMModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
+from tables.models.llm_models import LLMModel
 from tables.models.provider import Provider
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -65,12 +61,6 @@ def openai_seeded(db):
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-3-small", embedding_provider=provider
     )
-    RealtimeModel.objects.get_or_create(
-        name="test-realtime-model", provider=provider
-    )
-    RealtimeTranscriptionModel.objects.get_or_create(
-        name="whisper-1", provider=provider
-    )
     return provider
 
 
@@ -80,9 +70,6 @@ def gemini_seeded(db):
     LLMModel.objects.get_or_create(name="gemini-1.5-pro", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
         name="text-embedding-004", embedding_provider=provider
-    )
-    RealtimeModel.objects.get_or_create(
-        name="gemini-2.0-flash-live-001", provider=provider
     )
     return provider
 
@@ -118,8 +105,8 @@ class TestABundleSecretReportsEveryConfigItBacks:
         assert sorted(item["type"] for item in items) == [
             "embedding_config",
             "llm_config",
-            "realtime_config",
-            "realtime_transcription_config",
+            "openai_realtime_config",
+            "openai_realtime_transcription_config",
         ]
 
     def test_the_count_matches_the_configs_the_secret_backs(
@@ -146,8 +133,8 @@ class TestABundleSecretReportsEveryConfigItBacks:
 
         assert sorted(item["type"] for item in llm_config_items(secret)) == [
             "embedding_config",
+            "gemini_realtime_config",
             "llm_config",
-            "realtime_config",
         ]
         assert (
             secret_usage_service.count_for(

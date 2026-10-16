@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -42,6 +43,11 @@ export interface ConfirmationDialogData {
      *  cannot actually proceed with (e.g. blocked by a missing permission).
      *  The cancel button then acts as a plain close. */
     hideConfirm?: boolean;
+    /**
+     * `raised`: the lighter `--color-ks-background` surface, a slim rounded caution bar with
+     * secondary text, and a Cancel button in the accent colour. Defaults to `default`.
+     */
+    appearance?: 'default' | 'raised';
     /** Collapsible list of counted items shown under the message, with their total in the header. */
     breakdown?: ConfirmationBreakdown;
     /** Phrase the user must type exactly before the confirm button is enabled. */
@@ -64,6 +70,7 @@ export interface ConfirmationCheckbox {
         AppSvgIconComponent,
         AppIconComponent,
         CheckboxComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './confirmation-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -92,6 +99,12 @@ export class ConfirmationDialogComponent {
 
     onPhraseInput(event: Event): void {
         this.typedPhrase.set((event.target as HTMLInputElement).value);
+    }
+
+    protected onEnterSubmit(): void {
+        // prevent from performing actions like delete by pressing enter
+        if (this.data.type === 'danger') return;
+        this.onConfirm();
     }
 
     onCancel(): void {

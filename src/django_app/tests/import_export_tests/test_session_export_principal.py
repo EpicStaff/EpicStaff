@@ -19,31 +19,21 @@ from tables.services.graph_message_store import GraphMessageStore
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
-
-
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+from src.shared.models import GraphData, SessionData
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
-    """Stub the run_session tail (SessionData build + Redis publish) so tests
-    don't need a fully built graph or a live Redis connection."""
+    """Stub the run_session tail: the test graphs have no nodes to build SessionData
+    from, and crew is not there to receive the Redis publish. The stand-in is a real,
+    empty SessionData, so code that walks it keeps up with new fields."""
     sm = session_manager or SessionManagerService()
-    monkeypatch.setattr(
-        sm,
-        "create_session_data",
-        lambda session, token_budget=None, run_type="": _FakeSessionData(),
-    )
-    monkeypatch.setattr(
-        sm.redis_service,
-        "publish_session_data",
-        lambda *, session_data, org_id=None: 2,
-    )
+
+    def empty_session_data(session, start_node, token_budget=None, run_type=""):
+        graph = GraphData(name="g", entrypoint="__end__", end_node=None)
+        return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+
+    monkeypatch.setattr(sm, "create_session_data", empty_session_data)
+    monkeypatch.setattr(sm.redis_service, "publish_session_data", lambda **kwargs: 2)
     return sm
 
 

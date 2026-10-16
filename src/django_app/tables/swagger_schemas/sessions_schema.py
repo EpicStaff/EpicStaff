@@ -240,7 +240,7 @@ RUN_SESSION_SSE_GET = {
         "Continuously pushes the following event types:\n"
         "- **messages**: New or historical graph session messages\n"
         "- **status**: Session status updates\n"
-        "- **memory**: Memory entries related to this session\n"
+        "- **done**: The session has finished and the stream is closing; do not reconnect\n"
         "- **fatal-error**: If the view crashes, so the frontend can close the connection\n\n"
         "Note: This is a streaming endpoint and won't produce a visible response in Swagger UI. "
         "Use `?test=true` to receive a few finite sample events."
@@ -289,17 +289,8 @@ RUN_SESSION_SSE_GET = {
                     status_codes=["200"],
                 ),
                 OpenApiExample(
-                    "memory event",
-                    value={
-                        "event": "memory",
-                        "data": {
-                            "id": 7,
-                            "payload": {
-                                "run_id": 42,
-                                "content": "User prefers concise answers.",
-                            },
-                        },
-                    },
+                    "done event",
+                    value={"event": "done", "data": {"session_id": 42}},
                     response_only=True,
                     status_codes=["200"],
                 ),
@@ -342,6 +333,17 @@ SESSION_LIST_GET = {
                 "`true` returns only editor test runs (sessions started from a webhook or "
                 "Telegram trigger node). `false` returns every other session, including "
                 "sessions without a trigger record. Omit to return both. Any other value is a 400."
+            ),
+            required=False,
+        ),
+        OpenApiParameter(
+            name="id_search",
+            location=OpenApiParameter.QUERY,
+            type=OpenApiTypes.STR,
+            description=(
+                "Partial match on the session id: `12` returns sessions 12, 112, 1203, … "
+                "Surrounding whitespace is ignored and an empty value does not filter. "
+                "A value containing non-digits matches no session."
             ),
             required=False,
         ),

@@ -114,6 +114,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
         webhook_trigger_path: '',
         webhook_trigger: node.webhook_trigger,
         test_payload: node.test_payload ?? {},
+        use_storage: node.use_storage ?? false,
         python_code: toLivePythonCode(node.python_code, declaredSecrets(node.id, 'python_code', context)),
     }),
     TelegramTriggerNode: (node, context) => ({

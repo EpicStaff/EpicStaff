@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 @Component({
     selector: 'app-audit-filter-group',
     standalone: true,
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './audit-filter-group.component.html',
     styleUrls: ['./audit-filter-group.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,0 +1,254 @@
+import { Component, input, signal, WritableSignal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router, Routes } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { ConfirmationDialogData, ConfirmationDialogService, ConfirmationResult } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { Observable, of, Subject } from 'rxjs';
+
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { RECYCLE_BIN_TABS } from '../../constants/recycle-bin-tabs.constants';
+import { RecycleBinEmptyResult, RecycleBinTabKey } from '../../models/recycle-bin.model';
+import { RECYCLE_BIN_ROUTES } from '../../recycle-bin.routes';
+import { RecycleBinBulkService } from '../../services/recycle-bin-bulk.service';
+
+// jsdom has no ResizeObserver; the overflow directive in the header only needs it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+@Component({ selector: 'app-recycle-bin-tab', template: '' })
+class RecycleBinTabStubComponent {
+    readonly recycleBinTab = input<RecycleBinTabKey>();
+}
+
+/** The real routes with the tab component swapped for a stub, so no tab loads its list. */
+function routesWithStubTabs(): Routes {
+    const [pageRoute] = RECYCLE_BIN_ROUTES;
+    return [
+        {
+            ...pageRoute,
+            children: pageRoute.children?.map((child) =>
+                child.component ? { ...child, component: RecycleBinTabStubComponent } : child
+            ),
+        },
+    ];
+}
+
+describe('RecycleBinPageComponent', () => {
+    let readable: ResourceCode[];
+    let deletable: ResourceCode[];
+    let superadmin: WritableSignal<boolean>;
+    let retentionDays: WritableSignal<number | null>;
+    let confirm: ReturnType<typeof vi.fn<(options: ConfirmationDialogData) => Observable<ConfirmationResult>>>;
+    let emptyAll: ReturnType<
+        typeof vi.fn<(onRemaining?: (remaining: number) => void) => Observable<RecycleBinEmptyResult>>
+    >;
+    let toast: {
+        success: ReturnType<typeof vi.fn>;
+        error: ReturnType<typeof vi.fn>;
+        warning: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    afterEach(() => vi.unstubAllGlobals());
+
+    beforeEach(() => {
+        readable = [];
+        deletable = [];
+        superadmin = signal(false);
+        retentionDays = signal<number | null>(7);
+        confirm = vi.fn(() => of<ConfirmationResult>(true));
+        emptyAll = vi.fn(() => of<RecycleBinEmptyResult>({ purgedCount: 3, failed: [], leftCount: 0 }));
+        toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([
+                    { path: 'recycle-bin', children: routesWithStubTabs() },
+                    { path: 'profile', component: RecycleBinTabStubComponent },
+                ]),
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        // Like the real service: a superadmin can do everything.
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            superadmin() ||
+                            (action === ActionCode.Read && readable.includes(resource)) ||
+                            (action === ActionCode.Delete && deletable.includes(resource)),
+                        get isSuperadmin(): boolean {
+                            return superadmin();
+                        },
+                        resolveDefaultRoute: () => '/profile',
+                    },
+                },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays } },
+                { provide: ConfirmationDialogService, useValue: { confirm } },
+                { provide: RecycleBinBulkService, useValue: { emptyAll } },
+                { provide: ToastService, useValue: toast },
+            ],
+        });
+    });
+
+    async function open(url: string): Promise<RouterTestingHarness> {
+        const harness = await RouterTestingHarness.create();
+        await harness.navigateByUrl(url);
+        return harness;
+    }
+
+    function subtitleText(harness: RouterTestingHarness): string {
+        return harness.routeNativeElement?.querySelector('.subtitle-inline')?.textContent ?? '';
+    }
+
+    it('opens the first readable tab in page order', async () => {
+        readable = [ResourceCode.Files, ResourceCode.Flows];
+        await open('/recycle-bin');
+        expect(TestBed.inject(Router).url).toBe('/recycle-bin/flows');
+    });
+
+    it('opens Files when that is the only readable tab', async () => {
+        readable = [ResourceCode.Files];
+        await open('/recycle-bin');
+        expect(TestBed.inject(Router).url).toBe('/recycle-bin/files');
+    });
+
+    it('falls back to the default route without any readable tab', async () => {
+        await open('/recycle-bin');
+        expect(TestBed.inject(Router).url).toBe('/profile');
+    });
+
+    it('shows only the tabs the user can read', async () => {
+        readable = [ResourceCode.Tools, ResourceCode.Agents];
+        const harness = await open('/recycle-bin/agents');
+        const tabLabels = Array.from(
+            harness.routeNativeElement?.querySelectorAll('app-route-tabs .route-tab') ?? [],
+            (tab) => tab.textContent?.trim()
+        );
+        expect(tabLabels).toEqual(['Agents', 'Tools']);
+    });
+
+    it('names the retention time in the subtitle', async () => {
+        readable = [ResourceCode.Flows];
+        const harness = await open('/recycle-bin/flows');
+        expect(subtitleText(harness)).toContain('7 days');
+    });
+
+    it('leaves the number out while the retention time is unknown', async () => {
+        readable = [ResourceCode.Flows];
+        retentionDays.set(null);
+        const harness = await open('/recycle-bin/flows');
+        expect(subtitleText(harness)).toContain('for a while');
+    });
+
+    function emptyBinButton(harness: RouterTestingHarness): HTMLElement | null {
+        return harness.routeNativeElement?.querySelector<HTMLElement>('.empty-bin-btn button') ?? null;
+    }
+
+    it('hides "Empty recycle bin" from a non-superadmin, even with DELETE on every visible tab', async () => {
+        readable = [ResourceCode.Flows, ResourceCode.Tools];
+        deletable = [ResourceCode.Flows, ResourceCode.Tools];
+        const harness = await open('/recycle-bin/flows');
+        expect(emptyBinButton(harness)).toBeNull();
+    });
+
+    it('shows "Empty recycle bin" to a superadmin', async () => {
+        superadmin.set(true);
+        const harness = await open('/recycle-bin/flows');
+        expect(emptyBinButton(harness)).not.toBeNull();
+    });
+
+    it('shows "Empty recycle bin" once the user turns superadmin, with no reload', async () => {
+        readable = [ResourceCode.Flows];
+        const harness = await open('/recycle-bin/flows');
+        expect(emptyBinButton(harness)).toBeNull();
+
+        superadmin.set(true);
+        harness.detectChanges();
+
+        expect(emptyBinButton(harness)).not.toBeNull();
+    });
+
+    it('asks for the typed phrase, then empties the bin and says how many items were deleted', async () => {
+        superadmin.set(true);
+        const harness = await open('/recycle-bin/flows');
+
+        emptyBinButton(harness)?.click();
+
+        expect(confirm.mock.calls[0][0]).toMatchObject({
+            type: 'danger',
+            verification: { phrase: 'empty-recycle-bin' },
+        });
+        for (const tab of RECYCLE_BIN_TABS) {
+            expect(confirm.mock.calls[0][0].message).toContain(`<strong>${tab.label}</strong>`);
+        }
+        expect(emptyAll).toHaveBeenCalledTimes(1);
+        expect(toast.success).toHaveBeenCalledWith('3 items deleted permanently.');
+    });
+
+    it('reports only the failure when nothing could be deleted, never "already empty"', async () => {
+        superadmin.set(true);
+        emptyAll.mockReturnValue(
+            of<RecycleBinEmptyResult>({
+                purgedCount: 0,
+                failed: [{ name: 'Report', message: 'It is locked.' }],
+                leftCount: 0,
+            })
+        );
+        const harness = await open('/recycle-bin/flows');
+
+        emptyBinButton(harness)?.click();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalled();
+    });
+
+    it('says how many items are still in the bin when emptying stopped short, never "already empty"', async () => {
+        superadmin.set(true);
+        emptyAll.mockReturnValue(of<RecycleBinEmptyResult>({ purgedCount: 0, failed: [], leftCount: 7 }));
+        const harness = await open('/recycle-bin/flows');
+
+        emptyBinButton(harness)?.click();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(toast.warning).toHaveBeenCalledWith('7 items are still in the recycle bin. Try emptying it again.');
+    });
+
+    it('shows "Emptying…" from the click on, with the count left once the first answer comes', async () => {
+        superadmin.set(true);
+        const answers = new Subject<RecycleBinEmptyResult>();
+        let reportLeft: (remaining: number) => void = () => undefined;
+        emptyAll.mockImplementation((onRemaining) => {
+            reportLeft = onRemaining ?? reportLeft;
+            return answers;
+        });
+        const harness = await open('/recycle-bin/flows');
+        const label = (): string | undefined => emptyBinButton(harness)?.textContent?.trim();
+        expect(label()).toBe('Empty recycle bin');
+
+        emptyBinButton(harness)?.click();
+        harness.detectChanges();
+        expect(label()).toBe('Emptying…');
+
+        reportLeft(1200);
+        harness.detectChanges();
+        expect(label()).toBe('Emptying… 1200 left');
+
+        answers.next({ purgedCount: 1300, failed: [], leftCount: 0 });
+        answers.complete();
+        harness.detectChanges();
+        expect(label()).toBe('Empty recycle bin');
+    });
+
+    it('sends nothing when emptying the bin is cancelled', async () => {
+        superadmin.set(true);
+        confirm.mockReturnValue(of<ConfirmationResult>(false));
+        const harness = await open('/recycle-bin/flows');
+
+        emptyBinButton(harness)?.click();
+
+        expect(emptyAll).not.toHaveBeenCalled();
+    });
+});

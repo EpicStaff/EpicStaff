@@ -18,7 +18,11 @@ from app.llm.client import LLMChunk
 from app.llm.litellm_client import LiteLLMClient
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool
+from app.loop.agent_loop import _build_model_config
+from app.loop.context import AgentContext
 from app.tools.registry import ToolSpec
+from shared.models.agent_service import AgentSpec
+from shared.models.ai_providers import LLMConfigData, LLMData
 
 # ---------------------------------------------------------------------------
 # Chunk builders
@@ -384,23 +388,33 @@ async def test_runtime_config_max_rpm_passed_to_pool():
 # ---------------------------------------------------------------------------
 
 
-async def test_usage_chunk_yielded():
-    """Chunk with usage attribute emits a LLMChunk(usage=...)."""
-    chunks_in = [
-        _chunk(content="hi"),
-        _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}),
-    ]
+@pytest.mark.parametrize(
+    ("chunks_in", "expected"),
+    [
+        (
+            [_chunk(content="hi"), _chunk(finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3})],
+            (5, 3, 8),
+        ),
+        (
+            # A terminal usage-only chunk arrives with no choices.
+            [
+                _chunk(content="hello"),
+                SimpleNamespace(choices=[], usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14)),
+                _chunk(finish_reason="stop"),
+            ],
+            (10, 4, 14),
+        ),
+    ],
+    ids=["usage-on-finish-chunk", "usage-only-chunk"],
+)
+async def test_usage_is_yielded_once(chunks_in, expected):
     router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
 
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+    result = await collect(LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router)), MESSAGES, [], MODEL_CONFIG)
 
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["prompt_tokens"] == 5
-    assert usage_chunks[0].usage["completion_tokens"] == 3
-    assert usage_chunks[0].usage["total_tokens"] == 8
+    (usage_chunk,) = [chunk for chunk in result if chunk.usage is not None]
+    usage = usage_chunk.usage
+    assert (usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]) == expected
 
 
 async def test_stream_options_include_usage_passed_to_acompletion():
@@ -422,121 +436,29 @@ async def test_stream_options_include_usage_passed_to_acompletion():
     assert recorded_calls[0]["stream_options"] == {"include_usage": True}
 
 
-async def test_usage_only_chunk_with_empty_choices_does_not_crash():
-    """Terminal usage chunk with empty choices yields one LLMChunk(usage=...) and no crash."""
-    usage_chunk = SimpleNamespace(
-        choices=[],
-        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14),
-    )
-    chunks_in = [
-        _chunk(content="hello"),
-        usage_chunk,
-        _chunk(finish_reason="stop"),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["prompt_tokens"] == 10
-    assert usage_chunks[0].usage["completion_tokens"] == 4
-    assert usage_chunks[0].usage["total_tokens"] == 14
-
-
 # ---------------------------------------------------------------------------
 # Tests — cached_prompt_tokens extraction
 # ---------------------------------------------------------------------------
 
 
-async def test_cached_prompt_tokens_extracted_from_dict_details():
-    """usage.prompt_tokens_details as a dict yields cached_prompt_tokens."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "prompt_tokens_details": {"cached_tokens": 40},
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
+@pytest.mark.parametrize(
+    ("usage", "expected_cached"),
+    [
+        ({"prompt_tokens_details": {"cached_tokens": 40}}, 40),
+        ({"prompt_tokens_details": SimpleNamespace(cached_tokens=25)}, 25),
+        # Anthropic reports cache reads as a top-level field.
+        ({"cache_read_input_tokens": 15}, 15),
+        ({}, 0),
+    ],
+    ids=["details-dict", "details-object", "anthropic-top-level", "none"],
+)
+async def test_cached_prompt_tokens_are_read_from_any_provider_shape(usage, expected_cached):
+    router = make_router([_chunk(finish_reason="stop", usage={"prompt_tokens": 100, "completion_tokens": 20, **usage})])
 
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+    result = await collect(LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router)), MESSAGES, [], MODEL_CONFIG)
 
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 40
-
-
-async def test_cached_prompt_tokens_extracted_from_object_details():
-    """usage.prompt_tokens_details as a SimpleNamespace object yields cached_prompt_tokens."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "prompt_tokens_details": SimpleNamespace(cached_tokens=25),
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 25
-
-
-async def test_cached_prompt_tokens_falls_back_to_anthropic_style_top_level_field():
-    """No prompt_tokens_details, but cache_read_input_tokens top-level field present."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "cache_read_input_tokens": 15,
-            },
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 15
-
-
-async def test_cached_prompt_tokens_defaults_to_zero_without_details():
-    """No prompt_tokens_details and no top-level fallback field: cached_prompt_tokens is 0."""
-    chunks_in = [
-        _chunk(
-            finish_reason="stop",
-            usage={"prompt_tokens": 100, "completion_tokens": 20},
-        ),
-    ]
-    router = make_router(chunks_in)
-    pool = make_pool_with_router(router)
-
-    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], MODEL_CONFIG)
-
-    usage_chunks = [c for c in result if c.usage is not None]
-    assert len(usage_chunks) == 1
-    assert usage_chunks[0].usage["cached_prompt_tokens"] == 0
+    (usage_chunk,) = [chunk for chunk in result if chunk.usage is not None]
+    assert usage_chunk.usage["cached_prompt_tokens"] == expected_cached
 
 
 # ---------------------------------------------------------------------------
@@ -601,3 +523,106 @@ async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
 
     text_chunks = [c for c in result if c.delta_text]
     assert text_chunks[0].delta_text == "hi"
+
+
+def _model_config_from_llm_config(provider: str, llm_config: LLMConfigData) -> dict:
+    agent = AgentSpec(
+        id=1,
+        name="a",
+        instructions="i",
+        llm=LLMData(provider=provider, config=llm_config),
+    )
+    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c"))
+
+
+async def _acompletion_kwargs_for(model_config: dict) -> dict:
+    router = make_router([_chunk(finish_reason="stop")])
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+    await collect(client, MESSAGES, [], model_config)
+    router.acompletion.assert_awaited_once()
+    return router.acompletion.call_args.kwargs
+
+
+async def test_reasoning_effort_reaches_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-5-mini", api_key="sk-test", reasoning_effort="low")
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert acompletion_kwargs["reasoning_effort"] == "low"
+    assert "api_key" not in acompletion_kwargs
+
+
+async def test_unset_reasoning_effort_is_not_sent_to_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert "reasoning_effort" not in acompletion_kwargs
+
+
+async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "azure",
+        LLMConfigData(
+            model="my-deployment",
+            api_key="sk-test",
+            base_url="https://example.openai.azure.com",
+            api_version="2025-01-01-preview",
+            deployment_id="my-deployment",
+            extra_headers={"X-Team": "core"},
+        ),
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert acompletion_kwargs["deployment_id"] == "my-deployment"
+    assert acompletion_kwargs["extra_headers"] == {"X-Team": "core"}
+    for router_owned_key in ("api_key", "base_url", "api_version"):
+        assert router_owned_key not in acompletion_kwargs
+
+
+# ---------------------------------------------------------------------------
+# Tests — non-streamed response
+# ---------------------------------------------------------------------------
+
+
+async def test_non_streamed_response_is_split_into_chunks():
+    # Shape of litellm's Responses API bridge: text and tool calls arrive as separate choices.
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="checking", tool_calls=None), finish_reason="stop"),
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(id="call_x", function=SimpleNamespace(name="get_time", arguments='{"tz":"UTC"}')),
+                        SimpleNamespace(id=None, function=SimpleNamespace(name="ping", arguments="{}")),
+                    ],
+                ),
+                finish_reason="tool_calls",
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14),
+    )
+    router = MagicMock()
+    router.model_list = [{"model_name": "synth-model-001"}]
+    router.acompletion = AsyncMock(return_value=response)
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+
+    result = [chunk async for chunk in client.chat(MESSAGES, [], MODEL_CONFIG, stream=False)]
+
+    text, first_call, second_call, usage, finish = result
+    assert text.delta_text == "checking"
+    assert (first_call.tool_call_fragment.id, first_call.tool_call_fragment.name) == ("call_x", "get_time")
+    assert first_call.tool_call_fragment.arguments_delta == '{"tz":"UTC"}'
+    assert second_call.tool_call_fragment.id.startswith("call_")
+    assert usage.usage["total_tokens"] == 14
+    assert "total_cost_usd" in usage.usage
+    assert finish.finish_reason == "tool_calls"
+    request = router.acompletion.call_args.kwargs
+    assert request["stream"] is False
+    assert "stream_options" not in request

@@ -173,9 +173,13 @@ def session_data(graph: Graph) -> dict:
 
 
 @pytest.fixture
-def session(session_data) -> tuple[Session | dict]:
-    session_manager = SessionManagerService()
-    return session_manager.create_session(**session_data, trigger=TriggerSpec.manual())
+def session(graph: Graph, session_data: dict) -> Session:
+    return SessionManagerService().create_session(
+        graph,
+        start_node=StartNode.objects.get(graph=graph),
+        variables=session_data["variables"],
+        trigger=TriggerSpec.manual(),
+    )
 
 
 @pytest.fixture

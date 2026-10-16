@@ -2,7 +2,12 @@ import os
 
 from rbac.authorship import LastEditFieldsSerializerMixin
 from rest_framework import serializers
-from tables.services.storage_service.path_utils import sanitize_storage_path
+from tables.serializers.recycle_bin_serializers import RecycleBinEntrySerializer
+from tables.services.storage_service.path_utils import (
+    TRASH_DIRECTORY,
+    is_trash_path,
+    sanitize_storage_path,
+)
 from tables.validators.file_upload_validator import FileValidator
 
 _MAX_STORAGE_PATH_BYTES = 1000
@@ -12,9 +17,20 @@ def _normalize_path(value: str) -> str:
     if len(value.encode("utf-8")) > _MAX_STORAGE_PATH_BYTES:
         raise serializers.ValidationError(f"Path too long: max {_MAX_STORAGE_PATH_BYTES} bytes.")
     try:
-        return sanitize_storage_path(value, allow_empty=True, allow_leading_slash=True)
+        path = sanitize_storage_path(value, allow_empty=True, allow_leading_slash=True)
     except ValueError as exc:
         raise serializers.ValidationError(str(exc)) from exc
+    if is_trash_path(path):
+        raise serializers.ValidationError(f"'{TRASH_DIRECTORY}' is a reserved folder name.")
+    return path
+
+
+def _normalize_source_path(value: str) -> str:
+    """A path an operation takes from: the org root itself can't be deleted, moved or copied."""
+    path = _normalize_path(value)
+    if not path:
+        raise serializers.ValidationError("The storage root can't be used here.")
+    return path
 
 
 class StoragePathQuerySerializer(serializers.Serializer):
@@ -46,7 +62,7 @@ class StorageBulkDeleteSerializer(serializers.Serializer):
     )
 
     def validate_paths(self, value: list[str]) -> list[str]:
-        return [_normalize_path(path) for path in value]
+        return [_normalize_source_path(path) for path in value]
 
 
 class StorageDownloadZipSerializer(serializers.Serializer):
@@ -65,7 +81,7 @@ class StorageRenameSerializer(serializers.Serializer):
     to_path = serializers.CharField(source="to", help_text="Destination path")
 
     def validate_from_path(self, value: str) -> str:
-        return _normalize_path(value)
+        return _normalize_source_path(value)
 
     def validate_to_path(self, value: str) -> str:
         value = _normalize_path(value)
@@ -94,7 +110,7 @@ class StorageMoveSerializer(serializers.Serializer):
     )
 
     def validate_from_path(self, value: str) -> str:
-        return _normalize_path(value)
+        return _normalize_source_path(value)
 
     def validate_to_path(self, value: str) -> str:
         return _normalize_path(value)
@@ -117,7 +133,7 @@ class StorageCopySerializer(serializers.Serializer):
     )
 
     def validate_from_path(self, value: str) -> str:
-        return _normalize_path(value)
+        return _normalize_source_path(value)
 
     def validate_to_path(self, value: str) -> str:
         return _normalize_path(value)
@@ -199,6 +215,29 @@ class StorageFromToResponseSerializer(serializers.Serializer):
     from_path = serializers.CharField(source="from", help_text="Source path")
     to_path = serializers.CharField(source="to", help_text="Destination path")
     success = serializers.BooleanField(help_text="Operation succeeded")
+
+
+class StorageRecycleBinPurgedSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "Org-relative path of the purged recycle bin entry; a folder's ends in '/'. "
+            "Null unless the caller has FILES:READ in the organization"
+        ),
+    )
+    size = serializers.IntegerField(
+        help_text="Bytes freed: a folder's counts everything deleted with it"
+    )
+
+
+class StorageTransferResponseSerializer(StorageFromToResponseSerializer):
+    recycle_bin_purged = StorageRecycleBinPurgedSerializer(
+        many=True,
+        help_text=(
+            "Recycle bin entries of the destination organization purged, oldest first, "
+            "to make room for the copy; empty when it fit or nothing could be purged"
+        ),
+    )
 
 
 class StorageMkdirResponseSerializer(serializers.Serializer):
@@ -363,3 +402,17 @@ class StorageFileSerializer(LastEditFieldsSerializerMixin, serializers.Serialize
     parent_path = serializers.CharField(read_only=True, help_text="Immediate parent directory path")
     created_at = serializers.DateTimeField(read_only=True, help_text="Row creation timestamp")
     updated_at = serializers.DateTimeField(read_only=True, help_text="Row last update timestamp")
+
+
+class StorageRecycleBinEntrySerializer(RecycleBinEntrySerializer):
+    name = serializers.CharField(help_text="Full org-relative path; folders end in '/'")
+    item_type = serializers.ChoiceField(choices=["file", "folder"])
+
+
+class StorageRecycleBinPageSerializer(serializers.Serializer):
+    """Response of GET /api/storage/recycle-bin/ (limit/offset paging)."""
+
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = StorageRecycleBinEntrySerializer(many=True)

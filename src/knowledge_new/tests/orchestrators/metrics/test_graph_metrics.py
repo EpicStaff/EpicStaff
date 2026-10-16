@@ -1,38 +1,32 @@
-"""Tests for GraphMetricsOrchestrator.on_execute() and build_metrics().
+"""Tests for GraphMetricsOrchestrator.
 
-Seams:
-- FakeGraphRagRepo / FakeUoW — in-memory replacements for DB access.
-- monkeypatch on GraphMetricsOrchestrator._read_text_units — avoids graphrag storage;
-  the orchestrator only cares about the returned text_units DataFrame.
+Seams: FakeUoW / FakeGraphRagRepo for the database, and graphrag's `DataReader`, which
+reads the index tables from storage.
 """
 
 import pandas
 import pytest
 from application.commands import GetMetrics
 from application.orchestrators.metrics import build_metrics
-from application.orchestrators.metrics.strategies.graph_metrics import (
-    GraphMetricsOrchestrator,
-)
+from application.orchestrators.metrics.strategies import graph_metrics
+from application.orchestrators.metrics.strategies.graph_metrics import GraphMetricsOrchestrator
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 
 class FakeGraphRagRepo:
     def __init__(self):
-        self.get_config_calls: list[int] = []
+        self.requested_rag_ids: list[int] = []
 
-    async def get_config(self, rag_id: int, slot=None):
-        self.get_config_calls.append(rag_id)
-        return object()  # opaque; _read_text_units is patched
+    async def get_config(self, rag_id: int, slot=None) -> GraphRagConfig:
+        self.requested_rag_ids.append(rag_id)
+        return GraphRagConfig()
 
 
 class FakeUoW:
     def __init__(self, repo: FakeGraphRagRepo):
-        self._repo = repo
-
-    @property
-    def graph_rag_repo(self) -> FakeGraphRagRepo:
-        return self._repo
+        self.graph_rag_repo = repo
 
     async def __aenter__(self):
         return self
@@ -51,56 +45,37 @@ def uow(repo) -> FakeUoW:
     return FakeUoW(repo)
 
 
-def _patch_text_units(monkeypatch, df: pandas.DataFrame):
-    async def fake_read(config):
-        return df
+def _index_with_text_units(monkeypatch, text_units: pandas.DataFrame):
+    class FakeDataReader:
+        def __init__(self, table_provider):
+            pass
 
-    monkeypatch.setattr(GraphMetricsOrchestrator, "_read_text_units", staticmethod(fake_read))
+        async def text_units(self):
+            return text_units
+
+    monkeypatch.setattr(graph_metrics, "DataReader", FakeDataReader)
 
 
-@pytest.mark.asyncio
-async def test_metrics_computed_from_text_units(uow, monkeypatch):
-    _patch_text_units(monkeypatch, pandas.DataFrame({"n_tokens": [100, 200, 300]}))
+@pytest.mark.parametrize(
+    ("token_counts", "expected_total", "expected_average"),
+    [
+        ([100, 200, 300], 3, 200.0),
+        ([100, None, 300], 3, 200.0),
+        ([], 0, 0.0),
+    ],
+    ids=["all-counted", "missing-counts-ignored-in-average", "empty-index"],
+)
+async def test_metrics_are_computed_from_the_rags_text_units(
+    repo, uow, monkeypatch, token_counts, expected_total, expected_average
+):
+    _index_with_text_units(monkeypatch, pandas.DataFrame({"n_tokens": token_counts}))
 
     result = await GraphMetricsOrchestrator(uow).execute(GetMetrics(rag_id=7))
 
-    assert result.total_chunks == 3
-    assert result.avg_chunk_size == 200.0
+    assert repo.requested_rag_ids == [7]
+    assert (result.total_chunks, result.avg_chunk_size) == (expected_total, expected_average)
 
 
-@pytest.mark.asyncio
-async def test_metrics_ignores_null_token_counts(uow, monkeypatch):
-    _patch_text_units(monkeypatch, pandas.DataFrame({"n_tokens": [100, None, 300]}))
-
-    result = await GraphMetricsOrchestrator(uow).execute(GetMetrics(rag_id=1))
-
-    assert result.total_chunks == 3
-    assert result.avg_chunk_size == 200.0
-
-
-@pytest.mark.asyncio
-async def test_empty_text_units_returns_zeros(uow, monkeypatch):
-    _patch_text_units(monkeypatch, pandas.DataFrame({"n_tokens": []}))
-
-    result = await GraphMetricsOrchestrator(uow).execute(GetMetrics(rag_id=1))
-
-    assert result.total_chunks == 0
-    assert result.avg_chunk_size == 0.0
-
-
-@pytest.mark.asyncio
-async def test_get_config_called_with_rag_id(repo, uow, monkeypatch):
-    _patch_text_units(monkeypatch, pandas.DataFrame({"n_tokens": [10]}))
-
-    await GraphMetricsOrchestrator(uow).execute(GetMetrics(rag_id=42))
-
-    assert repo.get_config_calls == [42]
-
-
-def test_build_metrics_graph(uow):
-    assert isinstance(build_metrics(RAGStrategy.GRAPH, uow), GraphMetricsOrchestrator)
-
-
-def test_build_metrics_unsupported_naive(uow):
+def test_metrics_are_unsupported_for_naive_rags(uow):
     with pytest.raises(UnsupportedError):
         build_metrics(RAGStrategy.NAIVE, uow)

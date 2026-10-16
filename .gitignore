@@ -269,7 +269,7 @@ src/chat
 # Knowledge migration backup
 **/knowledge_migration_backup/
 *.pem
-*.crt!
+*.crt
 dev/dev.config.json
 
 # AI Coding Assistant Configs

@@ -23,6 +23,7 @@ from tables.serializers.base_serializer import (
 )
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
@@ -34,6 +35,7 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.python_code_cleanup_service import PythonCodeCleanupService
+from tables.validators.cdt_explanations import CdtExplanationsSanitizingMixin
 
 
 class StartNodeSerializer(
@@ -107,7 +109,9 @@ class EndNodeSerializer(
         return "__end_node__"
 
 
-class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -115,7 +119,9 @@ class ConditionSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         fields = "__all__"
 
 
-class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class ConditionGroupSerializer(
+    ExcludeSoftDeleteFieldsMixin, ContentHashWritableMixin, serializers.ModelSerializer
+):
     conditions = ConditionSerializer(many=True, required=False)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -125,6 +131,7 @@ class ConditionGroupSerializer(ContentHashWritableMixin, serializers.ModelSerial
 
 
 class DecisionTableNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     ContentHashWritableMixin,
@@ -149,19 +156,6 @@ class DecisionTableNodeSerializer(
                 group.get("next_node_id"), graph, "condition_groups.next_node_id"
             )
         return attrs
-
-
-def validate_classification_condition_group_names(condition_groups_data) -> list[str]:
-    """Return a list of error strings for any group with a blank/null group_name."""
-    errors = []
-
-    for idx, group in enumerate(condition_groups_data or []):
-        name = group.get("group_name")
-
-        if name is None or (isinstance(name, str) and not name.strip()):
-            errors.append(f"condition_groups[{idx}]: group_name may not be blank.")
-
-    return errors
 
 
 class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
@@ -236,7 +230,10 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 
 class ClassificationDecisionTableNodeSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    CdtExplanationsSanitizingMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    serializers.ModelSerializer,
 ):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
     sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)

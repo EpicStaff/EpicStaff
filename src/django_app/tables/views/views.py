@@ -18,6 +18,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import (
@@ -31,8 +32,8 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
-from tables.filters import SessionFilter
+from tables.exceptions import CodeRunTargetNotFoundError
+from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
     CsvExportFormatStrategy,
@@ -88,7 +89,6 @@ from tables.services.session_access import (
     get_accessible_session,
     get_runnable_graph,
 )
-from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
@@ -319,6 +319,8 @@ class SessionViewSet(
             qs = qs.filter(finished_at__gte=data["finished_at_after"])
         if "finished_at_before" in data:
             qs = qs.filter(finished_at__lte=data["finished_at_before"])
+        if "id_search" in data:
+            qs = filter_sessions_by_id_search(qs, data["id_search"])
 
         node_name = data.get("node_name")
         if node_name:
@@ -459,6 +461,16 @@ class RunSession(APIView):
             else TriggerSpec.manual()
         )
         api_key = request.auth if isinstance(request.auth, ApiKey) else None
+        # Running needs only FLOWS READ, but a payload value at a declared org path
+        # is written back to the flow's shared memory: overriding one is managing
+        # the flow's persistent variables, which takes FLOWS UPDATE. A sub-flow
+        # payload is built by the parent's agent from whoever started the chain,
+        # so the tool key's permissions say nothing about who chose the values.
+        allow_persistent_override = parent_session_id is None and (
+            PermissionResolver()
+            .resolve(user=request.user, org_id=graph.org_id)
+            .can(ResourceType.FLOWS, Permission.UPDATE)
+        )
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
@@ -471,6 +483,7 @@ class RunSession(APIView):
                 token_budget=serializer.validated_data.get("token_budget"),
                 callback_url=callback_url,
                 callback_secret=callback_secret,
+                allow_persistent_override=allow_persistent_override,
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -546,32 +559,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs["session_id"]
-        get_accessible_session(request.user, session_id)
-
-        try:
-            required_listeners = 2  # manager and crew
-            received_n = session_manager_service.stop_session(session_id=session_id)
-            if received_n < required_listeners:
-                logger.error(f"Stop session ({session_id}) was sent but not received.")
-                session = Session.objects.get(pk=session_id)
-                session.status = Session.SessionStatus.ERROR
-                session.status_data = {
-                    "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
-                }
-                session.save()
-                try:
-                    SessionCallbackService().enqueue(
-                        session_id=session.pk,
-                        status=Session.SessionStatus.ERROR,
-                        token_usage={},
-                    )
-                except Exception as exc:  # a callback failure must never mask the stop error
-                    logger.error("Session {} callback enqueue failed: {}", session.pk, exc)
-
-        except Session.DoesNotExist:
-            raise SessionNotFoundError() from None
-
+        session = get_accessible_session(request.user, kwargs["session_id"])
+        session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

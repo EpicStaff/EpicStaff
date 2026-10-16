@@ -10,14 +10,14 @@ import {
     ElementRef,
     HostListener,
     inject,
-    Injector,
     OnDestroy,
     OnInit,
     signal,
+    untracked,
     ViewChild,
     viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -38,16 +38,20 @@ import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
+    debounceTime,
     defaultIfEmpty,
+    defer,
     EMPTY,
     filter,
     finalize,
     forkJoin,
+    groupBy,
     map,
+    mergeMap,
     Observable,
     of,
+    Subject,
     switchMap,
-    take,
     tap,
 } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
@@ -55,7 +59,6 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
-import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { CreateFlowDialogComponent } from '../../../../features/flows/components/create-flow-dialog/create-flow-dialog.component';
@@ -69,6 +72,7 @@ import { VersionHistoryPanelComponent } from '../../../../features/flows/compone
 import {
     GetGraphLightRequest,
     GraphDto,
+    GraphRestoreResponse,
     GraphVersionDto,
     RestoreWarning,
 } from '../../../../features/flows/models/graph.model';
@@ -86,7 +90,10 @@ import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
-import { PromptConfig } from '../../../../visual-programming/core/models/classification-decision-table.model';
+import {
+    CdtExplanations,
+    PromptConfig,
+} from '../../../../visual-programming/core/models/classification-decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { FlowViewport } from '../../../../visual-programming/core/models/flow-viewport.model';
 import {
@@ -100,6 +107,7 @@ import {
 import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter-egg/snake-game/snake-game-overlay.component';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
+import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
@@ -107,6 +115,7 @@ import { NodeAuthorshipStore } from '../../../../visual-programming/services/nod
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { toStoredCdtExplanations } from '../../../../visual-programming/utils/cdt-explanations';
 import { extractToSubflow } from '../../../../visual-programming/utils/extract/extract-to-subflow';
 import {
     buildFlowModelFromGraphDto,
@@ -124,6 +133,7 @@ import {
     getNodeDiff,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    patchLiveFlowWithBackendIds,
     toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
@@ -131,11 +141,22 @@ import { isValidOutputSchema } from '../../../../visual-programming/utils/valida
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+import { SerialSaveQueue } from './serial-save-queue';
+
+/**
+ * How long a node's burst of explanation-save requests has to go quiet before one
+ * save is sent. Long enough to collapse a table-wide explain pass into a few saves,
+ * short enough to catch a dialog closed right after a single one.
+ */
+const CDT_EXPLANATIONS_SAVE_DEBOUNCE_MS = 1500;
 
 export const TEST_RUN_NODE_GONE_MESSAGE = 'This node no longer exists — reload the flow';
 export const TEST_RUN_NODE_NOT_SAVED_MESSAGE = 'Click Save in the top panel to save the graph before running a test';
 export const RUN_WHILE_SAVING_MESSAGE = 'The flow is being saved. Run again when it is saved.';
 export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open the node to see why';
+export const extractParentNotUpdatedMessage = (subflowName: string): string =>
+    `Subflow "${subflowName}" was created, but another flow was opened before the original flow was updated — the extracted nodes are still in it`;
+export const REMOTE_SAVE_RELOAD_FAILED_MESSAGE = 'Failed to load the latest version of this flow — refresh it';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -162,7 +183,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly destroyRef = inject(DestroyRef);
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
-    private readonly injector = inject(Injector);
+    private readonly cdtExplanationsApiService = inject(CdtExplanationsApiService);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
     private readonly flowGraphHost = viewChild(FlowGraphComponent, { read: ElementRef<HTMLElement> });
     private readonly isSnakeGameActive = signal(false);
@@ -180,21 +201,22 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly flowTestRunService = inject(FlowTestRunService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
-    public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
     public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
-    /**
-     * A `graphState` whose node lists are older than the backend's: another user saved and only the
-     * save_version was taken over. Any later load or save replaces `graphState` and so ends it.
-     */
-    private readonly outdatedGraphState = signal<GraphDto | null>(null);
-    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
-    private readonly storedGraph = computed<GraphDto | null>(() => {
+    /** The latest save another user announced; `graphState` is outdated while its save_version is lower. */
+    private readonly remoteSave = signal<{ graphId: number; saveVersion: number } | null>(null);
+    private readonly isGraphOutdated = computed(() => {
         const graph = this.graphState();
-        return graph === this.outdatedGraphState() ? null : graph;
+        const remoteSave = this.remoteSave();
+        return (
+            !!graph && !!remoteSave && graph.id === remoteSave.graphId && graph.save_version < remoteSave.saveVersion
+        );
     });
+    private readonly remoteSaveReloads = new Subject<{ graphId: number; saveVersion: number }>();
+    /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
+    private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
@@ -211,7 +233,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return JSON.stringify(current) !== JSON.stringify(saved);
     });
 
-    public isSaving = signal(false);
+    /**
+     * Every request that writes the graph with its `save_version` goes through this,
+     * one at a time — full saves, single-node saves, explanation saves, the
+     * extract/unpack saves and a version restore alike. See
+     * `SerialSaveQueue` for why.
+     */
+    private readonly saveQueue = new SerialSaveQueue();
+    /** Full saves (and extract/unpack saves) queued or in flight; what the header's Save spinner shows. */
+    private readonly pendingFullSaves = signal(0);
+    public readonly isSaving = computed(() => this.pendingFullSaves() > 0);
     /** A regular or test run is being started; shared so it locks the header Run and the panels' test Run. */
     public readonly isRunning = this.flowTestRunService.isRunStarting;
     /** The status of the run streaming into the run panel (regular or test), until it ends. */
@@ -220,6 +251,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const status = this.runSessionSSEService.status();
         return isTerminalSessionStatus(status) ? null : status;
     });
+    /** No unsaved flow edits, no open node panel (its edits reach the flow only on commit) and no version preview. */
+    private readonly canReplaceLiveFlow = computed(
+        () => !this.hasUnsavedChangesSignal() && !this.isPreviewing() && !this.sidePanelService.selectedNodeId()
+    );
     public restoreWarnings = signal<RestoreWarning[]>([]);
     /** Restore warnings still worth showing: one tied to a node goes away once that node is deleted. */
     public readonly activeRestoreWarnings = computed(() => {
@@ -282,7 +317,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly dialog: CdkDialog,
         private readonly configService: ConfigService,
         private readonly elementRef: ElementRef,
-        private readonly epicChatService: EpicChatService,
         private readonly unsavedChangesDialog: UnsavedChangesDialogService,
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
@@ -293,7 +327,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
         private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
-        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
         this.routeQueryParamMap = toSignal(this.route.queryParamMap, {
             initialValue: this.route.snapshot.queryParamMap,
@@ -379,6 +412,24 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
 
+        // Subscribed here, not by whatever asked for the save: a dialog that requests
+        // one is usually closed moments later, and its request would be aborted
+        // mid-flight, leaving `save_version` behind the server's and 409ing after.
+        //
+        // Debounced per node, so a burst on one table collapses while a request for
+        // another is never swallowed by it; then queued behind every other save, so
+        // the request is built — node re-read, `save_version` taken — only once the
+        // one before it has answered. The graph is the one shown when it was asked for.
+        this.sidePanelService.cdtExplanationsSaveRequest$
+            .pipe(
+                map((nodeId) => ({ nodeId, graphId: this.graphState()?.id ?? null })),
+                groupBy(({ nodeId }) => nodeId),
+                mergeMap((requestsForNode) => requestsForNode.pipe(debounceTime(CDT_EXPLANATIONS_SAVE_DEBOUNCE_MS))),
+                mergeMap(({ nodeId, graphId }) => this.saveQueue.run(() => this.saveCdtExplanations(nodeId, graphId))),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
+
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshCurrentFlow());
@@ -393,18 +444,44 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
             this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
 
-            if (!this.hasUnsavedChangesSignal()) {
-                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
-            }
-            // Either way the stored nodes changed and this graph does not have them.
-            this.outdatedGraphState.set(this.graphState());
+            this.remoteSave.set({ graphId: event.graph_id, saveVersion: event.new_save_version });
         });
+
+        // An outdated graph is reloaded only once nothing local can be lost. Until then `graphState`
+        // keeps the old save_version, so a save fails the version check instead of overwriting the
+        // other user's save.
+        effect(() => {
+            if (!this.isGraphOutdated() || !this.canReplaceLiveFlow()) return;
+            const remoteSave = this.remoteSave()!;
+            untracked(() => this.remoteSaveReloads.next(remoteSave));
+        });
+
+        this.remoteSaveReloads
+            .pipe(
+                switchMap(({ graphId, saveVersion }) =>
+                    this.flowApiService.getGraphById(graphId, true).pipe(
+                        // A read older than the announced save would leave the canvas just as outdated.
+                        map((graph): GraphDto | null => (graph.save_version >= saveVersion ? graph : null)),
+                        catchError(() => of(null))
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((graph) => {
+                if (!graph) {
+                    this.toastService.warning(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
+                    return;
+                }
+                // The canvas may have changed while the graph loaded.
+                if (graph.id !== this.graphState()?.id || !this.canReplaceLiveFlow()) return;
+                // Undo must not bring back the canvas from before the other user's save.
+                this.undoRedoService.clear();
+                this.applyLoadedGraphState(graph, this.availableFlowLights(), false);
+            });
     }
 
     public ngOnInit(): void {
-        this.unsavedChangesRegistry.register(this, {
-            onRefresh: this.refreshCurrentFlow.bind(this),
-        });
+        this.unsavedChangesRegistry.register(this);
     }
 
     protected closeSnakeGame(): void {
@@ -528,8 +605,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return;
         }
 
+        const graphId = this.graph.id;
+
         // Step 1: Save current parent graph to establish a clean baseline.
-        this.saveFlowState(this.currentFlowState(), false)
+        this.saveFlowState(false)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 // Step 2: Open the Create Flow dialog so the user names the new subflow.
@@ -542,60 +621,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 }),
                 // If the user cancelled the dialog, stop.
                 filter((newGraphDto): newGraphDto is GraphDto => newGraphDto != null),
-                switchMap((newGraphDto) => {
-                    // Step 3: Run the extraction utility.
-                    const currentFlow = this.currentFlowState();
-                    const { subflowModel, parentModel } = extractToSubflow(
-                        currentFlow,
-                        selectedNodeIds,
-                        generateUuid(),
-                        newGraphDto.id
-                    );
-
-                    // Step 4: Build the subflow save payload (empty previous = all creates).
-                    const emptyFlow: FlowModel = { nodes: [], connections: [] };
-                    const subflowNodeDiff = getNodeDiff(emptyFlow, subflowModel);
-                    const subflowIdMap = buildUuidToBackendIdMap(subflowModel.nodes);
-                    const subflowConnectionDiff = getConnectionDiff(emptyFlow, subflowModel, subflowIdMap);
-                    const subflowPayload = buildBulkSavePayload(
-                        newGraphDto.id,
-                        subflowNodeDiff,
-                        subflowConnectionDiff,
-                        subflowModel,
-                        subflowIdMap,
-                        newGraphDto.save_version
-                    );
-
-                    // Step 5: Bulk-save the subflow nodes to the server.
-                    return this.flowApiService
-                        .bulkSaveGraph(newGraphDto.id, subflowPayload)
-                        .pipe(map(() => ({ newGraphDto, parentModel })));
-                }),
-                // Step 6: Update the parent flow with the extraction result and save it.
-                switchMap(({ newGraphDto, parentModel }) => {
-                    // Update the subgraph node name to match the newly created flow name.
-                    const namedParentModel: FlowModel = {
-                        ...parentModel,
-                        nodes: parentModel.nodes.map((node) => {
-                            if (node.type !== NodeType.SUBGRAPH) return node;
-                            const subgraphNode = node as SubGraphNodeModel;
-                            if (subgraphNode.data.id !== newGraphDto.id) return node;
-                            return {
-                                ...subgraphNode,
-                                node_name: newGraphDto.name,
-                                data: {
-                                    ...subgraphNode.data,
-                                    name: newGraphDto.name,
-                                    uuid: newGraphDto.uuid ?? '',
-                                    description: newGraphDto.description ?? '',
-                                },
-                            };
-                        }),
-                    };
-
-                    this.flowService.setFlow(normalizeFlowPorts(namedParentModel));
-                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => newGraphDto.name));
-                }),
+                // Steps 3-6 run as one queued save, so no other save lands between them.
+                switchMap((newGraphDto) =>
+                    this.queueFullSave(() => this.extractAndSave(graphId, selectedNodeIds, newGraphDto))
+                ),
                 catchError((err: HttpErrorResponse) => {
                     this.toastService.error(`Extract to subflow failed: ${extractHttpErrorMessage(err)}`);
                     return EMPTY;
@@ -629,6 +658,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
 
         const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
+        const graphId = this.graph.id;
 
         // Step 2: Check how many other flows reference this subflow.
         this.flowApiService
@@ -672,18 +702,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         .getGraphById(subgraphId, true)
                         .pipe(map((graphDto) => ({ graphDto, deleteSubflow })))
                 ),
-                switchMap(({ graphDto, deleteSubflow }) => {
-                    // Step 5: Map the subflow DTO to a FlowModel.
-                    const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto));
-
-                    // Step 6: Run the unpack utility.
-                    const currentFlow = this.currentFlowState();
-                    const unpackedModel = unpackSubflow(currentFlow, subGraphNodeId, subflowFlowModel);
-
-                    // Step 7: Update the parent flow and save.
-                    this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
-                    return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => deleteSubflow));
-                }),
+                // Steps 5-7 run as one queued save, so no other save lands between the canvas change and its save.
+                switchMap(({ graphDto, deleteSubflow }) =>
+                    this.queueFullSave(() => this.unpackAndSave(graphId, subGraphNodeId, graphDto)).pipe(
+                        map(() => deleteSubflow)
+                    )
+                ),
                 // Step 8: Optionally delete the subflow.
                 switchMap((deleteSubflow) => {
                     if (deleteSubflow) {
@@ -708,28 +732,122 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             });
     }
 
-    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false, onSettled?: () => void): void {
-        forkJoin({
+    /**
+     * Steps 3-6 of an extraction: moves the selection into the new subflow, saves the subflow, then
+     * the parent. Runs inside `saveQueue` as one task: the canvas is read when its turn comes, and an
+     * explanation save waiting behind it runs only once the selection has left the parent, so it
+     * finds those nodes gone and sends nothing for them. Emits the subflow's name once both saved.
+     * Nothing happens to a parent the page no longer shows (see `isCurrentGraph`).
+     */
+    private extractAndSave(graphId: number, selectedNodeIds: Set<string>, newGraphDto: GraphDto): Observable<string> {
+        if (!this.isCurrentGraph(graphId)) return EMPTY;
+
+        // Step 3: Run the extraction utility.
+        const { subflowModel, parentModel } = extractToSubflow(
+            this.currentFlowState(),
+            selectedNodeIds,
+            generateUuid(),
+            newGraphDto.id
+        );
+
+        // Step 4: Build the subflow save payload (empty previous = all creates).
+        const emptyFlow: FlowModel = { nodes: [], connections: [] };
+        const subflowNodeDiff = getNodeDiff(emptyFlow, subflowModel);
+        const subflowIdMap = buildUuidToBackendIdMap(subflowModel.nodes);
+        const subflowConnectionDiff = getConnectionDiff(emptyFlow, subflowModel, subflowIdMap);
+        const subflowPayload = buildBulkSavePayload(
+            newGraphDto.id,
+            subflowNodeDiff,
+            subflowConnectionDiff,
+            subflowModel,
+            subflowIdMap,
+            newGraphDto.save_version
+        );
+
+        // Step 5: Bulk-save the subflow nodes to the server.
+        return this.flowApiService.bulkSaveGraph(newGraphDto.id, subflowPayload).pipe(
+            // Step 6: Update the parent flow with the extraction result and save it.
+            switchMap(() => {
+                // Another flow opened while the subflow saved: its canvas is not the parent's to
+                // replace. The subflow exists now, with copies of the nodes; the parent still has them.
+                if (!this.isCurrentGraph(graphId)) {
+                    this.toastService.warning(extractParentNotUpdatedMessage(newGraphDto.name));
+                    return EMPTY;
+                }
+
+                // Update the subgraph node name to match the newly created flow name.
+                const namedParentModel: FlowModel = {
+                    ...parentModel,
+                    nodes: parentModel.nodes.map((node) => {
+                        if (node.type !== NodeType.SUBGRAPH) return node;
+                        const subgraphNode = node as SubGraphNodeModel;
+                        if (subgraphNode.data.id !== newGraphDto.id) return node;
+                        return {
+                            ...subgraphNode,
+                            node_name: newGraphDto.name,
+                            data: {
+                                ...subgraphNode.data,
+                                name: newGraphDto.name,
+                                uuid: newGraphDto.uuid ?? '',
+                                description: newGraphDto.description ?? '',
+                            },
+                        };
+                    }),
+                };
+
+                this.flowService.setFlow(normalizeFlowPorts(namedParentModel));
+                return this.sendFlowState(graphId, false).pipe(map(() => newGraphDto.name));
+            })
+        );
+    }
+
+    /**
+     * Steps 5-7 of an unpack: puts the subflow's nodes in place of its subgraph node and saves the
+     * parent. Runs inside `saveQueue` as one task, for the reasons given at `extractAndSave`.
+     */
+    private unpackAndSave(graphId: number, subGraphNodeId: string, subflowGraph: GraphDto): Observable<void> {
+        if (!this.isCurrentGraph(graphId)) return EMPTY;
+
+        // Step 5: Map the subflow DTO to a FlowModel.
+        const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(subflowGraph));
+
+        // Step 6: Run the unpack utility.
+        const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel);
+
+        // Step 7: Update the parent flow and save.
+        this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
+        return this.sendFlowState(graphId, false);
+    }
+
+    private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false): void {
+        this.loadGraph(graphId, forceRefresh, showRefreshToast).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    /**
+     * Loads graph `graphId` onto the page. A failure is reported and leaves for the flows list.
+     * Neither happens once the route has moved on to another flow: a slow load (a version
+     * restore's reload, say) must not land over the flow the user went to.
+     */
+    private loadGraph(graphId: number, forceRefresh: boolean, showRefreshToast: boolean): Observable<void> {
+        const isStillRouted = (): boolean => Number(this.routeParamMap().get('id')) === graphId;
+        return forkJoin({
             graph: this.flowApiService.getGraphById(graphId, forceRefresh),
             flows: this.flowApiService.getGraphsLight().pipe(catchError(() => of([] as GetGraphLightRequest[]))),
-        })
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                tap(({ graph, flows }) => {
-                    this.applyLoadedGraphState(graph, flows, showRefreshToast);
-                    this.wsService.connect(graph.id);
-                }),
-                catchError((e) => {
-                    this.toastService.error(e.error?.detail || 'Failed to load graph');
-                    void this.router.navigate(['/flows/my']);
-                    return EMPTY;
-                }),
-                finalize(() => {
-                    onSettled?.();
-                    this.cdr.markForCheck();
-                })
-            )
-            .subscribe();
+        }).pipe(
+            filter(isStillRouted),
+            tap(({ graph, flows }) => {
+                this.applyLoadedGraphState(graph, flows, showRefreshToast);
+                this.wsService.connect(graph.id);
+            }),
+            map(() => void 0),
+            catchError((e) => {
+                if (!isStillRouted()) return EMPTY;
+                this.toastService.error(e.error?.detail || 'Failed to load graph');
+                void this.router.navigate(['/flows/my']);
+                return EMPTY;
+            }),
+            finalize(() => this.cdr.markForCheck())
+        );
     }
 
     public onHeaderSave(): void {
@@ -748,7 +866,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
 
         this.cleanupCdtGridState(flowState);
-        this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.saveFlowState(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
@@ -917,18 +1035,50 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
-        if (!this.graph?.id) return EMPTY;
-        if (this.flowReadOnly.isReadOnly()) {
-            this.flowReadOnly.notifyBlocked();
-            return EMPTY;
-        }
+    /**
+     * Saves the whole canvas once every save queued before it has answered. The
+     * canvas is read then, not when this is called: a save that ran in between may
+     * have created a node and handed it its `backendId`, and an earlier snapshot
+     * would create it a second time.
+     */
+    private saveFlowState(showSuccessToast: boolean): Observable<void> {
+        return defer(() => {
+            if (!this.graph?.id) return EMPTY;
+            if (this.flowReadOnly.isReadOnly()) {
+                this.flowReadOnly.notifyBlocked();
+                return EMPTY;
+            }
+            const graphId = this.graph.id;
+            return this.queueFullSave(() => this.sendFlowState(graphId, showSuccessToast));
+        });
+    }
+
+    /** Queues `task` in `saveQueue` and counts it in `isSaving` from now until it settles. */
+    private queueFullSave<T>(task: () => Observable<T>): Observable<T> {
+        return defer(() => {
+            this.pendingFullSaves.update((count) => count + 1);
+            return this.saveQueue.run(task).pipe(finalize(() => this.pendingFullSaves.update((count) => count - 1)));
+        });
+    }
+
+    /**
+     * Whether the page still shows graph `graphId`. `flows/:id` reuses this component, so
+     * between queueing a write and its turn — or its response — another flow may have
+     * loaded: the canvas then holds that flow, which must never be sent as this one, nor
+     * be overwritten by this one's response. Every queued write checks this when its turn
+     * comes and again before it applies what came back.
+     */
+    private isCurrentGraph(graphId: number | null): graphId is number {
+        return graphId != null && this.graphState()?.id === graphId;
+    }
+
+    private sendFlowState(graphId: number, showSuccessToast: boolean): Observable<void> {
+        if (!this.isCurrentGraph(graphId)) return EMPTY;
+
+        const flowState = this.currentFlowState();
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
         }
-        const graphId = this.graph.id;
-
-        this.isSaving.set(true);
 
         const previous = this.loadedFlowState();
         const flowToSave = clearStaleIds(previous, flowState);
@@ -951,8 +1101,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     catchError(() => of({ graph, flows: [] as GetGraphLightRequest[] }))
                 )
             ),
-            tap(({ graph, flows }) => this.onFlowSaved(graph, flows, flowState, previous, nodeDiff, showSuccessToast)),
-            map(() => void 0),
+            // Answered after another flow loaded: applying it would replace that flow. Nothing is
+            // emitted either, so what was chained on the save (a run, an extraction) does not go on.
+            switchMap(({ graph, flows }) => {
+                if (!this.isCurrentGraph(graphId)) return EMPTY;
+                this.onFlowSaved(graph, flows, flowState, previous, nodeDiff, showSuccessToast);
+                return of(void 0);
+            }),
             catchError((err: HttpErrorResponse) => {
                 if (err.status === 409) {
                     this.toastService.warning(
@@ -962,10 +1117,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.toastService.error(`Failed to save graph: ${extractHttpErrorMessage(err)}`);
                 }
                 return EMPTY;
-            }),
-            finalize(() => {
-                this.isSaving.set(false);
-                this.cdr.markForCheck();
             })
         );
     }
@@ -980,14 +1131,26 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     ): void {
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
-        let patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
-        patchedFlow = patchCdtPromptBackendIds(patchedFlow, graph);
 
-        this.flowService.setFlow(patchedFlow);
+        // What was sent becomes the saved baseline; the canvas keeps what it holds now.
+        // Patching the snapshot onto the canvas would revert anything that changed
+        // while the request was in flight — an explanation that arrived, an edit —
+        // and those are still unsaved, so they must stay and read as such. The canvas
+        // takes the ids the sent snapshot was given by `tempId`, never by position.
+        const patchedFlow = patchCdtPromptBackendIds(
+            patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph),
+            graph
+        );
+        const liveFlow = patchCdtPromptBackendIds(
+            patchLiveFlowWithBackendIds(this.currentFlowState(), patchedFlow, previous, nodeDiff, graph),
+            graph
+        );
+
+        this.flowService.setFlow(liveFlow);
         // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
         // backend IDs and does not propagate other backend-authoritative fields like is_active.
         for (const dto of graph.schedule_trigger_node_list ?? []) {
-            const node = patchedFlow.nodes.find(
+            const node = liveFlow.nodes.find(
                 (n): n is ScheduleTriggerNodeModel =>
                     n.type === NodeType.SCHEDULE_TRIGGER && (n as ScheduleTriggerNodeModel).backendId === dto.id
             );
@@ -1003,12 +1166,23 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
+    /**
+     * The panel's node goes onto the canvas now, as asked; the save itself waits its turn
+     * in `saveQueue` and then sends the node as the canvas holds it (see `saveNodeToBackend`).
+     */
     private handleNodeSaveRequest(node: NodeModel): void {
         if (!this.graph?.id) return;
         if (this.sidePanelService.savingNodeId() === node.id) return;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        const graphId = this.graph.id;
 
+        this.flowService.updateNode(node);
         this.sidePanelService.markNodeSaving(node.id);
-        this.saveNodeToBackend(node)
+        this.saveQueue
+            .run(() => this.saveNodeToBackend(node.id, graphId))
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.sidePanelService.clearNodeSaving())
@@ -1016,11 +1190,22 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
-    private saveNodeToBackend(node: NodeModel): Observable<void> {
-        if (!this.graph?.id) return EMPTY;
-        const graphId = this.graph.id;
+    /**
+     * Runs inside `saveQueue`, so the payload carries the `save_version` the previous save returned.
+     *
+     * Sends the node as the canvas holds it when the turn comes, not as it was when the save was
+     * asked for: it may have been edited since, or been created on the server by a save that ran
+     * in between (taking a `backendId` the requested copy lacks). Deleted meanwhile, it is not sent.
+     */
+    private saveNodeToBackend(nodeId: string, graphId: number): Observable<void> {
+        if (!this.isCurrentGraph(graphId)) return EMPTY;
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return EMPTY;
+        }
 
-        this.flowService.updateNode(node);
+        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        if (!node) return EMPTY;
 
         const previous = this.loadedFlowState();
         const previousForDiff: FlowModel = {
@@ -1030,28 +1215,44 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const singleNodeFlow: FlowModel = { nodes: [node], connections: [] };
         const nodeDiff = getNodeDiff(previousForDiff, singleNodeFlow);
         const connectionDiff = { toCreate: [], toUpdate: [], toDelete: [] };
-        const idMap = buildUuidToBackendIdMap([node]);
+
+        // The diff stays single-node — only this node is sent — but the payload needs
+        // the whole canvas to resolve the node's references to its neighbours. Given
+        // just this node, `resolveNodeRef` finds none of them and emits `*_temp_id`
+        // for nodes that already exist on the server, which the backend rejects.
+        const wholeFlow = this.currentFlowState();
+        const idMap = buildUuidToBackendIdMap(wholeFlow.nodes);
         const payload = buildBulkSavePayload(
             graphId,
             nodeDiff,
             connectionDiff,
-            singleNodeFlow,
+            wholeFlow,
             idMap,
             this.graphState()!.save_version
         );
 
         return this.flowApiService.bulkSaveGraph(graphId, payload).pipe(
             tap((responseGraph) => {
+                if (!this.isCurrentGraph(graphId)) return;
                 this.setGraphState(responseGraph);
-                const patchedFlow = patchFlowStateWithBackendIds(
-                    this.currentFlowState(),
+
+                // The baseline records what was *sent*, patched with what the server
+                // assigned it. Reading the node back off the canvas would bake in
+                // whatever arrived mid-flight and mark as saved what was never sent;
+                // patching only `backendId` would drop the agent task ids and the
+                // schedule-trigger fields, leaving those nodes dirty forever after a
+                // successful save.
+                const sentFlow = patchFlowStateWithBackendIds(
+                    { nodes: [node], connections: [] },
                     previous,
                     nodeDiff,
                     responseGraph
                 );
-                this.flowService.setFlow(patchedFlow);
+                this.flowService.setFlow(
+                    patchLiveFlowWithBackendIds(this.currentFlowState(), sentFlow, previous, nodeDiff, responseGraph)
+                );
 
-                const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
+                const savedNode = sentFlow.nodes[0];
                 if (savedNode) {
                     const prev = this.savedFlowStateService.savedFlow();
                     const exists = prev.nodes.some((n) => n.id === node.id);
@@ -1079,20 +1280,104 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         );
     }
 
+    /**
+     * Persists a decision table's explanations — only them. Runs inside `saveQueue`.
+     *
+     * The node is read off the canvas when its turn comes, never kept from when the
+     * save was asked for: by then it may have been deleted or moved into a subflow
+     * (its canvas id is gone either way), and a kept copy would send its old
+     * `backendId` — a node this graph no longer has.
+     *
+     * Skipped then, when the saved copy already has them (a full save that ran in
+     * between carried them), for a node the server has not got yet (it cannot be
+     * explained either), in a read-only editor, and once another flow has loaded.
+     * Silent either way: it fires once per explanation, and a failure leaves the
+     * canvas dirty for the next full save.
+     */
+    private saveCdtExplanations(nodeId: string, graphId: number | null): Observable<void> {
+        if (!this.isCurrentGraph(graphId) || this.flowReadOnly.isReadOnly()) return EMPTY;
+
+        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        if (node?.type !== NodeType.CLASSIFICATION_TABLE || node.backendId == null) return EMPTY;
+        const backendId = node.backendId;
+
+        const explanations = toStoredCdtExplanations(node.explanations);
+        const savedNode = this.savedFlowStateService.savedNode(nodeId);
+        if (
+            savedNode?.type === NodeType.CLASSIFICATION_TABLE &&
+            JSON.stringify(toStoredCdtExplanations(savedNode.explanations)) === JSON.stringify(explanations)
+        ) {
+            return EMPTY;
+        }
+
+        return this.cdtExplanationsApiService
+            .saveExplanations(backendId, { save_version: this.graphState()!.save_version, explanations })
+            .pipe(
+                tap((response) =>
+                    this.onCdtExplanationsSaved(graphId, nodeId, backendId, explanations, response.save_version)
+                ),
+                map(() => void 0),
+                catchError(() => EMPTY)
+            );
+    }
+
+    /**
+     * Records what was sent as saved: in the loaded graph, so the next full save's
+     * diff starts from it, and in the dirty-check baseline — the explanations only,
+     * so an unsaved table edit on the same node still reads as unsaved. Ignored once
+     * another flow has loaded: neither belongs to it.
+     */
+    private onCdtExplanationsSaved(
+        graphId: number,
+        nodeId: string,
+        backendId: number,
+        explanations: CdtExplanations,
+        saveVersion: number
+    ): void {
+        if (!this.isCurrentGraph(graphId)) return;
+        this.applyOwnWriteToGraphState(graphId, (graph) => ({
+            ...graph,
+            save_version: saveVersion,
+            classification_decision_table_node_list: (graph.classification_decision_table_node_list ?? []).map((dto) =>
+                dto.id === backendId
+                    ? { ...dto, metadata: { ...(dto.metadata as object | undefined), explanations } }
+                    : dto
+            ),
+        }));
+        const saved = this.savedFlowStateService.savedFlow();
+        this.savedFlowStateService.setSavedFlow({
+            ...saved,
+            nodes: saved.nodes.map((candidate) =>
+                candidate.id === nodeId && candidate.type === NodeType.CLASSIFICATION_TABLE
+                    ? { ...candidate, explanations }
+                    : candidate
+            ),
+        });
+    }
+
+    /**
+     * Takes a write's own result into `graphState` when the response is not the whole graph. It
+     * does not bring in another user's save: whether the graph is outdated is still `remoteSave`
+     * against the new `save_version`, and a save announced after this write stays ahead of it. A
+     * result for a graph the page no longer shows is dropped.
+     */
+    private applyOwnWriteToGraphState(graphId: number, update: (graph: GraphDto) => GraphDto): void {
+        const graph = this.graphState();
+        if (!graph || graph.id !== graphId) return;
+        this.setGraphState(update(graph));
+    }
+
     private saveGraphForRun(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
         if (this.isSaving()) return EMPTY;
 
-        return this.saveFlowState(this.currentFlowState(), false);
+        return this.saveFlowState(false);
     }
 
+    /** Queued like every save, so it waits out one already in flight. */
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
-        return toObservable(this.isSaving, { injector: this.injector }).pipe(
-            filter((saving) => !saving),
-            take(1),
-            switchMap(() => this.saveFlowState(this.currentFlowState(), false))
-        );
+        return this.saveFlowState(false);
     }
 
     public handleRunFlow(): void {
@@ -1294,7 +1579,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.isDeactivating = true;
         return this.unsavedChangesDialog
             .confirmUnsavedChanges(() =>
-                this.saveFlowState(this.currentFlowState(), false).pipe(
+                this.saveFlowState(false).pipe(
                     map(() => true),
                     defaultIfEmpty(false),
                     catchError(() => of(false))
@@ -1314,42 +1599,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onToggleAssistant(): void {
         if (!this.graph?.id) return;
         this.flowAssistantService.toggle(this.graph.id);
-    }
-
-    public connectToEpicChat(): void {
-        if (!this.graph?.id) {
-            this.toastService.error('Unable to connect chat: Missing flow ID');
-            return;
-        }
-
-        const flowUrl = this.normalizeApiUrl(this.configService.apiUrl);
-        if (!flowUrl) {
-            this.toastService.error('Unable to connect chat: Missing API URL');
-            return;
-        }
-
-        this.flowApiService
-            .patchGraph(this.graph.id, { epicchat_enabled: true, save_version: this.graphState()!.save_version })
-            .subscribe({
-                next: () => {
-                    this.graph.epicchat_enabled = true;
-                    this.epicChatService.requestCreateAgent({
-                        name: this.graph.name?.trim() || `Flow ${this.graph.id}`,
-                        description: this.graph.description?.trim(),
-                        flowId: this.graph.id,
-                        flowUrl,
-                        selectAfterCreate: true,
-                    });
-                    this.toastService.success('Flow connected to Epic Chat');
-                },
-                error: () => {
-                    this.toastService.error('Failed to save EpicChat connection');
-                },
-            });
-    }
-
-    private normalizeApiUrl(apiUrl: string): string {
-        return (apiUrl || '').trim().replace(/\/+$/, '');
     }
 
     public closeMessagesPanel(): void {
@@ -1653,44 +1902,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         this.onPreviewExit();
                     }
                     if (result === 'save') {
-                        return this.saveCurrentState().pipe(
-                            switchMap(() =>
-                                this.flowApiService.restoreGraphVersion(
-                                    version.id,
-                                    true,
-                                    this.versionHistoryGraphSaveVersion()
-                                )
-                            )
-                        );
+                        return this.saveCurrentState().pipe(switchMap(() => this.restoreVersion(version, true)));
                     }
                     if (result === 'dont-save') {
-                        return this.flowApiService.restoreGraphVersion(
-                            version.id,
-                            false,
-                            this.versionHistoryGraphSaveVersion()
-                        );
+                        return this.restoreVersion(version, false);
                     }
                     return EMPTY;
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe({
-                next: (response) => {
-                    if (response.warnings.length > 0) {
-                        this.toastService.warning(
-                            `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
-                        );
-                    } else {
-                        this.toastService.success('Version restored successfully');
-                    }
-                    this.onVersionHistoryClosed();
-                    this.restoreWarnings.set(response.warnings);
-                    this.undoRedoService.setUndoStack([]);
-                    this.undoRedoService.setRedoStack([]);
-                    this.reloadRestoredGraph();
-                },
-                error: () => this.toastService.error('Failed to restore version'),
-            });
+            .subscribe({ error: () => this.toastService.error('Failed to restore version') });
     }
 
     public onShowRestoreWarnings(): void {
@@ -1770,7 +1991,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 switchMap((result) => {
                     if (result === 'save') {
-                        return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => void 0));
+                        return this.saveFlowState(false);
                     }
                     if (result === 'dont-save') {
                         return of(void 0);
@@ -1779,6 +2000,41 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    /**
+     * Restores `version` and loads the result as one queued full save: the restore is checked
+     * against the `save_version` the save before it returned, and Save and Run stay locked until
+     * the restored graph — with its new `save_version` — is on the page. Nothing is restored for,
+     * or reloaded over, a flow the page no longer shows.
+     */
+    private restoreVersion(version: GraphVersionDto, backup: boolean): Observable<void> {
+        const graphId = this.graph.id;
+        return this.queueFullSave(() => {
+            if (!this.isCurrentGraph(graphId)) return EMPTY;
+            return this.flowApiService
+                .restoreGraphVersion(version.id, backup, this.versionHistoryGraphSaveVersion())
+                .pipe(
+                    switchMap((response) =>
+                        this.isCurrentGraph(graphId) ? this.onVersionRestored(graphId, response) : EMPTY
+                    )
+                );
+        });
+    }
+
+    private onVersionRestored(graphId: number, response: GraphRestoreResponse): Observable<void> {
+        if (response.warnings.length > 0) {
+            this.toastService.warning(
+                `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
+            );
+        } else {
+            this.toastService.success('Version restored successfully');
+        }
+        this.onVersionHistoryClosed();
+        this.restoreWarnings.set(response.warnings);
+        this.undoRedoService.setUndoStack([]);
+        this.undoRedoService.setRedoStack([]);
+        return this.reloadRestoredGraph(graphId);
     }
 
     /** Commits the live node panel into the root flow; false (or a throw) means it holds invalid edits. */
@@ -1800,12 +2056,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
      * Loads the restored graph while the live canvas is unmounted, so it re-mounts and fits the
      * restored version instead of keeping the pre-restore (or pre-preview) viewport.
      */
-    private reloadRestoredGraph(): void {
-        const graphId = Number(this.route.snapshot.paramMap.get('id'));
-        if (!isFinite(graphId)) return;
+    private reloadRestoredGraph(graphId: number): Observable<void> {
         this.savedViewport.set(null);
         this.consumeNodeQuery();
         this.isCanvasReloading.set(true);
-        this.fetchGraph(graphId, true, true, () => this.isCanvasReloading.set(false));
+        return this.loadGraph(graphId, true, true).pipe(finalize(() => this.isCanvasReloading.set(false)));
     }
 }

@@ -16,6 +16,10 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
+from tables.serializers.utils.llm_config_data_validation import (
+    LLMConfigDataFieldsValidationMixin,
+)
+from tables.utils.litellm_model_info import validate_reasoning_effort
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -40,7 +44,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
-class LLMConfigImportSerializer(BaseConfigImportSerializer):
+class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
     model_fk_field = "model"
@@ -54,6 +58,11 @@ class LLMConfigImportSerializer(BaseConfigImportSerializer):
         # every exported key, and an equivalent config created by an earlier import has
         # its own creation time, so re-imports would stop matching it and duplicate it.
         exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        validate_reasoning_effort(attrs.get("model"), attrs.get("reasoning_effort"))
+        return attrs
 
 
 class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):

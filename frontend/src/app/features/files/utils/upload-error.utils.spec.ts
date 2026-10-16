@@ -104,7 +104,7 @@ describe('describeUploadFailures', () => {
             { file: file('a.txt'), error: quota },
         ]);
         expect(message).toBe(
-            '2 files were not uploaded. Storage quota exceeded for this organization. Free up space and try again.'
+            '2 files were not uploaded. Storage quota exceeded for this organization. Free up space and try again. Files in the recycle bin still count, so delete them there permanently to free their space.'
         );
     });
 

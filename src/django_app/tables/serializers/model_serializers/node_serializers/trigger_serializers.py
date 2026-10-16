@@ -25,6 +25,7 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
@@ -48,19 +49,23 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
             {
                 "webhook_trigger": (
                     f"This trigger is already configured for "
-                    f"kind='{auth.kind}' auth and cannot be attached to a "
+                    f"kind='{auth.kind}' auth (by a node, possibly in the recycle "
+                    f"bin, or a reservation) and cannot be attached to a "
                     f"node expecting kind='{expected_kind}' auth."
                 )
             }
         )
 
     other_related_name = _OTHER_NODE_TYPE_RELATED_NAME[expected_kind]
-    if getattr(wt, other_related_name).exists():
+    # all_objects: a node in the recycle bin keeps its trigger until it's
+    # purged, so restoring its flow can't give the trigger two node types.
+    if getattr(wt, other_related_name)(manager="all_objects").exists():
         raise serializers.ValidationError(
             {
                 "webhook_trigger": (
                     "This trigger is already attached to a different "
-                    "trigger node type and cannot also serve a "
+                    "trigger node type (possibly in the recycle bin) and "
+                    "cannot also serve a "
                     f"kind='{expected_kind}' node -- a trigger serves "
                     "exactly one node type."
                 )
@@ -76,8 +81,8 @@ class WebhookTriggerNodeSerializer(
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -89,6 +94,7 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "use_storage",
             "created_by",
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
@@ -127,14 +133,14 @@ class TelegramTriggerNodeSerializer(
 ):
     secret_reference_fields = ("telegram_bot_api_key_secret_id",)
 
-    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    telegram_bot_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="telegram_bot_api_key_secret",
         required=False,
         allow_null=True,
     )
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())

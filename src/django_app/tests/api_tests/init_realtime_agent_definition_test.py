@@ -15,6 +15,7 @@ Covers:
 """
 
 import json
+import re
 
 import pytest
 from django.urls import reverse
@@ -87,8 +88,10 @@ def py_tool_b(db):
 
 
 @pytest.fixture
-def naive_collection(db):
-    collection = SourceCollection.objects.create(collection_name="voice-naive-coll")
+def naive_collection(default_org):
+    collection = SourceCollection.objects.create(
+        collection_name="voice-naive-coll", org=default_org
+    )
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
     )
@@ -105,8 +108,10 @@ def completed_naive_rag(naive_collection):
 
 
 @pytest.fixture
-def graph_collection(db):
-    collection = SourceCollection.objects.create(collection_name="voice-graph-coll")
+def graph_collection(default_org):
+    collection = SourceCollection.objects.create(
+        collection_name="voice-graph-coll", org=default_org
+    )
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.GRAPH, source_collection=collection
     )
@@ -321,49 +326,30 @@ def test_init_realtime_agent_definition_graph_rag_basic_wins_over_local(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.django_db
-def test_init_realtime_missing_agent_definition_id_returns_400(auth_client):
-    url = reverse("init-realtime")
-
-    response = auth_client.post(url, data={}, format="json")
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_init_realtime_unknown_agent_definition_id_returns_400(auth_client):
-    """Missing-agent Http404 collapses into 400 (broad except in
-    InitRealtimeAPIView.post)."""
-    url = reverse("init-realtime")
-
-    response = auth_client.post(
-        url, data={"agent_definition_id": 999999}, format="json"
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_init_realtime_cross_org_agent_definition_rejected(auth_client, org_b):
-    """An org_a caller must not be able to init a realtime session for another
-    org's AgentDefinition by guessing/reusing its RealtimeAgentDefinition pk."""
-    other_agent_definition = AgentDefinition.objects.create(
-        org=org_b, name="other-org-agent"
-    )
-    other_config = OpenAIRealtimeConfig.objects.create(
-        custom_name="other-org-openai-config", org=org_b
-    )
+def _other_orgs_realtime_agent_definition_id(org_b):
     other_rt_agent_definition = RealtimeAgentDefinition.objects.create(
-        agent_definition=other_agent_definition,
-        openai_config=other_config,
+        agent_definition=AgentDefinition.objects.create(org=org_b, name="other-org-agent"),
+        openai_config=OpenAIRealtimeConfig.objects.create(custom_name="other-org-openai-config", org=org_b),
     )
+    return {"agent_definition_id": other_rt_agent_definition.pk}
 
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "body",
+    [lambda org_b: {}, lambda org_b: {"agent_definition_id": 999999}, _other_orgs_realtime_agent_definition_id],
+    ids=["no-id", "unknown-id", "other-orgs-definition"],
+)
+def test_init_realtime_refuses_a_definition_the_caller_cannot_use(auth_client, org_b, body):
+    """An unknown id and another org's id get the same answer, so a guessed pk
+    reveals nothing (the view's broad except turns the missing-agent 404 into 400)."""
     url = reverse("init-realtime")
-    response = auth_client.post(
-        url,
-        data={"agent_definition_id": other_rt_agent_definition.pk},
-        format="json",
-    )
+    unknown = auth_client.post(url, data={"agent_definition_id": 999999}, format="json")
+
+    data = body(org_b)
+
+    response = auth_client.post(url, data=data, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "agent_definition_id" in str(response.data)
+    if "agent_definition_id" in data:
+        assert re.sub(r"\d", "", response.content.decode()) == re.sub(r"\d", "", unknown.content.decode())

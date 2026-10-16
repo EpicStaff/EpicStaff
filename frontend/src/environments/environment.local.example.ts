@@ -31,7 +31,7 @@ export const environment = {
     //   PROXY_TARGET=https://some-stand.example.com npm run start:local
     // Leave PROXY_TARGET unset to use the local docker backend at http://localhost.
 
-    isEpicChatEnabled: true,
     isChatEnabled: true,
     chatApiUrl: '/chat/',
+    isAuditTrailEnabled: true,
 };

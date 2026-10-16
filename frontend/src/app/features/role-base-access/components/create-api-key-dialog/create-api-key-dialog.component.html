@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onEnterSubmit()"
+    [appEnterSubmitDisabled]="isEnterSubmitDisabled()"
+>
     <div class="header">
         <span class="title">{{ step() === 'pending' ? 'Create API Key' : 'Key Created' }}</span>
         <button

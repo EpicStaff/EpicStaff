@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ai_providers import EmbedderData, LLMData
+from .storage_scope import StorageCredentials, StorageScopedData
 
 
 class ToolConfigData(BaseModel):
@@ -48,17 +49,12 @@ class McpToolData(BaseModel):
     )
 
 
-class PythonCodeData(BaseModel):
+class PythonCodeData(StorageScopedData):
     venv_name: str
     code: str
     entrypoint: str
     libraries: list[str]
     global_kwargs: dict[str, Any] | None = None
-    use_storage: bool = False
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -157,7 +153,7 @@ class CodeResultData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CodeTaskData(BaseModel):
+class CodeTaskData(StorageScopedData):
     venv_name: str
     libraries: list[str]
     code: str
@@ -165,15 +161,39 @@ class CodeTaskData(BaseModel):
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
-    use_storage: bool = False
-    storage_allowed_paths: list[str] | None = None
-    storage_org_prefix: str | None = None
-    session_id: int | None = None
-    org_id: int | None = None
+
+    storage_credentials: StorageCredentials | None = None
+    """Ephemeral temporary storage credentials for sandbox execution.
+
+    Injected by crew/django at task publication time if use_storage=True.
+    Never persisted — payload-only field, never part of graph_schema or any
+    stored state.
+    """
 
     secrets: dict[str, str] = {}
     """{name: plaintext} for the sandbox. NOT excluded: this message is never
     persisted, and excluding it would silently deliver no secrets."""
+
+    @model_validator(mode="after")
+    def _validate_storage_scope(self) -> "CodeTaskData":
+        """Second echelon of defense (fail-closed):
+        a task that asks for storage access must already carry:
+        1. The trusted scope a publisher is responsible for filling in (org_id, storage_org_prefix)
+        2. The temporary credentials (storage_credentials) injected by crew/agent at publication time
+
+        Without both, sandbox cannot execute the task safely.
+        """
+        if self.use_storage:
+            if not self.org_id or not self.storage_org_prefix:
+                raise ValueError(
+                    "use_storage=True requires both org_id and storage_org_prefix "
+                    "to be set on CodeTaskData."
+                )
+            if self.storage_credentials is None:
+                raise ValueError(
+                    "use_storage=True requires storage_credentials to be set on CodeTaskData."
+                )
+        return self
 
     def log_summary(self) -> str:
         """A log-safe description of this task.
@@ -181,12 +201,14 @@ class CodeTaskData(BaseModel):
         `secrets` holds resolved plaintext, so neither its values nor its keys
         are rendered — only its size, which is what actually helps when
         debugging ("did the node receive its declarations?"). Callers must log
-        this instead of the message body.
+        this instead of the message body. `storage_credentials.secret_key` is
+        also never rendered.
         """
+        creds_summary = "present" if self.storage_credentials else "none"
         return (
             f"execution_id={self.execution_id} venv={self.venv_name} "
             f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
-            f"secrets={len(self.secrets)}"
+            f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 
     model_config = ConfigDict(from_attributes=True)

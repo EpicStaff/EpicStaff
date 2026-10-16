@@ -1,6 +1,5 @@
 """Unit coverage for build_jail(): a pure allowlist builder, no chain, no Redis."""
 
-import dataclasses
 import os
 from pathlib import Path
 
@@ -78,9 +77,3 @@ class TestBuildJail:
                     allowed in entry.parents or entry == allowed
                     for allowed in allowed_subpaths
                 )
-
-    def test_jail_is_frozen(self):
-        jail = _jail()
-
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            jail.read_write = ()

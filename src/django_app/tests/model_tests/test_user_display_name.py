@@ -1,6 +1,6 @@
 import pytest
 
-from tables.models.user import DISPLAY_NAME_MAX_LENGTH, User, display_name_from_email
+from tables.models.user import User, display_name_from_email
 
 
 @pytest.mark.parametrize(

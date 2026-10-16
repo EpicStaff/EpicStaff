@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { ButtonComponent } from './button.component';
 
-// The label collapses to its icon on overflow, which jsdom cannot measure.
+// jsdom has no ResizeObserver; the collapse-on-overflow directive only needs it to exist.
 class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
@@ -27,5 +27,9 @@ describe('ButtonComponent', () => {
 
     it('passes a description to its button, which is what gets the focus', () => {
         expect(render({ ariaDescribedby: 'save-warning' }).getAttribute('aria-describedby')).toBe('save-warning');
+    });
+
+    it('renders the outline-danger type as its own class', () => {
+        expect(render({ type: 'outline-danger' }).classList).toContain('btn-outline-danger');
     });
 });

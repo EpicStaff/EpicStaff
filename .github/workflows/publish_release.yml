@@ -60,6 +60,12 @@ jobs:
     name: Publish GitHub Release
     needs: [resolve, build-images]
     runs-on: self-hosted
+    # id-token: write is what keyless cosign signing of the release files needs;
+    # contents: write is the release upload. Job-level permissions replace the
+    # workflow-level set, so both are listed.
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -123,6 +129,25 @@ jobs:
             exit 1
           fi
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # The compose file is what tells a customer WHICH digests to run. Every image
+      # is signed (build-and-push.yml), but without a signature over this file an
+      # attacker who can alter the release asset could point it at an older,
+      # genuinely signed EpicStaff image and `cosign verify` would still pass.
+      # Signing the files themselves closes that downgrade path; README's
+      # "How to verify a release" documents the matching verify-blob command.
+      - name: Sign release files (keyless)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in docker-compose.yaml .env.example; do
+            cosign sign-blob --yes \
+              --bundle "release-archives/${file}.sigstore.json" \
+              "release-archives/${file}"
+          done
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
         with:
@@ -131,5 +156,6 @@ jobs:
           files: |
             release-archives/*
             release-archives/.env.example
+            release-archives/.env.example.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

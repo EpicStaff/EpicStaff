@@ -17,6 +17,7 @@ export class SearchComponent {
     mod = input<'default' | 'small'>('default');
     placeholder = input<string>('Search...');
     icon = input<string>('search');
+    iconSize = input<string>('1.1rem');
     /** The field's accessible name where no visible label names it; the placeholder is only a hint. */
     ariaLabel = input<string | null>(null);
     searchTerm = model<string>('');

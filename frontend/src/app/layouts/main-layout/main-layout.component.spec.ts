@@ -1,6 +1,6 @@
 import { InteractivityChecker } from '@angular/cdk/a11y';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
-import { Component, signal } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
@@ -8,11 +8,10 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { BehaviorSubject, map, Observable } from 'rxjs';
 
 import { AppNavigationDrawerService, HIDE_SIDENAV_ON_PHONE } from '../../core/services/app-navigation-drawer.service';
-import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
 import { MainLayoutComponent } from './main-layout.component';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
 
-// The real sidenav pulls in the org and user menus, the inbox stream and the EpicChat widget.
+// The real sidenav pulls in the org and user menus, and the inbox stream.
 @Component({
     selector: 'app-left-sidebar',
     imports: [RouterLink],
@@ -30,7 +29,10 @@ import { LeftSidebarComponent } from './sidenav/sidenav.component';
         </button>
     </nav>`,
 })
-class SidebarStubComponent {}
+class SidebarStubComponent {
+    readonly width = input<number>();
+    readonly expandedToggle = output<void>();
+}
 
 @Component({ template: '<button type="button" class="page-button">App menu</button>' })
 class PageStubComponent {}
@@ -44,12 +46,6 @@ class LaidOutInteractivityChecker extends InteractivityChecker {
 
 describe('MainLayoutComponent', () => {
     const isPhone = new BehaviorSubject(false);
-    const epicChat = {
-        isDocked: signal(false),
-        isChatOpen: signal(false),
-        dockWidth: signal(420),
-        setDockWidth: vi.fn(),
-    };
     let harness: RouterTestingHarness;
     let drawer: AppNavigationDrawerService;
 
@@ -69,8 +65,6 @@ describe('MainLayoutComponent', () => {
 
     beforeEach(async () => {
         isPhone.next(false);
-        epicChat.isDocked.set(false);
-        epicChat.isChatOpen.set(false);
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([
@@ -88,7 +82,6 @@ describe('MainLayoutComponent', () => {
                         ],
                     },
                 ]),
-                { provide: EpicChatService, useValue: epicChat },
                 {
                     provide: BreakpointObserver,
                     useValue: {
@@ -232,20 +225,5 @@ describe('MainLayoutComponent', () => {
         }
         expect(drawer.isOpen()).toBe(true);
         expect(TestBed.inject(Router).url).toBe('/chat-bindings/b-1?conversation=c-1');
-    });
-
-    it('gives a docked EpicChat no room on a phone page that hides the sidenav', async () => {
-        epicChat.isDocked.set(true);
-        epicChat.isChatOpen.set(true);
-        harness.detectChanges();
-        expect(host().querySelector('.chat-dock-spacer')).not.toBeNull();
-
-        isPhone.next(true);
-        harness.detectChanges();
-        expect(host().querySelector('.chat-dock-spacer')).toBeNull();
-
-        await harness.navigateByUrl('/agents');
-        expect(host().querySelector('.chat-dock-spacer')).not.toBeNull();
-        expect(TestBed.inject(Router).url).toBe('/agents');
     });
 });

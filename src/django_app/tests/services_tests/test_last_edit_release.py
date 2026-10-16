@@ -42,7 +42,7 @@ def test_release_clears_editor_only_in_target_org_and_keeps_time(acme, beta, edi
     deleted_graph = Graph.objects.create(
         name="acme-deleted-edited",
         org=acme,
-        is_soft_deleted=True,
+        active=False,
         soft_deleted_at=timezone.now(),
         created_by=colleague,
     )

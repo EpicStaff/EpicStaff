@@ -505,7 +505,11 @@ If any of the three operations fail validation, none of the writes happen.
 | DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `{ "index": 0, "errors": ["Provide at most one of default_next_node_id or default_next_node_temp_id, not both."] }` |
 | DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `{ "index": 0, "errors": ["default_next_node_temp_id='...' does not match any temp_id in the node lists of this request."] }` |
 | DTN: condition group `next_node_temp_id` not matching any `temp_id` | `{ "index": 0, "errors": ["condition_groups[0]: next_node_temp_id='...' does not match any temp_id ..."] }` |
-| DTN: `default_next_node_id` references a node that does not exist | `"DecisionTableNode routing references node IDs that do not exist: [99999]"` |
+| DTN / CDT: `default_next_node_id` or `next_error_node_id` references a node outside this graph (nonexistent, soft-deleted, or in another graph or organization) | `{ "index": 0, "errors": { "default_next_node_id": ["Invalid pk \"99999\" - object does not exist."] } }` |
+| DTN / CDT: a condition group's `next_node_id` references a node outside this graph | under the table's own list key (`decision_table_node_list` / `classification_decision_table_node_list`): `{ "index": 0, "errors": ["Decision table routing references node IDs not found in this graph: [99999]"] }` |
+| CDT: a condition group value of the wrong type (e.g. `"order": "first"`) | `{ "index": 0, "errors": [{ "condition_groups": [{ "order": ["A valid integer is required."] }] }] }` |
+| CDT: a `sections[].id` that belongs to another node (soft-deleted or not) | `{ "index": 0, "errors": ["Section <uuid> already belongs to another node."] }` |
+| Edge `start_node_id` / `end_node_id` references a node outside this graph | `"edge_list": ["Edge references node IDs not found in this graph: [99999]"]` |
 
 ---
 

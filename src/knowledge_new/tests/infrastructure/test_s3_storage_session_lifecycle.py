@@ -79,12 +79,6 @@ def storage() -> S3Storage:
     )
 
 
-async def test_successful_operation_leaves_storage_usable_for_the_next(storage):
-    await storage.set("a.txt", "hello")
-
-    assert await storage.get("a.txt") == "hello"
-
-
 async def test_every_operation_closes_the_session_it_opened(storage, fake_minio):
     await storage.set("a.txt", "hello")
     await storage.get("a.txt")

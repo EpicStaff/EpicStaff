@@ -6,7 +6,6 @@ import {
     computed,
     DestroyRef,
     effect,
-    HostListener,
     inject,
     Injector,
     OnInit,
@@ -16,13 +15,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRouteSnapshot, NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 import { isPlainPrimaryClick, urlPath } from '@shared/utils';
 import { filter } from 'rxjs/operators';
 
 import { AppNavigationDrawerService, HIDE_SIDENAV_ON_PHONE } from '../../core/services/app-navigation-drawer.service';
 import { PhoneLayoutService } from '../../core/services/phone-layout.service';
-import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
+import { MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS } from './main-sidenav-width';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
 
 const TABBED_ROUTES: Record<string, string[]> = {
@@ -33,7 +34,7 @@ const TABBED_ROUTES: Record<string, string[]> = {
 
 @Component({
     selector: 'app-main-layout',
-    imports: [CdkTrapFocus, LeftSidebarComponent, RouterOutlet],
+    imports: [CdkTrapFocus, LeftSidebarComponent, RouterOutlet, ResizableSidebarDirective],
     styles: [
         `
             @use '../../../styles/touch';
@@ -49,13 +50,14 @@ const TABBED_ROUTES: Record<string, string[]> = {
                 max-height: 100dvh;
             }
 
+            /* Width follows the pointer while dragging, so it is never animated. */
             .sidebar-wrapper {
-                width: 3.7rem;
+                position: relative;
                 flex-shrink: 0;
             }
 
             // Out of the layout, past the left edge, until opened over the page. Hidden, not removed: the sidenav
-            // runs the chat inbox stream and the EpicChat widget.
+            // runs the chat inbox stream.
             .sidebar-wrapper--drawer {
                 position: fixed;
                 top: 0;
@@ -113,23 +115,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
                 }
             }
 
-            .chat-dock-spacer {
-                position: relative;
-                flex-shrink: 0;
-                border-right: 1px solid var(--color-divider-subtle);
-                background: var(--color-background-body);
-            }
-
-            .chat-dock-resizer {
-                position: absolute;
-                top: 0;
-                right: -4px;
-                width: 8px;
-                height: 100%;
-                cursor: col-resize;
-                z-index: 10;
-            }
-
             /* The main-content area flexes to fill all remaining horizontal space. */
             .main-content {
                 flex: 1;
@@ -143,9 +128,11 @@ const TABBED_ROUTES: Record<string, string[]> = {
     template: `
         <!-- A dialog only while it is open over the page; Escape closes it from anywhere inside. -->
         <div
+            #sidebarWrapper
             class="sidebar-wrapper"
             [class.sidebar-wrapper--drawer]="isSidenavDrawer()"
             [class.sidebar-wrapper--open]="isSidenavDrawerOpen()"
+            [style.width.px]="sidenavWidth()"
             [attr.inert]="isSidenavDrawer() && !isSidenavDrawerOpen() ? '' : null"
             [attr.role]="isSidenavDrawerOpen() ? 'dialog' : null"
             [attr.aria-modal]="isSidenavDrawerOpen() ? 'true' : null"
@@ -154,7 +141,19 @@ const TABBED_ROUTES: Record<string, string[]> = {
             (keydown.escape)="navigationDrawer.close()"
             (click)="onSidenavClick($event)"
         >
-            <app-left-sidebar></app-left-sidebar>
+            <app-left-sidebar
+                [width]="sidenavWidth()"
+                (expandedToggle)="toggleSidenav()"
+            ></app-left-sidebar>
+            <div
+                class="resizable-sidebar-handle"
+                [appResizableSidebar]="sidenavWidthKey"
+                [sidebarTarget]="sidebarWrapper"
+                [sidebarMinWidth]="sidenavWidthOptions.minWidth"
+                [sidebarMaxWidth]="sidenavWidthOptions.maxWidth"
+                [sidebarCollapse]="sidenavWidthOptions.collapse"
+                sidebarAriaLabel="Resize navigation sidebar"
+            ></div>
         </div>
 
         @if (isSidenavDrawerOpen()) {
@@ -164,18 +163,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
                 animate.leave="sidebar-backdrop--leaving"
                 (click)="navigationDrawer.close()"
             ></div>
-        }
-
-        @if (showsDockSpacer()) {
-            <div
-                class="chat-dock-spacer"
-                [style.width.px]="epicChatService.dockWidth()"
-            >
-                <div
-                    class="chat-dock-resizer"
-                    (mousedown)="onDockResizeStart($event)"
-                ></div>
-            </div>
         }
 
         <div
@@ -189,16 +176,20 @@ const TABBED_ROUTES: Record<string, string[]> = {
 export class MainLayoutComponent implements OnInit {
     private readonly sidenavTrap = viewChild.required(CdkTrapFocus);
 
+    // Declared ahead of the state because the sidenavWidth initializer below reads it.
+    private readonly sidebarWidthService = inject(SidebarWidthService);
+
+    /** Single source of truth for the sidebar state: collapsed and expanded are derived from it. */
+    protected readonly sidenavWidth = this.sidebarWidthService.getWidth(
+        MAIN_SIDENAV_WIDTH_KEY,
+        MAIN_SIDENAV_WIDTH_OPTIONS
+    );
     private readonly isPhone = inject(PhoneLayoutService).isPhone;
     // Read at once, as this layout is created during the navigation that shows it, then after every navigation.
     private readonly routeHidesSidenavOnPhone = signal(routeTreeHidesSidenav(inject(Router).routerState.snapshot.root));
     /** The sidenav is out of the layout and opens over the page on demand. */
     protected readonly isSidenavDrawer = computed(() => this.isPhone() && this.routeHidesSidenavOnPhone());
     protected readonly isSidenavDrawerOpen = computed(() => this.isSidenavDrawer() && this.navigationDrawer.isOpen());
-    // A docked EpicChat would take the width the sidenav just gave up.
-    protected readonly showsDockSpacer = computed(
-        () => this.epicChatService.isDocked() && this.epicChatService.isChatOpen() && !this.isSidenavDrawer()
-    );
 
     // Out of the drawer layout (a wider screen, another page) nothing stays open behind the scenes.
     private readonly closeDrawerOutsideItsLayout = effect(() => {
@@ -215,12 +206,9 @@ export class MainLayoutComponent implements OnInit {
         );
     });
 
-    readonly epicChatService = inject(EpicChatService);
+    protected readonly sidenavWidthKey = MAIN_SIDENAV_WIDTH_KEY;
+    protected readonly sidenavWidthOptions = MAIN_SIDENAV_WIDTH_OPTIONS;
     protected readonly navigationDrawer = inject(AppNavigationDrawerService);
-
-    private isDockResizing = false;
-    private dockResizeStartX = 0;
-    private dockResizeStartWidth = 0;
 
     private router = inject(Router);
     private destroyRef = inject(DestroyRef);
@@ -262,28 +250,9 @@ export class MainLayoutComponent implements OnInit {
         if (target instanceof Element && target.closest('a[href]')) this.navigationDrawer.close();
     }
 
-    public onDockResizeStart(event: MouseEvent): void {
-        if (!this.epicChatService.isDocked()) {
-            return;
-        }
-        event.preventDefault();
-        this.isDockResizing = true;
-        this.dockResizeStartX = event.clientX;
-        this.dockResizeStartWidth = this.epicChatService.dockWidth();
-    }
-
-    @HostListener('window:mousemove', ['$event'])
-    public onDockResizeMove(event: MouseEvent): void {
-        if (!this.isDockResizing) {
-            return;
-        }
-        const delta = event.clientX - this.dockResizeStartX;
-        this.epicChatService.setDockWidth(this.dockResizeStartWidth + delta);
-    }
-
-    @HostListener('window:mouseup')
-    public onDockResizeEnd(): void {
-        this.isDockResizing = false;
+    /** The sidenav's open/close control: the layout owns the width, so it applies and persists the change. */
+    protected toggleSidenav(): void {
+        this.sidebarWidthService.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
     }
 }
 

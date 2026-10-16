@@ -1,6 +1,5 @@
 import pytest
 
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import (
     DecisionTableNode,
@@ -44,24 +43,14 @@ def task_node(graph) -> TaskNode:
 
 
 @pytest.fixture
-def bulk_save_org(db) -> Organization:
-    """Organization matching the bulk-save service's org resolution
-    (Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)). Named
-    distinctly from the top-level `default_org` fixture (used by `auth_client`
-    for RBAC), which creates an unrelated Organization named "Default
-    Organization"."""
-    return Organization.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
-
-
-@pytest.fixture
 def other_org(db) -> Organization:
     return Organization.objects.create(name="bulk-save-other-org")
 
 
 @pytest.fixture
-def shared_surface(bulk_save_org) -> Surface:
+def shared_surface(default_org) -> Surface:
     return Surface.objects.create(
-        org=bulk_save_org,
+        org=default_org,
         name="bulk-save-shared-surface",
         owner_agent=None,
     )
@@ -77,37 +66,39 @@ def other_org_surface(other_org) -> Surface:
 
 
 @pytest.fixture
-def agent_definition(bulk_save_org) -> AgentDefinition:
+def agent_definition(default_org) -> AgentDefinition:
     return AgentDefinition.objects.create(
-        org=bulk_save_org,
+        org=default_org,
         name="bulk-save-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
 
 
 @pytest.fixture
-def agent_owned_surface(bulk_save_org, agent_definition) -> Surface:
+def agent_owned_surface(default_org, agent_definition) -> Surface:
     return Surface.objects.create(
-        org=bulk_save_org,
+        org=default_org,
         name="bulk-save-agent-owned-surface",
         owner_agent=agent_definition,
     )
 
 
 @pytest.fixture
-def py_tool(db) -> PythonCodeTool:
+def py_tool(default_org) -> PythonCodeTool:
     code = PythonCode.objects.create(code="def main(): pass")
     return PythonCodeTool.objects.create(
         name="bulk-save-py-tool",
         description="test",
         python_code=code,
+        org=default_org,
     )
 
 
 @pytest.fixture
-def mcp_tool(db) -> McpTool:
+def mcp_tool(default_org) -> McpTool:
     return McpTool.objects.create(
         name="bulk-save-mcp-tool",
         transport="http://localhost/sse",
         tool_name="bulk_save_tool",
+        org=default_org,
     )

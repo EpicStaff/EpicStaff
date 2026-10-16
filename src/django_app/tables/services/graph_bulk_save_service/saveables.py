@@ -1,4 +1,13 @@
-from tables.exceptions import SectionIdConflictError, SectionNotFoundError
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
+from tables.exceptions import (
+    BulkSaveValidationError,
+    NodeChildValidationError,
+    SectionIdConflictError,
+    SectionNotFoundError,
+)
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -6,6 +15,11 @@ from tables.models.graph_models import (
     Condition,
     ConditionGroup,
     DecisionTableNode,
+)
+from tables.services.classification_decision_table_node_children import (
+    CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
+    CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS,
+    resolve_group_prompt,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 from tables.services.rag_assignment_service import SearchConfigService
@@ -230,29 +244,17 @@ class DecisionTableNodeSaveable:
 
         return node
 
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "conditions",
-            "decision_table_node",
-            "id",
-            # Wire-only routing hint; never a DB model field.
-            "next_node_temp_id",
-        }
-    )
-    _CONDITION_EXCLUDED_FIELDS = frozenset({"condition_group", "id"})
-
     @staticmethod
     def _create_condition_groups(node, groups_data: list[dict]) -> list:
         """Create ConditionGroup and Condition records. Returns the created groups list."""
         groups_to_create = []
         conditions_map = []
 
-        excluded_group = DecisionTableNodeSaveable._GROUP_EXCLUDED_FIELDS
-        excluded_cond = DecisionTableNodeSaveable._CONDITION_EXCLUDED_FIELDS
-
         for group_data in groups_data:
-            group_copy = {k: v for k, v in group_data.items() if k not in excluded_group}
-            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_copy))
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_fields))
             conditions_map.append(group_data.get("conditions", []))
 
         created_groups = ConditionGroup.objects.bulk_create(groups_to_create)
@@ -260,8 +262,10 @@ class DecisionTableNodeSaveable:
         conditions_to_create = []
         for group, conditions_data in zip(created_groups, conditions_map, strict=False):
             for cond_data in conditions_data:
-                cond_copy = {k: v for k, v in cond_data.items() if k not in excluded_cond}
-                conditions_to_create.append(Condition(condition_group=group, **cond_copy))
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
+                }
+                conditions_to_create.append(Condition(condition_group=group, **condition_fields))
 
         if conditions_to_create:
             Condition.objects.bulk_create(conditions_to_create)
@@ -291,20 +295,6 @@ class ClassificationDecisionTableNodeSaveable:
         )
         self._instance = instance
 
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "id",
-            "classification_decision_table_node",
-            "next_node_temp_id",
-            # Prompt reference forms — resolved to the `prompt` FK below (by
-            # prompt_key, or numeric pk fallback); never written as columns.
-            "prompt",
-            "prompt_key",
-            # section id is resolved to the `section` FK below; never written as-is.
-            "section",
-        }
-    )
-
     def save(self):
         s = self._serializer
         validated = dict(s.validated_data)
@@ -323,7 +313,8 @@ class ClassificationDecisionTableNodeSaveable:
             incoming_section_ids = {s["id"] for s in self._sections_data}
             node.sections.exclude(id__in=incoming_section_ids).delete()
             for section_data in self._sections_data:
-                existing_section = ClassificationConditionGroupSection.objects.filter(
+                # all_objects: a soft-deleted section's id still occupies the primary key.
+                existing_section = ClassificationConditionGroupSection.all_objects.filter(
                     id=section_data["id"]
                 ).first()
                 if (
@@ -373,7 +364,6 @@ class ClassificationDecisionTableNodeSaveable:
                     group_name__in=incoming_names
                 ).delete()
 
-            excluded = self._GROUP_EXCLUDED_FIELDS
             # ordered_groups preserves input order for deferred ref resolution.
             ordered_groups: list = [None] * len(self._condition_groups_data)
             to_bulk_create: list[tuple[int, ClassificationConditionGroup]] = []
@@ -389,16 +379,22 @@ class ClassificationDecisionTableNodeSaveable:
                         existing_by_name[g.group_name] = g
 
             for idx, group_data in enumerate(self._condition_groups_data):
-                gd = {k: v for k, v in group_data.items() if k not in excluded}
+                gd = {
+                    k: v
+                    for k, v in group_data.items()
+                    if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+                }
 
-                # Resolve the prompt FK node-locally: prefer prompt_key (works for
-                # a prompt created in this same payload), fall back to numeric pk.
-                key = group_data.get("prompt_key")
-                old_prompt_id = group_data.get("prompt")
-                if key:
-                    gd["prompt"] = prompt_by_key.get(key)
-                elif old_prompt_id is not None:
-                    gd["prompt"] = prompt_by_id.get(old_prompt_id)
+                # `prompt` and `section` are never input columns; both resolve among
+                # this node's own rows. The raw request dict carries the numeric
+                # prompt pk under `prompt` (the single-node serializer maps it to
+                # `prompt_id`).
+                gd["prompt"] = resolve_group_prompt(
+                    group_data.get("prompt_key"),
+                    group_data.get("prompt"),
+                    prompt_by_key,
+                    prompt_by_id,
+                )
 
                 # Resolve the section FK node-locally, mirroring the prompt
                 # resolution above: the section may have just been created in
@@ -431,20 +427,7 @@ class ClassificationDecisionTableNodeSaveable:
 
             if to_bulk_update:
                 ClassificationConditionGroup.objects.bulk_update(
-                    to_bulk_update,
-                    [
-                        "group_name",
-                        "order",
-                        "expression",
-                        "prompt",
-                        "manipulation",
-                        "continue_flag",
-                        "next_node_id",
-                        "dock_visible",
-                        "field_expressions",
-                        "field_manipulations",
-                        "section",
-                    ],
+                    to_bulk_update, CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS
                 )
 
             if to_bulk_create:
@@ -494,14 +477,27 @@ class _NodeSaveable:
 
     After the inner save(), if temp_id is set the real DB id is registered
     in the shared temp_id_map so edge saveables can resolve it.
+
+    list_key and index locate the item in the request, so an error that can
+    only be detected while writing is reported like a Pass 1 item error.
     """
 
-    def __init__(self, inner, temp_id: str | None):
+    def __init__(self, inner, temp_id: str | None, list_key: str, index: int):
         self._inner = inner
         self._temp_id = temp_id
+        self._list_key = list_key
+        self._index = index
 
     def save(self, temp_id_map: dict):
-        instance = self._inner.save()
+        try:
+            instance = self._inner.save()
+        except NodeChildValidationError as exc:
+            # Nested child rows (e.g. a group's prompt or section) resolve against
+            # rows synced by this same save, so they cannot be checked before the
+            # write. Raising rolls the whole save back.
+            raise BulkSaveValidationError(
+                {self._list_key: [{"index": self._index, "errors": [str(exc.detail)]}]}
+            ) from exc
         if self._temp_id and instance is not None:
             temp_id_map[self._temp_id] = instance.id
 
