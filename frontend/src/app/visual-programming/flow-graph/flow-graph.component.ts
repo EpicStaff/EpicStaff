@@ -292,23 +292,49 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return ids;
     });
 
+    protected readonly hoveredConnectionId = signal<string | null>(null);
+    private readonly selectedConnectionIds = signal<Set<string>>(new Set());
+
     protected readonly sortedConnections = computed(() => {
         const backwardIds = this.backwardConnectionIds();
         const hiddenIds = this.hiddenConnectionIds();
+        const hoveredId = this.hoveredConnectionId();
+        const selectedIds = this.selectedConnectionIds();
+        const nodeHoveredIds = this.hoveredNodeConnectionIds();
 
         const connections = [...this.flowService.visibleConnections()].filter(
             (connection) => !hiddenIds.has(connection.id)
         );
 
         return connections.sort((a, b) => {
+            // Hovered connection on top of everything
+            const aHovered = a.id === hoveredId ? 1 : 0;
+            const bHovered = b.id === hoveredId ? 1 : 0;
+            if (aHovered !== bHovered) return aHovered - bHovered;
+
+            // Node-hovered and selected above normal
+            const aRaised = selectedIds.has(a.id) || nodeHoveredIds.has(a.id) ? 1 : 0;
+            const bRaised = selectedIds.has(b.id) || nodeHoveredIds.has(b.id) ? 1 : 0;
+            if (aRaised !== bRaised) return aRaised - bRaised;
+
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
             const bBackward = backwardIds.has(b.id) ? 1 : 0;
-
             return aBackward - bBackward;
         });
     });
 
     public hoveredNodeId = signal<string | null>(null);
+
+    protected readonly hoveredNodeConnectionIds = computed(() => {
+        const nodeId = this.hoveredNodeId();
+        if (!nodeId) return new Set<string>();
+        return new Set(
+            this.flowService
+                .connections()
+                .filter((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)
+                .map((c) => c.id)
+        );
+    });
 
     public getNodeZIndex(node: NodeModel): number {
         if (this.hoveredNodeId() === node.id) return 1000;
@@ -1634,6 +1660,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.selectedNodeIds.set(nodeIds);
+        this.selectedConnectionIds.set(this.getSelectedConnectionIds());
     }
 
     protected onExtractToSubflow(): void {

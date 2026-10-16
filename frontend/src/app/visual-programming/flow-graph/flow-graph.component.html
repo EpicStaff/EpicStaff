@@ -47,7 +47,7 @@
         <f-canvas fZoom>
             <f-snap-connection
                 fBehavior="fixed"
-                fType="segment"
+                [fType]="flowSettings.edgeStyle()"
                 [fSnapThreshold]="100"
             >
                 <svg
@@ -151,6 +151,8 @@
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    (mouseenter)="hoveredConnectionId.set(connection.id)"
+                    (mouseleave)="hoveredConnectionId.set(null)"
                     [fReassignableStart]="true"
                     [fReassignDisabled]="
                         flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
@@ -159,6 +161,7 @@
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
+                    [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
@@ -196,11 +199,6 @@
                         <path
                             d="M0,0 L6,3 0,6Z"
                             stroke="none"
-                            [attr.fill]="
-                                flowSettings.arrowColorsEnabled()
-                                    ? nodeColorMap().get(connection.targetNodeId) || '#555'
-                                    : connection.endColor || '#555'
-                            "
                         ></path>
                     </svg>
 

@@ -8,6 +8,8 @@ import {
     orthogonalStretches,
 } from './orthogonal-route-shapes';
 
+const STRAIGHT_LINE_THRESHOLD = 30;
+
 /**
  * Foblex connection builder `'orthogonal'`: draws `[source, ...waypoints, target]`
  * through `normalizeOrthogonalWaypoints`. On the router's points that is exactly those points (made
@@ -23,6 +25,10 @@ import {
  */
 export class OrthogonalPathBuilder implements IFConnectionBuilder {
     handle({ source, target, radius, waypoints }: IFConnectionBuilderRequest): IFConnectionBuilderResponse {
+        if (isWithinStraightLineThreshold(source, target)) {
+            return straightLine(source, target);
+        }
+
         const interior = waypoints?.length ? normalizeOrthogonalWaypoints(source, waypoints, target) : [];
         const points = interior.length ? [source, ...interior, target] : fallbackRoutePoints(source, target);
         const stretches = interior.length ? orthogonalStretches(source, interior, target) : segmentPairs(points);
@@ -42,6 +48,25 @@ function segmentPairs(points: IPoint[]): IPoint[][] {
         pairs.push([points[i], points[i + 1]]);
     }
     return pairs;
+}
+
+function isWithinStraightLineThreshold(source: IPoint, target: IPoint): boolean {
+    const xDistance = target.x - source.x;
+    const yDistance = target.y - source.y;
+    return (
+        -1 <= xDistance && xDistance <= STRAIGHT_LINE_THRESHOLD && Math.abs(yDistance) <= STRAIGHT_LINE_THRESHOLD + 1
+    );
+}
+
+function straightLine(source: IPoint, target: IPoint): IFConnectionBuilderResponse {
+    const path = `M ${source.x} ${source.y} L ${target.x + 0.0002} ${target.y + 0.0002}`;
+    return {
+        path,
+        points: [source, target],
+        secondPoint: target,
+        penultimatePoint: source,
+        candidates: [],
+    };
 }
 
 function middleOfMiddleSegment(stretch: IPoint[]): IPoint {
