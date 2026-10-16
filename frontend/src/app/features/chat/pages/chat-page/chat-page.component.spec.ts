@@ -876,36 +876,41 @@ describe('ChatPageComponent', () => {
         expect(text('.message__content')).toEqual(['reply']);
     });
 
-    it('shows a visitor action reply as text, alone when the message has no text, and keeps it through the stream', () => {
-        fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
-        fixture.detectChanges();
-        const event: ChatInboxMessageEvent = {
-            conversation_id: 'c-1',
-            id: 'm-1',
-            role: 'user',
-            content: '',
-            actions: null,
-            action: { type: 'button', label: '<b>Yes</b>' },
-            created_at: '2026-10-10T10:01:00Z',
-            author_user_id: null,
-            author_name: null,
-            visible_name: null,
-        };
-        messageCreated$.next(event);
-        messageCreated$.next({
-            ...event,
-            id: 'm-2',
-            content: '<i>why</i>',
-            action: { id: 'more' },
-            created_at: '2026-10-10T10:02:00Z',
-        });
-        fixture.detectChanges();
+    it.each([
+        { conversationKind: 'a live', isTest: false, rawDataCount: 0 },
+        { conversationKind: 'a test', isTest: true, rawDataCount: 2 },
+    ])(
+        'keeps streamed action replies in $conversationKind conversation, raw data only for a test one',
+        ({ isTest, rawDataCount }) => {
+            fixture.componentInstance.selectConversation(row({ id: 'c-1', is_test: isTest }));
+            fixture.detectChanges();
+            const event: ChatInboxMessageEvent = {
+                conversation_id: 'c-1',
+                id: 'm-1',
+                role: 'user',
+                content: '',
+                actions: null,
+                action: { type: 'button', label: '<b>Yes</b>' },
+                created_at: '2026-10-10T10:01:00Z',
+                author_user_id: null,
+                author_name: null,
+                visible_name: null,
+            };
+            messageCreated$.next(event);
+            messageCreated$.next({
+                ...event,
+                id: 'm-2',
+                content: '<i>why</i>',
+                action: { id: 'more' },
+                created_at: '2026-10-10T10:02:00Z',
+            });
+            fixture.detectChanges();
 
-        expect(threadView().messages()[0].action).toEqual({ type: 'button', label: '<b>Yes</b>' });
-        expect(text('.message__content')).toEqual(['<i>why</i>']);
-        expect(text('.message__action')).toEqual(['Action: <b>Yes</b>', 'Action: {"id":"more"}']);
-        expect(fixture.nativeElement.querySelector('.message b, .message i')).toBeNull();
-    });
+            expect(text('.message__content')).toEqual(['<i>why</i>']);
+            expect(text('.message__raw summary')).toEqual(Array(rawDataCount).fill('Raw data'));
+            expect(fixture.nativeElement.querySelector('.message b, .message i')).toBeNull();
+        }
+    );
 
     describe('older messages', () => {
         const thread = (count: number, prefix = 'm'): ChatOperatorMessage[] =>
