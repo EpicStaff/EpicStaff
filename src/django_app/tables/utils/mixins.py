@@ -52,8 +52,8 @@ def _close_database_connection() -> None:
 class SSEMixin(View, ABC):
     """
     A reusable mixin to stream server-sent events (SSE).
-    Override `get_initial_data()` and `get_live_updates()` in your view, and
-    `get_channels()` when the live updates come from Redis pub/sub.
+    Override `authorize()`, `get_initial_data()` and `get_live_updates()` in your
+    view, and `get_channels()` when the live updates come from Redis pub/sub.
     """
 
     ping_interval = 15  # seconds
@@ -249,11 +249,22 @@ class SSEMixin(View, ABC):
             if message["type"] == "message":
                 self.hold_live_message(message)
 
+    @abstractmethod
     async def authorize(self, request, *args, **kwargs):
-        """Optional post-ticket authorization hook. Runs after the SSE ticket
-        resolves to `self.user`. Return an HttpResponse to deny (short-circuit
-        the stream), or None to proceed. Default: allow."""
-        return
+        """Decide whether `self.user` may open this stream; return a response to refuse it.
+
+        Runs after the SSE ticket resolves to `self.user` and before the stream
+        starts. The ticket proves only who the user is, so every view must check
+        access to what it streams (org membership and permission on the resource,
+        taken from the streamed row's org: EventSource cannot send
+        X-Organization-Id). There is deliberately no default: a view without its
+        own check cannot be instantiated, rather than streaming to every ticket
+        holder.
+
+        Returns:
+            An HttpResponse to refuse the stream, or None to open it.
+        """
+        raise NotImplementedError
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")
