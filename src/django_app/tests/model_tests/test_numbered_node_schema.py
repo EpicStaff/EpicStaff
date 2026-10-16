@@ -42,12 +42,12 @@ def test_structural_nodes_have_no_node_number(model):
 
 
 @pytest.mark.django_db
-def test_new_python_node_has_no_node_number(graph):
+def test_new_python_node_gets_the_first_number(graph):
     node = HASHED_NODE_BUILDERS["python"](graph)
 
     node.refresh_from_db()
 
-    assert node.node_number is None
+    assert node.node_number == 1
 
 
 @pytest.mark.django_db

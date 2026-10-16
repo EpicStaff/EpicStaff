@@ -477,6 +477,18 @@ class NumberedNode(models.Model):
     class Meta:
         abstract = True
 
+    def save(self, *args, **kwargs):
+        # Only inserts touch the counter; an update never changes a node's number.
+        if self._state.adding:
+            # Local import: the service imports the models.
+            from tables.services.node_number_service import NodeNumberService
+
+            if self.node_number is None:
+                self.node_number = NodeNumberService().reserve(self.graph_id)[0]
+            else:
+                NodeNumberService().raise_to(self.graph_id, self.node_number)
+        super().save(*args, **kwargs)
+
 
 class BaseGlobalNode(models.Model):
     """
