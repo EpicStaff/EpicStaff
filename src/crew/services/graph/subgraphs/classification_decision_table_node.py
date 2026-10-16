@@ -137,7 +137,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
         self.storage_credentials = storage_credentials
 
-    def _publish_message(self, graph_message: GraphMessage):
+    async def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
         astream, so we write to Redis directly instead - and, since that
@@ -150,7 +150,7 @@ class ClassificationDecisionTableNodeSubgraph:
             return
         data = graph_message.to_payload()
         encoded_data = GraphMessage.encode_payload(data)
-        self.redis_service.add_graph_message(data["uuid"], encoded_data)
+        await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
         try:
             emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
@@ -665,7 +665,7 @@ def main(**kwargs) -> dict:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
 
             # Execute pre-computation
             try:
@@ -683,12 +683,12 @@ def main(**kwargs) -> dict:
                     execution_order=self.execution_order(state),
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
                 return state
 
             return state
 
-        def route_to_error_node(state: State, writer: StreamWriter, error: str):
+        async def route_to_error_node(state: State, writer: StreamWriter, error: str):
             """Route to the error node and publish error, then finish.
 
             The finish closes the CDT message group in the UI, as on the
@@ -703,7 +703,7 @@ def main(**kwargs) -> dict:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
                 session_id=self.session_id,
                 node_name=self.node_name,
@@ -713,7 +713,7 @@ def main(**kwargs) -> dict:
                 state=state,
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
             return state
 
         async def evaluate_node_function(state: State, writer: StreamWriter):
@@ -733,7 +733,7 @@ def main(**kwargs) -> dict:
                     state=state,
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
                 return state
 
             matched_next_node = None
@@ -776,7 +776,7 @@ def main(**kwargs) -> dict:
                             execution_order=self.execution_order(state),
                             expression=group.expression,
                         )
-                        self._publish_message(msg)
+                        await self._publish_message(msg)
                         group_index += 1
 
                     if expression_error is not None:
@@ -807,7 +807,7 @@ def main(**kwargs) -> dict:
                                 result_variable=prompt_result.get("result_variable", ""),
                                 usage=prompt_result.get("usage", {}),
                             )
-                            self._publish_message(msg)
+                            await self._publish_message(msg)
 
                     # Step 3: Execute manipulation (field_manipulations + main manipulation)
                     manip_parts = []
@@ -836,7 +836,7 @@ def main(**kwargs) -> dict:
                             execution_order=self.execution_order(state),
                             changed_variables=changed,
                         )
-                        self._publish_message(msg)
+                        await self._publish_message(msg)
 
                     # Step 4: An explicit route is terminal — take it and stop, ignoring continue.
                     if group.next_node:
@@ -851,12 +851,12 @@ def main(**kwargs) -> dict:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
                     error = f"Error {scope}: {e}"
                     logger.info(f"ERROR {error}")
-                    return route_to_error_node(state, writer, error)
+                    return await route_to_error_node(state, writer, error)
                 except Exception as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
                     error = f"Unexpected error {scope}: {type(e).__name__}: {e}"
                     logger.info(f"ERROR {error}")
-                    return route_to_error_node(state, writer, error)
+                    return await route_to_error_node(state, writer, error)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -867,7 +867,7 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                return route_to_error_node(state, writer, str(e))
+                return await route_to_error_node(state, writer, str(e))
 
             logger.info(
                 f"Classification table '{self.node_name}' result: "
@@ -884,7 +884,7 @@ def main(**kwargs) -> dict:
                 node_type=self.TYPE,
                 matched_condition=matched_condition_name,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
 
             return state
 

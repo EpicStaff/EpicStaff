@@ -50,7 +50,7 @@ class DecisionTableNodeSubgraph:
         self.run_code_execution_service = run_code_execution_service
         self.storage_credentials = storage_credentials
 
-    def _publish_message(self, graph_message: GraphMessage):
+    async def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis and dispatch it to the
         audit pipeline. Subgraph StreamWriter messages don't propagate to the
         parent graph's astream (same finding as
@@ -61,7 +61,7 @@ class DecisionTableNodeSubgraph:
             return
         data = graph_message.to_payload()
         encoded_data = GraphMessage.encode_payload(data)
-        self.redis_service.add_graph_message(data["uuid"], encoded_data)
+        await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
         try:
             emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
@@ -216,7 +216,7 @@ def main(variables: dict) -> bool:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
             return state
 
         async def main_node_function(state: State, writer: StreamWriter):
@@ -241,7 +241,7 @@ def main(variables: dict) -> bool:
                     state=state,
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
                 return state
 
             decision_node_variables["last_condition_group_index"] = (
@@ -266,7 +266,7 @@ def main(variables: dict) -> bool:
                     state=state,
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
 
             # If not, set the next node to the current condition group
             else:
@@ -299,7 +299,7 @@ def main(variables: dict) -> bool:
                         writer=writer,
                         execution_order=self.execution_order(state),
                     )
-                    self._publish_message(msg)
+                    await self._publish_message(msg)
                     if condition_result:
                         logger.info(f"Condition group '{condition_group.group_name}' passed.")
                         if condition_group.manipulation:
@@ -315,7 +315,7 @@ def main(variables: dict) -> bool:
                                 writer=writer,
                                 execution_order=self.execution_order(state),
                             )
-                            self._publish_message(msg)
+                            await self._publish_message(msg)
 
                         decision_node_variables["result_node"] = condition_group.next_node
                 except DecisionTableNodeDataError as e:
@@ -333,7 +333,7 @@ def main(variables: dict) -> bool:
                         execution_order=self.execution_order(state),
                         node_type=self.TYPE,
                     )
-                    self._publish_message(msg)
+                    await self._publish_message(msg)
 
                 return state
 
