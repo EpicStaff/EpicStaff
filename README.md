@@ -92,7 +92,7 @@ git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && 
 git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo python:3.12.10-slim sh -c "pip install -q --user --disable-pip-version-check pyyaml==6.0.3 && python scripts/envtool.py --dev" && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create media_data && docker volume create opensearch_data && docker network create mcp-network && cd src && docker compose up --build
 ```
 
-These blocks build every image locally from the cloned source (`docker compose up --build`), so the signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) do not describe what they run. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
+These blocks build every image locally from the cloned source (`docker compose up --build`). The signature and SBOM checks under [How to verify a release](#how-to-verify-a-release) apply only to images pulled from `ghcr.io/epicstaff`, never to images built on your machine. To run the signed, digest-pinned images of a release instead, see [Running a verified release](#running-a-verified-release).
 
 The blocks generate `src/.env` with `python scripts/envtool.py --dev`, run inside a `python`
 container so only Docker is needed. These are **development defaults, for trying EpicStaff on
@@ -121,6 +121,44 @@ EpicStaff can be configured and launched using alternative setup methods:
 
 **For more [details](https://github.com/EpicStaff/EpicStaff/wiki)**
 </details>
+
+---
+
+## 🔄 Updating
+
+An install from the Quick Start runs images it built from source. To move it to a newer
+release, check out that release and run its published images instead. Pick the version from
+the [Releases](https://github.com/EpicStaff/EpicStaff/releases) page:
+
+```bash
+cd EpicStaff
+git fetch --tags
+git checkout vX.Y.Z
+```
+
+In `src/.env`, set `IMAGE_TAG=vX.Y.Z` (the same release), and add any variable the new
+`src/.env.example` marks as required that your `src/.env` does not have yet — compose names a
+missing one and refuses to start. Then:
+
+```bash
+cd src
+docker compose pull
+docker compose up -d
+```
+
+`docker compose pull` fetches that release's `ghcr.io/epicstaff/*` images and `up -d`
+recreates the services from them; `django_app` applies database migrations as it starts.
+
+- **Always set `IMAGE_TAG` to an explicit release.** With the default `latest`, the pulled
+  images and the ones you built share the name `ghcr.io/epicstaff/<service>:latest`, so a pull
+  silently replaces your build with whatever `latest` points to at that moment.
+- **Do not add `--build` from now on** — it rebuilds from source under the same name and
+  replaces the images you pulled.
+- **Back up your volumes first.** Migrations change the database on start, and there is no
+  downgrade path.
+
+If you run a [verified release](#running-a-verified-release), update by repeating those steps
+with the new release's tag and files.
 
 ---
 
@@ -171,7 +209,7 @@ git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
 cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
 ```
 
-Prepare `src/.env` and create the volumes and network exactly as in the Quick Start block for your OS, but finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
+Prepare a production `src/.env` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
 ---
 
