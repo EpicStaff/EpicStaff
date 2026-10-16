@@ -16,6 +16,7 @@ from tables.models.base_models import (
     BaseGraphEntity,
     ContentHashMixin,
     GraphAuthorModel,
+    NumberedNode,
     SoftDeleteFields,
     SoftDeleteMixin,
     TestPayloadMixin,
@@ -75,6 +76,8 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
         default=False, help_text="If 'True' -> flow is connected to EpicChat widget."
     )
     save_version = models.BigIntegerField(default=1)
+    # High-water mark of issued node badge numbers; never lowered.
+    node_number_seq = models.IntegerField(default=0, editable=False)
 
     @classmethod
     def increment_version_if_current(cls, pk: int, expected: int) -> int:
@@ -106,7 +109,7 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
         ]
 
 
-class BaseNode(BaseGraphEntity, BaseGlobalNode):
+class BaseNode(BaseGraphEntity, BaseGlobalNode, NumberedNode):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE)
     node_name = models.CharField(max_length=255, blank=True)
     input_map = models.JSONField(default=dict)
@@ -163,6 +166,7 @@ class PythonNode(GraphAuthorModel, BaseNode, SoftDeleteFields):
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "python_code",
             "test_input",
         ]
@@ -369,7 +373,9 @@ class StartNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFie
         ]
 
 
-class DecisionTableNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class DecisionTableNode(
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
+):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
     )
@@ -390,6 +396,7 @@ class DecisionTableNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftD
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
         ]
         data = {
             f.name: str(getattr(self, f.name))
@@ -561,7 +568,12 @@ class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
 
 
 class WebhookTriggerNode(
-    GraphAuthorModel, BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields
+    GraphAuthorModel,
+    BaseGraphEntity,
+    TestPayloadMixin,
+    BaseGlobalNode,
+    NumberedNode,
+    SoftDeleteFields,
 ):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
@@ -593,6 +605,7 @@ class WebhookTriggerNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "python_code",
             "test_payload",
         ]
@@ -611,7 +624,12 @@ class WebhookTriggerNode(
 
 
 class TelegramTriggerNode(
-    GraphAuthorModel, BaseGraphEntity, TestPayloadMixin, BaseGlobalNode, SoftDeleteFields
+    GraphAuthorModel,
+    BaseGraphEntity,
+    TestPayloadMixin,
+    BaseGlobalNode,
+    NumberedNode,
+    SoftDeleteFields,
 ):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
@@ -644,6 +662,7 @@ class TelegramTriggerNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "test_payload",
         ]
         data = {
@@ -678,7 +697,9 @@ class TelegramTriggerNodeField(ContentHashMixin, SoftDeleteFields):
         ]
 
 
-class ScheduleTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
+class ScheduleTriggerNode(
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
+):
     class RunMode(models.TextChoices):
         ONCE = "once", "Once"
         REPEAT = "repeat", "Repeat"
@@ -728,6 +749,7 @@ class ScheduleTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Sof
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "current_runs",
             "next_run_date_time",
         ]
@@ -741,7 +763,7 @@ class ScheduleTriggerNode(GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, Sof
 
 
 class ClassificationDecisionTableNode(
-    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, SoftDeleteFields
+    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NumberedNode, SoftDeleteFields
 ):
     graph = models.ForeignKey(
         "Graph",
@@ -808,10 +830,6 @@ class ClassificationDecisionTableNode(
         base_manager_name = "all_objects"
         constraints = [
             soft_delete_consistency_constraint(),
-            models.UniqueConstraint(
-                fields=["graph", "node_name"],
-                name="unique_graph_node_name_for_classification_dt_node",
-            ),
         ]
 
 

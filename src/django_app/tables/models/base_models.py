@@ -385,7 +385,14 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata", "created_by"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "metadata",
+            "created_by",
+            "node_number",
+        ]
 
         data = {
             f.name: str(getattr(self, f.name))
@@ -459,6 +466,16 @@ class NextVal(Func):
 
     function = "nextval"
     template = "%(function)s(%(expressions)s)"
+
+
+class NumberedNode(models.Model):
+    """A node that shows a graph-scoped "#N" badge. The number is display state only:
+    execution and routing identify nodes by their global id."""
+
+    node_number = models.IntegerField(null=True, blank=True, db_index=True, editable=False)
+
+    class Meta:
+        abstract = True
 
 
 class BaseGlobalNode(models.Model):
