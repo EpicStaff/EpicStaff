@@ -1,11 +1,13 @@
 """`execution_timeout` of the PythonCode behind every flow node code slot survives a graph
-export and import, under the same rule as the API.
+export and import.
 
 Invariant: an export carries each PythonCode's execution timeout and an import restores
-it. An import file is untrusted input from any deployment, so the import applies the API's
-rule: a file without the field (exported before PythonCode had a timeout) gets this
-deployment's default, a value above the maximum is saved as the maximum, and a value below
-the minimum rejects the whole import with nothing created.
+it. An import file can come from a deployment or release with other limits, so the import
+moves a value outside this deployment's range to the nearest limit rather than failing: a
+value above the maximum is saved as the maximum and one below the minimum as the minimum. A
+file without the field (exported before PythonCode had a timeout) gets this deployment's
+default. A value that is not a non-negative integer rejects the whole import with nothing
+created.
 """
 
 import copy
@@ -18,6 +20,7 @@ from tables.import_export.enums import EntityType
 from tables.models import Graph, PythonCode, PythonCodeTool
 from tests.python_code_slots import PYTHON_CODE_SLOT_IDS, PYTHON_CODE_SLOTS
 
+MIN_SECONDS = 3
 MAX_SECONDS = 600
 DEFAULT_SECONDS = 45
 STORED_SECONDS = 120
@@ -91,7 +94,17 @@ def test_value_above_the_maximum_imports_as_the_maximum(import_service, export_d
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("invalid", [2, None, "ten"], ids=["below-minimum", "null", "text"])
+@pytest.mark.parametrize("below_minimum", [2, 0], ids=["below-minimum", "zero"])
+def test_value_below_the_minimum_imports_as_the_minimum(
+    import_service, export_data, slot, below_minimum
+):
+    tampered = _with_execution_timeout(export_data, slot, below_minimum)
+
+    assert _imported_execution_timeout(import_service, tampered, slot) == MIN_SECONDS
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("invalid", [-1, None, "ten"], ids=["negative", "null", "text"])
 def test_invalid_value_rolls_back_the_whole_import(import_service, export_data, slot, invalid):
     tampered = _with_execution_timeout(export_data, slot, invalid)
     graph_count_before = Graph.objects.count()
@@ -129,3 +142,28 @@ def test_python_tool_round_trip_keeps_the_execution_timeout(
     imported_tool = PythonCodeTool.objects.select_related("python_code").get(pk=imported_id)
     assert imported_tool.org_id == other_org.id
     assert imported_tool.python_code.execution_timeout == STORED_SECONDS
+
+
+@pytest.mark.django_db
+def test_python_tool_below_the_minimum_imports_as_the_minimum(
+    default_org, export_service, import_service
+):
+    tool = PythonCodeTool.objects.create(
+        name="execution-timeout-tool-below-minimum",
+        description="tool",
+        python_code=PythonCode.objects.create(
+            code="def main(): return 1", execution_timeout=STORED_SECONDS
+        ),
+        org=default_org,
+    )
+    export_data = export_service.export_entities(EntityType.PYTHON_CODE_TOOL, [tool.id])
+    export_data[EntityType.PYTHON_CODE_TOOL][0]["python_code"]["execution_timeout"] = 2
+    other_org = Organization.objects.create(name="execution-timeout-tool-below-minimum-importer")
+
+    id_mapper, _ = import_service.import_data(
+        export_data, EntityType.PYTHON_CODE_TOOL, org_id=other_org.id
+    )
+
+    [imported_id] = id_mapper.get_created_ids(EntityType.PYTHON_CODE_TOOL)
+    imported_tool = PythonCodeTool.objects.select_related("python_code").get(pk=imported_id)
+    assert imported_tool.python_code.execution_timeout == MIN_SECONDS
