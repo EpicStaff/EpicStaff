@@ -444,16 +444,16 @@ describe('KeymapService', () => {
             loadUser({});
 
             keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyE');
+            keymap().setOverride('node.task', 'Shift+KeyJ');
             nextPatch().fail();
             const second = nextPatch();
             expect(second.body).toEqual({
-                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyE' },
+                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' },
             });
             second.succeed();
 
             expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyE']);
+            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
             expect(toasts).toEqual([]);
         });
 
@@ -461,7 +461,7 @@ describe('KeymapService', () => {
             loadUser({});
 
             keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyE');
+            keymap().setOverride('node.task', 'Shift+KeyJ');
             nextPatch().fail();
             nextPatch().fail();
 
@@ -486,29 +486,29 @@ describe('KeymapService', () => {
 
             keymap().setOverride('node.agent', 'Shift+KeyB');
             nextPatch().fail();
-            keymap().setOverride('node.task', 'Shift+KeyE');
+            keymap().setOverride('node.task', 'Shift+KeyJ');
 
-            expect(nextPatch().body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyE' } });
+            expect(nextPatch().body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyJ' } });
         });
 
         it('two quick edits send two PATCHes in order and keep both', () => {
             loadUser({});
 
             keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyE');
+            keymap().setOverride('node.task', 'Shift+KeyJ');
 
             const first = nextPatch();
             expect(first.body).toEqual({ shortcut_overrides: { 'node.agent': 'Shift+KeyB' } });
             first.succeed();
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyE']);
+            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
 
             const second = nextPatch();
             expect(second.body).toEqual({
-                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyE' },
+                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' },
             });
             second.succeed();
             expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyE']);
+            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
         });
 
         it('a profile reload that lands while a save is pending does not undo the edit', () => {
@@ -524,12 +524,12 @@ describe('KeymapService', () => {
         });
 
         it('resetOverride removes the key from the saved map', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyE' });
+            loadUser({ 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' });
 
             expect(keymap().resetOverride('node.agent')).toBeNull();
 
             const patch = nextPatch();
-            expect(patch.body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyE' } });
+            expect(patch.body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyJ' } });
             patch.succeed();
             expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
         });

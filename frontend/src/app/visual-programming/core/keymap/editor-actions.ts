@@ -40,6 +40,7 @@ export const EDITOR_ACTIONS = [
     nodeAction('node.webhook-trigger', NodeType.WEBHOOK_TRIGGER, 'Shift+KeyW'),
     nodeAction('node.telegram-trigger', NodeType.TELEGRAM_TRIGGER, 'Shift+KeyG'),
     nodeAction('node.audio-to-text', NodeType.AUDIO_TO_TEXT, 'Shift+KeyU'),
+    nodeAction('node.end', NodeType.END, 'Shift+KeyE'),
     { id: 'editing.save', label: 'Save', section: 'Editing', defaultChords: ['Mod+KeyS'], rebindable: false },
     { id: 'editing.undo', label: 'Undo', section: 'Editing', defaultChords: ['Mod+KeyZ'], rebindable: false },
     {

@@ -14,6 +14,7 @@ import {
     Injector,
     Input,
     input,
+    NgZone,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -25,6 +26,7 @@ import {
     ViewChild,
     viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { IPoint, PointExtensions } from '@foblex/2d';
@@ -46,7 +48,7 @@ import {
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { Subject } from 'rxjs';
+import { fromEvent, Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
@@ -83,6 +85,7 @@ import {
     snapPointToGrid,
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
+import { EDITOR_ACTIONS } from '../core/keymap/editor-actions';
 import { computeLayout } from '../core/layout/compute-layout';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -201,6 +204,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
     private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
+    private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
 
     public closeNodesSearch(): void {
         this.nodesSearchComponent?.closeSearch();
@@ -216,6 +220,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected mouseCursorPosition: IPoint = { x: 0, y: 0 };
     protected contextMenuPosition = signal<IPoint>({ x: 0, y: 0 });
+    private lastPointer: IPoint | null = null;
     protected isLoaded = signal(false);
     private arrangeAnimationId: number | null = null;
     private _arrangingLock = false;
@@ -348,6 +353,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly ngZone = inject(NgZone);
 
     // Start from the current count so a canvas re-created after an earlier save request
     // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
@@ -372,6 +378,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             () => {
                 this.moveOverlayLayerIntoCanvas();
                 this.setupOverlayTransformSync();
+                this.trackPointerOverCanvas();
             },
             { injector: this.injector }
         );
@@ -390,6 +397,38 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             () => this.onOpenShortcuts(this.shortcutsAnchor().nativeElement),
             options
         );
+        for (const action of EDITOR_ACTIONS) {
+            if ('nodeType' in action) {
+                const request: CreateNodeRequest = { type: action.nodeType };
+                this.keymap.register(action.id, () => this.onNodeShortcut(request), options);
+            }
+        }
+    }
+
+    private onNodeShortcut(request: CreateNodeRequest): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        if (this.isEditingLocked() || this.showContextMenu()) {
+            return;
+        }
+        this.addNodeAt(request, this.lastPointer);
+    }
+
+    private trackPointerOverCanvas(): void {
+        const host = this.flowHost().nativeElement;
+        this.ngZone.runOutsideAngular(() => {
+            fromEvent<PointerEvent>(host, 'pointermove')
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((event) => {
+                    const overMinimap = event.target instanceof Element && event.target.closest('f-minimap') !== null;
+                    this.lastPointer = overMinimap ? null : { x: event.clientX, y: event.clientY };
+                });
+            fromEvent(host, 'pointerleave')
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => (this.lastPointer = null));
+        });
     }
 
     private moveOverlayLayerIntoCanvas(): void {
@@ -1014,30 +1053,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        if (event.type === NodeType.END && this.flowService.hasEndNode()) {
-            this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
-            return;
-        }
-
-        this.hasUnarrangedChanges.set(true);
-        this.undoRedoService.stateChanged();
-
-        const position = this.fFlowComponent.getPositionInFlow(
-            PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
-        );
-        const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
-        const safePosition = this.findNearestFreePosition(
-            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
-            this.getCollisionBounds(newNode),
-            this.flowService.nodes()
-        );
-        this.flowService.addNode({ ...newNode, position: safePosition });
-
-        setTimeout(() => {
-            this.rerouteSegmentConnections();
-            this.cd.detectChanges();
-            this.fFlowComponent?.redraw();
-        }, 0);
+        this.addNodeAt(event, this.contextMenuPosition());
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -1886,6 +1902,39 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 return { ...n, position: { ...n.position, x: n.position.x + offsetX } };
             }),
         };
+    }
+
+    private addNodeAt(request: CreateNodeRequest, clientPoint: IPoint | null): void {
+        if (request.type === NodeType.END && this.flowService.hasEndNode()) {
+            this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
+            return;
+        }
+
+        this.hasUnarrangedChanges.set(true);
+        this.undoRedoService.stateChanged();
+
+        const screenPoint = clientPoint ?? this.canvasCenter();
+        const position = this.fFlowComponent.getPositionInFlow(
+            PointExtensions.initialize(screenPoint.x, screenPoint.y)
+        );
+        const newNode = this.nodeFactory.createNode(request.type, { ...request.overrides, position });
+        const safePosition = this.findNearestFreePosition(
+            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
+            this.getCollisionBounds(newNode),
+            this.flowService.nodes()
+        );
+        this.flowService.addNode({ ...newNode, position: safePosition });
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
+    }
+
+    private canvasCenter(): IPoint {
+        const rect = this.flowHost().nativeElement.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
 
     private isDialogOpen(): boolean {

@@ -4,6 +4,7 @@
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
+        #flowHost
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
