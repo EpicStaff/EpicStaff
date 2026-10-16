@@ -48,6 +48,7 @@ import { Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
+import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -95,7 +96,7 @@ import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-s
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
-import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
@@ -266,6 +267,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
     readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
 
+    /**
+     * Nodes auto arrange leaves where they are: moving a trigger node is a change of it, which needs
+     * Flows:Use. The others are arranged around them.
+     */
+    private readonly pinnedNodeIds = computed<ReadonlySet<string>>(
+        () =>
+            new Set(
+                this.flowService
+                    .nodes()
+                    .filter((node) => this.flowReadOnly.isNodeTypeReadOnly(node.type))
+                    .map((node) => node.id)
+            )
+    );
+    protected readonly isAutoArrangeDisabled = computed(
+        () =>
+            this.isArranging() ||
+            this.flowService.nodes().length - this.pinnedNodeIds().size < 2 ||
+            !this.hasUnarrangedChanges()
+    );
+
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
@@ -306,6 +327,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public hoveredNodeId = signal<string | null>(null);
 
+    /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
+    public isNodeReadOnly(node: NodeModel): boolean {
+        return this.flowReadOnly.isNodeTypeReadOnly(node.type);
+    }
+
     public getNodeZIndex(node: NodeModel): number {
         if (this.hoveredNodeId() === node.id) return 1000;
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
@@ -339,6 +365,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly importExportService = inject(ImportExportService);
+    private readonly flowCopyImportFacade = inject(FlowCopyImportFacadeService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     /** The flow page's store in the live editor, the preview's own (empty) one in a version preview. */
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
@@ -801,8 +828,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
-        this.undoRedoService.stateChanged();
-        const { newNodes, newConnections } = this.clipboardService.paste(pastePosition);
+        const canPaste = (node: NodeModel): boolean => !this.flowReadOnly.isNodeTypeReadOnly(node.type);
+        // Recorded before the paste changes the flow, and only when it will change it.
+        if (this.clipboardService.getClipboardData()?.nodes.some(canPaste)) {
+            this.undoRedoService.stateChanged();
+        }
+        const { newNodes, newConnections, skippedNodeCount } = this.clipboardService.paste(pastePosition, canPaste);
+        if (skippedNodeCount > 0) {
+            this.toastService.warning(
+                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
+                6000,
+                'bottom-right'
+            );
+        }
         const placedNodes: NodeModel[] = [];
         const existingBeforePaste = this.flowService.nodes().filter((n) => !newNodes.some((p) => p.id === n.id));
 
@@ -952,6 +990,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!event.data || typeof event.data !== 'object') {
             return;
         }
+        if (this.flowReadOnly.isNodeTypeReadOnly((event.data as NodeModel).type)) {
+            this.flowReadOnly.notifyNodeTypeBlocked((event.data as NodeModel).type);
+            return;
+        }
 
         const normalizedNode = this.ensureNodeSize(event.data as NodeModel);
 
@@ -990,6 +1032,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.showContextMenu.set(false);
 
         if (this.flowReadOnly.isReadOnly() || this.isDialogOpen()) {
+            return;
+        }
+
+        if (this.flowReadOnly.isNodeTypeReadOnly(event.type)) {
+            this.flowReadOnly.notifyNodeTypeBlocked(event.type);
             return;
         }
 
@@ -1101,7 +1148,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
-        if (this.flowReadOnly.isReadOnly()) {
+        if (this.flowReadOnly.isNodeTypeReadOnly(updatedNode.type)) {
             return;
         }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
@@ -1125,7 +1172,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
-        if (this.flowReadOnly.isReadOnly()) {
+        if (this.flowReadOnly.isNodeTypeReadOnly(updatedNode.type)) {
             return;
         }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
@@ -1148,7 +1195,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public commitSidePanelToFlow(): boolean {
-        if (!this.nodePanelShell?.hasPanelInstance()) {
+        // A panel that may not change its node (a trigger node without Flows:Use) has nothing to commit.
+        if (!this.nodePanelShell?.hasPanelInstance() || this.nodePanelShell.isNodeReadOnly()) {
             return true;
         }
         // Use the validation-aware capture. Most panels (e.g. the task node panel) always
@@ -1179,6 +1227,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodeSizeChanged(event: { width: number; height: number }, node: NodeModel): void {
+        if (this.isNodeReadOnly(node)) {
+            this.revertNodeLayout(node);
+            return;
+        }
         this.undoRedoService.stateChanged();
 
         const updatedNode = {
@@ -1318,6 +1370,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePositionChanged(newPos: IPoint, node: NodeModel): void {
+        // Dragging is disabled on such a node, but a drag of a selection still carries it along.
+        if (this.isNodeReadOnly(node)) {
+            this.revertNodeLayout(node);
+            this.flowReadOnly.notifyNodeTypeBlocked(node.type);
+            return;
+        }
         this.hasUnarrangedChanges.set(true);
         this.draggedNodeIds.add(node.id);
 
@@ -1385,7 +1443,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const connections = this.flowService.connections();
-        const newPositions = computeLayout(nodes, connections);
+        // Pinned nodes are left out of newPositions, so only the nodes it moves count below.
+        const newPositions = computeLayout(nodes, connections, this.pinnedNodeIds());
 
         const alreadyArranged = nodes.every((n) => {
             const target = newPositions.get(n.id);
@@ -1591,6 +1650,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected onExtractToSubflow(): void {
         const ids = this.extractableSelectedNodeIds();
         if (ids.size === 0) return;
+        // Extracting creates the nodes again in the new subflow.
+        const readOnlyNode = this.flowService
+            .nodes()
+            .find((node) => ids.has(node.id) && this.flowReadOnly.isNodeTypeReadOnly(node.type));
+        if (readOnlyNode) {
+            this.flowReadOnly.notifyNodeTypeBlocked(readOnlyNode.type);
+            return;
+        }
         this.extractToSubflow.emit(ids);
     }
 
@@ -1673,7 +1740,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private doPartialImport(file: File): void {
         if (!this.currentFlowId) return;
-        this.importExportService.partialImport(this.currentFlowId, file).subscribe({
+        // Through the facade: the backend refuses a file with trigger nodes to a user without Flows:Use, and the
+        // facade explains that refusal (nothing is emitted then, so nothing below runs).
+        this.flowCopyImportFacade.partialImport(this.currentFlowId, file).subscribe({
             next: () => {
                 this.toastService.success('Import successful', 3000, 'bottom-right');
                 const currentNodes = this.flowService.nodes();
@@ -1953,7 +2022,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return [];
         }
 
-        const movedNodes = resolveOverlapsForNode(node.id, this.flowService.nodes());
+        // A node this user may not change stays where it is, even if the table now overlaps it.
+        const movedNodes = resolveOverlapsForNode(node.id, this.flowService.nodes()).filter(
+            (movedNode) => !this.isNodeReadOnly(movedNode)
+        );
 
         if (movedNodes.length > 0) {
             this.flowService.updateNodesInBatch(movedNodes);
@@ -1980,6 +2052,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private ensureNodeSize(node: NodeModel): NodeModel {
         return normalizeTableNodeSize(node);
+    }
+
+    /**
+     * Puts a node Foblex moved or resized back where the flow has it: new position and size objects
+     * make Foblex take them again, while the flow's values stay as they were.
+     */
+    private revertNodeLayout(node: NodeModel): void {
+        const current = this.flowService.nodes().find((candidate) => candidate.id === node.id);
+        if (!current) return;
+        this.flowService.updateNode({ ...current, position: { ...current.position }, size: { ...current.size } });
     }
 
     private bumpConnectionRenderVersion(connectionId: string): void {

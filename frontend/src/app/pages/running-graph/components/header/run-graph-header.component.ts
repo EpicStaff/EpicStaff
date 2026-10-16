@@ -16,7 +16,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
 import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
-import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
@@ -48,6 +49,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         SessionFilesButtonComponent,
         StopButtonComponent,
         SessionIdSwitcherComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './run-graph-header.component.html',
     styleUrls: ['./run-graph-header.component.scss'],
@@ -62,6 +64,8 @@ export class RunningGraphHeaderComponent implements OnChanges, OnDestroy {
     @Output() stopSession = new EventEmitter<void>();
 
     public readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     public showMemoriesSidebar = false;
     public sessions: GraphSessionLight[] = [];

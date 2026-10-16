@@ -104,15 +104,20 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 406);
     /** "Run python code": the stored code run alone with the test payload, shown in a terminal under the code. */
     protected readonly codeTestRun = new PythonCodeTestRun();
+    /**
+     * Running this node, as a test run ("Run with test payload", which saves the flow and starts a session) or
+     * its stored code alone ("Run python code"), needs Flows:Update and Flows:Use, outside a preview.
+     */
+    protected readonly canRunNode = this.flowReadOnly.canEditTriggerNodes;
     protected readonly showCodeTerminal = computed(
-        () => this.isCodeTerminalShown() && !this.isReadOnly() && this.isExpanded()
+        () => this.isCodeTerminalShown() && this.canRunNode() && this.isExpanded()
     );
     /**
-     * Only in the expanded panel, where the output terminal has room. Hidden for a viewer and in a version
-     * preview: running stored code needs Flows:Update.
+     * Only in the expanded panel, where the output terminal has room. Hidden without Flows:Update or
+     * Flows:Use, and in a version preview.
      */
     protected readonly runPythonCodeIcon = computed(() =>
-        this.isReadOnly() || !this.isExpanded() ? null : 'play-outline'
+        this.canRunNode() && this.isExpanded() ? 'play-outline' : null
     );
     protected readonly runPythonCodeLabel = RUN_PYTHON_CODE_LABEL;
     /**
@@ -244,6 +249,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
     /** Runs the stored code alone, as a webhook delivery of the test payload would call it. */
     protected runPythonCode(): void {
+        if (!this.canRunNode()) return;
         const payload = this.testPayload.check().payload;
         const backendId = this.node().backendId;
         if (this.runCodeBlocker() !== null || payload === null || backendId == null) return;
