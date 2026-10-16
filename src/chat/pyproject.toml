@@ -24,6 +24,9 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
+transitive-pins = [
+    "idna==3.18",
+]
 
 [tool.uv]
 package = false

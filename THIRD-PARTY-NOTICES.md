@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-16T10:46:46Z UTC -->
-<!-- commit: da1be8f4697b6590921016540cb1e869e61e5ea5 -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, chat:7e62a7e4fd497a0a, crew:3185b98c6b25f3cd, django_app:651448d7ebb7573c, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:6db6900f51e81e02, webhook:5a1f7cefa6527b89 -->
+<!-- generated: 2026-10-16T14:30:08Z UTC -->
+<!-- commit: fbf66abf5d424fcdba4a760442df2c964fa603a5 -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:54c5e21e5f6f4d8b, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:651448d7ebb7573c, knowledge_new:ffc9859c93bf34f2, manager:6e9b0bb84d89e706, realtime:a50b3192cefe88d1, sandbox:6db6900f51e81e02, webhook:5a1f7cefa6527b89 -->
 
 ## Backend (Python)
 
@@ -3716,7 +3716,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 |---|---|
 | MIT | 73 |
 | MIT License | 71 |
-| BSD-3-Clause | 30 |
+| BSD-3-Clause | 29 |
 | Apache Software License | 28 |
 | BSD License | 24 |
 | Apache-2.0 | 23 |
@@ -3749,7 +3749,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **298** |
+| **Total** | **297** |
 
 ### Python package index
 
@@ -3865,7 +3865,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `huggingface_hub` | 1.30.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `humanfriendly` | 10.0 | MIT License | Copyright (c) 2021 Peter Odding |
 | `idna` | 3.18 | BSD-3-Clause | Copyright (c) 2013-2026, Kim Davies and contributors. |
-| `idna` | 3.20 | BSD-3-Clause | Copyright (c) 2013-2026, Kim Davies and contributors. |
 | `importlib_metadata` | 8.7.1 | Apache-2.0 | Copyright 2025 [name of copyright owner] |
 | `importlib_metadata` | 8.9.0 | Apache-2.0 | Copyright 2026 [name of copyright owner] |
 | `inflection` | 0.5.1 | MIT License | Copyright (C) 2012-2020 Janne Vanhala |
@@ -12435,51 +12434,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 > No NOTICE file shipped by upstream.
 
 #### idna@3.18
-
-- **License:** BSD-3-Clause
-- **Author:** Kim Davies <kim+pypi@gumleaf.org>
-
-<details><summary>License text</summary>
-
-<pre>
-BSD 3-Clause License
-
-Copyright (c) 2013-2026, Kim Davies and contributors.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its
-   contributors may be used to endorse or promote products derived from
-   this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
-TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-</pre>
-
-</details>
-
-> No NOTICE file shipped by upstream.
-
-#### idna@3.20
 
 - **License:** BSD-3-Clause
 - **Author:** Kim Davies <kim+pypi@gumleaf.org>
