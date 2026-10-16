@@ -1,37 +1,72 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
+import { MenuNodeType, NODE_MENU_GROUPS, NODE_MENU_LABELS } from '../../../core/constants/node-menu-groups';
+import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../../../core/keymap/editor-actions';
+import { formatChord } from '../../../core/keymap/key-chord.util';
+import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 import { FlowService } from '../../../services/flow.service';
+import { KeymapService } from '../../../services/keymap.service';
 
 interface FlowGraphBlock {
     label: string;
     type: NodeType;
     icon: string;
     color: string;
+    keyHint: string | null;
 }
+
+interface FlowGraphMenuGroup {
+    title: string;
+    blocks: FlowGraphBlock[];
+}
+
+const NODE_ACTION_BY_TYPE: ReadonlyMap<MenuNodeType, EditorActionId> = new Map(
+    EDITOR_ACTIONS.flatMap((action: EditorAction) => (action.nodeType ? [[action.nodeType, action.id] as const] : []))
+);
 
 @Component({
     selector: 'app-flow-graph-core-menu',
     template: `
-        <ul>
-            @for (block of filteredBlocks(); track block.type) {
-                <li
-                    (click)="onBlockClicked(block.type)"
-                    [style.border-left-color]="block.color"
-                    [class.disabled]="isDisabled(block.type)"
-                >
-                    <i
-                        [class]="block.icon"
-                        [style.color]="block.color"
-                    ></i>
-                    {{ block.label }}
-                    <i class="ti ti-plus plus-icon"></i>
-                </li>
-            }
-        </ul>
+        @for (group of filteredGroups(); track group.title) {
+            <section class="menu-group">
+                <div class="menu-group__title">{{ group.title }}</div>
+                <ul>
+                    @for (block of group.blocks; track block.type) {
+                        <li
+                            (click)="onBlockClicked(block.type)"
+                            [style.border-left-color]="block.color"
+                            [class.disabled]="isDisabled(block.type)"
+                        >
+                            <i
+                                class="node-icon"
+                                [class]="block.icon"
+                                [style.color]="block.color"
+                            ></i>
+                            <span class="menu-group__item-label">{{ block.label }}</span>
+                            @if (block.keyHint; as keyHint) {
+                                <span class="key-hint">{{ keyHint }}</span>
+                            } @else {
+                                <i class="ti ti-plus plus-icon"></i>
+                            }
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
     `,
     styles: [
         `
+            .menu-group__title {
+                padding: 12px 16px 4px;
+                color: var(--color-ks-transparent-text-60);
+                font-size: var(--text-body-small-large-size);
+                font-weight: var(--text-body-small-large-weight);
+                line-height: var(--text-body-small-large-line-height);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+
             ul {
                 list-style: none;
                 padding: 0 16px;
@@ -44,7 +79,8 @@ interface FlowGraphBlock {
                 justify-content: space-between;
                 padding: 12px 16px;
                 border-radius: 8px;
-                gap: 14px;
+                --row-gap: 14px;
+                gap: var(--row-gap);
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
@@ -55,6 +91,7 @@ interface FlowGraphBlock {
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
+                font-size: 1.125rem;
             }
 
             .node-label {
@@ -79,6 +116,38 @@ interface FlowGraphBlock {
                 color: inherit;
             }
 
+            .menu-group__item-label {
+                flex: 1 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .key-hint {
+                flex-shrink: 0;
+                max-width: 0;
+                margin-left: calc(-1 * var(--row-gap));
+                overflow: hidden;
+                white-space: nowrap;
+                color: var(--color-ks-transparent-text-60);
+                font-size: var(--text-body-small-size);
+                font-weight: var(--text-body-small-weight);
+                line-height: var(--text-body-small-line-height);
+                opacity: 0;
+                transition:
+                    opacity 0.2s ease,
+                    max-width 0s linear 0.2s,
+                    margin-left 0s linear 0.2s;
+            }
+
+            li:hover .key-hint {
+                opacity: 1;
+                max-width: 12em;
+                margin-left: 0;
+                transition: opacity 0.2s ease;
+            }
+
             li.disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
@@ -89,194 +158,54 @@ interface FlowGraphBlock {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowGraphCoreMenuComponent {
+    public readonly searchTerm = input('');
+    public readonly nodeSelected = output<CreateNodeRequest>();
+
+    protected readonly filteredGroups = computed<FlowGraphMenuGroup[]>(() => {
+        const term = this.searchTerm().toLowerCase();
+        const keyHints = this.keyHints();
+        return NODE_MENU_GROUPS.map((group) => ({
+            title: group.title,
+            blocks: group.types
+                .map((type) => toBlock(type, keyHints.get(type) ?? null))
+                .filter((block) => block.label.toLowerCase().includes(term)),
+        })).filter((group) => group.blocks.length > 0);
+    });
+
+    private readonly keyHints = computed(() => {
+        const bindings = this.keymap.bindings();
+        const keyHints = new Map<MenuNodeType, string>();
+        NODE_ACTION_BY_TYPE.forEach((actionId, type) => {
+            const [chord] = bindings.get(actionId) ?? [];
+            if (chord) {
+                keyHints.set(type, formatChord(chord, this.keymap.isMac).join(this.keymap.isMac ? '' : '+'));
+            }
+        });
+        return keyHints;
+    });
+
+    private readonly keymap = inject(KeymapService);
     private readonly flowService = inject(FlowService);
 
-    public readonly searchTerm = input('');
-    public readonly nodeSelected = output<{ type: NodeType; data: unknown }>();
-
-    public readonly filteredBlocks = computed(() =>
-        this.blocks.filter((block) => block.label.toLowerCase().includes(this.searchTerm().toLowerCase()))
-    );
-
-    public readonly blocks: FlowGraphBlock[] = [
-        {
-            label: 'Python Code Node',
-            type: NodeType.PYTHON,
-            icon: NODE_ICONS[NodeType.PYTHON],
-            color: NODE_COLORS[NodeType.PYTHON],
-        },
-        {
-            label: 'File Extractor',
-            type: NodeType.FILE_EXTRACTOR,
-            icon: NODE_ICONS[NodeType.FILE_EXTRACTOR],
-            color: NODE_COLORS[NodeType.FILE_EXTRACTOR],
-        },
-        {
-            label: 'Audio to text',
-            type: NodeType.AUDIO_TO_TEXT,
-            icon: NODE_ICONS[NodeType.AUDIO_TO_TEXT],
-            color: NODE_COLORS[NodeType.AUDIO_TO_TEXT],
-        },
-        {
-            label: 'End',
-            type: NodeType.END,
-            icon: NODE_ICONS[NodeType.END],
-            color: NODE_COLORS[NodeType.END],
-        },
-        {
-            label: 'Note',
-            type: NodeType.NOTE,
-            icon: NODE_ICONS[NodeType.NOTE],
-            color: NODE_COLORS[NodeType.NOTE],
-        },
-        {
-            label: 'Decision Table',
-            type: NodeType.TABLE,
-            icon: NODE_ICONS[NodeType.TABLE],
-            color: NODE_COLORS[NodeType.TABLE],
-        },
-        {
-            label: 'Classification Decision Table',
-            type: NodeType.CLASSIFICATION_TABLE,
-            icon: NODE_ICONS[NodeType.CLASSIFICATION_TABLE],
-            color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
-        },
-        {
-            label: 'Webhook Trigger',
-            type: NodeType.WEBHOOK_TRIGGER,
-            icon: NODE_ICONS[NodeType.WEBHOOK_TRIGGER],
-            color: NODE_COLORS[NodeType.WEBHOOK_TRIGGER],
-        },
-        {
-            label: 'Telegram Trigger',
-            type: NodeType.TELEGRAM_TRIGGER,
-            icon: NODE_ICONS[NodeType.TELEGRAM_TRIGGER],
-            color: NODE_COLORS[NodeType.TELEGRAM_TRIGGER],
-        },
-        {
-            label: 'Schedule Trigger',
-            type: NodeType.SCHEDULE_TRIGGER,
-            icon: NODE_ICONS[NodeType.SCHEDULE_TRIGGER],
-            color: NODE_COLORS[NodeType.SCHEDULE_TRIGGER],
-        },
-        {
-            label: 'Task Node',
-            type: NodeType.TASK,
-            icon: NODE_ICONS[NodeType.TASK],
-            color: NODE_COLORS[NodeType.TASK],
-        },
-        {
-            label: 'Agent Node',
-            type: NodeType.AGENT,
-            icon: NODE_ICONS[NodeType.AGENT],
-            color: NODE_COLORS[NodeType.AGENT],
-        },
-        {
-            label: 'Knowledge Retriever',
-            type: NodeType.KNOWLEDGE_RETRIEVER,
-            icon: NODE_ICONS[NodeType.KNOWLEDGE_RETRIEVER],
-            color: NODE_COLORS[NodeType.KNOWLEDGE_RETRIEVER],
-        },
-        {
-            label: 'Key-Value',
-            type: NodeType.KEY_VALUE,
-            icon: NODE_ICONS[NodeType.KEY_VALUE],
-            color: NODE_COLORS[NodeType.KEY_VALUE],
-        },
-    ];
-
-    public onBlockClicked(type: NodeType): void {
-        let data: unknown = null;
-
-        if (type === NodeType.PYTHON) {
-            data = {
-                name: 'Python Code Node',
-                libraries: [],
-                code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
-                entrypoint: 'main',
-            };
-        } else if (type === NodeType.TABLE) {
-            data = {
-                name: 'Decision Table',
-                table: {
-                    graph: null,
-                    condition_groups: [
-                        {
-                            group_name: 'Group 1',
-                            group_type: 'complex',
-                            expression: null,
-                            conditions: [],
-                            manipulation: null,
-                            next_node: null,
-                            order: 1,
-                            valid: false,
-                        },
-                    ],
-                    node_name: '',
-                    default_next_node: null,
-                    next_error_node: null,
-                },
-            };
-        } else if (type === NodeType.NOTE) {
-            data = {
-                content: 'Add your note here...',
-                backgroundColor: NODE_COLORS[NodeType.NOTE],
-            };
-        } else if (type === NodeType.FILE_EXTRACTOR) {
-            data = null;
-        } else if (type === NodeType.AUDIO_TO_TEXT) {
-            data = null;
-        } else if (type === NodeType.WEBHOOK_TRIGGER) {
-            data = {
-                webhook_trigger: null,
-                python_code: {
-                    name: 'Webhook trigger Node',
-                    libraries: [],
-                    code: 'def main(trigger_payload: dict, **kwargs: dict) -> dict:\n    """\n    Main handler for processing webhook-triggered events.\n\n    Parameters\n    ----------\n    trigger_payload : dict\n        The data received from a third-party service via a webhook.\n    **kwargs : dict\n        Additional domain variables passed to the function.\n\n    Returns\n    -------\n    dict\n        A dictionary containing the updated values for domain variables.\n        The returned structure must include all changes that should be\n        applied to the domain.\n    """\n    return {\n        "new_data": trigger_payload,\n    }\n',
-                    entrypoint: 'main',
-                },
-            };
-        } else if (type === NodeType.TELEGRAM_TRIGGER) {
-            data = {
-                webhook_trigger: null,
-                telegram_bot_api_key_secret_id: null,
-                fields: [],
-            };
-        } else if (type === NodeType.SCHEDULE_TRIGGER) {
-            data = null;
-        } else if (type === NodeType.KNOWLEDGE_RETRIEVER) {
-            data = null;
-        } else if (type === NodeType.END) {
-            data = null;
-        } else if (type === NodeType.TASK) {
-            data = {
-                name: 'Task Node',
-                instructions: '',
-                output_schema: {},
-                output_schema_invalid: false,
-                remember_output: false,
-                agent_definition: null,
-                surface_list: [],
-                inline_surface: null,
-            };
-        } else if (type === NodeType.AGENT) {
-            data = {
-                name: 'Agent Node',
-                agent_definition: null,
-                surface_list: [],
-                inline_surface: null,
-                tasks: [],
-            };
-        }
-
-        this.nodeSelected.emit({ type, data });
+    protected onBlockClicked(type: NodeType): void {
+        this.nodeSelected.emit({ type });
     }
 
-    public isDisabled(type: NodeType): boolean {
+    protected isDisabled(type: NodeType): boolean {
         if (type === NodeType.END) {
             return this.flowService.hasEndNode();
         }
 
         return false;
     }
+}
+
+function toBlock(type: MenuNodeType, keyHint: string | null): FlowGraphBlock {
+    return {
+        label: NODE_MENU_LABELS[type],
+        type,
+        icon: NODE_ICONS[type],
+        color: NODE_COLORS[type],
+        keyHint,
+    };
 }

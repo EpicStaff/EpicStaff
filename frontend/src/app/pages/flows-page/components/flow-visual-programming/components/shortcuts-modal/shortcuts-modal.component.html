@@ -8,6 +8,7 @@
         class="shortcuts__modal"
         [style.top.px]="pos()!.top"
         [style.left.px]="pos()!.left"
+        [style.--shortcuts-modal-height]="modalHeightPx + 'px'"
         (click)="$event.stopPropagation()"
         [class.shortcuts__modal--compact]="size() === 'compact'"
         [class.shortcuts__modal--wide]="size() === 'wide'"
@@ -60,31 +61,34 @@
             </div>
 
             <div class="shortcuts__content">
-                <div class="shortcuts__grid">
-                    @for (section of sections(); track section.id) {
+                <div class="shortcuts__flow">
+                    @for (section of sections(); track section.title) {
                         <section class="shortcuts__card">
                             <div class="shortcuts__card-title">{{ section.title }}</div>
 
                             <div class="shortcuts__card-body">
                                 @for (row of section.rows; track row.id; let i = $index) {
-                                    @if (!row.hidden) {
-                                        <div
-                                            class="shortcuts__row"
-                                            [class.shortcuts__row--alt]="i % 2 === 0"
-                                        >
-                                            <div class="shortcuts__label">
-                                                {{ row.label }}
-                                            </div>
+                                    <div
+                                        class="shortcuts__row"
+                                        [class.shortcuts__row--alt]="i % 2 === 0"
+                                    >
+                                        <div class="shortcuts__label">
+                                            {{ row.label }}
+                                        </div>
 
-                                            <div class="shortcuts__keys">
-                                                @for (key of row.keys; track key) {
+                                        <div class="shortcuts__keys">
+                                            @for (chord of row.chords; track $index; let first = $first) {
+                                                @if (!first) {
+                                                    <span class="shortcuts__or">or</span>
+                                                }
+                                                @for (key of chord; track $index) {
                                                     <span class="shortcuts__key">
-                                                        {{ displayKey(key) }}
+                                                        {{ key }}
                                                     </span>
                                                 }
-                                            </div>
+                                            }
                                         </div>
-                                    }
+                                    </div>
                                 }
                             </div>
                         </section>

@@ -22,7 +22,7 @@
     box-shadow: var(--shadow-panel-elevated);
     width: min(1028px, calc(100vw - 32px));
     max-width: 1028px;
-    max-height: min(666px, calc(100vh - 32px));
+    height: min(var(--shortcuts-modal-height), calc(100vh - 32px));
     overflow: clip;
 
     transition:
@@ -35,21 +35,27 @@
 }
 
 @mixin shortcutsOneColumnLayout() {
-    .shortcuts__grid {
-        grid-template-columns: 1fr;
-        row-gap: 16px;
-        column-gap: 0;
+    .shortcuts__flow {
+        columns: auto;
+        height: auto;
+    }
+
+    .shortcuts__card:not(:first-child) .shortcuts__card-title {
+        margin-top: 16px;
     }
 }
 
 @mixin shortcutsCustomScroll() {
     .shortcuts__content {
-        flex: 1 1 auto;
-        min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
         margin-right: -24px;
         padding-right: 24px;
+    }
+}
+
+@mixin shortcutsScrollbar() {
+    .shortcuts__content {
         overscroll-behavior: contain;
         scrollbar-width: thin;
         scrollbar-color: var(--graphite-750) transparent;
@@ -57,6 +63,7 @@
 
     .shortcuts__content::-webkit-scrollbar {
         width: 6px;
+        height: 6px;
     }
 
     .shortcuts__content::-webkit-scrollbar-button {
@@ -93,8 +100,7 @@
 }
 
 .shortcuts__modal--compact {
-    width: 332px;
-    height: 640px;
+    width: min(376px, calc(100vw - 32px));
     transform: scale(0.99);
     opacity: 1;
 
@@ -102,8 +108,9 @@
     @include shortcutsCustomScroll();
 }
 
-.shortcuts__modal--wide .shortcuts__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@include shortcutsScrollbar();
+
+.shortcuts__modal--wide .shortcuts__flow {
     transform: scale(1);
     opacity: 1;
 }
@@ -125,8 +132,9 @@
 }
 
 .shortcuts__content {
-    overflow: clip;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow: auto;
 }
 
 .shortcuts__header {
@@ -233,22 +241,21 @@
     height: 20px;
 }
 
-.shortcuts__grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+.shortcuts__flow {
+    height: 100%;
+    column-count: 3;
     column-gap: 40px;
-    row-gap: 30px;
-    transition:
-        column-gap 200ms ease,
-        row-gap 200ms ease;
+    column-fill: auto;
+    transition: column-gap 200ms ease;
 }
 
-.shortcuts__card {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
+.shortcuts__card,
+.shortcuts__card-body {
+    display: contents;
+}
+
+.shortcuts__card:not(:first-child) .shortcuts__card-title {
+    margin-top: 30px;
 }
 
 .shortcuts__card-title {
@@ -259,13 +266,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.shortcuts__card-body {
-    width: 100%;
-    border-radius: 8px;
-    min-height: auto;
-    overflow: hidden;
+    margin-bottom: 12px;
+    break-after: avoid;
 }
 
 .shortcuts__row {
@@ -275,6 +277,17 @@
     min-height: 32px;
     padding: 4px;
     box-sizing: border-box;
+    break-inside: avoid;
+}
+
+.shortcuts__row:first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.shortcuts__row:last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
 }
 
 .shortcuts__row--alt {
@@ -291,7 +304,15 @@
 
 .shortcuts__keys {
     display: flex;
+    align-items: center;
     gap: 10px;
+}
+
+.shortcuts__or {
+    font-weight: var(--text-caption-weight);
+    font-size: var(--text-caption-size);
+    line-height: var(--text-caption-line-height);
+    color: var(--color-ks-transparent-text-60);
 }
 
 .shortcuts__key {
@@ -314,8 +335,7 @@
     @include shortcutsCustomScroll();
 
     .shortcuts__modal {
-        width: 332px;
-        height: 640px;
+        width: min(376px, calc(100vw - 32px));
         overflow: hidden;
         color-scheme: dark;
     }

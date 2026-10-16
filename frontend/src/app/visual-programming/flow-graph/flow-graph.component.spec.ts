@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FCreateConnectionEvent, FDragStartedEvent, FReassignConnectionEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
@@ -35,9 +36,6 @@ const authorshipOfRow = (row: typeof liveStart | typeof liveNote) => ({
     last_edited_at: row.last_edited_at,
 });
 
-// The real template pulls in the whole Foblex canvas, which jsdom cannot lay out. Every
-// handler under test either returns before it touches a canvas reference or never uses one,
-// so the class is mounted with an empty template.
 function noteNode(): GraphNoteModel {
     return {
         id: 'note-1',
@@ -55,6 +53,9 @@ function noteNode(): GraphNoteModel {
     };
 }
 
+// The real template pulls in the whole Foblex canvas, which jsdom cannot lay out, so the class
+// is mounted with plain stand-ins for the canvas host and its minimap. A test whose handler
+// reaches the Foblex canvas replaces `fFlowComponent` with a fake for just the calls it makes.
 function mount(
     isPreview: boolean,
     flowState: FlowModel,
@@ -78,7 +79,13 @@ function mount(
                 : [NodeAuthorshipStore]),
         ],
     });
-    TestBed.overrideComponent(FlowGraphComponent, { set: { template: '', imports: [] } });
+    TestBed.overrideComponent(FlowGraphComponent, {
+        set: {
+            template: '<f-flow #flowHost><f-minimap></f-minimap></f-flow>',
+            imports: [],
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
+    });
     beforeCreate();
     const fixture = TestBed.createComponent(FlowGraphComponent);
     fixture.componentRef.setInput('flowState', flowState);
@@ -264,6 +271,337 @@ describe('FlowGraphComponent', () => {
             fixture.detectChanges();
             TestBed.tick();
             expect(emitSave).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('keyboard shortcuts', () => {
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let flowService: FlowService;
+        const attached: HTMLElement[] = [];
+
+        function press(init: KeyboardEventInit, target: EventTarget = window): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+        }
+
+        function attachInput(): HTMLInputElement {
+            const input = document.createElement('input');
+            document.body.appendChild(input);
+            attached.push(input);
+            return input;
+        }
+
+        function renameNote(name: string): void {
+            const note = flowService.nodes().find((node) => node.id === 'note-1') as NodeModel;
+            flowService.updateNode({ ...note, node_name: name });
+        }
+
+        function noteName(): string | undefined {
+            return flowService.nodes().find((node) => node.id === 'note-1')?.node_name;
+        }
+
+        function startMultiSelect(): void {
+            fixture.componentInstance['fFlowComponent'] = {
+                select: vi.fn(),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+            fixture.componentInstance.onToggleMultiSelect();
+        }
+
+        beforeEach(() => {
+            fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] });
+            flowService = TestBed.inject(FlowService);
+        });
+
+        afterEach(() => attached.splice(0).forEach((element) => element.remove()));
+
+        it('undoes the last change on Ctrl+Z', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Note');
+        });
+
+        it('undoes the last change on Ctrl+Z on a German layout', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press({ code: 'KeyY', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Note');
+        });
+
+        it.each([
+            ['Backspace', { code: 'Backspace', key: 'Backspace' }],
+            ['Delete', { code: 'Delete', key: 'Delete' }],
+            ['Ctrl+Z', { code: 'KeyZ', key: 'z', ctrlKey: true }],
+        ])('leaves the selected node alone on %s typed in a text field', (_label, init) => {
+            fixture.componentInstance['fFlowComponent'] = {
+                getSelection: () => ({ fNodeIds: ['note-1'], fGroupIds: [], fConnectionIds: [] }),
+                select: vi.fn(),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+
+            press(init, attachInput());
+
+            expect(noteName()).toBe('Renamed');
+        });
+
+        it('ends multi-select on Escape', () => {
+            startMultiSelect();
+
+            press({ code: 'Escape', key: 'Escape' });
+
+            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+        });
+
+        it('ends multi-select on Escape pressed in a text field', () => {
+            startMultiSelect();
+
+            press({ code: 'Escape', key: 'Escape' }, attachInput());
+
+            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+        });
+
+        it('stops handling keys once the editor is left', () => {
+            TestBed.inject(UndoRedoService).stateChanged();
+            renameNote('Renamed');
+            fixture.destroy();
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(noteName()).toBe('Renamed');
+        });
+    });
+
+    describe('node shortcuts', () => {
+        const CANVAS_RECT = { left: 0, top: 0, width: 1000, height: 800 };
+
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let flowService: FlowService;
+        let nodesBefore: number;
+
+        function setUp(options: { isPreview?: boolean; canUpdateFlows?: boolean } = {}): void {
+            fixture = mount(
+                options.isPreview ?? false,
+                { nodes: [createStartNode(), noteNode()], connections: [] },
+                undefined,
+                options.canUpdateFlows ?? true
+            );
+            TestBed.tick();
+            flowService = TestBed.inject(FlowService);
+            fixture.componentInstance['fFlowComponent'] = {
+                getPositionInFlow: (point: { x: number; y: number }) => point,
+                redraw: () => undefined,
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+            vi.spyOn(canvasHost(), 'getBoundingClientRect').mockReturnValue(
+                DOMRect.fromRect({ x: CANVAS_RECT.left, y: CANVAS_RECT.top, ...CANVAS_RECT })
+            );
+            nodesBefore = flowService.nodes().length;
+        }
+
+        function canvasHost(): HTMLElement {
+            return fixture.nativeElement.querySelector('f-flow');
+        }
+
+        function hoverCanvasAt(clientX: number, clientY: number, target: Element = canvasHost()): void {
+            target.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX, clientY }));
+        }
+
+        function shownToasts(): string[] {
+            let messages: string[] = [];
+            TestBed.inject(ToastService)
+                .toasts$.subscribe((toasts) => (messages = toasts.map((toast) => toast.message)))
+                .unsubscribe();
+            return messages;
+        }
+
+        function leaveCanvas(): void {
+            canvasHost().dispatchEvent(new PointerEvent('pointerleave'));
+        }
+
+        function press(init: KeyboardEventInit): void {
+            window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+        }
+
+        function pressShiftA(init: KeyboardEventInit = {}): void {
+            press({ code: 'KeyA', key: 'A', shiftKey: true, ...init });
+        }
+
+        function pressShiftE(): void {
+            press({ code: 'KeyE', key: 'E', shiftKey: true });
+        }
+
+        function addedNodes(): NodeModel[] {
+            return flowService.nodes().slice(nodesBefore);
+        }
+
+        beforeEach(() => vi.useFakeTimers());
+
+        afterEach(() => {
+            vi.runOnlyPendingTimers();
+            vi.useRealTimers();
+        });
+
+        it('adds the bound node where the pointer is on the canvas', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+
+            expect(addedNodes().map((node) => [node.type, node.position])).toEqual([
+                [NodeType.AGENT, { x: 400, y: 300 }],
+            ]);
+        });
+
+        it('adds the node at the canvas center once the pointer has left the canvas', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+            leaveCanvas();
+
+            pressShiftA();
+
+            expect(addedNodes().map((node) => node.position)).toEqual([{ x: 500, y: 400 }]);
+        });
+
+        it('adds the node at the canvas center while the pointer is over the minimap', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+            hoverCanvasAt(950, 750, canvasHost().querySelector('f-minimap') as Element);
+
+            pressShiftA();
+
+            expect(addedNodes().map((node) => node.position)).toEqual([{ x: 500, y: 400 }]);
+        });
+
+        it('adds the node by the key label on a layout where that key sits elsewhere (AZERTY Shift+A)', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+
+            pressShiftA({ code: 'KeyQ' });
+
+            expect(addedNodes().map((node) => node.type)).toEqual([NodeType.AGENT]);
+        });
+
+        it('adds one node when the key is held down', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+            pressShiftA({ repeat: true });
+            pressShiftA({ repeat: true });
+
+            expect(addedNodes()).toHaveLength(1);
+        });
+
+        it('removes the added node with one Ctrl+Z', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+            pressShiftA();
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(flowService.nodes()).toHaveLength(nodesBefore);
+        });
+
+        it('adds an End node with Shift+E where the pointer is when the flow has none', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+
+            pressShiftE();
+
+            expect(addedNodes().map((node) => [node.type, node.position])).toEqual([
+                [NodeType.END, { x: 400, y: 300 }],
+            ]);
+        });
+
+        it('adds no second End node with Shift+E and says only one is allowed', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+            pressShiftE();
+
+            pressShiftE();
+
+            expect(addedNodes().map((node) => node.type)).toEqual([NodeType.END]);
+            expect(shownToasts()).toEqual(['Only one End node is allowed']);
+        });
+
+        it('removes the End node added with Shift+E with one Ctrl+Z', () => {
+            setUp();
+            hoverCanvasAt(400, 300);
+            pressShiftE();
+            expect(flowService.hasEndNode()).toBe(true);
+
+            press({ code: 'KeyZ', key: 'z', ctrlKey: true });
+
+            expect(flowService.nodes()).toHaveLength(nodesBefore);
+            expect(flowService.hasEndNode()).toBe(false);
+        });
+
+        it.each([
+            [
+                'the flow is read-only for this user',
+                { canUpdateFlows: false },
+                'You have read-only access to this flow.',
+            ],
+            [
+                'the canvas shows a version preview',
+                { isPreview: true },
+                'Preview mode is read-only. Exit preview to edit the flow',
+            ],
+        ])('adds nothing and says why when %s', (_label, options, message) => {
+            setUp(options);
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+
+            expect(addedNodes()).toEqual([]);
+            expect(shownToasts()).toEqual([message]);
+        });
+
+        it('adds nothing while a dialog is open', () => {
+            setUp();
+            (TestBed.inject(Dialog).openDialogs as unknown[]).push({});
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+
+            expect(addedNodes()).toEqual([]);
+        });
+
+        it('adds nothing while the node menu is open', () => {
+            setUp();
+            fixture.componentInstance.onContextMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 500 }));
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+
+            expect(addedNodes()).toEqual([]);
+        });
+
+        it('adds nothing while the flow is being saved', () => {
+            setUp();
+            fixture.componentRef.setInput('isSaving', true);
+            fixture.detectChanges();
+            hoverCanvasAt(400, 300);
+
+            pressShiftA();
+
+            expect(addedNodes()).toEqual([]);
+        });
+
+        it('still adds a node picked from the node menu where the menu was opened', () => {
+            setUp();
+            fixture.componentInstance.onContextMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 500 }));
+            hoverCanvasAt(400, 300);
+
+            fixture.componentInstance.onAddNodeFromContextMenu({ type: NodeType.PYTHON });
+
+            expect(addedNodes().map((node) => [node.type, node.position])).toEqual([
+                [NodeType.PYTHON, { x: 100, y: 500 }],
+            ]);
+            expect(fixture.componentInstance['showContextMenu']()).toBe(false);
         });
     });
 

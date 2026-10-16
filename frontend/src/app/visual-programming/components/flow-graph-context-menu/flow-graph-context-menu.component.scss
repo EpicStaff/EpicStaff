@@ -1,6 +1,6 @@
 .context-menu {
-    width: 300px;
-    min-width: 300px;
+    width: 320px;
+    min-width: 320px;
     background: var(--graphite-1005);
 
     box-shadow: 0 4px 8px var(--black-alpha-30);
@@ -9,6 +9,9 @@
     border-radius: 15px;
     color: var(--gray-240);
     height: auto;
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
 
     .search-container {
         display: flex;
@@ -21,6 +24,7 @@
 
         max-height: 40px; /* Reduce height */
         margin-bottom: 8px;
+        flex-shrink: 0;
         &:focus-within {
             border-color: var(--gray-555); /* Softer focus effect */
         }
@@ -53,6 +57,7 @@
         justify-content: flex-start; /* Keep buttons aligned */
         padding: 0px 16px;
         margin-bottom: 8px;
+        flex-shrink: 0;
 
         button {
             background: transparent;
@@ -80,6 +85,8 @@
     }
 
     .menu-content {
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
         font-size: 0.875rem;
         padding-bottom: 16px;
