@@ -14,7 +14,6 @@ import {
     GraphNoteModel,
     KeyValueNodeModel,
     KnowledgeRetrieverNodeModel,
-    LLMNodeModel,
     NodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
@@ -24,6 +23,7 @@ import {
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
+import { toStoredCdtExplanations } from '../cdt-explanations';
 import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
@@ -175,16 +175,6 @@ function toAgentComparable(node: AgentNodeModel): unknown {
     };
 }
 
-function toLlmComparable(node: LLMNodeModel): unknown {
-    return {
-        node_name: node.node_name,
-        llm_config: node.data.id,
-        input_map: node.input_map || {},
-        output_variable_path: node.output_variable_path || null,
-        metadata: toNodeMetadata(node),
-    };
-}
-
 function toFileExtractorComparable(node: FileExtractorNodeModel): unknown {
     return {
         node_name: node.node_name,
@@ -231,6 +221,8 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
         webhook_trigger: node.data.webhook_trigger,
+        test_payload: node.data.test_payload ?? {},
+        use_storage: node.data.use_storage ?? false,
         metadata: toNodeMetadata(node),
     };
 }
@@ -241,6 +233,7 @@ function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
         telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
+        test_payload: node.data.test_payload ?? {},
         metadata: toNodeMetadata(node),
     };
 }
@@ -380,7 +373,9 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
                 name: s.name,
                 color: normalizeCdtSectionColor(s.metadata?.color),
             })),
-        metadata: toNodeMetadata(node),
+        // Mirrors `payload.ts`. Without it a node whose only change is a new
+        // explanation never reaches `toUpdate`.
+        metadata: { ...toNodeMetadata(node), explanations: toStoredCdtExplanations(node.explanations) },
     };
 }
 
@@ -405,11 +400,6 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<AgentNodeModel>(previous.nodes, NodeType.AGENT),
             nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
             toAgentComparable
-        ),
-        llmNodes: diffNodesByBackendId(
-            nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),
-            nodesByType<LLMNodeModel>(current.nodes, NodeType.LLM),
-            toLlmComparable
         ),
         fileExtractorNodes: diffNodesByBackendId(
             nodesByType<FileExtractorNodeModel>(previous.nodes, NodeType.FILE_EXTRACTOR),
@@ -480,14 +470,7 @@ function getPlainConnections(flow: FlowModel): ConnectionModel[] {
         const source = nodeById.get(conn.sourceNodeId);
         const target = nodeById.get(conn.targetNodeId);
         if (!source || !target) return false;
-        if (
-            source.type === NodeType.TABLE ||
-            source.type === NodeType.CLASSIFICATION_TABLE ||
-            source.type === NodeType.EDGE
-        )
-            return false;
-        if (target.type === NodeType.EDGE) return false;
-        return true;
+        return source.type !== NodeType.TABLE && source.type !== NodeType.CLASSIFICATION_TABLE;
     });
 }
 

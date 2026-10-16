@@ -3,14 +3,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from .graph_nodes import GraphData, SubGraphData
+from .storage_scope import StorageCredentials
 
 
 class SessionData(BaseModel):
     id: int
+    org_id: int
     graph: "GraphData"
     unique_subgraph_list: list[SubGraphData] = []
     initial_state: dict[str, Any] = {}
     output_state: dict[str, Any] = {}
+    storage_credentials: StorageCredentials | None = None
+    run_type: str = ""
 
 
 class TokenUsage(BaseModel):
@@ -29,6 +33,7 @@ class GraphSessionMessageData(BaseModel):
     timestamp: str
     message_data: dict
     uuid: str = ""
+    node_type: str = ""
 
     model_config = ConfigDict(from_attributes=True)
 

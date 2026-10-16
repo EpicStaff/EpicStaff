@@ -1,4 +1,5 @@
 import asyncio
+import gc
 
 import settings
 from clients.key_value import KeyValueClient
@@ -7,6 +8,11 @@ from services.graph.graph_session_manager_service import GraphSessionManagerServ
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
 from services.run_python_code_service import RunPythonCodeService
+
+# Must match the `src.crew...` path every other caller uses: a second import path
+# creates a second module object with its own lru_cache singleton, so shutdown
+# would drain an empty client while the real one's queued events are dropped.
+from src.crew.services.graph.session_audit_provider import get_session_audit_writer
 from utils.logger import logger
 
 
@@ -52,6 +58,11 @@ async def main():
 
         await key_value_client.start()
 
+        # Freezing moves startup objects out of the scanned generations.
+        gc.collect()
+        gc.freeze()
+        gc.set_threshold(50_000, 20, 100)
+
         logger.info("Starting Session Manager Service...")
         session_manager_service.start()
         logger.info("Session Manager Service started.")
@@ -66,6 +77,17 @@ async def main():
     finally:
         await key_value_client.stop()
         logger.info("Shutting down...")
+        # Best-effort drain of whatever's still queued in the audit client.
+        # NOTE: this only runs on an exception or KeyboardInterrupt (Ctrl+C) -
+        # a plain `docker stop`/`docker compose down` sends SIGTERM, which
+        # this process has no handler for, so this path is NOT hit on a
+        # normal container stop today. That's a pre-existing gap in this
+        # file (redis_service has the same exposure), not something this
+        # change introduces or fixes.
+        try:
+            await get_session_audit_writer().shutdown()
+        except Exception as shutdown_exc:
+            logger.warning(f"Audit client shutdown failed: {shutdown_exc}")
 
 
 if __name__ == "__main__":

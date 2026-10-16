@@ -19,6 +19,7 @@
             </div>
         } @else {
             <div class="llm-card__actions">
+                <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
                 <button
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                     type="button"

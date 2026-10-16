@@ -60,20 +60,22 @@ Extends `AbstractDefaultFillableModel` (from [`tables/models/base_models.py`](..
 
 ### Execution config
 
-All nullable; a `null` value falls back to `DefaultAgentDefinitionConfig` (see §3).
+Bounds and defaults live on the model fields (`MinValueValidator` / `MaxValueValidator`), so every
+serializer over the model inherits them. Only `default_temperature` is nullable; a `null` there falls
+back to `DefaultAgentDefinitionConfig` (see §3). The other fields reject `null` with 400.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `max_iter` | `IntegerField`, null | Max reasoning iterations per task. |
-| `max_rpm` | `IntegerField`, null | LLM request rate cap (requests/minute). |
-| `max_execution_time` | `IntegerField`, null | Wall-clock budget in seconds for a single agent run. Also drives the runtime dispatch timeout (see §9). |
-| `cache` | `BooleanField`, null | Enable tool-result caching. |
-| `max_retry_limit` | `IntegerField`, null | Max retries on transient LLM/tool failures. |
-| `default_temperature` | `FloatField`, null | Sampling temperature when the LLMConfig itself leaves it unset. |
-| `max_tool_calls` | `IntegerField`, null | Max tool calls per loop iteration. |
-| `tool_timeout` | `IntegerField`, null | Per-tool-call timeout in seconds. |
-| `max_consecutive_failures` | `IntegerField`, null | Consecutive failed tool calls before graceful stop. |
-| `schema_max_retries` | `IntegerField`, null | Max retries enforcing structured-output schema validation. |
+| Field | Type | Bounds | Default | Meaning |
+|---|---|---|---|---|
+| `max_iter` | `IntegerField` | 1..90 | 15 | Max reasoning iterations per task. |
+| `max_rpm` | `IntegerField` | 1..240 | 30 | LLM request rate cap (requests/minute). |
+| `max_execution_time` | `IntegerField` | 60..1800 | 600 | Wall-clock budget in seconds for a single agent run. Also drives the runtime dispatch timeout (see §9). |
+| `cache` | `BooleanField` | — | `False` | Enable tool-result caching. Not read by the runtime. |
+| `max_retry_limit` | `IntegerField` | 0..10 | 3 | Max retries on transient LLM/tool failures. |
+| `default_temperature` | `FloatField`, null | 0..2 | `None` | Sampling temperature when the LLMConfig itself leaves it unset. |
+| `max_tool_calls` | `IntegerField` | 1..300 | 15 | Max tool calls per loop iteration. |
+| `tool_timeout` | `IntegerField` | 10..1800 | 300 | Per-tool-call timeout in seconds. |
+| `max_consecutive_failures` | `IntegerField` | 1..20 | 3 | Consecutive failed tool calls before graceful stop. |
+| `schema_max_retries` | `IntegerField` | 0..20 | 2 | Max retries enforcing structured-output schema validation. |
 
 ### Surface linkage
 
@@ -87,17 +89,7 @@ Reverse relation `owned_surfaces` comes from `Surface.owner_agent` (see §7 in [
 
 ## 3. Defaults singleton — `DefaultAgentDefinitionConfig`
 
-Same file as `AgentDefinition`. A singleton (`pk=1`, `load()` classmethod does `get_or_create(pk=1)`) holding org-wide fallback values for every nullable `AgentDefinition` execution field.
-
-Most fields default to `None` (i.e. "no cap unless set"). Three fields ship non-`None` defaults:
-
-| Field | Default |
-|---|---|
-| `max_tool_calls` | `15` |
-| `tool_timeout` | `300` (seconds) |
-| `max_consecutive_failures` | `3` |
-
-All other execution fields (`max_iter`, `max_rpm`, `max_execution_time`, `cache`, `max_retry_limit`, `default_temperature`, `schema_max_retries`) default to `None`.
+Same file as `AgentDefinition`. A singleton (`pk=1`, `load()` classmethod does `get_or_create(pk=1)`) holding the org-wide fallback for `AgentDefinition.default_temperature` (default `0.7`). It is the only field left: the other execution fields are NOT NULL on `AgentDefinition` since migrations `0010` (backfill NULLs from this singleton, then clamp into the new bounds) and `0011` (NOT NULL, singleton columns dropped).
 
 ## 4. No manager LLM
 
@@ -127,7 +119,7 @@ Note the legacy sibling `RealtimeAgent` (same file) is the equivalent OneToOne w
 File: [`src/django_app/agents/serializers/agent_definition_serializers.py`](../../src/django_app/agents/serializers/agent_definition_serializers.py)
 
 - **`AgentDefinitionReadSerializer`** — all `AgentDefinition` fields, read-only (`read_only_fields = fields`), plus a computed `default_surfaces` field via `SerializerMethodField` → `AgentDefinitionSurfaceService.get_default_surfaces(obj)` (service module: [`agents/services/surface_service.py`](../../src/django_app/agents/services/surface_service.py)).
-- **`AgentDefinitionWriteSerializer`** — `ModelSerializer` over the writable fields. `llm_config` / `fcm_llm_config` are optional, nullable `PrimaryKeyRelatedField`s. `default_surfaces` is a nested list write (`AgentDefaultSurfaceWriteSerializer`: `surface` PK + `place` choice). Numeric guards: `max_tool_calls >= 1`, `tool_timeout >= 1`, `max_consecutive_failures >= 1`, `schema_max_retries >= 0`. `create()`/`update()` catch Django `IntegrityError` and re-raise as `AgentDefinitionConflictError` (domain exception, [`agents/exceptions.py`](../../src/django_app/agents/exceptions.py)), then delegate surface persistence to `AgentDefinitionSurfaceService.set_default_surfaces`. `validate()` runs `SurfaceValidator.validate_agent_default_surfaces` when `default_surfaces` and `organization` (from serializer context) are present.
+- **`AgentDefinitionWriteSerializer`** — `ModelSerializer` over the writable fields. `llm_config` / `fcm_llm_config` are optional, nullable `PrimaryKeyRelatedField`s. `default_surfaces` is a nested list write (`AgentDefaultSurfaceWriteSerializer`: `surface` PK + `place` choice). Numeric bounds come from the model validators (see §2). `name` is trimmed, max 255, and unique per organization via `OrganizationScopedUniqueValidator` (duplicate → 400 on `name`); `create()`/`update()` also map a racing `IntegrityError` to the same 400, then delegate surface persistence to `AgentDefinitionSurfaceService.set_default_surfaces`. `validate()` runs `SurfaceValidator.validate_agent_default_surfaces` when `default_surfaces` and `organization` (from serializer context) are present.
 - `AgentDefaultSurfaceReadSerializer` / `AgentDefaultSurfaceWriteSerializer` — the through-row shape (`surface`, `place`).
 
 ViewSet: [`AgentDefinitionViewSet`](../../src/django_app/agents/views/agent_definition_views.py) (`viewsets.ModelViewSet`)
@@ -178,6 +170,8 @@ New-app migrations live under [`src/django_app/agents/migrations/`](../../src/dj
 - `0001_initial.py` — creates `AgentDefinition` (including `schema_max_retries` and `fcm_llm_config` already present), `DefaultAgentDefinitionConfig`, `Surface`, and the `AgentDefaultSurface` through table.
 - `0002_initial.py` — additional agents-app tables (surface tool/knowledge/storage through-models, inline surface models).
 - `0003_alter_agentdefaultsurface_place.py` — widens `AgentDefaultSurface.place` and adds the `REALTIME` value to `SurfacePlace`.
+- `0010_agentdefinition_backfill_exec_fields.py` — data migration: NULL execution fields take the singleton value (or the new default), then every value is clamped into the new bounds.
+- `0011_agentdefinition_exec_fields_not_null.py` — execution fields become NOT NULL with validators; the singleton keeps only `default_temperature`.
 
 As with all model changes, run migrations via `make django-makemigrations` / `make django-migrate` from the repo root, never `manage.py` directly.
 
@@ -194,25 +188,22 @@ classDiagram
         +metadata
         +llm_config FK nullable
         +fcm_llm_config FK nullable
-        +max_iter nullable
-        +max_rpm nullable
-        +max_execution_time nullable
-        +cache nullable
-        +max_retry_limit nullable
+        +max_iter
+        +max_rpm
+        +max_execution_time
+        +cache
+        +max_retry_limit
         +default_temperature nullable
-        +max_tool_calls nullable
-        +tool_timeout nullable
-        +max_consecutive_failures nullable
-        +schema_max_retries nullable
+        +max_tool_calls
+        +tool_timeout
+        +max_consecutive_failures
+        +schema_max_retries
         +get_default_model()
     }
 
     class DefaultAgentDefinitionConfig {
         +pk = 1 (singleton)
-        +max_tool_calls = 15
-        +tool_timeout = 300
-        +max_consecutive_failures = 3
-        +... (rest default None)
+        +default_temperature = 0.7
         +load() classmethod
     }
 
@@ -273,7 +264,7 @@ classDiagram
         +instructions
     }
 
-    AgentDefinition ..> DefaultAgentDefinitionConfig : falls back to (nullable fields)
+    AgentDefinition ..> DefaultAgentDefinitionConfig : default_temperature fallback
     AgentDefinition "1" --> "0..1" RealtimeAgentDefinition : realtime_agent
     AgentDefinition "1" --> "*" AgentDefaultSurface : default_surfaces
     AgentDefaultSurface "*" --> "1" Surface

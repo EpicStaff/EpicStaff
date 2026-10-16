@@ -18,11 +18,13 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from tables.views.audit_token_views import AuditTokenView
 
 from .yasg import urlpatterns as doc_urls
 
 urlpatterns = [
     path("", include("rbac.urls")),
+    path("api/audit/token/", AuditTokenView.as_view(), name="audit_token"),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
     path("ht/", include("health_check.urls")),

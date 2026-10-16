@@ -102,7 +102,7 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
             data: {},
             maxWidth: '95vw',
             maxHeight: '90vh',
-            autoFocus: true,
+            autoFocus: false,
         });
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) this.events.emitMcpToolCreated(result);

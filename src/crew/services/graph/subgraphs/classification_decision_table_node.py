@@ -1,8 +1,6 @@
 import itertools
 import json
 import re
-import uuid
-from dataclasses import asdict
 from typing import Any
 
 import litellm
@@ -16,6 +14,7 @@ from src.crew.models.graph_models import (
 from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
 from src.crew.services.run_python_code_service import RunPythonCodeService
 from src.shared.models import LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
@@ -23,6 +22,20 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from src.shared.models.storage_scope import StorageCredentials
+
+# litellm reports json_schema support for these providers, but their APIs reject it
+# ("This response_format type is unavailable now") and only accept json_object.
+JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
+
+# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
+# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
+PROVIDER_ALIASES = {
+    "google_ai": "gemini",
+    "novita_ai": "novita",
+    "aws_sagemaker": "sagemaker",
+    "featherless-ai": "featherless_ai",
+}
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -111,6 +124,7 @@ class ClassificationDecisionTableNodeSubgraph:
         stop_event: StopEvent,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.node_data = node_data
         self._graph_builder = graph_builder
@@ -121,30 +135,27 @@ class ClassificationDecisionTableNodeSubgraph:
         self.custom_session_message_writer = (
             custom_session_message_writer or CustomSessionMessageWriter()
         )
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
-        """Publish a GraphMessage directly to Redis.
+        """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
-        astream, so we publish directly to Redis instead."""
+        astream, so we write to Redis directly instead - and, since that
+        also means _emit_session_audit_event's own interception point (the
+        parent's astream loop) never sees these chunks either, dispatch to
+        the audit pipeline explicitly here too, right alongside the primary
+        write (the same encoded message, so both pipelines agree on the
+        event's identity and content)."""
         if self.redis_service is None:
             return
+        data = graph_message.to_payload()
+        encoded_data = GraphMessage.encode_payload(data)
+        self.redis_service.add_graph_message(data["uuid"], encoded_data)
         try:
-            data = asdict(graph_message)
-        except (TypeError, Exception) as e:
-            logger.warning(f"Failed to serialize GraphMessage via asdict: {e}")
-            data = {
-                "session_id": graph_message.session_id,
-                "name": graph_message.name,
-                "execution_order": graph_message.execution_order,
-                "message_data": graph_message.message_data
-                if isinstance(graph_message.message_data, dict)
-                else {
-                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
-                },
-                "timestamp": graph_message.timestamp,
-            }
-        data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
+            emit_session_audit_event(encoded_data)
+        except Exception as audit_exc:
+            # Audit must never break the primary pipeline.
+            logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
     @staticmethod
     def _resolve_path(path_expr: str, ctx: dict):
@@ -184,6 +195,10 @@ class ClassificationDecisionTableNodeSubgraph:
                 else:
                     raise KeyError(f"'{token}' not found in context")
             else:
+                # Block dunder/underscore tokens: the author-controlled path
+                # could otherwise reach Python internals (e.g. __globals__).
+                if token.startswith("_"):
+                    raise KeyError(f"'{token}' is not an allowed path segment")
                 # Dot access — try getattr, then [] for dict-like objects
                 try:
                     value = getattr(value, token)
@@ -232,6 +247,7 @@ class ClassificationDecisionTableNodeSubgraph:
             python_code_data=python_code,
             inputs=inputs,
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -359,6 +375,7 @@ class ClassificationDecisionTableNodeSubgraph:
                 "variables": state["variables"].model_dump(),
             },
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -419,6 +436,7 @@ def main(**kwargs) -> dict:
             python_code_data=python_code_data,
             inputs={"variables": variables_dict},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
         if result["returncode"] != 0:
@@ -446,42 +464,51 @@ def main(**kwargs) -> dict:
                     "Prompt output_schema is not valid JSON; sending request without a response_format."
                 )
                 schema = None
+        messages = [{"role": "user", "content": prompt}]
         if isinstance(schema, dict) and schema:
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "cdt_prompt_output",
-                    "schema": schema,
-                    "strict": True,
-                },
-            }
+            if llm.provider.lower().strip() in JSON_OBJECT_ONLY_PROVIDERS:
+                response_format = {"type": "json_object"}
+                # json_object mode carries no schema and requires the word "json" in the
+                # prompt; the user-written prompt guarantees neither, so state both here.
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": (
+                            "Respond with a JSON object that matches this JSON schema: "
+                            f"{json.dumps(schema)}"
+                        ),
+                    },
+                )
+            else:
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "cdt_prompt_output",
+                        "schema": schema,
+                        "strict": True,
+                    },
+                }
 
         # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
+        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
+        # model id and must become "groq/openai/gpt-oss-120b".
+        litellm_provider = PROVIDER_ALIASES.get(llm.provider.lower().strip(), llm.provider)
         model = (
             llm_config.model
-            if llm_config.model.startswith(f"{llm.provider}/")
-            else f"{llm.provider}/{llm_config.model}"
+            if llm_config.model.startswith(f"{litellm_provider}/")
+            else f"{litellm_provider}/{llm_config.model}"
         )
         params = {
             "model": model,
-            "timeout": llm_config.timeout,
-            "temperature": llm_config.temperature,
-            "top_p": llm_config.top_p,
-            "stop": llm_config.stop,
-            "max_tokens": llm_config.max_tokens,
-            "presence_penalty": llm_config.presence_penalty,
-            "frequency_penalty": llm_config.frequency_penalty,
-            "logit_bias": llm_config.logit_bias,
+            **llm_config.to_litellm_kwargs(provider=litellm_provider),
             "response_format": response_format,
-            "seed": llm_config.seed,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
             "api_key": llm_config.api_key,
             "stream": False,
         }
-        resp = await litellm.acompletion(
-            **{**params, "messages": [{"role": "user", "content": prompt}]}
-        )
+        resp = await litellm.acompletion(**{**params, "messages": messages})
 
         try:
             cost = litellm.completion_cost(completion_response=resp)
@@ -636,6 +663,7 @@ def main(**kwargs) -> dict:
                 writer=writer,
                 input_=input_vars,
                 execution_order=self.execution_order(state),
+                node_type=self.TYPE,
             )
             self._publish_message(msg)
 
@@ -653,6 +681,7 @@ def main(**kwargs) -> dict:
                     error=str(e),
                     writer=writer,
                     execution_order=self.execution_order(state),
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -672,6 +701,7 @@ def main(**kwargs) -> dict:
                 error=error,
                 writer=writer,
                 execution_order=self.execution_order(state),
+                node_type=self.TYPE,
             )
             self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
@@ -681,6 +711,7 @@ def main(**kwargs) -> dict:
                 output=decision_vars["result_node"],
                 execution_order=self.execution_order(state),
                 state=state,
+                node_type=self.TYPE,
             )
             self._publish_message(msg)
             return state
@@ -700,6 +731,7 @@ def main(**kwargs) -> dict:
                     output=decision_vars["result_node"],
                     execution_order=self.execution_order(state),
                     state=state,
+                    node_type=self.TYPE,
                 )
                 self._publish_message(msg)
                 return state
@@ -849,6 +881,7 @@ def main(**kwargs) -> dict:
                 output=decision_vars["result_node"],
                 execution_order=self.execution_order(state),
                 state=state,
+                node_type=self.TYPE,
                 matched_condition=matched_condition_name,
             )
             self._publish_message(msg)

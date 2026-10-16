@@ -37,19 +37,6 @@ class ProfileResponseSerializer(UserResponseSerializer):
         ]
         read_only_fields = fields
 
-    def get_avatar_url(self, user):
-        if not user.avatar:
-            return None
-        request = self.context.get("request")
-        try:
-            return (
-                request.build_absolute_uri(user.avatar.url)
-                if request is not None
-                else user.avatar.url
-            )
-        except ValueError:
-            return None
-
 
 # ---- request serializers (schema-only; validation in UserValidationService) ----
 

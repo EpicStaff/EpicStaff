@@ -36,6 +36,7 @@ import {
     ResourceCode,
 } from '@shared/models';
 import { BulkDeleteService } from '@shared/services';
+import { Subscription } from 'rxjs';
 import { finalize, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -79,6 +80,8 @@ export class VersionHistoryPanelComponent implements OnInit {
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
     private pendingPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Only the latest load may write the list: an older, slower load must not overwrite a newer one. */
+    private versionsLoadSubscription: Subscription | null = null;
 
     public readonly selectMode = signal(false);
     public readonly selectedVersionIds = signal<ReadonlySet<number>>(new Set());
@@ -338,7 +341,8 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public loadVersions(): void {
-        this.flowApiService
+        this.versionsLoadSubscription?.unsubscribe();
+        this.versionsLoadSubscription = this.flowApiService
             .getGraphVersions(this.graphId())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({

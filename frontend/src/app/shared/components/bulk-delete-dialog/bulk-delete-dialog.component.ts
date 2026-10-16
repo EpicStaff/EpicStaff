@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { Component, inject, signal } from '@angular/core';
 import { BulkDeleteItem, BulkDeletePreviewGroup, BulkDeletePreviewItem, BulkDeleteUsageLine } from '@shared/models';
+import { recycleBinNotice } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
@@ -38,10 +39,7 @@ export class BulkDeleteDialogComponent {
         (sum, group) => sum + group.deletable.length + group.blocked.length + group.notFound.length,
         0
     );
-    protected readonly summaryText =
-        this.totalBlocked > 0
-            ? `${this.totalDeletable} of ${this.totalDeletable + this.totalBlocked} will be deleted. This can't be undone.`
-            : "This can't be undone.";
+    protected readonly summaryText = this.buildSummaryText();
     protected readonly isEmpty = this.totalDeletable === 0;
     protected readonly confirmText = this.totalDeletable > 1 ? `Delete ${this.totalDeletable}` : 'Delete';
     protected readonly title = this.buildTitle();
@@ -126,6 +124,24 @@ export class BulkDeleteDialogComponent {
     protected usageLineText(line: BulkDeleteUsageLine): string {
         const more = line.hasMore ? ' and more' : '';
         return `Used in ${line.count} ${line.label}: ${line.sampleNames.join(', ')}${more}`;
+    }
+
+    private buildSummaryText(): string {
+        const consequence = this.buildConsequenceText();
+        return this.totalBlocked > 0
+            ? `${this.totalDeletable} of ${this.totalDeletable + this.totalBlocked} will be deleted. ${consequence}`
+            : consequence;
+    }
+
+    /** The recycle-bin notice only when every group that has something to delete is a recycle-bin
+     *  group; otherwise (mixed or permanent) the safe "can't be undone" wording. */
+    private buildConsequenceText(): string {
+        const deletableGroups = this.groups.filter((group) => group.deletable.length > 0);
+        const recycleBin = deletableGroups[0]?.recycleBin;
+        if (recycleBin && deletableGroups.every((group) => group.recycleBin !== undefined)) {
+            return recycleBinNotice(recycleBin.retentionDays, this.totalDeletable);
+        }
+        return "This can't be undone.";
     }
 
     private buildTitle(): string {

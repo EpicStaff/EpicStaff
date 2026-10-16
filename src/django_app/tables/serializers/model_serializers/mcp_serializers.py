@@ -1,4 +1,5 @@
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
@@ -12,13 +13,23 @@ from tables.serializers.utils.org_scoped_labels import (
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 
 
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class McpToolSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("auth_secret_id",)
 
-    auth_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="auth_secret",
         required=False,
         allow_null=True,
@@ -27,12 +38,13 @@ class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
 
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
+        max_length=255,
         validators=[
             OrgScopedUniqueValidator(
                 queryset=McpTool.objects.all(),
                 message="An MCP tool with this name already exists.",
             )
-        ]
+        ],
     )
     labels = OrgScopedPrimaryKeyRelatedField(
         many=True,

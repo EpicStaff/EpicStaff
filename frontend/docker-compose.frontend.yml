@@ -13,6 +13,8 @@ services:
       # with the app on :4200 so the SameSite=Lax refresh cookie is kept.
       API_URL: ${API_URL}
       REALTIME_API_URL: ${REALTIME_API_URL}
+      AUDITOR_API_URL: ${AUDITOR_API_URL}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:-false}
 
 networks:
   frontend-network:

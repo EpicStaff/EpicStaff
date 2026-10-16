@@ -11,6 +11,7 @@ if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
 
 
+from .audit import *
 from .base import *
 from .caches import *
 from .communication import *

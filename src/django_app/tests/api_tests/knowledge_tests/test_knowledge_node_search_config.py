@@ -17,6 +17,7 @@ from tables.models.knowledge_models import (
 from tables.models.knowledge_models import (
     KnowledgeNodeNaiveRagSearchConfig,
     KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagDriftSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
 )
 
@@ -480,3 +481,147 @@ class TestKnowledgeNodeRunValidation:
             validator.validate_runnable([n1, n2])
         detail = str(exc.value.detail)
         assert f"#{n1.id}" in detail and f"#{n2.id}" in detail
+
+
+@pytest.mark.django_db
+class TestKnowledgeNodeSearchConfigSharedBounds:
+    @pytest.mark.parametrize(
+        "search_configs",
+        [
+            {"naive": {"search_limit": 1001}},
+            {"graph": {"basic": {"max_context_tokens": 2_000_001}}},
+            {"graph": {"local": {"max_context_tokens": 2_000_001}}},
+            {"graph": {"local": {"text_unit_prop": 0.6, "community_prop": 0.5}}},
+            {"graph": {"local": {"prompt": "p" * 10_001}}},
+            {"graph": {"global": {"data_max_tokens": 2_000_001}}},
+            {"graph": {"global": {"dynamic_search_threshold": 6}}},
+            {"graph": {"global": {"dynamic_search_num_repeats": 6}}},
+            {"graph": {"global": {"map_prompt": "p" * 10_001}}},
+            {"graph": {"drift": {"primer_llm_max_tokens": 2_000_001}}},
+            {"graph": {"drift": {"reduce_max_tokens": 0}}},
+            {"graph": {"drift": {"local_search_llm_max_gen_tokens": 2_000_001}}},
+            {
+                "graph": {
+                    "drift": {
+                        "local_search_text_unit_prop": 0.9,
+                        "local_search_community_prop": 0.2,
+                    }
+                }
+            },
+        ],
+    )
+    def test_out_of_range_values_fail(self, auth_client, graph, search_configs):
+        resp = auth_client.post(
+            list_url(), {"graph": graph.id, "search_configs": search_configs}, format="json"
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.json()
+
+    @pytest.mark.parametrize(
+        "search_configs",
+        [
+            {"naive": {"search_limit": 1000}},
+            {"graph": {"basic": {"max_context_tokens": 2_000_000}}},
+            {"graph": {"local": {"text_unit_prop": 0.7, "community_prop": 0.3}}},
+            {"graph": {"local": {"prompt": ""}}},
+            {"graph": {"global": {"dynamic_search_threshold": 5}}},
+            {"graph": {"drift": {"reduce_max_tokens": None, "local_search_n": 10}}},
+        ],
+    )
+    def test_boundary_values_pass(self, auth_client, graph, search_configs):
+        resp = auth_client.post(
+            list_url(), {"graph": graph.id, "search_configs": search_configs}, format="json"
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.json()
+
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+    @pytest.mark.parametrize(
+        "search_configs_for",
+        [
+            lambda value: {"naive": {"similarity_threshold": value}},
+            lambda value: {"graph": {"local": {"text_unit_prop": value}}},
+            lambda value: {"graph": {"drift": {"local_search_temperature": value}}},
+            lambda value: {"graph": {"drift": {"local_search_top_p": value}}},
+        ],
+        ids=["naive-similarity", "local-prop", "drift-temperature", "drift-top-p"],
+    )
+    def test_non_finite_values_fail(self, auth_client, graph, search_configs_for, value):
+        resp = auth_client.post(
+            list_url(),
+            {"graph": graph.id, "search_configs": search_configs_for(value)},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.json()
+        assert not KnowledgeNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+class TestKnowledgeNodeProportionSumAfterMerge:
+    @pytest.fixture
+    def node_with_proportions(self, node):
+        KnowledgeNodeGraphRagLocalSearchConfig.objects.create(
+            knowledge_node=node, text_unit_prop=0.5, community_prop=0.1
+        )
+        KnowledgeNodeGraphRagDriftSearchConfig.objects.create(
+            knowledge_node=node,
+            local_search_text_unit_prop=0.5,
+            local_search_community_prop=0.1,
+        )
+        return node
+
+    @pytest.mark.parametrize(
+        "config_model,search_configs,stored_field",
+        [
+            (
+                KnowledgeNodeGraphRagLocalSearchConfig,
+                {"graph": {"local": {"community_prop": 0.9}}},
+                "community_prop",
+            ),
+            (
+                KnowledgeNodeGraphRagDriftSearchConfig,
+                {"graph": {"drift": {"local_search_community_prop": 0.9}}},
+                "local_search_community_prop",
+            ),
+        ],
+    )
+    def test_partial_patch_exceeding_one_with_stored_value_fails(
+        self, auth_client, node_with_proportions, config_model, search_configs, stored_field
+    ):
+        resp = auth_client.patch(
+            detail_url(node_with_proportions.id),
+            {"node_name": "renamed", "search_configs": search_configs},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.json()
+        assert resp.json()["code"] == "invalid"
+        node_with_proportions.refresh_from_db()
+        assert node_with_proportions.node_name != "renamed"
+        stored = config_model.objects.get(knowledge_node=node_with_proportions)
+        assert getattr(stored, stored_field) == 0.1
+
+    def test_partial_patch_within_one_with_stored_value_passes(
+        self, auth_client, node_with_proportions
+    ):
+        resp = auth_client.patch(
+            detail_url(node_with_proportions.id),
+            {"search_configs": {"graph": {"local": {"community_prop": 0.5}}}},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK, resp.json()
+        local = resp.json()["search_configs"]["graph"]["local"]
+        assert local["text_unit_prop"] == 0.5
+        assert local["community_prop"] == 0.5
+
+    def test_new_row_is_checked_against_model_defaults(self, auth_client, graph):
+        resp = auth_client.post(
+            list_url(),
+            {"graph": graph.id, "search_configs": {"graph": {"local": {"community_prop": 0.6}}}},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.json()
+        assert not KnowledgeNode.objects.filter(graph=graph).exists()

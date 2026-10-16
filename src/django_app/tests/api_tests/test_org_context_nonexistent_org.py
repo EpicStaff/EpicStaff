@@ -2,7 +2,7 @@
 nonexistent X-Organization-Id.
 
 Superadmin bypasses membership but the org must still exist as a real id
-(see tables/services/rbac/org_context_service.py docstring). Before the
+(see rbac/access/org_context.py docstring). Before the
 fix, a superadmin sending a bogus org id hit Organization.objects.get()
 unguarded downstream and got an uncaught DoesNotExist -> 500. Now it
 raises OrganizationNotFoundError -> clean 404.
@@ -84,7 +84,7 @@ def test_superadmin_create_agent_definition_nonexistent_org_returns_404_not_500(
 ):
     response = superadmin_client_bad_org.post(
         "/api/agent-definitions/",
-        {"name": "ghost-org-agent", "instructions": "do things"},
+        {"name": "ghost-org-agent", "instruction_list": [{"name": "Instruction_1.md", "content": "do things"}]},
         format="json",
     )
 

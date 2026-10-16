@@ -1,8 +1,13 @@
 import pytest
 from copy import deepcopy
+from datetime import datetime, timezone as dt_timezone
+
+from django.utils import timezone
+
+from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
-from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, PythonCode, WebhookTrigger
+from tables.models import AgentNode, Graph, LLMConfig, LLMModel, McpTool, PythonCodeTool, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -14,8 +19,10 @@ from agents.models import (
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.registry import entity_registry
+from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.utils import nest_owned_surface_entries
 
 
 @pytest.fixture
@@ -60,10 +67,10 @@ def mcp_tool(default_org):
 @pytest.fixture
 def agent_definition(rich_seeded_db, default_org):
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         metadata={"key": "value"},
         llm_config=rich_seeded_db["llm_config"],
         max_iter=5,
@@ -89,9 +96,9 @@ class TestAgentDefinitionStrategy:
         [
             ("name", "different_name"),
             ("description", "different description"),
-            ("instructions", "different instructions"),
+            ("instruction_list", [{"name": "Instruction_1.md", "content": "different"}]),
             ("metadata", {"different": "value"}),
-            ("max_iter", 99),
+            ("max_iter", 42),
         ],
     )
     def test_find_existing_miss_on_scalar_field(
@@ -131,11 +138,90 @@ class TestAgentDefinitionStrategy:
 
         assert strategy.find_existing(data, mapper) is None
 
-    def test_find_existing_hit_ignoring_default_surfaces(
+    def test_export_carries_instruction_list_not_compiled_instructions(
+        self, agent_definition, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        exported = export_data[EntityType.AGENT_DEFINITION][0]
+
+        assert exported["instruction_list"] == [
+            {"name": "Instruction_1.md", "content": "instructions"}
+        ]
+        assert "instructions" not in exported
+
+    def test_find_existing_matches_legacy_instructions_payload(
+        self, agent_definition, export_service
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        del data["instruction_list"]
+        data["instructions"] = "instructions"
+        data["metadata"] = {**data["metadata"], "instructions_format": "markdown"}
+
+        found = strategy.find_existing(data, mapper)
+        assert found is not None
+        assert found.id == agent_definition.id
+
+    @pytest.mark.parametrize(
+        "legacy_instructions,expected_instruction_list",
+        [
+            ("be brief", [{"name": "Instruction_1.md", "content": "be brief"}]),
+            ("   ", []),
+            ("", []),
+        ],
+    )
+    def test_create_entity_converts_legacy_instructions(
+        self,
+        agent_definition,
+        export_service,
+        default_org,
+        legacy_instructions,
+        expected_instruction_list,
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        del data["instruction_list"]
+        data["instructions"] = legacy_instructions
+        data["metadata"] = {"key": "value", "instructions_format": "markdown"}
+
+        created = strategy.create_entity(data, mapper, org_id=default_org.id)
+
+        created.refresh_from_db()
+        assert created.instruction_list == expected_instruction_list
+        assert created.metadata == {"key": "value"}
+
+    def test_create_entity_rejects_duplicate_instruction_names(
+        self, agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        data["instruction_list"] = [
+            {"name": "Rules.md", "content": "a"},
+            {"name": "rules.md", "content": "b"},
+        ]
+
+        with pytest.raises(ValidationError):
+            strategy.create_entity(data, mapper, org_id=default_org.id)
+
+    def test_find_existing_miss_on_default_surfaces(
         self, agent_definition, export_service, default_org
     ):
         surface = Surface.objects.create(
-            organization=default_org, name="default_surface_x"
+            org=default_org, name="default_surface_x"
         )
         AgentDefaultSurface.objects.create(
             agent_definition=agent_definition,
@@ -149,11 +235,90 @@ class TestAgentDefinitionStrategy:
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+        assert strategy.find_existing(deepcopy(data), mapper).id == agent_definition.id
+
         data["default_surfaces"] = []
 
-        found = strategy.find_existing(data, mapper)
-        assert found is not None
-        assert found.id == agent_definition.id
+        assert strategy.find_existing(data, mapper) is None
+
+    def test_find_existing_miss_on_owned_surfaces(
+        self, agent_definition, export_service, default_org
+    ):
+        Surface.objects.create(
+            org=default_org, name="owned_surface_x", owner_agent=agent_definition
+        )
+
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
+        assert strategy.find_existing(deepcopy(data), mapper).id == agent_definition.id
+
+        edited = deepcopy(data)
+        edited[OWNED_SURFACE_ENTRIES_KEY][0]["instructions"] = "edited after export"
+        assert strategy.find_existing(edited, mapper) is None
+
+        data[OWNED_SURFACE_ENTRIES_KEY] = []
+        assert strategy.find_existing(data, mapper) is None
+
+    def test_find_existing_prefers_exact_name_over_newer_identical_copy(
+        self, agent_definition, export_service, default_org
+    ):
+        AgentDefinition.objects.create(
+            org=default_org,
+            name="agent_def_1 #2",
+            description=agent_definition.description,
+            instruction_list=agent_definition.instruction_list,
+            metadata=agent_definition.metadata,
+            llm_config=agent_definition.llm_config,
+            max_iter=agent_definition.max_iter,
+        )
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
+
+        assert strategy.find_existing(data, mapper).id == agent_definition.id
+
+    def test_find_existing_skips_copy_without_equivalent_owned_surface(
+        self, agent_definition, export_service, default_org
+    ):
+        Surface.objects.create(
+            org=default_org, name="owned_surface_x", owner_agent=agent_definition
+        )
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_definition.id]
+        )
+        # After export the original is renamed and a copy takes the exact name,
+        # so the copy sorts first. It owns as many surfaces as the file, in the
+        # same name family but with other content, so only the content pairing
+        # can reject it.
+        agent_definition.name = "agent_def_1 #2"
+        agent_definition.save(update_fields=["name"])
+        copy_without_equivalent = AgentDefinition.objects.create(
+            org=default_org,
+            name="agent_def_1",
+            description=agent_definition.description,
+            instruction_list=agent_definition.instruction_list,
+            metadata=agent_definition.metadata,
+            llm_config=agent_definition.llm_config,
+            max_iter=agent_definition.max_iter,
+        )
+        Surface.objects.create(
+            org=default_org,
+            name="owned_surface_x #2",
+            instructions="different",
+            owner_agent=copy_without_equivalent,
+        )
+        mapper = _build_identity_mapper(export_data)
+        strategy = _get_strategy(EntityType.AGENT_DEFINITION)
+        data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
+
+        assert strategy.find_existing(data, mapper).id == agent_definition.id
 
     def test_find_existing_no_reuse_across_orgs(self, agent_definition, export_service):
         other_org = Organization.objects.create(name="Other Org")
@@ -167,10 +332,148 @@ class TestAgentDefinitionStrategy:
         assert strategy.find_existing(data, mapper, org_id=other_org.id) is None
         assert (
             strategy.find_existing(
-                data, mapper, org_id=agent_definition.organization_id
+                data, mapper, org_id=agent_definition.org_id
             )
             is not None
         )
+
+
+LEGACY_NULL_EXECUTION_FIELDS = {
+    "max_iter": None,
+    "max_rpm": None,
+    "max_execution_time": None,
+    "cache": None,
+    "max_retry_limit": None,
+    "max_tool_calls": None,
+    "tool_timeout": None,
+    "max_consecutive_failures": None,
+    "schema_max_retries": None,
+}
+
+
+LEGACY_SINGLETON_VALUES = {
+    "max_iter": 25,
+    "max_rpm": 10,
+    "max_execution_time": 60,
+    "cache": False,
+    "max_retry_limit": 3,
+    "max_tool_calls": 15,
+    "tool_timeout": 300,
+    "max_consecutive_failures": 3,
+    "schema_max_retries": 2,
+}
+
+
+def _legacy_agent_definition_payload(export_service, agent_definition, **overrides):
+    export_data = export_service.export_entities(
+        EntityType.AGENT_DEFINITION, [agent_definition.id]
+    )
+    data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
+    data.update(overrides)
+    return data, _build_identity_mapper(export_data)
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionStrategyLegacyExecutionFields:
+    def test_create_entity_replaces_nulls_with_legacy_singleton_values(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, **LEGACY_NULL_EXECUTION_FIELDS
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        for field_name, value in LEGACY_SINGLETON_VALUES.items():
+            assert getattr(created, field_name) == value, field_name
+
+    def test_create_entity_clamps_out_of_range_values(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service,
+            agent_definition,
+            max_iter=500,
+            max_execution_time=5,
+            max_retry_limit=-3,
+            tool_timeout=99_999,
+            default_temperature=3.5,
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.max_iter == 90
+        assert created.max_execution_time == 60
+        assert created.max_retry_limit == 0
+        assert created.tool_timeout == 1800
+        assert created.default_temperature == 2.0
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_create_entity_turns_non_finite_temperature_into_null(
+        self, agent_definition, export_service, default_org, value
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, default_temperature=value
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.default_temperature is None
+
+    def test_find_existing_reuses_row_created_from_null_payload(
+        self, agent_definition, export_service, default_org
+    ):
+        AgentDefinition.objects.filter(pk=agent_definition.pk).update(
+            **LEGACY_SINGLETON_VALUES
+        )
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, **LEGACY_NULL_EXECUTION_FIELDS
+        )
+
+        found = _get_strategy(EntityType.AGENT_DEFINITION).find_existing(
+            data, mapper, org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == agent_definition.id
+        assert data["max_iter"] is None
+
+    def test_numeric_string_is_left_to_the_serializer(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, max_iter="25"
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.max_iter == 25
+
+    def test_out_of_range_string_is_rejected_not_clamped(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, max_iter="500"
+        )
+
+        with pytest.raises(ValidationError) as error:
+            _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+                data, mapper, org_id=default_org.id
+            )
+
+        assert "max_iter" in error.value.detail
 
 
 # ──────────────────────────────────────────
@@ -181,7 +484,7 @@ class TestAgentDefinitionStrategy:
 @pytest.fixture
 def surface_with_tools(rich_seeded_db, default_org, mcp_tool):
     surface = Surface.objects.create(
-        organization=default_org, name="surface_1", instructions="do things"
+        org=default_org, name="surface_1", instructions="do things"
     )
     SurfacePythonTool.objects.create(
         surface=surface,
@@ -252,14 +555,14 @@ class TestSurfaceStrategy:
 @pytest.fixture
 def graph_with_agent_node(rich_seeded_db, default_org):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="flow_agent_def",
         description="description",
-        instructions="instructions",
+        instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
         llm_config=rich_seeded_db["llm_config"],
     )
     shared_surface = Surface.objects.create(
-        organization=default_org, name="flow_shared_surface"
+        org=default_org, name="flow_shared_surface"
     )
 
     graph = Graph.objects.create(
@@ -424,7 +727,61 @@ class TestLLMConfigStrategy:
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
 
-    @pytest.mark.skip(reason="pre-existing failure from before the tool-variables rework; cause not investigated")
+    def test_reasoning_effort_round_trips(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        source_config = exportable_agent_definition.llm_config
+        reasoning_model, _ = LLMModel.objects.get_or_create(
+            name="gpt-5-mini", llm_provider=source_config.model.llm_provider, org=None
+        )
+        LLMConfig.objects.filter(pk=source_config.pk).update(
+            model=reasoning_model, reasoning_effort="high"
+        )
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        assert config_data["reasoning_effort"] == "high"
+
+        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.pk != source_config.pk
+        assert new_config.reasoning_effort == "high"
+
+    def test_create_entity_rejects_malformed_extra_headers(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["extra_headers"] = {"X-Retry": 3}
+
+        with pytest.raises(ValidationError) as excinfo:
+            _get_strategy(EntityType.LLM_CONFIG).create_entity(
+                config_data, _build_identity_mapper(export_data), org_id=default_org.id
+            )
+
+        assert "extra_headers" in excinfo.value.detail
+
+    def test_find_existing_misses_on_reasoning_effort(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["reasoning_effort"] = "low"
+
+        found = _get_strategy(EntityType.LLM_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is None
+
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service
     ):
@@ -439,6 +796,71 @@ class TestLLMConfigStrategy:
         found = strategy.find_existing(config_data, mapper)
         assert found is not None
         assert found.id == rich_seeded_db["llm_config"].id
+
+
+# ──────────────────────────────────────────
+# created_at on import
+# ──────────────────────────────────────────
+
+SOURCE_CREATED_AT = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
+
+
+def _exported_with_old_creation_time(export_service, entity_type, instance) -> dict:
+    type(instance).objects.filter(pk=instance.pk).update(created_at=SOURCE_CREATED_AT)
+    return export_service.export_entities(entity_type, [instance.id])
+
+
+@pytest.mark.django_db
+def test_reimport_finds_the_existing_embedding_config(embedding_config, export_service, default_org):
+    export_data = _exported_with_old_creation_time(export_service, EntityType.EMBEDDING_CONFIG, embedding_config)
+    config_data = deepcopy(export_data[EntityType.EMBEDDING_CONFIG][0])
+
+    found = _get_strategy(EntityType.EMBEDDING_CONFIG).find_existing(
+        config_data, _build_identity_mapper(export_data), org_id=default_org.id
+    )
+
+    assert found is not None
+    assert found.id == embedding_config.id
+
+
+CREATED_AT_ENTITIES = pytest.mark.parametrize(
+    ("entity_type", "source"),
+    [
+        (EntityType.LLM_CONFIG, lambda request: request.getfixturevalue("rich_seeded_db")["llm_config"]),
+        (EntityType.EMBEDDING_CONFIG, lambda request: request.getfixturevalue("embedding_config")),
+        (EntityType.AGENT_DEFINITION, lambda request: request.getfixturevalue("agent_definition")),
+    ],
+    ids=["llm-config", "embedding-config", "agent-definition"],
+)
+
+
+@pytest.mark.django_db
+@CREATED_AT_ENTITIES
+@pytest.mark.parametrize(
+    "file_created_at",
+    [SOURCE_CREATED_AT.isoformat(), None],
+    ids=["file-carries-an-old-creation-time", "export-from-before-created-at"],
+)
+def test_an_imported_row_gets_its_own_creation_time(
+    request, export_service, default_org, entity_type, source, file_created_at
+):
+    """Exports omit created_at; whatever a (hand-edited or old) file says, the
+    imported row is stamped when it is created."""
+    instance = source(request)
+    export_data = _exported_with_old_creation_time(export_service, entity_type, instance)
+    entity_data = deepcopy(export_data[entity_type][0])
+    assert "created_at" not in entity_data
+    if file_created_at is not None:
+        entity_data["created_at"] = file_created_at
+    before = timezone.now()
+
+    created = _get_strategy(entity_type).create_entity(
+        entity_data, _build_identity_mapper(export_data), org_id=default_org.id
+    )
+
+    created.refresh_from_db()
+    assert created.pk != instance.pk
+    assert created.created_at >= before
 
 
 # ──────────────────────────────────────────

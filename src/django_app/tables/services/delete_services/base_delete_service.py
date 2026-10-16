@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from django.db import models, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
 from rbac.access.effective import EffectivePermissions
+from rbac.models import LastEditTrackedModel
 from rest_framework.exceptions import NotFound
 from tables.exceptions import InUseRestrictedError
 from tables.models.base_models import SoftDeleteMixin
@@ -12,6 +13,7 @@ from tables.services.delete_services.usage import (
     SkipReason,
     UsageReport,
 )
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 
 
 class BaseDeleteService(ABC):
@@ -79,8 +81,22 @@ class BaseDeleteService(ABC):
         org_id: int,
         effective: EffectivePermissions,
         dry_run: bool = False,
+        *,
+        deleted_by: object | None,
     ) -> BulkDeleteResult:
-        """Delete every requested id this caller may delete, and report the rest."""
+        """Delete every requested id this caller may delete, and report the rest.
+
+        Args:
+            deleted_by: The requesting user, recorded as who deleted each row that
+                lands in the recycle bin, as a single DELETE does. None records no
+                person. Required, so a caller cannot forget it. Rows that are deleted
+                for good ignore it.
+
+        Raises:
+            CrossOrgCascadeError: A row's soft delete would reach another
+                organization's rows. Not reported per id: it means the data holds a
+                link no API path creates, so the whole request rolls back (409).
+        """
         ids = list(dict.fromkeys(ids))
         if dry_run:
             return self._preview(ids, org_id, effective)
@@ -101,7 +117,7 @@ class BaseDeleteService(ABC):
             usage = self.collect_usage(found_ids, org_id, effective)
             deletable, skipped = self._partition(found, usage)
             deletable_ids = [obj.pk for obj in deletable]
-            deleted_ids, blocked_at_delete = self._delete_rows(deletable)
+            deleted_ids, blocked_at_delete = self._delete_rows(deletable, deleted_by)
 
         # Usage was needed above to decide what to skip, but it is the preview
         # payload: on a real delete it adds nothing actionable -- visible
@@ -172,7 +188,9 @@ class BaseDeleteService(ABC):
 
         return deletable, skipped
 
-    def _delete_rows(self, instances: list[models.Model]) -> tuple[list[int], list[SkipEntry]]:
+    def _delete_rows(
+        self, instances: list[models.Model], deleted_by: object | None
+    ) -> tuple[list[int], list[SkipEntry]]:
         """Remove rows that passed every check.
 
         Soft-delete roots MUST go row by row: SoftDeleteMixin overrides
@@ -185,14 +203,14 @@ class BaseDeleteService(ABC):
             return [], []
 
         if issubclass(self.model, SoftDeleteMixin):
-            return self._delete_one_by_one(instances)
+            return self._delete_one_by_one(instances, deleted_by)
 
         self.model.objects.filter(pk__in=[obj.pk for obj in instances]).delete()
         return [obj.pk for obj in instances], []
 
     @staticmethod
     def _delete_one_by_one(
-        instances: list[models.Model],
+        instances: list[models.Model], deleted_by: object | None
     ) -> tuple[list[int], list[SkipEntry]]:
         """Delete each row in its own savepoint, reporting the ones refused.
 
@@ -201,6 +219,11 @@ class BaseDeleteService(ABC):
         today because no reverse FK on the queryset-path entities uses PROTECT
         or RESTRICT, so there is nothing for those deletes to be refused by.
         Revisit this the moment a PROTECT lands on any of them.
+
+        A recycle-bin root (last-edit tracked) goes through move_to_recycle_bin,
+        the same call a single DELETE makes, so the deleter is recorded. A
+        soft-delete root outside the bin (GraphVersion) is soft-deleted with
+        nothing to record.
 
         ImproperlyConfigured is deliberately NOT caught: it means a broken FK
         declaration, which is a bug to surface, not a row to skip.
@@ -214,7 +237,10 @@ class BaseDeleteService(ABC):
                 # Nested inside the caller's atomic block, so this is a
                 # savepoint: one refused row does not lose the whole batch.
                 with transaction.atomic():
-                    obj.delete()
+                    if isinstance(obj, LastEditTrackedModel):
+                        move_to_recycle_bin(obj, deleted_by)
+                    else:
+                        obj.delete()
             except (ProtectedError, RestrictedError):
                 refused.append(SkipEntry(id=entity_id, reason=SkipReason.PROTECTED))
                 continue

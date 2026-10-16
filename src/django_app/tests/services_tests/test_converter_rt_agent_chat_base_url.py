@@ -13,7 +13,7 @@ instead) -- `convert_rt_agent_definition_chat_to_pydantic`
 
 import pytest
 
-from agents.models import AgentDefinition
+from agents.models import AgentDefinition, DefaultAgentDefinitionConfig
 from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
     RealtimeAgentChat,
@@ -42,10 +42,10 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
     converter, default_org, llm_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(
@@ -74,10 +74,10 @@ def test_convert_rt_agent_definition_chat_to_pydantic_defaults_rt_base_url_to_no
     converter, default_org, llm_config
 ):
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent-no-override",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(
@@ -107,10 +107,10 @@ def test_convert_rt_agent_definition_chat_to_pydantic_carries_rt_agent_definitio
     # The realtime service names the remote ElevenLabs agent after this id, so two
     # configurations must reach it with different ids.
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="voice-agent-id",
         description="Helps with voice tasks",
-        instructions="Be concise and helpful",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
         llm_config=llm_config,
     )
     config = OpenAIRealtimeConfig.objects.create(
@@ -131,3 +131,62 @@ def test_convert_rt_agent_definition_chat_to_pydantic_carries_rt_agent_definitio
     data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
 
     assert data.rt_agent_definition_id == rt_agent_definition.pk
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("has_llm_config", "llm_config_temperature", "agent_temperature", "expected_temperature"),
+    [
+        (True, 0.3, 1.2, 0.3),
+        (True, 0.0, 1.2, 0.0),
+        (True, None, 1.2, 1.2),
+        (False, None, 1.2, 1.2),
+        (True, None, None, 0.4),
+    ],
+    ids=[
+        "llm-config",
+        "llm-config-zero",
+        "llm-config-unset",
+        "no-llm-config",
+        "nothing-set-uses-system-default",
+    ],
+)
+def test_convert_rt_agent_definition_chat_to_pydantic_takes_temperature_from_llm_config(
+    converter,
+    default_org,
+    llm_config,
+    has_llm_config,
+    llm_config_temperature,
+    agent_temperature,
+    expected_temperature,
+):
+    DefaultAgentDefinitionConfig.objects.update_or_create(
+        pk=1, defaults={"default_temperature": 0.4}
+    )
+    if has_llm_config:
+        llm_config.temperature = llm_config_temperature
+        llm_config.save()
+    agent_definition = AgentDefinition.objects.create(
+        org=default_org,
+        name="voice-agent-temperature",
+        instruction_list=[{"name": "Instruction_1.md", "content": "Be concise and helpful"}],
+        llm_config=llm_config if has_llm_config else None,
+        default_temperature=agent_temperature,
+    )
+    config = OpenAIRealtimeConfig.objects.create(
+        custom_name="openai-cfg-def-temperature",
+        org=default_org,
+        model_name="gpt-4o-realtime-preview",
+        api_key_secret=_api_key_secret(default_org, "openai-cfg-def-temperature-api-key"),
+    )
+    chat = RealtimeAgentChat.objects.create(
+        rt_agent_definition=RealtimeAgentDefinition.objects.create(
+            agent_definition=agent_definition, openai_config=config
+        ),
+        connection_key="conn-def-temperature",
+        openai_config=config,
+    )
+
+    data = converter.convert_rt_agent_definition_chat_to_pydantic(chat)
+
+    assert data.temperature == expected_temperature

@@ -64,10 +64,17 @@ export interface BulkDeleteItem {
     name: string;
 }
 
+/** Present on a group whose items move to the recycle bin instead of being deleted for good. */
+export interface BulkDeleteRecycleBin {
+    /** How long a binned item stays restorable; `null` while the setting is not loaded. */
+    retentionDays: number | null;
+}
+
 export interface BulkDeleteGroup {
     target: BulkDeleteTarget;
     label: BulkDeleteLabel;
     items: BulkDeleteItem[];
+    recycleBin?: BulkDeleteRecycleBin;
 }
 
 export interface BulkDeleteOutcome {
@@ -93,6 +100,7 @@ export interface BulkDeletePreviewItem {
 
 export interface BulkDeletePreviewGroup {
     label: BulkDeleteLabel;
+    recycleBin?: BulkDeleteRecycleBin;
     deletable: BulkDeletePreviewItem[];
     blocked: BulkDeleteItem[];
     notFound: BulkDeleteItem[];

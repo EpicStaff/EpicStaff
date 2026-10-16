@@ -75,9 +75,9 @@ class LLMConfigDeleteService(BaseDeleteService):
                 kind=RefKind.AGENT,
             )
             bucket.add_rows(
-                AgentDefinition.objects.filter(
-                    organization_id=org_id, **{f"{field}__in": ids}
-                ).values_list(field, "id", "name"),
+                AgentDefinition.objects.filter(org_id=org_id, **{f"{field}__in": ids}).values_list(
+                    field, "id", "name"
+                ),
                 kind=RefKind.AGENT_DEFINITION,
             )
 

@@ -9,7 +9,8 @@ export interface AppConfig {
     apiUrl: string;
     type: string;
     realtimeApiUrl?: string;
-    isEpicChatEnabled?: boolean;
+    auditorUrl?: string;
+    isAuditTrailEnabled?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -23,7 +24,8 @@ export class ConfigService {
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
-                isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                auditorUrl: environment.auditorUrl,
+                isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
             };
             return;
         }
@@ -38,7 +40,8 @@ export class ConfigService {
                             apiUrl: environment.apiUrl,
 
                             realtimeApiUrl: environment.realtimeApiUrl,
-                            isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                            auditorUrl: environment.auditorUrl,
+                            isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
                         } as AppConfig);
                     })
                 )
@@ -51,7 +54,8 @@ export class ConfigService {
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
-                isEpicChatEnabled: false,
+                auditorUrl: environment.auditorUrl,
+                isAuditTrailEnabled: false,
             };
         }
     }
@@ -76,7 +80,15 @@ export class ConfigService {
         return this.config.realtimeApiUrl;
     }
 
-    get isEpicChatEnabled(): boolean {
-        return this.config?.isEpicChatEnabled ?? false;
+    get auditorUrl(): string {
+        if (!this.config || !this.config.auditorUrl) {
+            console.warn('Auditor URL not available, using fallback');
+            return environment.auditorUrl || '';
+        }
+        return this.config.auditorUrl;
+    }
+
+    get isAuditTrailEnabled(): boolean {
+        return this.config?.isAuditTrailEnabled ?? false;
     }
 }

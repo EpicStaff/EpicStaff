@@ -107,7 +107,7 @@ def test_update_task_node_replaces_surface_list(
     auth_client, graph, task_node, shared_surface
 ):
     surface_b = Surface.objects.create(
-        organization=shared_surface.organization,
+        org=shared_surface.org,
         name="bulk-save-shared-surface-b",
         owner_agent=None,
     )
@@ -244,13 +244,12 @@ def test_create_task_node_with_temp_id_wires_edge(auth_client, graph, start_node
 
 @pytest.mark.django_db
 def test_create_task_node_rejects_cross_org_surface(
-    auth_client, graph, bulk_save_org, other_org_surface
+    auth_client, graph, other_org_surface
 ):
-    """SurfaceValidationError (an APIException, not serializers.ValidationError)
-    is raised from TaskNodeSerializer.validate() and propagates past
-    serializer.is_valid() straight to DRF's exception handler as a top-level
-    400 — same shape as the standalone /api/tasknodes/ endpoint, not nested
-    under errors.task_node_list like ordinary field validation errors."""
+    """`surface_list` is an org-scoped pk field, so another org's surface is
+    rejected as an ordinary field error (exactly like a non-existent pk) and
+    lands under errors.task_node_list, before TaskNodeSerializer.validate()
+    ever sees it."""
     payload = {
         "save_version": graph.save_version,
         "task_node_list": [
@@ -264,17 +263,20 @@ def test_create_task_node_rejects_cross_org_surface(
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "surface_list" in response.data["message"]
+    [node_error] = response.data["errors"]["task_node_list"]
+    assert node_error["index"] == 0
+    assert "surface_list" in node_error["errors"]
+    assert not TaskNode.objects.filter(graph=graph, node_name="task-cross-org").exists()
 
 
 @pytest.mark.django_db
 def test_create_task_node_rejects_foreign_agent_owned_surface(
-    auth_client, graph, bulk_save_org, agent_definition, agent_owned_surface
+    auth_client, graph, agent_definition, agent_owned_surface
 ):
     other_agent = AgentDefinition.objects.create(
-        organization=agent_definition.organization,
+        org=agent_definition.org,
         name="bulk-save-other-agent",
-        instructions="do other things",
+        instruction_list=[{"name": "Instruction_1.md", "content": "do other things"}],
     )
 
     payload = {

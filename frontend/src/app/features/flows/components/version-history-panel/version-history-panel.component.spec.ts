@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { BulkDeleteGroup, BulkDeleteResponse } from '@shared/models';
 import { BulkDeleteService } from '@shared/services';
-import { map, of } from 'rxjs';
+import { map, of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -308,6 +308,23 @@ describe('VersionHistoryPanelComponent', () => {
 
         expect(tooltips).toContain(VERSIONS[1].name);
         expect(tooltips).toContain(VERSIONS[1].description);
+    });
+
+    it('keeps the latest load when an earlier, slower load finishes after it', () => {
+        const earlierLoad = new Subject<GraphVersionDto[]>();
+        const laterLoad = new Subject<GraphVersionDto[]>();
+        flowsApi.getGraphVersions.mockReturnValueOnce(earlierLoad).mockReturnValueOnce(laterLoad);
+
+        component.isLoading = true;
+        component.loadVersions();
+        component.loadVersions();
+        expect(component.isLoading).toBe(true);
+        laterLoad.next([VERSIONS[1]]);
+        earlierLoad.next([VERSIONS[0]]);
+
+        expect(component.versionsList).toEqual([VERSIONS[1]]);
+        expect(component.isLoading).toBe(false);
+        expect(earlierLoad.observed).toBe(false);
     });
 
     it('highlights the previewed version', () => {

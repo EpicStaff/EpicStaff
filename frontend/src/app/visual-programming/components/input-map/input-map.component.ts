@@ -248,7 +248,7 @@ import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsed
                     <button
                         type="button"
                         class="btn-primary"
-                        [disabled]="testRunning || !canRunTest() || !pythonNodeId"
+                        [disabled]="testRunning || !canRunTest() || !pythonNodeId || runTestBlocker() !== null"
                         [matTooltip]="getRunTestButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onRunTest()"
@@ -533,6 +533,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
+    readonly runTestBlocker = input<string | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -719,7 +721,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     }
 
     onRunTest(): void {
-        if (this.testRunning) return;
+        if (this.testRunning || this.runTestBlocker() !== null) return;
         const inputs = Object.fromEntries(
             this.testPairs.controls
                 .map((c) => [((c.value.key as string) ?? '').trim(), (c.value.value as string) ?? ''] as const)
@@ -1043,6 +1045,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     getRunTestButtonTooltip(): string {
         if (this.testRunning) {
             return 'Test is already running...';
+        }
+        // The owning panel's reason comes first: it knows how this node gets saved.
+        const blocker = this.runTestBlocker();
+        if (blocker !== null) {
+            return blocker;
         }
         if (!this.pythonNodeId) {
             return 'Click Save in the top panel to save the graph before running a test';

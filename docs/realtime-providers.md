@@ -199,6 +199,7 @@ Tool calling in Gemini is non-blocking because:
        from infrastructure.providers.newprovider.newprovider_realtime_agent_client import (
            NewProviderRealtimeAgentClient,
        )
+
        client = NewProviderRealtimeAgentClient(
            api_key=config.rt_api_key,
            connection_key=config.connection_key,
@@ -314,7 +315,7 @@ Every reconnect increments `_session_version`. When `call_tool()` starts executi
 ```python
 session_version = self._session_version
 
-result = await tool_manager_service.execute(...)   # may take 1-2 seconds
+result = await tool_manager_service.execute(...)  # may take 1-2 seconds
 
 if self._session_version != session_version:
     # Session was replaced while tool was running

@@ -221,6 +221,10 @@ without `FLOWS.READ` sends a flow together with a sub-flow it embeds, the parent
 is deleted but the sub-flow is skipped as `in_use_restricted`: at check time,
 the parent still referenced it. Retrying the sub-flow alone then succeeds.
 
+When a flow embedded as a sub-flow is bulk-deleted, the parent flow's sub-flow
+node is cleared, and restoring the sub-flow from the recycle bin does **not**
+re-link it in the parent.
+
 ### GraphVersion
 
 Nothing in the schema holds a reference to a `GraphVersion` — a `Graph` has no
@@ -280,12 +284,29 @@ break those flows at run time.
 
 ---
 
-## Soft delete
+## Soft delete and the recycle bin
 
-`Graph` and `GraphVersion` support soft delete, controlled by the
-`DJANGO_SOFT_DELETE` setting (default **off**). Bulk delete honours it exactly
-as single `DELETE` does: with it on, rows are marked deleted and remain
-recoverable; with it off, they are removed.
+What a bulk delete does to a row depends on the entity. There is no setting to
+turn soft delete on or off: it is a property of the model.
+
+| Entity | Result |
+|---|---|
+| Flow (`Graph`) | Moved to the recycle bin, restorable for the retention period (`DJANGO_RECYCLE_BIN_RETENTION_DAYS`). |
+| Flow version (`GraphVersion`) | Soft-deleted. It has no recycle-bin tab, so it cannot be restored from the UI. |
+| LLM, embedding and voice configs | Deleted permanently. |
+
+A bulk-deleted flow is binned exactly as a single `DELETE` bins it, through
+`move_to_recycle_bin`: the requesting user is recorded as who deleted it, so the
+bin's "Deleted by" shows the same thing for both paths. A dry run deletes and
+records nothing. Flow versions have no bin entry, so no deleter is recorded for
+them.
+
+Flows are binned one at a time, each in its own savepoint, so a row the database
+refuses to delete is reported as `skipped` with reason `protected` without losing
+the rest of the batch. A delete that would reach another organization's rows
+(`CrossOrgCascadeError`) is different: it means the data holds a link no API path
+creates, so it is not reported per id. The whole request fails with `409` and
+nothing is deleted.
 
 ---
 
@@ -329,6 +350,22 @@ one blocked id doesn't fail the rest of the batch.
 A fixed business rule on the row, not a change in the caller's own
 permissions — the frontend must not treat it as stale permissions (that is
 what `permission_denied` above is for).
+
+### `409 cross_org_cascade` — the delete would reach another organization
+
+```json
+{
+  "status_code": 409,
+  "code": "cross_org_cascade",
+  "message": "This item is linked to data it can't be deleted with. Nothing was deleted. Contact an administrator."
+}
+```
+
+Raised by bulk delete of flows and flow versions, and by single `DELETE` of a
+flow, when a row's soft delete would change another organization's rows. It
+means the data holds a link no API path creates, so it is not reported per id:
+the whole request rolls back and nothing is deleted. The message names neither
+the row nor the other organization.
 
 ---
 

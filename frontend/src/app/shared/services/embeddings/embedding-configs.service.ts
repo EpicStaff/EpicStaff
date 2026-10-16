@@ -8,6 +8,7 @@ import {
     EmbeddingConfig,
     GetEmbeddingConfigRequest,
     ResourceCode,
+    UpdateEmbeddingConfigRequest,
 } from '@shared/models';
 import { bulkDeleteParams } from '@shared/utils';
 import { map, Observable } from 'rxjs';
@@ -65,7 +66,7 @@ export class EmbeddingConfigsService {
     }
 
     // PUT update embedding config
-    updateEmbeddingConfig(config: EmbeddingConfig): Observable<EmbeddingConfig> {
+    updateEmbeddingConfig(config: UpdateEmbeddingConfigRequest): Observable<EmbeddingConfig> {
         return this.http.put<EmbeddingConfig>(`${this.apiUrl}${config.id}/`, config, {
             headers: this.headers,
         });

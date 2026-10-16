@@ -1,0 +1,565 @@
+import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    DOCUMENT,
+    effect,
+    inject,
+    OnInit,
+    signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+    AppSvgIconComponent,
+    normalizeIana,
+    NumberStepperComponent,
+} from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { downloadBlob } from '@shared/utils';
+import {
+    catchError,
+    debounceTime,
+    exhaustMap,
+    filter,
+    finalize,
+    first,
+    forkJoin,
+    fromEvent,
+    interval,
+    merge,
+    of,
+    Subject,
+    Subscription,
+    switchMap,
+    timeout,
+    timer,
+} from 'rxjs';
+
+import { ExportFormat } from '../../core/services/import-export.service';
+import { ActiveOrgService } from '../../services/auth/active-org.service';
+import { ToastService } from '../../services/notifications';
+import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
+import { FlowsApiService } from '../flows/services/flows-api.service';
+import { CustomToolsService } from '../tools/services/custom-tools/custom-tools.service';
+import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
+import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
+import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
+import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
+import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
+import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
+import { AuditJsonPipe } from './pipes/audit-json.pipe';
+import { AuditApiService } from './services/audit-api.service';
+import {
+    auditFilterStorageKey,
+    readStoredAuditFilter,
+    writeStoredAuditFilter,
+} from './utils/audit-filter-storage.util';
+import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
+import { compileAuditFilter } from './utils/compile-audit-filter.util';
+import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
+import { sanitizeToolName } from './utils/sanitize-tool-name.util';
+
+const MIN_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+const PAGE_SIZE_STEP = 10;
+const POLL_INTERVAL_MS = 10_000;
+const SEARCH_DEBOUNCE_MS = 400;
+const EXPORT_POLL_INTERVAL_MS = 1_000;
+const EXPORT_TIMEOUT_MS = 5 * 60_000;
+// narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
+const COLUMN_MIN_WIDTH = 48;
+
+interface AuditTableColumn {
+    label: string;
+    className: string;
+    defaultWidth: number;
+}
+
+const AUDIT_TABLE_COLUMNS: AuditTableColumn[] = [
+    { label: '', className: 'audit-table__gutter', defaultWidth: 36 },
+    { label: 'Kind', className: 'audit-table__kind', defaultWidth: 80 },
+    { label: 'Session ID', className: '', defaultWidth: 100 },
+    { label: 'Name', className: '', defaultWidth: 182 },
+    { label: 'Flow', className: '', defaultWidth: 140 },
+    { label: 'Node Type', className: '', defaultWidth: 120 },
+    { label: 'Status', className: '', defaultWidth: 111 },
+    { label: 'Date', className: '', defaultWidth: 150 },
+    { label: 'Input', className: '', defaultWidth: 110 },
+    { label: 'Output', className: '', defaultWidth: 110 },
+    { label: 'Error', className: '', defaultWidth: 110 },
+    { label: 'Details', className: '', defaultWidth: 96 },
+];
+
+interface ColumnResize {
+    index: number;
+    startX: number;
+    startWidth: number;
+}
+
+interface ViewedValue {
+    rowId: string;
+    field: string;
+    rowName: string;
+    value: string;
+    isPlainText: boolean;
+}
+
+@Component({
+    selector: 'app-audit-sessions-browser',
+    standalone: true,
+    imports: [
+        CommonModule,
+        AppSvgIconComponent,
+        NumberStepperComponent,
+        AuditFiltersPanelComponent,
+        AuditFilterChipsComponent,
+        AuditHighlightComponent,
+        AuditJsonPipe,
+        AuditValueViewerComponent,
+        ActionDropdownButtonComponent,
+        HasPermissionDirective,
+    ],
+    templateUrl: './audit-sessions-browser.component.html',
+    styleUrls: ['./audit-sessions-browser.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AuditSessionsBrowserComponent implements OnInit {
+    private auditApiService = inject(AuditApiService);
+    private flowApiService = inject(FlowsApiService);
+    private agentService = inject(AgentDefinitionsApiService);
+    private customToolsService = inject(CustomToolsService);
+    private mcpToolsService = inject(McpToolsService);
+    private destroyRef = inject(DestroyRef);
+    private document = inject(DOCUMENT);
+    private toastService = inject(ToastService);
+    // Read once: an org switch remounts this page, so a later org change must not redirect writes.
+    private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
+    private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'applied');
+    private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'draft');
+    private searchSubscription: Subscription | null = null;
+    private searchInput = new Subject<string>();
+    public readonly timeZoneLabel = buildTimeZoneLabel();
+
+    public isLoading = signal<boolean>(false);
+    public loadError = signal<boolean>(false);
+    public loadErrorMessage = signal<string | null>(null);
+    public isPartial = signal<boolean>(false);
+    public pageSize = signal<number>(20);
+    public areColumnsExpanded = signal<boolean>(false);
+    protected readonly columns = AUDIT_TABLE_COLUMNS;
+    protected readonly columnWidths = signal<number[]>(AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth));
+    // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
+    protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
+    public isFiltersPanelOpen = signal<boolean>(false);
+    protected viewedValue = signal<ViewedValue | null>(null);
+    private valueViewerTrigger: HTMLElement | null = null;
+    private rawEvents = signal<AuditSessionEvent[]>([]);
+    private cursorStack = signal<(string | null)[]>([null]);
+    private nextCursor = signal<string | null>(null);
+    private appliedFilter = signal<AuditFilterState>(readStoredAuditFilter(this.appliedFilterStorageKey));
+    // a selection made in the panel but not applied yet also survives a reload
+    protected draftFilter = signal<AuditFilterState>(
+        readStoredAuditFilter(this.draftFilterStorageKey, this.appliedFilter())
+    );
+    private collapsedIds = signal<ReadonlySet<string>>(new Set());
+    private readonly persistAppliedFilter = effect(() =>
+        writeStoredAuditFilter(this.appliedFilterStorageKey, this.appliedFilter())
+    );
+    private readonly persistDraftFilter = effect(() =>
+        writeStoredAuditFilter(this.draftFilterStorageKey, this.draftFilter())
+    );
+    public flowNames = signal<string[]>([]);
+    public exportingFormat = signal<ExportFormat | null>(null);
+    public allRows = computed(() => buildAuditRows(this.rawEvents()));
+    public isRowCollapsed(id: string): boolean {
+        return this.collapsedIds().has(id);
+    }
+    protected exportLabel = computed(() => {
+        const format = this.exportingFormat();
+        return format ? `Generating ${format.toUpperCase()}...` : 'Export';
+    });
+    protected readonly exportItems: ActionDropdownItem[] = [
+        { label: 'Export as JSON', value: 'json' },
+        { label: 'Export as CSV', value: 'csv' },
+    ];
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+    protected readonly minPageSize = MIN_PAGE_SIZE;
+    protected readonly maxPageSize = MAX_PAGE_SIZE;
+    protected readonly pageSizeStep = PAGE_SIZE_STEP;
+    private columnResize: ColumnResize | null = null;
+
+    public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
+    public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
+
+    public toggleAllRows(): void {
+        if (this.areAllRowsExpanded()) {
+            this.collapsedIds.set(
+                new Set(
+                    this.allRows()
+                        .filter((row) => row.hasChildren)
+                        .map((row) => row.event.id)
+                )
+            );
+            return;
+        }
+        this.collapsedIds.set(new Set());
+    }
+
+    public rows = computed(() => {
+        const collapsed = this.collapsedIds();
+        if (collapsed.size === 0) {
+            return this.allRows();
+        }
+        return this.allRows().filter((row) => !row.parentIds.some((id) => collapsed.has(id)));
+    });
+
+    public appliedChips = computed(() =>
+        describeAuditFilter(this.appliedFilter(), { agents: this.agentOptions(), tools: this.toolOptions() })
+    );
+    public activeFilterCount = computed(() => this.appliedChips().length);
+    protected appliedSearchText = computed(() => this.appliedFilter().searchText);
+    protected highlightTerm = computed(() => this.appliedSearchText().trim());
+    public queryError = computed(() => (this.appliedFilter().mode === 'query' ? this.loadErrorMessage() : null));
+    public canGoNewer = computed(() => this.cursorStack().length > 1);
+    public canGoOlder = computed(() => this.nextCursor() !== null);
+
+    public counts = computed(() => {
+        const events = this.rawEvents();
+        return {
+            matches: events.filter((event) => event.filter_matched).length,
+            rows: events.length,
+            sessions: events.filter((event) => event.kind === 'session').length,
+            nodes: events.filter((event) => event.kind === 'node').length,
+            events: events.filter((event) => event.kind === 'event').length,
+        };
+    });
+
+    public toggleRow(id: string): void {
+        this.collapsedIds.update((current) => {
+            const next = new Set(current);
+            if (!next.delete(id)) {
+                next.add(id);
+            }
+            return next;
+        });
+    }
+
+    public ngOnInit(): void {
+        this.loadSessions();
+        this.loadFlowNames();
+        this.loadAgents();
+        this.loadTools();
+        this.startPolling();
+        this.listenToSearchInput();
+    }
+
+    public onSearchInput(text: string): void {
+        this.searchInput.next(text);
+    }
+
+    public applySearch(text: string): void {
+        if (text.trim() === this.appliedFilter().searchText.trim()) {
+            return;
+        }
+        const searchText = text.trim() === '' ? '' : text;
+        this.appliedFilter.update((state) => ({ ...state, searchText }));
+        this.draftFilter.update((state) => ({ ...state, searchText }));
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    // the stepper emits on every keystroke, so a half-typed or out-of-range number is ignored until it is valid
+    public setPageSize(size: number | null): void {
+        if (size === null || size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE || size === this.pageSize()) {
+            return;
+        }
+        this.pageSize.set(size);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public goToFirstPage(): void {
+        if (!this.canGoNewer()) {
+            return;
+        }
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public goToNewerPage(): void {
+        if (!this.canGoNewer()) {
+            return;
+        }
+        this.cursorStack.update((stack) => stack.slice(0, -1));
+        this.loadSessions();
+    }
+
+    public goToOlderPage(): void {
+        const cursor = this.nextCursor();
+        if (cursor === null) {
+            return;
+        }
+        this.cursorStack.update((stack) => [...stack, cursor]);
+        this.loadSessions();
+    }
+
+    public setColumnsExpanded(expanded: boolean): void {
+        this.areColumnsExpanded.set(expanded);
+    }
+
+    protected startColumnResize(event: PointerEvent, index: number): void {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        const handle = event.currentTarget as HTMLElement;
+        // capture keeps the drag alive when the pointer leaves the narrow handle
+        handle.setPointerCapture(event.pointerId);
+        // start from where the column actually is on screen, so the drag never jumps
+        const startWidth = handle.parentElement?.getBoundingClientRect().width ?? this.columnWidths()[index];
+        this.columnResize = { index, startX: event.clientX, startWidth };
+    }
+
+    protected resizeColumn(event: PointerEvent): void {
+        const resize = this.columnResize;
+        if (resize === null) {
+            return;
+        }
+        const width = Math.max(COLUMN_MIN_WIDTH, Math.round(resize.startWidth + event.clientX - resize.startX));
+        this.columnWidths.update((widths) =>
+            widths.map((current, index) => (index === resize.index ? width : current))
+        );
+    }
+
+    protected stopColumnResize(): void {
+        this.columnResize = null;
+    }
+
+    public toggleFiltersPanel(): void {
+        if (this.viewedValue()) {
+            this.viewedValue.set(null);
+            this.valueViewerTrigger = null;
+            this.isFiltersPanelOpen.set(true);
+            return;
+        }
+        this.isFiltersPanelOpen.update((isOpen) => !isOpen);
+    }
+
+    public closeFiltersPanel(): void {
+        this.draftFilter.set(this.appliedFilter());
+        this.isFiltersPanelOpen.set(false);
+    }
+
+    public applyFilters(state: AuditFilterState = this.draftFilter()): void {
+        this.draftFilter.set(state);
+        this.appliedFilter.set(state);
+        this.cursorStack.set([null]);
+        this.isFiltersPanelOpen.set(false);
+        this.loadSessions();
+    }
+
+    public removeFilter(key: string): void {
+        const next = clearAuditFilterField(this.appliedFilter(), key);
+        this.appliedFilter.set(next);
+        this.draftFilter.set(next);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public clearFilters(): void {
+        this.draftFilter.set(EMPTY_AUDIT_FILTER);
+        this.appliedFilter.set(EMPTY_AUDIT_FILTER);
+        this.cursorStack.set([null]);
+        this.loadSessions();
+    }
+
+    public loadSessions(silent = false): void {
+        this.searchSubscription?.unsubscribe();
+        const stack = this.cursorStack();
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        if (!silent) {
+            this.isLoading.set(true);
+            this.loadError.set(false);
+            this.loadErrorMessage.set(null);
+        }
+
+        this.searchSubscription = this.auditApiService
+            .searchSessions({
+                filters,
+                query,
+                match_scope: matchScope,
+                cursor: stack[stack.length - 1],
+                size: this.pageSize(),
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (response) => {
+                    this.rawEvents.set(response.items);
+                    this.nextCursor.set(response.next_cursor);
+                    this.isPartial.set(response.partial);
+                    if (silent) {
+                        return;
+                    }
+                    this.isLoading.set(false);
+                    this.collapsedIds.set(new Set());
+                },
+                error: (error: HttpErrorResponse) => {
+                    if (silent) {
+                        return;
+                    }
+                    const detail = error.error?.detail;
+                    this.loadErrorMessage.set(error.status === 400 && typeof detail === 'string' ? detail : null);
+                    this.rawEvents.set([]);
+                    this.nextCursor.set(null);
+                    this.isPartial.set(false);
+                    this.loadError.set(true);
+                    this.isLoading.set(false);
+                },
+            });
+    }
+
+    public loadFlowNames(): void {
+        this.flowApiService
+            .getGraphsLight()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (flows) => {
+                    const uniqueNames = new Set(flows.map((flow) => flow.name));
+                    const sortedNames = Array.from(uniqueNames).sort((a, b) => a.localeCompare(b));
+                    this.flowNames.set(sortedNames);
+                },
+                error: () => {
+                    this.flowNames.set([]);
+                },
+            });
+    }
+
+    public agentOptions = signal<AuditEnumOption[]>([]);
+    public toolOptions = signal<AuditEnumOption[]>([]);
+
+    public loadTools(): void {
+        forkJoin({
+            python: this.customToolsService.getPythonCodeTools().pipe(catchError(() => of([]))),
+            mcp: this.mcpToolsService.getMcpTools().pipe(catchError(() => of([]))),
+        })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: ({ python, mcp }) => {
+                    const names = [...python.map((tool) => tool.name), ...mcp.map((tool) => tool.name)];
+                    const byValue = new Map(names.map((name) => [sanitizeToolName(name), name]));
+                    this.toolOptions.set(
+                        Array.from(byValue, ([value, label]) => ({ value, label })).sort((a, b) =>
+                            a.label.localeCompare(b.label)
+                        )
+                    );
+                },
+                error: () => this.toolOptions.set([]),
+            });
+    }
+
+    public loadAgents(): void {
+        this.agentService
+            .getAgentDefinitions()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (agents) => {
+                    this.agentOptions.set(agents.map((agent) => ({ value: String(agent.id), label: agent.name })));
+                },
+                error: () => this.agentOptions.set([]),
+            });
+    }
+
+    private startPolling(): void {
+        merge(interval(POLL_INTERVAL_MS), fromEvent(this.document, 'visibilitychange'))
+            .pipe(
+                filter(() => this.canRefreshSilently()),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.loadSessions(true));
+    }
+
+    private listenToSearchInput(): void {
+        this.searchInput
+            .pipe(debounceTime(SEARCH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
+            .subscribe((text) => this.applySearch(text));
+    }
+
+    private canRefreshSilently(): boolean {
+        return (
+            this.cursorStack().length === 1 &&
+            this.document.visibilityState === 'visible' &&
+            !this.isLoading() &&
+            !this.loadError() &&
+            (this.searchSubscription?.closed ?? true)
+        );
+    }
+
+    public exportFiltered(format: ExportFormat): void {
+        const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter());
+        const request: AuditExportRequest = { format, filters, query, match_scope: matchScope };
+        this.exportingFormat.set(format);
+
+        this.auditApiService
+            .startExport(request)
+            .pipe(
+                switchMap(({ job_id }) =>
+                    timer(0, EXPORT_POLL_INTERVAL_MS).pipe(
+                        exhaustMap(() => this.auditApiService.getExportFile(job_id)),
+                        first((response) => response.status === 200)
+                    )
+                ),
+                timeout({ first: EXPORT_TIMEOUT_MS }),
+                finalize(() => this.exportingFormat.set(null)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (response) => {
+                    if (response.body) {
+                        downloadBlob(response.body, `audit_export_${Date.now()}.${format}`);
+                    }
+                },
+                error: () => this.toastService.error('Failed to export audit records'),
+            });
+    }
+
+    public onExportItemSelected(item: ActionDropdownItem): void {
+        this.exportFiltered(item.value as ExportFormat);
+    }
+
+    protected openValue(trigger: HTMLElement, field: string, row: AuditRow, value: string, isPlainText = false): void {
+        const rowName = row.event.name || row.nameLabel || '';
+        this.valueViewerTrigger = trigger;
+        this.viewedValue.set({ rowId: row.event.id, field, rowName, value, isPlainText });
+    }
+
+    protected isValueViewed(field: string, row: AuditRow): boolean {
+        const viewed = this.viewedValue();
+        return viewed?.rowId === row.event.id && viewed.field === field;
+    }
+
+    // the panel is not a dialog, so focus is handed back to the cell by hand instead of falling to <body>
+    protected closeValueViewer(): void {
+        this.viewedValue.set(null);
+        this.valueViewerTrigger?.focus();
+        this.valueViewerTrigger = null;
+    }
+}
+
+function buildTimeZoneLabel(): string {
+    // some browsers still report the legacy 'Europe/Kiev' name
+    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const sign = offsetMinutes < 0 ? '-' : '+';
+    const absolute = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
+    const minutes = String(absolute % 60).padStart(2, '0');
+    return `${sign}${hours}:${minutes} ${zone}`;
+}

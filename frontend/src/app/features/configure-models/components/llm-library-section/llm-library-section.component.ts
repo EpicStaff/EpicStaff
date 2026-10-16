@@ -14,6 +14,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    AuthorshipDetailsDialogService,
+    AuthorshipDetailsSource,
     ButtonComponent,
     CheckboxComponent,
     EmbeddingModelConfigDialogComponent,
@@ -57,13 +59,17 @@ import {
     LlmLibrarySelectionKind,
 } from '../../utils/llm-library-bulk-delete.util';
 import { AddConfigurationDialogComponent } from '../add-configuration-dialog/add-configuration-dialog.component';
-import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
+import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
+import {
+    LlmLibraryCardComponent,
+    LlmLibraryCardViewDetailsEvent,
+} from '../llm-library-card/llm-library-card.component';
 import {
     RealtimeConfigDialogComponent,
     RealtimeProvider,
 } from '../realtime-config-dialog/realtime-config-dialog.component';
 
-interface VoiceProviderConfig {
+interface VoiceProviderConfig extends AuthorshipDetailsSource {
     id: number;
     custom_name: string;
     model_name: string;
@@ -89,6 +95,7 @@ const EMBEDDING_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'embedding conf
     imports: [
         FormsModule,
         LlmLibraryCardComponent,
+        ConfigCardMoreMenuComponent,
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
@@ -109,6 +116,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     private readonly openaiRealtimeStorage = inject(OpenAIRealtimeConfigStorageService);
     private readonly elevenLabsRealtimeStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiRealtimeStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly defaultModelsStorageService = inject(DefaultModelsStorageService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly destroyRef = inject(DestroyRef);
@@ -192,18 +200,20 @@ export class LlmLibrarySectionComponent implements OnInit {
     filteredVoiceProviders = computed(() => {
         const query = this.searchQuery().toLowerCase();
         const errors = this.sectionErrors();
-        return this.voiceProviders.map((provider) => ({
-            ...provider,
-            hasError: errors[provider.key],
-            configs: provider.storage.configs().filter((c) => {
-                if (!query) return true;
-                return (
-                    c.custom_name.toLowerCase().includes(query) ||
-                    c.model_name.toLowerCase().includes(query) ||
-                    provider.label.toLowerCase().includes(query)
-                );
-            }),
-        }));
+        return this.voiceProviders
+            .map((provider) => ({
+                ...provider,
+                hasError: errors[provider.key],
+                configs: provider.storage.configs().filter((c) => {
+                    if (!query) return true;
+                    return (
+                        c.custom_name.toLowerCase().includes(query) ||
+                        c.model_name.toLowerCase().includes(query) ||
+                        provider.label.toLowerCase().includes(query)
+                    );
+                }),
+            }))
+            .filter((provider) => provider.hasError || provider.configs.length > 0);
     });
 
     groupedByType = computed(() => {
@@ -219,6 +229,8 @@ export class LlmLibrarySectionComponent implements OnInit {
             }))
             .filter((section) => section.hasError || section.groups.length > 0);
     });
+
+    hasNoConfigs = computed(() => this.groupedByType().length === 0 && this.filteredVoiceProviders().length === 0);
 
     public capabilities = computed<SelectItem[]>(() => [
         { name: 'All Capabilities', value: null },
@@ -350,6 +362,11 @@ export class LlmLibrarySectionComponent implements OnInit {
         });
     }
 
+    /** Opens the same details the LLM and embedding cards show; the dialog closes back to `trigger`. */
+    onViewConfigDetails(config: VoiceProviderConfig, trigger: HTMLElement): void {
+        this.authorshipDetailsDialog.open('Configuration Details', config, trigger);
+    }
+
     onDeleteConfig(provider: VoiceProvider, config: VoiceProviderConfig): void {
         const group: BulkDeleteGroup = {
             target: provider.storage,
@@ -380,7 +397,7 @@ export class LlmLibrarySectionComponent implements OnInit {
     }
 
     public onAddModel(): void {
-        this.dialog.open(AddConfigurationDialogComponent);
+        this.dialog.open(AddConfigurationDialogComponent, { autoFocus: false });
     }
 
     public onEdit(model: LlmLibraryModel): void {
@@ -395,6 +412,17 @@ export class LlmLibrarySectionComponent implements OnInit {
             width: '600px',
             data: { configId: model.id },
         });
+    }
+
+    public onViewDetails({ model, trigger }: LlmLibraryCardViewDetailsEvent): void {
+        const findDetails: Partial<Record<ModelTypes, () => AuthorshipDetailsSource | undefined>> = {
+            [ModelTypes.LLM]: () => this.llmConfigStorageService.configs().find((config) => config.id === model.id),
+            [ModelTypes.EMBEDDING]: () =>
+                this.embeddingConfigStorage.configs().find((config) => config.id === model.id),
+        };
+        const details = findDetails[model.configType]?.();
+        if (!details) return;
+        this.authorshipDetailsDialog.open('Configuration Details', details, trigger);
     }
 
     public onDelete(model: LlmLibraryModel): void {

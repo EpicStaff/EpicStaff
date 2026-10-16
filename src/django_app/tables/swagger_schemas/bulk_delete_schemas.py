@@ -24,6 +24,31 @@ DRY_RUN_PARAMETER = OpenApiParameter(
 )
 
 
+CROSS_ORG_CASCADE_409_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.STR,
+    description=(
+        "`cross_org_cascade`: deleting a row would change another organization's "
+        "rows. Nothing was deleted; the whole request is rolled back rather than "
+        "reported per id. The message names neither the row nor the organization."
+    ),
+    examples=[
+        OpenApiExample(
+            "Cross-org cascade",
+            value={
+                "status_code": 409,
+                "code": "cross_org_cascade",
+                "message": (
+                    "This item is linked to data it can't be deleted with. "
+                    "Nothing was deleted. Contact an administrator."
+                ),
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+    ],
+)
+
+
 def _empty_bucket(resource_type: ResourceType) -> dict:
     return {
         "resource_type": resource_type.value,
@@ -66,6 +91,7 @@ def _bulk_delete_post_schema(
     model_name: str,
     gate: ResourceType,
     bucket_types: tuple[ResourceType, ...],
+    extra_responses: dict[int, OpenApiResponse] | None = None,
 ) -> dict:
     return {
         "summary": f"Bulk delete {model_name}s",
@@ -128,6 +154,7 @@ def _bulk_delete_post_schema(
                     "type in the active org."
                 ),
             ),
+            **(extra_responses or {}),
         },
     }
 
@@ -136,11 +163,13 @@ GRAPH_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="Graph",
     gate=ResourceType.FLOWS,
     bucket_types=(ResourceType.FLOWS,),
+    extra_responses={409: CROSS_ORG_CASCADE_409_RESPONSE},
 )
 GRAPH_VERSION_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="GraphVersion",
     gate=ResourceType.FLOWS,
     bucket_types=(),
+    extra_responses={409: CROSS_ORG_CASCADE_409_RESPONSE},
 )
 LLM_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="LLMConfig",

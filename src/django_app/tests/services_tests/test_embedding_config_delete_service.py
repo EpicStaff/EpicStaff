@@ -64,7 +64,7 @@ def test_collection_with_both_rag_kinds_on_one_embedder_is_one_collection(org_a)
     NaiveRag.objects.create(base_rag_type=naive_rag_type, embedder=config)
 
     result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True
+        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
     )
 
     knowledge = _bucket(result, config.id, ResourceType.KNOWLEDGE_SOURCES)
@@ -79,7 +79,7 @@ def test_deprecated_crew_still_counts_as_usage(org_a):
     Crew.objects.create(org=org_a, name="crew", embedding_config=config)
 
     result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True
+        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
     )
 
     projects = _bucket(result, config.id, ResourceType.PROJECTS)
@@ -91,7 +91,7 @@ def test_unreferenced_config_is_deleted(org_a):
     config = _config(org_a)
 
     result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything()
+        [config.id], org_a.id, _can_read_everything(), deleted_by=None
     )
 
     assert result.deleted_ids == [config.id]
@@ -120,7 +120,7 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
         rag_model.objects.create(base_rag_type=rag_type, embedder=config)
 
     preview = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True
+        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
     )
     assert [bucket.total_count for bucket in preview.usage[config.id].buckets] == [
         0,
@@ -128,5 +128,5 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
     ]
 
     nobody = EffectivePermissions(is_superadmin=False, role=None, by_resource={})
-    result = EmbeddingConfigDeleteService().bulk_delete([config.id], org_a.id, nobody)
+    result = EmbeddingConfigDeleteService().bulk_delete([config.id], org_a.id, nobody, deleted_by=None)
     assert result.deleted_ids == [config.id]

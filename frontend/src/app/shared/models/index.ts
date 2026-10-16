@@ -1,6 +1,7 @@
 export * from './agent-search-config.model';
 export * from './api-error.model';
 export * from './auth';
+export * from './authorship.model';
 export * from './bulk-delete/bulk-delete.model';
 export * from './custom-filter.model';
 export * from './date-range-filter.model';
@@ -17,7 +18,7 @@ export * from './llms/transcription-config.model';
 export * from './node/key-value-mode';
 export * from './node/node-config';
 export * from './node/node-type';
-export * from './node-group.model';
+export * from './node/node-type-labels';
 export * from './realtime-voice/elevenlabs-realtime-config.model';
 export * from './realtime-voice/gemini-realtime-config.model';
 export * from './realtime-voice/openai-realtime-config.model';

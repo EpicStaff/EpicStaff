@@ -36,7 +36,7 @@ export function buildBulkDeletePreview(group: BulkDeleteGroup, response: BulkDel
         }
     }
 
-    return { label: group.label, deletable, blocked, notFound };
+    return { label: group.label, recycleBin: group.recycleBin, deletable, blocked, notFound };
 }
 
 function buildUsageLines(response: BulkDeleteResponse, id: number): BulkDeleteUsageLine[] {

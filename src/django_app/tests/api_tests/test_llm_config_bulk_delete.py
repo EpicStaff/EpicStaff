@@ -165,7 +165,7 @@ def test_bulk_delete_agents_bucket_new_agent_definition_visible_proceeds(
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
     config = _config(org_a, "c")
     agent_def = AgentDefinition.objects.create(
-        organization=org_a, name="ad1", llm_config=config
+        org=org_a, name="ad1", llm_config=config
     )
 
     agents_usage = by_type(_preview_usage(client, config.id), "agents")

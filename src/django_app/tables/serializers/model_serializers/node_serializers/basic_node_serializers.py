@@ -13,10 +13,8 @@ from agents.services.agent_inline_surface_service import AgentInlineSurfaceServi
 from agents.services.inline_surface_service import InlineSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 from django.db import transaction
-from rbac.scoping.fields import (
-    OrganizationScopedPrimaryKeyRelatedField,
-    OrgScopedPrimaryKeyRelatedField,
-)
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.graph_models import (
     AgentNode,
@@ -43,6 +41,7 @@ from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.key_value_entries_validator import KeyValueEntriesValidator
@@ -116,7 +115,12 @@ def validate_output_schema(value):
 
 
 class PythonNodeSerializer(
-    ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    NestedPythonCodeMixin,
+    serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -126,7 +130,13 @@ class PythonNodeSerializer(
         fields = "__all__"
 
 
-class FileExtractorNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class FileExtractorNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -162,7 +172,13 @@ class KeyValueTableReferenceField(OrgScopedPrimaryKeyRelatedField):
         return None
 
 
-class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class KeyValueNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     key_value_table = KeyValueTableReferenceField(
         queryset=KeyValueTable.objects.all(), required=False, allow_null=True
@@ -193,7 +209,13 @@ class KeyValueNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializ
         )
 
 
-class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class KnowledgeNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     """Plain node serializer (no search configs). Base for bulk-save, which
     persists the config blocks separately via its saveable.
 
@@ -236,6 +258,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
             attrs["search_method"] = graph["search_method"]
         return super().validate(attrs)
 
+    @transaction.atomic
     def create(self, validated_data):
         search_configs_data = validated_data.pop("search_configs", None)
         node = super().create(validated_data)
@@ -243,6 +266,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
             SearchConfigService.apply_node_search_configs(node, search_configs_data)
         return node
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         search_configs_data = validated_data.pop("search_configs", None)
         node = super().update(instance, validated_data)
@@ -258,7 +282,13 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
         return data
 
 
-class AudioTranscriptionNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class AudioTranscriptionNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
@@ -266,7 +296,12 @@ class AudioTranscriptionNodeSerializer(ContentHashWritableMixin, serializers.Mod
         fields = "__all__"
 
 
-class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class EdgeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -281,15 +316,21 @@ class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return attrs
 
 
-class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class TaskNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     inline_surface = InlineSurfaceWriteSerializer(required=False, allow_null=True, write_only=True)
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
     # non-existent one (no leak).
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+    agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all(), required=False, allow_null=True
     )
-    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+    surface_list = OrgScopedPrimaryKeyRelatedField(
         queryset=Surface.objects.all(), many=True, required=False
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -389,7 +430,13 @@ class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class AgentNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     tasks = AgentNodeTaskWriteSerializer(many=True, required=False)
     inline_surface = AgentInlineSurfaceWriteSerializer(
         required=False, allow_null=True, write_only=True
@@ -397,10 +444,10 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
     # Org isolation: agent_definition/surface_list/graph must belong to the
     # caller's active org — a cross-org pk is rejected exactly like a
     # non-existent one (no leak).
-    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+    agent_definition = OrgScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all(), required=False, allow_null=True
     )
-    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+    surface_list = OrgScopedPrimaryKeyRelatedField(
         queryset=Surface.objects.all(), many=True, required=False
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -609,7 +656,13 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+class SubGraphNodeSerializer(
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
+):
     # Org isolation: the referenced sub-flow must be in the caller's active org.
     subgraph = OrgScopedPrimaryKeyRelatedField(
         queryset=Graph.objects.all(), required=False, allow_null=True
@@ -635,5 +688,9 @@ class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializ
         )
 
         data = super().to_representation(instance)
-        data["subgraph_detail"] = GraphLightSerializer(instance.subgraph).data
+        data["subgraph_detail"] = (
+            GraphLightSerializer(instance.subgraph, context=self.context).data
+            if instance.subgraph is not None
+            else None
+        )
         return data

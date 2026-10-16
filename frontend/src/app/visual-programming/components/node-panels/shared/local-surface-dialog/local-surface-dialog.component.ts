@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 
 import { Surface } from '../../../../../features/agent-definitions/models/surface.model';
 import { SurfaceCardComponent } from '../../../../../features/agent-definitions/pages/agent-definitions-page/components/agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
@@ -24,7 +25,7 @@ const EMPTY_INLINE_SURFACE: InlineSurface = {
 
 @Component({
     selector: 'app-local-surface-dialog',
-    imports: [AppSvgIconComponent, SurfaceCardComponent],
+    imports: [AppSvgIconComponent, EnterSubmitDirective, SurfaceCardComponent],
     templateUrl: './local-surface-dialog.component.html',
     styleUrls: ['./local-surface-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,7 +35,7 @@ export class LocalSurfaceDialogComponent {
     private readonly dialogRef = inject<DialogRef<InlineSurface | null>>(DialogRef);
     private readonly data = inject<LocalSurfaceDialogData>(DIALOG_DATA);
 
-    private readonly surfaceCard = viewChild(SurfaceCardComponent);
+    protected readonly surfaceCard = viewChild(SurfaceCardComponent);
 
     readonly isCreateMode = this.data.mode === 'create';
     readonly title = this.isCreateMode ? 'Create Local Surface' : 'Edit Local Surface';
@@ -48,6 +49,9 @@ export class LocalSurfaceDialogComponent {
             this.dialogRef.close(null);
             return;
         }
+
+        card.flushPendingKnowledge();
+        if (card.knowledgeInvalid()) return;
 
         const payload = card.buildCreateRequest('');
         const result: InlineSurface = {

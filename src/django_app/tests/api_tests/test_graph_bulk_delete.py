@@ -8,6 +8,7 @@ The guard applies identically to bulk_delete and single destroy.
 """
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
@@ -15,6 +16,7 @@ from tables.models import Graph
 from tables.models.graph_models import SubGraphNode
 from rbac.models import (
     Organization,
+    ResourceLastEdit,
 )
 from rbac.models.enums import Permission, ResourceType
 from tests.api_tests.bulk_delete_helpers import custom_role_client, org_admin_client
@@ -363,7 +365,82 @@ def test_single_destroy_locks_the_row_it_checks(django_user_model, org_a):
         resp = client.delete(f"/api/graphs/{g.id}/")
 
     assert resp.status_code == 204, resp.data
-    assert any(
-        "FOR UPDATE" in query["sql"] and '"tables_graph"' in query["sql"]
-        for query in queries.captured_queries
+    statements = [query["sql"] for query in queries.captured_queries]
+    first_graph_lock = next(
+        index
+        for index, sql in enumerate(statements)
+        if "FOR UPDATE" in sql and '"tables_graph"' in sql
     )
+    first_usage_read = next(
+        index for index, sql in enumerate(statements) if '"tables_subgraphnode"' in sql
+    )
+    # DeleteService locks the row itself later, so only the lock taken before the
+    # usage read is the one that makes the check stable.
+    assert first_graph_lock < first_usage_read
+
+
+def _deleter_record(graph):
+    """(editor id, edit time, binned time) of a binned graph: the deleter lives in its last edit."""
+    last_edit = ResourceLastEdit.objects.filter(
+        content_type=ContentType.objects.get_for_model(Graph), object_id=graph.pk
+    ).first()
+    stored = Graph.all_objects.get(pk=graph.pk)
+    assert stored.active is False
+    return (
+        last_edit.edited_by_id if last_edit else "no record",
+        last_edit.edited_at if last_edit else None,
+        stored.soft_deleted_at,
+    )
+
+
+@pytest.mark.django_db
+def test_bulk_delete_records_the_deleter_exactly_as_single_delete_does(
+    django_user_model, org_a
+):
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    admin = django_user_model.objects.get(email="admin@example.com")
+    bulk, single = _graph(org_a, "bulk"), _graph(org_a, "single")
+
+    bulk_resp = client.post("/api/graphs/bulk-delete/", {"ids": [bulk.id]}, format="json")
+    single_resp = client.delete(f"/api/graphs/{single.id}/")
+
+    assert bulk_resp.status_code == 200, bulk_resp.data
+    assert single_resp.status_code == 204
+    bulk_editor, bulk_edited_at, bulk_binned_at = _deleter_record(bulk)
+    single_editor, single_edited_at, single_binned_at = _deleter_record(single)
+    assert bulk_editor == single_editor == admin.pk
+    assert bulk_edited_at == bulk_binned_at
+    assert single_edited_at == single_binned_at
+
+
+@pytest.mark.django_db
+def test_bulk_dry_run_records_no_deleter(django_user_model, org_a):
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    graph = _graph(org_a)
+
+    resp = client.post(
+        "/api/graphs/bulk-delete/?dry_run=true", {"ids": [graph.id]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert Graph.objects.filter(id=graph.id).exists()
+    assert not ResourceLastEdit.objects.filter(
+        content_type=ContentType.objects.get_for_model(Graph), object_id=graph.pk
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_deleted_graph_shows_who_deleted_it_in_the_bin(django_user_model, org_a):
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    admin = django_user_model.objects.get(email="admin@example.com")
+    graph = _graph(org_a)
+
+    deleted = client.post("/api/graphs/bulk-delete/", {"ids": [graph.id]}, format="json")
+    assert deleted.status_code == 200, deleted.data
+
+    entries = client.get("/api/graphs/recycle-bin/").json()["results"]
+    deleted_by = next(
+        line for line in entries[0]["details"][:2] if line["label"] == "Deleted by"
+    )
+    assert deleted_by["value"] is not None
+    assert deleted_by["value"]["id"] == admin.pk

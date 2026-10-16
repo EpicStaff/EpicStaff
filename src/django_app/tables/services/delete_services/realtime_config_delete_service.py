@@ -66,7 +66,7 @@ class _ProviderRealtimeConfigDeleteService(BaseDeleteService):
             )
             agents.add_rows(
                 RealtimeAgentDefinition.objects.filter(
-                    agent_definition__organization_id=org_id, **{f"{column}__in": ids}
+                    agent_definition__org_id=org_id, **{f"{column}__in": ids}
                 ).values_list(column, "agent_definition_id", "agent_definition__name"),
                 kind=RefKind.AGENT_DEFINITION,
             )

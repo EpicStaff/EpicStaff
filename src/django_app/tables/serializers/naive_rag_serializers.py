@@ -4,6 +4,10 @@ from tables.constants.knowledge_constants import (
     MAX_CHUNK_SIZE,
     MIN_CHUNK_OVERLAP,
     MIN_CHUNK_SIZE,
+    SEARCH_LIMIT_MAX,
+    SEARCH_LIMIT_MIN,
+    SIMILARITY_THRESHOLD_MAX,
+    SIMILARITY_THRESHOLD_MIN,
 )
 from tables.models.knowledge_models import (
     NaiveRag,
@@ -13,6 +17,7 @@ from tables.models.knowledge_models import (
     NaiveRagSearchConfig,
 )
 from tables.serializers.knowledge_serializers import BaseRagTypeSerializer
+from tables.validators.finite_number_validator import validate_finite_number
 
 
 class NaiveRagSerializer(serializers.ModelSerializer):
@@ -387,15 +392,16 @@ class NaiveSearchConfigInputSerializer(serializers.Serializer):
 
     search_limit = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=1000,
-        help_text="Number of chunks to retrieve (1-1000)",
+        min_value=SEARCH_LIMIT_MIN,
+        max_value=SEARCH_LIMIT_MAX,
+        help_text=f"Number of chunks to retrieve ({SEARCH_LIMIT_MIN}-{SEARCH_LIMIT_MAX})",
     )
     similarity_threshold = serializers.FloatField(
         required=False,
-        min_value=0.0,
-        max_value=1.0,
+        min_value=SIMILARITY_THRESHOLD_MIN,
+        max_value=SIMILARITY_THRESHOLD_MAX,
         help_text="Similarity threshold for search (0.0-1.0)",
+        validators=[validate_finite_number],
     )
     is_suggested = serializers.BooleanField(
         required=False,

@@ -42,14 +42,43 @@ RUN uv sync --frozen --no-install-project --all-groups --no-group dev --no-group
 # Add virtualenv to PATH so the existing CMD keeps resolving python from it.
 ENV PATH="/app/src/.venv/bin:$PATH"
 
-# Install ngrok via official APT repo (S3-hosted, not equinox CDN)
-RUN apt-get update && apt-get install -y curl apt-transport-https gnupg && \
-    curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-      | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
-    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
-      | tee /etc/apt/sources.list.d/ngrok.list && \
-    apt-get update && apt-get install -y ngrok && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install ngrok via official APT repo (S3-hosted, not equinox CDN).
+# The downloaded key file is imported into a throwaway keyring and exported by
+# fingerprint to /etc/apt/keyrings. Exporting by fingerprint also selects any
+# key that merely carries a subkey with that fingerprint, so the export could
+# include a different primary key. Therefore the exported file, which is exactly
+# what APT will trust, must hold one key whose primary fingerprint is the
+# pinned one. That keyring is bound to this one source via
+# signed-by, so it cannot vouch for any other repository (a key in the global
+# APT trust directory is trusted for every source). The package version is
+# pinned.
+# To bump ngrok: update NGROK_VERSION to a version listed in the repo's
+# dists/bookworm/main/binary-<arch>/Packages index for every architecture we
+# build. If ngrok rotates its signing key the build fails at the fingerprint
+# check; take the new fingerprint from
+# `gpg --show-keys --with-fingerprint ngrok.asc` and confirm it against
+# ngrok's published documentation before changing ngrok_key_fingerprint.
+ARG NGROK_VERSION=3.39.11
+RUN set -eux; \
+    ngrok_key_fingerprint=F0271FCF712CF2E39901F1A30E61D3BBAAEE37FE; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl gnupg; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; \
+    curl --fail --proto '=https' -sSL -o "$GNUPGHOME/ngrok.asc" https://ngrok-agent.s3.amazonaws.com/ngrok.asc; \
+    gpg --batch --import "$GNUPGHOME/ngrok.asc"; \
+    gpg --batch --export "$ngrok_key_fingerprint" > /etc/apt/keyrings/ngrok.gpg; \
+    exported_keys="$(gpg --batch --with-colons --show-keys /etc/apt/keyrings/ngrok.gpg)"; \
+    [ "$(printf '%s\n' "$exported_keys" | grep -c '^pub:')" = 1 ]; \
+    [ "$(printf '%s\n' "$exported_keys" | awk -F: '/^fpr:/ {print $10; exit}')" = "$ngrok_key_fingerprint" ]; \
+    gpgconf --kill all; \
+    rm -rf "$GNUPGHOME"; \
+    echo "deb [signed-by=/etc/apt/keyrings/ngrok.gpg] https://ngrok-agent.s3.amazonaws.com bookworm main" \
+      > /etc/apt/sources.list.d/ngrok.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends "ngrok=${NGROK_VERSION}"; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY ./webhook .
 COPY ./shared /app/src/shared

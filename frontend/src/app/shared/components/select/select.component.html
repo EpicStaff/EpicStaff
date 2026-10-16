@@ -19,12 +19,19 @@
                     [size]="'18px'"
                 ></app-svg-icon>
             }
+            @if (selectedItem()?.dotColor; as dotColor) {
+                <span
+                    class="selector__dot"
+                    [style.background-color]="dotColor"
+                ></span>
+            }
             {{ readonlyDisplayText() }}
         </span>
     } @else {
         <div class="selector">
             <button
                 #triggerBtn
+                type="button"
                 class="selector__btn"
                 [disabled]="isDisabled()"
                 [ngClass]="'selector__btn--' + mod()"
@@ -45,6 +52,12 @@
                             [icon]="selectedItem()!.icon!"
                             [size]="'18px'"
                         ></app-svg-icon>
+                    }
+                    @if (selectedItem()?.dotColor; as dotColor) {
+                        <span
+                            class="selector__dot"
+                            [style.background-color]="dotColor"
+                        ></span>
                     }
                     <span
                         class="selector__text"
@@ -116,6 +129,12 @@
                             [icon]="item.icon"
                             [size]="'16px'"
                         ></app-svg-icon>
+                    }
+                    @if (item.dotColor; as dotColor) {
+                        <span
+                            class="selector__dot"
+                            [style.background-color]="dotColor"
+                        ></span>
                     }
                     <div class="selector__option-body">
                         <span class="selector__text">{{ item.name }}</span>

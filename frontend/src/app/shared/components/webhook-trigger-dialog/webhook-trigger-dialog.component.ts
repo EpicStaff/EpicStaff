@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { EnterSubmitDirective } from '@shared/directives';
 import { WebhookTriggerModel } from '@shared/models';
 
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
@@ -17,7 +18,7 @@ export interface WebhookTriggerDialogData {
     selector: 'app-webhook-trigger-dialog',
     templateUrl: './webhook-trigger-dialog.component.html',
     styleUrls: ['./webhook-trigger-dialog.component.scss'],
-    imports: [ReactiveFormsModule, ButtonComponent, WebhookTriggerFieldComponent],
+    imports: [ReactiveFormsModule, ButtonComponent, WebhookTriggerFieldComponent, EnterSubmitDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WebhookTriggerDialogComponent implements OnInit {

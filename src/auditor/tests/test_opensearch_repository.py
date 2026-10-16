@@ -1,0 +1,81 @@
+"""
+Unit tests for OpenSearchAuditRepository against a mocked OpenSearch
+client (no live cluster needed - see test_search_integration.py for the
+real-cluster equivalents, skipped automatically when unreachable).
+"""
+
+from datetime import datetime, timezone
+
+import pytest
+
+from app.domains.sessions.index import SESSIONS_INDEX
+from app.repositories.opensearch_repository import OpenSearchAuditRepository
+from src.shared.models import SessionAuditEvent
+
+
+def _hit(_id: str, source: dict, sort: list | None = None) -> dict:
+    return {"_id": _id, "_source": source, "sort": sort or [1, _id]}
+
+
+class _FakeOpenSearchClient:
+    def __init__(self, hits: list[dict]):
+        self._hits = hits
+        self.last_body: dict | None = None
+
+    async def search(self, index: str, body: dict) -> dict:
+        self.last_body = body
+        return {"hits": {"hits": self._hits}}
+
+
+_VALID_SOURCE = {
+    "id": "evt-good",
+    "org_id": 1,
+    "kind": "event",
+    "parent_id": "",
+    "session_id": 1,
+    "name": "",
+    "status": "completed",
+    "event_time": datetime.now(timezone.utc).isoformat(),
+}
+
+
+@pytest.mark.asyncio
+async def test_malformed_document_is_skipped_without_breaking_the_page_or_pagination():
+    """A `status` outside the SessionAuditEvent Literal (a legacy or hand-written
+    value) must not 500 the whole page - the row is skipped, the rest come back."""
+    bad_source = dict(_VALID_SOURCE, id="evt-bad", status="warning")
+    client = _FakeOpenSearchClient(
+        [_hit("evt-good", _VALID_SOURCE), _hit("evt-bad", bad_source)]
+    )
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
+
+    events, next_cursor = await repository.query({"bool": {"filter": []}}, cursor=None, size=2)
+
+    assert [e.id for e in events] == ["evt-good"]
+    # The cursor follows the raw hits, so a skipped row does not end pagination early.
+    assert next_cursor is not None
+
+
+@pytest.mark.asyncio
+async def test_query_disables_exact_total_hit_tracking():
+    """Pagination here is search_after/next_cursor-based and the API
+    response never exposes a hit count - exact total tracking would force
+    OpenSearch to visit every matching document (worst case on broad
+    negation queries) just to produce a number nobody reads."""
+    client = _FakeOpenSearchClient([_hit("evt-good", _VALID_SOURCE)])
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
+
+    await repository.query({"bool": {"filter": []}}, cursor=None, size=50)
+
+    assert client.last_body["track_total_hits"] is False
+
+
+@pytest.mark.asyncio
+async def test_query_with_no_hits_and_size_zero_does_not_raise():
+    client = _FakeOpenSearchClient([])
+    repository = OpenSearchAuditRepository(client, SESSIONS_INDEX, SessionAuditEvent)
+
+    events, next_cursor = await repository.query({"bool": {"filter": []}}, cursor=None, size=0)
+
+    assert events == []
+    assert next_cursor is None

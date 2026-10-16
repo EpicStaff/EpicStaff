@@ -1,8 +1,9 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, Injectable, Signal, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
+import { GraphDto } from '../../features/flows/models/graph.model';
 import {
     generatePortsForClassificationDecisionTableNode,
     generatePortsForDecisionTableNode,
@@ -19,6 +20,8 @@ import {
     StartNodeModel,
 } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
+import { PythonNode } from '../core/models/python-node.model';
+import { GetWebhookTriggerNodeRequest } from '../core/models/webhook-trigger';
 
 export interface FlattenedPort {
     nodeId: string;
@@ -39,6 +42,21 @@ export class FlowService {
     // Subject to request canvas redraw (e.g., after port reordering)
     private canvasRedrawRequest$ = new Subject<void>();
     public readonly canvasRedrawRequested = this.canvasRedrawRequest$.asObservable();
+
+    /**
+     * The flows page's graph as the backend last returned it (load or save), bound rather than copied; null
+     * when unbound (outside the live editor) or when it is known to be outdated.
+     */
+    private readonly savedGraphSource = signal<Signal<GraphDto | null> | null>(null);
+    private readonly savedGraph = computed(() => this.savedGraphSource()?.() ?? null);
+    private readonly savedWebhookTriggerNodeById = computed(
+        () => new Map((this.savedGraph()?.webhook_trigger_node_list ?? []).map((node) => [node.id, node]))
+    );
+    private readonly savedPythonNodeById = computed(
+        () => new Map((this.savedGraph()?.python_node_list ?? []).map((node) => [node.id, node]))
+    );
+    /** Whether the editor knows what the backend stores for this graph (see `bindSavedGraph`). */
+    public readonly hasSavedGraph = computed(() => this.savedGraph() !== null);
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
@@ -75,6 +93,29 @@ export class FlowService {
 
     public requestCanvasRedraw(): void {
         this.canvasRedrawRequest$.next();
+    }
+
+    /** Bound by the flows page to its stored-graph signal; null unbinds it (the page is gone). */
+    public bindSavedGraph(source: Signal<GraphDto | null> | null): void {
+        this.savedGraphSource.set(source);
+    }
+
+    /**
+     * The webhook trigger node `backendId` as the backend stores it (its code, libraries, secrets and storage
+     * flag); null for a node that is not in the saved graph (never saved, or deleted).
+     */
+    public savedWebhookTriggerNode(backendId: number | null): GetWebhookTriggerNodeRequest | null {
+        if (backendId == null) return null;
+        return this.savedWebhookTriggerNodeById().get(backendId) ?? null;
+    }
+
+    /**
+     * The Python node `backendId` as the backend stores it (its code, libraries, secrets and storage flag);
+     * null for a node that is not in the saved graph (never saved, or deleted).
+     */
+    public savedPythonNode(backendId: number | null): PythonNode | null {
+        if (backendId == null) return null;
+        return this.savedPythonNodeById().get(backendId) ?? null;
     }
 
     public setFlow(flow: FlowModel) {
@@ -715,14 +756,6 @@ export class FlowService {
 
                 connectionIdsToRemove.add(connection.id);
             });
-            // Auto-delete conditional edge nodes that lose their source connection
-            for (const conn of flow.connections) {
-                if (!connectionIdsToRemove.has(conn.id)) continue;
-                const targetNode = flow.nodes.find((n) => n.id === conn.targetNodeId);
-                if (targetNode?.type === NodeType.EDGE) {
-                    nodeIdsToRemove.add(targetNode.id);
-                }
-            }
 
             // Track removed connections for decision table cleanup
             const removedConnections: ConnectionModel[] = [];

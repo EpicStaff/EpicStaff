@@ -1,4 +1,6 @@
-from dataclasses import dataclass, field
+import json
+import uuid
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,6 +10,21 @@ def iso_utc_timestamp():
     return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def dataclass_to_shallow_dict(instance) -> dict:
+    """Top-level fields as a dict; values are shared, not deep-copied like `asdict`."""
+    return {
+        dataclass_field.name: getattr(instance, dataclass_field.name)
+        for dataclass_field in fields(instance)
+    }
+
+
+def encode_dataclass_as_dict(value: object) -> dict:
+    """`json.dumps` default hook: dataclasses become dicts, anything else raises."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return dataclass_to_shallow_dict(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 @dataclass
 class GraphMessage:
     session_id: int
@@ -15,6 +32,26 @@ class GraphMessage:
     execution_order: int
     message_data: dict
     timestamp: str = field(default_factory=iso_utc_timestamp)
+    node_type: str = ""
+
+    def to_payload(self) -> dict:
+        """Shallow dict for the graph message stream with a fresh `uuid`; `message_data` is a dict.
+
+        The `uuid` is the event identity: Django deduplicates on it and the audit trail reuses it.
+        """
+        payload = dataclass_to_shallow_dict(self)
+        if is_dataclass(self.message_data):
+            payload["message_data"] = dataclass_to_shallow_dict(self.message_data)
+        payload["uuid"] = str(uuid.uuid4())
+        return payload
+
+    @staticmethod
+    def encode_payload(payload: dict) -> str:
+        """JSON of a `to_payload()` dict, encoded once for the stream and the audit trail.
+
+        The payload shares values with live flow state; the encoded string is the snapshot.
+        """
+        return json.dumps(payload, default=encode_dataclass_as_dict)
 
 
 @dataclass
@@ -129,18 +166,6 @@ class ConditonGroupManipulationMessageData:
     state: dict
     changed_variables: dict = field(default_factory=dict)
     message_type: str = "condition_group_manipulation"
-
-
-@dataclass
-class NodeExtractedChunksMessageData:
-    knowledge_query: str
-    collection_id: int
-    retrieved_chunks: int
-    rag_search_config: dict
-    chunks: list[dict]
-    token_usage: dict
-    input: object
-    message_type: str = "extracted_chunks"
 
 
 @dataclass

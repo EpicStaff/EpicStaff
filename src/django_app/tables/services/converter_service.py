@@ -1,11 +1,11 @@
 from django.core.exceptions import ValidationError
+from loguru import logger
 from src.shared.models import (
     ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
-    ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
     DecisionTableNodeData,
@@ -37,13 +37,18 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from storage_credentials.exceptions import (
+    CredentialScopeValidationError,
+    TemporaryCredentialIssueError,
+)
+from storage_credentials.resource_names import org_storage_prefix
+from storage_credentials.services.session_credential_service import session_credential_service
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -78,6 +83,7 @@ from tables.services.rag_assignment_service import SearchConfigService
 from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
+from tables.services.secrets.declaration_validator import binned_secret_names
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -195,10 +201,25 @@ class ConverterService(metaclass=SingletonMeta):
             .values_list("storage_file__path", flat=True)
         )
 
+    def _resolve_storage_scope(
+        self, graph_id: int | None, use_storage: bool, extra_paths: list[str]
+    ) -> tuple[list[str] | None, str | None]:
+        """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
+
+        Allowed paths are the graph's attached files followed by `extra_paths`, the
+        folders the run itself may write to (`sessions/<id>/` in a real run). Both
+        are None when the slot does not use storage or there is no graph to scope
+        it by, which tells the sandbox to mint no credentials.
+        """
+        if not use_storage or graph_id is None:
+            return None, None
+        allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
+        return allowed_paths, self._resolve_org_prefix_for_graph(graph_id)
+
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
         org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
         if org_id is not None:
-            return f"org_{org_id}"
+            return org_storage_prefix(org_id)
         return None
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
@@ -291,11 +312,18 @@ class ConverterService(metaclass=SingletonMeta):
                 "likely deleted after this chat was created."
             )
 
+        # The LLM config is where the user sets temperature; the agent's
+        # default_temperature only covers an LLM config that leaves it unset.
+        if ad.llm_config is not None and ad.llm_config.temperature is not None:
+            temperature = ad.llm_config.temperature
+        else:
+            temperature = ad.default_temperature
+
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
             goal=ad.description or "assist the user",
             backstory=ad.instructions or "You are a helpful voice assistant",
-            org_id=ad.organization_id,
+            org_id=ad.org_id,
             user_id=user_id,
             rt_agent_definition_id=rt_agent_chat.rt_agent_definition_id,
             knowledge_collection_id=surface_resolution.knowledge_collection_id,
@@ -311,7 +339,7 @@ class ConverterService(metaclass=SingletonMeta):
             rt_base_url=rt_base_url,
             transcript_model_name=transcript_model_name,
             transcript_api_key_secret_id=transcript_api_key_secret_id,
-            temperature=ad.default_temperature,
+            temperature=temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
             stop_prompt=rt_agent_chat.stop_prompt,
@@ -322,6 +350,44 @@ class ConverterService(metaclass=SingletonMeta):
             output_audio_format=rt_agent_chat.output_audio_format,
             rt_provider=rt_provider,
         )
+
+        # Check if any tools require storage and mint credentials if needed
+        try:
+            union_allowed_paths = set()
+            needs_storage = False
+
+            for tool in surface_resolution.tools:
+                tool_data = tool.data
+                if isinstance(tool_data, PythonCodeToolData) and tool_data.python_code.use_storage:
+                    needs_storage = True
+                    if tool_data.python_code.storage_allowed_paths:
+                        union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
+
+            if needs_storage:
+                if not union_allowed_paths:
+                    # Resolved before any mint attempt -- same class of
+                    # problem as RealtimeSurfaceService's fail-closed check,
+                    # same exception type and status code (400, not 500).
+                    raise CredentialScopeValidationError(
+                        "This agent's tools need file storage access, but no files are "
+                        "attached. Attach the required files or folders."
+                    )
+                rt_agent_chat_data.storage_credentials = (
+                    session_credential_service.issue_for_realtime_chat(
+                        realtime_agent_chat=rt_agent_chat,
+                        storage_allowed_paths=list(union_allowed_paths),
+                        org_id=ad.org_id,
+                    )
+                )
+        except (TemporaryCredentialIssueError, CredentialScopeValidationError):
+            raise
+        except Exception as error:
+            logger.exception(
+                "Failed to mint temporary storage credentials for realtime chat {}: {}",
+                rt_agent_chat.id,
+                error,
+            )
+            raise TemporaryCredentialIssueError() from error
 
         return rt_agent_chat_data
 
@@ -383,6 +449,12 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # `storage_allowed_paths_override` may be a list shared across
+                # several tool conversions in the same caller loop (see
+                # `base_node_payload_service._build_tool_pool`) -- rebuild rather
+                # than `.append()` so we never mutate a caller-owned list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if storage_org_prefix_override is not None:
                 storage_org_prefix = storage_org_prefix_override
             elif graph_id is not None:
@@ -409,6 +481,7 @@ class ConverterService(metaclass=SingletonMeta):
             tool_name=python_code_tool.name,
             code=python_code_tool.python_code.code,
             declared=set(python_code_data.secret_names),
+            binned=binned_secret_names(python_code_tool.python_code),
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
@@ -447,6 +520,10 @@ class ConverterService(metaclass=SingletonMeta):
                 storage_allowed_paths = storage_allowed_paths_override
             elif graph_id is not None:
                 storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None and storage_allowed_paths is not None:
+                # See `convert_python_code_tool_to_pydantic` -- rebuild instead of
+                # `.append()` to avoid mutating a caller-owned override list.
+                storage_allowed_paths = [*storage_allowed_paths, f"sessions/{session_id}/"]
             if graph_id is not None:
                 storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
@@ -474,6 +551,7 @@ class ConverterService(metaclass=SingletonMeta):
             tool_name=python_code_tool.name,
             code=python_code.code,
             declared=set(python_code_data.secret_names),
+            binned=binned_secret_names(python_code),
         )
 
         return PythonCodeToolData(
@@ -500,23 +578,33 @@ class ConverterService(metaclass=SingletonMeta):
 
         return LLMData(
             provider=config.model.llm_provider.name,
-            config=LLMConfigData(
-                model=config.model.name,
-                timeout=config.timeout,
-                temperature=config.temperature,
-                top_p=config.top_p,
-                stop=config.stop,
-                max_tokens=config.max_tokens,
-                presence_penalty=config.presence_penalty,
-                frequency_penalty=config.frequency_penalty,
-                logit_bias=config.logit_bias,
-                seed=config.seed,
-                base_url=config.model.base_url,
-                api_version=config.model.api_version,
-                api_key_secret_id=config.api_key_secret_id,
-                deployment_id=config.model.deployment_id,
-                extra_headers=config.extra_headers,
-            ),
+            config=self.convert_llm_config_data(config),
+        )
+
+    def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
+        """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
+
+        Reads only the config and its model, never `model.llm_provider`, so a model
+        whose provider was deleted (NULL) converts without raising. Issues no query
+        when the caller selected `model`.
+        """
+        return LLMConfigData(
+            model=config.model.name,
+            timeout=config.timeout,
+            temperature=config.temperature,
+            top_p=config.top_p,
+            stop=config.stop,
+            max_tokens=config.max_tokens,
+            presence_penalty=config.presence_penalty,
+            frequency_penalty=config.frequency_penalty,
+            logit_bias=config.logit_bias,
+            seed=config.seed,
+            reasoning_effort=config.reasoning_effort,
+            base_url=config.model.base_url,
+            api_version=config.model.api_version,
+            api_key_secret_id=config.api_key_secret_id,
+            deployment_id=config.model.deployment_id,
+            extra_headers=config.extra_headers,
         )
 
     def convert_embedding_config_to_pydantic(
@@ -538,32 +626,58 @@ class ConverterService(metaclass=SingletonMeta):
             ),
         )
 
+    def _convert_code_slot(
+        self,
+        python_code: PythonCode,
+        use_storage: bool,
+        graph_id: int | None,
+        session_id: int | None,
+        extra_storage_paths: list[str] | None,
+    ) -> PythonCodeData:
+        writable_paths = list(extra_storage_paths or [])
+        if session_id is not None:
+            writable_paths.append(f"sessions/{session_id}/")
+        storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
+            graph_id=graph_id,
+            use_storage=use_storage,
+            extra_paths=writable_paths,
+        )
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
+        return self.convert_python_code_to_pydantic(
+            python_code=python_code,
+            use_storage=use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
+        )
+
     def convert_python_node_to_pydantic(
         self,
         python_node: PythonNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        extra_storage_paths: list[str] | None = None,
     ) -> PythonNodeData:
-        storage_allowed_paths = None
-        storage_org_prefix = None
-        if python_node.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        """Convert a python node into the data a run sends to the sandbox.
 
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
-
-        python_code_data = self.convert_python_code_to_pydantic(
+        Args:
+            session_id: The running session; its `sessions/<id>/` folder becomes
+                writable when the node uses storage.
+            extra_storage_paths: Further writable folders for a run without a
+                session, such as a test-mode run's own folder.
+        """
+        python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
             use_storage=python_node.use_storage,
-            storage_allowed_paths=storage_allowed_paths,
-            storage_org_prefix=storage_org_prefix,
+            graph_id=graph_id,
             session_id=session_id,
-            org_id=org_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -572,27 +686,14 @@ class ConverterService(metaclass=SingletonMeta):
             output_variable_path=python_node.output_variable_path,
         )
 
-    def convert_conditional_edge_to_pydantic(
-        self,
-        conditional_edge: ConditionalEdge,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
-    ) -> ConditionalEdgeData:
-        python_code_data = self.convert_python_code_to_pydantic(
-            python_code=conditional_edge.python_code
-        )
-        return ConditionalEdgeData(
-            source=resolver(conditional_edge.source_node_id),
-            python_code=python_code_data,
-            input_map=conditional_edge.input_map,
-        )
-
     def convert_condition_to_pydantic(self, condition: Condition) -> ConditionData:
         return ConditionData(condition=condition.condition)
 
     def convert_condition_group_to_pydantic(
         self,
         condition_group: ConditionGroup,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
     ) -> ConditionGroupData:
         return ConditionGroupData(
             group_name=condition_group.group_name,
@@ -609,7 +710,8 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_classification_decision_table_node_to_pydantic(
         self,
         node: ClassificationDecisionTableNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
         graph_id: int | None = None,
         session_id: int | None = None,
     ):
@@ -707,10 +809,11 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_decision_table_node_to_pydantic(
         self,
         decision_table_node: DecisionTableNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        *,
+        resolver: NodeNameResolver,
     ) -> DecisionTableNodeData:
         condition_group_list = [
-            self.convert_condition_group_to_pydantic(condition_group, resolver)
+            self.convert_condition_group_to_pydantic(condition_group, resolver=resolver)
             for condition_group in decision_table_node.condition_groups.all()
         ]
         return DecisionTableNodeData(
@@ -750,9 +853,24 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         webhook_trigger_node: WebhookTriggerNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+        extra_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
-        python_code_data = self.convert_python_code_to_pydantic(
-            python_code=webhook_trigger_node.python_code
+        """Convert a webhook trigger node into the data a run sends to the sandbox.
+
+        Args:
+            session_id: The running session; its `sessions/<id>/` folder becomes
+                writable when the node uses storage.
+            extra_storage_paths: Further writable folders for a run without a
+                session, such as a test-mode run's own folder.
+        """
+        python_code_data = self._convert_code_slot(
+            python_code=webhook_trigger_node.python_code,
+            use_storage=webhook_trigger_node.use_storage,
+            graph_id=graph_id,
+            session_id=session_id,
+            extra_storage_paths=extra_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -802,9 +920,7 @@ class ConverterService(metaclass=SingletonMeta):
             max_runs=schedule_trigger_node.max_runs,
         )
 
-    def convert_edge_to_pytdantic(
-        self, edge: Edge, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
-    ) -> EdgeData:
+    def convert_edge_to_pytdantic(self, edge: Edge, *, resolver: NodeNameResolver) -> EdgeData:
         return EdgeData(
             start_key=resolver(edge.start_node_id),
             end_key=resolver(edge.end_node_id),

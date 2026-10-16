@@ -52,6 +52,67 @@ function flowsGroup(overrides: Partial<BulkDeletePreviewGroup>): BulkDeletePrevi
 }
 
 describe('BulkDeleteDialogComponent', () => {
+    describe('recycle bin summary', () => {
+        const hint = (groups: BulkDeletePreviewGroup[]): string | undefined =>
+            render(groups).querySelector('.hint-message')?.textContent?.trim();
+
+        it('says the items move to the recycle bin when every group is a recycle-bin group', () => {
+            const text = hint([flowsGroup({ recycleBin: { retentionDays: 30 }, deletable: plainItems(2) })]);
+
+            expect(text).toBe('They move to the recycle bin, where you can restore them for 30 days.');
+        });
+
+        it('prefixes the deleted-of-total count when some items are blocked', () => {
+            const text = hint([
+                flowsGroup({
+                    recycleBin: { retentionDays: 30 },
+                    deletable: plainItems(2),
+                    blocked: [{ id: 3, name: 'Gamma' }],
+                }),
+            ]);
+
+            expect(text).toBe(
+                '2 of 3 will be deleted. They move to the recycle bin, where you can restore them for 30 days.'
+            );
+        });
+
+        it('uses the singular wording for a single deletable item', () => {
+            const text = hint([flowsGroup({ recycleBin: { retentionDays: 1 }, deletable: plainItems(1) })]);
+
+            expect(text).toBe('It moves to the recycle bin, where you can restore it for 1 day.');
+        });
+
+        it('omits the duration when the retention is unknown', () => {
+            const text = hint([flowsGroup({ recycleBin: { retentionDays: null }, deletable: plainItems(1) })]);
+
+            expect(text).toBe('It moves to the recycle bin, where you can restore it.');
+        });
+
+        it('ignores groups with nothing deletable when deciding', () => {
+            const text = hint([
+                flowsGroup({ recycleBin: { retentionDays: 7 }, deletable: plainItems(2) }),
+                flowsGroup({ blocked: [{ id: 9, name: 'Blocked' }] }),
+            ]);
+
+            expect(text).toBe(
+                '2 of 3 will be deleted. They move to the recycle bin, where you can restore them for 7 days.'
+            );
+        });
+
+        it('keeps the permanent warning when a group with deletable items is not a recycle-bin group', () => {
+            const text = hint([
+                flowsGroup({ recycleBin: { retentionDays: 30 }, deletable: plainItems(1) }),
+                flowsGroup({ deletable: plainItems(1, 10) }),
+            ]);
+
+            expect(text).toBe("This can't be undone.");
+        });
+
+        it('keeps the permanent warning for a group without the marker', () => {
+            expect(hint([flowsGroup({ deletable: plainItems(2) })])).toBe("This can't be undone.");
+        });
+    });
+
     it('says how many of the selected items will actually be deleted when some are blocked', () => {
         const element = render([
             flowsGroup({

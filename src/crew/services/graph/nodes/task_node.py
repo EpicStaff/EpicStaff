@@ -8,11 +8,10 @@ from services.graph.nodes.agent_output_variable import agent_output_variable_val
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
-from services.graph.remembered_outputs import (
-    RememberedOutputsStore,
-    format_remembered_outputs_preamble,
-)
+from services.graph.remembered_outputs import RememberedOutputsStore
 from src.shared.models import TaskNodeData
+from src.shared.models.storage_scope import StorageCredentials
+from src.shared.prior_task_outputs import format_prior_task_outputs
 
 
 class TaskNode(BaseNode):
@@ -26,6 +25,7 @@ class TaskNode(BaseNode):
         task_node_data: TaskNodeData,
         agent_task_service: AgentTaskService,
         remembered_outputs_store: RememberedOutputsStore,
+        storage_credentials: StorageCredentials | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -37,6 +37,7 @@ class TaskNode(BaseNode):
         self.task_node_data = task_node_data
         self.agent_task_service = agent_task_service
         self.remembered_outputs_store = remembered_outputs_store
+        self.storage_credentials = storage_credentials
 
     def get_output_variable_value(self, output: Any) -> Any:
         return agent_output_variable_value(output)
@@ -50,7 +51,7 @@ class TaskNode(BaseNode):
 
         rendered_instructions = render_instructions(self.task_node_data.instructions, input_)
         remembered = await self.remembered_outputs_store.fetch_all(self.session_id)
-        preamble = format_remembered_outputs_preamble(remembered)
+        preamble = format_prior_task_outputs(remembered)
         task_node_data = self.task_node_data.model_copy(
             update={"instructions": preamble + rendered_instructions}
         )
@@ -62,10 +63,14 @@ class TaskNode(BaseNode):
             writer=writer,
             execution_order=execution_order,
             stream_message_type="task_node_stream",
+            agent_id=agent_definition.id,
         )
 
         result = await self.agent_task_service.run_task(
-            task_node_data, self.stop_event, on_event=on_agent_event
+            task_node_data,
+            self.stop_event,
+            on_event=on_agent_event,
+            storage_credentials=self.storage_credentials,
         )
 
         final_text = result.get("final_text")

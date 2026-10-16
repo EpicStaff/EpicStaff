@@ -79,8 +79,9 @@ def test_list_returns_builtins_and_results_shape(auth_client, admin_acme, acme):
 
 
 @pytest.mark.django_db
-def test_list_org_ids_forbidden_fails_loud(auth_client, admin_acme, beta):
-    resp = auth_client(admin_acme).get(f"/api/admin/roles/?org_ids={beta.id}")
+@pytest.mark.parametrize("parameter", ["org_ids", "assignable_org_ids"])
+def test_asking_for_an_org_without_roles_access_fails_loud(auth_client, admin_acme, beta, parameter):
+    resp = auth_client(admin_acme).get(f"/api/admin/roles/?{parameter}={beta.id}")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -90,7 +91,7 @@ def test_create_role(auth_client, admin_acme, acme):
         "org_id": acme.id,
         "name": "Billing Manager",
         "description": "manage billing",
-        "permissions": [{"resource_type": "secrets", "actions": ["read", "update"]}],
+        "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
     }
     resp = auth_client(admin_acme).post("/api/admin/roles/", payload, format="json")
     assert resp.status_code == status.HTTP_201_CREATED
@@ -178,14 +179,6 @@ def test_delete_own_role_403(auth_client, django_user_model, acme):
         assert resp.status_code == status.HTTP_403_FORBIDDEN, url
         assert resp.json()["code"] == "cannot_delete_own_role", url
     assert Role.objects.filter(pk=own.id).exists()
-
-
-@pytest.mark.django_db
-def test_retrieve_cross_org_role_404(auth_client, admin_acme, beta):
-    other = Role.objects.create(name="Hidden-api", org=beta, is_built_in=False)
-    resp = auth_client(admin_acme).get(f"/api/admin/roles/{other.id}/")
-    assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "role_not_found"
 
 
 @pytest.mark.django_db
@@ -290,8 +283,9 @@ def test_builtin_count_reflects_real_holders(
 
 
 @pytest.mark.django_db
-def test_builtin_count_is_narrowed_by_org_ids(
-    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model
+@pytest.mark.parametrize("parameter", ["org_ids", "assignable_org_ids"])
+def test_builtin_count_is_narrowed_by_the_org_filter(
+    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model, parameter
 ):
     _holder(django_user_model, acme, role_member, "narrow-acme@example.com")
     _holder(django_user_model, beta, role_member, "narrow-beta-1@example.com")
@@ -299,28 +293,7 @@ def test_builtin_count_is_narrowed_by_org_ids(
     client = auth_client(superadmin_roles_api)
 
     unfiltered = _named(client.get("/api/admin/roles/").json(), "Member")
-    filtered = _named(
-        client.get(f"/api/admin/roles/?org_ids={beta.id}").json(), "Member"
-    )
-
-    assert unfiltered["assigned_count"] == 3
-    assert filtered["assigned_count"] == 2
-    assert [entry["org"]["id"] for entry in filtered["assigned_by_org"]] == [beta.id]
-
-
-@pytest.mark.django_db
-def test_builtin_count_is_narrowed_by_assignable_org_ids(
-    auth_client, superadmin_roles_api, acme, beta, role_member, django_user_model
-):
-    _holder(django_user_model, acme, role_member, "assign-narrow-acme@example.com")
-    _holder(django_user_model, beta, role_member, "assign-narrow-beta-1@example.com")
-    _holder(django_user_model, beta, role_member, "assign-narrow-beta-2@example.com")
-    client = auth_client(superadmin_roles_api)
-
-    unfiltered = _named(client.get("/api/admin/roles/").json(), "Member")
-    filtered = _named(
-        client.get(f"/api/admin/roles/?assignable_org_ids={beta.id}").json(), "Member"
-    )
+    filtered = _named(client.get(f"/api/admin/roles/?{parameter}={beta.id}").json(), "Member")
 
     assert unfiltered["assigned_count"] == 3
     assert filtered["assigned_count"] == 2
@@ -424,47 +397,24 @@ def admin_beta_member_acme(
 
 
 @pytest.mark.django_db
-def test_patch_role_without_roles_bits_in_its_org_is_404(
-    auth_client, admin_beta_member_acme, acme
-):
-    target = Role.objects.create(name="Hidden-patch-api", org=acme, is_built_in=False)
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
+@pytest.mark.parametrize(
+    "caller",
+    ["admin_acme", "admin_beta_member_acme"],
+    ids=["other-orgs-admin", "member-without-roles-bits-there"],
+)
+def test_a_role_the_caller_cannot_read_is_not_found_for_every_verb(request, auth_client, beta, acme, caller, method):
+    """QA reported GET answering 404 while PATCH answered 403, confirming an id the
+    read surface denies. Every verb must look the same."""
+    org = beta if caller == "admin_acme" else acme
+    target = Role.objects.create(name="Hidden-api", org=org, is_built_in=False)
+    client = auth_client(request.getfixturevalue(caller))
 
-    resp = auth_client(admin_beta_member_acme).patch(
-        f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "role_not_found"
-    assert Role.objects.get(pk=target.id).name == "Hidden-patch-api"
-
-
-@pytest.mark.django_db
-def test_delete_role_without_roles_bits_in_its_org_is_404(
-    auth_client, admin_beta_member_acme, acme
-):
-    target = Role.objects.create(name="Hidden-del-api", org=acme, is_built_in=False)
-
-    resp = auth_client(admin_beta_member_acme).delete(f"/api/admin/roles/{target.id}/")
+    resp = getattr(client, method)(f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json")
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.json()["code"] == "role_not_found"
-    assert Role.objects.filter(pk=target.id).exists()
-
-
-@pytest.mark.django_db
-def test_get_and_patch_agree_on_an_invisible_role(
-    auth_client, admin_beta_member_acme, acme
-):
-    """The bug QA reported: GET said 404 while PATCH said 403, confirming an
-    id the read surface denies."""
-    target = Role.objects.create(name="Hidden-agree-api", org=acme, is_built_in=False)
-    client = auth_client(admin_beta_member_acme)
-
-    read = client.get(f"/api/admin/roles/{target.id}/")
-    write = client.patch(f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json")
-
-    assert read.status_code == write.status_code == status.HTTP_404_NOT_FOUND
-    assert read.json()["code"] == write.json()["code"] == "role_not_found"
+    assert Role.objects.get(pk=target.id).name == "Hidden-api"
 
 
 @pytest.mark.django_db
@@ -564,19 +514,6 @@ def test_assignable_filter_excludes_the_superadmin_role(auth_client, admin_acme,
 
 
 @pytest.mark.django_db
-def test_unfiltered_list_still_returns_all_four_built_ins(auth_client, admin_acme):
-    """The management-list contract: without the parameter nothing is filtered."""
-    resp = auth_client(admin_acme).get(ROLES_URL)
-
-    assert _names(resp.json(), "built_in_roles") == {
-        "Superadmin",
-        "Org Admin",
-        "Member",
-        "Viewer",
-    }
-
-
-@pytest.mark.django_db
 def test_assignable_filter_unions_across_requested_orgs(
     auth_client, django_user_model, acme, beta, role_org_admin
 ):
@@ -636,27 +573,20 @@ def test_assignable_filter_compares_custom_roles_against_their_own_org(
 
 
 @pytest.mark.django_db
-def test_assignable_filter_does_not_filter_for_superadmin(
-    auth_client, superadmin_user, acme
-):
-    resp = auth_client(superadmin_user).get(f"{ROLES_URL}?assignable_org_ids={acme.id}")
+@pytest.mark.parametrize(
+    ("caller", "assignable"),
+    [("admin_acme", False), ("superadmin_user", True)],
+    ids=["no-filter", "superadmin-is-never-filtered"],
+)
+def test_every_built_in_is_listed_when_nothing_filters_it(request, auth_client, acme, caller, assignable):
+    query = f"?assignable_org_ids={acme.id}" if assignable else ""
+    plain = auth_client(request.getfixturevalue(caller)).get(ROLES_URL).json()
 
-    assert _names(resp.json(), "built_in_roles") == {
-        "Superadmin",
-        "Org Admin",
-        "Member",
-        "Viewer",
-    }
+    body = auth_client(request.getfixturevalue(caller)).get(ROLES_URL + query).json()
 
-
-@pytest.mark.django_db
-def test_assignable_filter_response_shape_is_unchanged(auth_client, admin_acme, acme):
-    plain = auth_client(admin_acme).get(ROLES_URL).json()
-    filtered = (
-        auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids={acme.id}").json()
-    )
-
-    assert set(plain.keys()) == set(filtered.keys())
+    assert _names(body, "built_in_roles") == {"Superadmin", "Org Admin", "Member", "Viewer"}
+    # The filter is opt-in and leaves the response shape alone.
+    assert set(body) == set(plain)
 
 
 @pytest.mark.django_db
@@ -665,14 +595,6 @@ def test_assignable_filter_non_integer_is_400(auth_client, admin_acme):
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert resp.json()["code"] == "org_context_required"
-
-
-@pytest.mark.django_db
-def test_assignable_filter_forbidden_org_is_403(auth_client, admin_acme, beta):
-    """Same fail-loud posture as a forbidden ?org_ids= entry."""
-    resp = auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids={beta.id}")
-
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db

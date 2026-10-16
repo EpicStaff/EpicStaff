@@ -1,33 +1,44 @@
-<nav class="sidenav">
+<nav
+    class="sidenav"
+    [class.expanded]="isExpanded()"
+>
     <div class="logo-container">
         <a
             class="app-logo"
             (click)="onLogoClick()"
-            (mouseenter)="showLogoTooltip = true"
-            (mouseleave)="showLogoTooltip = false"
         >
-            <img
-                src="assets/icons/llm-providers-logos/logo.svg"
-                alt="AI"
-                class="logo-svg static-logo"
-            />
+            <span class="logo-mark">
+                <!-- The visible product name names the logo when expanded; otherwise the image does. -->
+                <img
+                    src="assets/icons/llm-providers-logos/logo.svg"
+                    [alt]="isExpanded() ? '' : productName"
+                    class="logo-svg static-logo"
+                />
 
-            <video
-                class="logo-svg gif-logo"
-                src="assets/gifs/logo.webm"
-                autoplay
-                muted
-                loop
-                playsinline
-                disablepictureinpicture
-                preload="auto"
-                aria-hidden="true"
-            ></video>
-            <app-tooltip
-                text="EpicStaff.ai"
-                [visible]="showLogoTooltip"
-            ></app-tooltip>
+                <video
+                    class="logo-svg gif-logo"
+                    src="assets/gifs/logo.webm"
+                    autoplay
+                    muted
+                    loop
+                    playsinline
+                    disablepictureinpicture
+                    preload="auto"
+                    aria-hidden="true"
+                ></video>
+            </span>
+            @if (isExpanded()) {
+                <span class="app-logo-name text-h4">{{ productName }}</span>
+            }
         </a>
+        <!-- Expanded it always shows; collapsed it is always rendered but only faded in over the logo on hover or
+             keyboard focus, so it stays in the tab order. -->
+        <app-sidebar-toggle-button
+            class="logo-sidebar-toggle"
+            [active]="isExpanded()"
+            [label]="sidebarToggleLabel()"
+            (toggled)="expandedToggle.emit()"
+        />
     </div>
 
     <ul class="sidenav-nav main-nav">
@@ -47,19 +58,28 @@
                             [class.active]="isWorkspaceRoute()"
                             (click)="toggleOrgMenu($event)"
                         >
-                            @if (isWorkspaceRoute()) {
-                                <app-svg-icon
-                                    size="16px"
-                                    icon="workspace"
-                                    class="workspace-icon"
-                                />
-                            } @else {
-                                <app-org-avatar [name]="activeMembership.organization.name" />
+                            <span class="sidenav-row-leading">
+                                @if (isWorkspaceRoute()) {
+                                    <app-svg-icon
+                                        size="16px"
+                                        icon="workspace"
+                                        class="workspace-icon"
+                                    />
+                                } @else {
+                                    <app-org-avatar [name]="activeMembership.organization.name" />
+                                }
+                            </span>
+                            @if (isExpanded()) {
+                                <span
+                                    class="sidenav-row-label text-body-medium"
+                                    [attr.title]="orgSwitcherLabel()"
+                                    >{{ orgSwitcherLabel() }}</span
+                                >
                             }
                         </div>
                         <app-tooltip
                             text="Organizations"
-                            [visible]="showOrgTooltip && !isOrgMenuOpen()"
+                            [visible]="showOrgTooltip && !isOrgMenuOpen() && !isExpanded()"
                         ></app-tooltip>
                         @if (isOrgMenuOpen()) {
                             <app-organizations-menu
@@ -83,10 +103,10 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="item.action ? handleItemClick(item, $event) : null"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
+                            [attr.aria-label]="isExpanded() ? null : item.label"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -96,10 +116,13 @@
                                     />
                                 }
                             </div>
+                            @if (isExpanded()) {
+                                <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                            }
                         </a>
                         <app-tooltip
                             [text]="item.label"
-                            [visible]="item.showTooltip"
+                            [visible]="item.showTooltip && !isExpanded()"
                         ></app-tooltip>
                     </div>
                 </li>
@@ -108,39 +131,29 @@
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
-        @if (isEpicChatEnabled) {
-            <li class="sidenav-nav-item">
-                <div class="tooltip-wrapper">
-                    <div
-                        class="sidenav-nav-link epic-chat-slot"
-                        [class.active]="epicChatService.isChatOpen()"
+        @if (recycleBinNavItem.isPermitted()) {
+            <li
+                class="sidenav-nav-item"
+                (mouseenter)="recycleBinNavItem.showTooltip = true"
+                (mouseleave)="recycleBinNavItem.showTooltip = false"
+            >
+                <div class="tooltip-wrapper recycle-bin-block">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="resolveRouteLink(recycleBinNavItem)"
                     >
-                        <epic-chat
-                            #epicChat
-                            class="epic-chat-host"
-                            theme-preset="epicstaff"
-                            [themeConfig]="epicChatThemeConfig"
-                            chat-icon-path=""
-                            chat-icon-size="32"
-                            message-timeout="180000"
-                            [apiBaseUrl]="apiBaseUrl"
-                            [accessToken]="accessToken()"
-                            [canReadFlows]="canReadFlows()"
-                            [syncAgentsFromApi]="false"
-                            [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-                            [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
-                            [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
-                            [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
-                            [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
-                            [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
-                            [dockEnabled]="true"
-                            [fileAttachmentDisabled]="false"
-                            [isDockMode]="epicChatService.isDocked()"
-                            [epChatCommand]="epicChatService.epChatCommand()"
-                            (epChatCommandResult)="onEpChatCommandResult($event)"
-                            (epChatEvent)="onEpChatEvent($event)"
-                        ></epic-chat>
-                    </div>
+                        <div class="sidenav-link-icon">
+                            <!-- Tabler's outline trash, from the webfont the app ships: the sprite's trash is solid. -->
+                            <i
+                                class="ti ti-trash recycle-bin-icon"
+                                aria-hidden="true"
+                            ></i>
+                        </div>
+                    </a>
+                    <app-tooltip
+                        [text]="recycleBinNavItem.label"
+                        [visible]="recycleBinNavItem.showTooltip"
+                    ></app-tooltip>
                 </div>
             </li>
         }
@@ -156,10 +169,10 @@
                         <a
                             class="sidenav-nav-link"
                             [routerLink]="resolveRouteLink(item)"
-                            routerLinkActive="active"
-                            [routerLinkActiveOptions]="{ exact: false }"
+                            [class.active]="isItemActive(item)"
                             (click)="handleItemClick(item, $event)"
                             [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
+                            [attr.aria-label]="isExpanded() ? null : item.label"
                         >
                             <div class="sidenav-link-icon">
                                 @if (item.icon) {
@@ -169,10 +182,13 @@
                                     />
                                 }
                             </div>
+                            @if (isExpanded()) {
+                                <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                            }
                         </a>
                         <app-tooltip
                             [text]="item.label"
-                            [visible]="item.showTooltip"
+                            [visible]="item.showTooltip && !isExpanded()"
                             [class]="item.customClass || ''"
                         ></app-tooltip>
                     </div>
@@ -198,10 +214,17 @@
                             [name]="user.display_name || user.email"
                             [avatarUrl]="user.avatar_url"
                         />
+                        @if (isExpanded()) {
+                            <span
+                                class="sidenav-row-label text-body-medium"
+                                [attr.title]="accountLabel()"
+                                >{{ accountLabel() }}</span
+                            >
+                        }
                     </div>
                     <app-tooltip
                         text="Account"
-                        [visible]="showAccountTooltip && !isUserMenuOpen()"
+                        [visible]="showAccountTooltip && !isUserMenuOpen() && !isExpanded()"
                     ></app-tooltip>
                     @if (isUserMenuOpen()) {
                         <app-user-menu
@@ -211,7 +234,7 @@
                     }
                     <app-tooltip
                         text="Profile"
-                        [visible]="showProfileTooltip && !isUserMenuOpen()"
+                        [visible]="showProfileTooltip && !isUserMenuOpen() && !isExpanded()"
                     ></app-tooltip>
                 </div>
             </li>

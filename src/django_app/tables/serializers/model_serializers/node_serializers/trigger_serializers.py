@@ -1,5 +1,9 @@
+from datetime import UTC
+
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
+from tables.constants.telegram_constants import TelegramRegistrationBlockerCode
 from tables.models.graph_models import (
     Graph,
     ScheduleTriggerNode,
@@ -21,11 +25,13 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
     ScheduleTriggerValidator,
 )
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 _OTHER_NODE_TYPE_RELATED_NAME = {
     WebhookTriggerAuthKind.WEBHOOK: "telegram_trigger_nodes",
@@ -43,19 +49,23 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
             {
                 "webhook_trigger": (
                     f"This trigger is already configured for "
-                    f"kind='{auth.kind}' auth and cannot be attached to a "
+                    f"kind='{auth.kind}' auth (by a node, possibly in the recycle "
+                    f"bin, or a reservation) and cannot be attached to a "
                     f"node expecting kind='{expected_kind}' auth."
                 )
             }
         )
 
     other_related_name = _OTHER_NODE_TYPE_RELATED_NAME[expected_kind]
-    if getattr(wt, other_related_name).exists():
+    # all_objects: a node in the recycle bin keeps its trigger until it's
+    # purged, so restoring its flow can't give the trigger two node types.
+    if getattr(wt, other_related_name)(manager="all_objects").exists():
         raise serializers.ValidationError(
             {
                 "webhook_trigger": (
                     "This trigger is already attached to a different "
-                    "trigger node type and cannot also serve a "
+                    "trigger node type (possibly in the recycle bin) and "
+                    "cannot also serve a "
                     f"kind='{expected_kind}' node -- a trigger serves "
                     "exactly one node type."
                 )
@@ -64,13 +74,15 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
 
 
 class WebhookTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -82,8 +94,12 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "use_storage",
+            "created_by",
+            "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
         _reject_cross_type_trigger_conflict(
@@ -109,20 +125,22 @@ class TelegramTriggerNodeFieldSerializer(ContentHashWritableMixin, serializers.M
 
 
 class TelegramTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
     ContentHashWritableMixin,
     serializers.ModelSerializer,
 ):
     secret_reference_fields = ("telegram_bot_api_key_secret_id",)
 
-    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    telegram_bot_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="telegram_bot_api_key_secret",
         required=False,
         allow_null=True,
     )
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -136,8 +154,11 @@ class TelegramTriggerNodeSerializer(
             "graph",
             "fields",
             "webhook_trigger",
+            "created_by",
+            "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -188,6 +209,41 @@ class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):
     data = serializers.JSONField()
 
 
+class TelegramRegistrationBlockerSerializer(serializers.Serializer):
+    code = serializers.ChoiceField(
+        choices=[code.value for code in TelegramRegistrationBlockerCode],
+        help_text="Stable machine-readable reason; switch on this, not on `message`.",
+    )
+    message = serializers.CharField(
+        help_text="Human-readable explanation. Never contains a secret value."
+    )
+
+
+class TelegramWebhookInfoSerializer(serializers.Serializer):
+    """Read-only shape of `TelegramWebhookStatus` for the node's webhook-info action."""
+
+    registered_url = serializers.CharField(allow_null=True)
+    expected_url = serializers.CharField(allow_null=True)
+    is_match = serializers.BooleanField(
+        allow_null=True,
+        help_text=(
+            "False when Telegram has no webhook set or it points elsewhere; "
+            "null only when `expected_url` is null."
+        ),
+    )
+    pending_update_count = serializers.IntegerField(allow_null=True)
+    last_error_message = serializers.CharField(allow_null=True)
+    last_error_date = serializers.DateTimeField(allow_null=True, default_timezone=UTC)
+    registration_blocker = TelegramRegistrationBlockerSerializer(
+        allow_null=True,
+        help_text=(
+            "Why registering this node's webhook cannot work, derived from its "
+            "configuration without calling Telegram; null when nothing blocks it. "
+            "Independent of `registered_url`/`is_match`, which still reflect Telegram."
+        ),
+    )
+
+
 class _ScheduleIntervalInputSerializer(serializers.Serializer):
     every = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     unit = serializers.ChoiceField(
@@ -229,7 +285,9 @@ class _ScheduleConfigInputSerializer(serializers.Serializer):
     end = _ScheduleEndInputSerializer(required=False, allow_null=True)
 
 
-class ScheduleTriggerNodeSerializer(serializers.Serializer):
+class ScheduleTriggerNodeSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.Serializer
+):
     """Shape/type validation only. Domain rules → ScheduleTriggerValidator.
     Persistence → ScheduleTriggerService.
 
@@ -245,6 +303,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     content_hash = serializers.CharField(required=False, allow_null=True)
     schedule = _ScheduleConfigInputSerializer(required=False, allow_null=True, write_only=True)
     current_runs = serializers.IntegerField(read_only=True)
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 

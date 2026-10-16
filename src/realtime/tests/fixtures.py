@@ -1,4 +1,3 @@
-from fastapi import WebSocket
 import pytest
 from unittest.mock import AsyncMock
 from application.tool_manager_service import ToolManagerService
@@ -21,11 +20,6 @@ class FakeTokenizer:
         return "x" * len(tokens)
 
 
-@pytest.fixture
-def fake_tokenizer():
-    return FakeTokenizer()
-
-
 class DummyToolExecutor(BaseToolExecutor):
     def __init__(self, name="dummy_tool"):
         super().__init__(tool_name=name)
@@ -38,17 +32,6 @@ class DummyToolExecutor(BaseToolExecutor):
     async def get_realtime_tool_model(self):
         return {"name": self.tool_name, "type": "mock"}
 
-
-@pytest.mark.asyncio
-@pytest.fixture
-def mock_ws_client():
-    # Creating a mock WebSocket client
-    ws_client = AsyncMock(spec=WebSocket)
-    ws_client.send_json = AsyncMock()
-    ws_client.receive_json = AsyncMock(
-        return_value={"type": "response", "message": "Hello, user!"}
-    )
-    return ws_client
 
 
 @pytest.fixture
@@ -92,12 +75,3 @@ def tool_manager(redis_service) -> ToolManagerService:
         python_code_executor_service=PythonCodeExecutorService(redis_service),
         knowledge_client=AsyncMock(),
     )
-
-
-@pytest.mark.asyncio
-@pytest.fixture
-def mock_ws_client():
-    # Creating a mock WebSocket client
-    ws_client = AsyncMock(spec=WebSocket)
-
-    return ws_client

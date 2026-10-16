@@ -10,12 +10,19 @@ import { ToastService } from '../../../services/notifications';
 import {
     AgentDefaultSurface,
     AgentDefinition,
-    AgentMetadata,
+    AgentInstruction,
     AgentSurfacePlace,
     CreateAgentDefinitionRequest,
     PartialUpdateAgentDefinitionRequest,
 } from '../models/agent-definition.model';
-import { EXPLORER_SECTIONS, ExplorerSectionId, ExplorerSelection, NO_SELECTION } from '../models/explorer.model';
+import {
+    AgentFocus,
+    AgentSelection,
+    EXPLORER_SECTIONS,
+    ExplorerSectionId,
+    ExplorerSelection,
+    NO_SELECTION,
+} from '../models/explorer.model';
 import {
     CombinedSurface,
     CreateSurfaceRequest,
@@ -29,7 +36,7 @@ import {
     SURFACE_CATEGORIES,
     SurfaceCategoryId,
 } from '../models/surface-category.model';
-import { AgentDocType, BranchTreeNode } from '../models/tree-node.model';
+import { BranchTreeNode } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
 import { SurfaceCatalogsStore } from './surface-catalogs-store.service';
 import { SurfacesApiService } from './surfaces-api.service';
@@ -43,6 +50,12 @@ export interface SurfaceView {
     place: SurfaceCategoryId | null;
     // All places this surface holds under ownerAgent (multi-place). Empty when not agent-owned.
     places: AgentSurfacePlace[];
+}
+
+export interface SelectedAgentDoc {
+    agent: AgentDefinition;
+    instructionIndex: number;
+    instruction: AgentInstruction;
 }
 
 const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
@@ -181,10 +194,10 @@ export class AgentsPageStore {
         return { surface, ownerAgent, readOnly, place, places };
     });
 
-    readonly surfacesOnlyAgent = computed<AgentDefinition | null>(() => {
+    /** A new object on every agent selection, so re-selecting the same agent re-applies its focus. */
+    readonly selectedAgentFocus = computed<AgentSelection | null>(() => {
         const s = this.selectedNode();
-        if (s.kind !== 'agent-surfaces') return null;
-        return this.agents().find((a) => a.id === s.id) ?? null;
+        return s.kind === 'agent' ? s : null;
     });
 
     readonly isDraftingAgent = computed<boolean>(() => this.selectedNode().kind === 'draft-agent');
@@ -193,11 +206,27 @@ export class AgentsPageStore {
 
     readonly isStorageSelected = computed<boolean>(() => this.selectedNode().kind === 'storage');
 
-    readonly selectedAgentDoc = computed<{ agent: AgentDefinition; docType: AgentDocType } | null>(() => {
+    /** Null when the selected instruction no longer exists (agent deleted, list shortened). */
+    readonly selectedAgentDoc = computed<SelectedAgentDoc | null>(() => {
         const s = this.selectedNode();
         if (s.kind !== 'agent-doc') return null;
         const agent = this.agents().find((a) => a.id === s.id);
-        return agent ? { agent, docType: s.docType } : null;
+        const instruction = agent?.instruction_list[s.instructionIndex];
+        return agent && instruction ? { agent, instructionIndex: s.instructionIndex, instruction } : null;
+    });
+
+    // A failed instruction_list save, kept per agent so it is shown inline under that agent's list only.
+    private readonly instructionListError = signal<{ agentId: number; message: string } | null>(null);
+
+    // Agents with an instruction_list save in flight: the last server-confirmed list and the edit queued behind it.
+    private readonly instructionSaves = new Map<
+        number,
+        { confirmed: AgentInstruction[]; pending: AgentInstruction[] | null }
+    >();
+
+    readonly selectedAgentInstructionListError = computed<string | null>(() => {
+        const error = this.instructionListError();
+        return error && error.agentId === this.selectedAgent()?.id ? error.message : null;
     });
 
     readonly sharedSurfaceIdSet = computed<ReadonlySet<number>>(
@@ -213,53 +242,97 @@ export class AgentsPageStore {
         return this.sharedSurfaceIdSet().has(id);
     }
 
-    isBootDoc(agentId: number): boolean {
-        const agent = this.agents().find((a) => a.id === agentId);
-        return agent?.metadata?.instructions_format === 'markdown';
-    }
-
-    setBootDoc(agentId: number, isDoc: boolean): void {
-        const agent = this.agents().find((a) => a.id === agentId);
-        if (!agent) return;
-        if (this.isBootDoc(agentId) === isDoc) return;
-        const metadata: AgentMetadata = {
-            ...agent.metadata,
-            instructions_format: isDoc ? 'markdown' : 'text',
-        };
-        this.updateAgent(agentId, { metadata });
-    }
-
-    createAndOpenBootDoc(agentId: number): void {
-        this.setBootDoc(agentId, true);
-        this.selectAgentDoc(agentId, 'boot');
-    }
-
     /**
-     * Overwrite an agent's boot instructions with extracted file text, switch
-     * the field to markdown-doc mode, and open the doc view — all in a single
-     * patch so the user lands on the Boot_Instructions.md doc showing the text.
+     * PATCH the whole ordered list (add / rename / reorder / delete all go through here).
+     *
+     * The list is applied locally at once, so an instruction opened right after creation exists and the
+     * next edit builds on it. Saves of one agent run one at a time; edits made meanwhile collapse into
+     * the next request, so the server applies them in order. On failure the list returns to the last
+     * server-confirmed one. Validation errors on `instruction_list` (e.g. a duplicate name) are shown
+     * inline under the list; anything else is toasted.
      */
-    applyBootDocFromText(agentId: number, text: string): void {
+    updateInstructionList(agentId: number, instructionList: AgentInstruction[]): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;
-        const metadata: AgentMetadata = { ...agent.metadata, instructions_format: 'markdown' };
+        this.instructionListError.set(null);
+        const queued = this.instructionSaves.get(agentId);
+        if (queued) {
+            queued.pending = instructionList;
+        } else {
+            this.instructionSaves.set(agentId, { confirmed: agent.instruction_list, pending: null });
+            this.sendInstructionList(agentId, instructionList);
+        }
+        this.setInstructionList(agentId, instructionList);
+    }
+
+    private sendInstructionList(agentId: number, instructionList: AgentInstruction[]): void {
         this.saving.set(true);
-        this.agentsApi.partialUpdate(agentId, { instructions: text, metadata }).subscribe({
+        this.agentsApi.partialUpdate(agentId, { instruction_list: instructionList }).subscribe({
             next: (updated) => {
-                this.agents.update((list) => list.map((a) => (a.id === agentId ? updated : a)));
+                const queued = this.instructionSaves.get(agentId);
+                if (queued?.pending) {
+                    queued.confirmed = updated.instruction_list;
+                    const next = queued.pending;
+                    queued.pending = null;
+                    this.replaceAgent(updated);
+                    this.sendInstructionList(agentId, next);
+                    return;
+                }
+                this.instructionSaves.delete(agentId);
+                this.replaceAgent(updated);
                 this.saving.set(false);
-                this.selectAgentDoc(agentId, 'boot');
             },
             error: (err) => {
+                const confirmed = this.instructionSaves.get(agentId)?.confirmed;
+                this.instructionSaves.delete(agentId);
+                if (confirmed) this.setInstructionList(agentId, confirmed);
                 this.saving.set(false);
-                this.agentSaveErrorTick.update((n) => n + 1);
-                this.toast.error(this.extractError(err, 'Failed to update boot instructions'));
+                const message = this.extractInstructionListError(err);
+                if (message) this.instructionListError.set({ agentId, message });
+                else this.toast.error(this.extractError(err, 'Failed to save instructions'));
             },
         });
     }
 
-    selectAgent(id: number): void {
-        this.selectedNode.set({ kind: 'agent', id });
+    private setInstructionList(agentId: number, instructionList: AgentInstruction[]): void {
+        this.agents.update((list) =>
+            list.map((a) => (a.id === agentId ? { ...a, instruction_list: instructionList } : a))
+        );
+    }
+
+    /** Puts a server response in place, keeping the local instruction list while its saves are still queued. */
+    private replaceAgent(updated: AgentDefinition): void {
+        const keepLocalList = this.instructionSaves.has(updated.id);
+        this.agents.update((list) =>
+            list.map((a) =>
+                a.id === updated.id
+                    ? keepLocalList
+                        ? { ...updated, instruction_list: a.instruction_list }
+                        : updated
+                    : a
+            )
+        );
+    }
+
+    updateInstructionContent(agentId: number, instructionIndex: number, content: string): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        const current = agent?.instruction_list[instructionIndex];
+        if (!agent || !current || current.content === content) return;
+        this.updateInstructionList(
+            agentId,
+            agent.instruction_list.map((instruction, index) =>
+                index === instructionIndex ? { ...instruction, content } : instruction
+            )
+        );
+    }
+
+    selectAgent(id: number, focus: AgentFocus = 'all'): void {
+        this.instructionListError.set(null);
+        this.selectedNode.set({ kind: 'agent', id, focus });
+    }
+
+    selectAgentInstructions(id: number): void {
+        this.selectAgent(id, 'instructions');
     }
 
     selectSurface(id: number, ownerAgentId?: number): void {
@@ -267,11 +340,11 @@ export class AgentsPageStore {
     }
 
     selectAgentSurfaces(id: number): void {
-        this.selectedNode.set({ kind: 'agent-surfaces', id });
+        this.selectAgent(id, 'surfaces');
     }
 
-    selectAgentDoc(id: number, docType: AgentDocType): void {
-        this.selectedNode.set({ kind: 'agent-doc', id, docType });
+    selectAgentDoc(id: number, instructionIndex: number): void {
+        this.selectedNode.set({ kind: 'agent-doc', id, instructionIndex });
     }
 
     openSharedSurfaceSource(id: number): void {
@@ -367,14 +440,24 @@ export class AgentsPageStore {
                         ownerAgentId: a.id,
                     }));
 
-                const children: BranchTreeNode[] = [];
-                if (a.metadata?.instructions_format === 'markdown') {
-                    children.push({
-                        kind: 'agent-doc',
+                const instructionDocs: BranchTreeNode[] = a.instruction_list
+                    .map((instruction, instructionIndex) => ({
+                        kind: 'agent-doc' as const,
                         agentId: a.id,
-                        docType: 'boot',
-                        label: 'Boot_Instructions.md',
-                        placeholder: true,
+                        instructionIndex,
+                        label: instruction.name,
+                    }))
+                    .filter((doc) => agentMatches || matchLabel(doc.label));
+
+                const children: BranchTreeNode[] = [];
+                if (instructionDocs.length) {
+                    children.push({
+                        kind: 'group',
+                        id: `agent:${a.id}:instructions`,
+                        label: 'Instructions',
+                        icon: 'folder-storage',
+                        children: instructionDocs,
+                        defaultExpanded: false,
                     });
                 }
                 // Add surface node if permitted
@@ -397,10 +480,10 @@ export class AgentsPageStore {
                         children,
                     } as BranchTreeNode,
                     agentMatches,
-                    matchingSurfaces: ownSurfaces.length,
+                    matchingChildren: ownSurfaces.length + instructionDocs.length,
                 };
             })
-            .filter((entry) => !q || entry.agentMatches || entry.matchingSurfaces > 0)
+            .filter((entry) => !q || entry.agentMatches || entry.matchingChildren > 0)
             .map((entry) => entry.node);
     });
 
@@ -637,10 +720,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: src.owner_agent,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -666,10 +747,8 @@ export class AgentsPageStore {
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
-                description: src.description,
                 instructions: src.instructions,
                 owner_agent: agentId,
-                allow_creation: src.allow_creation,
                 python_tools: src.python_tools,
                 mcp_tools: src.mcp_tools,
                 storage_items: src.storage_items,
@@ -729,7 +808,7 @@ export class AgentsPageStore {
         this.saving.set(true);
         this.agentsApi.partialUpdate(agentId, { default_surfaces: next }).subscribe({
             next: (updated) => {
-                this.agents.update((list) => list.map((a) => (a.id === agentId ? updated : a)));
+                this.replaceAgent(updated);
                 this.saving.set(false);
                 if (successMsg) this.toast.success(successMsg);
                 onDone?.();
@@ -744,17 +823,17 @@ export class AgentsPageStore {
     private afterAgentSurfaceChange(agentId: number, onDone?: () => void): void {
         this.agentsApi.getById(agentId).subscribe({
             next: (agent) => {
-                this.agents.update((list) => list.map((a) => (a.id === agentId ? agent : a)));
+                this.replaceAgent(agent);
                 onDone?.();
             },
             error: () => onDone?.(),
         });
     }
 
-    saveNewAgent(body: CreateAgentDefinitionRequest, openBootDoc = false): void {
+    saveNewAgent(body: CreateAgentDefinitionRequest, openFirstInstruction = false): void {
         let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
-            if (!openBootDoc) {
+            if (!openFirstInstruction) {
                 this.toast.error('Agent name is required');
                 return;
             }
@@ -764,11 +843,11 @@ export class AgentsPageStore {
             );
         }
         this.saving.set(true);
-        this.agentsApi.create({ ...body, name: trimmed, instructions: body.instructions ?? '' }).subscribe({
+        this.agentsApi.create({ ...body, name: trimmed }).subscribe({
             next: (created) => {
                 this.agents.update((list) => [...list, created]);
-                if (openBootDoc) {
-                    this.selectAgentDoc(created.id, 'boot');
+                if (openFirstInstruction) {
+                    this.selectAgentDoc(created.id, 0);
                 } else {
                     this.selectAgent(created.id);
                 }
@@ -787,7 +866,7 @@ export class AgentsPageStore {
         this.saving.set(true);
         this.agentsApi.partialUpdate(id, patch).subscribe({
             next: (updated) => {
-                this.agents.update((list) => list.map((a) => (a.id === id ? updated : a)));
+                this.replaceAgent(updated);
                 this.saving.set(false);
             },
             error: (err) => {
@@ -915,6 +994,14 @@ export class AgentsPageStore {
                 this.toast.error(this.extractError(err, 'Failed to delete surface'));
             },
         });
+    }
+
+    /** First message under `instruction_list` in a DRF error body (flat or nested per item), else null. */
+    /** The API envelope flattens field errors into `message` as "<field>: <text>". */
+    private extractInstructionListError(err: unknown): string | null {
+        const message = (err as { error?: { message?: unknown } })?.error?.message;
+        const prefix = 'instruction_list: ';
+        return typeof message === 'string' && message.startsWith(prefix) ? message.slice(prefix.length) : null;
     }
 
     private extractError(err: unknown, fallback: string): string {

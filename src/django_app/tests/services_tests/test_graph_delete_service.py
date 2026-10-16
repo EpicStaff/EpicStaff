@@ -10,12 +10,16 @@ from unittest import mock
 import pytest
 from django.db import connection
 from django.db.models.deletion import ProtectedError
-from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 
+from django.contrib.contenttypes.models import ContentType
+
+from rbac.authorship import record_last_edit
+from rbac.models import Organization, ResourceLastEdit
+from tables.exceptions import CrossOrgCascadeError
 from tables.models import Graph
 from tables.models.graph_models import SubGraphNode
-from rbac.models import Organization
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from rbac.models.enums import Permission, ResourceType
 from tables.services.delete_services import GraphDeleteService
 from tables.services.delete_services.usage import SkipEntry, SkipReason
@@ -61,18 +65,13 @@ def _cannot_see_flows():
 
 
 @pytest.mark.django_db
-@override_settings(SOFT_DELETE=True)
-def test_bulk_delete_soft_deletes_when_soft_delete_is_enabled(org_a):
+def test_bulk_delete_moves_graphs_to_the_recycle_bin(org_a):
     """The regression guard for the soft-delete root rule.
 
     `SoftDeleteMixin.delete()` is an override on the *instance*, so a
-    `QuerySet.delete()` would bypass it and hard-delete the row even with the
-    flag on. That is what `BaseDeleteService._delete_rows` branches to avoid,
-    and this test is what stops the per-row loop being "simplified" away later.
-
-    `SOFT_DELETE` is overridden explicitly rather than relied on: the project
-    default is `env.bool("DJANGO_SOFT_DELETE", False)`, i.e. OFF, so a test
-    that assumed otherwise would silently assert nothing.
+    `QuerySet.delete()` would bypass it and hard-delete the row. That is what
+    `BaseDeleteService._delete_rows` branches to avoid, and this test is what
+    stops the per-row loop being "simplified" away later.
 
     `Graph.objects` is an ActiveManager, so `assert not Graph.objects.filter(
     ...).exists()` passes under a hard delete too. Only `all_objects` can tell
@@ -80,25 +79,88 @@ def test_bulk_delete_soft_deletes_when_soft_delete_is_enabled(org_a):
     """
     graph = _graph(org_a)
 
-    result = GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows())
+    result = GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows(), deleted_by=None)
 
     assert result.deleted_ids == [graph.id]
     assert not Graph.objects.filter(id=graph.id).exists()
 
     row = Graph.all_objects.get(id=graph.id)
-    assert row.is_soft_deleted is True
+    assert row.active is False
     assert row.soft_deleted_at is not None
 
 
+def _last_edit_of(graph):
+    return ResourceLastEdit.objects.filter(
+        content_type=ContentType.objects.get_for_model(Graph), object_id=graph.pk
+    ).first()
+
+
+@pytest.fixture
+def deleter(django_user_model):
+    return django_user_model.objects.create_user(
+        email="bulk-deleter@example.com", password="StrongPass123!"
+    )
+
+
 @pytest.mark.django_db
-@override_settings(SOFT_DELETE=False)
-def test_bulk_delete_hard_deletes_when_soft_delete_is_disabled(org_a):
-    """The project default. Row leaves the table entirely, `all_objects` included."""
+def test_bulk_delete_records_the_deleter_like_a_single_delete(org_a, deleter):
+    """Same call as RecycleBinActionsMixin.perform_destroy: the deleter is the
+    root's last edit, stamped at its `soft_deleted_at`."""
+    bulk, single = _graph(org_a, "bulk"), _graph(org_a, "single")
+
+    GraphDeleteService().bulk_delete(
+        [bulk.id], org_a.id, _can_see_flows(), deleted_by=deleter
+    )
+    move_to_recycle_bin(single, deleter)
+
+    bulk_edit, single_edit = _last_edit_of(bulk), _last_edit_of(single)
+    assert bulk_edit is not None
+    assert bulk_edit.edited_by_id == single_edit.edited_by_id == deleter.pk
+    assert bulk_edit.edited_at == Graph.all_objects.get(pk=bulk.pk).soft_deleted_at
+
+
+@pytest.mark.django_db
+def test_bulk_delete_replaces_an_earlier_editor_with_the_deleter(
+    org_a, deleter, django_user_model
+):
+    earlier_editor = django_user_model.objects.create_user(
+        email="earlier-editor@example.com", password="StrongPass123!"
+    )
+    graph = _graph(org_a)
+    record_last_edit(graph, earlier_editor)
+
+    GraphDeleteService().bulk_delete(
+        [graph.id], org_a.id, _can_see_flows(), deleted_by=deleter
+    )
+
+    assert _last_edit_of(graph).edited_by_id == deleter.pk
+
+
+@pytest.mark.django_db
+def test_bulk_delete_without_a_user_records_no_editor(org_a, django_user_model):
+    """No person (None) records a NULL editor, never the previous one."""
+    earlier_editor = django_user_model.objects.create_user(
+        email="earlier-editor@example.com", password="StrongPass123!"
+    )
+    graph = _graph(org_a)
+    record_last_edit(graph, earlier_editor)
+
+    GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows(), deleted_by=None)
+
+    assert _last_edit_of(graph).edited_by_id is None
+
+
+@pytest.mark.django_db
+def test_dry_run_records_no_deleter_and_deletes_nothing(org_a, deleter):
     graph = _graph(org_a)
 
-    GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows())
+    result = GraphDeleteService().bulk_delete(
+        [graph.id], org_a.id, _can_see_flows(), dry_run=True, deleted_by=deleter
+    )
 
-    assert not Graph.all_objects.filter(id=graph.id).exists()
+    assert result.deletable_ids == [graph.id]
+    assert Graph.objects.filter(id=graph.id).exists()
+    assert _last_edit_of(graph) is None
 
 
 @pytest.mark.django_db
@@ -108,7 +170,7 @@ def test_visible_usage_does_not_block(org_a):
     parent = _graph(org_a, "parent")
     node = SubGraphNode.objects.create(graph=parent, subgraph=child)
 
-    result = GraphDeleteService().bulk_delete([child.id], org_a.id, _can_see_flows())
+    result = GraphDeleteService().bulk_delete([child.id], org_a.id, _can_see_flows(), deleted_by=None)
 
     assert result.deleted_ids == [child.id]
     assert result.skipped == []
@@ -122,7 +184,7 @@ def test_hidden_usage_blocks_without_disclosing_it(org_a):
     parent = _graph(org_a, "parent")
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
-    result = GraphDeleteService().bulk_delete([child.id], org_a.id, _cannot_see_flows())
+    result = GraphDeleteService().bulk_delete([child.id], org_a.id, _cannot_see_flows(), deleted_by=None)
 
     assert result.deleted_ids == []
     assert result.skipped == [
@@ -133,7 +195,7 @@ def test_hidden_usage_blocks_without_disclosing_it(org_a):
     assert result.usage == {}
 
     preview = GraphDeleteService().bulk_delete(
-        [child.id], org_a.id, _cannot_see_flows(), dry_run=True
+        [child.id], org_a.id, _cannot_see_flows(), dry_run=True, deleted_by=None
     )
     bucket = preview.usage[child.id].buckets[0]
     assert preview.usage[child.id].blocked is True
@@ -150,7 +212,7 @@ def test_one_flow_embedding_the_same_subgraph_twice_counts_once(org_a):
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
     result = GraphDeleteService().bulk_delete(
-        [child.id], org_a.id, _can_see_flows(), dry_run=True
+        [child.id], org_a.id, _can_see_flows(), dry_run=True, deleted_by=None
     )
 
     bucket = result.usage[child.id].buckets[0]
@@ -165,7 +227,7 @@ def test_dry_run_reports_what_would_go_and_deletes_nothing(org_a):
     graph = _graph(org_a)
 
     result = GraphDeleteService().bulk_delete(
-        [graph.id], org_a.id, _can_see_flows(), dry_run=True
+        [graph.id], org_a.id, _can_see_flows(), dry_run=True, deleted_by=None
     )
 
     assert result.dry_run is True
@@ -181,14 +243,14 @@ def test_duplicate_ids_are_collapsed_everywhere(org_a):
     graph = _graph(org_a)
 
     result = GraphDeleteService().bulk_delete(
-        [graph.id, graph.id], org_a.id, _can_see_flows()
+        [graph.id, graph.id], org_a.id, _can_see_flows(), deleted_by=None
     )
 
     assert result.deleted_ids == [graph.id]
     assert result.deleted_count == 1
 
     missing = GraphDeleteService().bulk_delete(
-        [999_999, 999_999], org_a.id, _can_see_flows()
+        [999_999, 999_999], org_a.id, _can_see_flows(), deleted_by=None
     )
     assert missing.not_found_ids == [999_999]
 
@@ -199,7 +261,7 @@ def test_cross_org_and_unknown_ids_are_indistinguishable(org_a, org_b):
     other = _graph(org_b, "other-org")
 
     result = GraphDeleteService().bulk_delete(
-        [other.id, 999_999], org_a.id, _can_see_flows()
+        [other.id, 999_999], org_a.id, _can_see_flows(), deleted_by=None
     )
 
     assert sorted(result.not_found_ids) == sorted([other.id, 999_999])
@@ -216,7 +278,7 @@ def test_usage_covers_every_found_id(org_a):
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
     result = GraphDeleteService().bulk_delete(
-        [plain.id, child.id, 999_999], org_a.id, _cannot_see_flows(), dry_run=True
+        [plain.id, child.id, 999_999], org_a.id, _cannot_see_flows(), dry_run=True, deleted_by=None
     )
 
     assert set(result.usage) == {plain.id, child.id}
@@ -230,15 +292,14 @@ def test_is_partial_reports_anything_the_caller_did_not_get(org_a):
     """The 200/207 rule, defined once and asserted here rather than per ViewSet."""
     graph = _graph(org_a)
 
-    clean = GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows())
+    clean = GraphDeleteService().bulk_delete([graph.id], org_a.id, _can_see_flows(), deleted_by=None)
     assert clean.is_partial is False
 
-    missing = GraphDeleteService().bulk_delete([999_999], org_a.id, _can_see_flows())
+    missing = GraphDeleteService().bulk_delete([999_999], org_a.id, _can_see_flows(), deleted_by=None)
     assert missing.is_partial is True
 
 
 @pytest.mark.django_db
-@override_settings(SOFT_DELETE=False)
 def test_a_row_refused_at_delete_time_costs_that_row_not_the_batch(org_a):
     """The savepoint path: one refused row is skipped, the rest still go.
 
@@ -262,7 +323,7 @@ def test_a_row_refused_at_delete_time_costs_that_row_not_the_batch(org_a):
 
     with mock.patch.object(Graph, "delete", delete_then_refuse):
         result = GraphDeleteService().bulk_delete(
-            [kept.id, refused.id, in_use.id], org_a.id, _cannot_see_flows()
+            [kept.id, refused.id, in_use.id], org_a.id, _cannot_see_flows(), deleted_by=None
         )
 
     assert result.deleted_ids == [kept.id]
@@ -270,8 +331,10 @@ def test_a_row_refused_at_delete_time_costs_that_row_not_the_batch(org_a):
         SkipEntry(id=in_use.id, reason=SkipReason.IN_USE_RESTRICTED),
         SkipEntry(id=refused.id, reason=SkipReason.PROTECTED),
     ]
-    assert not Graph.all_objects.filter(id=kept.id).exists()
+    assert not Graph.objects.filter(id=kept.id).exists()
     assert Graph.objects.filter(id__in=[refused.id, in_use.id]).count() == 2
+    # A refused row is not binned, so nothing is recorded for it.
+    assert _last_edit_of(refused) is None
 
 
 @pytest.mark.django_db
@@ -286,12 +349,29 @@ def test_another_orgs_flow_embedding_the_graph_is_not_usage(org_a, org_b):
     SubGraphNode.objects.create(graph=_graph(org_b, "foreign parent"), subgraph=child)
 
     preview = GraphDeleteService().bulk_delete(
-        [child.id], org_a.id, _can_see_flows(), dry_run=True
+        [child.id], org_a.id, _can_see_flows(), dry_run=True, deleted_by=None
     )
     assert preview.usage[child.id].buckets[0].total_count == 0
 
-    result = GraphDeleteService().bulk_delete([child.id], org_a.id, _cannot_see_flows())
-    assert result.deleted_ids == [child.id]
+
+@pytest.mark.django_db
+def test_a_delete_reaching_another_orgs_rows_fails_the_request(org_a, org_b):
+    """CrossOrgCascadeError means a link no API path creates: it is a bug to
+    surface (409), not a row to skip, and it rolls back the rows deleted before it."""
+    fine = _graph(org_a, "fine")
+    child = _graph(org_a, "child")
+    foreign_node = SubGraphNode.objects.create(
+        graph=_graph(org_b, "foreign parent"), subgraph=child
+    )
+
+    with pytest.raises(CrossOrgCascadeError):
+        GraphDeleteService().bulk_delete(
+            [fine.id, child.id], org_a.id, _cannot_see_flows(), deleted_by=None
+        )
+
+    assert Graph.objects.filter(id__in=[fine.id, child.id]).count() == 2
+    foreign_node.refresh_from_db()
+    assert foreign_node.subgraph_id == child.id
 
 
 @pytest.mark.django_db
@@ -301,10 +381,14 @@ def test_rows_are_locked_in_primary_key_order(org_a):
 
     with CaptureQueriesContext(connection) as queries:
         GraphDeleteService().bulk_delete(
-            [second.id, first.id], org_a.id, _can_see_flows()
+            [second.id, first.id], org_a.id, _can_see_flows(), deleted_by=None
         )
 
-    (locking,) = [
-        q["sql"] for q in queries.captured_queries if "FOR UPDATE" in q["sql"]
+    # DeleteService also locks each row with .first(), which orders by itself, so
+    # only the batch lock (the one over an IN list) proves the ordering.
+    (batch_lock,) = [
+        q["sql"]
+        for q in queries.captured_queries
+        if "FOR UPDATE" in q["sql"] and "IN (" in q["sql"]
     ]
-    assert "ORDER BY" in locking
+    assert "ORDER BY" in batch_lock

@@ -10,6 +10,7 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
 import { rolePermissionsToSet, setToRolePermissions } from '@shared/utils';
@@ -49,11 +50,12 @@ type DialogMode = 'create' | 'edit' | 'duplicate';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         ButtonComponent,
-        ReactiveFormsModule,
         CustomInputComponent,
+        EnterSubmitDirective,
+        PermissionsTableComponent,
+        ReactiveFormsModule,
         SelectComponent,
         ValidationErrorsComponent,
-        PermissionsTableComponent,
     ],
 })
 export class CreateRoleDialogComponent implements OnInit {

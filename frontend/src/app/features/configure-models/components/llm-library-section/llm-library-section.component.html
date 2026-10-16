@@ -29,13 +29,15 @@
                 >
                     Add Configuration
                 </app-button>
-                <app-button
-                    type="ghost"
-                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                    (click)="enterSelectMode()"
-                >
-                    Select
-                </app-button>
+                @if (!hasNoConfigs()) {
+                    <app-button
+                        type="ghost"
+                        *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                        (click)="enterSelectMode()"
+                    >
+                        Select
+                    </app-button>
+                }
             } @else {
                 <app-button
                     type="ghost"
@@ -98,6 +100,7 @@
                                         (selectedChange)="onCardSelectedChange(model, $event)"
                                         (editClick)="onEdit($event)"
                                         (deleteClick)="onDelete($event)"
+                                        (viewDetailsClick)="onViewDetails($event)"
                                     ></app-llm-library-card>
                                 }
                             </div>
@@ -120,8 +123,6 @@
                         message="Check your connection and try again."
                         (retry)="retrySection(provider.key)"
                     />
-                } @else if (provider.configs.length === 0) {
-                    <p class="empty-hint">No {{ provider.label }} yet.</p>
                 } @else {
                     <div class="grid">
                         @for (c of provider.configs; track c.id) {
@@ -146,6 +147,9 @@
                                         </div>
                                     } @else {
                                         <div class="actions">
+                                            <app-config-card-more-menu
+                                                (viewDetailsClick)="onViewConfigDetails(c, $event)"
+                                            />
                                             <button
                                                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                                                 type="button"
@@ -179,6 +183,10 @@
                     </div>
                 }
             </div>
+        }
+
+        @if (hasNoConfigs()) {
+            <p class="empty-hint">No configurations yet.</p>
         }
     }
 </section>

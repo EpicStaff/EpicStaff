@@ -1,0 +1,29 @@
+@for (option of options(); track option.value) {
+    <label
+        class="checkbox-enum__option"
+        [class.is-disabled]="isDisabled(option.value)"
+        [title]="isDisabled(option.value) ? disabledHint() : ''"
+    >
+        <app-checkbox
+            [checked]="isSelected(option.value)"
+            [disabled]="isDisabled(option.value)"
+            (changed)="toggle(option.value)"
+        />
+        @if (option.icon) {
+            <app-svg-icon
+                [class]="'checkbox-enum__icon checkbox-enum__icon--' + option.value"
+                [icon]="option.icon"
+                size="14px"
+            />
+        }
+        @if (option.iconClass) {
+            <i
+                class="checkbox-enum__icon checkbox-enum__font-icon"
+                [class]="option.iconClass"
+                [style.color]="option.iconColor"
+                aria-hidden="true"
+            ></i>
+        }
+        <span>{{ option.label }}</span>
+    </label>
+}

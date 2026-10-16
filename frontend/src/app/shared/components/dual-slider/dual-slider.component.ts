@@ -108,13 +108,13 @@ export class DualSliderComponent {
     }
 
     onSecondStepDown(): void {
-        const current = this.firstValue();
+        const current = this.secondValue();
         const newValue = Math.max(this.min(), current - this.step());
         this.updateSecond(this.roundToDecimals(newValue));
     }
 
     onSecondStepUp(): void {
-        const current = this.firstValue();
+        const current = this.secondValue();
         const newValue = Math.min(this.max(), current + this.step());
         this.updateSecond(this.roundToDecimals(newValue));
     }

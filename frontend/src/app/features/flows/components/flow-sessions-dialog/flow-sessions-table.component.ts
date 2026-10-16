@@ -15,25 +15,38 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
+    ButtonComponent,
     CheckboxComponent,
     IconButtonComponent,
     LoadingSpinnerComponent,
     StopButtonComponent,
 } from '@shared/components';
-import { DATE_TIME_FORMAT_24H } from '@shared/constants';
+import { DATE_FORMAT, TIME_FORMAT_24H } from '@shared/constants';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
-import { DurationFilter, GraphSessionLight, SessionTrigger, TriggerType } from '../../services/flows-sessions.service';
+import {
+    DurationFilter,
+    GraphSessionLight,
+    SessionRunType,
+    SessionTrigger,
+    TriggerType,
+} from '../../services/flows-sessions.service';
 import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
 import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
-import { getTriggerDisplay, TriggerDisplay } from './trigger-display.constants';
+import { FlowSessionTypeFilterDropdownComponent } from './flow-session-type-filter-dropdown.component';
+import {
+    getSessionRunType,
+    getTriggerDisplay,
+    SESSION_RUN_TYPE_LABELS,
+    TriggerDisplay,
+} from './trigger-display.constants';
 import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.component';
 @Component({
     selector: 'app-flow-sessions-table',
@@ -53,6 +66,8 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         MatTooltipModule,
         DatePickerDropdownComponent,
         TriggerFilterDropdownComponent,
+        FlowSessionTypeFilterDropdownComponent,
+        ButtonComponent,
     ],
     template: `
         <div
@@ -74,6 +89,12 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                             ></app-checkbox>
                         </th>
                         <th class="col-id">ID</th>
+                        <th class="col-type">
+                            <app-flow-session-type-filter-dropdown
+                                [value]="runTypeFilter"
+                                (valueChange)="runTypeFilterChange.emit($event)"
+                            ></app-flow-session-type-filter-dropdown>
+                        </th>
                         <th class="col-status">
                             <app-flow-session-status-filter-dropdown
                                 [value]="statusFilter"
@@ -160,6 +181,12 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                     ></app-checkbox>
                                 </td>
                                 <td class="col-id">{{ session.id }}</td>
+                                <td
+                                    class="col-type"
+                                    [class.col-type--live]="getRunType(session.trigger) === 'live'"
+                                >
+                                    {{ runTypeLabels[getRunType(session.trigger)] }}
+                                </td>
                                 <td class="col-status">
                                     <app-flow-session-status-badge
                                         [status]="session.status"
@@ -191,27 +218,37 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         <span>{{ getTriggerChip(session.trigger).label }}</span>
                                     </span>
                                 </td>
-                                <td class="col-created">{{ session.created_at | date: DATE_TIME_FORMAT_24H }}</td>
-                                <td class="col-duration">
+                                <td class="col-created cell-date">
+                                    {{ session.created_at | date: DATE_FORMAT }},
+                                    <span class="cell-date__time">{{
+                                        session.created_at | date: TIME_FORMAT_24H
+                                    }}</span>
+                                </td>
+                                <td
+                                    class="col-duration"
+                                    [class.cell-date]="!showDuration"
+                                >
                                     @if (showDuration) {
                                         {{ getDuration(session) }}
+                                    } @else if (session.finished_at) {
+                                        {{ session.finished_at | date: DATE_FORMAT }},
+                                        <span class="cell-date__time">{{
+                                            session.finished_at | date: TIME_FORMAT_24H
+                                        }}</span>
                                     } @else {
-                                        {{
-                                            session.finished_at
-                                                ? (session.finished_at | date: DATE_TIME_FORMAT_24H)
-                                                : 'Active'
-                                        }}
+                                        Active
                                     }
                                 </td>
                                 <td class="col-actions">
                                     <div class="actions-container">
-                                        <button
+                                        <app-button
+                                            mod="small"
                                             class="view-btn"
-                                            [class.view-btn--active]="expandedSessionId() === session.id"
+                                            type="primary"
                                             (click)="togglePreview(session.id)"
                                         >
                                             {{ expandedSessionId() === session.id ? 'Hide' : 'Preview' }}
-                                        </button>
+                                        </app-button>
                                         <button
                                             type="button"
                                             class="icon-img-btn"
@@ -227,6 +264,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         </button>
                                         @if (canStop(session.status)) {
                                             <app-stop-button
+                                                variant="stop"
                                                 tooltip="Stop session"
                                                 (triggered)="stopSession.emit(session.id)"
                                             />
@@ -285,6 +323,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Input() flows: { id: number; name: string }[] = [];
     @Input() flowNameFilter: string[] = [];
     @Input() trigger: TriggerType[] = [];
+    @Input() runTypeFilter: SessionRunType[] = [];
     @Input() durationFilter: DurationFilter | null = null;
 
     @Input() externalPreview: boolean = false;
@@ -299,6 +338,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Output() statusFilterChange = new EventEmitter<string[]>();
     @Output() flowNameFilterChange = new EventEmitter<string[]>();
     @Output() triggerFilterChange = new EventEmitter<TriggerType[]>();
+    @Output() runTypeFilterChange = new EventEmitter<SessionRunType[]>();
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();
     @Output() previewSession = new EventEmitter<number | null>();
@@ -318,7 +358,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     public get colspan(): number {
         const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
-        return 6 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+        return 7 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
@@ -417,7 +457,13 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
         return getTriggerDisplay(trigger.trigger_type);
     }
 
+    public getRunType(trigger: SessionTrigger | null): SessionRunType {
+        return getSessionRunType(trigger);
+    }
+
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
-    protected readonly DATE_TIME_FORMAT_24H = DATE_TIME_FORMAT_24H;
+    protected readonly DATE_FORMAT = DATE_FORMAT;
+    protected readonly TIME_FORMAT_24H = TIME_FORMAT_24H;
+    protected readonly runTypeLabels = SESSION_RUN_TYPE_LABELS;
 }

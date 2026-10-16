@@ -121,7 +121,7 @@ def test_dry_run_does_not_disclose_an_agent_the_caller_cannot_see(
         **{ResourceType.LLM_CONFIGS: Permission.DELETE},
     )
     config = config_model.objects.create(org=org_a, custom_name="cfg")
-    hidden = AgentDefinition.objects.create(organization=org_a, name="secret agent")
+    hidden = AgentDefinition.objects.create(org=org_a, name="secret agent")
     RealtimeAgentDefinition.objects.create(agent_definition=hidden, **{fk: config})
 
     resp = client.post(

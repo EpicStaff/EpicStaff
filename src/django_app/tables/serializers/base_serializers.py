@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
-    OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
 from rest_framework import serializers
@@ -17,6 +17,7 @@ from tables.models.webhook_models import (
 from tables.serializers.utils.secret_reference_guard_mixin import (
     SecretReferenceGuardMixin,
 )
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.webhook_trigger_service import validate_path_uniqueness
 from utils.logger import logger
 
@@ -26,8 +27,8 @@ class NgrokConfigInlineSerializer(SecretReferenceGuardMixin, serializers.Seriali
     parent_attribute = "ngrok"
 
     name = serializers.CharField(max_length=50)
-    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_token_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="auth_token_secret",
         required=False,
         allow_null=True,
@@ -48,7 +49,12 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
+class WebhookTriggerNestedSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    SecretReferenceGuardMixin,
+    serializers.ModelSerializer,
+):
     secret_reference_fields = ("auth_secret_id",)
 
     provider_type = serializers.ChoiceField(
@@ -57,8 +63,8 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
     ngrok_config = NgrokConfigInlineSerializer(required=False, allow_null=True)
     localhost_config = LocalhostConfigInlineSerializer(required=False, allow_null=True)
 
-    auth_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         required=False,
         allow_null=True,
         write_only=True,
@@ -93,7 +99,7 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             path=validated_data.get("path"),
             provider_type=provider_type,
             org_id=org_id,
-            created_by=getattr(request, "user", None),
+            created_by=validated_data.get("created_by"),
         )
 
         if provider_type == ProviderType.NGROK:
@@ -129,16 +135,20 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
         if kind is None:
             kind = existing.kind if existing is not None else WebhookTriggerAuthKind.WEBHOOK
 
+        secret = validated_data.get(
+            "auth_secret_id", existing.secret if existing is not None else None
+        )
+        if (
+            existing is not None
+            and existing.kind == kind
+            and existing.secret_id == (secret.pk if secret is not None else None)
+        ):
+            # Nothing changed: the secret was validated when it was linked, and it may be in
+            # the recycle bin now, where it can't be read back.
+            return
+
         try:
-            WebhookTriggerService().set_trigger_auth_secret(
-                trigger,
-                secret=(
-                    validated_data.get(
-                        "auth_secret_id", existing.secret if existing is not None else None
-                    )
-                ),
-                kind=kind,
-            )
+            WebhookTriggerService().set_trigger_auth_secret(trigger, secret=secret, kind=kind)
         except ValueError as e:
             raise serializers.ValidationError({"auth_secret_id": str(e)}) from e
 
@@ -234,9 +244,12 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             rep["live_url"] = None
 
         auth = getattr(instance, "auth", None)
+        # The id only, never the name or value: an edit form pre-selects it and
+        # resolves the label from the secrets list, as with `auth_token_secret_id`.
         rep["auth"] = (
             {
                 "kind": auth.kind,
+                "secret_id": auth.secret_id,
                 "secret_tail": auth.secret.tail if auth.secret_id else None,
             }
             if auth is not None
@@ -296,6 +309,9 @@ class WebhookTriggerNestedSerializer(SecretReferenceGuardMixin, serializers.Mode
             "localhost_config",
             "auth_secret_id",
             "auth_kind",
+            "created_by",
+            "created_at",
         ]
+        read_only_fields = ["created_by", "created_at"]
         extra_kwargs = {"path": {"validators": []}}
         validators = []

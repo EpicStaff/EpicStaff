@@ -6,6 +6,7 @@
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
+        [runStatus]="activeRunStatus()"
         [isPreviewMode]="isPreviewing()"
         [hasUnsavedChanges]="hasUnsavedChangesSignal()"
         (save)="onHeaderSave()"

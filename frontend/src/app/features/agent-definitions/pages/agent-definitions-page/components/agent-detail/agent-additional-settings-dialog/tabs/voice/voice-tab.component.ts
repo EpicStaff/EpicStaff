@@ -52,6 +52,10 @@ export class VoiceTabComponent {
         this.providerChange.emit(provider as RealtimeProvider);
     }
 
+    voiceError(): string {
+        return this.form().get('voice')?.hasError('maxlength') ? 'Voice ID must be at most 100 characters.' : '';
+    }
+
     onVoiceChange(voiceId: string): void {
         this.form().patchValue({ voice: voiceId });
     }

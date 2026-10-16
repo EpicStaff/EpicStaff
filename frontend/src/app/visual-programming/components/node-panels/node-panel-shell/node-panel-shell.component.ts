@@ -13,16 +13,20 @@ import {
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
+
+const INVALID_FIELDS_NOT_SAVED_MESSAGE = "Changes weren't saved — this node has invalid fields.";
 
 @Component({
     selector: 'app-node-panel-shell',
@@ -53,9 +57,9 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
-                        @if (panelInstanceSig()?.exportButtonTemplate?.()) {
+                        @if (panelInstanceSig()?.headerActionsTemplate?.()) {
                             <ng-container
-                                [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
+                                [ngTemplateOutlet]="panelInstanceSig()!.headerActionsTemplate!()!"
                             ></ng-container>
                         }
                         @if (showSaveButton()) {
@@ -73,6 +77,22 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                     size="1.25rem"
                                 ></app-svg-icon>
                                 <span class="btn-label">Save</span>
+                            </button>
+                        }
+                        @if (showDetailsButton()) {
+                            <button
+                                #detailsButton
+                                class="details-btn"
+                                type="button"
+                                aria-label="Node details"
+                                matTooltip="Node details"
+                                matTooltipPosition="below"
+                                (click)="openNodeDetails(detailsButton)"
+                            >
+                                <app-svg-icon
+                                    icon="alert-circle"
+                                    size="1.25rem"
+                                ></app-svg-icon>
                             </button>
                         }
                         @if (shouldShowExpandButton()) {
@@ -149,6 +169,12 @@ export class NodePanelShellComponent {
         );
     });
 
+    /** Viewing details needs only flow read access, so read-only and preview modes show it too. */
+    protected readonly showDetailsButton = computed(() => {
+        const node = this.node();
+        return !!node && hasNodeDetails(node.type);
+    });
+
     protected readonly outlet = viewChild(NgComponentOutlet);
     protected readonly componentInputs = computed(() => {
         const node = this.node();
@@ -167,19 +193,23 @@ export class NodePanelShellComponent {
         | (NodePanel & {
               onSaveSilently?: () => NodeModel | null;
               captureForValidation?: () => NodeModel | null;
+              hasEditsLeftOut?: () => boolean;
           })
         | null = null;
     protected readonly panelInstanceSig = signal<{
         isDirty?: Signal<boolean>;
+        /** Opt-in: the node must be saved to the backend although the panel has no edit (Save shows then too). */
+        needsSave?: Signal<boolean>;
         isSaving?: Signal<boolean>;
         form?: { invalid: boolean };
         onSaveClick?: () => void;
-        exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
+        headerActionsTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
         if (this.flowReadOnly.isReadOnly()) return false;
         const panel = this.panelInstanceSig();
-        return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
+        const hasSomethingToSave = (panel?.isDirty?.() ?? false) || (panel?.needsSave?.() ?? false);
+        return hasSomethingToSave && !!panel?.onSaveClick;
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
@@ -189,6 +219,8 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
 
     constructor() {
         effect(() => {
@@ -228,10 +260,11 @@ export class NodePanelShellComponent {
                         this.panelInstanceSig.set(
                             outletRef.componentInstance as {
                                 isDirty?: Signal<boolean>;
+                                needsSave?: Signal<boolean>;
                                 isSaving?: Signal<boolean>;
                                 form?: { invalid: boolean };
                                 onSaveClick?: () => void;
-                                exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
+                                headerActionsTemplate?: () => TemplateRef<unknown> | undefined;
                             }
                         );
                         this.previousNodeId = node.id;
@@ -259,6 +292,13 @@ export class NodePanelShellComponent {
 
     protected onHeaderSaveClick(): void {
         this.panelInstanceSig()?.onSaveClick?.();
+    }
+
+    protected openNodeDetails(trigger: HTMLElement): void {
+        const node = this.node();
+        if (!node) return;
+        // Read at click time, so the dialog shows what the latest graph response said.
+        this.authorshipDetailsDialog.open('Node Details', this.nodeAuthorshipStore.authorshipOf(node), trigger);
     }
 
     protected onCloseClick(): void {
@@ -308,7 +348,12 @@ export class NodePanelShellComponent {
                 this.save.emit(updatedNode);
                 return;
             }
-            this.toastService.error("Changes weren't saved — this node has invalid fields.");
+            // An invalid test payload is the user's to fix and the last saved one is kept: a warning, not a failure.
+            if (this.panelInstance.hasEditsLeftOut?.()) {
+                this.toastService.warning(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            } else {
+                this.toastService.error(INVALID_FIELDS_NOT_SAVED_MESSAGE);
+            }
         }
         this.sidePanelService.clearSelection();
     }

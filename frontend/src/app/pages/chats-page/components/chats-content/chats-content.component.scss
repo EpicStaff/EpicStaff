@@ -57,7 +57,7 @@
             transition: background-color 0.2s;
 
             &:hover {
-                background-color: var(--blue-700);
+                background-color: var(--accent-color-hover);
                 cursor: pointer;
             }
         }

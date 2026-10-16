@@ -5,6 +5,12 @@ from rbac.models import Organization
 from rbac.identity.first_setup import FirstSetupService
 
 
+@pytest.fixture(autouse=True)
+def _no_org_storage_provisioning(mocker):
+    """Creating an organization provisions its storage in MinIO/RustFS, a network call."""
+    mocker.patch("rbac.governance.organizations.org_storage_provisioning_service.provision_for_organization")
+
+
 @pytest.mark.django_db
 def test_org_name_names_a_newly_created_organization():
     result = FirstSetupService().setup(
@@ -13,6 +19,17 @@ def test_org_name_names_a_newly_created_organization():
     assert result.organization.name == "Acme Inc"
     assert result.default_org_created is True
     assert Organization.objects.get(is_default=True).name == "Acme Inc"
+
+
+@pytest.mark.django_db
+def test_newly_created_default_organization_gets_its_config_row():
+    """OrganizationResponseSerializer reads org.config; on a fresh install the
+    migration backfill has no orgs to cover, so bootstrap must create the row."""
+    result = FirstSetupService().setup(
+        email="admin@example.com", password="StrongPass123!", org_name="Acme Inc"
+    )
+    assert result.default_org_created is True
+    assert result.organization.config.audit_retention_days == 0
 
 
 @pytest.mark.django_db

@@ -42,44 +42,22 @@ async def test_call_tool_sends_tool_result(client):
 
 
 @pytest.mark.asyncio
-async def test_call_tool_failure_sends_fixed_result_without_exception_text(client):
+async def test_tool_failure_reaches_provider_and_browser_without_the_exception_text(client, captured_log_messages):
     client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
 
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
-    results = _provider_tool_results(client)
-    assert len(results) == 1
-    assert results[0].startswith("Tool execution failed")
-    assert PUBLIC_ERROR_REFERENCE.search(results[0])
+    (result,) = _provider_tool_results(client)
+    assert result.startswith("Tool execution failed")
     for call in client.send_server.await_args_list + client.send_client.await_args_list:
         assert SECRET_SENTINEL not in str(call.args[0])
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_shows_the_same_reference_to_the_browser(client):
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(_provider_tool_results(client)[0]).group(1)
-    browser_outputs = [
-        c.args[0]["item"]["output"]
-        for c in client.send_client.await_args_list
-        if c.args[0].get("type") == "conversation.item.created"
+    # The browser shows the same reference, and support finds the detail under it in the logs.
+    correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)
+    (browser_output,) = [
+        call.args[0]["item"]["output"]
+        for call in client.send_client.await_args_list
+        if call.args[0].get("type") == "conversation.item.created"
     ]
-    assert len(browser_outputs) == 1
-    assert correlation_id in browser_outputs[0]
-
-
-@pytest.mark.asyncio
-async def test_call_tool_failure_logs_detail_under_the_sent_correlation_id(
-    client, captured_log_messages
-):
-    client.tool_manager_service.execute = AsyncMock(side_effect=RuntimeError(SECRET_SENTINEL))
-
-    await client.call_tool("call_1", "search_tool", {"query": "hi"})
-
-    correlation_id = PUBLIC_ERROR_REFERENCE.search(_provider_tool_results(client)[0]).group(1)
-    matching_logs = [message for message in captured_log_messages if correlation_id in message]
-    assert len(matching_logs) == 1
-    assert SECRET_SENTINEL in matching_logs[0]
+    assert correlation_id in browser_output
+    (log,) = [message for message in captured_log_messages if correlation_id in message]
+    assert SECRET_SENTINEL in log

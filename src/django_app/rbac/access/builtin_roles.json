@@ -21,7 +21,8 @@
       "secrets": [ "create", "read", "delete", "use" ],
       "voice": [ "create", "read", "update", "delete" ],
       "webhooks": [ "create", "read", "update", "delete" ],
-      "key_value_tables": [ "create", "read", "update", "delete" ]
+      "key_value_tables": [ "create", "read", "update", "delete" ],
+      "audit": [ "read", "export" ]
     }
   },
   "Member": {

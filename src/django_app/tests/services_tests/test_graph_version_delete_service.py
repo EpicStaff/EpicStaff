@@ -6,10 +6,10 @@ soft-delete root, it is removed row by row.
 """
 
 import pytest
-from django.test import override_settings
+from django.contrib.contenttypes.models import ContentType
 
 from tables.models import Graph, GraphVersion
-from rbac.models import Organization
+from rbac.models import Organization, ResourceLastEdit
 from tables.services.delete_services import GraphVersionDeleteService
 from rbac.access.effective import EffectivePermissions
 
@@ -39,7 +39,7 @@ def test_response_carries_empty_skipped_and_usage_like_every_sibling(org_a):
     version = _version(org_a)
 
     result = GraphVersionDeleteService().bulk_delete(
-        [version.id], org_a.id, _no_permissions(), dry_run=True
+        [version.id], org_a.id, _no_permissions(), dry_run=True, deleted_by=None
     )
 
     assert result.skipped == []
@@ -50,18 +50,30 @@ def test_response_carries_empty_skipped_and_usage_like_every_sibling(org_a):
 
 
 @pytest.mark.django_db
-@override_settings(SOFT_DELETE=True)
-def test_bulk_delete_soft_deletes_when_soft_delete_is_enabled(org_a):
-    """GraphVersion is a soft-delete root; a queryset delete would destroy it."""
+def test_bulk_delete_soft_deletes_the_version_without_recording_a_deleter(
+    org_a, django_user_model
+):
+    """GraphVersion is a soft-delete root; a queryset delete would destroy it.
+
+    It is not last-edit tracked and has no bin tab, so there is no deleter to
+    record: it is soft-deleted directly even when a user is passed.
+    """
     version = _version(org_a)
+    user = django_user_model.objects.create_user(
+        email="version-deleter@example.com", password="StrongPass123!"
+    )
 
     result = GraphVersionDeleteService().bulk_delete(
-        [version.id], org_a.id, _no_permissions()
+        [version.id], org_a.id, _no_permissions(), deleted_by=user
     )
 
     assert result.deleted_ids == [version.id]
-    row = GraphVersion.all_objects.get(id=version.id)
-    assert row.is_soft_deleted is True
+    assert GraphVersion.all_objects.get(id=version.id).active is False
+    assert not GraphVersion.objects.filter(id=version.id).exists()
+    assert not ResourceLastEdit.objects.filter(
+        content_type=ContentType.objects.get_for_model(GraphVersion),
+        object_id=version.id,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -70,7 +82,7 @@ def test_another_orgs_version_is_not_found(org_a, org_b):
     foreign = _version(org_b)
 
     result = GraphVersionDeleteService().bulk_delete(
-        [foreign.id], org_a.id, _no_permissions()
+        [foreign.id], org_a.id, _no_permissions(), deleted_by=None
     )
 
     assert result.not_found_ids == [foreign.id]

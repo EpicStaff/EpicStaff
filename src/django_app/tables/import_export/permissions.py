@@ -4,7 +4,9 @@ Every importable entity type that creates a top-level row must be listed, mapped
 to the same ResourceType its API ViewSet gates on; a type absent from the map is
 created on import without any permission check. Unlisted on purpose: SESSION
 (not importable) and graph node types (created as children of a flow, which is
-gated as FLOWS). Tags map to their parent resource; models and provider realtime
+gated as FLOWS), and AUDIT_FILTER_PRESET (a personal saved search over audit data,
+always created for the importing user in their own org; no role holds CREATE on
+AUDIT, and its own import endpoint is gated on AUDIT read). Tags map to their parent resource; models and provider realtime
 configs map to LLM_CONFIGS.
 """
 

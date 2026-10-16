@@ -4,11 +4,13 @@ export const FLOW_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'flow', plura
 
 export function flowsBulkDeleteGroup(
     target: BulkDeleteTarget,
-    flows: readonly { id: number; name: string }[]
+    flows: readonly { id: number; name: string }[],
+    retentionDays: number | null
 ): BulkDeleteGroup {
     return {
         target,
         label: FLOW_BULK_DELETE_LABEL,
         items: flows.map((flow) => ({ id: flow.id, name: flow.name })),
+        recycleBin: { retentionDays },
     };
 }

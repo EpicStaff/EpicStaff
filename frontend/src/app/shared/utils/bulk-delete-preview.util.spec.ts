@@ -51,6 +51,18 @@ function usageReport(buckets: BulkDeleteUsageBucket[]): BulkDeleteUsageReport {
 }
 
 describe('buildBulkDeletePreview', () => {
+    it('carries the recycle-bin marker onto the preview group', () => {
+        const recycleGroup: BulkDeleteGroup = {
+            ...group([{ id: 1, name: 'Alpha' }]),
+            recycleBin: { retentionDays: 30 },
+        };
+
+        expect(buildBulkDeletePreview(recycleGroup, response({ deletable_ids: [1] })).recycleBin).toEqual({
+            retentionDays: 30,
+        });
+        expect(buildBulkDeletePreview(group([{ id: 1, name: 'Alpha' }]), response()).recycleBin).toBeUndefined();
+    });
+
     it('splits items into deletable, blocked and not-found, preserving group.items order', () => {
         const items = [
             { id: 1, name: 'Alpha' },

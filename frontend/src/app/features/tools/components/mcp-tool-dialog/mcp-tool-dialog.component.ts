@@ -9,6 +9,7 @@ import {
     Inject,
     inject,
     OnInit,
+    signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -22,6 +23,7 @@ import {
 } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
     HintMessageComponent,
@@ -31,13 +33,15 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
+import { httpUrlValidator, notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CreateMcpToolRequest, GetMcpToolRequest, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { McpToolsService } from '../../services/mcp-tools/mcp-tools.service';
 
@@ -48,29 +52,41 @@ interface DialogData {
 @Component({
     selector: 'app-mcp-tool-dialog',
     imports: [
+        BinnedSecretNoteComponent,
         ReactiveFormsModule,
         DialogModule,
         AppSvgIconComponent,
-        CustomInputComponent,
-        ValidationErrorsComponent,
-        InputNumberComponent,
         ButtonComponent,
-        IconButtonComponent,
+        CustomInputComponent,
+        EnterSubmitDirective,
         HasPermissionDirective,
-        SelectComponent,
         HintMessageComponent,
+        IconButtonComponent,
+        InputNumberComponent,
+        SelectComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './mcp-tool-dialog.component.html',
     styleUrls: ['./mcp-tool-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class McpToolDialogComponent implements OnInit {
+    public readonly canUseSecrets = computed(() => this.permissionsService.can(ResourceCode.Secrets, ActionCode.Use));
+
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    public readonly secretItems = computed<SelectItem[]>(() => [
+        { name: 'No secret', value: null },
+        ...this.secretsStorageService.selectItems(this.pickedSecretIds()),
+    ]);
+
     form!: FormGroup;
     public selectedTool?: GetMcpToolRequest;
     public isEditMode: boolean = false;
     public backendErrorMessage: string | null = null;
     private readonly destroyRef = inject(DestroyRef);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly permissionsService = inject(PermissionsService);
 
     constructor(
         private dialogRef: DialogRef<GetMcpToolRequest>,
@@ -84,14 +100,6 @@ export class McpToolDialogComponent implements OnInit {
             this.isEditMode = true;
         }
     }
-
-    public readonly secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
 
     ngOnInit(): void {
         this.initializeForm();
@@ -112,21 +120,22 @@ export class McpToolDialogComponent implements OnInit {
 
     private uniqueNameValidator(): AsyncValidatorFn {
         return (control: AbstractControl): Observable<ValidationErrors | null> => {
-            if (!control.value) {
+            const name = typeof control.value === 'string' ? control.value.trim() : '';
+            if (!name) {
                 return of(null);
             }
 
             // If in edit mode and name hasn't changed, skip validation
-            if (this.isEditMode && control.value === this.selectedTool?.name) {
+            if (this.isEditMode && name === this.selectedTool?.name) {
                 return of(null);
             }
 
             // Debounce for 500ms before making the API call
             return timer(500).pipe(
                 switchMap(() =>
-                    this.mcpToolsService.getMcpTools({ name: control.value }).pipe(
+                    this.mcpToolsService.getMcpTools({ name }).pipe(
                         map((tools) => {
-                            const nameExists = tools.some((tool) => tool.name === control.value);
+                            const nameExists = tools.some((tool) => tool.name === name);
                             return nameExists ? { uniqueName: true } : null;
                         }),
                         catchError(() => of(null))
@@ -140,24 +149,31 @@ export class McpToolDialogComponent implements OnInit {
         this.form = new FormGroup({
             name: new FormControl(
                 this.selectedTool?.name || '',
-                [Validators.required, Validators.minLength(1), Validators.maxLength(255)],
+                [Validators.required, Validators.minLength(1), Validators.maxLength(255), notWhitespaceValidator()],
                 [this.uniqueNameValidator()]
             ),
             transport: new FormControl(this.selectedTool?.transport || '', [
                 Validators.required,
                 Validators.maxLength(2048),
+                httpUrlValidator(),
             ]),
             tool_name: new FormControl(this.selectedTool?.tool_name || '', [
                 Validators.required,
                 Validators.maxLength(255),
             ]),
-            timeout: new FormControl(this.selectedTool?.timeout ?? 30, [Validators.min(1), Validators.max(2147483647)]),
+            timeout: new FormControl(this.selectedTool?.timeout ?? 30, [
+                Validators.required,
+                Validators.min(1),
+                Validators.max(1800),
+            ]),
             auth_secret_id: new FormControl(this.selectedTool?.auth_secret_id ?? null),
             init_timeout: new FormControl(this.selectedTool?.init_timeout ?? 10, [
+                Validators.required,
                 Validators.min(1),
-                Validators.max(2147483647),
+                Validators.max(120),
             ]),
         });
+        trackPickedSecrets(this.form, ['auth_secret_id'], this.pickedSecretIds, this.destroyRef);
     }
 
     public onCancel(): void {
@@ -177,14 +193,15 @@ export class McpToolDialogComponent implements OnInit {
 
         const formValue = this.form.value;
 
-        // Clean up empty values
         const toolData: CreateMcpToolRequest = {
-            name: formValue.name,
-            transport: formValue.transport,
-            tool_name: formValue.tool_name,
-            timeout: formValue.timeout || undefined,
-            auth_secret_id: formValue.auth_secret_id || undefined,
-            init_timeout: formValue.init_timeout || undefined,
+            name: formValue.name.trim(),
+            transport: formValue.transport.trim(),
+            tool_name: formValue.tool_name.trim(),
+            timeout: formValue.timeout ?? 30,
+            auth_secret_id: this.canUseSecrets()
+                ? (formValue.auth_secret_id ?? null)
+                : (this.selectedTool?.auth_secret_id ?? null),
+            init_timeout: formValue.init_timeout ?? 10,
         };
 
         if (this.isEditMode && this.selectedTool) {

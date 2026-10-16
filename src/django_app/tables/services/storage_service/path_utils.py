@@ -1,5 +1,10 @@
 import posixpath
 
+# TRASH_DIRECTORY is reserved: storage_key() refuses it, so no API call can reach it.
+# Runtime code (agents, sandbox) gets credentials whose policy denies it
+# (storage_credentials.policies.build_temporary_policy).
+from storage_credentials.resource_names import TRASH_DIRECTORY, org_storage_prefix
+
 
 def sanitize_storage_path(
     path: str, *, allow_empty: bool, allow_leading_slash: bool = False
@@ -71,6 +76,30 @@ def check_path_length(org_id: int, path: str, *, is_folder: bool = False) -> Non
 
 
 def storage_key(org_id: int, path: str) -> str:
-    """Storage key of path in the org's root ("" gives "org_<id>/"); ValueError if it escapes."""
+    """Storage key of path in the org's root ("" gives "org_<id>/").
+
+    Raises:
+        ValueError: the path escapes the org root, or is inside the reserved
+            recycle-bin folder (every API path is built here).
+    """
     safe_path = sanitize_storage_path(path, allow_empty=True, allow_leading_slash=True)
-    return f"org_{org_id}/{safe_path}"
+    if is_trash_path(safe_path):
+        raise ValueError(f"'{TRASH_DIRECTORY}' is a reserved folder name.")
+    return f"{org_storage_prefix(org_id)}/{safe_path}"
+
+
+def trash_storage_key(org_id: int, batch, path: str) -> str:
+    """Key a recycle-bin batch keeps `path` under: org_<id>/.recycle-bin/<batch>/<path>."""
+    safe_path = sanitize_storage_path(path, allow_empty=False, allow_leading_slash=True)
+    return f"{org_storage_prefix(org_id)}/{TRASH_DIRECTORY}/{batch}/{safe_path}"
+
+
+def trash_batch_prefix(org_id: int, batch) -> str:
+    """Prefix holding every object of one recycle-bin batch."""
+    return f"{org_storage_prefix(org_id)}/{TRASH_DIRECTORY}/{batch}/"
+
+
+def is_trash_path(relative_path: str) -> bool:
+    """True for the reserved recycle-bin folder and anything under it (org-relative path)."""
+    first_segment = relative_path.lstrip("/").split("/", 1)[0]
+    return first_segment == TRASH_DIRECTORY

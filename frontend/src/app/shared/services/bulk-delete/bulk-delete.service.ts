@@ -91,7 +91,9 @@ export class BulkDeleteService {
         const requestedByGroup = new Map(
             toDelete.map((preview): [BulkDeleteGroup, number] => [preview.group, preview.response.deletable_ids.length])
         );
-        const label = this.resultNoun(previews, requested);
+        const nounFor = (count: number): string => this.resultNoun(previews, count);
+        const movesToRecycleBin =
+            toDelete.length > 0 && toDelete.every((preview) => preview.group.recycleBin !== undefined);
 
         return forkJoin(
             toDelete.map((preview) =>
@@ -102,7 +104,7 @@ export class BulkDeleteService {
             )
         ).pipe(
             map((outcomes) => {
-                this.showResultToast(outcomes, requestedByGroup, requested, label);
+                this.showResultToast(outcomes, requestedByGroup, requested, nounFor, movesToRecycleBin);
                 return outcomes;
             })
         );
@@ -136,7 +138,8 @@ export class BulkDeleteService {
         outcomes: BulkDeleteOutcome[],
         requestedByGroup: ReadonlyMap<BulkDeleteGroup, number>,
         requested: number,
-        noun: string
+        nounFor: (count: number) => string,
+        movesToRecycleBin: boolean
     ): void {
         const errors = outcomes.filter((outcome) => outcome.error !== undefined);
 
@@ -149,12 +152,19 @@ export class BulkDeleteService {
         const failed = skipped + erroredItems;
 
         if (failed === 0) {
-            this.toast.success(deleted === 0 && done > 0 ? 'Already deleted.' : `Deleted ${deleted} ${noun}.`);
+            const success = movesToRecycleBin
+                ? `Moved ${deleted} ${nounFor(deleted)} to the recycle bin.`
+                : `Deleted ${deleted} ${nounFor(deleted)}.`;
+            this.toast.success(deleted === 0 && done > 0 ? 'Already deleted.' : success);
             return;
         }
 
         if (done > 0) {
-            this.toast.warning(`Deleted ${deleted} of ${requested} ${noun}. ${failed} couldn't be deleted.`);
+            this.toast.warning(
+                movesToRecycleBin
+                    ? `Moved ${deleted} of ${requested} ${nounFor(requested)} to the recycle bin. ${failed} couldn't be moved.`
+                    : `Deleted ${deleted} of ${requested} ${nounFor(requested)}. ${failed} couldn't be deleted.`
+            );
             return;
         }
 
@@ -162,13 +172,12 @@ export class BulkDeleteService {
         if (singleError instanceof HttpErrorResponse && singleError.status === 403) return;
 
         if (errors.length === 1) {
+            const fallback = movesToRecycleBin ? 'Failed to move to the recycle bin.' : 'Failed to delete.';
             const message =
-                singleError instanceof HttpErrorResponse
-                    ? extractHttpErrorMessage(singleError, 'Failed to delete.')
-                    : 'Failed to delete.';
+                singleError instanceof HttpErrorResponse ? extractHttpErrorMessage(singleError, fallback) : fallback;
             this.toast.error(message);
             return;
         }
-        this.toast.error('Nothing was deleted.');
+        this.toast.error(movesToRecycleBin ? 'Nothing was moved to the recycle bin.' : 'Nothing was deleted.');
     }
 }

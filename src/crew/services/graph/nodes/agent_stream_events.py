@@ -31,6 +31,7 @@ class AgentStreamEventForwarder:
         writer: StreamWriter,
         execution_order: int,
         stream_message_type: str,
+        agent_id: int,
     ):
         self._custom_session_message_writer = custom_session_message_writer
         self._session_id = session_id
@@ -38,6 +39,7 @@ class AgentStreamEventForwarder:
         self._writer = writer
         self._execution_order = execution_order
         self._stream_message_type = stream_message_type
+        self._agent_id = agent_id
         self._step_id = 0
 
     def __call__(self, envelope: StreamEnvelope) -> None:
@@ -45,6 +47,7 @@ class AgentStreamEventForwarder:
             self._write_message(
                 {
                     "message_type": "extracted_chunks",
+                    "agent_id": self._agent_id,
                     **envelope.payload,
                 }
             )
@@ -61,6 +64,7 @@ class AgentStreamEventForwarder:
                 "event": event,
                 "step_id": self._step_id,
                 "is_final": False,
+                "agent_id": self._agent_id,
                 "data": envelope.payload,
             }
         )

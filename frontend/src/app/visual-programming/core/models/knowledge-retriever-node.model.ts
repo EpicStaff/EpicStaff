@@ -1,6 +1,6 @@
-import { AgentSearchConfigs, GraphSearchMethod } from '@shared/models';
+import { AgentSearchConfigs, AuthorshipFields, GraphSearchMethod } from '@shared/models';
 
-export interface GetKnowledgeRetrieverNodeRequest {
+export interface GetKnowledgeRetrieverNodeRequest extends AuthorshipFields {
     id: number;
     graph: number | null;
     source_collection: number | null;

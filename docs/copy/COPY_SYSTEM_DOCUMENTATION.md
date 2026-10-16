@@ -69,8 +69,7 @@ The copy system duplicates entities within the application. Each copyable entity
 
 - All scalar fields are duplicated.
 - Every node is cloned via `NODE_COPY_HANDLERS` (see below). A `node_id_map` (`old_id → new_id`) is built during this step.
-- `Edge` and `ConditionalEdge` records are cloned with `start_node_id`/`end_node_id`/`source_node_id` remapped through `node_id_map`.
-- Each `ConditionalEdge` gets a **new** `PythonCode` object.
+- `Edge` records are cloned with `start_node_id`/`end_node_id` remapped through `node_id_map`.
 - After all nodes and edges are created, two post-processing passes remap any remaining node ID references:
   - `_remap_decision_table_references` — fixes `default_next_node_id`, `next_error_node_id`, and per-group `next_node_id` on `DecisionTableNode`.
   - `_remap_metadata_node_ids` — fixes node IDs embedded in the graph `metadata` JSON.
@@ -96,6 +95,7 @@ The copy system duplicates entities within the application. Each copyable entity
    from tables.import_export.utils import ensure_unique_identifier
    from tables.models import MyEntity
    from tables.services.copy_services.base_copy_service import BaseCopyService
+
 
    class MyEntityCopyService(BaseCopyService):
        """Copy service for MyEntity."""
@@ -135,7 +135,7 @@ The graph copy service dispatches node creation through `NODE_COPY_HANDLERS` —
    def copy_my_new_node(graph: Graph, node: MyNewNode) -> MyNewNode:
        return MyNewNode.objects.create(
            graph=graph,
-           **get_base_node_fields(node),   # copies input_map, node_name, output_variable_path, metadata
+           **get_base_node_fields(node),  # copies input_map, node_name, output_variable_path, metadata
            my_extra_field=node.my_extra_field,
        )
    ```

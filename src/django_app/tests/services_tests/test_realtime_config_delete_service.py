@@ -82,7 +82,7 @@ def test_a_past_session_alone_does_not_block(org_a, config_model, service_class,
     config = config_model.objects.create(org=org_a, custom_name="cfg")
     RealtimeAgentChat.objects.create(connection_key="past-session", **{fk: config})
 
-    result = service_class().bulk_delete([config.id], org_a.id, _permissions())
+    result = service_class().bulk_delete([config.id], org_a.id, _permissions(), deleted_by=None)
 
     assert result.deleted_ids == [config.id]
     assert result.skipped == []
@@ -94,12 +94,12 @@ def test_a_past_session_alone_does_not_block(org_a, config_model, service_class,
 def test_both_agent_kinds_are_reported(org_a, config_model, service_class, fk):
     config = config_model.objects.create(org=org_a, custom_name="cfg")
     legacy = Agent.objects.create(org=org_a, role="legacy", goal="g", backstory="b")
-    current = AgentDefinition.objects.create(organization=org_a, name="current")
+    current = AgentDefinition.objects.create(org=org_a, name="current")
     RealtimeAgent.objects.create(agent=legacy, **{fk: config})
     RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
 
     result = service_class().bulk_delete(
-        [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True
+        [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True, deleted_by=None
     )
 
     agents = _agents_bucket(result, config.id)
@@ -117,7 +117,7 @@ def test_an_agent_the_caller_cannot_see_blocks(org_a, config_model, service_clas
     legacy = Agent.objects.create(org=org_a, role="legacy", goal="g", backstory="b")
     RealtimeAgent.objects.create(agent=legacy, **{fk: config})
 
-    result = service_class().bulk_delete([config.id], org_a.id, _permissions())
+    result = service_class().bulk_delete([config.id], org_a.id, _permissions(), deleted_by=None)
 
     assert result.skipped == [
         SkipEntry(id=config.id, reason=SkipReason.IN_USE_RESTRICTED)
@@ -131,10 +131,10 @@ def test_an_agent_definition_the_caller_cannot_see_blocks(
     org_a, config_model, service_class, fk
 ):
     config = config_model.objects.create(org=org_a, custom_name="cfg")
-    current = AgentDefinition.objects.create(organization=org_a, name="current")
+    current = AgentDefinition.objects.create(org=org_a, name="current")
     RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
 
-    result = service_class().bulk_delete([config.id], org_a.id, _permissions())
+    result = service_class().bulk_delete([config.id], org_a.id, _permissions(), deleted_by=None)
 
     assert result.skipped == [
         SkipEntry(id=config.id, reason=SkipReason.IN_USE_RESTRICTED)
@@ -150,7 +150,7 @@ def test_another_orgs_config_is_not_found(
     other = config_model.objects.create(org=org_b, custom_name="other")
 
     result = service_class().bulk_delete(
-        [other.id], org_a.id, _permissions(ResourceType.AGENTS)
+        [other.id], org_a.id, _permissions(ResourceType.AGENTS), deleted_by=None
     )
 
     assert result.not_found_ids == [other.id]
@@ -170,16 +170,16 @@ def test_another_orgs_agents_are_not_usage(
     """
     config = config_model.objects.create(org=org_a, custom_name="cfg")
     legacy = Agent.objects.create(org=org_b, role="foreign", goal="g", backstory="b")
-    current = AgentDefinition.objects.create(organization=org_b, name="foreign")
+    current = AgentDefinition.objects.create(org=org_b, name="foreign")
     RealtimeAgent.objects.create(agent=legacy, **{fk: config})
     RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
 
     preview = service_class().bulk_delete(
-        [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True
+        [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True, deleted_by=None
     )
     assert _agents_bucket(preview, config.id).total_count == 0
 
-    result = service_class().bulk_delete([config.id], org_a.id, _permissions())
+    result = service_class().bulk_delete([config.id], org_a.id, _permissions(), deleted_by=None)
     assert result.deleted_ids == [config.id]
 
 

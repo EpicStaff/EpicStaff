@@ -7,7 +7,10 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.delete_services.usage import RefKind, SkipReason
+from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
+from tables.validators.trigger_payload_validator import validate_trigger_payload
 
 
 class ToolUsageSerializer(serializers.Serializer):
@@ -79,6 +82,13 @@ class RunSessionSerializer(serializers.Serializer):
         return attrs
 
 
+class SessionTestRunSerializer(serializers.Serializer):
+    graph_id = serializers.IntegerField()
+    node_type = serializers.ChoiceField(choices=sorted(TEST_RUN_STRATEGIES))
+    node_id = serializers.IntegerField()
+    payload = serializers.JSONField(validators=[validate_trigger_payload])
+
+
 class GetUpdatesSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
 
@@ -110,13 +120,13 @@ class BaseToolSerializer(serializers.Serializer):
         repr = {}
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
-            repr["data"] = PythonCodeToolSerializer(instance).data
+            repr["data"] = PythonCodeToolSerializer(instance, context=self.context).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
-            repr["data"] = McpToolSerializer(instance).data
+            repr["data"] = McpToolSerializer(instance, context=self.context).data
         elif isinstance(instance, PythonCodeToolConfig):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
-            repr["data"] = PythonCodeToolConfigSerializer(instance).data
+            repr["data"] = PythonCodeToolConfigSerializer(instance, context=self.context).data
         else:
             raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
@@ -148,6 +158,11 @@ class BulkExportSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="List of entity IDs",
     )
+
+    def validate_ids(self, ids: list[int]) -> list[int]:
+        # Callers compare the number of rows found against len(ids), so a
+        # repeated id would otherwise be reported as a missing entity.
+        return list(dict.fromkeys(ids))
 
 
 class BulkDeleteRequestSerializer(serializers.Serializer):
@@ -314,6 +329,14 @@ class SessionExportAllSerializer(serializers.Serializer):
     )
     node_name = serializers.CharField(required=False)
     is_error_cause = serializers.BooleanField(required=False)
+    id_search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text=(
+            "Keep sessions whose id contains this value (`12` matches 12, 112, 1203). "
+            "Blank means no filtering; a value with non-digits matches nothing."
+        ),
+    )
     created_at_after = serializers.DateTimeField(required=False)
     created_at_before = serializers.DateTimeField(required=False)
     finished_at_after = serializers.DateTimeField(required=False)
@@ -338,13 +361,30 @@ class InspectImportRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
 
 
+class CodeRunTargetSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=sorted(CODE_RUN_TARGETS))
+    id = serializers.IntegerField(min_value=1)
+
+
 class RunPythonCodeSerializer(serializers.Serializer):
+    """Exactly one of `target` (a code slot of a node, run as a real run would)
+    or `python_code_id` (the bare code, without the node's storage)."""
+
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="python_code",
+        required=False,
     )
+    target = CodeRunTargetSerializer(required=False)
     variables = serializers.DictField(
         child=serializers.JSONField(),
         required=False,
         default=dict,
     )
+
+    def validate(self, attrs):
+        if ("target" in attrs) == ("python_code" in attrs):
+            raise serializers.ValidationError(
+                "Provide exactly one of `target` or `python_code_id`."
+            )
+        return attrs

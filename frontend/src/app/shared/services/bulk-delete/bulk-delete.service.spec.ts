@@ -176,6 +176,140 @@ describe('BulkDeleteService', () => {
         expect(toast.warning).toHaveBeenCalledWith("Deleted 1 of 2 items. 1 couldn't be deleted.");
     });
 
+    describe('recycle bin', () => {
+        const recycleBin = { retentionDays: 30 };
+
+        function recycleGroup(mock: MockTarget, ids: number[]): BulkDeleteGroup {
+            return {
+                ...buildGroup(
+                    mock,
+                    ids.map((id) => ({ id, name: `Flow ${id}` }))
+                ),
+                recycleBin,
+            };
+        }
+
+        it('says the flows moved to the recycle bin when every deleted group is a recycle-bin group', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1, 2] })));
+            target.bulkDelete.mockReturnValue(of(buildResponse({ deleted_ids: [1, 2], deleted_count: 2 })));
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1, 2])]).subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Moved 2 flows to the recycle bin.');
+        });
+
+        it('uses the singular noun for one flow', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1] })));
+            target.bulkDelete.mockReturnValue(of(buildResponse({ deleted_ids: [1], deleted_count: 1 })));
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1])]).subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Moved 1 flow to the recycle bin.');
+        });
+
+        it('pluralizes by the moved count when one of two requested flows was already gone', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1, 2] })));
+            target.bulkDelete.mockReturnValue(
+                of(buildResponse({ deleted_ids: [1], deleted_count: 1, not_found_ids: [2] }))
+            );
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1, 2])]).subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Moved 1 flow to the recycle bin.');
+        });
+
+        it('keeps the partial-success warning consistent with the recycle-bin wording', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1, 2, 3] })));
+            target.bulkDelete.mockReturnValue(
+                of(
+                    buildResponse({
+                        deleted_ids: [1],
+                        deleted_count: 1,
+                        skipped: [
+                            { id: 2, reason: 'in_use_restricted' },
+                            { id: 3, reason: 'in_use_restricted' },
+                        ],
+                    })
+                )
+            );
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1, 2, 3])]).subscribe();
+
+            expect(toast.warning).toHaveBeenCalledWith("Moved 1 of 3 flows to the recycle bin. 2 couldn't be moved.");
+        });
+
+        it('keeps "Already deleted." when the flow was gone before the real delete', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1] })));
+            target.bulkDelete.mockReturnValue(of(buildResponse({ not_found_ids: [1] })));
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1])]).subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Already deleted.');
+        });
+
+        it('reports a failed recycle-bin delete without claiming a permanent delete', () => {
+            configure();
+            const target = createTarget();
+            target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1] })));
+            target.bulkDelete.mockReturnValue(throwError(() => new Error('boom')));
+            mockDialogResult(true);
+
+            service.run([recycleGroup(target, [1])]).subscribe();
+
+            expect(toast.error).toHaveBeenCalledWith('Failed to move to the recycle bin.');
+        });
+
+        it('says "Deleted" when a deleted group is not a recycle-bin group', () => {
+            configure();
+            const recycleTarget = createTarget();
+            const permanentTarget = createTarget();
+            recycleTarget.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1] })));
+            permanentTarget.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [2] })));
+            recycleTarget.bulkDelete.mockReturnValue(of(buildResponse({ deleted_ids: [1], deleted_count: 1 })));
+            permanentTarget.bulkDelete.mockReturnValue(of(buildResponse({ deleted_ids: [2], deleted_count: 1 })));
+            mockDialogResult(true);
+
+            service
+                .run([recycleGroup(recycleTarget, [1]), buildGroup(permanentTarget, [{ id: 2, name: 'Config' }])])
+                .subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Deleted 2 items.');
+        });
+
+        it('ignores a recycle-bin group that had nothing to delete when wording the toast', () => {
+            configure();
+            const recycleTarget = createTarget();
+            const permanentTarget = createTarget();
+            recycleTarget.previewBulkDelete.mockReturnValue(
+                of(buildResponse({ skipped: [{ id: 1, reason: 'protected' }] }))
+            );
+            permanentTarget.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [2] })));
+            permanentTarget.bulkDelete.mockReturnValue(of(buildResponse({ deleted_ids: [2], deleted_count: 1 })));
+            mockDialogResult(true);
+
+            service
+                .run([recycleGroup(recycleTarget, [1]), buildGroup(permanentTarget, [{ id: 2, name: 'Config' }])])
+                .subscribe();
+
+            expect(toast.success).toHaveBeenCalledWith('Deleted 1 item.');
+        });
+    });
+
     it('shows a success toast naming the singular/plural label when everything is deleted', () => {
         configure();
         const target = createTarget();
@@ -190,6 +324,24 @@ describe('BulkDeleteService', () => {
         service.run([buildGroup(target, items)]).subscribe();
 
         expect(toast.success).toHaveBeenCalledWith('Deleted 2 flows.');
+    });
+
+    it('pluralizes by the deleted count when one of two requested flows was already gone', () => {
+        configure();
+        const target = createTarget();
+        target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1, 2] })));
+        target.bulkDelete.mockReturnValue(
+            of(buildResponse({ deleted_ids: [1], deleted_count: 1, not_found_ids: [2] }))
+        );
+        mockDialogResult(true);
+
+        const items = [
+            { id: 1, name: 'Alpha' },
+            { id: 2, name: 'Beta' },
+        ];
+        service.run([buildGroup(target, items)]).subscribe();
+
+        expect(toast.success).toHaveBeenCalledWith('Deleted 1 flow.');
     });
 
     it('shows a success "Already deleted." toast when the real delete reports the item as not_found', () => {

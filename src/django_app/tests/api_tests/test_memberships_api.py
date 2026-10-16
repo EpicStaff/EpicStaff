@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import OrganizationUser, Role, RolePermission
-from rbac.models.enums import Permission
+from rbac.models.enums import BuiltInRole, Permission
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -80,15 +80,9 @@ def test_list_forbidden_org_ids_403(client_as, admin_acme, beta):
 
 
 @pytest.mark.django_db
-def test_list_bad_role_id_400(client_as, admin_acme):
-    resp = client_as(admin_acme).get(LIST_URL + "?role_id=abc")
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "invalid"
-
-
-@pytest.mark.django_db
-def test_list_bad_status_400(client_as, admin_acme):
-    resp = client_as(admin_acme).get(LIST_URL + "?status=Active")
+@pytest.mark.parametrize("query", ["role_id=abc", "status=Active"])
+def test_list_rejects_malformed_filters(client_as, admin_acme, query):
+    resp = client_as(admin_acme).get(f"{LIST_URL}?{query}")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert resp.json()["code"] == "invalid"
 
@@ -112,120 +106,63 @@ def test_list_superadmin_sees_all(
 
 
 @pytest.mark.django_db
-def test_add_member_by_email(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    django_user_model.objects.create_user(email="new@x.com", password="StrongPass123!")
+@pytest.mark.parametrize("identify_by", ["email", "user_id"])
+def test_add_member(client_as, admin_acme, acme, role_member, django_user_model, identify_by):
+    target = django_user_model.objects.create_user(email="new@x.com", password="StrongPass123!")
+    identity = {"email": target.email} if identify_by == "email" else {"user_id": target.id}
+
     resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "new@x.com", "role_id": role_member.id},
-        format="json",
+        LIST_URL, {"org_id": acme.id, "role_id": role_member.id, **identity}, format="json"
     )
+
     assert resp.status_code == status.HTTP_201_CREATED
     assert resp.json()["user"]["email"] == "new@x.com"
+    assert OrganizationUser.objects.filter(user=target, org=acme, role=role_member).exists()
+
+
+def _superadmin_role():
+    return Role.objects.get(name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True)
 
 
 @pytest.mark.django_db
-def test_add_member_by_user_id(
-    client_as, admin_acme, acme, role_member, django_user_model
+@pytest.mark.parametrize(
+    ("target", "body", "status_code", "code"),
+    [
+        (None, {"email": "nobody@x.com"}, 404, "user_not_found"),
+        ({"member_of_acme": True}, {"email": "t@x.com"}, 400, "membership_already_exists"),
+        # An org the caller cannot see is not found, never forbidden.
+        ({}, {"email": "t@x.com", "org": "beta"}, 404, None),
+        ({}, {}, 400, "invalid"),
+        ({}, {"email": "t@x.com", "user_id": "target"}, 400, None),
+        ({}, {"email": "t@x.com", "role": "superadmin"}, 400, "invalid_role_assignment"),
+        ({"is_superadmin": True}, {"email": "t@x.com"}, 400, "superadmin_not_assignable"),
+        ({"is_superadmin": True}, {"user_id": "target"}, 400, "superadmin_not_assignable"),
+        ({"is_active": False}, {"email": "t@x.com"}, 400, "user_not_active"),
+    ],
+    ids=["unknown-email", "already-member", "invisible-org", "no-user", "email-and-user-id",
+         "superadmin-role", "superadmin-by-email", "superadmin-by-id", "inactive-user"],
+)
+def test_add_member_is_refused(
+    client_as, admin_acme, acme, beta, role_member, django_user_model, target, body, status_code, code
 ):
-    target = django_user_model.objects.create_user(
-        email="byid@x.com", password="StrongPass123!"
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "user_id": target.id, "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_201_CREATED
+    user = None
+    if target is not None:
+        member_of_acme = target.pop("member_of_acme", False)
+        user = django_user_model.objects.create_user(email="t@x.com", password="StrongPass123!", **target)
+        if member_of_acme:
+            OrganizationUser.objects.create(user=user, org=acme, role=role_member)
+    org = beta if body.pop("org", None) == "beta" else acme
+    role = _superadmin_role() if body.pop("role", None) == "superadmin" else role_member
+    if body.get("user_id") == "target":
+        body["user_id"] = user.id
+    memberships_before = OrganizationUser.objects.count()
 
+    resp = client_as(admin_acme).post(LIST_URL, {"org_id": org.id, "role_id": role.id, **body}, format="json")
 
-@pytest.mark.django_db
-def test_add_unknown_email_404(client_as, admin_acme, acme, role_member):
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "nobody@x.com", "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "user_not_found"
-
-
-@pytest.mark.django_db
-def test_add_duplicate_400(client_as, admin_acme, acme, role_member, django_user_model):
-    target = django_user_model.objects.create_user(
-        email="dup@x.com", password="StrongPass123!"
-    )
-    OrganizationUser.objects.create(user=target, org=acme, role=role_member)
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "dup@x.com", "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "membership_already_exists"
-
-
-@pytest.mark.django_db
-def test_add_to_org_caller_cannot_see_404(
-    client_as, admin_acme, beta, role_member, django_user_model
-):
-    django_user_model.objects.create_user(email="x@x.com", password="StrongPass123!")
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": beta.id, "email": "x@x.com", "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_404_NOT_FOUND
-
-
-@pytest.mark.django_db
-def test_add_missing_email_and_user_id_400(client_as, admin_acme, acme, role_member):
-    resp = client_as(admin_acme).post(
-        LIST_URL, {"org_id": acme.id, "role_id": role_member.id}, format="json"
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "invalid"
-
-
-@pytest.mark.django_db
-def test_add_both_email_and_user_id_400(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    target = django_user_model.objects.create_user(
-        email="both@x.com", password="StrongPass123!"
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {
-            "org_id": acme.id,
-            "email": "both@x.com",
-            "user_id": target.id,
-            "role_id": role_member.id,
-        },
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_add_global_superadmin_role_400(client_as, admin_acme, acme, django_user_model):
-    from rbac.models import Role
-    from rbac.models.enums import BuiltInRole
-
-    sa_role = Role.objects.get(
-        name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
-    )
-    django_user_model.objects.create_user(
-        email="sarole@x.com", password="StrongPass123!"
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "sarole@x.com", "role_id": sa_role.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "invalid_role_assignment"
+    assert resp.status_code == status_code
+    if code:
+        assert resp.json()["code"] == code
+    assert OrganizationUser.objects.count() == memberships_before
 
 
 # ---- change role ----
@@ -313,57 +250,6 @@ def test_remove_last_admin_allowed_for_superadmin(
 
 
 # ---- assignable-target guards ----
-
-
-@pytest.mark.django_db
-def test_add_superadmin_by_email_400(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    django_user_model.objects.create_user(
-        email="sa-target@x.com", password="StrongPass123!", is_superadmin=True
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "sa-target@x.com", "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "superadmin_not_assignable"
-    assert not OrganizationUser.objects.filter(
-        user__email="sa-target@x.com", org=acme
-    ).exists()
-
-
-@pytest.mark.django_db
-def test_add_superadmin_by_user_id_400(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    target = django_user_model.objects.create_user(
-        email="sa-byid@x.com", password="StrongPass123!", is_superadmin=True
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "user_id": target.id, "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "superadmin_not_assignable"
-
-
-@pytest.mark.django_db
-def test_add_inactive_user_400(
-    client_as, admin_acme, acme, role_member, django_user_model
-):
-    django_user_model.objects.create_user(
-        email="off@x.com", password="StrongPass123!", is_active=False
-    )
-    resp = client_as(admin_acme).post(
-        LIST_URL,
-        {"org_id": acme.id, "email": "off@x.com", "role_id": role_member.id},
-        format="json",
-    )
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "user_not_active"
 
 
 @pytest.mark.django_db
@@ -496,130 +382,68 @@ def acme_membership(db, member_only, acme):
     return OrganizationUser.objects.get(user=member_only, org=acme)
 
 
+def _custom_role(acme, name, resource_type, permission):
+    role = Role.objects.create(name=name, org=acme, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type=resource_type, permissions=int(permission))
+    return role
+
+
 @pytest.mark.django_db
-def test_assign_built_in_org_admin_above_ceiling_is_403(
-    client_as, member_manager, acme_membership, role_org_admin, role_member
+@pytest.mark.parametrize(
+    ("caller", "new_role", "allowed"),
+    [
+        # Managing memberships must not let you mint an Org Admin whose powers you lack.
+        ("member_manager", "org_admin", False),
+        # Deliberate: Viewer grants workspace read bits this caller does not hold.
+        ("member_manager", "viewer", False),
+        # Not a built-in special case: an over-ceiling custom role is refused the same way.
+        ("member_manager", "custom-flows-create", False),
+        ("member_manager", "custom-memberships-read", True),
+        # Equality is within the ceiling.
+        ("admin_acme", "org_admin", True),
+        # Viewer has a USE bit on flows that Org Admin lacks; only grantable bits are compared.
+        ("admin_acme", "viewer", True),
+        ("superadmin", "org_admin", True),
+    ],
+)
+def test_role_assignment_is_capped_at_the_callers_own_authority(
+    request, client_as, acme_membership, acme, role_member, role_org_admin, role_viewer, caller, new_role, allowed
 ):
-    """The reported bug: managing memberships must not let you mint an
-    Org Admin whose powers you do not hold."""
-    resp = client_as(member_manager).patch(
-        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
+    role = {
+        "org_admin": role_org_admin,
+        "viewer": role_viewer,
+        "custom-flows-create": lambda: _custom_role(acme, "Flow Owner-mc", "flows", Permission.CREATE),
+        "custom-memberships-read": lambda: _custom_role(acme, "Peer Manager-mc", "memberships", Permission.READ),
+    }[new_role]
+    role = role() if callable(role) else role
+
+    resp = client_as(request.getfixturevalue(caller)).patch(
+        detail_url(acme_membership.id), {"role_id": role.id}, format="json"
     )
 
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_escalation_denied"
     acme_membership.refresh_from_db()
-    assert acme_membership.role_id == role_member.id
+    if allowed:
+        assert resp.status_code == status.HTTP_200_OK
+        assert acme_membership.role_id == role.id
+    else:
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.json()["code"] == "permission_escalation_denied"
+        assert acme_membership.role_id == role_member.id
 
 
 @pytest.mark.django_db
 def test_add_member_with_role_above_ceiling_is_403(
     client_as, member_manager, acme, role_org_admin, django_user_model
 ):
-    newcomer = django_user_model.objects.create_user(
-        email="newcomer-mc@example.com", password="StrongPass123!"
-    )
+    newcomer = django_user_model.objects.create_user(email="newcomer-mc@example.com", password="StrongPass123!")
 
     resp = client_as(member_manager).post(
-        LIST_URL,
-        {"org_id": acme.id, "user_id": newcomer.id, "role_id": role_org_admin.id},
-        format="json",
+        LIST_URL, {"org_id": acme.id, "user_id": newcomer.id, "role_id": role_org_admin.id}, format="json"
     )
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
     assert resp.json()["code"] == "permission_escalation_denied"
     assert not OrganizationUser.objects.filter(user=newcomer, org=acme).exists()
-
-
-@pytest.mark.django_db
-def test_assign_built_in_viewer_above_ceiling_is_403(
-    client_as, member_manager, acme_membership, role_viewer
-):
-    """Deliberate, not a bug: Viewer grants workspace read bits this caller
-    does not hold, so a strict-subset ceiling refuses it. A role that must
-    onboard people has to hold the bits it hands out."""
-    resp = client_as(member_manager).patch(
-        detail_url(acme_membership.id), {"role_id": role_viewer.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_escalation_denied"
-
-
-@pytest.mark.django_db
-def test_assign_custom_role_above_ceiling_is_403(
-    client_as, member_manager, acme_membership, acme
-):
-    """The rule is not a built-in special case -- a custom role that exceeds
-    the caller is refused the same way."""
-    powerful = Role.objects.create(name="Flow Owner-mc", org=acme, is_built_in=False)
-    RolePermission.objects.create(
-        role=powerful, resource_type="flows", permissions=int(Permission.CREATE)
-    )
-
-    resp = client_as(member_manager).patch(
-        detail_url(acme_membership.id), {"role_id": powerful.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_escalation_denied"
-
-
-@pytest.mark.django_db
-def test_assign_role_within_ceiling_succeeds(
-    client_as, member_manager, acme_membership, acme
-):
-    """A role whose bits the caller does hold is assignable."""
-    peer = Role.objects.create(name="Peer Manager-mc", org=acme, is_built_in=False)
-    RolePermission.objects.create(
-        role=peer, resource_type="memberships", permissions=int(Permission.READ)
-    )
-
-    resp = client_as(member_manager).patch(
-        detail_url(acme_membership.id), {"role_id": peer.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_200_OK
-    acme_membership.refresh_from_db()
-    assert acme_membership.role_id == peer.id
-
-
-@pytest.mark.django_db
-def test_org_admin_can_assign_org_admin(
-    client_as, admin_acme, acme_membership, role_org_admin
-):
-    """Equality is within the ceiling."""
-    resp = client_as(admin_acme).patch(
-        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-def test_org_admin_can_assign_viewer(
-    client_as, admin_acme, acme_membership, role_viewer
-):
-    """Viewer carries a USE bit on flows that Org Admin lacks. Comparing raw
-    bitmasks would refuse this; the ceiling compares grantable bits only."""
-    resp = client_as(admin_acme).patch(
-        detail_url(acme_membership.id), {"role_id": role_viewer.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_200_OK
-    acme_membership.refresh_from_db()
-    assert acme_membership.role_id == role_viewer.id
-
-
-@pytest.mark.django_db
-def test_superadmin_bypasses_the_ceiling(
-    client_as, superadmin, acme_membership, role_org_admin
-):
-    resp = client_as(superadmin).patch(
-        detail_url(acme_membership.id), {"role_id": role_org_admin.id}, format="json"
-    )
-
-    assert resp.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db

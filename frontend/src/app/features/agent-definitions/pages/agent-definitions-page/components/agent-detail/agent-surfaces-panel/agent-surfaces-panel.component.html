@@ -131,6 +131,7 @@
                                     type="text"
                                     class="surface-item__name-input"
                                     placeholder="e.g. CV Screener"
+                                    maxlength="255"
                                     [ngModel]="draftName()"
                                     (ngModelChange)="draftName.set($event)"
                                     appEnterBlur

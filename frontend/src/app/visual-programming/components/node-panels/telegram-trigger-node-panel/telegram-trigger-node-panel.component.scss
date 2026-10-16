@@ -60,6 +60,13 @@
         height: 100%;
         min-height: 0;
     }
+    .payload-pane {
+        flex: 1;
+        min-height: 0;
+        border: 1px solid var(--color-divider-subtle);
+        overflow: hidden;
+        @include mixins.editor-pane-corner;
+    }
 }
 
 .form-data {
@@ -77,41 +84,9 @@
 @include mixins.field-isolated-spacing;
 
 .code-editor-section {
-    font-size: 0.875rem;
-    color: var(--white-alpha-70);
     display: flex;
     flex-direction: column;
-    height: 300px;
     flex-shrink: 0;
-
-    .json-wrapper {
-        margin-top: 0.75rem;
-        flex-grow: 1;
-    }
-
-    &__info {
-        display: flex;
-        align-items: center;
-        font-size: 0.75rem;
-        color: var(--fog-alpha-80);
-        opacity: 0.7;
-    }
-
-    &__info-icon {
-        font-size: 0.875rem;
-        width: 14px;
-        height: 14px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 0;
-        vertical-align: middle;
-    }
-
-    &__info-link {
-        color: var(--accent-color);
-        margin: 0 0.25rem;
-    }
 }
 
 .webhook-section {
@@ -214,6 +189,32 @@
 
     &__item-tip {
         color: var(--fog-alpha-38-flat);
+    }
+
+    // Link to the Telegram field models, under the picked fields; the section's row-gap spaces it.
+    &__info {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        font-size: 0.75rem;
+        color: var(--fog-alpha-80);
+        opacity: 0.7;
+    }
+
+    &__info-icon {
+        font-size: 0.875rem;
+        width: 14px;
+        height: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        vertical-align: middle;
+    }
+
+    &__info-link {
+        color: var(--accent-color);
+        margin: 0 0.25rem;
     }
 }
 
