@@ -2,7 +2,7 @@
 
 How a credential reaches user code inside the `sandbox` container, and how it is kept out of
 that code's output on the way back. Covers `get_secret()`, environment-based delivery, the
-runtime allow-list, and the `MASK_SECRET` output scrubber.
+runtime allow-list, and the output scrubber gated by `SANDBOX_MASK_SECRET`.
 
 For storage, encryption and the resolver see
 [DEV_secrets_backend_guide.md](DEV_secrets_backend_guide.md).
@@ -143,22 +143,31 @@ things: `stdout`, `stderr`, and the return value. So the filter sits at the one 
 holds both the plaintext and the raw output, and all six get clean data with no change
 anywhere else.
 
-`ExecuteCodeHandler.handle`, right after `communicate()`:
+`ExecuteCodeHandler.handle` builds the set of values to mask once, before the process starts,
+and scrubs every stream with it right after `communicate()`:
 
 ```python
-secrets = context.get("secrets") or {}
-# Resolved once for the whole result rather than per stream, so stdout,
-# stderr and result_data cannot disagree about whether this run was masked.
-mask_secrets = masking_enabled()
-if mask_secrets:
-    stderr = scrub(text=stderr, secrets=secrets)
-    stdout = scrub(text=stdout, secrets=secrets)
+# User secrets join the masking set only when masking is on; the
+# per-execution storage credentials are masked unconditionally.
+masking_values = build_masking_values(
+    (context.get("secrets") or {}) if masking_enabled() else {},
+    {
+        "STORAGE_ACCESS_KEY": context.get("temp_storage_access_key"),
+        "STORAGE_SECRET_KEY": context.get("temp_storage_secret_key"),
+    },
+)
+...
+stderr = scrub(text=stderr, secrets=masking_values)
+stdout = scrub(text=stdout, secrets=masking_values)
 
 # Logged after scrubbing, so the container log never holds a value the
 # response withheld.
 if stderr:
     logger.info("Error: {}", stderr)
 ```
+
+Because the set is resolved once for the whole result, stdout, stderr and `result_data`
+cannot disagree about whether this run was masked. The timeout path reuses the same set.
 
 The result file gets the same treatment, assigned *into* `result_data` rather than over it,
 so if scrubbing ever raised, the swallowing `except` leaves `result_data` as `None` instead
@@ -174,47 +183,61 @@ of returning the raw value.
 | Both the raw value **and** its JSON-escaped form are matched | `result_data` is the return value under `json.dumps`, so a value containing a quote, backslash or non-ASCII character appears there only escaped. |
 | Literals sorted **longest first** | If one value is a substring of another and the shorter is replaced first, the longer value's tail is left sitting beside the mask. |
 | One compiled regex, one pass | The first version called `str.replace` per literal, which rescans and re-copies the whole text for every secret. Every literal goes through `re.escape` — a value like `sk-live.*x` must match as plain text. |
-| `scrub()` is unconditional | The `MASK_SECRET` check lives at the call site, so the flag is read in exactly one visible place. A caller that forgets it over-masks, which is the harmless direction. |
+| `scrub()` is unconditional | The `SANDBOX_MASK_SECRET` check lives at the call site (`masking_enabled()` deciding whether user secrets join the masking set), so the flag is read in exactly one visible place. A caller that forgets it over-masks, which is the harmless direction. |
 
-### 4.2 `MASK_SECRET`
+### 4.2 `SANDBOX_MASK_SECRET`
 
-Set on the `sandbox` service; defaults to on.
+A required variable on the `sandbox` service. Compose passes it through with no default, and
+`:?` aborts on an unset **or empty** value, so an `.env` that lacks it or leaves it blank fails
+at `docker compose up`:
 
 ```yaml
 # src/docker-compose.yaml
 sandbox:
   environment:
-    # Defaults to true so an .env without this line still redacts secrets.
-    MASK_SECRET: ${MASK_SECRET:-true}
+    SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
 ```
 
-Declared in `src/env.yaml` and generated into `src/.env` / `src/.env.example` —
-**edit `env.yaml` and run `python scripts/envtool.py`**, never the generated files.
+Declared in `src/env.yaml` (default `true` for production, `false` for development) and
+generated into `src/.env` / `src/.env.example` — **edit `env.yaml` and run
+`python scripts/envtool.py`** (`--dev` for development defaults), never the generated files.
 
-**The polarity is deliberately inverted** from every other boolean in the codebase. Others
-read `os.getenv(X, "False") in ["True", "true"]` — absent means off. This one is opt-**out**:
+`src/sandbox/settings.py` reads it once at import time:
 
 ```python
-_DISABLING_VALUES = frozenset({"false", "0", "no", "off", "f", "n"})
-
-
-def masking_enabled() -> bool:
-    raw = os.environ.get(MASK_SECRET_ENV_VAR)
-    if raw is None:
-        return True
-    return raw.strip().lower() not in _DISABLING_VALUES
+MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")
 ```
 
-So a missing, empty, or **misspelled** value still masks — `MASK_SECRET=flase` is safe.
-Only an explicitly recognised false disables it.
+`secret_scrubber.masking_enabled()` returns `settings.MASK_SECRET`.
 
-The sandbox announces the setting once at startup, at `warning` level when masking is off, so
-disabling it leaves a trace in the logs rather than being inferred from output that quietly
-stopped being redacted.
+`Env.bool` (`src/shared/envtools.py`) is **strict**, for this flag and every other one. The
+value is compared case-insensitively after stripping whitespace, and anything outside the two
+accepted lists stops the sandbox at startup with a `ValueError` naming the variable:
 
-> **Setting it false is a development affordance only.** Plaintext credentials then reach
+| Value | Masking | At startup |
+|---|---|---|
+| `false`, `0`, `no`, `off`, `n`, `f` | **off** | `warning`: masking is OFF |
+| `true`, `1`, `yes`, `on`, `y`, `t` | on | `info`: masking is ON |
+| anything else — a typo (`flase`, `ture`), `enabled`, `none` | — | the sandbox does not start: `ValueError` |
+| empty — reachable only outside compose (a local run reading `src/.env`), since `:?` rejects an empty value | — | the sandbox does not start: `ValueError` |
+| unset | — | the sandbox does not start: `EnvironmentNotFoundError` (under compose, `docker compose up` fails first) |
+
+So a misspelled value can never switch masking off: `SANDBOX_MASK_SECRET=flase` fails startup
+instead of reading as False. `none` is no exception — other `Env` readers turn it into `None`,
+but `Env.bool` rejects it, because a `None` flag is falsy. Only an explicit false disables
+masking.
+
+`SANDBOX_REQUIRE_ISOLATION` is read the same way, into `settings.REQUIRE_ISOLATION`, with no
+in-code default: unset or malformed fails startup like every other sandbox flag.
+
+The sandbox announces the setting once at startup (`main.log_secret_masking_state`, called
+from `main.init`), at `warning` level when masking is off, so disabling it leaves a trace in
+the logs rather than being inferred from output that quietly stopped being redacted.
+
+> **Setting it false is a development affordance only.** Plaintext user secrets then reach
 > execution results, the SSE stream, the LLM's tool observation, persisted
-> `PythonCodeResult` rows and both containers' logs.
+> `PythonCodeResult` rows and both containers' logs. The per-execution storage credentials
+> stay masked either way.
 
 ### 4.3 What masking does not do
 
@@ -232,9 +255,7 @@ boundary. It is a safety net.
 The sandbox suites are not under `src/django_app` and need their own invocation:
 
 ```bash
-cd src/sandbox
-PYTHONPATH=<repo-root>:<repo-root>/src/shared \
-  ../django_app/venv/bin/python -m pytest tests/ -q
+make sandbox-tests ARGS="-q"   # from the repo root
 ```
 
 Two tests in `tests/chain_tests/test_dynamic_venv_executor_chain.py` are Docker-only and
@@ -242,8 +263,12 @@ always fail on the host — that is the expected baseline, not a regression.
 
 | File | Covers |
 |---|---|
-| `tests/chain_tests/test_execute_code_handler_env.py` | `build_env`, the disk-leak guard, `get_secret` end to end, output masking through the real handler, and the `MASK_SECRET` switch |
-| `tests/chain_tests/test_secret_scrubber.py` | `masking_enabled()` parsing, mask behavior, JSON-escaped forms, overlapping values, regex metacharacters |
+| `tests/chain_tests/test_execute_code_handler_env.py` | `build_env`, the disk-leak guard, `get_secret` end to end, output masking through the real handler, and the `SANDBOX_MASK_SECRET` switch |
+| `tests/chain_tests/test_secret_scrubber.py` | mask behavior, JSON-escaped forms, overlapping values, regex metacharacters |
+| `tests/chain_tests/test_security_flag_settings.py` | `SANDBOX_MASK_SECRET` and `SANDBOX_REQUIRE_ISOLATION` parsed through the real settings module: explicit true and false values, and a typo, empty, `none` or unset value failing startup |
+
+The full value table of `Env.bool` is in
+`src/django_app/tests/settings_tests/test_env_bool.py`, next to the other `Env` tests.
 
 The switch is tested at the handler level rather than through `scrub()`, because `scrub()` no
 longer consults the flag — testing it there would prove nothing.

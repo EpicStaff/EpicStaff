@@ -26,7 +26,8 @@ def _to_json_object(value: str) -> dict:
 
 
 class Env:
-    BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
+    BOOLEAN_TRUE_VALUES = frozenset({"1", "t", "y", "yes", "true", "on"})
+    BOOLEAN_FALSE_VALUES = frozenset({"0", "f", "n", "no", "false", "off"})
     NONE_VALUE = "none"
 
     def __init__(self):
@@ -226,22 +227,39 @@ class Env:
         """
         return self.get_value(variable, default, float)
 
-    def bool(self, variable: str, default: bool | EllipsisType = ...) -> bool | None:
-        """Read an environment variable as a bool.
+    def bool(self, variable: str, default: bool | EllipsisType = ...) -> bool:
+        """Read an environment variable as a strict bool.
+
+        The value is compared case-insensitively after stripping whitespace and must be
+        one of ``BOOLEAN_TRUE_VALUES`` or ``BOOLEAN_FALSE_VALUES``. Anything else -- a
+        typo, an empty string, and also the ``none`` value that other readers turn into
+        None -- is rejected, so a misconfigured flag fails startup instead of silently
+        reading as False and switching off whatever it guards.
 
         Args:
             variable: Name of the environment variable to read.
-            default: Value returned when the variable is missing.
+            default: Value returned as is when the variable is missing.
 
-        Returns:
-            True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
-            variable holds the ``none`` value.
+        Raises:
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
+            ValueError: The variable is set to a value that is neither true nor false.
         """
+        value = self._envs.get(variable)
+        if value is None:
+            if default is not ...:
+                return default
+            raise EnvironmentNotFoundError(f"Not found environment: {variable}.")
 
-        def cast(value: str) -> bool:
-            return value.lower() in self.BOOLEAN_TRUE_VALUES
-
-        return self.get_value(variable, default, cast)
+        normalised = value.strip().lower()
+        if normalised in self.BOOLEAN_TRUE_VALUES:
+            return True
+        if normalised in self.BOOLEAN_FALSE_VALUES:
+            return False
+        raise ValueError(
+            f"Environment variable {variable}={value!r} is not a boolean. Use one of "
+            f"{', '.join(sorted(self.BOOLEAN_TRUE_VALUES))} for true or "
+            f"{', '.join(sorted(self.BOOLEAN_FALSE_VALUES))} for false (case-insensitive)."
+        )
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
         """Read an environment variable as a str.

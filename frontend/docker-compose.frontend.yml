@@ -10,11 +10,16 @@ services:
     environment:
       # Absolute on purpose: this standalone frontend has no reverse proxy, so the browser
       # reaches django/realtime directly. Use localhost (not 127.0.0.1) to stay same-site
-      # with the app on :4200 so the SameSite=Lax refresh cookie is kept.
-      API_URL: ${API_URL}
-      REALTIME_API_URL: ${REALTIME_API_URL}
-      AUDITOR_API_URL: ${AUDITOR_API_URL}
-      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:-false}
+      # with the app on :4200 so the SameSite=Lax refresh cookie is kept. All four are
+      # required; with the backend on its default ports, for example:
+      #   API_URL=http://localhost:8000/api/
+      #   REALTIME_API_URL=http://localhost:8050/realtime/
+      #   AUDITOR_API_URL=http://localhost:8060/
+      #   AUDIT_TRAIL_ENABLED=false
+      API_URL: ${API_URL:?}
+      REALTIME_API_URL: ${REALTIME_API_URL:?}
+      AUDITOR_API_URL: ${AUDITOR_API_URL:?}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
 
 networks:
   frontend-network:

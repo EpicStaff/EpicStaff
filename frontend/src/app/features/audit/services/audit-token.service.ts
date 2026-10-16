@@ -1,5 +1,6 @@
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { catchError, finalize, map, Observable, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
 
 import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
@@ -11,11 +12,17 @@ interface AuditTokenResponse {
     expires_in: number;
 }
 
+// Cleared on logout and org switch (APP_STORAGE): the token belongs to one user and one org.
 @Injectable({ providedIn: 'root' })
-export class AuditTokenService {
+export class AuditTokenService implements StorageService {
     private http = inject(HttpClient);
-    private authService = inject(AuthService);
+    private injector = inject(Injector);
     private configService = inject(ConfigService);
+
+    // Resolved on use, not injected: AuthService reaches APP_STORAGE, which lists this service — a DI cycle.
+    private get authService(): AuthService {
+        return this.injector.get(AuthService);
+    }
 
     private static readonly REFRESH_MARGIN_MS = 30_000;
 
@@ -60,6 +67,12 @@ export class AuditTokenService {
         );
 
         return this.pending$;
+    }
+
+    clear(): void {
+        this.cachedToken = null;
+        this.expiresAt = 0;
+        this.pending$ = null;
     }
 
     private mintToken(accessToken: string): Observable<AuditTokenResponse> {

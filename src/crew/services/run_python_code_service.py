@@ -102,7 +102,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_message)
-            logger.info("Waiting for code_results")
+            logger.debug("Waiting for code_results")
 
             event_loop = asyncio.get_running_loop()
             timeout = settings.CODE_RESULT_TIMEOUT
@@ -141,4 +141,4 @@ class RunPythonCallbackReceiver:
         code_result_data = CodeResultData.model_validate_json(message["data"])
         if code_result_data.execution_id == self.execution_id:
             self.results = code_result_data.model_dump()
-            logger.info(f"Received code result for execution ID: {self.execution_id}")
+            logger.debug("Received code result for execution ID: {}", self.execution_id)

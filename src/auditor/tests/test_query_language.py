@@ -2,9 +2,11 @@ import pytest
 
 from app.domains.sessions.computed import SESSIONS_COMPUTED
 from app.domains.sessions.fields import SESSIONS_FIELDS
-from app.filtering.ast import FilterValidationError, validate_filter_node
+from app.filtering.ast import FilterParseError, FilterValidationError, validate_filter_node
 from app.filtering.computed import split_computed_leaves
 from app.filtering.query_language import ast_to_query_text, parse_query
+from app.domains.base import DEFAULT_SCOPING
+from app.repositories.compiler import QueryCompiler
 
 QUERIES = {
     'status in ["error", "warning"] or tool in ["Web_Search_Tool", "Notification_Tool"]': {
@@ -47,6 +49,27 @@ QUERIES = {
     },
     "serper": {"field": "__text__", "op": "contains", "value": "serper"},
     "text: serper": {"field": "__text__", "op": "contains", "value": "serper"},
+    'name starts with "Session"': {"field": "name", "op": "starts_with", "value": "Session"},
+    "name STARTS WITH Session": {"field": "name", "op": "starts_with", "value": "Session"},
+    "name ends with Finish": {"field": "name", "op": "ends_with", "value": "Finish"},
+    "details.retry_count exists": {"field": "details.retry_count", "op": "key_exists"},
+    "details.retry_count NOT EXISTS": {"field": "details.retry_count", "op": "key_not_exists"},
+    'status not in ("completed", "failed")': {
+        "field": "status",
+        "op": "not_in",
+        "value": ["completed", "failed"],
+    },
+    "not details.retry_count exists and name ends with 3": {
+        "op": "and",
+        "children": [
+            {"op": "not", "child": {"field": "details.retry_count", "op": "key_exists"}},
+            {"field": "name", "op": "ends_with", "value": 3},
+        ],
+    },
+    # Keywords of the new operators stay ordinary free-text words on their own.
+    "starts": {"field": "__text__", "op": "contains", "value": "starts"},
+    "exists": {"field": "__text__", "op": "contains", "value": "exists"},
+    'text: "starts with"': {"field": "__text__", "op": "contains", "value": "starts with"},
 }
 
 
@@ -60,6 +83,64 @@ def test_filter_tree_prints_back_to_an_equivalent_query(query):
     ast = parse_query(query)
 
     assert parse_query(ast_to_query_text(ast)) == ast
+
+
+@pytest.mark.parametrize(
+    ("node", "expected_text"),
+    [
+        ({"field": "name", "op": "starts_with", "value": "Session"}, 'name starts with "Session"'),
+        ({"field": "name", "op": "ends_with", "value": "Finish"}, 'name ends with "Finish"'),
+        ({"field": "details.retry_count", "op": "key_exists"}, "details.retry_count exists"),
+        ({"field": "details.retry_count", "op": "key_not_exists"}, "details.retry_count not exists"),
+        (
+            {"field": "details.retry_count", "op": "key_not_equals", "value": 3},
+            "details.retry_count != 3",
+        ),
+    ],
+)
+def test_builder_only_ops_print_as_query_text(node, expected_text):
+    assert ast_to_query_text(node) == expected_text
+
+
+def _compiled_leaf(node) -> dict:
+    compiler = QueryCompiler(SESSIONS_FIELDS, DEFAULT_SCOPING)
+    return compiler.compile(node, org_id=1, retention_days=0)["bool"]["filter"][0]
+
+
+@pytest.mark.parametrize(
+    ("node", "expected_clause"),
+    [
+        (
+            {"field": "details.retry_count", "op": "key_not_equals", "value": 3},
+            {"bool": {"must_not": [{"term": {"details.retry_count": 3}}]}},
+        ),
+        (
+            {"field": "input", "op": "key_not_equals", "value": "x"},
+            {"bool": {"must_not": [{"term": {"input": "x"}}]}},
+        ),
+    ],
+    ids=["details-path", "input-root"],
+)
+def test_key_not_equals_printed_as_query_text_is_accepted_and_matches_the_same(
+    node, expected_clause
+):
+    parsed = parse_query(ast_to_query_text(node))
+
+    validate_filter_node(SESSIONS_FIELDS, parsed)
+    assert parsed["op"] == "not_equal"
+    assert _compiled_leaf(parsed) == _compiled_leaf(node) == expected_clause
+
+
+def test_not_after_field_requires_in_or_exists():
+    with pytest.raises(FilterParseError, match="Expected 'in' or 'exists' after 'not'"):
+        parse_query("status not completed")
+
+
+def test_bare_word_followed_by_partial_keyword_phrase_is_not_a_comparison():
+    # `starts` without `with` must not be taken as an operator - the bare word
+    # falls back to free text, so the leftover words are trailing input.
+    with pytest.raises(FilterParseError, match="Unexpected trailing input 'starts'"):
+        parse_query("name starts Session")
 
 
 def test_in_accepts_both_paren_and_bracket_spelling():

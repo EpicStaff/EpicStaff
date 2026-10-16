@@ -184,13 +184,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
+
     location ~ ^/auditor/api/audit/[^/]+/events/?$ {
         return 404;
     }
 
     location /auditor/ {
-        # The auditor exits on startup when AUDIT_TRAIL_ENABLED is not true, so
-        # its hostname may not exist. A static upstream would be resolved when
+        # The auditor runs only under the auditor compose profile and exits on
+        # startup when AUDIT_TRAIL_ENABLED is not true, so its hostname may not exist. A static upstream would be resolved when
         # nginx starts and a missing host stops nginx entirely; proxying to a
         # variable resolves only when a request arrives, so /auditor/ returns
         # 502 while the auditor is disabled and nothing else is affected.
