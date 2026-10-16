@@ -2,20 +2,28 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
 
 import { MenuNodeType, NODE_MENU_GROUPS, NODE_MENU_LABELS } from '../../../core/constants/node-menu-groups';
+import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../../../core/keymap/editor-actions';
+import { formatChord } from '../../../core/keymap/key-chord.util';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 import { FlowService } from '../../../services/flow.service';
+import { KeymapService } from '../../../services/keymap.service';
 
 interface FlowGraphBlock {
     label: string;
     type: NodeType;
     icon: string;
     color: string;
+    keyHint: string | null;
 }
 
 interface FlowGraphMenuGroup {
     title: string;
     blocks: FlowGraphBlock[];
 }
+
+const NODE_ACTION_BY_TYPE: ReadonlyMap<MenuNodeType, EditorActionId> = new Map(
+    EDITOR_ACTIONS.flatMap((action: EditorAction) => (action.nodeType ? [[action.nodeType, action.id] as const] : []))
+);
 
 @Component({
     selector: 'app-flow-graph-core-menu',
@@ -31,11 +39,16 @@ interface FlowGraphMenuGroup {
                             [class.disabled]="isDisabled(block.type)"
                         >
                             <i
+                                class="node-icon"
                                 [class]="block.icon"
                                 [style.color]="block.color"
                             ></i>
-                            {{ block.label }}
-                            <i class="ti ti-plus plus-icon"></i>
+                            <span class="menu-group__item-label">{{ block.label }}</span>
+                            @if (block.keyHint; as keyHint) {
+                                <span class="key-hint">{{ keyHint }}</span>
+                            } @else {
+                                <i class="ti ti-plus plus-icon"></i>
+                            }
                         </li>
                     }
                 </ul>
@@ -66,7 +79,8 @@ interface FlowGraphMenuGroup {
                 justify-content: space-between;
                 padding: 12px 16px;
                 border-radius: 8px;
-                gap: 14px;
+                --row-gap: 14px;
+                gap: var(--row-gap);
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
@@ -77,6 +91,7 @@ interface FlowGraphMenuGroup {
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
+                font-size: 1.125rem;
             }
 
             .node-label {
@@ -101,6 +116,38 @@ interface FlowGraphMenuGroup {
                 color: inherit;
             }
 
+            .menu-group__item-label {
+                flex: 1 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .key-hint {
+                flex-shrink: 0;
+                max-width: 0;
+                margin-left: calc(-1 * var(--row-gap));
+                overflow: hidden;
+                white-space: nowrap;
+                color: var(--color-ks-transparent-text-60);
+                font-size: var(--text-body-small-size);
+                font-weight: var(--text-body-small-weight);
+                line-height: var(--text-body-small-line-height);
+                opacity: 0;
+                transition:
+                    opacity 0.2s ease,
+                    max-width 0s linear 0.2s,
+                    margin-left 0s linear 0.2s;
+            }
+
+            li:hover .key-hint {
+                opacity: 1;
+                max-width: 12em;
+                margin-left: 0;
+                transition: opacity 0.2s ease;
+            }
+
             li.disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
@@ -116,12 +163,28 @@ export class FlowGraphCoreMenuComponent {
 
     protected readonly filteredGroups = computed<FlowGraphMenuGroup[]>(() => {
         const term = this.searchTerm().toLowerCase();
+        const keyHints = this.keyHints();
         return NODE_MENU_GROUPS.map((group) => ({
             title: group.title,
-            blocks: group.types.map(toBlock).filter((block) => block.label.toLowerCase().includes(term)),
+            blocks: group.types
+                .map((type) => toBlock(type, keyHints.get(type) ?? null))
+                .filter((block) => block.label.toLowerCase().includes(term)),
         })).filter((group) => group.blocks.length > 0);
     });
 
+    private readonly keyHints = computed(() => {
+        const bindings = this.keymap.bindings();
+        const keyHints = new Map<MenuNodeType, string>();
+        NODE_ACTION_BY_TYPE.forEach((actionId, type) => {
+            const [chord] = bindings.get(actionId) ?? [];
+            if (chord) {
+                keyHints.set(type, formatChord(chord, this.keymap.isMac).join(this.keymap.isMac ? '' : '+'));
+            }
+        });
+        return keyHints;
+    });
+
+    private readonly keymap = inject(KeymapService);
     private readonly flowService = inject(FlowService);
 
     protected onBlockClicked(type: NodeType): void {
@@ -137,11 +200,12 @@ export class FlowGraphCoreMenuComponent {
     }
 }
 
-function toBlock(type: MenuNodeType): FlowGraphBlock {
+function toBlock(type: MenuNodeType, keyHint: string | null): FlowGraphBlock {
     return {
         label: NODE_MENU_LABELS[type],
         type,
         icon: NODE_ICONS[type],
         color: NODE_COLORS[type],
+        keyHint,
     };
 }

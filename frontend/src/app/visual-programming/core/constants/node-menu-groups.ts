@@ -5,7 +5,7 @@ export interface NodeMenuGroup {
     types: readonly NodeType[];
 }
 
-// Most-used first: groups by their most-used node, nodes by how many flows use them
+// Groups in product order; nodes inside each group most-used first (by how many flows use them)
 export const NODE_MENU_GROUPS = [
     {
         title: 'Data & Code',
@@ -17,8 +17,8 @@ export const NODE_MENU_GROUPS = [
             NodeType.AUDIO_TO_TEXT,
         ],
     },
-    { title: 'Logic', types: [NodeType.CLASSIFICATION_TABLE, NodeType.TABLE] },
     { title: 'Agents', types: [NodeType.TASK, NodeType.AGENT] },
+    { title: 'Logic', types: [NodeType.CLASSIFICATION_TABLE, NodeType.TABLE] },
     { title: 'Triggers', types: [NodeType.SCHEDULE_TRIGGER, NodeType.WEBHOOK_TRIGGER, NodeType.TELEGRAM_TRIGGER] },
     { title: 'Other', types: [NodeType.NOTE, NodeType.END] },
 ] as const satisfies readonly NodeMenuGroup[];
