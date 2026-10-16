@@ -1,8 +1,8 @@
 """The request LiteLLMClient.stream_completion sends to litellm, per provider.
 
 `litellm.acompletion` is the provider boundary: a stub records its kwargs and ends
-the stream at once. The client reads only plain attributes off the LLM config, so
-SimpleNamespace stand-ins replace ORM rows and these tests need no database.
+the stream at once. The client takes an LLMConfigData, not an ORM row, so these
+tests need no database.
 """
 
 import asyncio
@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tables.services.llm_clients.base import ToolSpec
+from src.shared.models import LLMConfigData
+from tables.services.llm_clients.base import ToolSpec, UnsupportedLLMProviderError
 from tables.services.llm_clients.litellm_client import LiteLLMClient
 
 OUTPUT_SCHEMA = {
@@ -53,30 +54,23 @@ def sent_request(client: LiteLLMClient, messages: list[dict], tools: list) -> di
     return sent
 
 
-def make_llm_config(provider_name: str, model_name: str = "some-model") -> SimpleNamespace:
-    model = SimpleNamespace(
-        name=model_name,
-        llm_provider=SimpleNamespace(name=provider_name),
-        base_url=None,
-        api_version=None,
-        deployment_id=None,
-    )
-    return SimpleNamespace(
-        model=model,
-        temperature=None,
-        max_tokens=None,
-        top_p=None,
-        timeout=None,
+def make_client(
+    provider_name: str | None,
+    model_name: str = "some-model",
+    output_schema: dict | None = None,
+    **config_fields,
+) -> LiteLLMClient:
+    return LiteLLMClient(
+        LLMConfigData(model=model_name, **config_fields),
+        provider_name=provider_name,
+        api_key=None,
+        output_schema=output_schema,
     )
 
 
 @pytest.mark.parametrize("provider_name", ["deepseek", " DeepSeek "])
 def test_deepseek_with_schema_sends_json_object(provider_name):
-    client = LiteLLMClient(
-        make_llm_config(provider_name, "deepseek-chat"),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
+    client = make_client(provider_name, "deepseek-chat", output_schema=OUTPUT_SCHEMA)
 
     kwargs = sent_request(client, MESSAGES, [])
 
@@ -85,11 +79,7 @@ def test_deepseek_with_schema_sends_json_object(provider_name):
 
 def test_deepseek_with_schema_prepends_schema_system_message_without_mutating_caller():
     caller_messages = copy.deepcopy(MESSAGES)
-    client = LiteLLMClient(
-        make_llm_config("deepseek", "deepseek-chat"),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
+    client = make_client("deepseek", "deepseek-chat", output_schema=OUTPUT_SCHEMA)
 
     kwargs = sent_request(client, caller_messages, [])
 
@@ -111,11 +101,7 @@ def test_deepseek_with_schema_prepends_schema_system_message_without_mutating_ca
     ],
 )
 def test_non_deepseek_with_schema_sends_unchanged_json_schema(provider_name, model_name):
-    client = LiteLLMClient(
-        make_llm_config(provider_name, model_name),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
+    client = make_client(provider_name, model_name, output_schema=OUTPUT_SCHEMA)
 
     kwargs = sent_request(client, MESSAGES, [])
 
@@ -142,11 +128,7 @@ GROQ_MODELS = ["groq/llama-3.1-8b-instant", "groq/openai/gpt-oss-120b"]
 # structured outputs, so both kinds of model must get the schema through the prompt.
 @pytest.mark.parametrize("model_name", GROQ_MODELS)
 def test_groq_with_schema_and_tools_sends_schema_in_prompt_only(model_name):
-    client = LiteLLMClient(
-        make_llm_config("groq", model_name),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
+    client = make_client("groq", model_name, output_schema=OUTPUT_SCHEMA)
 
     kwargs = sent_request(client, MESSAGES, TOOLS)
 
@@ -158,11 +140,7 @@ def test_groq_with_schema_and_tools_sends_schema_in_prompt_only(model_name):
 
 @pytest.mark.parametrize("model_name", GROQ_MODELS)
 def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
-    client = LiteLLMClient(
-        make_llm_config("groq", model_name),
-        api_key=None,
-        output_schema=OUTPUT_SCHEMA,
-    )
+    client = make_client("groq", model_name, output_schema=OUTPUT_SCHEMA)
 
     kwargs = sent_request(client, MESSAGES, [])
 
@@ -191,16 +169,100 @@ def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
     ],
 )
 def test_model_string_routes_to_the_row_provider(provider_name, model_name, expected_model):
-    client = LiteLLMClient(make_llm_config(provider_name, model_name), api_key=None)
+    client = make_client(provider_name, model_name)
 
     assert sent_request(client, MESSAGES, [])["model"] == expected_model
 
 
 @pytest.mark.parametrize("provider_name", ["deepseek", "openai"])
 def test_without_schema_sends_no_response_format(provider_name):
-    client = LiteLLMClient(make_llm_config(provider_name), api_key=None)
+    client = make_client(provider_name)
 
     kwargs = sent_request(client, MESSAGES, [])
 
     assert "response_format" not in kwargs
     assert kwargs["messages"] == MESSAGES
+
+
+def test_generation_params_except_stop_reach_the_request():
+    client = make_client(
+        "openai",
+        "o3-mini",
+        reasoning_effort="high",
+        stop=["END"],
+        logit_bias={50256: -100.0},
+        temperature=0.2,
+        seed=7,
+    )
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert kwargs["reasoning_effort"] == "high"
+    # The config's stop sequences are agent-oriented and could cut the JSON reply.
+    assert "stop" not in kwargs
+    assert kwargs["logit_bias"] == {50256: -100.0}
+    assert kwargs["temperature"] == 0.2
+    assert kwargs["seed"] == 7
+
+
+@pytest.mark.parametrize(
+    "provider_name, model_name, expected_sampling",
+    [
+        # Anthropic rejects temperature != 1 and top_p while thinking is on.
+        ("anthropic", "claude-sonnet-4-6", {}),
+        # An OpenAI row keeps the name bare, and litellm still routes it to Anthropic.
+        ("openai", "claude-sonnet-4-6", {}),
+        (None, "claude-sonnet-4-6", {}),
+        ("openai", "gpt-4o", {"temperature": 0.5, "top_p": 0.9}),
+        # A model litellm does not know keeps the provider its string names.
+        ("openai", "not-a-known-model", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+def test_sampling_params_follow_the_routed_provider(provider_name, model_name, expected_sampling):
+    client = make_client(
+        provider_name, model_name, temperature=0.5, top_p=0.9, reasoning_effort="high"
+    )
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert {key: kwargs[key] for key in ("temperature", "top_p") if key in kwargs} == expected_sampling
+    assert kwargs["reasoning_effort"] == "high"
+
+
+def test_unset_reasoning_effort_sends_no_key():
+    kwargs = sent_request(make_client("openai", "gpt-4o"), MESSAGES, [])
+
+    assert "reasoning_effort" not in kwargs
+    assert "stop" not in kwargs
+    assert "logit_bias" not in kwargs
+
+
+def test_azure_model_string_uses_the_deployment_id():
+    client = make_client("azure", "o3-mini", deployment_id="my-o3-deployment")
+
+    assert sent_request(client, MESSAGES, [])["model"] == "azure/my-o3-deployment"
+
+
+def test_transport_fields_come_from_the_config():
+    client = make_client(
+        "azure",
+        "gpt-4o",
+        base_url="https://example.openai.azure.com",
+        api_version="2024-10-21",
+        extra_headers={"X-Trace": "1"},
+    )
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert kwargs["base_url"] == "https://example.openai.azure.com"
+    assert kwargs["api_version"] == "2024-10-21"
+    assert kwargs["extra_headers"] == {"X-Trace": "1"}
+
+
+def test_provider_less_model_uses_the_bare_model_name():
+    assert sent_request(make_client(None, "gpt-4o"), MESSAGES, [])["model"] == "gpt-4o"
+
+
+def test_empty_model_name_raises_unsupported_provider():
+    with pytest.raises(UnsupportedLLMProviderError):
+        make_client("openai", "  ")

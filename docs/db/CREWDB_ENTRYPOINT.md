@@ -15,9 +15,6 @@ each connecting with its own restricted role:
 | knowledge | `DB_KNOWLEDGE_USER`  | Read/write access to RAG and embedding tables |
 | realtime  | `DB_REALTIME_USER`   | CRUD on realtime session items                |
 
-`tables_memorydatabase` still lives in this database, but it is created and owned
-by `django_app` (see `MemoryDatabase` model) — no crewdb service role connects to it.
-
 ## How It Works
 
 The script runs a **background worker** (`background_setup`) alongside the normal PostgreSQL
@@ -93,9 +90,6 @@ so it can begin running migrations immediately.
 | `tables_naiveragpreviewchunk`    |         | CRUD      |          |
 | `tables_naiveragembedding`       |         | CRUD      |          |
 | `realtime_session_items`         |         |           | CRUD     |
-
-`tables_memorydatabase` is created by django migrations and granted no crewdb-service
-role permissions — django_app connects with the Postgres superuser, not a per-service role.
 
 ### Sequences
 

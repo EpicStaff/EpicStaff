@@ -14,6 +14,7 @@ import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor'
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
+import { provideAuditStorages } from './features/audit/audit.providers';
 import { provideConfigureModelsStorages } from './features/configure-models/configure-models.providers';
 import { provideFlowsStorages } from './features/flows/flows.providers';
 import { provideKeyValueTablesStorages } from './features/key-value-tables/key-value-tables.providers';
@@ -62,6 +63,7 @@ export const appConfig: ApplicationConfig = {
         { provide: APP_STORAGE, useExisting: ActiveOrgService, multi: true },
         { provide: APP_STORAGE, useExisting: PermissionsService, multi: true },
         ...provideRoleBaseAccessStorages(),
+        ...provideAuditStorages(),
         ...provideConfigureModelsStorages(),
         ...provideFlowsStorages(),
         ...provideToolsStorages(),
