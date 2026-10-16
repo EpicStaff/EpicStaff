@@ -25,7 +25,7 @@ test_targets := $(addsuffix -tests,$(filter-out django_app,$(uv_services)))
         uv-lock \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests \
-        env-update bench-flow bench-dev \
+        env-update \
         $(test_targets)
 
 # --- Help ---
@@ -107,7 +107,7 @@ $(test_targets): %-tests:
 	@cd src/$* && $(VENV_PY) -m pytest $(ARGS)
 
 # ==========================================
-# ENV FILE AND BENCHMARK
+# ENV FILE
 # ==========================================
 
 # Host-side scripts run on any Python 3.11+ (envtool also needs PyYAML), not on a
@@ -122,9 +122,3 @@ endif
 # DEV=1 takes the development defaults instead of the production ones.
 env-update:
 	@$(PYTHON) scripts/envtool.py --update $(if $(filter 1,$(DEV)),--dev)
-
-bench-flow:
-	@$(PYTHON) benchmark/bench.py flow import
-
-bench-dev:
-	@$(PYTHON) benchmark/bench.py dev $(ARGS)

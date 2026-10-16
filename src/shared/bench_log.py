@@ -1,9 +1,17 @@
-"""BENCH checkpoint logging for the benchmark in benchmark/ (see benchmark/README.md).
+"""BENCH checkpoint logging: one JSON line per performance checkpoint.
 
 Checkpoints are records at level 15 ("BENCH", between DEBUG and INFO), registered for loguru and
 for stdlib `logging`. A service whose <SERVICE>_LOG_LEVEL is BENCH (or DEBUG/TRACE) writes every
 checkpoint as one compact JSON line through `add_bench_sink`; its normal sink drops them through
 `without_bench`, so nothing is printed twice. At the default INFO level nothing changes.
+
+A line is `{"bench": 1, "ts": <unix seconds>, "checkpoint": <name>, ...}` followed by the
+record's other extra fields (the call's keyword arguments and any bound context, except keys that
+start with "_"). Checkpoint names and fields are a contract with whatever reads these lines;
+change one only together with its reader:
+django_app request_received, session_created, published; crew received, slot_acquired, compiled,
+node_start, node_end, agent_dispatched, sandbox_dispatched, session_end; agent request_consumed,
+llm_start, llm_end, sandbox_dispatched, result_published; sandbox exec_start, exec_end.
 """
 
 import json
