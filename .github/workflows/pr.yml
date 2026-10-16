@@ -185,6 +185,22 @@ jobs:
             exit 1
           fi
 
+  # Compose variables must be required (`${VAR:?}`) and boolean flags parsed
+  # strictly (Env.bool in Python, env_bool in shell). The rules and what to do
+  # on a failure are in the docstring of check_env_conventions.py. Stdlib only,
+  # so no venv is needed; runs on every PR because it is cheap.
+  check-env-conventions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Test the checker
+        run: python3 .github/scripts/test_check_env_conventions.py
+
+      - name: Environment variable conventions
+        run: python3 .github/scripts/check_env_conventions.py
+
   # Backend half of the licence attribution guard: compares the uv.lock hashes
   # stamped in the notices header, so it needs neither venvs nor network.
   check-backend-notices:
@@ -463,6 +479,7 @@ jobs:
       - check-cla
       - check-external-urls
       - check-ticket-references
+      - check-env-conventions
       - check-backend-notices
       - check-rbac-boundary
       - frontend-checks

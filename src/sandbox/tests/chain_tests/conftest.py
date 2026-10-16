@@ -34,6 +34,7 @@ def _set_env_defaults() -> None:
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
+        "SANDBOX_REQUIRE_ISOLATION": "true",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
         "SANDBOX_BLOCK_PRIVATE_NETWORK": "true",
     }
