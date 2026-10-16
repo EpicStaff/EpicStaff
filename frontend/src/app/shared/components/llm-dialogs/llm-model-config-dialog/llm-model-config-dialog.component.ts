@@ -1,17 +1,28 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    OnInit,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
-import { ModelTypes } from '@shared/models';
+import { ModelTypes, ReasoningEffort } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
+import { startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
@@ -20,6 +31,7 @@ import { KeyValueListComponent } from '../../key-value-list/key-value-list.compo
 import { SelectComponent, SelectItem } from '../../select/select.component';
 import { SliderWithStepperComponent } from '../../slider-with-stepper/slider-with-stepper.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
+import { LlmReasoningEffortFieldComponent } from '../llm-reasoning-effort-field/llm-reasoning-effort-field.component';
 
 interface DialogData {
     configId?: number;
@@ -30,6 +42,7 @@ interface DialogData {
     templateUrl: './llm-model-config-dialog.component.html',
     styleUrls: ['./llm-model-config-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         IconButtonComponent,
         ButtonComponent,
         ReactiveFormsModule,
@@ -43,10 +56,13 @@ interface DialogData {
         SelectComponent,
         HintMessageComponent,
         EnterSubmitDirective,
+        LlmReasoningEffortFieldComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LlmModelConfigDialogComponent implements OnInit {
+    private readonly reasoningEffortField = viewChild(LlmReasoningEffortFieldComponent);
+
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
     private configStorageService = inject(LlmConfigStorageService);
@@ -59,26 +75,35 @@ export class LlmModelConfigDialogComponent implements OnInit {
     isSaving = signal<boolean>(false);
     isLoading = signal<boolean>(false);
     errorMessage = signal<string | null>(null);
+    // FormGroup.invalid is a plain property: on this OnPush view it would keep showing the state from before the
+    // reasoning-effort field cleared its server error in the same pass. Fed from statusChanges in ngOnInit.
+    private readonly isFormInvalid = signal(false);
 
     isEditMode = computed(() => !!this.data?.configId);
+    // Saving before the model is known would send reasoning_effort as null and erase a stored value.
+    readonly isModelResolving = computed(() => this.reasoningEffortField()?.resolving() ?? false);
     title = computed(() => (this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add LLM'));
-
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
+    protected readonly isSaveDisabled = computed(
+        () => this.isFormInvalid() || this.isSaving() || this.isLoading() || this.isModelResolving()
     );
 
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
+
+    protected readonly modelControl = new FormControl<number | null>(null, [Validators.required]);
+    protected readonly selectedModelId = toSignal(this.modelControl.valueChanges, {
+        initialValue: this.modelControl.value,
+    });
+    protected readonly reasoningEffortControl = new FormControl<ReasoningEffort | null>(null);
     form!: FormGroup;
 
     ngOnInit() {
         this.form = this.fb.group({
             custom_name: ['', [Validators.required]],
             api_key_secret_id: [null],
-            model: [null, [Validators.required]],
+            model: this.modelControl,
             temperature: [null, [Validators.min(0), Validators.max(1)]],
             top_p: [null, [Validators.min(0.1)]],
             stop: [null],
@@ -89,8 +114,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
+            reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
         });
+        this.form.statusChanges
+            .pipe(startWith(this.form.status), takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isFormInvalid.set(status === 'INVALID'));
+        trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);
@@ -133,14 +163,17 @@ export class LlmModelConfigDialogComponent implements OnInit {
     }
 
     onSave(): void {
-        if (this.form.invalid || this.isSaving() || this.isLoading()) {
+        if (this.form.invalid || this.isSaving() || this.isLoading() || this.isModelResolving()) {
             this.form.markAllAsTouched();
             return;
         }
 
         this.isSaving.set(true);
         this.errorMessage.set(null);
-        const formValue = this.form.value;
+        const formValue = {
+            ...this.form.value,
+            reasoning_effort: this.reasoningEffortField()?.submittedValue() ?? null,
+        };
 
         const request$ = this.isEditMode()
             ? this.configStorageService.updateConfig({ id: this.data!.configId!, ...formValue })
@@ -156,6 +189,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
             },
             error: (err: HttpErrorResponse) => {
                 this.isSaving.set(false);
+                const reasoningEffortErrors = extractFieldErrorMessages(err, 'reasoning_effort');
+                if (
+                    reasoningEffortErrors.length &&
+                    this.reasoningEffortField()?.showServerErrors(reasoningEffortErrors)
+                ) {
+                    return;
+                }
                 this.errorMessage.set(extractHttpErrorMessage(err));
                 console.error(err);
             },

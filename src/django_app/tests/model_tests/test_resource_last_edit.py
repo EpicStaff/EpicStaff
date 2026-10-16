@@ -11,7 +11,7 @@ from rbac.authorship import record_last_edit, record_last_edits
 from rbac.authorship.registry import last_edit_tracked_models
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import LastEditTrackedModel, ResourceLastEdit
-from tables.models import Graph, GraphNote, Label, StorageFile
+from tables.models import Graph, GraphNote, Label, Secret, StorageFile
 from tables.models.graph_models import Edge, PythonNode, StartNode
 from tables.models.knowledge_models import SourceCollection
 from tables.models.python_models import PythonCode, PythonCodeTool
@@ -141,11 +141,15 @@ def test_batch_record_without_instances_issues_no_query(editor):
 
 
 @pytest.mark.django_db
-def test_deleting_resource_deletes_its_last_edit(acme, editor):
+def test_purging_resource_deletes_its_last_edit(acme, editor):
     definition = AgentDefinition.objects.create(org=acme, name="agent-with-last-edit")
     record_last_edit(definition, editor)
 
+    # Delete only moves it to the recycle bin, where it keeps its last edit until purged.
     definition.delete()
+    assert ResourceLastEdit.objects.exists()
+
+    definition.purge()
 
     assert not ResourceLastEdit.objects.exists()
 
@@ -215,6 +219,7 @@ EXPECTED_TRACKED_MODEL_NAMES = {
     "StorageFile",
     "SourceCollection",
     "KeyValueTable",
+    "Secret",
 }
 
 
@@ -226,6 +231,7 @@ def test_registry_lists_exactly_the_tracked_models():
     assert tracked[Graph] == "org_id"
     assert tracked[StorageFile] == "org_id"
     assert tracked[SourceCollection] == "org_id"
+    assert tracked[Secret] == "org_id"
     assert not issubclass(Label, LastEditTrackedModel)
 
 

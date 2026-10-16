@@ -230,7 +230,7 @@
     }
 }
 
-// Flow Assistant scoped bullet styles — mirrors EpicChat message-item bullet rendering.
+// Flow Assistant scoped bullet styles.
 // Scoped to app-flow-assistant-panel .message__text to avoid bleeding into chats-page.
 // The panel's own ::ng-deep rules in flow-assistant-panel.component.scss override the
 // global .markdown-content ul/li rules for FA; these bullet symbols work alongside those.

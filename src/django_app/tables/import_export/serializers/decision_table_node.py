@@ -1,9 +1,10 @@
 from rest_framework import serializers
 
 from tables.models import Condition, ConditionGroup, DecisionTableNode, Graph
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class ConditionImportSerializer(serializers.ModelSerializer):
+class ConditionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -11,7 +12,7 @@ class ConditionImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ConditionGroupImportSerializer(serializers.ModelSerializer):
+class ConditionGroupImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     conditions = ConditionImportSerializer(many=True, required=False, read_only=True)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     decision_table_node_id = serializers.PrimaryKeyRelatedField(
@@ -25,7 +26,7 @@ class ConditionGroupImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class DecisionTableNodeImportSerializer(serializers.ModelSerializer):
+class DecisionTableNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
     condition_groups = ConditionGroupImportSerializer(many=True, required=False, read_only=True)

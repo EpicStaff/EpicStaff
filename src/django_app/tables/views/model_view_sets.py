@@ -158,7 +158,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeToolConfig
+from tables.models.python_models import PythonCodeToolConfig, linked_secrets_prefetch
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -273,6 +273,8 @@ from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
+from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -349,6 +351,7 @@ from tables.views.mixins import (
     ToolUsageActionsMixin,
     TriggerNodeUsePermissionMixin,
 )
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -540,6 +543,7 @@ class PythonCodeToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     """
@@ -552,6 +556,7 @@ class PythonCodeToolViewSet(
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
@@ -562,6 +567,7 @@ class PythonCodeToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    recycle_bin_resource_key = RecycleBinSource.PYTHON_TOOL
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -571,7 +577,7 @@ class PythonCodeToolViewSet(
     queryset = (
         PythonCodeTool.objects.all()
         .select_related("python_code")
-        .prefetch_related("python_code__secrets", *authorship_prefetches())
+        .prefetch_related(linked_secrets_prefetch("python_code"), *authorship_prefetches())
     )
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
@@ -641,7 +647,7 @@ class PythonCodeToolViewSet(
             )
             deleted_count = tool_list.count()
             for tool in tool_list:
-                tool.delete()
+                move_to_recycle_bin(tool, request.user)
 
         return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
 
@@ -723,12 +729,17 @@ class PythonCodeResultReadViewSet(
 
 @extend_schema_view(copy=extend_schema(**GRAPH_COPY_POST))
 class GraphViewSet(
-    OrgScopedViewSetMixin, CopyActionMixin, InspectActionMixin, viewsets.ModelViewSet
+    OrgScopedViewSetMixin,
+    CopyActionMixin,
+    InspectActionMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
@@ -740,6 +751,7 @@ class GraphViewSet(
         "delete_by_uuid": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
+    recycle_bin_resource_key = RecycleBinSource.FLOW
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
 
@@ -760,7 +772,7 @@ class GraphViewSet(
                 Prefetch(
                     "python_node_list",
                     queryset=PythonNode.objects.select_related("python_code").prefetch_related(
-                        "python_code__secrets"
+                        linked_secrets_prefetch("python_code")
                     ),
                 ),
                 Prefetch("file_extractor_node_list", queryset=FileExtractorNode.objects.all()),
@@ -774,14 +786,17 @@ class GraphViewSet(
                     "webhook_trigger_node_list",
                     queryset=WebhookTriggerNode.objects.select_related(
                         "python_code"
-                    ).prefetch_related("python_code__secrets"),
+                    ).prefetch_related(linked_secrets_prefetch("python_code")),
                 ),
                 Prefetch("decision_table_node_list", queryset=DecisionTableNode.objects.all()),
                 Prefetch(
                     "classification_decision_table_node_list",
                     queryset=ClassificationDecisionTableNode.objects.select_related(
                         "pre_python_code", "post_python_code"
-                    ).prefetch_related("pre_python_code__secrets", "post_python_code__secrets"),
+                    ).prefetch_related(
+                        linked_secrets_prefetch("pre_python_code"),
+                        linked_secrets_prefetch("post_python_code"),
+                    ),
                 ),
                 Prefetch(
                     "subgraph_node_list",
@@ -1741,11 +1756,12 @@ class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = GeminiRealtimeConfigSerializer
 
 
-class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
 
     rbac_resource_type = ResourceType.VOICE
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = RecycleBinSource.REALTIME_CHANNEL
 
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
@@ -2159,7 +2175,9 @@ class ClassificationDecisionTableNodeModelViewSet(
     queryset = ClassificationDecisionTableNode.objects.select_related(
         "pre_python_code", "post_python_code"
     ).prefetch_related(
-        "pre_python_code__secrets", "post_python_code__secrets", *authorship_prefetches()
+        linked_secrets_prefetch("pre_python_code"),
+        linked_secrets_prefetch("post_python_code"),
+        *authorship_prefetches(),
     )
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -2278,12 +2296,15 @@ class McpToolViewSet(
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    RecycleBinActionsMixin,
     viewsets.ModelViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
+    recycle_bin_resource_key = RecycleBinSource.MCP_TOOL
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
@@ -2379,7 +2400,7 @@ class McpToolViewSet(
             tool_list = McpTool.objects.filter(id__in=ids, org_id=self.get_active_org_id())
             deleted_count = tool_list.count()
             for tool in tool_list:
-                tool.delete()
+                move_to_recycle_bin(tool, request.user)
 
         return Response({"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK)
 
@@ -2488,10 +2509,11 @@ class WebhookTriggerNodeViewSet(
     update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
     partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
 )
-class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
     ).prefetch_related(*authorship_prefetches())
@@ -2728,6 +2750,7 @@ class ToolLabelViewSet(BaseLabelViewSet):
 
 class SecretViewSet(
     OrgScopedViewSetMixin,
+    RecycleBinActionsMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -2738,11 +2761,12 @@ class SecretViewSet(
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
+    recycle_bin_resource_key = RecycleBinSource.SECRET
     # system=True rows (e.g. org-level MinIO credentials) are internal to
     # storage_credentials and must never be visible through this API — not
-    # even their existence. `Secret.objects` (the default manager) already
-    # excludes them by construction; no explicit filter is needed here.
+    # even their existence. `Secret.objects` and `Secret.deleted_objects` (the
+    # recycle bin) already exclude them by construction (Secret.internal_rows).
     queryset = Secret.objects.all().prefetch_related(*authorship_prefetches(last_edit=False))
     serializer_class = SecretSerializer
 
@@ -2864,14 +2888,16 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         return Response(summary, status=status.HTTP_200_OK)
 
 
-class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class KeyValueTableViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.KEY_VALUE_TABLES
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
         "lookup_entries": Permission.READ,
         "usage": Permission.READ,
     }
+    recycle_bin_resource_key = RecycleBinSource.KEY_VALUE_TABLE
     queryset = KeyValueTable.objects.order_by(Lower("name"))
     serializer_class = KeyValueTableSerializer
     # These actions never serialize a table, so they skip counting its entries and
@@ -2887,7 +2913,7 @@ class KeyValueTableViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance: KeyValueTable) -> None:
-        KeyValueTableService().delete_table(instance)
+        KeyValueTableService().delete_table(instance, deleted_by=self.request.user)
 
     @extend_schema(**KEY_VALUE_TABLE_USAGE_GET)
     @action(detail=True, methods=["get"], url_path="usage")

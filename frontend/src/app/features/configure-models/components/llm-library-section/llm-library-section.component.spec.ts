@@ -50,6 +50,7 @@ const LLM_CONFIG: GetLlmConfigRequest = {
     logit_bias: null,
     seed: null,
     timeout: null,
+    reasoning_effort: null,
     is_visible: true,
     tags: [],
     created_at: '2026-03-12T13:28:23Z',

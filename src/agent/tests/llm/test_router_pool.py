@@ -55,10 +55,12 @@ async def test_routers_are_shared_per_model_and_rpm(built_routers, rpms, concurr
 
 
 @pytest.mark.parametrize("rpm", [42, None])
-async def test_router_is_built_with_the_rate_limit_and_without_cooldowns(built_routers, rpm):
+async def test_router_is_built_with_the_rate_limit_and_without_cooldowns_or_retries(built_routers, rpm):
     await RouterPool().get("gpt-4o", MODEL_CONFIG, rpm=rpm)
 
     ((model_list, kwargs),) = built_routers
     assert model_list[0]["litellm_params"].get("rpm") == rpm
     # A single deployment must not be put on a ~60 s cooldown after one transient failure.
     assert kwargs["disable_cooldowns"] is True
+    # RetryPolicy owns retries; Router retries would multiply the attempts.
+    assert kwargs["num_retries"] == 0

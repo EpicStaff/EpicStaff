@@ -20,6 +20,7 @@ import { finalize } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { WebhookTriggerEditPermissionService } from '../../services/webhook-trigger-edit-permission.service';
 
 @Component({
@@ -45,6 +46,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private toastService = inject(ToastService);
     private readonly editPermission = inject(WebhookTriggerEditPermissionService);
     private destroyRef = inject(DestroyRef);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
@@ -163,7 +165,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
         if (trigger.id == null) return;
         const id = trigger.id;
         this.confirmationDialogService
-            .confirmDelete(trigger.path)
+            .confirmMoveToRecycleBin(trigger.path, this.recycleBinSettings.retentionDays())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result !== true) return;

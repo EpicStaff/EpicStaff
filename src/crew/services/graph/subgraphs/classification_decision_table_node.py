@@ -195,6 +195,10 @@ class ClassificationDecisionTableNodeSubgraph:
                 else:
                     raise KeyError(f"'{token}' not found in context")
             else:
+                # Block dunder/underscore tokens: the author-controlled path
+                # could otherwise reach Python internals (e.g. __globals__).
+                if token.startswith("_"):
+                    raise KeyError(f"'{token}' is not an allowed path segment")
                 # Dot access — try getattr, then [] for dict-like objects
                 try:
                     value = getattr(value, token)
@@ -497,16 +501,8 @@ def main(**kwargs) -> dict:
         )
         params = {
             "model": model,
-            "timeout": llm_config.timeout,
-            "temperature": llm_config.temperature,
-            "top_p": llm_config.top_p,
-            "stop": llm_config.stop,
-            "max_tokens": llm_config.max_tokens,
-            "presence_penalty": llm_config.presence_penalty,
-            "frequency_penalty": llm_config.frequency_penalty,
-            "logit_bias": llm_config.logit_bias,
+            **llm_config.to_litellm_kwargs(provider=litellm_provider),
             "response_format": response_format,
-            "seed": llm_config.seed,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
             "api_key": llm_config.api_key,

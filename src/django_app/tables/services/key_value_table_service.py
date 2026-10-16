@@ -24,6 +24,7 @@ from tables.models import (
     Session,
     SubGraphNode,
 )
+from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.validators.key_value_entries_validator import resolved_key_error
 
 # The one order in which entry rows are locked, by every statement that locks several at
@@ -115,8 +116,9 @@ class KeyValueTableService:
         # makes both sides go table -> entries.
         with connection.cursor() as cursor:
             cursor.execute(
+                # AND active: a table moved to the recycle bin takes no new entries.
                 f"SELECT 1 FROM {connection.ops.quote_name(KeyValueTable._meta.db_table)} "
-                "WHERE id = %s FOR KEY SHARE",
+                "WHERE id = %s AND active FOR KEY SHARE",
                 [table.pk],
             )
             if cursor.fetchone() is None:
@@ -209,11 +211,13 @@ class KeyValueTableService:
             return False
         return True
 
-    def delete_table(self, table: KeyValueTable) -> None:
-        """Delete `table` with its entries and unlink every Key-Value node that used it.
+    def delete_table(self, table: KeyValueTable, *, deleted_by: object | None) -> None:
+        """Move `table` with its entries to the recycle bin and unlink every Key-Value node that used it.
 
-        Nodes keep existing with `key_value_table = NULL` (the FK's SET_NULL, which Django
-        applies through the base manager, so nodes of soft-deleted flows are unlinked too).
+        `deleted_by` (the user who asked) is recorded as who deleted it.
+
+        Nodes keep existing with `key_value_table = NULL` (the FK's SET_NULL, which DeleteService
+        applies to every row, binned ones too, so nodes of soft-deleted flows are unlinked as well).
 
         Raises:
             KeyValueTableNotFoundError (404): the table was deleted meanwhile, e.g. by a
@@ -227,7 +231,7 @@ class KeyValueTableService:
         with transaction.atomic():
             if KeyValueTable.objects.select_for_update().filter(pk=table.pk).first() is None:
                 raise KeyValueTableNotFoundError(table.pk)
-            table.delete()
+            move_to_recycle_bin(table, deleted_by)
 
     def usage(self, table: KeyValueTable) -> dict[str, int]:
         """Count the Key-Value nodes using `table` and their distinct flows.
@@ -235,9 +239,9 @@ class KeyValueTableService:
         Only live nodes of flows that are not soft-deleted count: deleting the table unlinks
         soft-deleted ones too, but nobody sees them.
         """
-        return KeyValueNode.objects.filter(
-            key_value_table=table, graph__is_soft_deleted=False
-        ).aggregate(node_count=Count("pk"), flow_count=Count("graph_id", distinct=True))
+        return KeyValueNode.objects.filter(key_value_table=table, graph__active=True).aggregate(
+            node_count=Count("pk"), flow_count=Count("graph_id", distinct=True)
+        )
 
     def session_can_access(self, session: Session, table: KeyValueTable) -> bool:
         """Access is granted by saved configuration, never by the runtime caller.

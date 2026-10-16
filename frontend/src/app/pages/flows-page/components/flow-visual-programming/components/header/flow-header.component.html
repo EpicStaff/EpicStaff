@@ -93,26 +93,6 @@
                 <span class="btn-label">Get cURL</span>
             </button>
         </span>
-        @if (isEpicChatEnabled) {
-            <button
-                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
-                class="connect-chat-button"
-                [appCollapseOnOverflow]="true"
-                collapseOnOverflowTarget=".btn-label"
-                collapseOnOverflowClass="btn--icon-only"
-                collapseOnOverflowRequireSelector="app-svg-icon"
-                matTooltip="Connect chat"
-                matTooltipPosition="below"
-                (click)="onConnectChat()"
-            >
-                <app-svg-icon
-                    icon="logo"
-                    size="1.25rem"
-                />
-                <span class="btn-label">Connect chat</span>
-            </button>
-        }
-
         <button
             class="open-chat-button"
             [appCollapseOnOverflow]="true"
@@ -125,7 +105,7 @@
         >
             <img
                 class="open-chat-button__icon"
-                src="/epicchat-widget/assets/images/shared/epicstaff-chat-logo.svg"
+                src="assets/icons/ui/epicstaff-chat-logo.svg"
                 alt=""
                 width="20"
                 height="20"

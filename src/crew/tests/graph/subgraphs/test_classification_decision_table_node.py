@@ -315,6 +315,102 @@ async def test_prompt_with_output_schema_calls_llm_and_stores_result(monkeypatch
     )
 
 
+async def run_prompt_row_and_capture_acompletion_kwargs(
+    monkeypatch, llm_config: LLMConfigData, provider: str = "openai"
+) -> dict:
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
+    prompt_config = PromptConfigData(
+        prompt_text="Classify the following: {text}",
+        llm_data=LLMData(provider=provider, config=llm_config),
+        output_schema={
+            "type": "object",
+            "properties": {"label": {"type": "string"}},
+            "required": ["label"],
+        },
+        result_variable="classification_result",
+    )
+    groups = [
+        ClassificationConditionGroupData(
+            group_name="prompt_row",
+            expression="True",
+            prompt_id="classify",
+            next_node="after_prompt",
+            continue_flag=False,
+            order=0,
+        ),
+    ]
+    subgraph = make_subgraph(
+        make_node_data(condition_groups=groups, prompts={"classify": prompt_config})
+    )
+
+    mock_response = MagicMock()
+    mock_response.usage.total_tokens = 1
+    mock_response.usage.prompt_tokens = 1
+    mock_response.usage.completion_tokens = 0
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = '{"label": "positive"}'
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+        mock_completion.return_value = mock_response
+        await subgraph.ainvoke(make_state({"text": "hello world"}))
+
+    assert mock_completion.call_count == 1
+    return mock_completion.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_forwards_reasoning_effort(monkeypatch):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(model="gpt-5-mini", reasoning_effort="high", temperature=0.2),
+    )
+
+    assert call_kwargs["reasoning_effort"] == "high"
+    assert call_kwargs["temperature"] == 0.2
+    assert call_kwargs["model"] == "openai/gpt-5-mini"
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_omits_unset_generation_params(monkeypatch):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch, LLMConfigData(model="gpt-4o-mini")
+    )
+
+    for unset_param in (
+        "reasoning_effort",
+        "temperature",
+        "top_p",
+        "stop",
+        "max_tokens",
+        "presence_penalty",
+        "frequency_penalty",
+        "logit_bias",
+        "seed",
+        "timeout",
+    ):
+        assert unset_param not in call_kwargs
+    assert call_kwargs["stream"] is False
+    assert call_kwargs["response_format"]["type"] == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_prompt_llm_call_drops_sampling_params_anthropic_rejects_with_thinking(
+    monkeypatch,
+):
+    call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
+        monkeypatch,
+        LLMConfigData(
+            model="claude-sonnet-4-6", temperature=0.5, top_p=0.9, reasoning_effort="high"
+        ),
+        provider="anthropic",
+    )
+
+    assert call_kwargs["model"] == "anthropic/claude-sonnet-4-6"
+    assert call_kwargs["reasoning_effort"] == "high"
+    assert "temperature" not in call_kwargs
+    assert "top_p" not in call_kwargs
+
+
 async def fake_run_code_raises(
     self,
     python_code_data,
@@ -695,6 +791,50 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
     assert error_message["details"].startswith(
         "Error in condition 'exits': Expression execution failed: SystemExit"
     )
+
+
+# ---------------------------------------------------------------------------
+# Path resolution safety
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_path_resolves_legitimate_dot_and_bracket_paths():
+    # Legitimate dot, direct lookup, and bracket paths stay working.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {
+        "variables": DotDict(
+            {
+                "chat_id": "abc",
+                "index": 1,
+                "messages": [DotDict({"text": "first"}), DotDict({"text": "second"})],
+            }
+        ),
+        "session_id": 42,
+    }
+
+    assert resolve("variables.chat_id", ctx) == "abc"
+    assert resolve("session_id", ctx) == 42
+    assert resolve("variables.messages[variables.index].text", ctx) == "second"
+
+
+def test_resolve_path_rejects_dunder_dot_token():
+    # A dunder dot token must not reach Python internals.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"chat_id": "abc"})}
+
+    with pytest.raises(KeyError):
+        resolve("variables.__class__", ctx)
+    with pytest.raises(KeyError):
+        resolve("variables.__class__.__init__.__globals__", ctx)
+
+
+def test_resolve_path_allows_bracket_access_to_underscore_domain_key():
+    # Bracket access is item lookup, not getattr — an underscore domain key
+    # must still resolve rather than be over-blocked.
+    resolve = ClassificationDecisionTableNodeSubgraph._resolve_path
+    ctx = {"variables": DotDict({"attr_name": "_secret", "_secret": "leak"})}
+
+    assert resolve("variables[variables.attr_name]", ctx) == "leak"
 
 
 @pytest.mark.asyncio

@@ -139,6 +139,15 @@ async def test_connect_configures_voice_instructions_and_tools(live, voice, expe
     }
 
 
+@pytest.mark.parametrize("temperature", [0.0, 0.9, None], ids=["zero", "set", "unset"])
+async def test_connect_sends_the_configured_temperature(live, temperature):
+    client = _client(live, temperature=temperature)
+
+    await client.connect()
+
+    assert live.sessions[0].config.temperature == temperature
+
+
 async def test_constructing_the_client_does_not_connect(live):
     _client(live)
 

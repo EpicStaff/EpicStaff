@@ -60,7 +60,7 @@ class FakeStreamClient:
             self.keys.pop(key, None)
             self.streams.pop(key, None)
 
-    async def xadd(self, stream: str, fields: dict) -> str:
+    async def xadd(self, stream: str, fields: dict, **options) -> str:
         message_id = str(self._next_message_id)
         self._next_message_id += 1
         self.streams.setdefault(stream, []).append((message_id, fields))

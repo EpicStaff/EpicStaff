@@ -12,7 +12,7 @@ from tables.models import Graph, Session
 
 
 def get_accessible_session(user, session_id: int, action: Permission = Permission.READ) -> Session:
-    """Fetch a session by raw id and authorize `user` via the org that owns its graph.
+    """Fetch a session (its id and status only) by raw id and authorize `user` via the org that owns its graph.
 
     For the non-ViewSet session surfaces (run-session SSE stream, get-updates, stop),
     which cannot rely on HasOrgPermission (no DRF `action`) or the X-Organization-Id
@@ -26,7 +26,10 @@ def get_accessible_session(user, session_id: int, action: Permission = Permissio
             on FLOWS.
     """
     session = (
-        Session.objects.annotate(owner_org_id=F("graph__org_id")).filter(pk=session_id).first()
+        Session.objects.annotate(owner_org_id=F("graph__org_id"))
+        .filter(pk=session_id)
+        .only("id", "status")
+        .first()
     )
     if session is None or session.owner_org_id is None:
         raise SessionNotFoundError()

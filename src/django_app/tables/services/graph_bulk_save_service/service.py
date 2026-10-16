@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from django.apps import apps
-from django.db import connection, transaction
+from django.db import transaction
 from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
@@ -417,13 +417,11 @@ class GraphBulkSaveService:
 
     @staticmethod
     def _find_node_ids_outside_graph(node_ids: set[int], graph_id: int) -> set[int]:
-        """Return the subset of node_ids that are not an active BaseGlobalNode of graph_id.
+        """Return the subset of node_ids that are not a live BaseGlobalNode of graph_id.
 
-        A nonexistent id, a soft-deleted node and an id belonging to another graph
-        (or organization) all count as outside, so callers cannot tell them apart.
-        Every concrete BaseGlobalNode model must have a ``graph`` FK and an
-        ``is_soft_deleted`` field; ``get_field`` raises FieldDoesNotExist for one
-        that does not, instead of silently skipping it.
+        A nonexistent id, a node in the recycle bin and an id belonging to another
+        graph (or organization) all count as outside, so callers cannot tell them
+        apart. One query: a UNION over every node model's live `objects` manager.
         """
         if not node_ids:
             return set()
@@ -432,21 +430,14 @@ class GraphBulkSaveService:
         if not node_models:
             return node_ids
 
-        id_list = list(node_ids)
-        placeholders = ",".join(["%s"] * len(id_list))
-        union_parts = [
-            f"SELECT id FROM {m._meta.db_table} "
-            f"WHERE {m._meta.get_field('graph').column} = %s "
-            f"AND {m._meta.get_field('is_soft_deleted').column} = false "
-            f"AND id IN ({placeholders})"
-            for m in node_models
+        # order_by() drops any Meta.ordering, which a UNION's parts can't carry.
+        live_ids = [
+            model.objects.filter(graph_id=graph_id, pk__in=node_ids)
+            .order_by()
+            .values_list("pk", flat=True)
+            for model in node_models
         ]
-        query = " UNION ALL ".join(union_parts)
-        params = [graph_id, *id_list] * len(node_models)
-
-        with connection.cursor() as cursor:
-            cursor.execute(query, params)
-            found_ids = {row[0] for row in cursor.fetchall()}
+        found_ids = set(live_ids[0].union(*live_ids[1:], all=True))
 
         return node_ids - found_ids
 
