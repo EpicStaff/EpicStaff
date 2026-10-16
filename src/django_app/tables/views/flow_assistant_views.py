@@ -11,7 +11,7 @@ import contextlib
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
-from django.http import Http404, JsonResponse
+from django.http import Http404
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import IsSuperadmin
@@ -293,14 +293,7 @@ class FlowAssistantStreamView(SSEMixin):
                 self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
             )
         except APIException as exc:
-            return JsonResponse(
-                {
-                    "status_code": exc.status_code,
-                    "code": exc.default_code,
-                    "message": str(exc.detail),
-                },
-                status=exc.status_code,
-            )
+            return self.refuse(exc)
         return None
 
     async def get_initial_data(self):
