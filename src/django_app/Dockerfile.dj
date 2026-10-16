@@ -46,7 +46,7 @@ COPY --from=builder /app /app
 # Add virtualenv to PATH.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
-# trace, see docs/backend-runtime-fetch-audit.md item 7) — django_app imports
+# trace, see the litellm finding in docs/backend-runtime-fetch-audit.md) — django_app imports
 # it via tables/services/llm_clients/litellm_client.py.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
