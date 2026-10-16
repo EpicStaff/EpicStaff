@@ -13,13 +13,13 @@ from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.utils import timezone
-from rbac.access.asserts import assert_org_permission, assert_row_org_permission
+from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import IsSuperadmin
 from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
-from rest_framework.exceptions import APIException, NotFound, PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -39,6 +39,7 @@ from tables.services.flow_assistant import (
     FlowAssistantService,
     build_node_index,
 )
+from tables.services.flow_assistant.conversation_access import get_streamable_conversation
 from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.organization_resolution import resolve_organization_user
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
@@ -272,49 +273,6 @@ class FlowAssistantSendMessageView(APIView):
 # ── SSE streaming endpoint ────────────────────────────────────────────────────
 
 
-def _get_streamable_conversation(
-    user, graph_id: int, conversation_id: int
-) -> FlowAssistantConversation:
-    """Fetch the conversation to stream a reply for, authorizing `user` via its flow's org.
-
-    The SSE ticket proves only who the user is, and EventSource cannot send the
-    X-Organization-Id header, so the org is the one that owns the conversation's
-    graph. A missing, soft-deleted or another user's conversation, and one in an org
-    the user is not a member of, all raise the same NotFound, so the response never
-    reveals that a conversation id exists. Superadmin passes the org check but must
-    still own the conversation.
-
-    Raises:
-        NotFound (404): no conversation the user may stream.
-        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
-    """
-    not_found = NotFound("Conversation not found.")
-    conversation = (
-        FlowAssistantConversation.objects.select_related(
-            "flow_assistant__graph",
-            "flow_assistant__llm_config__model__llm_provider",
-            "organization_user__user",
-        )
-        .filter(
-            pk=conversation_id,
-            flow_assistant__graph_id=graph_id,
-            organization_user__user_id=user.pk,
-            deleted_at__isnull=True,
-        )
-        .first()
-    )
-    if conversation is None:
-        raise not_found
-    assert_row_org_permission(
-        user,
-        conversation.flow_assistant.graph.org_id,
-        ResourceType.FLOWS,
-        Permission.READ,
-        not_found=not_found,
-    )
-    return conversation
-
-
 class FlowAssistantStreamView(SSEMixin):
     """
     GET /api/flow-assistants/<graph_id>/conversations/<conversation_id>/stream/?ticket=...
@@ -331,7 +289,7 @@ class FlowAssistantStreamView(SSEMixin):
         Returns a JSON error response on denial, else None.
         """
         try:
-            self.conversation = await sync_to_async(_get_streamable_conversation)(
+            self.conversation = await sync_to_async(get_streamable_conversation)(
                 self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
             )
         except APIException as exc:

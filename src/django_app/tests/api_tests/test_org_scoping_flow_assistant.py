@@ -14,6 +14,7 @@ call) starts.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.db.models import Max
 from django.test import AsyncClient, Client
 from django.urls import reverse
@@ -224,22 +225,45 @@ def test_another_users_conversation_answers_like_a_missing_one(request, two_org_
     llm_client.assert_not_called()
 
 
-def test_soft_deleted_conversation_is_not_streamed(two_org_user, org_a, llm_client):
-    conversation = _pending_conversation(two_org_user, org_a)
+def _soft_delete(conversation, org_a):
     conversation.deleted_at = conversation.started_at
     conversation.save(update_fields=["deleted_at"])
 
+
+def _deactivate_the_org(conversation, org_a):
+    # The user stays a member, but of an org that no longer grants anything.
+    org_a.is_active = False
+    org_a.save(update_fields=["is_active"])
+
+
+def _move_to_another_flow(conversation, org_a):
+    # The URL names this flow while the conversation belongs to another one.
+    another_flow = Graph.objects.create(name="another flow", org=org_a)
+    conversation.flow_assistant = FlowAssistant.objects.create(graph=another_flow)
+
+
+@pytest.mark.parametrize(
+    "make_unstreamable",
+    [_soft_delete, _deactivate_the_org, _move_to_another_flow],
+    ids=["soft_deleted", "org_deactivated", "graph_id_of_another_flow"],
+)
+def test_conversation_the_user_may_no_longer_stream_answers_like_a_missing_one(
+    two_org_user, org_a, llm_client, make_unstreamable
+):
+    conversation = _pending_conversation(two_org_user, org_a)
+    missing = _stream(two_org_user, _missing_conversation(conversation))
+
+    make_unstreamable(conversation, org_a)
     response = _stream(two_org_user, conversation)
 
     assert response.status_code == 404, response.content
+    assert response.content == missing.content
     llm_client.assert_not_called()
 
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_in_an_org_with_flows_read_streams_the_reply(two_org_user, org_a, llm_client):
-    from asgiref.sync import sync_to_async
-
     conversation = await sync_to_async(_pending_conversation)(two_org_user, org_a)
     ticket, _ = await sync_to_async(sse_ticket_service.issue)(two_org_user)
 
