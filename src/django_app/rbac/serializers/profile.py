@@ -1,9 +1,20 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from rbac.serializers.users import (
     MembershipNestedSerializer,
     UserResponseSerializer,
 )
+
+
+class ShortcutCustomEntrySerializer(serializers.Serializer):
+    action = serializers.CharField()
+    keys = serializers.CharField()
+
+
+class ShortcutOverridesSerializer(serializers.Serializer):
+    overrides = serializers.DictField(child=serializers.CharField())
+    custom = ShortcutCustomEntrySerializer(many=True)
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
@@ -29,6 +40,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
     active_permissions = serializers.JSONField(
         source="_active_permissions", allow_null=True, default=None, read_only=True
     )
+    shortcut_overrides = serializers.SerializerMethodField()
 
     class Meta(UserResponseSerializer.Meta):
         fields = [
@@ -40,6 +52,10 @@ class ProfileResponseSerializer(UserResponseSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(ShortcutOverridesSerializer)
+    def get_shortcut_overrides(self, user):
+        return user.shortcut_overrides
+
 
 # ---- request serializers (schema-only; validation in UserValidationService) ----
 
@@ -48,10 +64,9 @@ class ProfilePatchRequestSerializer(serializers.Serializer):
     """`PATCH /api/profile/` — schema for drf-spectacular only."""
 
     display_name = serializers.CharField(required=False, allow_null=True)
-    shortcut_overrides = serializers.DictField(
-        child=serializers.CharField(),
+    shortcut_overrides = ShortcutOverridesSerializer(
         required=False,
-        help_text="Replaces the whole map of action id to keys.",
+        help_text="Replaces the whole value: overrides and custom shortcuts.",
     )
 
 

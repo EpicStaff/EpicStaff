@@ -3,8 +3,8 @@ from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
 from tables.models.user import (
-    SHORTCUT_OVERRIDES_MAX_ENTRIES,
-    SHORTCUT_OVERRIDES_MAX_KEY_LENGTH,
+    SHORTCUTS_MAX_ENTRIES_PER_SECTION,
+    SHORTCUTS_MAX_TEXT_LENGTH,
 )
 
 from rbac.validation.base import BaseRBACValidator, FieldError
@@ -227,21 +227,33 @@ class UserValidationService(BaseRBACValidator):
 
     @staticmethod
     def _shortcut_overrides_error(value: Any) -> str | None:
-        if not isinstance(value, dict):
-            return "Must be an object of action id to keys."
-        if len(value) > SHORTCUT_OVERRIDES_MAX_ENTRIES:
-            return f"Must have {SHORTCUT_OVERRIDES_MAX_ENTRIES} entries or fewer."
-        for action_id, keys in value.items():
-            for text in (action_id, keys):
-                if (
-                    not isinstance(text, str)
-                    or not 0 < len(text) <= SHORTCUT_OVERRIDES_MAX_KEY_LENGTH
-                    or not (text.isascii() and text.isprintable())
-                ):
-                    return (
-                        "Action ids and keys must be non-empty printable ASCII strings "
-                        f"of {SHORTCUT_OVERRIDES_MAX_KEY_LENGTH} characters or fewer."
-                    )
+        if not isinstance(value, dict) or value.keys() != {"overrides", "custom"}:
+            return 'Must be an object with exactly the keys "overrides" and "custom".'
+        overrides = value["overrides"]
+        custom = value["custom"]
+        if not isinstance(overrides, dict):
+            return '"overrides" must be an object of action id to keys.'
+        if not isinstance(custom, list):
+            return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
+        if max(len(overrides), len(custom)) > SHORTCUTS_MAX_ENTRIES_PER_SECTION:
+            return (
+                f'"overrides" and "custom" must each have {SHORTCUTS_MAX_ENTRIES_PER_SECTION} '
+                "entries or fewer."
+            )
+        if not all(
+            isinstance(entry, dict) and entry.keys() == {"action", "keys"} for entry in custom
+        ):
+            return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
+        texts = [*overrides.keys(), *overrides.values()]
+        texts += [text for entry in custom for text in (entry["action"], entry["keys"])]
+        if not all(_is_shortcut_text(text) for text in texts):
+            return (
+                "Action ids and keys must be non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
+            )
+        custom_keys = [entry["keys"] for entry in custom]
+        if len(set(custom_keys)) != len(custom_keys):
+            return 'Each "custom" entry must have different keys.'
         return None
 
     def validate_avatar_upload(self, data) -> UploadedFile:
@@ -279,3 +291,12 @@ class UserValidationService(BaseRBACValidator):
         )
         self._raise_if_any(errors)
         return {"ticket": ticket, "new_password": new_password}
+
+
+def _is_shortcut_text(text: Any) -> bool:
+    return (
+        isinstance(text, str)
+        and 0 < len(text) <= SHORTCUTS_MAX_TEXT_LENGTH
+        and text.isascii()
+        and text.isprintable()
+    )

@@ -213,7 +213,10 @@ def test_list_ordering(superadmin, member_acme, ordering, expected):
 
 @pytest.mark.django_db
 def test_the_user_directory_never_shows_shortcut_overrides(superadmin, member_acme):
-    member_acme.shortcut_overrides = {"node.agent": "Alt+KeyG"}
+    member_acme.shortcut_overrides = {
+        "overrides": {"node.agent": "Alt+KeyG"},
+        "custom": [{"action": "node.task", "keys": "Shift+KeyT"}],
+    }
     member_acme.save(update_fields=["shortcut_overrides"])
 
     response = client_for(superadmin).get(USERS_LIST)
