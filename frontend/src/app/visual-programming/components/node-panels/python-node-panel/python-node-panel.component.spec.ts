@@ -1,10 +1,13 @@
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { FormArray } from '@angular/forms';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormArray, ReactiveFormsModule } from '@angular/forms';
+import { By } from '@angular/platform-browser';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
+import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
+import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
@@ -13,6 +16,7 @@ import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
+import { InputMapComponent } from '../../input-map/input-map.component';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -260,5 +264,258 @@ describe('PythonNodePanelComponent test run', () => {
         open();
 
         expect(blocker()).toBe(STORED_GRAPH_OUTDATED_MESSAGE);
+    });
+});
+
+describe('PythonNodePanelComponent Input List and main() signature', () => {
+    let fixture: ComponentFixture<PythonNodePanelComponent>;
+    let panel: PythonNodePanelComponent;
+
+    afterEach(() => {
+        fixture.destroy();
+        vi.useRealTimers();
+    });
+
+    /** Opens a Python node with only its Input List rendered, as the user sees it. */
+    function open(code: string, inputMap: Record<string, string>, isPreview = false): void {
+        vi.useFakeTimers();
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, {
+            set: {
+                template: `<form [formGroup]="form">
+                    <app-input-map
+                        [readonly]="isReadOnly()"
+                        [showTestMode]="true"
+                        [testMode]="isOpenTestMode()"
+                        (testModeChange)="isOpenTestMode.set($event)"
+                    />
+                </form>`,
+                imports: [ReactiveFormsModule, InputMapComponent],
+            },
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...pythonNode,
+            data: { ...pythonNode.data, code },
+            input_map: inputMap,
+        } as PythonNodeModel);
+        fixture.detectChanges();
+        panel = fixture.componentInstance;
+    }
+
+    /** What the code editor emits once the user stopped typing for the debounce. */
+    function editCode(code: string): void {
+        panel.onPythonCodeChange(code);
+        vi.advanceTimersByTime(300);
+        fixture.detectChanges();
+    }
+
+    function rows(name: 'input_map' | 'test_input' = 'input_map'): { key: string; value: string }[] {
+        return (panel.form.get(name) as FormArray).getRawValue() as { key: string; value: string }[];
+    }
+
+    function typeKey(rowIndex: number, text: string): void {
+        const input = fixture.nativeElement.querySelectorAll('input[formControlName="key"]')[
+            rowIndex
+        ] as HTMLInputElement;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    function click(selector: string, index = 0): void {
+        (fixture.nativeElement.querySelectorAll(selector)[index] as HTMLElement).click();
+        fixture.detectChanges();
+    }
+
+    /** What the Test mode switch does; the panel is expanded, as Test mode asks the shell to. */
+    function toggleTestMode(on: boolean): void {
+        fixture.componentRef.setInput('isExpanded', true);
+        fixture.debugElement.query(By.directive(InputMapComponent)).componentInstance.onTestModeToggle(on);
+        fixture.detectChanges();
+    }
+
+    describe('when the code changes', () => {
+        it('leaves a node whose list and signature disagree as it is when opened and echoed by the editor', () => {
+            const code = 'def main(count: int = 1):\n    return count\n';
+            open(code, { other: 'variables.other' });
+
+            editCode(code);
+
+            expect(panel.pythonCode).toBe(code);
+            expect(rows()).toEqual([{ key: 'other', value: 'variables.other' }]);
+            expect(panel.isDirty()).toBe(false);
+        });
+
+        it('follows the signature only once the typing stops: a rename keeps the path, a new name gets a row', () => {
+            open('def main(count: int = 1, *args):\n    return count\n', { count: 'variables.count' });
+
+            panel.onPythonCodeChange('def main(total: int = 1, name, *args):\n    return total\n');
+            vi.advanceTimersByTime(299);
+            expect(rows()).toEqual([{ key: 'count', value: 'variables.count' }]);
+
+            vi.advanceTimersByTime(1);
+            expect(rows()).toEqual([
+                { key: 'total', value: 'variables.count' },
+                { key: 'name', value: 'variables.' },
+            ]);
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('keeps each path on its name when the parameters are reordered', () => {
+            open('def main(a, b):\n    pass\n', { a: 'variables.a', b: 'variables.b' });
+
+            editCode('def main(b, a):\n    pass\n');
+
+            expect(rows()).toEqual([
+                { key: 'a', value: 'variables.a' },
+                { key: 'b', value: 'variables.b' },
+            ]);
+        });
+
+        it('removes the row of a removed parameter and gives its path back when the name returns', () => {
+            open('def main(count, name):\n    pass\n', { count: 'variables.count', name: 'variables.name' });
+
+            editCode('def main(name):\n    pass\n');
+            expect(rows()).toEqual([{ key: 'name', value: 'variables.name' }]);
+
+            editCode('def main():\n    pass\n');
+            editCode('def main(c):\n    pass\n');
+            editCode('def main(count, c):\n    pass\n');
+            expect(rows()).toEqual([
+                { key: 'c', value: 'variables.' },
+                { key: 'count', value: 'variables.count' },
+            ]);
+        });
+
+        it('gives a path back to a new row renamed into a removed name', () => {
+            open('def main(count):\n    pass\n', { count: 'variables.count' });
+
+            editCode('def main():\n    pass\n');
+            editCode('def main(co):\n    pass\n');
+            editCode('def main(count):\n    pass\n');
+
+            expect(rows()).toEqual([{ key: 'count', value: 'variables.count' }]);
+        });
+
+        it('only adds rows while **kwargs takes any row', () => {
+            open('def main(**kwargs):\n    pass\n', { a: 'variables.a', b: 'variables.b' });
+
+            editCode('def main(x, **kwargs):\n    pass\n');
+
+            expect(rows()).toEqual([
+                { key: 'a', value: 'variables.a' },
+                { key: 'b', value: 'variables.b' },
+                { key: 'x', value: 'variables.' },
+            ]);
+        });
+
+        it('only adds rows for the first signature of a node opened without one', () => {
+            open('# write main() here\n', { a: 'variables.a', b: 'variables.b' });
+
+            editCode('def main(x):\n    pass\n');
+
+            expect(rows().map((row) => row.key)).toEqual(['a', 'b', 'x']);
+        });
+
+        it.each([
+            ['does not parse', 'def main(count, total: dict = {'],
+            ['repeats a name', 'def main(count, count):'],
+        ])('keeps every row while the signature %s', (_case, code) => {
+            open('def main(count):\n    pass\n', { count: 'variables.count' });
+
+            editCode(code);
+
+            expect(rows()).toEqual([{ key: 'count', value: 'variables.count' }]);
+        });
+
+        it('syncs the test values in Test mode, and the Input List gets them when it is left', () => {
+            open('def main(count):\n    pass\n', { count: 'variables.count' });
+            toggleTestMode(true);
+
+            editCode('def main(count, extra):\n    pass\n');
+            expect(rows('test_input').map((row) => row.key)).toEqual(['count', 'extra']);
+
+            toggleTestMode(false);
+            expect(rows()).toEqual([
+                { key: 'count', value: 'variables.count' },
+                { key: 'extra', value: 'variables.' },
+            ]);
+        });
+
+        it('does not sync in a read-only version preview', () => {
+            open('def main(count):\n    pass\n', { count: 'variables.count' }, true);
+
+            editCode('def main(total):\n    pass\n');
+
+            expect(rows()).toEqual([{ key: 'count', value: 'variables.count' }]);
+        });
+    });
+
+    describe('when the Input List changes', () => {
+        const CODE = 'def main(count: int, *args):\n    return count\n';
+
+        it('rewrites only the signature when a row is renamed, added or removed', () => {
+            open(CODE, { count: 'variables.count' });
+
+            typeKey(0, 'total');
+            expect(panel.pythonCode).toBe('def main(total: int, *args):\n    return count\n');
+
+            click('.add-pair-btn');
+            typeKey(1, 'name');
+            expect(panel.pythonCode).toBe('def main(total: int, name, *args):\n    return count\n');
+
+            click('.delete-icon', 0);
+            expect(panel.pythonCode).toBe('def main(name, *args):\n    return count\n');
+            expect(panel.isDirty()).toBe(true);
+        });
+
+        it('renames the parameter of that name whatever the order of the rows', () => {
+            open('def main(a: int, b: str = "x"):\n    pass\n', { b: 'variables.b', a: 'variables.a' });
+
+            typeKey(0, 'c');
+
+            expect(panel.pythonCode).toBe('def main(a: int, c: str = "x"):\n    pass\n');
+        });
+
+        it('waits while a key is not a valid name yet, then applies the rename', () => {
+            open(CODE, { count: 'variables.count' });
+
+            typeKey(0, 'count-');
+            expect(panel.pythonCode).toBe(CODE);
+
+            typeKey(0, 'counter');
+            expect(panel.pythonCode).toBe('def main(counter: int, *args):\n    return count\n');
+        });
+
+        it('leaves the code alone rather than add a parameter without a default after a defaulted one', () => {
+            const code = 'def main(a, b="x"):\n    pass\n';
+            open(code, { a: 'variables.a', b: 'variables.b' });
+
+            click('.add-pair-btn');
+            typeKey(2, 'c');
+
+            expect(panel.pythonCode).toBe(code);
+        });
+
+        it('leaves a signature edit still waiting for its sync to the code editor', () => {
+            open(CODE, { count: 'variables.count' });
+
+            panel.onPythonCodeChange('def main(count: int, extra, *args):\n    return count\n');
+            typeKey(0, 'total');
+
+            expect(panel.pythonCode).toBe('def main(count: int, extra, *args):\n    return count\n');
+        });
     });
 });
