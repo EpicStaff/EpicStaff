@@ -182,7 +182,9 @@ def main(variables: dict) -> bool:
         main_node = self.decision_table_node_data.node_name + "_main"
 
         async def enter_node_function(state: State, writer: StreamWriter):
-            logger.info(f"Entering decision table node: {self.decision_table_node_data.node_name}")
+            logger.debug(
+                "Entering decision table node: {}", self.decision_table_node_data.node_name
+            )
 
             # update variables
             update_variables = {
@@ -220,16 +222,18 @@ def main(variables: dict) -> bool:
             return state
 
         async def main_node_function(state: State, writer: StreamWriter):
-            logger.info(
-                f"Entering main decision table node: {self.decision_table_node_data.node_name}"
+            logger.debug(
+                "Entering main decision table node: {}",
+                self.decision_table_node_data.node_name,
             )
 
             # Increment the last condition group index
             decision_node_variables = state["system_variables"]["nodes"][self.node_name]
 
             if decision_node_variables["result_node"] is not None:
-                logger.info(
-                    f"result_node is already set to {decision_node_variables['result_node']}, skipping condition groups."
+                logger.debug(
+                    "result_node is already set to {}, skipping condition groups.",
+                    decision_node_variables["result_node"],
                 )
                 decision_node_variables["next_node"] = END
                 msg = self.custom_session_message_writer.add_finish_message(
@@ -285,7 +289,7 @@ def main(variables: dict) -> bool:
         ) -> callable:
             async def condition_group_function(state: State, writer: StreamWriter):
                 try:
-                    logger.info(f"Executing condition group: {condition_group.group_name}")
+                    logger.debug("Executing condition group: {}", condition_group.group_name)
                     decision_node_variables = state["system_variables"]["nodes"][self.node_name]
                     condition_result = await self._execute_condition_group(
                         condition_group=condition_group,
@@ -301,7 +305,7 @@ def main(variables: dict) -> bool:
                     )
                     await self._publish_message(msg)
                     if condition_result:
-                        logger.info(f"Condition group '{condition_group.group_name}' passed.")
+                        logger.debug("Condition group '{}' passed.", condition_group.group_name)
                         if condition_group.manipulation:
                             await self._execute_manipulation(
                                 manipulation=condition_group.manipulation,

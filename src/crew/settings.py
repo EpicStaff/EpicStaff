@@ -9,6 +9,9 @@ env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
 
+# Normalised in utils/logger.py, which also rejects names loguru does not know.
+LOG_LEVEL = env.str("CREW_LOG_LEVEL")
+
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER")

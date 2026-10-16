@@ -246,7 +246,7 @@ class RedisService(metaclass=SingletonMeta):
 
     async def apublish(self, channel: str, message: dict | str):
         await self.aioredis_client.publish(channel=channel, message=_encode(message))
-        logger.info(f"Message published to channel '{channel}'.")
+        logger.debug("Message published to channel {}", channel)
 
     async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:
         """Append a graph session message, already encoded as JSON, to the stream

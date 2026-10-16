@@ -385,11 +385,20 @@ class _ReprCountingStr(str):
 
 @pytest.fixture
 def production_log_level():
-    """Reapply the service's INFO-level loguru setup, as configured in production."""
+    """Configure the crew stdout sink at INFO, the production level, for one test.
+
+    The suite may run with any CREW_LOG_LEVEL (CI uses the dev default, DEBUG), so the
+    level is pinned here and the suite's own sink is restored afterwards.
+    """
+    import settings
     import utils.logger
 
+    suite_log_level = settings.LOG_LEVEL
+    settings.LOG_LEVEL = "INFO"
     importlib.reload(utils.logger)
     yield
+    settings.LOG_LEVEL = suite_log_level
+    importlib.reload(utils.logger)
 
 
 @pytest.mark.asyncio
