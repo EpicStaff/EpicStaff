@@ -212,7 +212,7 @@ export class ChatApiService {
         );
     }
 
-    /** For the inbox stream's own calls, which run on every page: a chat-service 403 must not remount the route. */
+    /** For the inbox stream's own calls, which run on every page: a chat service 403 must not remount the route. */
     private inBackground(): { context: HttpContext } {
         return { context: new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true) };
     }

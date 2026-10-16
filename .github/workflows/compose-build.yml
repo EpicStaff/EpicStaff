@@ -45,7 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           REPO_ROOT="$(pwd)"
-          docker compose --env-file "$REPO_ROOT/src/.env" -f "$REPO_ROOT/$COMPOSE_FILE" config --format json > "$REPO_ROOT/compose.json"
+          # --profile chat: config leaves profiled services out unless their profile is active.
+          docker compose --env-file "$REPO_ROOT/src/.env" -f "$REPO_ROOT/$COMPOSE_FILE" --profile chat config --format json > "$REPO_ROOT/compose.json"
           ls -la "$REPO_ROOT/compose.json"
 
       - name: Generate matrix (python)

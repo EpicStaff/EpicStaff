@@ -25,24 +25,10 @@ else
   echo ">> Skipping .env regeneration."
 fi
 
+# deploy.env stays last so the server's overrides win. envtool.py --dev turns the chat service
+# on (COMPOSE_PROFILES=dev,chat, CHAT_ENABLED=true); override both in deploy.env to turn it off.
+# With chat on, set CHAT_PUBLIC_BASE_URL in deploy.env too: its dev default is http://localhost.
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
-
-# The chat service is its own repository (EpicStaff/chat-service). A checkout of it at src/chat
-# joins every compose call below; its version is CHAT_IMAGE_TAG in src/chat/.env, pulled from ghcr.
-# deploy.env stays last so the server's overrides still win.
-if [ -f "chat/docker-compose.epicstaff.yaml" ]; then
-  if [ ! -f "chat/.env" ]; then
-    echo "chat: src/chat/docker-compose.epicstaff.yaml found but src/chat/.env is missing (copy chat/.env.example)" >&2
-    exit 1
-  fi
-  echo ">> chat service: included from src/chat ($(git -C chat rev-parse --short HEAD 2>/dev/null || echo 'not a git checkout'))"
-  if ! grep -qsx 'CHAT_ENABLED=true' .env deploy.env; then
-    echo "⚠️  chat runs but CHAT_ENABLED is not true in .env or deploy.env: the UI and nginx keep chat off."
-  fi
-  DC="docker compose --env-file .env --env-file chat/.env --env-file deploy.env -f $COMPOSE_FILE -f chat/docker-compose.epicstaff.yaml"
-else
-  echo ">> chat service: not installed (no src/chat)"
-fi
 
 echo ">> docker compose down"
 $DC down --remove-orphans

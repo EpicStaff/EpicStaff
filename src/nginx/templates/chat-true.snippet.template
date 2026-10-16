@@ -1,6 +1,6 @@
-# CHAT_ENABLED=true. The chat service is a separate project (chat-service 1.x) that may run
-# in this compose project or elsewhere, so it is proxied through a variable (resolved per
-# request, like /auditor/) rather than a static upstream that would stop nginx when absent.
+# CHAT_ENABLED=true. The chat service runs only under the chat compose profile and may also be
+# run elsewhere, so it is proxied through a variable (resolved per request, like /auditor/)
+# rather than a static upstream that would stop nginx when absent.
 # The EpicStaff UI's chat page lives at exactly /chat; everything under /chat/ is the service.
 location = /chat {
     proxy_pass http://frontend_server;
