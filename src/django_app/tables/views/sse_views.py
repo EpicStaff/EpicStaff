@@ -4,7 +4,6 @@ import time
 from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
-from django.http import JsonResponse
 from drf_spectacular.utils import (
     extend_schema,
 )
@@ -278,14 +277,7 @@ class RunSessionSSEView(SSEMixin):
         try:
             await sync_to_async(get_accessible_session)(self.user, self.kwargs.get("session_id"))
         except APIException as exc:
-            return JsonResponse(
-                {
-                    "status_code": exc.status_code,
-                    "code": exc.default_code,
-                    "message": str(exc.detail),
-                },
-                status=exc.status_code,
-            )
+            return self.refuse(exc)
         return None
 
     async def get(self, request, *args, **kwargs):
