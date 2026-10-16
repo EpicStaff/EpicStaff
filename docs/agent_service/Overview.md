@@ -226,8 +226,9 @@ service:
 
 ## LLM
 
-LiteLLM via `LiteLLMClient` (`app/llm/`), streaming-only, routed through a
-`RouterPool` with a `RetryPolicy`. Configured by `configure_litellm(...)` at
+LiteLLM via `LiteLLMClient` (`app/llm/`), calling `litellm.acompletion`
+directly with a `RetryPolicy` and a `ConcurrencyLimiter` (`max_rpm` as an
+in-flight cap). Configured by `configure_litellm(...)` at
 boot.
 
 ## Settings (env)

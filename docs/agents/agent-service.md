@@ -270,29 +270,33 @@ finish_reason, usage}` — normalized output unit; `ToolCallFragment{id, name,
 arguments_delta}` — one streaming fragment of a tool call.
 
 `litellm_client.py` ([`src/agent/app/llm/litellm_client.py`](../../src/agent/app/llm/litellm_client.py)):
-`LiteLLMClient` is **streaming-only** — `chat()` asserts `stream is True`.
+`LiteLLMClient` calls `litellm.acompletion` directly (no `litellm.Router`).
+`chat(stream=...)` supports both modes: a streamed response is normalized chunk
+by chunk; a non-streamed one is split into the same chunk sequence.
 Converts `ToolSpec`s into the litellm/OpenAI function-call format, resolves a
-`Router` from the process-wide `RouterPool`, resolves a `RetryPolicy`
-(default `AGENT_DEFAULT_MAX_RETRIES`, overridable per-call via
-`runtime_config["max_retry_limit"]`), strips Router-owned/runtime keys before
-forwarding to `router.acompletion`
-(`_STRIPPED_MODEL_CONFIG_KEYS = {"model", "api_key", "base_url", "api_version", "max_retry_limit", "max_rpm"}`),
-calls `router.acompletion(stream=True, stream_options={"include_usage": True}, ...)`
-wrapped in `retry.aretry(...)`. Usage/cost normalization happens per chunk:
-`_usage_dict` normalizes prompt/completion/total tokens plus
-`cached_prompt_tokens` (OpenAI `prompt_tokens_details.cached_tokens`,
-Anthropic `cache_read_input_tokens` fallback); `_usage_cost_usd` calls
-`litellm.cost_per_token` best-effort, swallowing any exception to `0.0`.
+`RetryPolicy` (default `AGENT_DEFAULT_MAX_RETRIES`, overridable per-call via
+`runtime_config["max_retry_limit"]`), strips runtime-only keys
+(`_STRIPPED_MODEL_CONFIG_KEYS = {"max_retry_limit", "max_rpm"}`) and forwards
+the rest of `model_config` (including `model`, `api_key`, `base_url`,
+`api_version`). Each attempt calls
+`litellm.acompletion(..., max_retries=0, timeout=litellm.request_timeout)`
+inside `retry.aretry(...)`; `max_retries=0` keeps provider-SDK retries off so
+only `RetryPolicy` retries. With `stream=True` it adds
+`stream_options={"include_usage": True}` and opens a lazily-opened stream
+(`CustomStreamWrapper.fetch_stream()`) inside the attempt, so connect errors are
+retried. Usage/cost normalization: `_usage_dict` normalizes
+prompt/completion/total tokens plus `cached_prompt_tokens` (OpenAI
+`prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`
+fallback); `_usage_cost_usd` calls `litellm.cost_per_token` best-effort,
+swallowing any exception to `0.0`.
 
-`router_pool.py` ([`src/agent/app/llm/router_pool.py`](../../src/agent/app/llm/router_pool.py)):
-`RouterPool` is a process-singleton (`get_router_pool()`) keyed by a
-SHA-256 hash of `(model, api_key, base_url, api_version, rpm)`, using
-double-checked locking (`asyncio.Lock`) so a Router is built at most once per
-config. Each Router holds a **single** deployment (`model_name = key[:12]`)
-with `disable_cooldowns=True` — deliberately avoiding the ~60s
-"no-deployments-available" outage that cooldowns would otherwise cause on a
-single-deployment router. `rpm` is set on the deployment's `litellm_params`
-when provided.
+`concurrency_limiter.py` ([`src/agent/app/llm/concurrency_limiter.py`](../../src/agent/app/llm/concurrency_limiter.py)):
+`ConcurrencyLimiter` is a process-wide registry (`get_concurrency_limiter()`)
+of one `asyncio.Semaphore(max_rpm)` per SHA-256 hash of
+`(model, api_key, base_url, api_version, max_rpm)`. `runtime_config["max_rpm"]`
+is therefore a **concurrency cap** (at most `max_rpm` calls in flight per
+config), not a per-minute limit; `None` or `0` means no cap. The slot is held
+until the response object arrives; a stream is consumed outside it.
 
 `retry.py` ([`src/agent/app/llm/retry.py`](../../src/agent/app/llm/retry.py)):
 `RetryPolicy` — exponential backoff with jitter
@@ -458,7 +462,7 @@ src/agent/
     ├── llm/
     │   ├── client.py                 # LLMClient ABC, LLMChunk, ToolCallFragment
     │   ├── litellm_client.py         # LiteLLMClient
-    │   ├── router_pool.py            # RouterPool (process singleton)
+    │   ├── concurrency_limiter.py    # ConcurrencyLimiter (max_rpm cap)
     │   ├── retry.py                  # RetryPolicy
     │   └── config.py                 # configure_litellm()
     ├── loop/
@@ -516,7 +520,7 @@ sequenceDiagram
     participant Prompt as PromptBuilder
     participant Exec as run_task_through_loop
     participant Loop as DefaultAgentLoop
-    participant LLM as LiteLLMClient (RouterPool/RetryPolicy)
+    participant LLM as LiteLLMClient (ConcurrencyLimiter/RetryPolicy)
     participant Tools as ToolRegistry
     participant Backend as Sandbox / MCP / Knowledge
     participant Enforcer as StructuredOutputEnforcer

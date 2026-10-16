@@ -1,10 +1,10 @@
 """
-LiteLLMClient: concrete ``LLMClient`` backed by LiteLLM Router.
+LiteLLMClient: concrete ``LLMClient`` backed by ``litellm.acompletion``.
 
-Composes ``RouterPool`` (per-deployment rpm enforcement) and ``RetryPolicy``
-(exponential backoff on transient errors).  Normalizes LiteLLM streamed chunks
-or a single non-streamed response into the ``LLMChunk`` schema consumed by
-``AgentLoop``.
+Composes ``ConcurrencyLimiter`` (``max_rpm`` as a per-deployment in-flight cap)
+and ``RetryPolicy`` (exponential backoff on transient errors). Normalizes LiteLLM
+streamed chunks or a single non-streamed response into the ``LLMChunk`` schema
+consumed by ``AgentLoop``.
 
 Default max-retry count is read from ``AGENT_DEFAULT_MAX_RETRIES`` env var via
 ``settings.load_settings()`` on first need; override via the ``retry`` param.
@@ -16,16 +16,15 @@ import uuid
 from collections.abc import AsyncIterator
 
 import litellm
+from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from loguru import logger
 
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
+from app.llm.concurrency_limiter import ConcurrencyLimiter, get_concurrency_limiter
 from app.llm.retry import RetryPolicy
-from app.llm.router_pool import RouterPool, get_router_pool
 from app.logging_utils import redact
 
-_STRIPPED_MODEL_CONFIG_KEYS = frozenset(
-    {"model", "api_key", "base_url", "api_version", "max_retry_limit", "max_rpm"}
-)
+_STRIPPED_MODEL_CONFIG_KEYS = frozenset({"max_retry_limit", "max_rpm"})
 
 
 def _cached_prompt_tokens(data: dict) -> int:
@@ -74,10 +73,9 @@ def _usage_dict(usage) -> dict:
 def _usage_cost_usd(model: str, usage: dict) -> float:
     """Best-effort USD cost for a normalized usage dict via litellm's price map.
 
-    ``model`` must be the real ``provider/model`` string, NOT the Router's
-    synthetic hash model name — litellm's price map only recognizes real
-    model identifiers. Unmapped or self-hosted models raise inside litellm;
-    swallowed to 0.0 since cost is a display-only value, never billing truth.
+    ``model`` must be the real ``provider/model`` string; litellm's price map
+    only recognizes real model identifiers. Unmapped or self-hosted models raise
+    inside litellm; swallowed to 0.0 since cost is a display-only value, never billing truth.
     """
     try:
         prompt_cost, completion_cost = litellm.cost_per_token(
@@ -142,7 +140,7 @@ def _response_chunks(response, model: str) -> list[LLMChunk]:
 
 
 def _kwargs_for_acompletion(model_config: dict) -> dict:
-    """Strip Router-owned and runtime keys from model_config before forwarding."""
+    """Strip runtime-only keys from model_config before forwarding."""
     return {k: v for k, v in model_config.items() if k not in _STRIPPED_MODEL_CONFIG_KEYS}
 
 
@@ -153,19 +151,19 @@ def _default_max_retries() -> int:
 
 
 class LiteLLMClient(LLMClient):
-    """``LLMClient`` implementation that routes calls through ``litellm.Router``.
+    """``LLMClient`` implementation that calls ``litellm.acompletion`` directly.
 
-    ``retry`` and ``pool`` may be injected for testing; ``None`` means resolve
-    the process-singleton at call time so construction is cheap.
+    ``retry`` and ``limiter`` may be injected for testing; ``None`` means the
+    default retry policy and the process-wide limiter.
     """
 
     def __init__(
         self,
         retry: RetryPolicy | None = None,
-        pool: RouterPool | None = None,
+        limiter: ConcurrencyLimiter | None = None,
     ) -> None:
         self._retry = retry
-        self._pool = pool
+        self._limiter = limiter or get_concurrency_limiter()
 
     def chat(
         self,
@@ -207,10 +205,6 @@ class LiteLLMClient(LLMClient):
         runtime_max_retries = runtime_config.get("max_retry_limit")
         rpm = runtime_config.get("max_rpm")
 
-        pool = self._pool or get_router_pool()
-        router = await pool.get(model=model_config["model"], model_config=model_config, rpm=rpm)
-        synthetic_model = router.model_list[0]["model_name"]
-
         retry = self._retry or RetryPolicy(max_retries=_default_max_retries())
 
         if runtime_max_retries is not None and runtime_max_retries != retry.max_retries:
@@ -222,23 +216,31 @@ class LiteLLMClient(LLMClient):
             extra_kwargs["stream_options"] = {"include_usage": True}
 
         async def _call():
-            return await router.acompletion(
-                model=synthetic_model,
-                messages=messages,
-                stream=stream,
-                tools=litellm_tools,
-                _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
-                **extra_kwargs,
-            )
+            # Held only until the response object arrives; a stream is consumed outside the slot.
+            async with self._limiter.slot(model_config, rpm):
+                response = await litellm.acompletion(
+                    messages=messages,
+                    stream=stream,
+                    tools=litellm_tools,
+                    # RetryPolicy owns retries; SDK retries would multiply the attempts.
+                    max_retries=0,
+                    timeout=litellm.request_timeout,
+                    _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
+                    **extra_kwargs,
+                )
+
+            # Some providers open the stream lazily; open it here so connect errors are retried.
+            if isinstance(response, CustomStreamWrapper):
+                await response.fetch_stream()
+
+            return response
 
         _model = model_config.get("model")
-        _synthetic = synthetic_model
         _msg_count = len(messages)
         _tool_count = len(litellm_tools or [])
         logger.opt(lazy=True).debug(
-            "litellm request model={} synthetic={} stream={} messages={} tools={} kwargs={}",
+            "litellm request model={} stream={} messages={} tools={} kwargs={}",
             lambda: _model,
-            lambda: _synthetic,
             lambda: stream,
             lambda: _msg_count,
             lambda: _tool_count,

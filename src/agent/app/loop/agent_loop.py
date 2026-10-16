@@ -100,8 +100,7 @@ def _build_model_config(context: AgentContext) -> dict:
     config = {**llm_config.to_litellm_kwargs(provider=provider), "model": model}
 
     # Transport fields are not generation params, so to_litellm_kwargs leaves them out.
-    # RouterPool reads api_key/base_url/api_version (LiteLLMClient strips them from the
-    # call kwargs); deployment_id is what makes litellm route the call to Azure.
+    # deployment_id is what makes litellm route the call to Azure.
     for transport_field in _TRANSPORT_FIELDS:
         value = getattr(llm_config, transport_field)
         if value is not None:
