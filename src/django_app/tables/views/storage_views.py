@@ -319,11 +319,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         recycle_bin_purged = []
         try:
             if self._assert_cross_org_superadmin(request, src_org_id):
-                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+                bin_access = StorageBinPurgeAccess.for_request(request, dst_org_id)
                 purged = self.manager.move_cross_org(
-                    int(src_org_id),
+                    src_org_id,
                     from_path,
-                    int(dst_org_id),
+                    dst_org_id,
                     to_path,
                     user=request.user,
                     bin_purge=bin_access.grant,
@@ -352,11 +352,11 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             if self._assert_cross_org_superadmin(request, src_org_id):
-                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+                bin_access = StorageBinPurgeAccess.for_request(request, dst_org_id)
                 purged = self.manager.copy_cross_org(
-                    int(src_org_id),
+                    src_org_id,
                     from_path,
-                    int(dst_org_id),
+                    dst_org_id,
                     to_path,
                     user=request.user,
                     bin_purge=bin_access.grant,
