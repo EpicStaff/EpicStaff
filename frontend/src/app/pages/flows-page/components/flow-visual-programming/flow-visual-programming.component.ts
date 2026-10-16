@@ -34,7 +34,7 @@ import {
     NodeType,
     ResourceCode,
 } from '@shared/models';
-import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
@@ -108,7 +108,6 @@ import { SnakeGameOverlayComponent } from '../../../../visual-programming/easter
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowVersionPreviewComponent } from '../../../../visual-programming/flow-version-preview/flow-version-preview.component';
 import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
-import { ExecutionTimeoutLimitsStorageService } from '../../../../visual-programming/services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';

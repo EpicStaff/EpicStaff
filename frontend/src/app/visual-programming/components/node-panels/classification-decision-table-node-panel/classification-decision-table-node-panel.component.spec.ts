@@ -5,12 +5,17 @@ import { ApplicationRef, Component, input, NO_ERRORS_SCHEMA, output, Provider, s
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
+import { ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { FullLLMConfigService } from '@shared/services';
 import { of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../../../core/helpers/helpers';
 import { CdtExplanation, CdtExplanations } from '../../../core/models/classification-decision-table.model';
@@ -22,12 +27,6 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
-import {
-    provideLoadedExecutionTimeoutLimits,
-    TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../../../utils/testing/execution-timeout-limits.testing';
-import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -647,6 +646,21 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         const table = panel.onSave()?.data.table;
         expect(table?.pre_computation?.execution_timeout).toBe(300);
         expect(table?.post_computation?.execution_timeout).toBe(45);
+    });
+
+    it('names each timeout by its block, so screen readers tell the two apart', () => {
+        open(90, 90);
+
+        const groupLabel = (tab: 'precomputation' | 'postcomputation'): string | null => {
+            panel.activeTab.set(tab);
+            fixture.detectChanges();
+            return (fixture.nativeElement as HTMLElement)
+                .querySelector('app-execution-timeout-field [role="group"]')!
+                .getAttribute('aria-label');
+        };
+
+        expect(groupLabel('precomputation')).toBe('Pre-computation execution timeout');
+        expect(groupLabel('postcomputation')).toBe('Post-computation execution timeout');
     });
 
     it('shows the timeout of a code block only while it has code: the save drops the timeout of an empty one', () => {

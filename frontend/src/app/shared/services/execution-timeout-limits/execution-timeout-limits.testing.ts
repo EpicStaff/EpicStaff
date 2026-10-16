@@ -1,12 +1,9 @@
 import { EnvironmentProviders, inject, makeEnvironmentProviders, provideEnvironmentInitializer } from '@angular/core';
+import { ExecutionTimeoutLimits, GetExecutionTimeoutLimitsResponse } from '@shared/models';
 import { of } from 'rxjs';
 
-import {
-    ExecutionTimeoutLimits,
-    GetExecutionTimeoutLimitsResponse,
-} from '../../core/models/execution-timeout-limits.model';
-import { ExecutionTimeoutLimitsApiService } from '../../services/execution-timeout-limits-api.service';
-import { ExecutionTimeoutLimitsStorageService } from '../../services/execution-timeout-limits-storage.service';
+import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api.service';
+import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
 
 /** The execution timeout limits in tests, in seconds. */
 export const TEST_EXECUTION_TIMEOUT_LIMITS: ExecutionTimeoutLimits = {
@@ -26,7 +23,7 @@ export function executionTimeoutLimitsResponse(
     };
 }
 
-/** The limits as the flow editor route's resolver leaves them: loaded before any panel opens. */
+/** The limits as the flow editor route's resolver leaves them: loaded before any screen reads them. */
 export function provideLoadedExecutionTimeoutLimits(
     limits: ExecutionTimeoutLimits = TEST_EXECUTION_TIMEOUT_LIMITS
 ): EnvironmentProviders {

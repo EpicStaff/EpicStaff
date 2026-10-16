@@ -1,26 +1,8 @@
-import { ValidatorFn } from '@angular/forms';
+import { executionTimeoutMinimumRule, isValidExecutionTimeout } from '@shared/form-validators';
 import { NodeType } from '@shared/models';
 
 import { NodeModel } from '../../core/models/node.model';
-import { formatDuration } from '../duration';
 import { isPythonCodeBlockSaved } from '../save/cdt-python-code-block';
-
-/**
- * Whether `seconds` is an execution timeout a python code may carry: a whole number of at least `minSeconds`.
- * There is no upper bound: the backend saves a longer timeout as its maximum, so a lowered maximum never blocks a save.
- */
-export function isValidExecutionTimeout(seconds: unknown, minSeconds: number): boolean {
-    return typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= minSeconds;
-}
-
-/** The rule the minimum sets, worded for a message: `at least 5 s`. */
-export function executionTimeoutMinimumRule(minSeconds: number): string {
-    return `at least ${formatDuration(minSeconds)}`;
-}
-
-export function executionTimeoutValidator(minSeconds: number): ValidatorFn {
-    return ({ value }) => (isValidExecutionTimeout(value, minSeconds) ? null : { executionTimeout: { minSeconds } });
-}
 
 /**
  * One message per node with an execution timeout the flow save must refuse. A panel commits its node to the flow

@@ -26,13 +26,16 @@ export function joinDuration({ hours, minutes, seconds }: DurationParts): number
     return hours * SECONDS_PER_HOUR + minutes * SECONDS_PER_MINUTE + seconds;
 }
 
-/** `3725` → `1 h 2 min 5 s`; `0` → `0 s`. */
-export function formatDuration(totalSeconds: number): string {
+/**
+ * The duration in words, for a sentence: `3` → `3 seconds`, `90` → `1 minute 30 seconds`, `86400` → `24 hours`,
+ * `3661` → `1 hour 1 minute 1 second`; `0` → `0 seconds`. Only the parts that are set are named.
+ */
+export function formatDurationInWords(totalSeconds: number): string {
     const { hours, minutes, seconds } = splitDuration(totalSeconds);
     const parts = [
-        hours ? `${hours} h` : '',
-        minutes ? `${minutes} min` : '',
-        seconds || !totalSeconds ? `${seconds} s` : '',
+        hours ? countOf(hours, 'hour') : '',
+        minutes ? countOf(minutes, 'minute') : '',
+        seconds || !totalSeconds ? countOf(seconds, 'second') : '',
     ];
     return parts.filter(Boolean).join(' ');
 }
@@ -64,4 +67,9 @@ export function maskClockDuration(text: string, maxDigits: number): string {
 export function readClockDuration(clock: string): number {
     const [hours, minutes, seconds] = clock.split(':').map(Number);
     return joinDuration({ hours, minutes, seconds });
+}
+
+/** `1, 'hour'` → `1 hour`; `2, 'hour'` → `2 hours`. */
+function countOf(count: number, unit: string): string {
+    return `${count} ${unit}${count === 1 ? '' : 's'}`;
 }

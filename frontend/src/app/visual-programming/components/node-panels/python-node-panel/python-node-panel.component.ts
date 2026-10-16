@@ -5,10 +5,12 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -17,7 +19,6 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PythonNode } from '../../../core/models/python-node.model';
-import { ExecutionTimeoutLimitsStorageService } from '../../../services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
@@ -29,8 +30,6 @@ import {
     initializeInputMap,
     parseCommaSeparatedList,
 } from '../node-panel-form.utils';
-import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     NODE_SAVING_MESSAGE,

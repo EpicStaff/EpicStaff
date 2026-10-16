@@ -4,14 +4,20 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ExecutionTimeoutFormField } from '@shared/components';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
@@ -20,13 +26,7 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
-import {
-    provideLoadedExecutionTimeoutLimits,
-    TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../../../utils/testing/execution-timeout-limits.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import { typeIntoExecutionTimeout } from '../shared/execution-timeout-field/execution-timeout-field.testing';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,

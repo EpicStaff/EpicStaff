@@ -2,17 +2,13 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AppStorageService } from '@shared/services';
+import { GetExecutionTimeoutLimitsResponse } from '@shared/models';
 import { firstValueFrom } from 'rxjs';
 
-import { ActiveOrgService } from '../../services/auth/active-org.service';
-import { ConfigService } from '../../services/config';
-import { GetExecutionTimeoutLimitsResponse } from '../core/models/execution-timeout-limits.model';
-import {
-    executionTimeoutLimitsResponse,
-    TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../utils/testing/execution-timeout-limits.testing';
-import { provideVisualProgrammingStorages } from '../visual-programming.providers';
+import { ConfigService } from '../../../services/config';
+import { AppStorageService } from '../app-storage.service';
+import { provideSharedStorages } from '../shared-storages.providers';
+import { executionTimeoutLimitsResponse, TEST_EXECUTION_TIMEOUT_LIMITS } from './execution-timeout-limits.testing';
 import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
 
 const LIMITS_URL = '/api/execution-timeout-limits/';
@@ -27,10 +23,8 @@ describe('ExecutionTimeoutLimitsStorageService', () => {
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
-                ...provideVisualProgrammingStorages(),
+                ...provideSharedStorages(),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } },
-                // The other storage registered beside this one needs it; it plays no part here.
-                { provide: ActiveOrgService, useValue: {} },
             ],
         });
         storage = TestBed.inject(ExecutionTimeoutLimitsStorageService);

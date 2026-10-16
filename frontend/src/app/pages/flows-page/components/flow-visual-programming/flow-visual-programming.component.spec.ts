@@ -25,6 +25,10 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { AgentNode, AgentNodeTaskUi } from '../../../../visual-programming/core/models/agent-node.model';
 import {
     CdtExplanation,
@@ -54,10 +58,6 @@ import { SidePanelService } from '../../../../visual-programming/services/side-p
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
-import {
-    provideLoadedExecutionTimeoutLimits,
-    TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../../../../visual-programming/utils/testing/execution-timeout-limits.testing';
 import { livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
 import {
     extractParentNotUpdatedMessage,
@@ -1227,7 +1227,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
             expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} s.`
+                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
             );
         });
 

@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { GetExecutionTimeoutLimitsResponse } from '@shared/models';
 import { Observable } from 'rxjs';
 
-import { ConfigService } from '../../services/config';
-import { GetExecutionTimeoutLimitsResponse } from '../core/models/execution-timeout-limits.model';
+import { ConfigService } from '../../../services/config';
 
 @Injectable({ providedIn: 'root' })
 export class ExecutionTimeoutLimitsApiService {

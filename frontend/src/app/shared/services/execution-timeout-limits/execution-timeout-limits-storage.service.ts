@@ -1,13 +1,14 @@
 import { inject, Injectable, signal, untracked } from '@angular/core';
-import { StorageService } from '@shared/services';
+import { ExecutionTimeoutLimits } from '@shared/models';
 import { map, Observable, of, tap } from 'rxjs';
 
-import { ExecutionTimeoutLimits } from '../core/models/execution-timeout-limits.model';
+import { StorageService } from '../storage-service.interface';
 import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api.service';
 
 /**
- * The execution timeout limits, loaded once per session. The flow editor route resolves them
- * (`executionTimeoutLimitsResolver`) before the editor opens, so everything inside the editor may read them synchronously.
+ * The execution timeout limits, loaded once per session. A screen that edits python code loads them before it reads
+ * them: the flow editor route resolves them (`executionTimeoutLimitsResolver`) before the editor opens, so everything
+ * inside the editor may read them synchronously; the custom tool dialog loads them itself, as it opens from many screens.
  */
 @Injectable({ providedIn: 'root' })
 export class ExecutionTimeoutLimitsStorageService implements StorageService {
@@ -30,8 +31,8 @@ export class ExecutionTimeoutLimitsStorageService implements StorageService {
     }
 
     /**
-     * The loaded limits. Reading them before they are loaded is a wiring error (a screen that edits nodes without
-     * the flow editor route's resolver), so it throws instead of guessing.
+     * The loaded limits. Reading them before they are loaded is a wiring error (a screen that edits python code
+     * without loading them first), so it throws instead of guessing.
      *
      * A one-off read that never makes its caller depend on the limits: a node panel reads them while its form is
      * built inside an effect, which must not run again (and throw) when a logout or an organization switch
@@ -40,9 +41,7 @@ export class ExecutionTimeoutLimitsStorageService implements StorageService {
     public limits(): ExecutionTimeoutLimits {
         const limits = untracked(this.limitsSignal);
         if (!limits) {
-            throw new Error(
-                'Execution timeout limits are not loaded: resolve them with executionTimeoutLimitsResolver.'
-            );
+            throw new Error('Execution timeout limits are not loaded: load them before reading them.');
         }
         return limits;
     }

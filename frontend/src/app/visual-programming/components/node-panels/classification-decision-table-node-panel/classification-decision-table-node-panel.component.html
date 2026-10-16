@@ -184,7 +184,11 @@
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
                             @if (isPythonCodeBlockSaved(preCode, preSelectedSecretIds())) {
-                                <app-execution-timeout-field [field]="preExecutionTimeout" />
+                                <app-execution-timeout-field
+                                    [field]="preExecutionTimeout"
+                                    [readonly]="isReadOnly()"
+                                    label="Pre-computation execution timeout"
+                                />
                             }
                             <app-node-storage-section
                                 [useStorage]="preUseStorage()"
@@ -263,7 +267,11 @@
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
                             @if (isPythonCodeBlockSaved(postCode, postSelectedSecretIds())) {
-                                <app-execution-timeout-field [field]="postExecutionTimeout" />
+                                <app-execution-timeout-field
+                                    [field]="postExecutionTimeout"
+                                    [readonly]="isReadOnly()"
+                                    label="Post-computation execution timeout"
+                                />
                             }
                             <app-node-storage-section
                                 [useStorage]="postUseStorage()"

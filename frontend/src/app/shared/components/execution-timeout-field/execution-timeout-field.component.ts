@@ -1,12 +1,17 @@
-import { Component, computed, effect, inject, input, linkedSignal, signal } from '@angular/core';
-import { TooltipComponent } from '@shared/components';
+import { Component, computed, effect, input, linkedSignal, signal } from '@angular/core';
 
-import { FlowReadOnlyService } from '../../../../services/flow-readonly.service';
-import { formatClockDuration, formatDuration, maskClockDuration, readClockDuration } from '../../../../utils/duration';
 import {
     executionTimeoutMinimumRule,
     isValidExecutionTimeout,
-} from '../../../../utils/validation/execution-timeout.validator';
+} from '../../form-validators/execution-timeout.validator';
+import {
+    formatClockDuration,
+    formatDurationInWords,
+    maskClockDuration,
+    readClockDuration,
+} from '../../utils/duration.util';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { TooltipComponent } from '../tooltip/tooltip.component';
 import { ExecutionTimeoutFormField } from './execution-timeout-form-field';
 
 /**
@@ -15,25 +20,39 @@ import { ExecutionTimeoutFormField } from './execution-timeout-form-field';
  */
 export const MAX_EXECUTION_TIMEOUT_DIGITS = 9;
 
+/** How far one press of `−` or `+` moves the timeout. */
+export const EXECUTION_TIMEOUT_STEP_SECONDS = 30;
+
+export const EXECUTION_TIMEOUT_DEFAULT_LABEL = 'Execution timeout';
+
 export const EXECUTION_TIMEOUT_INPUT_HINT = 'Type digits; they fill in from the right.';
 
 let nextFieldId = 0;
 
 /**
- * The execution timeout of one python code in one masked `hh:mm:ss` input, kept in the control as total seconds.
- * Only digits count, filled from the right like a microwave timer, so the input never holds anything but a
- * duration. The control follows the displayed value on every keystroke, so it is current however the panel closes
- * (Esc, switching nodes) even before the input blurs; an edit capped at the maximum is shown capped at once. Minutes
- * or seconds typed above 59 (`00:00:90`) count as they read, and are normalized (`00:01:30`) on blur and Enter.
+ * The execution timeout of one python code in one masked `hh:mm:ss` input between `−` and `+` buttons, kept in the
+ * control as total seconds. Only digits count, filled from the right like a microwave timer, so the input never holds
+ * anything but a duration. The control follows the displayed value on every keystroke and button press, so it is
+ * current however the form closes (Esc, switching nodes) even before the input blurs; an edit capped at the maximum
+ * is shown capped at once. Minutes or seconds typed above 59 (`00:00:90`) count as they read, and are normalized
+ * (`00:01:30`) on blur and Enter.
+ *
+ * Usable in any form: the caller decides when it is read-only, and may add a hint shown under it.
  */
 @Component({
     selector: 'app-execution-timeout-field',
-    imports: [TooltipComponent],
+    imports: [AppSvgIconComponent, TooltipComponent],
     templateUrl: './execution-timeout-field.component.html',
     styleUrls: ['./execution-timeout-field.component.scss'],
 })
 export class ExecutionTimeoutFieldComponent {
     public readonly field = input.required<ExecutionTimeoutFormField>();
+    /** Disables the input and both buttons. */
+    public readonly readonly = input(false);
+    /** Shown under the field, and read with it by screen readers. */
+    public readonly hint = input('');
+    /** Names the input and its buttons for screen readers; tells apart several timeouts in one form. */
+    public readonly label = input(EXECUTION_TIMEOUT_DEFAULT_LABEL);
 
     private readonly totalSeconds = signal(0);
     /** Whether the user typed since leaving the input (blur, Enter): the below-minimum error waits until then. */
@@ -53,26 +72,43 @@ export class ExecutionTimeoutFieldComponent {
         const range =
             maxSeconds === null
                 ? executionTimeoutMinimumRule(minSeconds)
-                : `${formatDuration(minSeconds)} to ${formatDuration(maxSeconds)}`;
+                : `${formatDurationInWords(minSeconds)} to ${formatDurationInWords(maxSeconds)}`;
         return `How long one run of this code may take before it is stopped (${range}). Installing its libraries does not count. ${EXECUTION_TIMEOUT_INPUT_HINT}`;
     });
+    /**
+     * Below the minimum (once the input is left), or above the maximum. Only the first makes the control invalid: a
+     * stored timeout above a lowered maximum stays valid, as the backend saves it as the maximum, so an invalid form
+     * does not drop the other edits of the form it sits in.
+     */
     protected readonly errorMessage = computed(() => {
-        const { minSeconds } = this.field().limits;
-        return this.isTyping() || isValidExecutionTimeout(this.totalSeconds(), minSeconds)
-            ? ''
-            : `Must be ${executionTimeoutMinimumRule(minSeconds)}.`;
+        const { minSeconds, maxSeconds } = this.field().limits;
+        const seconds = this.totalSeconds();
+        if (!this.isTyping() && !isValidExecutionTimeout(seconds, minSeconds)) {
+            return `Value can't be less than ${formatDurationInWords(minSeconds)}.`;
+        }
+        if (maxSeconds !== null && seconds > maxSeconds) {
+            return `Value can't be more than ${formatDurationInWords(maxSeconds)}.`;
+        }
+        return '';
     });
-    protected readonly aboveMaximumWarning = computed(() => {
-        const { maxSeconds } = this.field().limits;
-        return maxSeconds !== null && this.totalSeconds() > maxSeconds
-            ? `Runs for at most ${formatDuration(maxSeconds)}, the current limit.`
-            : '';
-    });
-    protected readonly hint = EXECUTION_TIMEOUT_INPUT_HINT;
+    /**
+     * Whether a step button would move the timeout. A button at a limit stays enabled and only says it is unavailable
+     * (`aria-disabled`): disabling it natively would drop the keyboard focus the press that reached the limit left on it.
+     */
+    protected readonly canDecrease = computed(() => this.totalSeconds() > this.field().limits.minSeconds);
+    protected readonly canIncrease = computed(() => this.totalSeconds() < this.field().upperBound);
+    protected readonly inputLabel = computed(() => `${this.label()}, hh:mm:ss`);
+    protected readonly describedBy = computed(() =>
+        [this.typingHintId, this.hint() ? this.hintId : '', this.messageId].filter(Boolean).join(' ')
+    );
+
+    protected readonly typingHint = EXECUTION_TIMEOUT_INPUT_HINT;
+    protected readonly stepSeconds = EXECUTION_TIMEOUT_STEP_SECONDS;
+    protected readonly decreaseLabel = `Decrease by ${EXECUTION_TIMEOUT_STEP_SECONDS} seconds`;
+    protected readonly increaseLabel = `Increase by ${EXECUTION_TIMEOUT_STEP_SECONDS} seconds`;
+    protected readonly typingHintId = `execution-timeout-typing-hint-${nextFieldId}`;
     protected readonly hintId = `execution-timeout-hint-${nextFieldId}`;
     protected readonly messageId = `execution-timeout-message-${nextFieldId++}`;
-
-    protected readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     constructor() {
         effect((onCleanup) => {
@@ -109,6 +145,13 @@ export class ExecutionTimeoutFieldComponent {
         // still show the typed character the mask dropped (a letter, a digit past the limit).
         input.value = shown;
         input.setSelectionRange(shown.length, shown.length);
+    }
+
+    /** `−` and `+`: moves the timeout by `deltaSeconds` within the limits, and shows it as left. */
+    protected step(deltaSeconds: number): void {
+        if (this.readonly() || !(deltaSeconds < 0 ? this.canDecrease() : this.canIncrease())) return;
+        this.field().step(deltaSeconds);
+        this.commit();
     }
 
     /** On blur and Enter: shows the below-minimum error, and normalizes the text (`00:00:90` → `00:01:30`). */

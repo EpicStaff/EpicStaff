@@ -1,10 +1,10 @@
 import { inject } from '@angular/core';
 import { RedirectCommand, ResolveFn, Router } from '@angular/router';
+import { ExecutionTimeoutLimits } from '@shared/models';
+import { ExecutionTimeoutLimitsStorageService } from '@shared/services';
 import { catchError, Observable, of } from 'rxjs';
 
 import { ToastService } from '../../services/notifications';
-import { ExecutionTimeoutLimits } from '../core/models/execution-timeout-limits.model';
-import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
 
 /**
  * Loads the execution timeout limits before the flow editor opens: the timeout fields of the node panels show

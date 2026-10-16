@@ -27,6 +27,8 @@ import {
     ConfirmationDialogService,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     HelpTooltipComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
@@ -35,7 +37,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -57,7 +59,6 @@ import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
-import { ExecutionTimeoutLimitsStorageService } from '../../../services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
@@ -70,8 +71,6 @@ import {
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     CDT_HEADER_COLLAPSE_AT,
     CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,

@@ -1,4 +1,4 @@
-import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../../../utils/testing/execution-timeout-limits.testing';
+import { TEST_EXECUTION_TIMEOUT_LIMITS } from '../../services/execution-timeout-limits/execution-timeout-limits.testing';
 import { ExecutionTimeoutFormField, MAX_STORABLE_SECONDS } from './execution-timeout-form-field';
 
 describe('ExecutionTimeoutFormField', () => {
@@ -71,6 +71,57 @@ describe('ExecutionTimeoutFormField', () => {
         expect(field.control.value).toBe(7200);
         expect(field.control.valid).toBe(true);
         expect(field.value).toBe(7200);
+    });
+
+    it('steps the timeout up and down, marking the control dirty', () => {
+        const field = new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS);
+
+        field.step(30);
+        expect(field.control.value).toBe(120);
+        expect(field.control.dirty).toBe(true);
+        expect(field.value).toBe(120);
+
+        field.step(-30);
+        expect(field.value).toBe(90);
+    });
+
+    it('steps no lower than the minimum, nor higher than the maximum', () => {
+        const field = new ExecutionTimeoutFormField(20, TEST_EXECUTION_TIMEOUT_LIMITS);
+
+        field.step(-30);
+        expect(field.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds);
+
+        field.edit(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds! - 10);
+        field.step(30);
+        expect(field.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds);
+    });
+
+    it('steps a stored timeout above the maximum into the limits', () => {
+        const field = new ExecutionTimeoutFormField(7200, TEST_EXECUTION_TIMEOUT_LIMITS);
+
+        field.step(-30);
+
+        expect(field.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds);
+    });
+
+    it('steps a stored timeout below the minimum up from where it is', () => {
+        const field = new ExecutionTimeoutFormField(2, TEST_EXECUTION_TIMEOUT_LIMITS);
+
+        field.step(30);
+
+        expect(field.value).toBe(32);
+        expect(field.control.valid).toBe(true);
+    });
+
+    it('steps up to what the backend can store when there is no maximum', () => {
+        const field = new ExecutionTimeoutFormField(MAX_STORABLE_SECONDS - 10, {
+            ...TEST_EXECUTION_TIMEOUT_LIMITS,
+            maxSeconds: null,
+        });
+
+        expect(field.upperBound).toBe(MAX_STORABLE_SECONDS);
+        field.step(30);
+        expect(field.value).toBe(MAX_STORABLE_SECONDS);
     });
 
     it('is invalid below the minimum', () => {

@@ -1,11 +1,17 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormArray } from '@angular/forms';
+import { ExecutionTimeoutFormField } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
@@ -13,12 +19,6 @@ import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
-import {
-    provideLoadedExecutionTimeoutLimits,
-    TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../../../utils/testing/execution-timeout-limits.testing';
-import { typeIntoExecutionTimeout } from '../shared/execution-timeout-field/execution-timeout-field.testing';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,

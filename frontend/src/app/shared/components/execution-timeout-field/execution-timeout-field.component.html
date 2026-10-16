@@ -1,0 +1,82 @@
+<div class="execution-timeout">
+    <app-tooltip
+        label="Execution Timeout"
+        [tooltipText]="tooltipText()"
+        [required]="true"
+    />
+    <div class="execution-timeout__group">
+        <div
+            class="execution-timeout__control"
+            role="group"
+            [attr.aria-label]="label()"
+            [class.execution-timeout__control--invalid]="!!errorMessage()"
+        >
+            <button
+                type="button"
+                class="execution-timeout__step"
+                [class.execution-timeout__step--unavailable]="!canDecrease()"
+                [attr.aria-label]="decreaseLabel"
+                [attr.aria-disabled]="!canDecrease()"
+                [disabled]="readonly()"
+                (click)="step(-stepSeconds)"
+            >
+                <app-svg-icon
+                    icon="minus-fit"
+                    size="16px"
+                />
+            </button>
+            <input
+                #timeoutInput
+                type="text"
+                class="execution-timeout__input text-body"
+                [attr.aria-label]="inputLabel()"
+                inputmode="numeric"
+                autocomplete="off"
+                spellcheck="false"
+                [attr.aria-invalid]="!!errorMessage()"
+                [attr.aria-describedby]="describedBy()"
+                [disabled]="readonly()"
+                [value]="text()"
+                (input)="onInputEvent($event, timeoutInput)"
+                (compositionend)="onInput(timeoutInput)"
+                (blur)="commit()"
+                (keydown.enter)="commit(); $event.preventDefault()"
+            />
+            <button
+                type="button"
+                class="execution-timeout__step"
+                [class.execution-timeout__step--unavailable]="!canIncrease()"
+                [attr.aria-label]="increaseLabel"
+                [attr.aria-disabled]="!canIncrease()"
+                [disabled]="readonly()"
+                (click)="step(stepSeconds)"
+            >
+                <app-svg-icon
+                    icon="plus-fit"
+                    size="16px"
+                />
+            </button>
+        </div>
+        <span
+            class="execution-timeout__visually-hidden"
+            [id]="typingHintId"
+            >{{ typingHint }}</span
+        >
+        <div
+            aria-live="polite"
+            [id]="messageId"
+        >
+            @if (errorMessage()) {
+                <p class="execution-timeout__message text-body-small">{{ errorMessage() }}</p>
+            }
+        </div>
+    </div>
+    @if (hint()) {
+        <p
+            class="execution-timeout__hint text-body-small"
+            [id]="hintId"
+        >
+            {{ hint() }}
+        </p>
+    }
+</div>

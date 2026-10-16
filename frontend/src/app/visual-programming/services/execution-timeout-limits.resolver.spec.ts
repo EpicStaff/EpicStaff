@@ -1,17 +1,16 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, RedirectCommand, Route, Router, RouterStateSnapshot } from '@angular/router';
+import { ExecutionTimeoutLimits } from '@shared/models';
+import { ExecutionTimeoutLimitsApiService, ExecutionTimeoutLimitsStorageService } from '@shared/services';
 import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 
 import { routes } from '../../app.routes';
 import { ToastService } from '../../services/notifications';
-import { ExecutionTimeoutLimits } from '../core/models/execution-timeout-limits.model';
 import {
     executionTimeoutLimitsResponse,
     TEST_EXECUTION_TIMEOUT_LIMITS,
-} from '../utils/testing/execution-timeout-limits.testing';
+} from '../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { executionTimeoutLimitsResolver } from './execution-timeout-limits.resolver';
-import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api.service';
-import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits-storage.service';
 
 describe('executionTimeoutLimitsResolver', () => {
     let getExecutionTimeoutLimits: ReturnType<typeof vi.fn>;

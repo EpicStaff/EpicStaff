@@ -17,18 +17,19 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
-import { ExecutionTimeoutLimitsStorageService } from '../../../services/execution-timeout-limits-storage.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
@@ -36,8 +37,6 @@ import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { parseCommaSeparatedList } from '../node-panel-form.utils';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
-import { ExecutionTimeoutFieldComponent } from '../shared/execution-timeout-field/execution-timeout-field.component';
-import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,

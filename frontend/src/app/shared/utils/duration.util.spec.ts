@@ -1,4 +1,4 @@
-import { formatClockDuration, formatDuration, maskClockDuration, readClockDuration } from './duration';
+import { formatClockDuration, formatDurationInWords, maskClockDuration, readClockDuration } from './duration.util';
 
 describe('formatClockDuration', () => {
     it('pads every part to two digits', () => {
@@ -12,11 +12,20 @@ describe('formatClockDuration', () => {
     });
 });
 
-describe('formatDuration', () => {
-    it('names only the parts that are set', () => {
-        expect(formatDuration(3725)).toBe('1 h 2 min 5 s');
-        expect(formatDuration(3600)).toBe('1 h');
-        expect(formatDuration(0)).toBe('0 s');
+describe('formatDurationInWords', () => {
+    it('names only the parts that are set, in words', () => {
+        expect(formatDurationInWords(3)).toBe('3 seconds');
+        expect(formatDurationInWords(90)).toBe('1 minute 30 seconds');
+        expect(formatDurationInWords(24 * 3600)).toBe('24 hours');
+        expect(formatDurationInWords(2 * 3600 + 5)).toBe('2 hours 5 seconds');
+    });
+
+    it('names a single unit in the singular', () => {
+        expect(formatDurationInWords(3661)).toBe('1 hour 1 minute 1 second');
+    });
+
+    it('names zero in seconds', () => {
+        expect(formatDurationInWords(0)).toBe('0 seconds');
     });
 });
 
