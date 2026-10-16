@@ -199,12 +199,6 @@ export class ConversationListStore {
         return query.holderId !== null || !!query.search || this.view().some(({ isExpanded }) => !isExpanded);
     });
     /** Every open section has loaded and has nothing: the column says so once, not once per section. */
-    readonly isEverythingEmpty = computed(() => {
-        const generation = this.generation();
-        const open = this.view().filter(({ isExpanded }) => isExpanded);
-        return open.length > 0 && open.every(({ state }) => state.loadedFor === generation && !state.rows.length);
-    });
-
     private readonly chatApi = inject(ChatApiService);
     private readonly toastService = inject(ToastService);
     private readonly preferences = inject(ConversationListPreferencesService);

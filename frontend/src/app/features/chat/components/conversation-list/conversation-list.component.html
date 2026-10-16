@@ -85,7 +85,7 @@
                                         }
                                     </ul>
                                 </div>
-                            } @else if (!store.isEverythingEmpty()) {
+                            } @else {
                                 <div class="conversation-list__section-empty">
                                     @if (store.isSearching()) {
                                         <p class="conversation-list__empty-title text-body-medium">No matches</p>
@@ -121,28 +121,6 @@
                     }
                 </div>
             </section>
-        }
-
-        @if (store.isEverythingEmpty()) {
-            <div class="conversation-list__everything-empty">
-                @if (store.isSearching()) {
-                    <p class="conversation-list__empty-title text-body-medium">No conversations match</p>
-                    <p class="conversation-list__empty-description text-body-small">
-                        Search by visitor number (12 or #12), a signed visitor's id, or the name of the operator who
-                        took the conversation over.
-                    </p>
-                } @else if (store.isMineOnly()) {
-                    <p class="conversation-list__empty-title text-body-medium">Nothing of yours right now</p>
-                    <p class="conversation-list__empty-description text-body-small">
-                        Conversations you take over show up here.
-                    </p>
-                } @else {
-                    <p class="conversation-list__empty-title text-body-medium">No conversations yet</p>
-                    <p class="conversation-list__empty-description text-body-small">
-                        Conversations from your website show up here. Try a desk with Test.
-                    </p>
-                }
-            </div>
         }
     }
 </div>

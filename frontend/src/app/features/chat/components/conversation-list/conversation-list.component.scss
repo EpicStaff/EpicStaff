@@ -58,15 +58,10 @@
     list-style: none;
 }
 
-// A section's own empty state, and the column's one when every open section is empty.
-.conversation-list__section-empty,
-.conversation-list__everything-empty {
+// A section's own empty state: every open section says what it is for, whatever the others hold.
+.conversation-list__section-empty {
     padding: 16px;
     text-align: center;
-}
-
-.conversation-list__everything-empty {
-    padding-top: 24px;
 }
 
 .conversation-list__empty-title,

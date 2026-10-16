@@ -392,12 +392,13 @@ describe('ConversationListComponent', () => {
             expect(requestedSections()).toEqual(['waiting', 'in_progress', 'bot', 'waiting', 'in_progress', 'bot']);
         });
 
-        it('says once that everything is empty, instead of once per section', () => {
+        it('says per open section what it is for when every one is empty', () => {
             reloadWith({});
-            expect(text('.conversation-list__everything-empty .conversation-list__empty-title')).toEqual([
+            expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
+                'Nobody is waiting',
+                'Nothing in progress',
                 'No conversations yet',
             ]);
-            expect(host().querySelector('.conversation-list__section-empty')).toBeNull();
             // The collapsed Tests header stays, so it can still be opened.
             expect(headerButton('Tests')).toBeDefined();
         });
@@ -407,7 +408,6 @@ describe('ConversationListComponent', () => {
                 'Nobody is waiting',
                 'Nothing in progress',
             ]);
-            expect(host().querySelector('.conversation-list__everything-empty')).toBeNull();
         });
     });
 
@@ -1161,18 +1161,20 @@ describe('ConversationListComponent', () => {
             expect(store().findRow('h-2')?.last_message_preview).toBe('live');
         });
 
-        it('says when nothing matches, once for the column or per section beside matches', () => {
+        it('says per section when nothing matches, whether or not another section has matches', () => {
             answerNextSearch({});
             typeSearch('zzz');
             settle();
-            expect(text('.conversation-list__everything-empty .conversation-list__empty-title')).toEqual([
-                'No conversations match',
+            expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
+                'No matches',
+                'No matches',
+                'No matches',
+                'No matches',
             ]);
 
             answerNextSearch({ bot: page([row({ id: 'c-1' })]) });
             typeSearch('ada');
             settle();
-            expect(host().querySelector('.conversation-list__everything-empty')).toBeNull();
             expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
                 'No matches',
                 'No matches',
@@ -1201,7 +1203,6 @@ describe('ConversationListComponent', () => {
             expect(error?.getAttribute('role')).toBe('alert');
             expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
             expect(host().querySelector('.conversation-list__section')).toBeNull();
-            expect(host().querySelector('.conversation-list__everything-empty')).toBeNull();
 
             typeSearch('');
             expect(host().querySelector('.conversation-list-toolbar__error')).toBeNull();
@@ -1261,8 +1262,9 @@ describe('ConversationListComponent', () => {
         it('says what Mine has nothing of', () => {
             chatApi.getConversations.mockReturnValueOnce(page([])).mockReturnValueOnce(page([]));
             click(toolbarButton('Mine'));
-            expect(text('.conversation-list__everything-empty .conversation-list__empty-title')).toEqual([
-                'Nothing of yours right now',
+            expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
+                'Nobody is waiting for you',
+                'None of yours in progress',
             ]);
 
             chatApi.getConversations
