@@ -35,6 +35,30 @@
         </div>
 
         <app-validation-errors [control]="orgNameControl" />
+
+        <div class="control">
+            <label class="label retention__label">Session Audit Retention</label>
+
+            <div class="retention">
+                <app-select
+                    class="retention__unit"
+                    [items]="retentionUnitItems"
+                    [(selectedValue)]="retentionUnit"
+                />
+                @if (retentionUnit() !== 'unlimited') {
+                    <app-number-stepper
+                        class="retention__amount"
+                        ariaLabel="Retention amount"
+                        [alwaysShowButtons]="true"
+                        [integer]="true"
+                        [min]="1"
+                        [max]="maxRetentionAmount()"
+                        [value]="clampedRetentionAmount()"
+                        (changed)="setRetentionAmount($event)"
+                    />
+                }
+            </div>
+        </div>
     </div>
 
     <app-org-members-editor

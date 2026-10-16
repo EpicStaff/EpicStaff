@@ -42,7 +42,7 @@ ORGANIZATIONS_CREATE_POST = {
 }
 
 ORGANIZATIONS_UPDATE_PATCH = {
-    "summary": "Rename an organization (ORGANIZATIONS.UPDATE or superadmin)",
+    "summary": "Rename an organization and/or set its audit retention (ORGANIZATIONS.UPDATE or superadmin)",
     "request": OrganizationRenameRequestSerializer,
     "responses": {
         200: OrganizationResponseSerializer,
@@ -113,7 +113,7 @@ ORGANIZATION_SETTINGS_UPDATE = {
             response=OpenApiTypes.OBJECT,
             description=(
                 "Validation error — audit_retention_days missing, negative, "
-                "or above the storable maximum."
+                "or above 36500 (100 years)."
             ),
         ),
         401: UNAUTHORIZED_401_RESPONSE,

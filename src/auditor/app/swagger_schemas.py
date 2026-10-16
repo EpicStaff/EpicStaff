@@ -70,14 +70,18 @@ Operators, and the canonical AST op each parses to: `=`/`==` -> `equals`,
 `!=` -> `not_equal`, `:` -> `contains`, `!:` -> `not_contains`, `>` -> `gt`,
 `<` -> `lt`, `>=` -> `gte`, `<=` -> `lte`, `in (a, b, c)`/`in [a, b, c]` ->
 `in`, `not in (...)` -> `not_in`, `is empty` -> `is_empty`, `is not empty` ->
-`is_not_empty`. Free text: a bare word, or `text: <term>`, searches everywhere
+`is_not_empty`, `starts with` -> `starts_with`, `ends with` -> `ends_with`,
+`exists` -> `key_exists`, `not exists` -> `key_not_exists`. Keywords are
+case-insensitive. Free text: a bare word, or `text: <term>`, searches everywhere
 (-> `{"field": "__text__", "op": "contains", ...}`).
 
-**Query-language-only ops** (no symbol exists for these - use `filters` (AST)
-instead): `starts_with`, `ends_with`, `key_exists`, `key_not_exists`,
-`key_equals_value`, `key_not_equals`, `null`, `not_null`. These only apply to
-flattened `input`/`output`/`details` paths anyway, where free-text `:`/`!:`
-usually covers the same need.
+`key_not_equals` has no separate form - write `!=`; it parses to `not_equal`,
+which matches identically.
+
+**Filters-only ops** (no query-language form - use `filters` (AST) instead):
+`key_equals_value`, `null`, `not_null`. These only apply to flattened
+`input`/`output`/`details` paths; there `=` matches like `key_equals_value`, and
+`exists`/`not exists` like `not_null`/`null`.
 
 A literal `"` inside a quoted value must be escaped as `\\"` (and, once
 more, for the JSON string this whole query travels in as - e.g. to match
