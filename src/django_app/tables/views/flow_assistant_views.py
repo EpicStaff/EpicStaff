@@ -11,15 +11,15 @@ import contextlib
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.utils import timezone
-from rbac.access.asserts import assert_org_permission
+from rbac.access.asserts import assert_org_permission, assert_row_org_permission
 from rbac.access.gates import IsSuperadmin
 from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -272,6 +272,49 @@ class FlowAssistantSendMessageView(APIView):
 # ── SSE streaming endpoint ────────────────────────────────────────────────────
 
 
+def _get_streamable_conversation(
+    user, graph_id: int, conversation_id: int
+) -> FlowAssistantConversation:
+    """Fetch the conversation to stream a reply for, authorizing `user` via its flow's org.
+
+    The SSE ticket proves only who the user is, and EventSource cannot send the
+    X-Organization-Id header, so the org is the one that owns the conversation's
+    graph. A missing, soft-deleted or another user's conversation, and one in an org
+    the user is not a member of, all raise the same NotFound, so the response never
+    reveals that a conversation id exists. Superadmin passes the org check but must
+    still own the conversation.
+
+    Raises:
+        NotFound (404): no conversation the user may stream.
+        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
+    """
+    not_found = NotFound("Conversation not found.")
+    conversation = (
+        FlowAssistantConversation.objects.select_related(
+            "flow_assistant__graph",
+            "flow_assistant__llm_config__model__llm_provider",
+            "organization_user__user",
+        )
+        .filter(
+            pk=conversation_id,
+            flow_assistant__graph_id=graph_id,
+            organization_user__user_id=user.pk,
+            deleted_at__isnull=True,
+        )
+        .first()
+    )
+    if conversation is None:
+        raise not_found
+    assert_row_org_permission(
+        user,
+        conversation.flow_assistant.graph.org_id,
+        ResourceType.FLOWS,
+        Permission.READ,
+        not_found=not_found,
+    )
+    return conversation
+
+
 class FlowAssistantStreamView(SSEMixin):
     """
     GET /api/flow-assistants/<graph_id>/conversations/<conversation_id>/stream/?ticket=...
@@ -279,6 +322,28 @@ class FlowAssistantStreamView(SSEMixin):
     Streams LLM events for the last user message in the conversation.
     Authentication is via a one-shot SSE ticket (consumed on first use).
     """
+
+    async def authorize(self, request, *args, **kwargs):
+        """Refuse unless the ticket user owns the conversation and holds FLOWS READ in its org.
+
+        Runs before the stream opens, so a refused caller never starts an LLM reply.
+        Keeps the conversation in ``self.conversation`` for `get_live_updates()`.
+        Returns a JSON error response on denial, else None.
+        """
+        try:
+            self.conversation = await sync_to_async(_get_streamable_conversation)(
+                self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
+            )
+        except APIException as exc:
+            return JsonResponse(
+                {
+                    "status_code": exc.status_code,
+                    "code": exc.default_code,
+                    "message": str(exc.detail),
+                },
+                status=exc.status_code,
+            )
+        return None
 
     async def get_initial_data(self):
         # No initial data — the stream starts with the LLM reply
@@ -291,46 +356,7 @@ class FlowAssistantStreamView(SSEMixin):
         The pubsub parameter is ignored (we use an in-process async iterator).
         """
         graph_id = self.kwargs["graph_id"]
-        conversation_id = self.kwargs["conversation_id"]
-        user = self.user  # set by SSEMixin.get() after ticket validation
-
-        # Load conversation — scope check uses organization_user
-        try:
-            conversation = await sync_to_async(
-                lambda: FlowAssistantConversation.objects.select_related(
-                    "flow_assistant__graph",
-                    "flow_assistant__llm_config__model__llm_provider",
-                    "organization_user__user",
-                ).get(
-                    pk=conversation_id,
-                    flow_assistant__graph_id=graph_id,
-                )
-            )()
-        except FlowAssistantConversation.DoesNotExist:
-            conversation = None
-        # Every check below may end in an error frame, which a client that stops reading
-        # blocks along with any connection still held.
-        await self.release_database_connection_before_error()
-        if conversation is None:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
-
-        # The conversation must belong to the ticket-holder user.
-        # We compare by user_id (not org membership pk) since the ticket is
-        # issued per-user and the SSE flow is stateless w.r.t. org context.
-        if conversation.organization_user.user_id != user.pk:
-            yield {"event": "error", "data": {"type": "error", "detail": "Forbidden."}}
-            return
-
-        if conversation.deleted_at is not None:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
+        conversation = self.conversation
 
         # Find the last user message to use as the prompt for this turn.
         last_user_row = await sync_to_async(

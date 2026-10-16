@@ -782,7 +782,6 @@ async def test_stream_holds_no_database_connection_while_the_llm_replies(
 @pytest.mark.parametrize(
     "case, expected_detail",
     [
-        ("missing_conversation", "Conversation not found."),
         ("no_user_message", "No pending user message found."),
         ("assistant_without_llm_config", "has no llm_config set"),
     ],
@@ -807,16 +806,14 @@ async def test_stream_error_frame_is_sent_without_a_database_connection(
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant, org_user, messages
     )
-    requested_conversation_id = conversation.pk
-    if case == "missing_conversation":
-        requested_conversation_id += 1
     view = FlowAssistantStreamView()
     view.user = user_a
-    view.kwargs = {"graph_id": graph.id, "conversation_id": requested_conversation_id}
+    view.kwargs = {"graph_id": graph.id, "conversation_id": conversation.pk}
 
     frames = []
     # Like an ASGI request: the stream's sync calls share one thread of their own.
     async with ThreadSensitiveContext():
+        assert await view.authorize(request=None) is None
         async for event in view.get_live_updates(pubsub=None):
             # Asked in the thread the stream's queries run in, where its connection lives.
             connection_open = await sync_to_async(lambda: connection.connection is not None)()
