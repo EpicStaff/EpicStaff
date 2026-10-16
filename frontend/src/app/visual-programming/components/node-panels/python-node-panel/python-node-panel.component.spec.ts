@@ -17,6 +17,7 @@ import {
     provideLoadedExecutionTimeoutLimits,
     TEST_EXECUTION_TIMEOUT_LIMITS,
 } from '../../../utils/testing/execution-timeout-limits.testing';
+import { typeIntoExecutionTimeout } from '../shared/execution-timeout-field/execution-timeout-field.testing';
 import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import {
     NODE_SAVING_MESSAGE,
@@ -307,6 +308,15 @@ describe('PythonNodePanelComponent test run', () => {
             timeoutField().edit(300);
 
             expect(panel.onSaveSilently()?.data.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel.isDirty()).toBe(true);
+            expect(panel.onSave()?.data.execution_timeout).toBe(300);
         });
 
         it('waits for the result as long as the stored code may run', () => {

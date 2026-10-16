@@ -626,6 +626,29 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         expect(rows).toContain('post_python_code_execution_timeout,45');
     });
 
+    /** Types into the timeout input of `tab`, as the user does, and stays in it: no blur, no Enter. */
+    function typeTimeout(tab: 'precomputation' | 'postcomputation', text: string): void {
+        panel.activeTab.set(tab);
+        fixture.detectChanges();
+        const input = fixture.debugElement.query(By.css('app-execution-timeout-field input'))
+            .nativeElement as HTMLInputElement;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    it('saves timeouts still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+        open(undefined, undefined);
+
+        typeTimeout('precomputation', '00:05:00');
+        typeTimeout('postcomputation', '45');
+
+        expect(panel.isDirty()).toBe(true);
+        const table = panel.onSave()?.data.table;
+        expect(table?.pre_computation?.execution_timeout).toBe(300);
+        expect(table?.post_computation?.execution_timeout).toBe(45);
+    });
+
     it('shows the timeout of a code block only while it has code: the save drops the timeout of an empty one', () => {
         open(90, undefined, '  ');
 

@@ -1,5 +1,10 @@
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;
+/** The digits of `00:00:00`. */
+const CLOCK_DIGITS = 6;
+const FULL_WIDTH_DIGIT_PATTERN = /[\uFF10-\uFF19]/g;
+/** From a full-width digit (`０` is U+FF10) to its ASCII one (`0` is U+0030). */
+const FULL_WIDTH_OFFSET = 0xff10 - 0x30;
 
 export interface DurationParts {
     hours: number;
@@ -38,33 +43,25 @@ export function formatClockDuration(totalSeconds: number): string {
     return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-const CLOCK_DURATION_PATTERN = /^(?:(?:(\d+):)?(\d+):)?(\d+)$/;
-const LOWER_PART_PATTERN = /^\d{1,2}$/;
-
 /**
- * Reads a duration typed as `hh:mm:ss`, `mm:ss` or a bare number of seconds into total seconds: `01:02:05` → `3725`,
- * `90:00` → `5400`, `600` → `600`. The highest part is unbounded; a part below it must be one or two digits and
- * at most 59. Anything else (a sign, a fraction, an empty part, a number too large to count exactly) → `null`.
+ * The digits of `text` as a clock, filled from the right like a microwave timer: `1500` → `00:15:00`,
+ * `01:30:000` → `13:00:00`, `10 min` → `00:00:10`, `` → `00:00:00`. Full-width digits (`１５`) count as digits;
+ * every other character is dropped, and so are leading zeros beyond the six digits of `00:00:00`. Only the first
+ * `maxDigits` of the remaining digits are kept: one typed at the end past the limit is dropped.
+ * Minutes and seconds keep what was typed, even above 59 (`00:00:90`): `readClockDuration` still counts them.
  */
-export function parseDuration(text: string): number | null {
-    const match = CLOCK_DURATION_PATTERN.exec(text.trim());
-    if (!match) {
-        return null;
-    }
-    const [, hoursText, minutesText, secondsText] = match;
-    const minutesOutOfRange = hoursText !== undefined && !isClockPart(minutesText);
-    const secondsOutOfRange = minutesText !== undefined && !isClockPart(secondsText);
-    if (minutesOutOfRange || secondsOutOfRange) {
-        return null;
-    }
-    const totalSeconds = joinDuration({
-        hours: Number(hoursText ?? 0),
-        minutes: Number(minutesText ?? 0),
-        seconds: Number(secondsText),
-    });
-    return Number.isSafeInteger(totalSeconds) ? totalSeconds : null;
+export function maskClockDuration(text: string, maxDigits: number): string {
+    const digits = text
+        .replace(FULL_WIDTH_DIGIT_PATTERN, (digit) => String.fromCharCode(digit.charCodeAt(0) - FULL_WIDTH_OFFSET))
+        .replace(/\D/g, '')
+        .replace(/^0+/, '')
+        .slice(0, maxDigits)
+        .padStart(CLOCK_DIGITS, '0');
+    return `${digits.slice(0, -4)}:${digits.slice(-4, -2)}:${digits.slice(-2)}`;
 }
 
-function isClockPart(text: string): boolean {
-    return LOWER_PART_PATTERN.test(text) && Number(text) < 60;
+/** The total seconds of a clock `maskClockDuration` wrote: `00:01:30` and `00:00:90` → `90`. */
+export function readClockDuration(clock: string): number {
+    const [hours, minutes, seconds] = clock.split(':').map(Number);
+    return joinDuration({ hours, minutes, seconds });
 }

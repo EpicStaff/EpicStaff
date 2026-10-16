@@ -38,6 +38,11 @@ export class ExecutionTimeoutFormField {
         // Before `setValue`: the panel reads `value` when the control reports the change.
         this.edited = true;
         this.control.markAsDirty();
-        this.control.setValue(Math.min(seconds, this.limits.maxSeconds ?? MAX_STORABLE_SECONDS));
+        this.control.setValue(this.capped(seconds));
+    }
+
+    /** What an edit to `seconds` keeps: capped at the maximum, or without one at what the backend can store. */
+    public capped(seconds: number): number {
+        return Math.min(seconds, this.limits.maxSeconds ?? MAX_STORABLE_SECONDS);
     }
 }

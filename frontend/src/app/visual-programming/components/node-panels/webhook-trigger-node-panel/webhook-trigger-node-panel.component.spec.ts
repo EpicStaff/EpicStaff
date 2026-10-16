@@ -25,6 +25,7 @@ import {
     TEST_EXECUTION_TIMEOUT_LIMITS,
 } from '../../../utils/testing/execution-timeout-limits.testing';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import { typeIntoExecutionTimeout } from '../shared/execution-timeout-field/execution-timeout-field.testing';
 import { ExecutionTimeoutFormField } from '../shared/execution-timeout-field/execution-timeout-form-field';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -763,6 +764,15 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             timeoutField().edit(300);
 
             expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel().isDirty()).toBe(true);
+            expect(panel().onSave()?.data.python_code.execution_timeout).toBe(300);
         });
 
         it('asks to save after a timeout edit, and clears once it is back to the stored one', () => {

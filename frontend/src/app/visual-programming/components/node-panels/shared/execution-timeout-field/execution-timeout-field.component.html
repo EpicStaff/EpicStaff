@@ -9,19 +9,25 @@
         type="text"
         class="execution-timeout__input text-body"
         aria-label="Execution timeout, hh:mm:ss"
-        placeholder="hh:mm:ss"
+        inputmode="numeric"
         autocomplete="off"
         spellcheck="false"
         [class.execution-timeout__input--invalid]="!!errorMessage()"
         [class.execution-timeout__input--warning]="!!aboveMaximumWarning()"
         [attr.aria-invalid]="!!errorMessage()"
-        [attr.aria-describedby]="messageId"
+        [attr.aria-describedby]="hintId + ' ' + messageId"
         [disabled]="isReadOnly()"
         [value]="text()"
-        (input)="onInput(timeoutInput.value)"
+        (input)="onInputEvent($event, timeoutInput)"
+        (compositionend)="onInput(timeoutInput)"
         (blur)="commit()"
         (keydown.enter)="commit(); $event.preventDefault()"
     />
+    <span
+        class="execution-timeout__visually-hidden"
+        [id]="hintId"
+        >{{ hint }}</span
+    >
     <div
         aria-live="polite"
         [id]="messageId"
