@@ -286,9 +286,9 @@ Turn them on with `<SERVICE>_LOG_LEVEL=BENCH` in `src/.env` for `crew`, `sandbox
 ## 9. Known limits
 
 - **No container CPU/RAM limits yet.** They come with a separate ticket. Until then a break test can push the host into OOM; the host-RAM abort guard (default 5 %) and the pre-flight warning are the only protection, and hardware presets (variants that set limit variables) are not available. Do not run a high ladder on a machine you cannot afford to lose.
-- **No repeats.** One run per configuration. Run-to-run noise is not measured; the provider-health line (LLM p95 more than 2x the smoke run's p95 sets `slow_provider`) is the only noise signal.
+- **No repeats.** One run per configuration. Run-to-run noise is not measured; the provider-health line (LLM p95 more than 2x the smoke run's p95 sets `slow_provider`, unless the host CPU was saturated while the calls were slow: then the finding `llm_slowed_by_host`) is the only noise signal.
 - **LLM noise in `complex`.** Real provider latency and rate limits move the numbers. Compare branches on platform overhead and on the `payload` phase, which has no LLM.
-- **Generator ceiling.** The load generator is stdlib Python (64 sender threads, 30 s HTTP timeout) on the same host. When it cannot keep up, `sent_ts - intended_ts` grows; a level whose p99 lag exceeds `generator_lag_p99_ms` is marked `invalid` with "generator-limited", the ladder stops there, and no server verdict is given. The runner's own CPU is in `timeline.csv` (`runner_cpu_pct`).
+- **Generator ceiling.** The load generator is stdlib Python (at least as many sender threads as the level's target, 64 at least; 30 s HTTP timeout) on the same host; a slow API alone does not make it lag. When it cannot keep up, `sent_ts - intended_ts` grows; a level whose p99 lag exceeds `generator_lag_p99_ms` is marked `invalid` with "generator-limited", the ladder stops there, and no server verdict is given. The runner's own CPU is in `timeline.csv` (`runner_cpu_pct`).
 - **Linux server assumed.** Exact CPU needs the host cgroup tree; on Docker Desktop CPU comes from `docker stats` and is coarser. Host load and RAM pre-flight checks are skipped without `/proc`.
 - **Demo data.** `python benchmark/fixtures.py <dir>` writes three synthetic run folders (two capacity runs, one dev run) for trying the viewer. They are fake numbers, never push them.
 

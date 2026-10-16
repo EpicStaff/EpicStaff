@@ -39,7 +39,7 @@ What every number, file and label of a benchmark run means. Definitions follow t
 | **Case hash** | SHA-256 (first 16 hex digits) of the parsed case file without `[[variant]]` and without the phases' `graph_id`. All variants of a case share it, a server-specific graph id does not change it. It hashes what is written, not effective values: adding `factor = 2.0` where the default was used changes the hash. A copy of `server.toml` with another ladder has another hash. |
 | **Graph hash** | Per phase: SHA-256 (16 hex digits) of `GET /api/graphs/<id>/` without `created_at`, `updated_at`, `save_version`. Any edit of the flow in the UI, a re-import (new node ids), or a different API answer shape on another branch changes it. |
 | **Different workload** | The case hash or any phase's graph hash differs between the compared runs. `bench compare` prints `!! different workload — not comparable`; the viewer shows a red banner. The numbers are still shown; they do not measure the same thing. |
-| **Provider health / `slow_provider`** | Per phase in `meta.json`: LLM call count, p50/p95 call time, errors by type, tokens, cost. `slow_provider` is true when the phase's LLM call p95 is more than twice the smoke step's LLM p95 for that phase (always false with `--no-smoke` or without LLM calls). Then latency and throughput reflect the provider, not EpicStaff. |
+| **Provider health / `slow_provider`** | Per phase in `meta.json`: LLM call count, p50/p95 call time, errors by type, tokens, cost. `slow_provider` is true when the phase's LLM call p95 is more than twice (`SLOW_LLM_FACTOR`) the smoke step's LLM p95 for that phase (always false with `--no-smoke` or without LLM calls), unless every level whose LLM calls were that slow ran with the host CPU at 90 % or more: then the calls most likely waited for CPU on this host, and the finding `llm_slowed_by_host` says so instead. Then latency and throughput reflect the provider, not EpicStaff. |
 
 ## Verdict
 
@@ -69,16 +69,20 @@ Computed for every failing level from the samples in its measured window and the
 | # | Rule | Text |
 |---|---|---|
 | 1 | A container's restart or OOM counter rose during the level | `container restart/OOM: <containers>` |
-| 1a | The level failed on the error rate (rule or abort) or on the settle-timeout rule, and sessions it started (settle, measured and finish sessions) ended as `timeout` by the verdict time (a finish session stopped later, in the drain, did not fail the level) | `N timed out; last checkpoint: <service> <checkpoint> (count)[, <second most common> (count)]`: the last checkpoint each reached before the runner stopped it (crew's later `session_end` answering the stop is ignored; `no checkpoint` when it logged none) |
+| 1a | The level failed on the error rate (rule or abort) or on the settle-timeout rule, and at least half (`HTTP_ERROR_MAJORITY`) of its failed sessions are failed start requests (`http_error`). Its failed sessions are those of the level (settle, measured and finish) that ended by the verdict time, plus measured start requests that failed after it (sent before an abort, they time out up to the API client's 30 s later); a session the drain stopped after the verdict, as `timeout`, does not count | `N start requests failed (<most common error>; API p95 S s)`: the error up to its first colon (`TimeoutError`, `HTTP 502`) and the p95 start-request time of every session the level started |
+| 1b | Otherwise, the same failure rules, and the same sessions (ended by the verdict time, or measured failed start requests) include some that ended as `timeout`: a finish session or a measured session stopped later, in the drain, does not count | `N timed out; last checkpoint: <service> <checkpoint> (count)[, <second most common> (count)]`: the last checkpoint each reached before the runner stopped it (crew's later `session_end` answering the stop is ignored; `no checkpoint` when it logged none) |
 | 2 | Lowest host available RAM % in the window below the RAM guard (5 %) | `host RAM (available N%)` |
-| 3 | Mean host CPU in the window ≥ 90 % | `host CPU N%` |
-| 4 | A container's mean CPU ≥ 90 % of its CPU limit (only containers with a limit; none today) | `container CPU limit: <containers>` |
-| 5 | `CREW_MAX_CONCURRENT_SESSIONS` known, mean `running` ≥ 95 % of it and mean `queued` > 0 | `crew slots full (N) with sessions queued` |
-| 6 | p95 of `agent_queue_s` (sessions with agent calls) more than double the previous level's and above 1 s | `agent queue growing (p95 N s)` |
-| 7 | Peak Postgres connections ≥ 90 % of `max_connections` | `Postgres connections at N% of max` |
-| 8 | None of the above | `no saturated resource found` |
+| 3 | A one-process service at its cores: mean CPU in the window ≥ 85 % (`PROCESS_SATURATED_SHARE`) of 100 % per process. crew and agent run one Python process; django_app runs `DJANGO_SGI_WORKERS` (from `meta.json` → `env`; 1 when it is not set; when it is set but not a whole number above 0 the worker count is unknown and django_app is not judged). The dev profile's `DJANGO_SGI_RELOAD=1` makes `src/django_app/entrypoint.sh` run one worker whatever `DJANGO_SGI_WORKERS` says; the rule reads the variable, so do not judge django_app on a dev-profile run | `crew at one core (one process, 86 % CPU)`, `django_app at its 1 worker (124 % CPU)`; with `; host CPU N%` appended when the host is also at ≥ 90 % |
+| 4 | Mean host CPU in the window ≥ 90 % (`HOST_CPU_SATURATED_PCT`) | `host CPU N%` |
+| 5 | A container's mean CPU ≥ 90 % of its CPU limit (only containers with a limit; none today) | `container CPU limit: <containers>` |
+| 6 | `CREW_MAX_CONCURRENT_SESSIONS` known, mean `running` ≥ 95 % of it and mean `queued` > 0 | `crew slots full (N) with sessions queued` |
+| 7 | p95 of `agent_queue_s` (sessions with agent calls) more than double the previous level's and above 1 s | `agent queue growing (p95 N s)` |
+| 8 | Peak Postgres connections ≥ 90 % of `max_connections` | `Postgres connections at N% of max` |
+| 9 | None of the above | `no saturated resource found` |
 
-When timeouts explain the failure, the timed-out rule comes before the resource rules because it says where the stuck sessions are: `crew sandbox_dispatched` means the code was handed to the sandbox and never started there. The runner prints the same text on its live verdict line of a failed level.
+When failed sessions explain the failure, rules 1a/1b come before the resource rules because they say what failed: which start requests, or where the stuck sessions are (`crew sandbox_dispatched` means the code was handed to the sandbox and never started there). A one-process service at its cores is appended (`16 start requests failed (TimeoutError; API p95 27.1 s); django_app at its 1 worker (124 % CPU)`), as it is usually why. The runner prints the same failure text on its live verdict line of a failed level.
+
+Rule 3 comes before host CPU because a Python process cannot use more than one core: such a service caps throughput even while the host has idle cores, and adding host CPU would not help. When the host is saturated as well, both are named in one text. It comes after host RAM, which is the more urgent limit (the RAM guard aborts the run).
 
 "No saturated resource found" means the failure came from latency or errors without one of these resources at its limit: look at the Time breakdown and Nodes tabs and at `error_reason` in `sessions.csv.gz`.
 
@@ -125,7 +129,7 @@ Duration statistics in `steps.csv` are over the level's measured sessions with s
 |---|---|
 | `throughput_per_min` | Sessions of the phase that ended with status `end` between the end of settle and the end of hold, divided by that window's length, × 60. It counts every session of the phase ending in the window (including ones started before it), so it is the server's completion rate at that load. For a dev run the window is the whole run including the ramp-down. |
 | `error_rate` | `failed / sent` over measured sessions. `failed` = ended with any status other than `end`, excluding `interrupted` and unfinished sessions. |
-| `gen_lag_ms` | `sent_ts − intended_ts` of one session: how late the load generator actually sent it (64 sender threads, 30 s HTTP timeout, on the same host). `gen_lag_p99_ms` in `steps.csv` is the p99 over measured sessions. |
+| `gen_lag_ms` | `sent_ts − intended_ts` of one session: how late the load generator actually sent it (30 s HTTP timeout, on the same host). The controller keeps at least as many sender threads as the level's target (64 at least): a start request blocks its sender until the API answers, and pending requests count as in flight, so a slow API never queues a send behind the senders and cannot show up as generator lag. `gen_lag_p99_ms` in `steps.csv` is the p99 over measured sessions. |
 | `runner_cpu_pct` | CPU used by the benchmark process itself between two samples, % of one core (can exceed 100). High values with a rising generator lag mean the tool, not the server, is the limit. |
 
 ## Session time and its parts
@@ -316,7 +320,9 @@ What to look at first, from simple rules over the run. Columns: `phase`, `severi
 | `abort` | critical | A level was aborted, with the abort reason. Moment: end of the hold. |
 | `container_restart` | critical | A container's known restart or OOM counter rose within a segment. Moment: the first sample showing it. |
 | `cpu_limit` | warning | A container's mean CPU in a level's measured window is at least 90 % of its CPU limit (only containers with a limit); once per container and phase, at the first such level. |
-| `http_errors` | warning or info | Start requests that failed, by HTTP status: warning above 1 % of the phase's sessions (`HTTP_ERROR_WARN_SHARE`), info below. Moment: the first one. |
+| `http_errors` | critical, warning or info | Per level: start requests that failed, by error (`TimeoutError: 16`), out of the sessions the level started, with the level's API p95. Critical when they failed the level (bottleneck rule 1a). Otherwise graded by the phase: warning when the phase's failed start requests are above 1 % of its sessions (`HTTP_ERROR_WARN_SHARE`), info below; a level holds a few dozen sessions, so one stray failure would always be over 1 % of its own level. Moment: the first one. |
+| `single_process_saturated` | warning | crew, agent or django_app at its cores (bottleneck rule 3) in a level's measured window; once per container and phase, at the first such level. |
+| `llm_slowed_by_host` | warning | Some levels' LLM call p95 exceeded twice the reference (the smoke step's p95, else the phase's first level), and the host CPU was at 90 % or more in every one of them: `LLM call time rose A s → B s while host CPU was N %: likely CPU contention, not the provider` (call p50 at the first level and at the last slow level). `slow_provider` is then false. Moment: the first slow level's start. |
 | `invalid_level` | warning | A level with verdict `invalid`, with its reason. Moment: level start. |
 | `throughput_plateau` | warning | Among passing ladder levels only: the first one after which the next passing level raised throughput by less than 10 % (`PLATEAU_GROWTH`): `throughput stopped growing at level N (~T/min); passing level M only added latency`. A failed or invalid level is never compared. |
 | `dominant_stage` | warning (info for LLM) | At the headline level (highest pass, else the first level) one part of the session time (dispatch, queue wait, agent queue, LLM, Python, sandbox wait, crew overhead) is more than 50 % (`DOMINANT_STAGE_SHARE`) of the mean e2e of the completed measured sessions. LLM is info: an agent flow is expected to spend its time there. The share is capped at 100 %: parallel LLM calls can sum to more than the session's time. |
@@ -388,6 +394,8 @@ A run with a `schema_version` other than 1 is refused with a message.
    - `crew slots full`: the configured cap, not the hardware (raise `CREW_MAX_CONCURRENT_SESSIONS` for the test).
    - `agent queue growing`: too few agent workers for the LLM work.
    - `Postgres connections`: the connection limit (RUNBOOK B11) or connection usage per session.
+   - `N start requests failed (<error>; API p95 S s)`: the API did not answer the start requests in time (`TimeoutError` = the client's 30 s timeout). Look at the service named after it, e.g. `django_app at its 1 worker`: raise `DJANGO_SGI_WORKERS`.
+   - `<service> at one core (one process, N % CPU)` / `django_app at its N workers`: a Python service used all the cores its processes can; more host CPU will not help, more processes (workers, replicas) would.
    - `N timed out; last checkpoint: ...`: sessions hung at that checkpoint. `crew sandbox_dispatched` means the sandbox never started the code; the Timeline's in-flight chart shows when they piled up there.
    - `no saturated resource found`: latency grew without a saturated resource. Check the Time breakdown (which part grew between levels), Nodes, and `error_reason` of failed sessions.
 4. **Compare branches on stable numbers.** Prefer p50 e2e and p95 platform overhead, the payload phase (no LLM), CPU-seconds per session and the headline MB slope. Throughput at different levels is not comparable; compare at the same level or compare max passing concurrency.

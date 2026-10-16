@@ -1052,7 +1052,8 @@ class BottleneckTest(unittest.TestCase):
             "agent_queue_p95": 0.1,
             "previous_agent_queue_p95": 0.1,
             "pg_ratio_max": 0.2,
-            "timed_out": None,
+            "failure": None,
+            "saturated_processes": [],
         }
         self.assertEqual(analyze.bottleneck(base), "no saturated resource found")
         self.assertEqual(analyze.bottleneck({**base, "host_cpu_mean": 95}), "host CPU 95%")
@@ -2861,7 +2862,8 @@ class TimedOutLevelTest(unittest.TestCase):
     def test_bottleneck_names_the_timeouts_after_restarts_and_before_resources(self):
         context = {
             "restarts": [],
-            "timed_out": "20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+            "failure": "20 timed out; last checkpoint: crew sandbox_dispatched (20)",
+            "saturated_processes": [],
             "host_mem_avail_min_pct": 50,
             "ram_guard_pct": 5,
             "host_cpu_mean": 95,
@@ -2873,7 +2875,7 @@ class TimedOutLevelTest(unittest.TestCase):
             "previous_agent_queue_p95": None,
             "pg_ratio_max": None,
         }
-        self.assertEqual(analyze.bottleneck(context), context["timed_out"])
+        self.assertEqual(analyze.bottleneck(context), context["failure"])
         self.assertEqual(
             analyze.bottleneck({**context, "restarts": ["sandbox"]}),
             "container restart/OOM: sandbox",
@@ -3147,6 +3149,8 @@ class FindingsTest(unittest.TestCase):
                 "container": "crew",
                 "restarts": restarts,
                 "oom_kills": 0,
+                "cpu_pct": 1.0,
+                "mem_mb": 100.0,
             }
             for ts, restarts in ((50, 0), (60, 1), (70, 1))
         ]
@@ -3175,7 +3179,10 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual(
             found[2]["message"], "ladder level 10 invalid: too few measured sessions ended (0)"
         )
-        self.assertEqual(found[3]["message"], "3 start requests failed (HTTP 502: 2, no answer: 1)")
+        self.assertEqual(
+            found[3]["message"],
+            "ladder level 10: 3 of 4 start requests failed (HTTP 502: 2, no answer: 1; API p95 0.0 s)",
+        )
 
     def test_a_few_http_errors_are_info(self):
         rows = [session() for _ in range(200)] + [session("http_error", http_status=502)]
@@ -3335,9 +3342,7 @@ class TimeoutBottleneckTest(unittest.TestCase):
             (["p95 e2e 200.0 s > 120 s"], None),  # latency failed it: resource rules decide
             (["container restart/OOM: crew"], None),
         ):
-            self.assertEqual(
-                analyze.timeout_bottleneck(rows, window, reasons, by_session), expected
-            )
+            self.assertEqual(analyze.failure_text(rows, window, reasons, by_session), expected)
 
     def test_a_finish_session_timing_out_after_the_verdict_leaves_the_resource_rule(self):
         data = synthetic_run(mem_slope=0.3)
@@ -3457,6 +3462,406 @@ class FindingNitsTest(unittest.TestCase):
         found = analyze._findings(synthetic_run(mem_slope=0.3), rows, {}, steps, [], 0.0)
         (finding,) = [item for item in found if item["kind"] == "dominant_stage"]
         self.assertEqual(finding["message"], "LLM = 100% of session time at L10")
+
+
+class SenderCapacityTest(unittest.TestCase):
+    """A start request blocks its sender for its whole duration. When the API is slow and the
+    level is above the initial sender pool, the sends must not queue behind the pool: that
+    queueing reads as generator lag and makes the level invalid."""
+
+    def test_a_target_above_the_initial_senders_is_sent_without_lag(self):
+        ids = itertools.count(1)
+
+        def slow_start():  # the API answers every start request after 0.3 s
+            time_module.sleep(0.3)
+            return 200, next(ids)
+
+        controller = load.Controller(slow_start, lambda session_id: None, senders=64)
+        controller.set_context("payload", 100, "ladder", 1)
+        try:
+            controller.hold(100, 0.1, 60, abort_check=lambda: None, tick_s=0.05)
+            controller.drain(0)  # waits for the unanswered start requests
+        finally:
+            controller.close()
+        lags_ms = [(record.sent_ts - record.intended_ts) * 1000 for record in controller.records]
+        self.assertEqual(len(lags_ms), 100)
+        # a fixed pool of 64 would start the last 36 sends 300 ms late
+        self.assertLess(analyze.percentile(lags_ms, 0.99), 200)
+
+    def test_close_leaves_no_sender_thread_of_any_pool(self):
+        def senders():
+            return {
+                thread
+                for thread in threading.enumerate()
+                if thread.name.startswith(load.SENDER_THREAD)
+            }
+
+        before = senders()
+        ids = itertools.count(1)
+
+        def slow_start():
+            time_module.sleep(0.2)
+            return 200, next(ids)
+
+        controller = load.Controller(slow_start, lambda session_id: None, senders=2)
+        controller.set_context("payload", 5, "ladder", 1)
+        controller.hold(2, 0.05, 60, abort_check=lambda: None, tick_s=0.05)
+        controller.hold(5, 0.05, 60, abort_check=lambda: None, tick_s=0.05)  # replaces the pool
+        controller.drain(0)
+        controller.close()
+        for thread in senders() - before:
+            thread.join(timeout=5)
+        self.assertEqual(senders() - before, set())
+        self.assertEqual(len(controller.records), 5)
+        self.assertTrue(all(record.session_id for record in controller.records))  # none lost
+
+
+def start_request(number, intended, api_ms, error=None, level=40):
+    """A session record whose start request took `api_ms`; with `error` it failed (http_error)."""
+    return load.SessionRecord(
+        "payload",
+        level,
+        "ladder",
+        1,
+        intended,
+        sent_ts=intended,
+        api_ms=api_ms,
+        http_status=None if error else 200,
+        session_id=None if error else number,
+        error=error,
+        done_ts=intended + (api_ms / 1000 if error else 10),
+        end_status="http_error" if error else "end",
+    )
+
+
+class StartFailuresTest(unittest.TestCase):
+    """The 1-worker run: level 40 aborted on the error rate because 16 start requests hit the
+    API client's 30 s timeout while django_app ran its one worker at 124 % CPU."""
+
+    WINDOW = analyze.Window(
+        "payload", 40, "ladder", 1, 0, 30, 210, abort_reason="error rate 12% over 30 s"
+    )
+
+    def records(self):
+        return [start_request(number, 30 + number, 1000) for number in range(1, 21)] + [
+            start_request(100 + number, 100 + number, 30000, "TimeoutError: timed out")
+            for number in range(1, 17)
+        ]
+
+    def test_the_live_line_names_the_failed_start_requests(self):
+        verdict, text = runner.judge_live(
+            self.records(), [], self.WINDOW, PassRules(), AbortRules(), now=300
+        )
+        self.assertEqual(
+            (verdict, text),
+            (
+                "fail",
+                "fail error rate 12% over 30 s · 16 start requests failed (TimeoutError; API p95 30.0 s)",
+            ),
+        )
+
+    def test_start_requests_timing_out_after_the_abort_still_count(self):
+        # aborted at 120 s: the 16 measured requests sent from 101 s time out only at 131-146 s
+        window = dataclasses.replace(self.WINDOW, end_ts=120)
+        rows = analyze.build_rows(self.records(), [])
+        self.assertEqual(
+            analyze.failure_text(rows, window, ["error rate 12% over 30 s"], {}),
+            "16 start requests failed (TimeoutError; API p95 30.0 s)",
+        )
+
+    def test_bottleneck_names_the_requests_and_the_saturated_worker_and_findings_follow(self):
+        data = synthetic_run(mem_slope=0.3)  # crew at 50 % CPU: not saturated
+        data.records, data.windows = self.records(), [self.WINDOW]
+        data.container_timeline += [
+            {**row, "container": "django_app", "cpu_pct": 124.0}
+            for row in data.container_timeline
+            if row["container"] == "crew"
+        ]
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual(
+            step["bottleneck"],
+            "16 start requests failed (TimeoutError; API p95 30.0 s); django_app at its 1 worker (124 % CPU)",
+        )
+        with open(out / "findings.csv", encoding="utf-8") as findings_file:
+            found = {row["kind"]: row for row in csv.DictReader(findings_file)}
+        self.assertEqual(
+            (found["http_errors"]["severity"], found["http_errors"]["message"]),
+            (
+                "critical",
+                "ladder level 40: 16 of 36 start requests failed (TimeoutError: 16; API p95 30.0 s)",
+            ),
+        )
+        saturated = found["single_process_saturated"]
+        self.assertEqual(
+            (saturated["severity"], saturated["message"], saturated["container"]),
+            ("warning", "django_app at its 1 worker (124 % CPU) at ladder level 40", "django_app"),
+        )
+
+    def test_failed_start_requests_that_did_not_fail_a_level_are_rated_by_the_phase_share(self):
+        data = synthetic_run(mem_slope=0.3)
+        steps = [FindingsTest.step(10, 6), FindingsTest.step(20, 6)]  # both levels passed
+        # 36 sessions at level 10, 364 at level 20: a phase of 400
+        for failed, expected in ((1, "info"), (6, "warning")):  # of the phase: 0.25 %, 1.5 %
+            rows = [session() for _ in range(36 - failed)]
+            rows += [
+                session("http_error", error_reason="HTTP 502: bad gateway") for _ in range(failed)
+            ]
+            rows += [session(level=20) for _ in range(364)]
+            found = analyze._findings(data, rows, {}, steps, [], 0.0)
+            (finding,) = [item for item in found if item["kind"] == "http_errors"]
+            self.assertEqual(finding["severity"], expected)
+            self.assertIn(
+                f"ladder level 10: {failed} of 36 start requests failed (HTTP 502: {failed}",
+                finding["message"],
+            )
+
+
+class FailureBoundaryTest(unittest.TestCase):
+    WINDOW = analyze.Window("payload", 10, "ladder", 1, 0, 10, 100)
+
+    def test_failed_start_requests_name_the_level_from_half_of_its_failures(self):
+        def failures(requests, timeouts):
+            records = [
+                start_request(number, 20 + number, 30000, "TimeoutError: timed out", level=10)
+                for number in range(requests)
+            ]
+            records += [
+                record(50 + number, 50 + number, 50 + number, 60 + number, status="timeout")
+                for number in range(timeouts)
+            ]
+            rows = analyze.build_rows(records, [])
+            return analyze.failure_text(rows, self.WINDOW, ["error rate 50.0% > 1.0%"], {})
+
+        for requests, timeouts, expected in (
+            (2, 2, "2 start requests failed (TimeoutError; API p95 30.0 s)"),  # exactly half
+            (1, 2, "2 timed out; last checkpoint: no checkpoint (2)"),
+            (0, 2, "2 timed out; last checkpoint: no checkpoint (2)"),
+        ):
+            self.assertEqual(failures(requests, timeouts), expected)
+
+    def test_sessions_the_drain_stops_after_an_abort_do_not_change_what_failed_the_level(self):
+        window = analyze.Window(
+            "payload", 10, "ladder", 1, 0, 30, 120, abort_reason="error rate 40% over 30 s"
+        )
+        failed = [
+            start_request(number, 40 + number, 30000, "TimeoutError: timed out", level=10)
+            for number in range(10)
+        ]
+        running = [start_request(100 + number, 50 + number, 500, level=10) for number in range(15)]
+        live = [dataclasses.replace(item, done_ts=None, end_status=None) for item in running]
+        _, text = runner.judge_live(failed + live, [], window, PassRules(), AbortRules(), now=125)
+        # the drain stops the 15 still running as `timeout`, long after the abort
+        stopped = [dataclasses.replace(item, done_ts=400, end_status="timeout") for item in running]
+        data = synthetic_run(mem_slope=0.3)
+        data.records, data.windows = failed + stopped, [window]
+        out = Path(tempfile.mkdtemp())
+        analyze.analyze(data, out)
+        with open(out / "steps.csv", encoding="utf-8") as steps_file:
+            (step,) = list(csv.DictReader(steps_file))
+        self.assertEqual(
+            step["bottleneck"], "10 start requests failed (TimeoutError; API p95 30.0 s)"
+        )
+        self.assertEqual(text, f"fail error rate 40% over 30 s · {step['bottleneck']}")
+
+    def test_the_settle_reason_does_not_hide_failed_start_requests_on_the_live_line(self):
+        window = analyze.Window("payload", 40, "ladder", 1, 0, 30, 210, finish_end_ts=925)
+        records = [
+            record(number, 5 + number, 5 + number, 905 + number, status="timeout", level=40)
+            for number in range(1, 4)
+        ]
+        records += [
+            start_request(100 + number, 10 + number, 30000, "TimeoutError: timed out")
+            for number in range(4)
+        ]
+        verdict, text = runner.judge_live(records, [], window, PassRules(), AbortRules(), now=930)
+        self.assertEqual(
+            (verdict, text),
+            (
+                "fail",
+                (
+                    "fail 3 settle sessions timed out (last checkpoint: no checkpoint (3)) · "
+                    "4 start requests failed (TimeoutError; API p95 30.0 s)"
+                ),
+            ),
+        )
+
+
+class SaturatedProcessTest(unittest.TestCase):
+    """Python services run one process per core: crew and agent one, django_app one per
+    DJANGO_SGI_WORKERS. At about one core each they are the limit, whatever the host has left."""
+
+    def test_saturation_per_process_count(self):
+        def samples(name, cpu_pct):
+            return [{"container": name, "cpu_pct": cpu_pct} for _ in range(3)]
+
+        for container_samples, env, expected in (
+            (samples("crew", 86), {}, [("crew", "crew at one core (one process, 86 % CPU)")]),
+            (samples("crew", 82), {}, []),
+            (samples("agent", 18), {}, []),
+            (
+                samples("django_app", 124),
+                {"DJANGO_SGI_WORKERS": "1"},
+                [("django_app", "django_app at its 1 worker (124 % CPU)")],
+            ),
+            (
+                samples("django_app", 124),
+                {},
+                [("django_app", "django_app at its 1 worker (124 % CPU)")],
+            ),
+            (samples("django_app", 116), {"DJANGO_SGI_WORKERS": "4"}, []),
+            (
+                samples("django_app", 350),
+                {"DJANGO_SGI_WORKERS": "4"},
+                [("django_app", "django_app at its 4 workers (350 % CPU)")],
+            ),
+            (samples("sandbox", 900), {}, []),  # runs a process per execution: not single-process
+            (samples("django_app", 124), {"DJANGO_SGI_WORKERS": " 2 "}, []),  # 2 workers, 62 % each
+            (
+                samples("django_app", 900),
+                {"DJANGO_SGI_WORKERS": "four"},
+                [],
+            ),  # unreadable: no verdict
+            (samples("django_app", 900), {"DJANGO_SGI_WORKERS": ""}, []),
+            (samples("django_app", 900), {"DJANGO_SGI_WORKERS": "0"}, []),
+        ):
+            self.assertEqual(analyze.saturated_processes(container_samples, env), expected)
+
+    def test_bottleneck_order(self):
+        crew = "crew at one core (one process, 86 % CPU)"
+        context = {
+            "restarts": [],
+            "failure": None,
+            "saturated_processes": [crew],
+            "host_mem_avail_min_pct": 50,
+            "ram_guard_pct": 5,
+            "host_cpu_mean": 93,
+            "containers_at_cpu_limit": [],
+            "running_mean": 300,
+            "queued_mean": 0,
+            "crew_cap": None,
+            "agent_queue_p95": None,
+            "previous_agent_queue_p95": None,
+            "pg_ratio_max": None,
+        }
+        for changes, expected in (
+            ({}, f"{crew}; host CPU 93%"),  # the 4-worker run at level 320: both are said
+            ({"host_cpu_mean": 60}, crew),
+            ({"saturated_processes": []}, "host CPU 93%"),
+            ({"host_mem_avail_min_pct": 3}, "host RAM (available 3%)"),
+            (
+                {"failure": "3 timed out; last checkpoint: x (3)"},
+                f"3 timed out; last checkpoint: x (3); {crew}",
+            ),
+            ({"restarts": ["crew"]}, "container restart/OOM: crew"),
+        ):
+            self.assertEqual(analyze.bottleneck({**context, **changes}), expected)
+
+    def test_finding_once_per_container_and_phase_at_its_first_level(self):
+        data = synthetic_run(mem_slope=0.3)
+        for row in data.container_timeline:
+            row["cpu_pct"] = 90.0  # crew at its one core throughout
+        data.windows.append(dataclasses.replace(data.windows[0], level=20))
+        found = analyze._findings(data, [], {}, [], [], 0.0)
+        (finding,) = [item for item in found if item["kind"] == "single_process_saturated"]
+        self.assertEqual(
+            finding["message"], "crew at one core (one process, 90 % CPU) at ladder level 10"
+        )
+        self.assertEqual(finding["container"], "crew")
+
+
+def llm_run(host_cpu_pct):
+    """Two levels: LLM calls of 0.6 s at level 20 (host CPU 40 %), of 6 s at level 320 with
+    the host at `host_cpu_pct` (the 4-worker run's shape). The smoke step's LLM p95 was 0.9 s."""
+    return llm_levels([(20, 0, 10, 50, 0.6, 40), (320, 50, 60, 100, 6.0, host_cpu_pct)])
+
+
+def llm_levels(levels):
+    """One window per (level, start, settle end, end, LLM call seconds, host CPU %), 12 measured
+    sessions each with one LLM call; the smoke step's LLM p95 was 0.9 s."""
+    data = synthetic_run(mem_slope=0.3)
+    data.windows = [
+        analyze.Window("payload", level, "ladder", 1, start, settle, end)
+        for level, start, settle, end, _, _ in levels
+    ]
+    data.records, data.events = [], []
+    for number in range(12 * len(levels)):
+        level, _, settle, _, call_s, _ = levels[number // 12]
+        sent = settle + 2 + 3 * (number % 12)
+        data.records.append(record(number + 1, sent, sent, sent + 8, level=level))
+        correlation = f"c{number}"
+        data.events += [
+            {
+                "service": "agent",
+                "checkpoint": checkpoint,
+                "session_id": number + 1,
+                "correlation_id": correlation,
+                "ts": ts,
+            }
+            for checkpoint, ts in (("llm_start", sent + 1), ("llm_end", sent + 1 + call_s))
+        ]
+    for row in data.timeline:
+        # each level's host CPU from its start until the next level starts
+        row["host_cpu_pct"] = next(
+            (host for _, start, _, _, _, host in reversed(levels) if start <= row["ts"]), 0
+        )
+    data.meta["smoke"] = {"llm_p95_s": {"payload": 0.9}}
+    return data
+
+
+class LlmSlowedByHostTest(unittest.TestCase):
+    def analyzed(self, host_cpu_pct=None, data=None):
+        out = Path(tempfile.mkdtemp())
+        meta = analyze.analyze(data or llm_run(host_cpu_pct), out)
+        with open(out / "findings.csv", encoding="utf-8") as findings_file:
+            found = [
+                row for row in csv.DictReader(findings_file) if row["kind"] == "llm_slowed_by_host"
+            ]
+        return meta["phases"][0]["provider_health"]["slow_provider"], found
+
+    def test_slow_calls_on_a_saturated_host_are_not_the_provider(self):
+        slow_provider, found = self.analyzed(95)
+        self.assertFalse(slow_provider)
+        (finding,) = found
+        self.assertEqual(
+            (finding["severity"], finding["message"], finding["ts"]),
+            (
+                "warning",
+                "LLM call time rose 0.60 s → 6.0 s while host CPU was 95 %: likely CPU contention, not the provider",
+                "50",
+            ),
+        )
+
+    def test_without_a_smoke_step_the_first_level_is_the_reference(self):
+        data = llm_run(95)
+        data.meta["smoke"] = {"ran": False}
+        slow_provider, found = self.analyzed(data=data)
+        self.assertFalse(slow_provider)  # no smoke reference: never claimed, as before
+        self.assertEqual(
+            [finding["message"] for finding in found],
+            [
+                "LLM call time rose 0.60 s → 6.0 s while host CPU was 95 %: likely CPU contention, not the provider"
+            ],
+        )
+
+    def test_one_slow_level_on_an_idle_host_keeps_it_the_provider(self):
+        data = llm_levels(
+            [
+                (20, 0, 5, 40, 0.6, 40),
+                (160, 40, 45, 80, 6.0, 60),  # slow while the host had CPU to spare
+                (320, 80, 85, 120, 6.0, 95),
+            ]
+        )
+        slow_provider, found = self.analyzed(data=data)
+        self.assertTrue(slow_provider)
+        self.assertEqual(found, [])
+
+    def test_slow_calls_on_an_idle_host_are_the_provider(self):
+        slow_provider, found = self.analyzed(60)
+        self.assertTrue(slow_provider)
+        self.assertEqual(found, [])
 
 
 if __name__ == "__main__":

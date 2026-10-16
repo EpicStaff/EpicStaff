@@ -221,7 +221,19 @@ PLATEAU_GROWTH = 0.10  # a ladder level that rose but raised throughput by less 
 DOMINANT_STAGE_SHARE = 0.5  # one stage above this share of the mean e2e at the headline level
 RETAINED_MIN_MB = 50  # memory kept after cooldown is flagged above the larger of this ...
 RETAINED_SHARE = 0.10  # ... and this share of the container's baseline
-HTTP_ERROR_WARN_SHARE = 0.01  # failed start requests above this share of the phase: a warning
+# Failed start requests that did not fail their level, above this share of the phase: a warning.
+HTTP_ERROR_WARN_SHARE = 0.01
+# Failed start requests at least this share of a level's failures: they failed the level.
+HTTP_ERROR_MAJORITY = 0.5
+HOST_CPU_SATURATED_PCT = 90  # mean host CPU in a level at or above this: the host is saturated
+# Containers that run a fixed number of Python processes, each on at most one core: the env
+# variable that sets the count (None: always one). Mean CPU at PROCESS_SATURATED_SHARE of those
+# cores means the container is at its limit, however many host cores are idle.
+PROCESS_COUNT_VARIABLES = {"crew": None, "agent": None, "django_app": "DJANGO_SGI_WORKERS"}
+PROCESS_SATURATED_SHARE = 0.85
+# LLM call p95 above this many times the reference (the smoke step's) is slow: slow_provider,
+# or llm_slowed_by_host when the host CPU was saturated in every such level.
+SLOW_LLM_FACTOR = 2
 
 
 @dataclass
@@ -525,6 +537,19 @@ def _ended_by_verdict(row: dict, window: Window) -> bool:
     return row["end_ts"] is not None and row["end_ts"] <= window.verdict_ts
 
 
+def _judged_rows(rows: list[dict], window: Window) -> list[dict]:
+    """The level's sessions that count towards what failed it: those that ended by the verdict
+    time, plus measured start requests that failed later (sent before an abort, they time out
+    up to the API client's 30 s after it). A session the drain stopped after the verdict, as
+    `timeout`, did not fail the level and does not count."""
+    return [
+        row
+        for row in level_rows(rows, window)
+        if _ended_by_verdict(row, window)
+        or (window.measures(row) and row["status"] == "http_error")
+    ]
+
+
 def judge_level(
     rows: list[dict],
     window: Window,
@@ -553,19 +578,79 @@ def judge_level(
     return judge(measured_rows, window, rules, abort)
 
 
-def timeout_bottleneck(
+def _failed_level(reasons: list[str]) -> bool:
+    """The level's failed sessions failed it: the error-rate rule, the abort on the error rate, or
+    the settle-timeout rule (not latency, a restart or another abort)."""
+    return any(
+        reason.startswith("error rate") or SETTLE_TIMEOUT_REASON in reason for reason in reasons
+    )
+
+
+def _error_kind(row: dict) -> str:
+    """`TimeoutError`, `HTTP 502`, ...: a failed start request's error up to its first colon."""
+    kind = (row["error_reason"] or "").split(":", 1)[0].strip()
+    return kind or (f"HTTP {row['http_status']}" if row["http_status"] else "no answer")
+
+
+def start_failures(rows: list[dict], window: Window, reasons: list[str]) -> list[dict] | None:
+    """The level's failed start requests when they failed it: the failures failed the level and
+    at least HTTP_ERROR_MAJORITY of the level's failed sessions (_judged_rows) are http_error."""
+    if not _failed_level(reasons):
+        return None
+    failed = [row for row in _judged_rows(rows, window) if is_failed(row)]
+    requests = [row for row in failed if row["status"] == "http_error"]
+    return requests if requests and len(requests) >= HTTP_ERROR_MAJORITY * len(failed) else None
+
+
+def start_failures_text(failed: list[dict], started: list[dict]) -> str:
+    """`16 start requests failed (TimeoutError; API p95 27.1 s)`: the most common error and the
+    p95 start-request time of every session the level started."""
+    api_p95 = percentile([row["api_ms"] for row in started if row["api_ms"] is not None], 0.95)
+    detail = Counter(_error_kind(row) for row in failed).most_common(1)[0][0]
+    if api_p95 is not None:
+        detail += f"; API p95 {api_p95 / 1000:.1f} s"
+    return f"{len(failed)} start requests failed ({detail})"
+
+
+def failure_text(
     rows: list[dict], window: Window, reasons: list[str], by_session: dict[int, list[dict]]
 ) -> str | None:
-    """The timed-out text of a failed level, only when timeouts explain the failure: the
-    error-rate rule (or the abort on it) or the settle-timeout rule failed it. Only timeouts
-    by the verdict time count; a finish session stopped later, in the drain, did not fail it."""
-    if not any(
-        reason.startswith("error rate") or SETTLE_TIMEOUT_REASON in reason for reason in reasons
-    ):
+    """What failed a level, when its failed sessions did (see _failed_level): mostly failed start
+    requests (start_failures_text), otherwise timed-out sessions with the checkpoint where they
+    hung. Sessions count as in _judged_rows. The runner's live verdict line prints the same text
+    from what it knows at its verdict."""
+    requests = start_failures(rows, window, reasons)
+    if requests:
+        return start_failures_text(requests, level_rows(rows, window))
+    if not _failed_level(reasons):
         return None
-    return timed_out_text(
-        [row for row in level_rows(rows, window) if _ended_by_verdict(row, window)], by_session
-    )
+    return timed_out_text(_judged_rows(rows, window), by_session)
+
+
+def saturated_processes(container_samples: list[dict], env: dict) -> list[tuple[str, str]]:
+    """(container, `crew at one core (one process, 86 % CPU)` / `django_app at its 4 workers (350 %
+    CPU)`) for each container of PROCESS_COUNT_VARIABLES whose mean CPU in the samples reaches
+    PROCESS_SATURATED_SHARE of the cores its processes can use. A Python process uses at most one
+    core, so such a container is the limit even while the host has idle cores."""
+    saturated = []
+    for name, variable in PROCESS_COUNT_VARIABLES.items():
+        mean = _mean(row["cpu_pct"] for row in container_samples if row["container"] == name)
+        processes = 1  # crew and agent; django_app's default when the variable is not set
+        if variable and env.get(variable) is not None:
+            count = str(env[variable]).strip()
+            if not count.isdecimal() or int(count) == 0:
+                # unreadable: the worker count is unknown, and guessing one could call a
+                # service saturated that is not (or hide one that is), so no verdict on it
+                continue
+            processes = int(count)
+        if mean is None or mean < PROCESS_SATURATED_SHARE * processes * 100:
+            continue
+        if variable is None:
+            saturated.append((name, f"{name} at one core (one process, {mean:.0f} % CPU)"))
+        else:
+            workers = f"{processes} worker{'s' if processes > 1 else ''}"
+            saturated.append((name, f"{name} at its {workers} ({mean:.0f} % CPU)"))
+    return saturated
 
 
 def is_failed(row: dict) -> bool:
@@ -666,15 +751,24 @@ def judge(
 def bottleneck(context: dict) -> str:
     if context["restarts"]:
         return f"container restart/OOM: {', '.join(context['restarts'])}"
-    if context["timed_out"]:  # where the stuck sessions stopped beats a guess at the resource
-        return context["timed_out"]
+    processes = "; ".join(context["saturated_processes"])
+    if context["failure"]:
+        # what failed the level (where sessions hung, which requests failed), with the process
+        # at its core limit when there is one: that is usually why
+        return f"{context['failure']}; {processes}" if processes else context["failure"]
     if (
         context["host_mem_avail_min_pct"] is not None
         and context["host_mem_avail_min_pct"] < context["ram_guard_pct"]
     ):
         return f"host RAM (available {context['host_mem_avail_min_pct']:.0f}%)"
-    if context["host_cpu_mean"] is not None and context["host_cpu_mean"] >= 90:
-        return f"host CPU {context['host_cpu_mean']:.0f}%"
+    host_cpu = context["host_cpu_mean"]
+    host_saturated = host_cpu is not None and host_cpu >= HOST_CPU_SATURATED_PCT
+    if processes:
+        # a process at its core caps the service whatever the host has left; a saturated host
+        # is said too, as it slows everything else down
+        return f"{processes}; host CPU {host_cpu:.0f}%" if host_saturated else processes
+    if host_saturated:
+        return f"host CPU {host_cpu:.0f}%"
     if context["containers_at_cpu_limit"]:
         return f"container CPU limit: {', '.join(context['containers_at_cpu_limit'])}"
     if (
@@ -819,7 +913,13 @@ def _step_and_container_rows(data, rows, by_session, baselines, crew_cap):
                         {row["container"] for row in container_samples}
                         & set(_restarted(data.container_timeline, window))
                     ),
-                    "timed_out": timeout_bottleneck(rows, window, reasons, by_session),
+                    "failure": failure_text(rows, window, reasons, by_session),
+                    "saturated_processes": [
+                        text
+                        for _, text in saturated_processes(
+                            container_samples, data.meta.get("env", {})
+                        )
+                    ],
                     "host_mem_avail_min_pct": min(
                         (
                             row["host_mem_avail_pct"]
@@ -1166,7 +1266,9 @@ def _restart_moments(container_timeline: list[dict]) -> list[tuple[str, str, flo
     return moments
 
 
-def _findings(data, rows, by_session, steps, container_phase_rows, origin) -> list[dict]:
+def _findings(
+    data, rows, by_session, steps, container_phase_rows, origin, llm_contention=None
+) -> list[dict]:
     """findings.csv: what to look at first, by simple rules with the thresholds above. A
     finding with a moment (`ts`) is drawn on the viewer's timeline; `tab` is where to read on."""
     findings = []
@@ -1188,6 +1290,7 @@ def _findings(data, rows, by_session, steps, container_phase_rows, origin) -> li
         )
 
     windows = {(window.phase, window.segment, window.level): window for window in data.windows}
+    llm_contention = llm_contention or {}
 
     def level_name(phase, segment, level):
         window = windows.get((phase, segment, level))
@@ -1237,23 +1340,62 @@ def _findings(data, rows, by_session, steps, container_phase_rows, origin) -> li
                 window.settle_end_ts,
                 name,
             )
-    for phase in data.case.phases:
-        own = [row for row in rows if row["phase"] == phase.name]
-        failed = [row for row in own if row["status"] == "http_error"]
-        if failed:
-            statuses = Counter(row["http_status"] for row in failed)
-            detail = ", ".join(
-                f"HTTP {status}: {count}" if status else f"no answer: {count}"
-                for status, count in statuses.most_common()
-            )
+    steps_by_level = {(step["phase"], step["segment"], step["level"]): step for step in steps}
+    started_by_level: dict[tuple, list[dict]] = defaultdict(list)
+    for row in rows:
+        started_by_level[(row["phase"], row["segment"], row["level"])].append(row)
+    # a level holds a few dozen sessions, so one stray failure would always be over 1 % of it:
+    # a failure that did not fail its level is graded by the phase's share instead
+    phase_started, phase_failed = Counter(), Counter()
+    for row in rows:
+        phase_started[row["phase"]] += 1
+        phase_failed[row["phase"]] += row["status"] == "http_error"
+    for key, started in sorted(started_by_level.items()):
+        failed = [row for row in started if row["status"] == "http_error"]
+        if not failed:
+            continue
+        window, step = windows.get(key), steps_by_level.get(key)
+        reasons = step["fail_reasons"].split("; ") if step and step["fail_reasons"] else []
+        caused = bool(
+            window and step and step["verdict"] == "fail" and start_failures(rows, window, reasons)
+        )
+        kinds = ", ".join(
+            f"{kind}: {count}" for kind, count in Counter(map(_error_kind, failed)).most_common()
+        )
+        api_p95 = percentile([row["api_ms"] for row in started if row["api_ms"] is not None], 0.95)
+        message = (
+            f"{level_name(*key)}: {len(failed)} of {len(started)} start requests failed ({kinds}"
+        )
+        message += f"; API p95 {api_p95 / 1000:.1f} s)" if api_p95 is not None else ")"
+        if caused:
+            severity = CRITICAL  # they failed the level
+        elif phase_failed[key[0]] > HTTP_ERROR_WARN_SHARE * phase_started[key[0]]:
+            severity = WARNING
+        else:
+            severity = INFO
+        first = min((row["sent_ts"] for row in failed if row["sent_ts"] is not None), default=None)
+        add(key[0], severity, "http_errors", message, "Timeline", first)
+    env = data.meta.get("env", {})
+    saturated_seen: set[tuple[str, str]] = set()  # once per container and phase: its first level
+    for window in data.windows:
+        samples = _in(data.container_timeline, window.settle_end_ts, window.end_ts)
+        for name, saturation in saturated_processes(samples, env):
+            if (window.phase, name) in saturated_seen:
+                continue
+            saturated_seen.add((window.phase, name))
+            message = f"{saturation} at {window.kind} level {window.level}"
             add(
-                phase.name,
-                WARNING if len(failed) > HTTP_ERROR_WARN_SHARE * len(own) else INFO,
-                "http_errors",
-                f"{len(failed)} start requests failed ({detail})",
-                "Timeline",
-                min((row["sent_ts"] for row in failed if row["sent_ts"] is not None), default=None),
+                window.phase,
+                WARNING,
+                "single_process_saturated",
+                message,
+                "Containers",
+                window.settle_end_ts,
+                name,
             )
+    for phase_name, (message, ts) in llm_contention.items():
+        add(phase_name, WARNING, "llm_slowed_by_host", message, "Timeline", ts)
+    for phase in data.case.phases:
         own_steps = [step for step in steps if step["phase"] == phase.name]
         for step in own_steps:
             if step["verdict"] == "invalid":
@@ -1352,7 +1494,62 @@ def _write_csv(path: Path, columns: list[str], rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -> dict:
+def _llm_contention(data: RunData, rows: list[dict], by_session) -> dict[str, tuple[str, float]]:
+    """phase → (message, moment) when LLM calls got slow only while the host CPU was saturated.
+
+    A level's LLM calls are slow when their p95 exceeds SLOW_LLM_FACTOR x the reference (the
+    smoke step's p95 for the phase, else the phase's first level with calls). When every slow
+    level had a mean host CPU of at least HOST_CPU_SATURATED_PCT, the calls most likely waited
+    for CPU on this host (the agent parses and streams on a starved core), not for the provider.
+    """
+    smoke = (data.meta.get("smoke") or {}).get("llm_p95_s", {})
+    result = {}
+    for phase in data.case.phases:
+        levels = []
+        for window in data.windows:
+            if window.phase != phase.name:
+                continue
+            calls = [
+                float(end["ts"]) - float(start["ts"])
+                for row in measured(rows, window)
+                for start, end in pair_spans(
+                    by_session.get(row["session_id"], []),
+                    "llm_start",
+                    "llm_end",
+                    lambda event: event.get("correlation_id"),
+                )
+            ]
+            if calls:
+                levels.append((window, calls))
+        if not levels:
+            continue
+        reference = smoke.get(phase.name) or percentile(levels[0][1], 0.95)
+        slow = [
+            (window, calls)
+            for window, calls in levels
+            if percentile(calls, 0.95) > SLOW_LLM_FACTOR * reference
+        ]
+        hosts = [
+            _mean(
+                row["host_cpu_pct"]
+                for row in _in(data.timeline, window.settle_end_ts, window.end_ts)
+            )
+            for window, _ in slow
+        ]
+        if not slow or any(host is None or host < HOST_CPU_SATURATED_PCT for host in hosts):
+            continue
+        first, last = percentile(levels[0][1], 0.5), percentile(slow[-1][1], 0.5)
+        message = (
+            f"LLM call time rose {first:.2f} s → {last:.1f} s while host CPU was "
+            f"{sum(hosts) / len(hosts):.0f} %: likely CPU contention, not the provider"
+        )
+        result[phase.name] = (message, slow[0][0].start_ts)
+    return result
+
+
+def _phase_summary(
+    data, phase, steps, rows, by_session, container_phase_rows, llm_contention=None
+) -> dict:
     own = [step for step in steps if step["phase"] == phase.name]
     passes = [step for step in own if step["verdict"] == "pass"]
     fails = [step for step in own if step["verdict"] == "fail"]
@@ -1416,7 +1613,13 @@ def _phase_summary(data, phase, steps, rows, by_session, container_phase_rows) -
         "errors": dict(errors),
         "tokens": tokens,
         "cost_usd": round(cost, 4),
-        "slow_provider": bool(smoke_p95 and calls and percentile(calls, 0.95) > 2 * smoke_p95),
+        # LLM calls slowed by a saturated host are not the provider's (see _llm_contention)
+        "slow_provider": bool(
+            smoke_p95
+            and calls
+            and percentile(calls, 0.95) > SLOW_LLM_FACTOR * smoke_p95
+            and phase.name not in (llm_contention or {})
+        ),
     }
     estimate = None
     host = data.meta.get("host", {})
@@ -1476,6 +1679,7 @@ def analyze(data: RunData, out_dir: Path) -> dict:
     container_phase_rows = _container_phase_rows(data, baselines)
     # every timeline x is seconds since the run's first sample, continuous across segments
     origin = min((sample["ts"] for sample in data.timeline), default=None)
+    llm_contention = _llm_contention(data, rows, by_session)
     meta = {
         "schema_version": SCHEMA_VERSION,
         "tool_version": TOOL_VERSION,
@@ -1483,7 +1687,9 @@ def analyze(data: RunData, out_dir: Path) -> dict:
         "analyzed_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "events_unattributed": unattributed,
         "phases": [
-            _phase_summary(data, phase, steps, rows, by_session, container_phase_rows)
+            _phase_summary(
+                data, phase, steps, rows, by_session, container_phase_rows, llm_contention
+            )
             for phase in data.case.phases
         ],
     }
@@ -1512,7 +1718,7 @@ def analyze(data: RunData, out_dir: Path) -> dict:
     _write_csv(
         out_dir / "findings.csv",
         FINDING_COLUMNS,
-        _findings(data, rows, by_session, steps, container_phase_rows, origin),
+        _findings(data, rows, by_session, steps, container_phase_rows, origin, llm_contention),
     )
     _write_csv(
         out_dir / "events_sample.csv",

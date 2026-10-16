@@ -281,7 +281,7 @@
       verdict: "Final verdict of the level: pass, fail or invalid.",
       live_verdict: "Verdict the runner took during the run; it decided whether the ladder continued.",
       fail_reasons: "The rules that failed, or why the level is invalid.",
-      bottleneck: "Why a level failed, first match of: container restart/OOM, timed-out sessions (with the checkpoint where they hung), host RAM, host CPU, container CPU limit, crew slots full, agent queue growing, Postgres connections.",
+      bottleneck: "Why a level failed, first match of: container restart/OOM; what failed it (failed start requests, or timed-out sessions with the checkpoint where they hung); host RAM; a one-process service at its cores (crew, agent, django_app workers); host CPU; container CPU limit; crew slots full; agent queue growing; Postgres connections.",
       container: "Container name.",
       cpu_s: "CPU-seconds the container used in the level's measured window.",
       "containers.cpu_s_per_session": "This container's CPU-seconds in the measured window / sessions that ended end in it.",
@@ -331,7 +331,7 @@
       stage: "Where an in-flight session is, from the last checkpoint it reached: waiting for crew, crew, agent queue, agent, LLM, waiting for sandbox, python, result return.",
       "inflight_stages.count": "Sessions in flight at that stage at the sample.",
       severity: "critical, warning or info.",
-      "findings.kind": "Rule that produced the finding.",
+      "findings.kind": "Rule that produced the finding: timeouts, abort, container_restart, http_errors, single_process_saturated, cpu_limit, llm_slowed_by_host, invalid_level, throughput_plateau, dominant_stage, memory_retained.",
       message: "What the rule found.",
       tab: "Viewer tab to read on.",
       max_pass_concurrency: "Highest level with a final pass (ladder or bisect): the measured capacity under the pass rules.",
@@ -407,7 +407,8 @@
     // findings.csv kind → the short label of its timeline marker
     const MARKER_LABELS = {
       timeouts: "first timeout", abort: "abort", container_restart: "restart/OOM", http_errors: "first HTTP error",
-      invalid_level: "invalid level", cpu_limit: "CPU limit",
+      invalid_level: "invalid level", cpu_limit: "CPU limit", single_process_saturated: "at its cores",
+      llm_slowed_by_host: "LLM slowed by host CPU",
     };
     const SPAN_TYPES = [
       ["session", "Session (request → end)", "--muted"], ["queue", "Queue (received → slot)", "--series-2"],

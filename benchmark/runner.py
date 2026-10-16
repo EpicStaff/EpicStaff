@@ -201,17 +201,21 @@ def judge_live(
     records: list, events: list[dict], window, rules, abort, now: float
 ) -> tuple[str, str]:
     """The verdict the runner takes at the end of a level from what it knows at `now`, and the
-    text it prints: the reasons, plus for a failed level the checkpoint where timed-out
-    sessions hung (when the reasons do not name it already), the first thing to look at."""
+    text it prints: the reasons, plus for a failed level what failed it (analyze.failure_text:
+    the failed start requests, or the checkpoint where timed-out sessions hung, when the reasons
+    do not name it already), the first thing to look at."""
     rows = analyze.build_rows(records, events, now=now)
     by_session, _ = analyze.index_events(events)
     verdict, reasons = analyze.judge_level(rows, window, rules, abort, by_session)
     text = " ".join([verdict, "; ".join(reasons)]).strip()
-    timed_out = (
-        analyze.timeout_bottleneck(rows, window, reasons, by_session) if verdict == "fail" else None
+    failure = analyze.failure_text(rows, window, reasons, by_session) if verdict == "fail" else None
+    # the settle-timeout reason already names where the timed-out sessions hung; failed start
+    # requests it does not name
+    named = analyze.SETTLE_TIMEOUT_REASON in text and not analyze.start_failures(
+        rows, window, reasons
     )
-    if timed_out and "last checkpoint" not in text:
-        text += f" · {timed_out}"
+    if failure and not named:
+        text += f" · {failure}"
     return verdict, text
 
 

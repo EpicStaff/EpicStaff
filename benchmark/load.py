@@ -18,6 +18,7 @@ RUNNER_STATUSES = ("http_error", "timeout", INTERRUPTED)
 # Kind of the sessions sent after a level's hold, while the load is kept until the sessions
 # the hold measured have ended. They keep the load steady but are never measured.
 FINISH_KIND = "finish"
+SENDER_THREAD = "bench-sender"  # name prefix of the threads that send start requests
 
 
 @dataclass
@@ -53,7 +54,10 @@ class Controller:
         clock: Callable[[], float] = time.time,
     ):
         self._start_session, self._stop_session, self._clock = start_session, stop_session, clock
-        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=senders)
+        self._senders = senders
+        self._pool = concurrent.futures.ThreadPoolExecutor(
+            senders, thread_name_prefix=SENDER_THREAD
+        )
         self._stop_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
         self._lock = threading.Lock()
         self.records: list[SessionRecord] = []
@@ -132,6 +136,25 @@ class Controller:
                 self.records.append(record)
                 self._pending_http += 1
             self._pool.submit(self._send, record)
+
+    def _ensure_senders(self, target: int) -> None:
+        """Have at least `target` sender threads. A start request blocks its sender for its whole
+        duration, and a pending request counts as in flight, so a level never has more than
+        `target` requests outstanding: with `target` senders no send waits for a thread, and a
+        slow API cannot show up as generator lag. A smaller pool would queue the sends behind
+        the slow ones. Grows by replacing the pool (threads start only when work arrives, so
+        unused capacity costs nothing).
+
+        The old pool never has a backlog: it had as many threads as the earlier, smaller target,
+        which bounded its outstanding sends, so every send it holds is already running. Shutting
+        it without waiting (and without cancelling) lets those sends finish on their threads,
+        which then exit; nothing queued is lost."""
+        if target <= self._senders:
+            return
+        replaced = self._pool
+        self._pool = concurrent.futures.ThreadPoolExecutor(target, thread_name_prefix=SENDER_THREAD)
+        self._senders = target
+        replaced.shutdown(wait=False)
 
     def _expire(
         self, now: float, timeout_s: float, status: str = "timeout"
@@ -212,6 +235,7 @@ class Controller:
     ) -> str | None:
         """Keep `target` sessions in flight for `duration_s` (or until `max_starts` sessions have
         started and finished, or until `until()` is true). Returns the abort reason, or None."""
+        self._ensure_senders(target)
         deadline = self._clock() + duration_s
         started = 0
         while self._clock() < deadline:

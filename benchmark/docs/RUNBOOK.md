@@ -455,7 +455,7 @@ The setting lives in the database volume and survives container recreation. Undo
    column -s, -t < benchmark/results/<new>/steps.csv | less -S
    ```
 
-   Arrow keys scroll sideways, `q` quits. `column` can shift cells when a value is empty or contains a comma; the viewer shows the same data exactly. Read `verdict`, `fail_reasons` and `bottleneck` of the first non-passing row.
+   Arrow keys scroll sideways, `q` quits. `column` can shift cells when a value is empty or contains a comma; the viewer shows the same data exactly. Read `verdict`, `fail_reasons` and `bottleneck` of the first non-passing row. The runner already printed the gist on the level's live verdict line, e.g. `fail error rate 12% over 30 s · 16 start requests failed (TimeoutError; API p95 27.1 s)`.
 
    In the viewer start with **Findings** at the top of the Verdicts tab (`findings.csv`; rules in docs/METRICS.md). Critical first: timed-out sessions with the checkpoint where they hung, aborts, container restarts. Then warnings: a throughput plateau (the level where adding sessions stopped adding throughput), one stage taking most of the session time, memory not released after cooldown, invalid levels. Select a finding to open its tab; a Timeline finding moves the crosshair to its moment, where the in-flight-by-stage chart shows where the sessions were.
 3. **Push** to the results repository:
