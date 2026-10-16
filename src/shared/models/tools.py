@@ -215,7 +215,7 @@ class CodeTaskData(StorageScopedData):
         return (
             f"execution_id={self.execution_id} venv={self.venv_name} "
             f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
-            f"timeout={self.timeout} "
+            f"execution_timeout={self.execution_timeout} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 
