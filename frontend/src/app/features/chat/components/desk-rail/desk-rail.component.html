@@ -1,0 +1,139 @@
+<header class="desk-rail__header">
+    @if (!isCompact()) {
+        <h2 class="desk-rail__title text-body-medium">Desks</h2>
+    }
+    @if (showsToggle()) {
+        <button
+            type="button"
+            class="desk-rail__toggle"
+            [attr.aria-label]="toggleLabel()"
+            [matTooltip]="toggleLabel()"
+            matTooltipPosition="right"
+            (click)="toggleMode()"
+        >
+            <app-svg-icon
+                icon="expand-sidebar"
+                size="0.85rem"
+            />
+        </button>
+    }
+</header>
+
+<ul class="desk-rail__entries">
+    <!-- One template for both modes: the avatar carries the accessible name, so the listed name and badge are hidden. -->
+    @for (entry of entries(); track entry.key) {
+        <li>
+            <a
+                class="desk-rail__entry"
+                routerLinkActive="desk-rail__entry--selected"
+                ariaCurrentWhenActive="page"
+                matTooltipPosition="right"
+                [routerLink]="entry.link"
+                [matTooltip]="entry.name"
+                [matTooltipDisabled]="!isCompact()"
+                (click)="onEntryClick($event)"
+            >
+                <app-desk-avatar
+                    class="desk-rail__avatar"
+                    [name]="entry.name"
+                    [deskId]="entry.deskId"
+                    [icon]="entry.icon"
+                    [status]="entry.status"
+                    [count]="entry.count"
+                    [showBadge]="isCompact()"
+                />
+                @if (!isCompact()) {
+                    <span
+                        class="desk-rail__name text-body-medium"
+                        aria-hidden="true"
+                        >{{ entry.name }}</span
+                    >
+                    @if (entry.badge; as badge) {
+                        <span
+                            class="desk-rail__badge"
+                            aria-hidden="true"
+                            >{{ badge }}</span
+                        >
+                    }
+                }
+            </a>
+        </li>
+    }
+    @switch (deskListState()) {
+        @case ('loading') {
+            <!-- Seen only: the status region below says it. -->
+            <li
+                class="desk-rail__state"
+                aria-hidden="true"
+            >
+                <app-loading-spinner
+                    size="sm"
+                    [message]="isCompact() ? '' : 'Loading desks…'"
+                />
+            </li>
+        }
+        @case ('failed') {
+            <li class="desk-rail__state">
+                @if (isCompact()) {
+                    <button
+                        type="button"
+                        class="desk-rail__retry"
+                        aria-label="Couldn't load desks. Retry"
+                        matTooltip="Couldn't load desks. Retry"
+                        matTooltipPosition="right"
+                        (click)="retryLoad()"
+                    >
+                        <app-svg-icon
+                            icon="refresh"
+                            size="1rem"
+                        />
+                    </button>
+                } @else {
+                    <app-fetch-error-state
+                        mod="small"
+                        title="Couldn't load desks"
+                        (retry)="retryLoad()"
+                    />
+                }
+            </li>
+        }
+    }
+    @if (canCreate()) {
+        <li>
+            <button
+                type="button"
+                class="desk-rail__entry desk-rail__new"
+                aria-label="New desk"
+                matTooltip="New desk"
+                matTooltipPosition="right"
+                [matTooltipDisabled]="!isCompact()"
+                (click)="createDesk()"
+            >
+                <span
+                    class="desk-rail__new-picture"
+                    aria-hidden="true"
+                >
+                    <app-svg-icon
+                        icon="plus"
+                        size="1rem"
+                    />
+                </span>
+                @if (!isCompact()) {
+                    <span
+                        class="desk-rail__name text-body-medium"
+                        aria-hidden="true"
+                        >New desk</span
+                    >
+                }
+            </button>
+        </li>
+    }
+</ul>
+
+<!-- Always present, so a change of its text is announced; only the text changes. -->
+<div
+    class="visually-hidden"
+    role="status"
+>
+    {{ statusMessage() }}
+</div>

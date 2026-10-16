@@ -27,7 +27,7 @@ offending lines and what to do instead. This docstring is the one place the rule
 
 Not scanned, so not covered: ``run:`` blocks in GitHub workflows, ``sh -c`` / ``command:``
 strings inside compose files (only their ``${...}`` interpolation is checked), Dockerfile
-``RUN`` lines, and shell code in files that do not end in ``.sh``.
+``RUN`` lines, and shell code in files that do not end in ``.sh`` or ``.envsh`` (nginx sources the latter).
 """
 
 import re
@@ -71,7 +71,7 @@ PYTHON_AD_HOC_BOOL_RES = [
 PYTHON_EXEMPT = {"src/shared/envtools.py"}
 PYTHON_TEST_FILE_RE = re.compile(r"(^|/)(tests?/|test_[^/]*\.py$|[^/]*_test\.py$|conftest\.py$)")
 
-SHELL_FILE_RE = re.compile(r"\.sh$")
+SHELL_FILE_RE = re.compile(r"\.(?:sh|envsh)$")
 PYTHON_FILE_RE = re.compile(r"\.py$")
 SHELL_ENV_VAR = r"\$\{?[A-Z][A-Z0-9_]*(?::?-[^}]*)?\}?"
 SHELL_AD_HOC_BOOL_RES = [

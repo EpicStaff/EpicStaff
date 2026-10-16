@@ -424,12 +424,20 @@ for quick health-checks of the login chain.
 - **Response 200 — active token:**
   ```json
   {
-    "active":  true,
-    "user_id": 1,
-    "email":   "admin@acme.com",
-    "scopes":  []
+    "active":        true,
+    "user_id":       1,
+    "email":         "admin@acme.com",
+    "display_name":  "Admin",
+    "scopes":        [],
+    "org_ids":       [1, 4],
+    "is_superadmin": false
   }
   ```
+  `display_name` is never empty: the user's stored display name, or — when
+  that is NULL (never set on an older user, or cleared through
+  `PATCH /api/profile/`) — the name derived from the email
+  (`admin@acme.com` → `Admin`).
+  `org_ids` lists the organizations the user is a member of.
   `scopes` is always `[]` — access tokens carry no scopes claim; the field
   is kept in the response shape for forward compatibility.
 - **Response 200 — expired/invalid/tampered token:** `{ "active": false }`

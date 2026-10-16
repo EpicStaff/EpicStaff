@@ -57,6 +57,9 @@ else
   echo ">> Skipping .env regeneration."
 fi
 
+# deploy.env stays last so the server's overrides win. envtool.py --dev turns the chat service
+# on (COMPOSE_PROFILES=dev,chat, CHAT_ENABLED=true); override both in deploy.env to turn it off.
+# With chat on, set CHAT_PUBLIC_BASE_URL in deploy.env too: its dev default is http://localhost.
 DC="docker compose --env-file .env --env-file deploy.env -f $COMPOSE_FILE"
 
 echo ">> docker compose down"

@@ -73,6 +73,10 @@ DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py listen_redi
 echo "Starting Redis caching..."
 DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis &
 
+# Start session callback sender in the background
+echo "Starting session callback sender..."
+python manage.py send_session_callbacks &
+
 # Start Django application
 PORT="${DJANGO_PORT}"
 
