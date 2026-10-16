@@ -10,7 +10,7 @@ the default would let user code run longer, or shorter, than its author set.
 import pytest
 
 from tables.graph_versioning.services import GraphVersioningService
-from tables.models import Edge, PythonCode, PythonCodeTool, StartNode
+from tables.models import Edge, PythonCode, PythonCodeTool, PythonCodeToolConfig, StartNode
 from tables.services.converter_service import ConverterService
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.copy_services.python_code_tool_copy_service import (
@@ -44,6 +44,15 @@ def node(slot, graph):
     return slot.create(graph, _python_code())
 
 
+def _python_tool(org) -> PythonCodeTool:
+    return PythonCodeTool.objects.create(
+        name="execution-timeout-tool",
+        description="tool",
+        python_code=_python_code(),
+        org=org,
+    )
+
+
 @pytest.mark.django_db
 def test_graph_copy_keeps_the_execution_timeout(slot, graph, node):
     copied_graph = GraphCopyService().copy(graph, name="copied")
@@ -55,12 +64,7 @@ def test_graph_copy_keeps_the_execution_timeout(slot, graph, node):
 
 @pytest.mark.django_db
 def test_python_tool_copy_keeps_the_execution_timeout(default_org):
-    tool = PythonCodeTool.objects.create(
-        name="execution-timeout-tool",
-        description="tool",
-        python_code=_python_code(),
-        org=default_org,
-    )
+    tool = _python_tool(default_org)
 
     copied_tool = PythonCodeToolCopyService().copy(tool)
 
@@ -87,6 +91,27 @@ def test_converter_puts_the_execution_timeout_into_the_payload(seconds):
     python_code_data = ConverterService().convert_python_code_to_pydantic(_python_code(seconds))
 
     assert python_code_data.execution_timeout == seconds
+
+
+@pytest.mark.django_db
+def test_python_tool_converter_puts_the_execution_timeout_into_the_payload(default_org):
+    tool_data = ConverterService().convert_python_code_tool_to_pydantic(_python_tool(default_org))
+
+    assert tool_data.python_code.execution_timeout == STORED_SECONDS
+
+
+@pytest.mark.django_db
+def test_python_tool_config_converter_puts_the_execution_timeout_into_the_payload(default_org):
+    tool_config = PythonCodeToolConfig.objects.create(
+        name="execution-timeout-config",
+        tool=_python_tool(default_org),
+        org=default_org,
+        configuration={},
+    )
+
+    tool_data = ConverterService().convert_python_code_tool_config_to_pydantic(tool_config)
+
+    assert tool_data.python_code.execution_timeout == STORED_SECONDS
 
 
 @pytest.mark.django_db

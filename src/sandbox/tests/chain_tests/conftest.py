@@ -32,7 +32,7 @@ def _set_env_defaults() -> None:
         "STORAGE_BUCKET": "epicstaff",
         "STORAGE_SSL": "false",
         "SANDBOX_MASK_SECRET": "true",
-        "SANDBOX_EXECUTION_TIMEOUT": "5m",
+        "SANDBOX_MAX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_DEFAULT_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
@@ -66,7 +66,7 @@ def _ensure_src_shared_stub() -> None:
         func_kwargs: dict = dataclasses.field(default_factory=dict)
         global_kwargs: dict = dataclasses.field(default_factory=dict)
         secrets: dict = dataclasses.field(default_factory=dict)
-        timeout: float | None = None
+        execution_timeout: float | None = None
 
     # src.shared must be a real package pointing at the actual shared/ directory
     # so that src.shared.envtools (and its `from . import humanize`) resolves.

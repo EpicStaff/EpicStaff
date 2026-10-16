@@ -1,6 +1,6 @@
 """The execution timeout settings django_app derives from the sandbox environment.
 
-Invariant: SANDBOX_EXECUTION_TIMEOUT becomes the maximum in whole seconds, rounded down so a
+Invariant: SANDBOX_MAX_EXECUTION_TIMEOUT becomes the maximum in whole seconds, rounded down so a
 stored timeout never exceeds what the sandbox enforces (none means no maximum), and
 SANDBOX_DEFAULT_EXECUTION_TIMEOUT becomes the default. A default below the minimum or above
 the maximum stops django_app from starting, because every new PythonCode would get a
@@ -17,7 +17,7 @@ from django.core.exceptions import ImproperlyConfigured
 import django_app.settings.execution_timeout as execution_timeout_settings
 from django_app.settings import env
 
-VARIABLES = ("SANDBOX_EXECUTION_TIMEOUT", "SANDBOX_DEFAULT_EXECUTION_TIMEOUT")
+VARIABLES = ("SANDBOX_MAX_EXECUTION_TIMEOUT", "SANDBOX_DEFAULT_EXECUTION_TIMEOUT")
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def load_settings() -> Iterator[Callable[[str, str], ModuleType]]:
     original = {name: env._envs.get(name) for name in VARIABLES}
 
     def _load(max_value: str, default_value: str) -> ModuleType:
-        env._envs["SANDBOX_EXECUTION_TIMEOUT"] = max_value
+        env._envs["SANDBOX_MAX_EXECUTION_TIMEOUT"] = max_value
         env._envs["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"] = default_value
         return importlib.reload(execution_timeout_settings)
 

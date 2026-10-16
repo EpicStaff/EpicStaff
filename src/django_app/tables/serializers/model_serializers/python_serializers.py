@@ -181,18 +181,10 @@ class PythonCodeSerializer(
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
-class ToolPythonCodeSerializer(PythonCodeSerializer):
-    """A tool's code. Its execution timeout is read-only: tool runs send none, so the sandbox
-    applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
-
-    class Meta(PythonCodeSerializer.Meta):
-        read_only_fields = [*PythonCodeSerializer.Meta.read_only_fields, "execution_timeout"]
-
-
 class PythonCodeToolSerializer(
     AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
 ):
-    python_code = ToolPythonCodeSerializer()
+    python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
     is_favorite = serializers.BooleanField(read_only=True, default=False)
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).

@@ -158,4 +158,4 @@ async def test_run_code_publishes_the_code_execution_timeout(execution_timeout):
     await _deliver_result(fake_redis)
     await asyncio.wait_for(task, timeout=5)
 
-    assert fake_redis.published["timeout"] == execution_timeout
+    assert fake_redis.published["execution_timeout"] == execution_timeout

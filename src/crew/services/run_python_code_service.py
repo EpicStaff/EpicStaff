@@ -80,7 +80,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 secrets=python_code_data.secrets,
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
-                timeout=python_code_data.execution_timeout,
+                execution_timeout=python_code_data.execution_timeout,
             )
         except ValidationError:
             # Never log or return `error` itself: ValidationError's repr embeds the

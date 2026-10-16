@@ -1,11 +1,10 @@
 """A panel test run of a node's code is killed at the same limit as a real run.
 
 Invariant: `RunPythonCodeService.run_target` publishes the timeout of the resolved
-`PythonCodeData` the node's real run would send, in seconds, as `CodeTaskData.timeout`, so the
-sandbox applies it (capped at its maximum) instead of its default. A test run of a python
-code tool's code publishes no timeout, because tool runs never send one and the sandbox applies
-its default; that is why a tool's `execution_timeout` is read-only. Only the Redis client is
-mocked (`redis_client_mock`).
+`PythonCodeData` the node's real run would send, in seconds, as `CodeTaskData.execution_timeout`,
+so the sandbox applies it (capped at its maximum) instead of its default. A test run of a python
+code tool's code publishes the code's own timeout too, as a real tool run does. Only the Redis
+client is mocked (`redis_client_mock`).
 """
 
 import dataclasses
@@ -58,7 +57,7 @@ def test_test_run_publishes_the_code_timeout(
     )
 
     [published] = [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
-    assert published["timeout"] == 42
+    assert published["execution_timeout"] == 42
 
 
 @pytest.mark.django_db
@@ -88,11 +87,11 @@ def test_test_run_publishes_the_timeout_of_the_resolved_payload(
     )
 
     [published] = [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
-    assert published["timeout"] == 77
+    assert published["execution_timeout"] == 77
 
 
 @pytest.mark.django_db
-def test_tool_code_test_run_publishes_no_timeout(org, user, redis_client_mock):
+def test_tool_code_test_run_publishes_the_code_timeout(org, user, redis_client_mock):
     python_code = PythonCode.objects.create(code="def main(): return 1", execution_timeout=42)
     PythonCodeTool.objects.create(
         name="timeout-tool", description="tool", org=org, python_code=python_code
@@ -106,4 +105,4 @@ def test_tool_code_test_run_publishes_no_timeout(org, user, redis_client_mock):
     )
 
     [published] = [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
-    assert published["timeout"] is None
+    assert published["execution_timeout"] == 42

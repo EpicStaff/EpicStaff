@@ -107,6 +107,8 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             id="org-id-wins-over-global",
         ),
         pytest.param({"org_id": 77}, None, {"global_kwargs": {"org_id": 77}, "org_id": 77}, id="org-id-injected"),
+        # The sandbox enforces the tool's own timeout instead of its default.
+        pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),
     ],
 )
 async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides, credentials, expected_task):

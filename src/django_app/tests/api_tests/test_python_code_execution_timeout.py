@@ -9,8 +9,8 @@ maximum, not rejected, because the maximum is deployment configuration that can 
 after a flow was built; with no maximum configured any value is kept. A value below the
 minimum or not a whole number is a 400 and changes nothing.
 
-A python code tool's `execution_timeout` is read-only: tool runs send no timeout, so a
-value written through the tool endpoint is ignored and the read shows the stored one.
+A python code tool's `execution_timeout` follows the same rules through the tool endpoint,
+because a tool run sends it to the sandbox just like a node run does.
 """
 
 import pytest
@@ -196,37 +196,61 @@ def test_graph_read_returns_the_stored_value(auth_client, graph, slot, node):
 
 @pytest.mark.django_db
 class TestPythonCodeToolEndpoint:
-    def test_create_ignores_the_field_and_stores_the_default(self, auth_client):
+    @pytest.mark.parametrize(
+        ("python_code_fields", "expected"),
+        [({"execution_timeout": 90}, 90), ({}, DEFAULT_SECONDS)],
+        ids=["given", "omitted-takes-default"],
+    )
+    def test_create_stores_the_value(self, auth_client, python_code_fields, expected):
         response = auth_client.post(
             reverse("pythoncodetool-list"),
             {
                 "name": "timeout-tool",
                 "description": "tool",
-                "python_code": _python_code(execution_timeout=90),
+                "python_code": _python_code(**python_code_fields),
             },
             format="json",
         )
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
-        assert response.data["python_code"]["execution_timeout"] == DEFAULT_SECONDS
+        assert response.data["python_code"]["execution_timeout"] == expected
         tool = PythonCodeTool.objects.get(pk=response.data["id"])
-        assert tool.python_code.execution_timeout == DEFAULT_SECONDS
+        assert tool.python_code.execution_timeout == expected
 
-    def test_update_ignores_the_field(self, auth_client, default_org):
-        tool = PythonCodeTool.objects.create(
+    @pytest.mark.parametrize(
+        ("execution_timeout", "expected"),
+        [(30, 30), (MAX_SECONDS + 1, MAX_SECONDS)],
+        ids=["within-limits", "above-maximum-is-capped"],
+    )
+    def test_update_stores_the_value(self, auth_client, tool, execution_timeout, expected):
+        response = auth_client.patch(
+            reverse("pythoncodetool-detail", args=[tool.id]),
+            {"python_code": _python_code(execution_timeout=execution_timeout)},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert response.data["python_code"]["execution_timeout"] == expected
+        tool.python_code.refresh_from_db()
+        assert tool.python_code.execution_timeout == expected
+
+    def test_update_below_minimum_is_rejected(self, auth_client, tool):
+        response = auth_client.patch(
+            reverse("pythoncodetool-detail", args=[tool.id]),
+            {"python_code": _python_code(execution_timeout=2)},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+        assert "execution_timeout" in response.content.decode()
+        tool.python_code.refresh_from_db()
+        assert tool.python_code.execution_timeout == STORED_SECONDS
+
+    @pytest.fixture
+    def tool(self, default_org):
+        return PythonCodeTool.objects.create(
             name="timeout-tool",
             description="tool",
             org=default_org,
             python_code=PythonCode.objects.create(code=CODE, execution_timeout=STORED_SECONDS),
         )
-
-        response = auth_client.patch(
-            reverse("pythoncodetool-detail", args=[tool.id]),
-            {"python_code": _python_code(execution_timeout=30)},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_200_OK, response.content
-        assert response.data["python_code"]["execution_timeout"] == STORED_SECONDS
-        tool.python_code.refresh_from_db()
-        assert tool.python_code.execution_timeout == STORED_SECONDS

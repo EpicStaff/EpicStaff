@@ -164,9 +164,9 @@ class CodeTaskData(StorageScopedData):
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
-    timeout: float | None = Field(default=None, gt=0)
+    execution_timeout: float | None = Field(default=None, gt=0)
     """Requested execution timeout in seconds. Untrusted: the sandbox caps it at
-    SANDBOX_EXECUTION_TIMEOUT. None makes the sandbox apply
+    SANDBOX_MAX_EXECUTION_TIMEOUT. None makes the sandbox apply
     SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     storage_credentials: StorageCredentials | None = None

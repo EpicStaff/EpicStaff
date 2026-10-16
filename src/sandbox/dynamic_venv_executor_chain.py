@@ -702,9 +702,9 @@ except Exception:
             **drop_kwargs,
         )
 
-        timeout = effective_execution_timeout(context.get("requested_timeout"))
+        execution_timeout = effective_execution_timeout(context.get("execution_timeout"))
         comm_task = asyncio.ensure_future(process.communicate())
-        done, _ = await asyncio.wait({comm_task}, timeout=timeout)
+        done, _ = await asyncio.wait({comm_task}, timeout=execution_timeout)
 
         if comm_task not in done:
             return await self._handle_timeout(
@@ -712,7 +712,7 @@ except Exception:
                 comm_task=comm_task,
                 context=context,
                 masking_values=masking_values,
-                timeout=timeout,
+                execution_timeout=execution_timeout,
             )
 
         stdout, stderr = comm_task.result()
@@ -758,7 +758,7 @@ except Exception:
         comm_task: asyncio.Task,
         context: dict[str, Any],
         masking_values: dict[str, str],
-        timeout: float,
+        execution_timeout: float,
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
@@ -768,7 +768,7 @@ except Exception:
         logger.error(
             "Execution {} exceeded {} seconds; killing process tree.",
             context["execution_id"],
-            f"{timeout:g}",
+            f"{execution_timeout:g}",
         )
 
         killed = _kill_process_tree(process, execution_id=context["execution_id"])
@@ -801,7 +801,7 @@ except Exception:
         stdout = scrub(text=stdout, secrets=masking_values)
         stderr = scrub(text=stderr, secrets=masking_values)
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
+        timeout_message = f"Execution exceeded {execution_timeout:g} seconds and was terminated."
         if not killed:
             timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
@@ -814,19 +814,17 @@ except Exception:
         )
 
 
-def effective_execution_timeout(requested_seconds: float | None) -> float | None:
-    """Return the execution timeout to apply: the requested one, never above the maximum.
+def effective_execution_timeout(requested_seconds: float | None) -> float:
+    """Return the execution timeout to apply, in seconds.
 
-    A task without a timeout gets SANDBOX_DEFAULT_EXECUTION_TIMEOUT, or the maximum when
-    that is none. The requested value comes from the task message and is untrusted, so it
-    is capped at SANDBOX_EXECUTION_TIMEOUT; None there means no upper limit.
+    The requested value comes from the task message and is untrusted, so
+    SANDBOX_MAX_EXECUTION_TIMEOUT is the security bound it is capped at (None there means no
+    upper limit). SANDBOX_DEFAULT_EXECUTION_TIMEOUT only fills in a missing request.
     """
     timeout = settings.DEFAULT_EXECUTION_TIMEOUT if requested_seconds is None else requested_seconds
-    if timeout is None:
-        return settings.EXECUTION_TIMEOUT
-    if settings.EXECUTION_TIMEOUT is None:
+    if settings.MAX_EXECUTION_TIMEOUT is None:
         return timeout
-    return min(timeout, settings.EXECUTION_TIMEOUT)
+    return min(timeout, settings.MAX_EXECUTION_TIMEOUT)
 
 
 class DynamicVenvExecutorChain:
@@ -866,13 +864,13 @@ class DynamicVenvExecutorChain:
         storage_org_prefix: str | None = None,
         storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
-        timeout: float | None = None,
+        execution_timeout: float | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously.
 
         Args:
-            timeout: Requested execution timeout in seconds, capped at
-                SANDBOX_EXECUTION_TIMEOUT; None applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+            execution_timeout: Requested execution timeout in seconds, capped at
+                SANDBOX_MAX_EXECUTION_TIMEOUT; None applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
                 Bounds only the code run itself; venv creation and library
                 installation are not limited by it.
         """
@@ -929,7 +927,7 @@ class DynamicVenvExecutorChain:
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
-            "requested_timeout": timeout,
+            "execution_timeout": execution_timeout,
         }
         if use_storage:
             # Fail-closed: code that requests storage access must have valid
