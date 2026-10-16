@@ -12,9 +12,9 @@ GRAPH_COPY_POST = {
     "description": (
         "Creates a duplicate of the flow identified by the id in the URL, in the active "
         "organization, with its nodes and edges. Requires CREATE on flows. A flow holding "
-        "a trigger node (webhook, Telegram, schedule) also requires RUN on flows: copied "
+        "a trigger node (webhook, Telegram, schedule) also requires USE on flows: copied "
         "trigger nodes are live at once. Without it the response is 403 "
-        "`flow_with_trigger_nodes_requires_run_permission` and nothing is written."
+        "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
     ),
     "request": inline_serializer(
         name="GraphCopyRequest",

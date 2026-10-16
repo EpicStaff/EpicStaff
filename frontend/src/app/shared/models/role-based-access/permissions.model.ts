@@ -4,8 +4,7 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Use = 'use', // for 'secrets' only
-    Run = 'run', // for 'flows' only
+    Use = 'use', // for 'secrets' and 'flows' only
     List = 'list', // unused for now
 }
 

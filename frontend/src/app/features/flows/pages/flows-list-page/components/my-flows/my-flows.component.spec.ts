@@ -88,7 +88,7 @@ describe('MyFlowsComponent copy action', () => {
         expect(getFlows).toHaveBeenCalledTimes(2);
     });
 
-    it('explains a copy refused over trigger nodes in the Run permission warning, with no toast and no reload', () => {
+    it('explains a copy refused over trigger nodes in the Use permission warning, with no toast and no reload', () => {
         const confirm = vi.fn();
         TestBed.overrideProvider(ConfirmationDialogService, { useValue: { confirm } });
         copyFlow.mockReturnValue(
@@ -98,7 +98,7 @@ describe('MyFlowsComponent copy action', () => {
                         status: 403,
                         error: {
                             status_code: 403,
-                            code: 'flow_with_trigger_nodes_requires_run_permission',
+                            code: 'flow_with_trigger_nodes_requires_use_permission',
                             message: 'This flow contains trigger nodes.',
                         },
                     })
@@ -108,9 +108,9 @@ describe('MyFlowsComponent copy action', () => {
         openCopyDialog('Support Flow');
 
         expect(confirm).toHaveBeenCalledExactlyOnceWith({
-            title: 'Run permission required',
+            title: 'Use permission required',
             message: 'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
-            caution: '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+            caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on flows.',
             type: 'warning',
             hideConfirm: true,
             cancelText: 'OK',

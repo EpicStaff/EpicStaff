@@ -3,12 +3,12 @@ import { ActionCode, ActivePermissions, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 
-/** Flows actions of a role that may change a flow but not run it: trigger nodes are read-only for it. */
-export const FLOW_ACTIONS_WITHOUT_RUN: ActionCode[] = [ActionCode.Read, ActionCode.Update];
-/** Flows actions of a role that may change and run a flow. */
-export const FLOW_ACTIONS_WITH_RUN: ActionCode[] = [ActionCode.Read, ActionCode.Update, ActionCode.Run];
-/** Flows actions of a custom role that may run but not change a flow. */
-export const FLOW_ACTIONS_RUN_WITHOUT_UPDATE: ActionCode[] = [ActionCode.Read, ActionCode.Run];
+/** Flows actions of a role that may change a flow but lacks Use (may not run it): trigger nodes are read-only for it. */
+export const FLOW_ACTIONS_WITHOUT_USE: ActionCode[] = [ActionCode.Read, ActionCode.Update];
+/** Flows actions of a role that may change a flow and has Use (may run it). */
+export const FLOW_ACTIONS_WITH_USE: ActionCode[] = [ActionCode.Read, ActionCode.Update, ActionCode.Use];
+/** Flows actions of a custom role that has Use (may run a flow) but may not change it. */
+export const FLOW_ACTIONS_USE_WITHOUT_UPDATE: ActionCode[] = [ActionCode.Read, ActionCode.Use];
 
 /**
  * Gives the signed-in user exactly these permissions in the active org, through the real PermissionsService

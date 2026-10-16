@@ -62,7 +62,7 @@ class NodeTypeConfig:
     serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
     # A trigger node: it starts flow runs on its own (webhook call, Telegram
-    # message, schedule), so creating or editing one requires FLOWS.RUN.
+    # message, schedule), so creating or editing one requires FLOWS.USE.
     starts_runs: bool = False
 
     def __post_init__(self):
@@ -196,7 +196,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
 
 
 # The trigger node types, by graph relation (`<type>_node_list`) and by model. Every
-# "is this a trigger node" decision (the flows:RUN checks in tables/services/
+# "is this a trigger node" decision (the flows:USE checks in tables/services/
 # trigger_nodes.py) derives from `starts_runs` through these.
 TRIGGER_NODE_LIST_KEYS: frozenset[str] = frozenset(
     config.list_key for config in NODE_TYPE_REGISTRY if config.starts_runs

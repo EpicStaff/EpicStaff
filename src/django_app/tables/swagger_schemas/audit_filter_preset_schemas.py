@@ -175,7 +175,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
             description="Invalid file, wrong main entity, or a validation error on an item (e.g. missing `name`)."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        # Refused when the file carries a flow with trigger nodes and the caller lacks Run.
+        # Refused when the file carries a flow with trigger nodes and the caller lacks Use.
         403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     },
 }

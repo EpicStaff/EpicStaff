@@ -22,7 +22,7 @@ export interface ScheduleTriggerRuntimeUpdate {
  * the dirty-tracking baseline are updated together here; the saved graph the save diff starts from
  * belongs to the flows page, which applies each `updates$` item to it with
  * `withGraphScheduleTriggerRuntimeState`. Otherwise the next save would send the schedule as changed,
- * which for a user without Flows:Run the save refuses.
+ * which for a user without Flows:Use the save refuses.
  */
 @Injectable({
     providedIn: 'root',

@@ -234,8 +234,8 @@ class TestFkFieldsAreGated:
 _FULL_CRUD = int(
     Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 )
-# Editing a Telegram trigger node also needs flows:run (a trigger node starts runs).
-_FLOWS_FULL = _FULL_CRUD | int(Permission.RUN)
+# Editing a Telegram trigger node also needs flows:use (a trigger node starts runs).
+_FLOWS_FULL = _FULL_CRUD | int(Permission.USE)
 
 
 def _client_with_grants(

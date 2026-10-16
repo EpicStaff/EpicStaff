@@ -493,7 +493,7 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**RUN_SESSION_TEST_POST)
     def post(self, request):
-        # A test run starts a session, so it needs FLOWS.RUN; it also executes the
+        # A test run starts a session, so it needs FLOWS.USE; it also executes the
         # node's stored code with a payload the caller wrote, a contributor-level
         # action gated on FLOWS.UPDATE like RunPythonCodeAPIView. Each bit is
         # asserted on its own because a permission check passes on any one bit.
@@ -501,7 +501,7 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
         # lacking either always gets the same 403 — whatever the body and whether
         # or not the node exists — and never costs the payload size check.
         org_id = self.get_active_org_id()
-        for required_action in (Permission.UPDATE, Permission.RUN):
+        for required_action in (Permission.UPDATE, Permission.USE):
             assert_org_permission(
                 user=request.user,
                 org_id=org_id,
@@ -545,7 +545,7 @@ class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
         session_id = kwargs["session_id"]
-        get_accessible_session(request.user, session_id, Permission.RUN)
+        get_accessible_session(request.user, session_id, Permission.USE)
 
         try:
             required_listeners = 2  # manager and crew
@@ -611,7 +611,7 @@ class RunPythonCodeAPIView(APIView):
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
-        # FLOWS.UPDATE; code a trigger node owns also needs FLOWS.RUN, as testing
+        # FLOWS.UPDATE; code a trigger node owns also needs FLOWS.USE, as testing
         # the trigger itself does, whichever way the request names the code. The
         # code must also be visible to the active org, so a caller cannot run
         # another org's code by passing its id (rejected like a non-existent pk —
@@ -623,7 +623,7 @@ class RunPythonCodeAPIView(APIView):
             # The slot type alone says whether a trigger owns the code, so this gate
             # runs before the lookup and a 403 says nothing about the target.
             if CODE_RUN_TARGETS[target["type"]].owner_is_trigger_node:
-                self._assert_flows_permission(request.user, org_id, Permission.RUN)
+                self._assert_flows_permission(request.user, org_id, Permission.USE)
             try:
                 execution_id = run_python_code_service.run_target(
                     target_type=target["type"],
@@ -645,10 +645,10 @@ class RunPythonCodeAPIView(APIView):
             raise ValidationError(
                 {"python_code_id": [f'Invalid pk "{python_code.pk}" - object does not exist.']}
             )
-        # After the visibility check, so the RUN gate only ever speaks about code the
+        # After the visibility check, so the USE gate only ever speaks about code the
         # caller's org can already see.
         if trigger_node_owns_python_code(python_code.pk, org_id):
-            self._assert_flows_permission(request.user, org_id, Permission.RUN)
+            self._assert_flows_permission(request.user, org_id, Permission.USE)
 
         execution_id = run_python_code_service.run_code(
             python_code_id=python_code.id,

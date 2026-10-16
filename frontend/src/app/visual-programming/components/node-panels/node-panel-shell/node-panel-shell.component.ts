@@ -217,7 +217,7 @@ export class NodePanelShellComponent {
     private readonly panelNodeType = computed<NodeType | null>(
         () => this.panelInstanceSig()?.node?.().type ?? this.node()?.type ?? null
     );
-    /** The open panel's node may not be changed: a read-only editor, or a trigger node without Flows:Run. */
+    /** The open panel's node may not be changed: a read-only editor, or a trigger node without Flows:Use. */
     public readonly isNodeReadOnly = computed(() => {
         const nodeType = this.panelNodeType();
         return nodeType ? this.flowReadOnly.isNodeTypeReadOnly(nodeType) : this.flowReadOnly.isReadOnly();

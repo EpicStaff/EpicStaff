@@ -79,7 +79,7 @@ import {
 } from '../../../../features/flows/models/graph.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
-import { FlowRunPermissionRefusalService } from '../../../../features/flows/services/flow-run-permission-refusal.service';
+import { FlowUsePermissionRefusalService } from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -165,8 +165,8 @@ export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open
 export const extractParentNotUpdatedMessage = (subflowName: string): string =>
     `Subflow "${subflowName}" was created, but another flow was opened before the original flow was updated — the extracted nodes are still in it`;
 export const REMOTE_SAVE_RELOAD_FAILED_MESSAGE = 'Failed to load the latest version of this flow — refresh it';
-export const TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE =
-    'This change includes trigger nodes, which needs the Run permission on flows. Remove or revert the trigger node changes to save.';
+export const TRIGGER_NODE_CHANGES_NEED_USE_MESSAGE =
+    'This change includes trigger nodes, which need the Use permission on flows. Remove or revert the trigger node changes to save.';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -211,7 +211,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly flowTestRunService = inject(FlowTestRunService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
-    private readonly runPermissionRefusal = inject(FlowRunPermissionRefusalService);
+    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
@@ -765,7 +765,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Unpacking creates the subflow's nodes in this flow, and creating a trigger node needs Flows:Run, so for a
+     * Unpacking creates the subflow's nodes in this flow, and creating a trigger node needs Flows:Use, so for a
      * user without it a subflow with trigger nodes is refused as a whole. Returns true when it refused, after
      * telling the user why.
      */
@@ -776,7 +776,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         ) {
             return false;
         }
-        this.runPermissionRefusal.showRefusal('unpack');
+        this.usePermissionRefusal.showRefusal('unpack');
         return true;
     }
 
@@ -1216,7 +1216,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * Last line of defence: the editor already keeps a user without Flows:Run from creating or changing a
+     * Last line of defence: the editor already keeps a user without Flows:Use from creating or changing a
      * trigger node, but a diff can still carry one (undo bringing back a deleted trigger node, say). The backend
      * would refuse the whole save, so it is not sent; the unsaved changes stay for the user to revert.
      * Returns true when it refused the save, after telling the user why.
@@ -1225,7 +1225,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (this.flowReadOnly.canEditTriggerNodes() || !hasTriggerNodeWrites(nodeDiff)) {
             return false;
         }
-        this.toastService.warning(TRIGGER_NODE_CHANGES_NEED_RUN_MESSAGE, 6000, 'bottom-right');
+        this.toastService.warning(TRIGGER_NODE_CHANGES_NEED_USE_MESSAGE, 6000, 'bottom-right');
         return true;
     }
 
@@ -1824,7 +1824,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // Eagerly rewrite legacy "at HH:MM" once-schedule names to "at HH-MM" in the
         // live canvas state. Because the saved baseline already holds the old names, the
         // flow will be marked dirty until the user saves, which is the intended UX.
-        // Renaming changes the schedule node, which needs Flows:Run: without it the old name stays,
+        // Renaming changes the schedule node, which needs Flows:Use: without it the old name stays,
         // or every save of the flow would be refused.
         const rewrittenFlow: FlowModel = this.flowReadOnly.canEditTriggerNodes()
             ? {
@@ -2042,16 +2042,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 }),
                 // The backend's refusal (e.g. permissions changed since they were loaded) is explained there and
                 // emits nothing: no toast, nothing reloaded.
-                this.runPermissionRefusal.catchRefusal('restore'),
+                this.usePermissionRefusal.catchRefusal('restore'),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({ error: () => this.toastService.error('Failed to restore version') });
     }
 
     /**
-     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Run, so for a user
+     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Use, so for a user
      * without it a version with trigger nodes is refused as a whole; emits true when it refused, after telling
-     * the user why. Users with Flows:Run get `false` at once, without fetching the version.
+     * the user why. Users with Flows:Use get `false` at once, without fetching the version.
      */
     private refuseRestoreOfTriggerNodes(version: GraphVersionDto): Observable<boolean> {
         if (this.flowReadOnly.canEditTriggerNodes()) {
@@ -2066,7 +2066,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             // Unknown (the version could not be read): the restore request decides, through catchRefusal.
             catchError(() => of(false)),
             tap((refused) => {
-                if (refused) this.runPermissionRefusal.showRefusal('restore');
+                if (refused) this.usePermissionRefusal.showRefusal('restore');
             })
         );
     }

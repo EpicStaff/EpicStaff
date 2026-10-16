@@ -284,9 +284,9 @@ describe('FlowVisualProgrammingComponent', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
-                        // Run follows its own signal; the other actions follow the update signal.
+                        // Use follows its own signal; the other actions follow the update signal.
                         can: (_resource: ResourceCode, action: ActionCode) =>
-                            action === ActionCode.Run ? canRunFlows() : canUpdateFlows(),
+                            action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
                         canAny: () => true,
                     },
                 },
@@ -486,7 +486,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(confirm).toHaveBeenCalledExactlyOnceWith(
                     expect.objectContaining({
                         message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
-                        caution: '<strong>Restoring</strong> it requires the <strong>Run</strong> permission on flows.',
+                        caution: '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on flows.',
                     })
                 );
                 expect(unsavedChangesDialog.confirm).not.toHaveBeenCalled();
@@ -540,7 +540,7 @@ describe('FlowVisualProgrammingComponent', () => {
                             status: 403,
                             error: {
                                 status_code: 403,
-                                code: 'flow_with_trigger_nodes_requires_run_permission',
+                                code: 'flow_with_trigger_nodes_requires_use_permission',
                                 message: 'This flow contains trigger nodes.',
                             },
                         })
@@ -553,7 +553,7 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(confirm).toHaveBeenCalledExactlyOnceWith(
                 expect.objectContaining({
                     message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
-                    caution: '<strong>Restoring</strong> it requires the <strong>Run</strong> permission on flows.',
+                    caution: '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on flows.',
                     hideConfirm: true,
                 })
             );
@@ -1260,12 +1260,12 @@ describe('FlowVisualProgrammingComponent', () => {
         });
     });
 
-    describe('trigger nodes and the Run permission on flows', () => {
+    describe('trigger nodes and the Use permission on flows', () => {
         const savedWebhook = liveGraph.webhook_trigger_node_list![0];
         const savedSchedule = liveGraph.schedule_trigger_node_list![0];
         let nextRouteId = 500;
         const TRIGGER_CHANGES_WARNING =
-            'This change includes trigger nodes, which needs the Run permission on flows. Remove or revert the trigger node changes to save.';
+            'This change includes trigger nodes, which need the Use permission on flows. Remove or revert the trigger node changes to save.';
 
         function openFlow(graph: GraphDto): void {
             flowsApi['getGraphById'].mockReturnValue(of(graph));
@@ -1391,9 +1391,9 @@ describe('FlowVisualProgrammingComponent', () => {
 
                 expect(confirm).toHaveBeenCalledExactlyOnceWith(
                     expect.objectContaining({
-                        title: 'Run permission required',
+                        title: 'Use permission required',
                         message: 'This subflow contains trigger nodes (Webhook, Telegram, Schedule).',
-                        caution: '<strong>Unpacking</strong> it requires the <strong>Run</strong> permission on flows.',
+                        caution: '<strong>Unpacking</strong> it requires the <strong>Use</strong> permission on flows.',
                         hideConfirm: true,
                     })
                 );
@@ -1491,7 +1491,7 @@ describe('FlowVisualProgrammingComponent', () => {
             });
         });
 
-        describe('saving without the Run permission', () => {
+        describe('saving without the Use permission', () => {
             const webhookGraph = graphDto({ webhook_trigger_node_list: [savedWebhook] });
 
             beforeEach(() => canRunFlows.set(false));

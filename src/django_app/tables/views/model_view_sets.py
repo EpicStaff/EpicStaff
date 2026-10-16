@@ -347,7 +347,7 @@ from tables.views.mixins import (
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
-    TriggerNodeRunPermissionMixin,
+    TriggerNodeUsePermissionMixin,
 )
 from utils.logger import logger
 
@@ -991,7 +991,7 @@ class GraphViewSet(
             return Response({"errors": input_serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         graph = self.get_object()
-        # Creating or editing a trigger node, even only moving it, needs RUN; deleting
+        # Creating or editing a trigger node, even only moving it, needs USE; deleting
         # one does not. Checked after get_object so a foreign flow stays a 404.
         if any(input_serializer.validated_data[key] for key in TRIGGER_NODE_LIST_KEYS):
             trigger_node_access.assert_may_write(request.user, graph.org_id)
@@ -1100,9 +1100,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "If the `backup` query parameter is `true`, the current graph state is saved as a new "
             "version before restoring, and its ID is returned in `auto_backup_version_id`. "
             "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits. "
-            "A snapshot holding a trigger node (webhook, Telegram, schedule) also requires RUN "
+            "A snapshot holding a trigger node (webhook, Telegram, schedule) also requires USE "
             "on flows; without it the response is 403 "
-            "`flow_with_trigger_nodes_requires_run_permission` and nothing is written."
+            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
         ),
         request=RestoreVersionInputSerializer,
         responses={
@@ -1133,8 +1133,8 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "The new graph is a copy — it does not remain linked to the original. "
             "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
             "Returns the ID of the newly created graph. A snapshot holding a trigger node "
-            "(webhook, Telegram, schedule) also requires RUN on flows; without it the response "
-            "is 403 `flow_with_trigger_nodes_requires_run_permission` and nothing is written."
+            "(webhook, Telegram, schedule) also requires USE on flows; without it the response "
+            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written."
         ),
         request=None,
         responses={
@@ -2457,7 +2457,7 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
 )
 class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
-    TriggerNodeRunPermissionMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
@@ -2515,9 +2515,9 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         # Also serves partial_update. Re-keying, re-pathing or re-tunnelling a trigger
         # that nodes are attached to can bring them live (and Telegram `auth_kind`
-        # re-registers every attached node), so it needs flows:RUN like editing the
+        # re-registers every attached node), so it needs flows:USE like editing the
         # nodes. Checked after get_object (another org's trigger stays a 404) and
-        # before any body-dependent check, so a caller without RUN always gets the
+        # before any body-dependent check, so a caller without USE always gets the
         # same 403.
         instance = self.get_object()
         if TriggerNodeInspector.has_any_attached_to_webhook_trigger(instance):
@@ -2542,7 +2542,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     @extend_schema(**WEBHOOK_TRIGGER_FLOWS_GET)
     @action(detail=True, methods=["get"], url_path="flows")
     def flows_using_trigger(self, request, pk=None):
-        """Return the flows whose trigger nodes make updating this trigger need flows:RUN."""
+        """Return the flows whose trigger nodes make updating this trigger need flows:USE."""
         graphs = TriggerNodeInspector.graphs_attached_to_webhook_trigger(self.get_object())
         effective_permissions = PermissionResolver().resolve(
             user=request.user, org_id=self.get_active_org_id()
@@ -2566,7 +2566,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 )
 class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
-    TriggerNodeRunPermissionMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
@@ -2615,7 +2615,7 @@ class TelegramTriggerNodeViewSet(
 )
 class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
-    TriggerNodeRunPermissionMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
     IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,

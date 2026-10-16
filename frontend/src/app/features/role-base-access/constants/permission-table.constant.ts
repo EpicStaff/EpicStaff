@@ -7,7 +7,6 @@ export const ACTION_ICONS: Partial<Record<ActionCode, string>> = {
     delete: 'trash',
     export: 'download',
     use: 'play',
-    run: 'player-play',
     list: 'list',
 };
 

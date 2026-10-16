@@ -205,7 +205,7 @@ describe('VersionHistoryPanelComponent', () => {
                             status: 403,
                             error: {
                                 status_code: 403,
-                                code: 'flow_with_trigger_nodes_requires_run_permission',
+                                code: 'flow_with_trigger_nodes_requires_use_permission',
                                 message: 'This flow contains trigger nodes.',
                             },
                         })
@@ -218,7 +218,7 @@ describe('VersionHistoryPanelComponent', () => {
                 expect.objectContaining({
                     message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
                     caution:
-                        '<strong>Creating a flow</strong> from it requires the <strong>Run</strong> permission on flows.',
+                        '<strong>Creating a flow</strong> from it requires the <strong>Use</strong> permission on flows.',
                     hideConfirm: true,
                 })
             );

@@ -5,6 +5,7 @@ from rbac.access.bitmask import (
     actions_to_bitmask,
     bitmask_to_actions,
 )
+from rbac.access.catalog import applicable_actions_for
 from rbac.access.effective import EffectivePermissions
 from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
@@ -236,15 +237,22 @@ def test_org_context_superadmin_bypass(org_context, superadmin_user):
     assert org_context.resolve(request=request, view_kwargs={}) == other.id
 
 
-def test_run_action_code_maps_to_its_own_bit():
-    assert actions_to_bitmask(["run"]) == int(Permission.RUN) == 256
-    assert bitmask_to_actions(
-        int(Permission.READ | Permission.RUN), applicable=["read", "update", "run"]
-    ) == ["read", "run"]
+def test_use_action_code_maps_to_its_own_bit_on_flows():
+    assert actions_to_bitmask(["use"]) == int(Permission.USE) == 64
+    flows_actions = applicable_actions_for("flows")
+    assert bitmask_to_actions(int(Permission.READ | Permission.USE), applicable=flows_actions) == [
+        "read",
+        "use",
+    ]
 
 
-def test_holding_read_does_not_grant_run():
+def test_run_is_not_an_action_code():
+    with pytest.raises(ValueError):
+        actions_to_bitmask(["run"])
+
+
+def test_holding_read_does_not_grant_use_on_flows():
     eff = EffectivePermissions(
         is_superadmin=False, role=None, by_resource={"flows": int(Permission.READ)}
     )
-    assert eff.can("flows", Permission.RUN) is False
+    assert eff.can("flows", Permission.USE) is False

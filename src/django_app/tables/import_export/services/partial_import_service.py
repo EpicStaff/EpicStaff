@@ -62,7 +62,7 @@ class PartialImportService:
         """Append the file's nodes and edges to `graph`.
 
         `effective_permissions=None` means a trusted internal caller: both permission
-        checks (CREATE on new dependencies, and RUN for trigger nodes) are skipped.
+        checks (CREATE on new dependencies, and USE for trigger nodes) are skipped.
         """
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
@@ -71,7 +71,7 @@ class PartialImportService:
         id_mapper = IDMapper()
         export_data = prepare_import_data(export_data)
         # A trigger node among the imported nodes is live once created, so the import
-        # needs flows:RUN; refused here, before the transaction opens, so nothing is
+        # needs flows:USE; refused here, before the transaction opens, so nothing is
         # written. Only the collected node entries are imported, so only they count.
         if effective_permissions is not None and TriggerNodeInspector.has_any_in_node_entries(
             nodes_data

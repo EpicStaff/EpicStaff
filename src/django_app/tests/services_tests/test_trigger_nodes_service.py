@@ -7,8 +7,8 @@ from rbac.access.effective import EffectivePermissions
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models.enums import Permission, ResourceType
 from tables.exceptions import (
-    FlowWithTriggerNodesRequiresRunPermissionError,
-    TriggerNodesRequireRunPermissionError,
+    FlowWithTriggerNodesRequiresUsePermissionError,
+    TriggerNodesRequireUsePermissionError,
 )
 from tables.import_export.enums import EntityType
 from tables.models import Graph, PythonCode, WebhookTrigger
@@ -222,25 +222,25 @@ class TestGraphsAttachedToWebhookTrigger:
                 by_resource={"flows": int(Permission.CREATE | Permission.READ | Permission.UPDATE)},
             ),
             True,
-            id="editor-without-run",
+            id="editor-without-use",
         ),
         pytest.param(
             EffectivePermissions(
                 is_superadmin=False,
                 role=None,
-                by_resource={"flows": 0, "webhooks": int(Permission.RUN)},
+                by_resource={"flows": 0, "webhooks": int(Permission.USE)},
             ),
             True,
-            id="run-on-another-resource",
+            id="use-on-another-resource",
         ),
         pytest.param(
             EffectivePermissions(
                 is_superadmin=False,
                 role=None,
-                by_resource={"flows": int(Permission.READ | Permission.RUN)},
+                by_resource={"flows": int(Permission.READ | Permission.USE)},
             ),
             False,
-            id="with-run",
+            id="with-use",
         ),
         pytest.param(
             EffectivePermissions(is_superadmin=True, role=None, by_resource={}),
@@ -251,7 +251,7 @@ class TestGraphsAttachedToWebhookTrigger:
 )
 def test_assert_may_recreate(effective_permissions, refused):
     if refused:
-        with pytest.raises(FlowWithTriggerNodesRequiresRunPermissionError):
+        with pytest.raises(FlowWithTriggerNodesRequiresUsePermissionError):
             TriggerNodeAccess().assert_may_recreate(effective_permissions)
     else:
         TriggerNodeAccess().assert_may_recreate(effective_permissions)
@@ -259,20 +259,20 @@ def test_assert_may_recreate(effective_permissions, refused):
 
 @pytest.mark.django_db
 class TestAssertMayWriteAndRecreateByUser:
-    def test_without_run_each_raises_its_own_error(self, custom_role_member, acme):
+    def test_without_use_each_raises_its_own_error(self, custom_role_member, acme):
         user = custom_role_member(
-            acme, {ResourceType.FLOWS: Permission.READ | Permission.UPDATE}, "access-no-run"
+            acme, {ResourceType.FLOWS: Permission.READ | Permission.UPDATE}, "access-no-use"
         )
         access = TriggerNodeAccess()
 
-        with pytest.raises(TriggerNodesRequireRunPermissionError):
+        with pytest.raises(TriggerNodesRequireUsePermissionError):
             access.assert_may_write(user, acme.id)
-        with pytest.raises(FlowWithTriggerNodesRequiresRunPermissionError):
+        with pytest.raises(FlowWithTriggerNodesRequiresUsePermissionError):
             access.assert_user_may_recreate(user, acme.id)
 
-    def test_with_run_both_pass(self, custom_role_member, acme):
+    def test_with_use_both_pass(self, custom_role_member, acme):
         user = custom_role_member(
-            acme, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "access-run"
+            acme, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "access-use"
         )
         access = TriggerNodeAccess()
 
@@ -287,7 +287,7 @@ class TestAssertMayWriteAndRecreateByUser:
 
     def test_a_runner_of_another_org_is_not_a_member(self, custom_role_member, acme, beta):
         user = custom_role_member(
-            beta, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "beta-runner"
+            beta, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "beta-runner"
         )
 
         with pytest.raises(OrgMembershipRequiredError):

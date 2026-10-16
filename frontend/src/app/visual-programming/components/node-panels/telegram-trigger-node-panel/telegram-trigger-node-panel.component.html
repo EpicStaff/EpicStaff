@@ -1,5 +1,5 @@
 <ng-template #headerActionsTpl>
-    <!-- Hidden without Flows:Update or Flows:Run, and in a version preview: a test run needs both and runs the live graph. -->
+    <!-- Hidden without Flows:Update or Flows:Use, and in a version preview: a test run needs both and runs the live graph. -->
     @if (canStartTestRun()) {
         <app-run-test-payload-button
             [labelled]="isExpanded()"

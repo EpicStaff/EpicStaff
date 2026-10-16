@@ -13,7 +13,7 @@ import {
 
 const FLOWS_URL = '/api/webhook-triggers/4/flows/';
 const CAUTION =
-    "You can't <strong>edit</strong> it because you don't have the <strong>Run</strong> permission on flows.";
+    "You can't <strong>edit</strong> it because you don't have the <strong>Use</strong> permission on flows.";
 
 function flows(...names: string[]): WebhookTriggerFlowReference[] {
     return names.map((name, index) => ({ id: index + 1, name }));
@@ -43,7 +43,7 @@ describe('WebhookTriggerEditPermissionService', () => {
                     provide: PermissionsService,
                     useValue: {
                         can: (resource: ResourceCode, action: ActionCode) =>
-                            resource === ResourceCode.Flows && action === ActionCode.Run && canRunFlows,
+                            resource === ResourceCode.Flows && action === ActionCode.Use && canRunFlows,
                     },
                 },
             ],
@@ -87,7 +87,7 @@ describe('WebhookTriggerEditPermissionService', () => {
     it('blocks a user who cannot run flows from editing a trigger a flow uses, in an OK-only warning', () => {
         expect(decideWithUsage({ flow_count: 1, flows: flows('Orders') }).decisions).toEqual(['blocked']);
         expect(confirm).toHaveBeenCalledExactlyOnceWith({
-            title: 'Run permission required',
+            title: 'Use permission required',
             message: 'This webhook is part of the flow <strong>Orders</strong>.',
             caution: CAUTION,
             type: 'warning',

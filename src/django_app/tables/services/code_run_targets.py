@@ -51,7 +51,7 @@ class CodeRunTarget:
 
     @property
     def owner_is_trigger_node(self) -> bool:
-        """Whether the slot's owner is a trigger node; running its code also needs FLOWS.RUN."""
+        """Whether the slot's owner is a trigger node; running its code also needs FLOWS.USE."""
         # Deferred: the trigger node registry imports serializers, which import this module.
         from tables.services.trigger_nodes import is_trigger_node_model
 

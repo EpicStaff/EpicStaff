@@ -20,7 +20,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
-import { RUN_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-run-permission-refusal.service';
+import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-use-permission-refusal.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
@@ -41,7 +41,7 @@ import {
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_RUN_MESSAGE } from '../services/flow-readonly.service';
+import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
@@ -52,8 +52,8 @@ import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-mode
 import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../utils/save';
 import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import {
-    FLOW_ACTIONS_WITH_RUN,
-    FLOW_ACTIONS_WITHOUT_RUN,
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../utils/testing/permissions.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
@@ -128,12 +128,12 @@ function mount(
             provideHttpClient(),
             provideHttpClientTesting(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
-            // Read-only from permissions (a Viewer, or no Flows:Run) only where a test asks for it.
+            // Read-only from permissions (a Viewer, or no Flows:Use) only where a test asks for it.
             {
                 provide: PermissionsService,
                 useValue: {
                     can: (_resource: unknown, action: ActionCode) =>
-                        action === ActionCode.Run ? canRunFlows : canUpdateFlows,
+                        action === ActionCode.Use ? canRunFlows : canUpdateFlows,
                 },
             },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
@@ -405,7 +405,7 @@ describe('FlowGraphComponent', () => {
         });
     });
 
-    describe('trigger nodes and the Run permission on flows', () => {
+    describe('trigger nodes and the Use permission on flows', () => {
         /** Stands in for the node body, which is not under test; Foblex's fNode sits on the same element. */
         @Component({ selector: 'app-flow-base-node', template: '' })
         class FlowBaseNodeStubComponent {
@@ -417,10 +417,10 @@ describe('FlowGraphComponent', () => {
             readonly unpackClicked = output<void>();
         }
 
-        const WITH_RUN = { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_RUN, blocked: false };
-        const WITHOUT_RUN = {
+        const WITH_USE = { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_USE, blocked: false };
+        const WITHOUT_USE = {
             user: 'may update but not run flows',
-            flowActions: FLOW_ACTIONS_WITHOUT_RUN,
+            flowActions: FLOW_ACTIONS_WITHOUT_USE,
             blocked: true,
         };
 
@@ -521,9 +521,9 @@ describe('FlowGraphComponent', () => {
 
         function expectRunMessage(blocked: boolean): void {
             if (blocked) {
-                expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+                expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
             } else {
-                expect(info).not.toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+                expect(info).not.toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
             }
         }
 
@@ -567,7 +567,7 @@ describe('FlowGraphComponent', () => {
             );
         }
 
-        describe.each([WITH_RUN, WITHOUT_RUN])('for a user who $user', ({ flowActions, blocked }) => {
+        describe.each([WITH_USE, WITHOUT_USE])('for a user who $user', ({ flowActions, blocked }) => {
             it(`disables dragging on the trigger node only: ${blocked}`, () => {
                 mountCanvas(flowActions);
 
@@ -650,7 +650,7 @@ describe('FlowGraphComponent', () => {
                 );
                 if (blocked) {
                     expect(warning).toHaveBeenCalledWith(
-                        `1 trigger node was not pasted. ${TRIGGER_NODES_NEED_RUN_MESSAGE}`,
+                        `1 trigger node was not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
                         6000,
                         'bottom-right'
                     );
@@ -659,7 +659,7 @@ describe('FlowGraphComponent', () => {
                 }
             });
 
-            it(`auto arranges the flow, leaving the trigger node where it is only without Run: ${blocked}`, () => {
+            it(`auto arranges the flow, leaving the trigger node where it is only without Use: ${blocked}`, () => {
                 // The trigger node sits where auto arrange starts laying nodes out.
                 const trigger = { ...scheduleTriggerNode(), position: { x: 100, y: 100 } };
                 mountCanvas(flowActions, [
@@ -682,7 +682,7 @@ describe('FlowGraphComponent', () => {
                     expect(stayedPut(id)).toBe(false);
                     expect(boxesOverlap(flowNode(id)!, flowNode('schedule-1')!)).toBe(false);
                 }
-                // What the flows page checks before saving: moving a trigger node needs Run.
+                // What the flows page checks before saving: moving a trigger node needs Use.
                 expect(hasTriggerNodeWrites(getNodeDiff(before, flowService.getFlowState()))).toBe(!blocked);
             });
 
@@ -720,19 +720,19 @@ describe('FlowGraphComponent', () => {
             });
         });
 
-        // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Run.
+        // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Use.
         it.each([
-            { flow: 'one other node and a trigger node', run: false, otherNodes: 1, disabled: true },
-            { flow: 'one other node and a trigger node', run: true, otherNodes: 1, disabled: false },
-            { flow: 'two other nodes and a trigger node', run: false, otherNodes: 2, disabled: false },
-            { flow: 'only a trigger node', run: false, otherNodes: 0, disabled: true },
+            { flow: 'one other node and a trigger node', use: false, otherNodes: 1, disabled: true },
+            { flow: 'one other node and a trigger node', use: true, otherNodes: 1, disabled: false },
+            { flow: 'two other nodes and a trigger node', use: false, otherNodes: 2, disabled: false },
+            { flow: 'only a trigger node', use: false, otherNodes: 0, disabled: true },
         ])(
-            'Auto arrange on $flow, for a user with Run: $run, is disabled: $disabled',
-            ({ run, otherNodes, disabled }) => {
+            'Auto arrange on $flow, for a user with Use: $use, is disabled: $disabled',
+            ({ use, otherNodes, disabled }) => {
                 const others = Array.from({ length: otherNodes }, (_, index) =>
                     pythonNode(`python-${index}`, { x: 400 * index, y: 0 })
                 );
-                mountCanvas(run ? FLOW_ACTIONS_WITH_RUN : FLOW_ACTIONS_WITHOUT_RUN, [...others, scheduleTriggerNode()]);
+                mountCanvas(use ? FLOW_ACTIONS_WITH_USE : FLOW_ACTIONS_WITHOUT_USE, [...others, scheduleTriggerNode()]);
 
                 expect(autoArrangeButton().disabled).toBe(disabled);
             }
@@ -743,7 +743,7 @@ describe('FlowGraphComponent', () => {
             const tableAtOrigin = { ...table, position: { x: 0, y: 0 } };
             const triggerUnderTable = { ...scheduleTriggerNode(), position: { x: 40, y: 40 } };
             const noteUnderTable = { ...noteNode(), position: { x: 60, y: 60 } };
-            mountCanvas(FLOW_ACTIONS_WITHOUT_RUN, [tableAtOrigin, triggerUnderTable, noteUnderTable]);
+            mountCanvas(FLOW_ACTIONS_WITHOUT_USE, [tableAtOrigin, triggerUnderTable, noteUnderTable]);
 
             child('app-node-panel-shell').triggerEventHandler('save', tableAtOrigin);
 
@@ -752,7 +752,7 @@ describe('FlowGraphComponent', () => {
         });
 
         it('saves the flow while a trigger node panel is open, as the read-only panel has nothing to commit', async () => {
-            const component = mountCanvas(FLOW_ACTIONS_WITHOUT_RUN);
+            const component = mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
             TestBed.inject(SidePanelService).setSelectedNodeId('schedule-1');
             fixture.detectChanges();
             // The shell picks up the panel instance in a setTimeout(0) after the outlet renders.
@@ -778,8 +778,8 @@ describe('FlowGraphComponent', () => {
                 return TestBed.inject(HttpTestingController);
             }
 
-            it('explains the refusal of a file with trigger nodes to a user without Flows:Run, importing nothing', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITHOUT_RUN);
+            it('explains the refusal of a file with trigger nodes to a user without Flows:Use, importing nothing', () => {
+                const component = mountCanvas(FLOW_ACTIONS_WITHOUT_USE);
                 const confirm = vi
                     .spyOn(TestBed.inject(ConfirmationDialogService), 'confirm')
                     .mockReturnValue(of('close'));
@@ -793,19 +793,19 @@ describe('FlowGraphComponent', () => {
                     )
                     .flush(
                         {
-                            code: 'flow_with_trigger_nodes_requires_run_permission',
+                            code: 'flow_with_trigger_nodes_requires_use_permission',
                             message: 'This file contains trigger nodes.',
                         },
                         { status: 403, statusText: 'Forbidden' }
                     );
 
-                expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: RUN_PERMISSION_REQUIRED_TITLE }));
+                expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: USE_PERMISSION_REQUIRED_TITLE }));
                 expect(error).not.toHaveBeenCalled();
                 expect(importComplete).not.toHaveBeenCalled();
             });
 
             it('imports a file the backend accepts', () => {
-                const component = mountCanvas(FLOW_ACTIONS_WITH_RUN);
+                const component = mountCanvas(FLOW_ACTIONS_WITH_USE);
                 vi.spyOn(TestBed.inject(ToastService), 'success').mockImplementation(() => undefined);
                 const importComplete = vi.fn();
                 component.importComplete.subscribe(importComplete);

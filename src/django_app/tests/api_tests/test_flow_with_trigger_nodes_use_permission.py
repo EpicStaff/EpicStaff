@@ -1,10 +1,10 @@
-"""Copying, importing or restoring a flow that holds trigger nodes needs flows:RUN.
+"""Copying, importing or restoring a flow that holds trigger nodes needs flows:USE.
 
 Copy, import (including replace_existing), partial import, create-graph from a
-version and version restore refuse a caller without RUN with 403
-`flow_with_trigger_nodes_requires_run_permission` and write nothing, when the
+version and version restore refuse a caller without USE with 403
+`flow_with_trigger_nodes_requires_use_permission` and write nothing, when the
 source (the flow, the file, the snapshot) holds a webhook, Telegram or schedule
-trigger node. Without trigger nodes, or with RUN, they work as before. Another
+trigger node. Without trigger nodes, or with USE, they work as before. Another
 org's flow or version is still a 404.
 """
 
@@ -34,7 +34,7 @@ from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
-DENIED_CODE = "flow_with_trigger_nodes_requires_run_permission"
+DENIED_CODE = "flow_with_trigger_nodes_requires_use_permission"
 FLOWS_EDITOR = Permission.CREATE | Permission.READ | Permission.UPDATE
 TRIGGER_MODELS = (WebhookTriggerNode, TelegramTriggerNode, ScheduleTriggerNode)
 
@@ -62,7 +62,7 @@ def editor_client(custom_role_client, acme):
 
 @pytest.fixture
 def runner_client(custom_role_client, acme):
-    return custom_role_client(acme, _grants(FLOWS_EDITOR | Permission.RUN), "strict-runner")
+    return custom_role_client(acme, _grants(FLOWS_EDITOR | Permission.USE), "strict-runner")
 
 
 def _plain_flow(org, name="Plain flow"):
@@ -187,7 +187,7 @@ def _restore(client, version, query=""):
 # ── every operation that recreates trigger nodes, for every kind of caller ───
 #
 # Each `_prepare_*` builds, in `org`, a source that holds trigger nodes and
-# returns the request that recreates them; `success` is its status with RUN.
+# returns the request that recreates them; `success` is its status with USE.
 
 
 def _prepare_copy(org):
@@ -244,10 +244,10 @@ AUTHENTICATION = [
 @pytest.mark.django_db
 @pytest.mark.parametrize("via_api_key", AUTHENTICATION)
 @pytest.mark.parametrize(("prepare", "success"), OPERATIONS)
-def test_without_run_is_refused_and_writes_nothing(
+def test_without_use_is_refused_and_writes_nothing(
     custom_role_client, acme, prepare, success, via_api_key
 ):
-    client = custom_role_client(acme, _grants(FLOWS_EDITOR), "no-run", via_api_key=via_api_key)
+    client = custom_role_client(acme, _grants(FLOWS_EDITOR), "no-use", via_api_key=via_api_key)
     send = prepare(acme)
     before = _row_counts()
 
@@ -260,9 +260,9 @@ def test_without_run_is_refused_and_writes_nothing(
 @pytest.mark.django_db
 @pytest.mark.parametrize("via_api_key", AUTHENTICATION)
 @pytest.mark.parametrize(("prepare", "success"), OPERATIONS)
-def test_with_run_succeeds(custom_role_client, acme, prepare, success, via_api_key):
+def test_with_use_succeeds(custom_role_client, acme, prepare, success, via_api_key):
     client = custom_role_client(
-        acme, _grants(FLOWS_EDITOR | Permission.RUN), "runner", via_api_key=via_api_key
+        acme, _grants(FLOWS_EDITOR | Permission.USE), "runner", via_api_key=via_api_key
     )
     send = prepare(acme)
 
@@ -283,7 +283,7 @@ def test_superadmin_needs_no_role(org_client_as, superadmin, acme, prepare, succ
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(("prepare", "success"), OPERATIONS_ON_A_STORED_SOURCE)
-def test_another_orgs_source_is_404_not_the_run_403(editor_client, beta, prepare, success):
+def test_another_orgs_source_is_404_not_the_use_403(editor_client, beta, prepare, success):
     send = prepare(beta)
     before = _row_counts()
 
@@ -309,12 +309,12 @@ class TestCopy:
         _assert_refused(response)
         assert _row_counts() == before
 
-    def test_flow_without_triggers_copies_without_run(self, editor_client, acme):
+    def test_flow_without_triggers_copies_without_use(self, editor_client, acme):
         response = _copy(editor_client, _plain_flow(acme))
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
 
-    def test_with_run_copies_the_triggers(self, runner_client, acme):
+    def test_with_use_copies_the_triggers(self, runner_client, acme):
         response = _copy(runner_client, _flow_with_triggers(acme))
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
@@ -338,7 +338,7 @@ class TestImport:
         _assert_refused(response)
         assert _row_counts() == before
 
-    def test_replace_existing_without_run_is_403_and_keeps_the_flow(self, editor_client, acme):
+    def test_replace_existing_without_use_is_403_and_keeps_the_flow(self, editor_client, acme):
         flow = _flow_with_triggers(acme)
         export_data = _export(flow)
         flow.refresh_from_db()
@@ -352,12 +352,12 @@ class TestImport:
         flow.refresh_from_db()
         assert flow.save_version == save_version_before
 
-    def test_flow_without_triggers_imports_without_run(self, editor_client, acme):
+    def test_flow_without_triggers_imports_without_use(self, editor_client, acme):
         response = _import(editor_client, _export(_plain_flow(acme)))
 
         assert response.status_code == status.HTTP_200_OK, response.content
 
-    def test_with_run_imports_the_triggers(self, runner_client, acme):
+    def test_with_use_imports_the_triggers(self, runner_client, acme):
         export_data = _export(_flow_with_triggers(acme))
         before = _row_counts()
 
@@ -388,7 +388,7 @@ class TestPartialImport:
         assert response.status_code == status.HTTP_200_OK, response.content
         assert target.python_node_list.count() == 2
 
-    def test_with_run_imports_the_trigger(self, runner_client, acme):
+    def test_with_use_imports_the_trigger(self, runner_client, acme):
         source = _flow_with_triggers(acme)
         target = _plain_flow(acme, name="Target")
         export_data = _partial_export(
@@ -406,7 +406,7 @@ class TestPartialImport:
 
     def test_a_flow_entry_it_does_not_import_does_not_matter(self, editor_client, acme):
         """A crafted partial file: a loose Python node plus a `Flow` entry holding
-        trigger nodes. Partial import creates only the loose node, so no RUN is needed."""
+        trigger nodes. Partial import creates only the loose node, so no USE is needed."""
         source = _plain_flow(acme, name="Source")
         target = _plain_flow(acme, name="Target")
         export_data = _partial_export(
@@ -430,12 +430,12 @@ class TestPartialImport:
 
 @pytest.mark.django_db
 class TestCreateGraphFromVersion:
-    def test_snapshot_without_triggers_works_without_run(self, editor_client, acme):
+    def test_snapshot_without_triggers_works_without_use(self, editor_client, acme):
         response = _create_graph(editor_client, _version_of(_plain_flow(acme)))
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
 
-    def test_with_run_recreates_the_triggers(self, runner_client, acme):
+    def test_with_use_recreates_the_triggers(self, runner_client, acme):
         response = _create_graph(runner_client, _version_of(_flow_with_triggers(acme)))
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
@@ -444,7 +444,7 @@ class TestCreateGraphFromVersion:
 
 @pytest.mark.django_db
 class TestRestore:
-    def test_with_backup_without_run_is_403_and_writes_nothing(self, editor_client, acme):
+    def test_with_backup_without_use_is_403_and_writes_nothing(self, editor_client, acme):
         flow = _flow_with_triggers(acme)
         version = _version_of(flow)
         flow.refresh_from_db()
@@ -458,7 +458,7 @@ class TestRestore:
         flow.refresh_from_db()
         assert flow.save_version == save_version_before
 
-    def test_snapshot_without_triggers_restores_without_run_over_a_flow_with_triggers(
+    def test_snapshot_without_triggers_restores_without_use_over_a_flow_with_triggers(
         self, editor_client, acme
     ):
         flow = _plain_flow(acme)
@@ -470,7 +470,7 @@ class TestRestore:
         assert response.status_code == status.HTTP_200_OK, response.content
         assert _trigger_count(flow) == 0
 
-    def test_with_run_restores_the_triggers(self, runner_client, acme):
+    def test_with_use_restores_the_triggers(self, runner_client, acme):
         flow = _flow_with_triggers(acme)
         version = _version_of(flow)
 
@@ -508,7 +508,7 @@ def _post_import_file(client, url, export_data):
 @pytest.mark.django_db
 @pytest.mark.parametrize(("url", "main_entity"), OTHER_ENTITY_IMPORTS)
 class TestFlowInAnotherEntitysImportFile:
-    def test_without_run_is_403_and_writes_nothing(self, editor_client, acme, url, main_entity):
+    def test_without_use_is_403_and_writes_nothing(self, editor_client, acme, url, main_entity):
         export_data = _file_carrying_a_flow(acme, main_entity)
         before = _row_counts()
 
@@ -517,7 +517,7 @@ class TestFlowInAnotherEntitysImportFile:
         _assert_refused(response)
         assert _row_counts() == before
 
-    def test_with_run_imports_it(self, runner_client, acme, url, main_entity):
+    def test_with_use_imports_it(self, runner_client, acme, url, main_entity):
         export_data = _file_carrying_a_flow(acme, main_entity)
         before = _row_counts()
 

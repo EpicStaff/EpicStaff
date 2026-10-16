@@ -18,7 +18,7 @@ const SETTINGS: ImportFlowRequestOptions = { preserveUuids: false, replaceExisti
 const FILE = new File(['{}'], 'flow.json', { type: 'application/json' });
 const REFUSAL_BODY = {
     status_code: 403,
-    code: 'flow_with_trigger_nodes_requires_run_permission',
+    code: 'flow_with_trigger_nodes_requires_use_permission',
     message: 'This flow contains trigger nodes.',
 };
 
@@ -107,21 +107,21 @@ describe('FlowCopyImportFacadeService', () => {
                 (facade) => facade.copyFlow(7, 'Orders'),
                 '/api/graphs/7/copy/',
                 'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
-                '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+                '<strong>Copying</strong> it requires the <strong>Use</strong> permission on flows.',
             ],
             [
                 'import',
                 (facade) => facade.importFlow(FILE, SETTINGS),
                 '/api/graphs/import/',
                 'This file contains trigger nodes (Webhook, Telegram, Schedule).',
-                '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+                '<strong>Importing</strong> it requires the <strong>Use</strong> permission on flows.',
             ],
             [
                 'partial import',
                 (facade) => facade.partialImport(5, FILE),
                 '/api/graphs/5/partial-import/',
                 'This file contains trigger nodes (Webhook, Telegram, Schedule).',
-                '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+                '<strong>Importing</strong> it requires the <strong>Use</strong> permission on flows.',
             ],
         ];
 
@@ -133,7 +133,7 @@ describe('FlowCopyImportFacadeService', () => {
             httpMock.expectOne(url).flush(REFUSAL_BODY, { status: 403, statusText: 'Forbidden' });
 
             expect(confirm).toHaveBeenCalledExactlyOnceWith({
-                title: 'Run permission required',
+                title: 'Use permission required',
                 message,
                 caution,
                 type: 'warning',

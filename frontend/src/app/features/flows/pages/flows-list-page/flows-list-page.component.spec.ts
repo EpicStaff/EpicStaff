@@ -30,13 +30,13 @@ const SUMMARY: ImportResult = {
 const CODE_TO_REVIEW: ReviewItem = { kind: 'mcp_tool', name: 'Search', transport: 'stdio' };
 const REFUSAL_BODY = {
     status_code: 403,
-    code: 'flow_with_trigger_nodes_requires_run_permission',
+    code: 'flow_with_trigger_nodes_requires_use_permission',
     message: 'This flow contains trigger nodes.',
 };
 const IMPORT_REFUSAL_WARNING = {
-    title: 'Run permission required',
+    title: 'Use permission required',
     message: 'This file contains trigger nodes (Webhook, Telegram, Schedule).',
-    caution: '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+    caution: '<strong>Importing</strong> it requires the <strong>Use</strong> permission on flows.',
     type: 'warning',
     hideConfirm: true,
     cancelText: 'OK',
@@ -153,7 +153,7 @@ describe('FlowsListPageComponent flow import', () => {
         expect(toastError).not.toHaveBeenCalled();
     });
 
-    it('explains an import refused over trigger nodes in the Run permission warning, with no toast and no result', async () => {
+    it('explains an import refused over trigger nodes in the Use permission warning, with no toast and no result', async () => {
         (await importFileWithoutCodeToReview()).flush(REFUSAL_BODY, { status: 403, statusText: 'Forbidden' });
 
         expect(confirm).toHaveBeenCalledExactlyOnceWith(IMPORT_REFUSAL_WARNING);

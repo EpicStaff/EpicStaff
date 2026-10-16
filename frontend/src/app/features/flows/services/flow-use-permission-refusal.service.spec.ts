@@ -3,14 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of, throwError } from 'rxjs';
 
-import { FlowRunPermissionRefusalService, RunPermissionRefusalOperation } from './flow-run-permission-refusal.service';
+import { FlowUsePermissionRefusalService, UsePermissionRefusalOperation } from './flow-use-permission-refusal.service';
 
 const REFUSAL = new HttpErrorResponse({
     status: 403,
     statusText: 'Forbidden',
     error: {
         status_code: 403,
-        code: 'flow_with_trigger_nodes_requires_run_permission',
+        code: 'flow_with_trigger_nodes_requires_use_permission',
         message: 'This flow contains trigger nodes (webhook, Telegram, schedule).',
     },
 });
@@ -21,16 +21,16 @@ interface Outcome {
     completed: boolean;
 }
 
-describe('FlowRunPermissionRefusalService', () => {
+describe('FlowUsePermissionRefusalService', () => {
     let confirm: ReturnType<typeof vi.fn>;
-    let service: FlowRunPermissionRefusalService;
+    let service: FlowUsePermissionRefusalService;
 
     beforeEach(() => {
         confirm = vi.fn();
         TestBed.configureTestingModule({
             providers: [{ provide: ConfirmationDialogService, useValue: { confirm } }],
         });
-        service = TestBed.inject(FlowRunPermissionRefusalService);
+        service = TestBed.inject(FlowUsePermissionRefusalService);
     });
 
     function run(source: Observable<unknown>): Outcome {
@@ -43,36 +43,36 @@ describe('FlowRunPermissionRefusalService', () => {
         return outcome;
     }
 
-    it.each<[RunPermissionRefusalOperation, string, string]>([
+    it.each<[UsePermissionRefusalOperation, string, string]>([
         [
             'copy',
             'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Copying</strong> it requires the <strong>Use</strong> permission on flows.',
         ],
         [
             'import',
             'This file contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Importing</strong> it requires the <strong>Use</strong> permission on flows.',
         ],
         [
             'partialImport',
             'This file contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Importing</strong> it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Importing</strong> it requires the <strong>Use</strong> permission on flows.',
         ],
         [
             'restore',
             'This version contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Restoring</strong> it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Restoring</strong> it requires the <strong>Use</strong> permission on flows.',
         ],
         [
             'createFromVersion',
             'This version contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Creating a flow</strong> from it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Creating a flow</strong> from it requires the <strong>Use</strong> permission on flows.',
         ],
         [
             'unpack',
             'This subflow contains trigger nodes (Webhook, Telegram, Schedule).',
-            '<strong>Unpacking</strong> it requires the <strong>Run</strong> permission on flows.',
+            '<strong>Unpacking</strong> it requires the <strong>Use</strong> permission on flows.',
         ],
     ])(
         'explains a refused %s in an OK-only warning with its consequence as the caution',
@@ -80,7 +80,7 @@ describe('FlowRunPermissionRefusalService', () => {
             service.showRefusal(operation);
 
             expect(confirm).toHaveBeenCalledExactlyOnceWith({
-                title: 'Run permission required',
+                title: 'Use permission required',
                 message,
                 caution,
                 type: 'warning',
@@ -96,7 +96,7 @@ describe('FlowRunPermissionRefusalService', () => {
         expect(confirm).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({
                 message: 'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
-                caution: '<strong>Copying</strong> it requires the <strong>Run</strong> permission on flows.',
+                caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on flows.',
             })
         );
         expect(outcome).toEqual({ values: [], error: undefined, completed: true });
@@ -105,7 +105,7 @@ describe('FlowRunPermissionRefusalService', () => {
     it.each([
         [
             'the bulk-save trigger node 403',
-            new HttpErrorResponse({ status: 403, error: { code: 'trigger_nodes_require_run_permission' } }),
+            new HttpErrorResponse({ status: 403, error: { code: 'trigger_nodes_require_use_permission' } }),
         ],
         ['another 403', new HttpErrorResponse({ status: 403, error: { code: 'permission_denied' } })],
         ['the refusal code on another status', new HttpErrorResponse({ status: 400, error: REFUSAL.error })],

@@ -18,12 +18,12 @@ import {
 } from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { FlowService } from '../../../services/flow.service';
-import { TRIGGER_NODES_NEED_RUN_MESSAGE } from '../../../services/flow-readonly.service';
+import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../../../services/version-preview-node-authorship.store';
 import { liveEnd, liveGraph, livePython, liveSubgraph } from '../../../utils/testing/live-graph.fixture';
-import { FLOW_ACTIONS_WITHOUT_RUN, grantPermissions } from '../../../utils/testing/permissions.fixture';
+import { FLOW_ACTIONS_WITHOUT_USE, grantPermissions } from '../../../utils/testing/permissions.fixture';
 import { EndNodePanelComponent } from '../end-node-panel/end-node-panel.component';
 import { PythonNodePanelComponent } from '../python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../schedule-trigger-node-panel/schedule-trigger-node-panel.component';
@@ -304,7 +304,7 @@ describe('NodePanelShellComponent', () => {
             // The panels' own forms are their specs' subject; here only the shell around them is.
             TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
             TestBed.overrideComponent(EndNodePanelComponent, { set: { template: '', imports: [] } });
-            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_RUN });
+            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE });
             TestBed.inject(FlowService).setFlow({ nodes: [scheduleNode, endNode], connections: [] });
             TestBed.inject(SidePanelService).setSelectedNodeId(scheduleNode.id);
 
@@ -340,7 +340,7 @@ describe('NodePanelShellComponent', () => {
             shell.autosave.subscribe((node) => emitted.push(node));
             const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
             const error = vi.spyOn(TestBed.inject(ToastService), 'error').mockImplementation(() => undefined);
-            // A pending schedule edit (Run taken away while the panel was open), so there would be something to save.
+            // A pending schedule edit (Use taken away while the panel was open), so there would be something to save.
             schedulePanelOf(fixture).scheduleDirty.set(true);
             fixture.detectChanges();
 
@@ -349,7 +349,7 @@ describe('NodePanelShellComponent', () => {
             sidePanel.triggerAutosave();
             fixture.detectChanges();
             pressCtrlS(fixture);
-            expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+            expect(info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
             expect(sidePanel.selectedNodeId()).toBe(scheduleNode.id);
 
             (fixture.nativeElement.querySelector('.close-btn') as HTMLButtonElement).click();

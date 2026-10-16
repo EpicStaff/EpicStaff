@@ -17,14 +17,14 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { FlowService } from '../../../services/flow.service';
-import { TRIGGER_NODES_NEED_RUN_MESSAGE } from '../../../services/flow-readonly.service';
+import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
 import {
-    FLOW_ACTIONS_WITH_RUN,
-    FLOW_ACTIONS_WITHOUT_RUN,
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../../../utils/testing/permissions.fixture';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
@@ -986,7 +986,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
     });
 });
 
-describe('WebhookTriggerNodePanelComponent and the Run permission on flows', () => {
+describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () => {
     let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
     let toast: { info: ReturnType<typeof vi.fn>; warning: ReturnType<typeof vi.fn> };
 
@@ -1028,18 +1028,18 @@ describe('WebhookTriggerNodePanelComponent and the Run permission on flows', () 
         return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
     }
 
-    it('is read-only without Flows:Run: closing and Ctrl+S save nothing, saying why', () => {
-        const panel = open(FLOW_ACTIONS_WITHOUT_RUN);
+    it('is read-only without Flows:Use: closing and Ctrl+S save nothing, saying why', () => {
+        const panel = open(FLOW_ACTIONS_WITHOUT_USE);
 
         expect(panel.onSave()).toBeNull();
         expect(panel.onSaveSilently()).toBeNull();
         expect(panel.needsSave()).toBe(false);
-        expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+        expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
     });
 
     it.each([
-        { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_RUN, offered: true },
-        { user: 'may update but not run flows', flowActions: FLOW_ACTIONS_WITHOUT_RUN, offered: false },
+        { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_USE, offered: true },
+        { user: 'may update but not run flows', flowActions: FLOW_ACTIONS_WITHOUT_USE, offered: false },
     ])(
         'for a user who $user, the code is editable and "Run with test payload" and "Run python code" offered: $offered',
         ({ flowActions, offered }) => {

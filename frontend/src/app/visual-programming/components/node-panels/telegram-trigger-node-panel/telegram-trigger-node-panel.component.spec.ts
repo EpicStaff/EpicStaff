@@ -249,7 +249,7 @@ describe('TelegramTriggerNodePanelComponent template', () => {
                     provide: PermissionsService,
                     useValue: {
                         can: (_resource: unknown, action: ActionCode) =>
-                            action === ActionCode.Run ? canRunFlows() : canUpdateFlows(),
+                            action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
                     },
                 },
                 {
@@ -319,7 +319,7 @@ describe('TelegramTriggerNodePanelComponent template', () => {
         fixture.destroy();
     });
 
-    it('is read-only without Flows:Run: no field editing, no Register, no test run', () => {
+    it('is read-only without Flows:Use: no field editing, no Register, no test run', () => {
         const fixture = render(signal(true), signal(false));
 
         expect(fixture.componentInstance.form.disabled).toBe(true);

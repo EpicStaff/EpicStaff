@@ -1,10 +1,10 @@
-"""Creating or editing a trigger node (webhook, Telegram, schedule) needs flows:RUN.
+"""Creating or editing a trigger node (webhook, Telegram, schedule) needs flows:USE.
 
 A trigger node starts flow runs by itself, so the bulk flow save and the three
-trigger node viewsets require RUN on top of the action's own flows bit. Deleting a
-trigger node, and saving a flow without touching one, keep working without RUN.
+trigger node viewsets require USE on top of the action's own flows bit. Deleting a
+trigger node, and saving a flow without touching one, keep working without USE.
 Another org's flow or node, and a missing id, are a 404 for every caller, before
-any RUN 403.
+any USE 403.
 """
 
 import pytest
@@ -23,7 +23,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
-TRIGGER_CODE = "trigger_nodes_require_run_permission"
+TRIGGER_CODE = "trigger_nodes_require_use_permission"
 EDITOR = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 PYTHON_CODE_DATA = {
     "code": "def main(**kwargs):\n    return None\n",
@@ -40,19 +40,19 @@ def _no_telegram_calls(mock_telegram_service):
 
 @pytest.fixture
 def editor_client(custom_role_client, acme):
-    return custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "trigger-editor-no-run")
+    return custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "trigger-editor-no-use")
 
 
 @pytest.fixture
 def runner_editor_client(custom_role_client, acme):
     return custom_role_client(
-        acme, {ResourceType.FLOWS: EDITOR | Permission.RUN}, "trigger-editor-run"
+        acme, {ResourceType.FLOWS: EDITOR | Permission.USE}, "trigger-editor-use"
     )
 
 
 @pytest.fixture
 def acme_graph(acme):
-    return Graph.objects.create(name="trigger-run-acme-flow", org=acme)
+    return Graph.objects.create(name="trigger-use-acme-flow", org=acme)
 
 
 def _webhook_node(graph):
@@ -129,7 +129,7 @@ def _assert_trigger_denied(response):
 @pytest.mark.django_db
 class TestBulkSave:
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_creating_a_trigger_node_without_run_gets_403_and_writes_nothing(
+    def test_creating_a_trigger_node_without_use_gets_403_and_writes_nothing(
         self, editor_client, acme_graph, model, list_key, basename, make_node, make_payload
     ):
         payload = {
@@ -146,7 +146,7 @@ class TestBulkSave:
         acme_graph.refresh_from_db()
         assert acme_graph.save_version == payload["save_version"]
 
-    def test_moving_a_trigger_node_without_run_gets_403(self, editor_client, acme_graph):
+    def test_moving_a_trigger_node_without_use_gets_403(self, editor_client, acme_graph):
         schedule_node = _schedule_node(acme_graph)
         metadata_before = schedule_node.metadata
         payload = {
@@ -167,7 +167,7 @@ class TestBulkSave:
         schedule_node.refresh_from_db()
         assert schedule_node.metadata == metadata_before
 
-    def test_saving_without_trigger_nodes_needs_no_run(self, editor_client, acme_graph):
+    def test_saving_without_trigger_nodes_needs_no_use(self, editor_client, acme_graph):
         payload = {
             "save_version": acme_graph.save_version,
             "python_node_list": [{"graph": acme_graph.id, "python_code": PYTHON_CODE_DATA}],
@@ -178,7 +178,7 @@ class TestBulkSave:
         assert response.status_code == status.HTTP_200_OK, response.content
         assert PythonNode.objects.filter(graph=acme_graph).count() == 1
 
-    def test_deleting_a_trigger_node_needs_no_run(self, editor_client, acme_graph):
+    def test_deleting_a_trigger_node_needs_no_use(self, editor_client, acme_graph):
         schedule_node = _schedule_node(acme_graph)
         payload = {
             "save_version": acme_graph.save_version,
@@ -191,7 +191,7 @@ class TestBulkSave:
         assert not ScheduleTriggerNode.objects.filter(pk=schedule_node.pk).exists()
 
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_creating_a_trigger_node_with_run_succeeds(
+    def test_creating_a_trigger_node_with_use_succeeds(
         self, runner_editor_client, acme_graph, model, list_key, basename, make_node, make_payload
     ):
         payload = {"save_version": acme_graph.save_version, list_key: [make_payload(acme_graph)]}
@@ -204,8 +204,8 @@ class TestBulkSave:
     @pytest.mark.parametrize(
         ("flows_permissions", "expected_status"),
         [
-            pytest.param(EDITOR, status.HTTP_403_FORBIDDEN, id="without-run"),
-            pytest.param(EDITOR | Permission.RUN, status.HTTP_200_OK, id="with-run"),
+            pytest.param(EDITOR, status.HTTP_403_FORBIDDEN, id="without-use"),
+            pytest.param(EDITOR | Permission.USE, status.HTTP_200_OK, id="with-use"),
         ],
     )
     def test_a_user_api_key_acts_with_its_owners_role(
@@ -242,7 +242,7 @@ class TestBulkSave:
         assert ScheduleTriggerNode.objects.filter(graph=acme_graph).exists()
 
     def test_foreign_flow_is_404_not_the_trigger_403(self, editor_client, beta):
-        beta_graph = Graph.objects.create(name="trigger-run-beta-flow", org=beta)
+        beta_graph = Graph.objects.create(name="trigger-use-beta-flow", org=beta)
         payload = {
             "save_version": beta_graph.save_version,
             "schedule_trigger_node_list": [_plain_node_payload(beta_graph)],
@@ -261,7 +261,7 @@ class TestBulkSave:
 class TestTriggerNodeViewSets:
     @pytest.mark.parametrize("via_api_key", [False, True], ids=["session", "user-api-key"])
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_create_without_run_gets_403(
+    def test_create_without_use_gets_403(
         self,
         custom_role_client,
         acme,
@@ -274,7 +274,7 @@ class TestTriggerNodeViewSets:
         via_api_key,
     ):
         client = custom_role_client(
-            acme, {ResourceType.FLOWS: EDITOR}, "create-no-run", via_api_key=via_api_key
+            acme, {ResourceType.FLOWS: EDITOR}, "create-no-use", via_api_key=via_api_key
         )
 
         response = client.post(reverse(f"{basename}-list"), make_payload(acme_graph), format="json")
@@ -284,7 +284,7 @@ class TestTriggerNodeViewSets:
 
     @pytest.mark.parametrize("method", ["put", "patch"])
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_update_without_run_gets_403(
+    def test_update_without_use_gets_403(
         self,
         editor_client,
         acme_graph,
@@ -321,7 +321,7 @@ class TestTriggerNodeViewSets:
         ],
     )
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_without_run_any_body_on_an_own_node_gets_the_same_403(
+    def test_without_use_any_body_on_an_own_node_gets_the_same_403(
         self,
         editor_client,
         acme_graph,
@@ -333,8 +333,8 @@ class TestTriggerNodeViewSets:
         method,
         body,
     ):
-        """The RUN check comes before the body is validated and before the content
-        hash precondition, so a caller without RUN always gets the RUN 403."""
+        """The USE check comes before the body is validated and before the content
+        hash precondition, so a caller without USE always gets the USE 403."""
         node = make_node(acme_graph)
 
         response = getattr(editor_client, method)(
@@ -348,7 +348,7 @@ class TestTriggerNodeViewSets:
     @pytest.mark.parametrize("client_fixture", ["editor_client", "runner_editor_client"])
     @pytest.mark.parametrize("method", ["put", "patch"])
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_another_orgs_node_or_a_missing_id_is_404_with_or_without_run(
+    def test_another_orgs_node_or_a_missing_id_is_404_with_or_without_use(
         self,
         request,
         beta,
@@ -361,7 +361,7 @@ class TestTriggerNodeViewSets:
         client_fixture,
     ):
         client = request.getfixturevalue(client_fixture)
-        node = make_node(Graph.objects.create(name="trigger-run-beta-flow", org=beta))
+        node = make_node(Graph.objects.create(name="trigger-use-beta-flow", org=beta))
         body = {"graph": node.graph_id, "node_name": "Renamed"}
 
         foreign = getattr(client, method)(
@@ -376,7 +376,7 @@ class TestTriggerNodeViewSets:
         node.refresh_from_db()
         assert node.node_name != "Renamed"
 
-    def test_register_webhook_without_run_gets_403_and_sends_nothing(
+    def test_register_webhook_without_use_gets_403_and_sends_nothing(
         self, editor_client, acme_graph, mocker
     ):
         register = mocker.patch.object(TelegramTriggerService, "register_webhook_explicitly")
@@ -388,7 +388,7 @@ class TestTriggerNodeViewSets:
         _assert_trigger_denied(response)
         register.assert_not_called()
 
-    def test_register_webhook_with_run_passes_the_gate(self, runner_editor_client, acme_graph):
+    def test_register_webhook_with_use_passes_the_gate(self, runner_editor_client, acme_graph):
         response = runner_editor_client.post(
             reverse("telegramtriggernode-register-webhook", args=[_telegram_node(acme_graph).id])
         )
@@ -403,7 +403,7 @@ class TestTriggerNodeViewSets:
     ):
         client = request.getfixturevalue(client_fixture)
         register = mocker.patch.object(TelegramTriggerService, "register_webhook_explicitly")
-        node = _telegram_node(Graph.objects.create(name="trigger-run-beta-flow", org=beta))
+        node = _telegram_node(Graph.objects.create(name="trigger-use-beta-flow", org=beta))
 
         foreign = client.post(reverse("telegramtriggernode-register-webhook", args=[node.id]))
         missing = client.post(reverse("telegramtriggernode-register-webhook", args=[999_999]))
@@ -412,7 +412,7 @@ class TestTriggerNodeViewSets:
         assert missing.status_code == status.HTTP_404_NOT_FOUND, missing.content
         register.assert_not_called()
 
-    def test_schedule_create_update_partial_update_with_run_succeed(
+    def test_schedule_create_update_partial_update_with_use_succeed(
         self, runner_editor_client, acme_graph
     ):
         created = runner_editor_client.post(
@@ -433,7 +433,7 @@ class TestTriggerNodeViewSets:
         assert ScheduleTriggerNode.objects.get(pk=created.data["id"]).node_name == "Weekly"
 
     @pytest.mark.parametrize(TRIGGER_TYPE_ARGS, TRIGGER_TYPES)
-    def test_create_with_run_succeeds(
+    def test_create_with_use_succeeds(
         self,
         runner_editor_client,
         acme_graph,
@@ -450,9 +450,9 @@ class TestTriggerNodeViewSets:
         assert response.status_code == status.HTTP_201_CREATED, response.content
         assert model.objects.filter(graph=acme_graph, node_name="New").exists()
 
-    def test_create_with_a_run_api_key_succeeds(self, custom_role_client, acme, acme_graph):
+    def test_create_with_a_use_api_key_succeeds(self, custom_role_client, acme, acme_graph):
         client = custom_role_client(
-            acme, {ResourceType.FLOWS: EDITOR | Permission.RUN}, "create-run-key", via_api_key=True
+            acme, {ResourceType.FLOWS: EDITOR | Permission.USE}, "create-use-key", via_api_key=True
         )
 
         response = client.post(
@@ -461,10 +461,10 @@ class TestTriggerNodeViewSets:
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
 
-    def test_run_without_update_still_cannot_edit(self, custom_role_client, acme, acme_graph):
+    def test_use_without_update_still_cannot_edit(self, custom_role_client, acme, acme_graph):
         schedule_node = _schedule_node(acme_graph)
         client = custom_role_client(
-            acme, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "trigger-runner"
+            acme, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "trigger-runner"
         )
 
         response = client.patch(
@@ -476,7 +476,7 @@ class TestTriggerNodeViewSets:
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
         assert response.data["code"] == "permission_denied"
 
-    def test_read_and_delete_need_no_run(self, editor_client, acme_graph):
+    def test_read_and_delete_need_no_use(self, editor_client, acme_graph):
         schedule_node = _schedule_node(acme_graph)
         detail_url = reverse("scheduletriggernode-detail", args=[schedule_node.id])
 

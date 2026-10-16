@@ -106,7 +106,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     protected readonly codeTestRun = new PythonCodeTestRun();
     /**
      * Running this node, as a test run ("Run with test payload", which saves the flow and starts a session) or
-     * its stored code alone ("Run python code"), needs Flows:Update and Flows:Run, outside a preview.
+     * its stored code alone ("Run python code"), needs Flows:Update and Flows:Use, outside a preview.
      */
     protected readonly canRunNode = this.flowReadOnly.canEditTriggerNodes;
     protected readonly showCodeTerminal = computed(
@@ -114,7 +114,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     );
     /**
      * Only in the expanded panel, where the output terminal has room. Hidden without Flows:Update or
-     * Flows:Run, and in a version preview.
+     * Flows:Use, and in a version preview.
      */
     protected readonly runPythonCodeIcon = computed(() =>
         this.canRunNode() && this.isExpanded() ? 'play-outline' : null

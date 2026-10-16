@@ -76,7 +76,7 @@
             </button>
         </span>
         <span
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Run]"
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
             class="tooltip-host"
             [matTooltip]="isPreviewMode() ? 'Exit preview mode to get the cURL command' : 'Get cURL'"
             matTooltipPosition="below"
@@ -206,7 +206,7 @@
             </ng-template>
         </ng-container>
         <span
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Run]"
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
             class="tooltip-host"
             [matTooltip]="isPreviewMode() ? 'Exit preview mode to run the flow' : 'Run'"
             matTooltipPosition="below"

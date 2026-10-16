@@ -54,7 +54,7 @@ def flows_reader_a(custom_role_member, org_a):
 @pytest.fixture
 def flows_runner_a(custom_role_member, org_a):
     return custom_role_member(
-        org_a, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "h-runner"
+        org_a, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "h-runner"
     )
 
 
@@ -133,7 +133,7 @@ def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
             get_runnable_graph(user, **{lookup: key})
 
 
-# ── flows:RUN ────────────────────────────────────────────────────────────────
+# ── flows:USE ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -142,13 +142,13 @@ def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
     [
         ("flows_runner_a", "org_a", "granted"),
         ("flows_reader_a", "org_a", PermissionDenied),
-        # Another org's graph is a 404 whether or not the caller holds RUN.
+        # Another org's graph is a 404 whether or not the caller holds USE.
         ("flows_runner_a", "org_b", GraphNotFoundError),
         ("flows_reader_a", "org_b", GraphNotFoundError),
     ],
-    ids=["run", "read-without-run", "run-other-org", "read-other-org"],
+    ids=["use", "read-without-use", "use-other-org", "read-other-org"],
 )
-def test_running_a_graph_needs_flows_run(request, caller, target_org, outcome):
+def test_running_a_graph_needs_flows_use(request, caller, target_org, outcome):
     user = request.getfixturevalue(caller)
     graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
 
@@ -164,15 +164,15 @@ def test_running_a_graph_needs_flows_run(request, caller, target_org, outcome):
     ("caller", "target_org", "action", "outcome"),
     [
         ("flows_reader_a", "org_a", None, "granted"),
-        ("flows_reader_a", "org_a", Permission.RUN, PermissionDenied),
-        ("flows_runner_a", "org_a", Permission.RUN, "granted"),
-        # Another org's session is a 404 whether or not the caller holds RUN.
-        ("flows_runner_a", "org_b", Permission.RUN, SessionNotFoundError),
-        ("flows_reader_a", "org_b", Permission.RUN, SessionNotFoundError),
+        ("flows_reader_a", "org_a", Permission.USE, PermissionDenied),
+        ("flows_runner_a", "org_a", Permission.USE, "granted"),
+        # Another org's session is a 404 whether or not the caller holds USE.
+        ("flows_runner_a", "org_b", Permission.USE, SessionNotFoundError),
+        ("flows_reader_a", "org_b", Permission.USE, SessionNotFoundError),
     ],
-    ids=["read-default", "read-for-run", "run-for-run", "run-other-org", "read-other-org"],
+    ids=["read-default", "read-for-use", "use-for-use", "use-other-org", "read-other-org"],
 )
-def test_session_access_for_run_needs_flows_run(request, caller, target_org, action, outcome):
+def test_session_access_for_use_needs_flows_use(request, caller, target_org, action, outcome):
     user = request.getfixturevalue(caller)
     session_id = _session(request.getfixturevalue(target_org)).pk
     arguments = (user, session_id) if action is None else (user, session_id, action)

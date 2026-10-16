@@ -101,7 +101,7 @@ def test_accessor_returns_wire_shape():
 
 
 def test_running_a_flow_recommends_reading_it():
-    assert recommended_with_for("flows")["run"] == [
+    assert recommended_with_for("flows")["use"] == [
         {"resource_type": "flows", "action": "read"}
     ]
 

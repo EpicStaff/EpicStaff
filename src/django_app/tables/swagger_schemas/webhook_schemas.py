@@ -6,27 +6,27 @@ from tables.serializers.model_serializers import (
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
-_TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION = (
-    "Requires RUN on flows besides the action's own flows permission: a trigger node "
+_TRIGGER_NODE_USE_PERMISSION_DESCRIPTION = (
+    "Requires USE on flows besides the action's own flows permission: a trigger node "
     "starts flow runs by itself. Without it the response is 403 "
-    "`trigger_nodes_require_run_permission` and nothing is written."
+    "`trigger_nodes_require_use_permission` and nothing is written."
 )
 
 WEBHOOK_TRIGGER_NODE_CREATE = {
     "description": (
         "Auth for this node's inbound webhook is not configured here -- it "
         "lives on the linked `webhook_trigger` (see `/webhook-triggers/`), "
-        "not on the node. " + _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION
+        "not on the node. " + _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION
     ),
 }
 
-WEBHOOK_TRIGGER_NODE_UPDATE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+WEBHOOK_TRIGGER_NODE_UPDATE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
-WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
-TELEGRAM_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+TELEGRAM_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
-SCHEDULE_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_RUN_PERMISSION_DESCRIPTION}
+SCHEDULE_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
 _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
     "`auth_secret_id` sets/updates this trigger's user-settable auth "
@@ -55,20 +55,20 @@ _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
 
 WEBHOOK_TRIGGER_CREATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
-_ATTACHED_TRIGGER_RUN_DESCRIPTION = (
+_ATTACHED_TRIGGER_USE_DESCRIPTION = (
     " Updating a trigger that a live webhook or Telegram trigger node is attached to "
-    "also requires RUN on flows, since its auth, path or tunnel decides whether those "
+    "also requires USE on flows, since its auth, path or tunnel decides whether those "
     "nodes receive deliveries; without it the response is 403 "
-    "`trigger_nodes_require_run_permission` and nothing is written. A trigger with no "
+    "`trigger_nodes_require_use_permission` and nothing is written. A trigger with no "
     "attached nodes needs only the webhooks permission."
 )
 
 WEBHOOK_TRIGGER_UPDATE = {
-    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_RUN_DESCRIPTION
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_USE_DESCRIPTION
 }
 
 WEBHOOK_TRIGGER_PARTIAL_UPDATE = {
-    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_RUN_DESCRIPTION
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_USE_DESCRIPTION
 }
 
 WEBHOOK_TRIGGER_FLOWS_GET = {
@@ -76,7 +76,7 @@ WEBHOOK_TRIGGER_FLOWS_GET = {
     "description": (
         "The live flows of the active organization with at least one live webhook or "
         "Telegram trigger node attached to this trigger -- the trigger nodes that make "
-        "updating the trigger require RUN on flows. `flow_count` is the number of such "
+        "updating the trigger require USE on flows. `flow_count` is the number of such "
         "flows, each counted once. `flows` lists them by name, then id, at most 50; it "
         "is empty when the caller lacks READ on flows, while `flow_count` stays the "
         "true total."
@@ -235,8 +235,8 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             description=(
-                "The caller lacks UPDATE on flows (`permission_denied`) or RUN on flows "
-                "(`trigger_nodes_require_run_permission`)."
+                "The caller lacks UPDATE on flows (`permission_denied`) or USE on flows "
+                "(`trigger_nodes_require_use_permission`)."
             )
         ),
         404: OpenApiResponse(description="No such node in the active organization."),

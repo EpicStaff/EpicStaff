@@ -1,8 +1,8 @@
-"""Updating a webhook trigger that trigger nodes are attached to needs flows:RUN.
+"""Updating a webhook trigger that trigger nodes are attached to needs flows:USE.
 
 A trigger's auth, path and tunnel decide whether its webhook and Telegram trigger
 nodes receive deliveries, so changing them on a trigger with live attached nodes is
-a trigger-node write: 403 `trigger_nodes_require_run_permission` without RUN,
+a trigger-node write: 403 `trigger_nodes_require_use_permission` without USE,
 nothing written or republished. A trigger with no attached node (a soft-deleted one
 doesn't count) stays writable with the webhooks permission alone. Another org's
 trigger is a 404.
@@ -22,7 +22,7 @@ from tables.services.webhook_trigger_service import WebhookTriggerService
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
-DENIED_CODE = "trigger_nodes_require_run_permission"
+DENIED_CODE = "trigger_nodes_require_use_permission"
 WEBHOOK_SECRET = "epicstaff-api-key-value-0123456789-long"
 TELEGRAM_SECRET = "telegram_secret_token_0123456789"
 
@@ -42,12 +42,12 @@ def _grants(flows_permissions):
 @pytest.fixture
 def editor_client(custom_role_client, acme):
     """Can read flows and fully manage webhooks and secrets, but cannot run flows."""
-    return custom_role_client(acme, _grants(Permission.READ), "wt-no-run")
+    return custom_role_client(acme, _grants(Permission.READ), "wt-no-use")
 
 
 @pytest.fixture
 def runner_client(custom_role_client, acme):
-    return custom_role_client(acme, _grants(Permission.READ | Permission.RUN), "wt-run")
+    return custom_role_client(acme, _grants(Permission.READ | Permission.USE), "wt-use")
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ ATTACHMENTS = [
 @pytest.mark.django_db
 class TestAttachedTrigger:
     @pytest.mark.parametrize(("attach", "secret_text", "auth_kind"), ATTACHMENTS)
-    def test_patch_without_run_is_403_and_changes_nothing(
+    def test_patch_without_use_is_403_and_changes_nothing(
         self,
         editor_client,
         acme,
@@ -141,7 +141,7 @@ class TestAttachedTrigger:
         republished["telegram"].assert_not_called()
 
     @pytest.mark.parametrize(("attach", "secret_text", "auth_kind"), ATTACHMENTS)
-    def test_put_without_run_is_403_and_changes_nothing(
+    def test_put_without_use_is_403_and_changes_nothing(
         self, editor_client, acme, republished, attach, secret_text, auth_kind
     ):
         trigger = _trigger(acme, f"put-attached-{auth_kind}")
@@ -167,12 +167,12 @@ class TestAttachedTrigger:
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
         assert response.data["code"] == DENIED_CODE
 
-    def test_with_run_the_trigger_is_rekeyed(
+    def test_with_use_the_trigger_is_rekeyed(
         self, runner_client, acme, republished, django_capture_on_commit_callbacks
     ):
-        trigger = _trigger(acme, "attached-run")
+        trigger = _trigger(acme, "attached-use")
         _attach_webhook_node(trigger)
-        secret = secret_service.create(text=WEBHOOK_SECRET, org=acme, name="rekey-run")
+        secret = secret_service.create(text=WEBHOOK_SECRET, org=acme, name="rekey-use")
 
         with django_capture_on_commit_callbacks(execute=True):
             response = runner_client.patch(
@@ -186,10 +186,10 @@ class TestAttachedTrigger:
         ("flows_permissions", "expected_status", "expected_path"),
         [
             pytest.param(
-                Permission.READ, status.HTTP_403_FORBIDDEN, "attached-key", id="without-run"
+                Permission.READ, status.HTTP_403_FORBIDDEN, "attached-key", id="without-use"
             ),
             pytest.param(
-                Permission.READ | Permission.RUN, status.HTTP_200_OK, "key-renamed", id="with-run"
+                Permission.READ | Permission.USE, status.HTTP_200_OK, "key-renamed", id="with-use"
             ),
         ],
     )
@@ -247,7 +247,7 @@ class TestUnattachedTrigger:
         assert response.status_code == status.HTTP_200_OK, response.content
         assert _state(trigger)[0] == "freed-path"
 
-    def test_create_and_delete_need_no_run(self, editor_client, acme, republished):
+    def test_create_and_delete_need_no_use(self, editor_client, acme, republished):
         created = editor_client.post(
             reverse("webhooktrigger-list"),
             {"path": "fresh-trigger", "provider_type": None},

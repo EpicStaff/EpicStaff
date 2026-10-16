@@ -14,6 +14,7 @@ from rbac.access.effective import EffectivePermissions
 
 ROLES = ResourceType.ROLES.value
 FLOWS = ResourceType.FLOWS.value
+AGENTS = ResourceType.AGENTS.value
 
 
 def _effective(by_resource):
@@ -103,46 +104,48 @@ def test_from_role_and_bits_of_agree(db):
 
 # ---- ungrantable bits are excluded from the comparison ----
 #
-# Grantability is per-resource: `use` is an action of `secrets` and of nothing
-# else, `list` of nothing at all. The database nonetheless holds bits that are
-# not actions of their own resource (Viewer `flows: 66` carries USE), seeded
-# before the catalog settled. Comparing those lets dead data refuse a
-# legitimate grant, which is exactly what broke Org Admin -> Viewer once `use`
-# was enabled for secrets.
+# Grantability is per-resource: `use` is an action of `secrets` and `flows`
+# only, `list` of nothing at all. The database can nonetheless hold bits that
+# are not actions of their own resource -- rows seeded or written before the
+# catalog settled. Comparing those lets dead data refuse a legitimate grant,
+# which is exactly what once broke Org Admin -> Viewer (`flows: 66` carried
+# USE before `use` became an action of `flows`).
 
 
 def test_ungrantable_bits_in_the_request_are_ignored():
-    """Viewer's `flows: 66` is READ|USE. Org Admin's `flows: 31` is CRUD+Export
-    and carries no USE bit, so a raw comparison refuses the assignment -- the
-    most ordinary delegated operation there is. `use` is not an action of
-    `flows`, so it must not be compared there even though it is an action of
-    `secrets`."""
-    org_admin = _effective({FLOWS: 31})
+    """A stale `agents: 66` row is READ|USE. Org Admin's `agents: 31` is
+    CRUD+Export and carries no USE bit, so a raw comparison refuses the
+    assignment. `use` is not an action of `agents`, so it must not be compared
+    there even though it is an action of `secrets` and `flows`."""
+    org_admin = _effective({AGENTS: 31})
 
-    assert org_admin.covers({FLOWS: 66})
+    assert org_admin.covers({AGENTS: int(Permission.READ | Permission.USE)})
 
 
 def test_ungrantable_bits_do_not_widen_the_ceiling():
     """The mask must not let USE/LIST stand in for a grantable bit the caller
-    does not hold: holding only USE grants nothing assignable."""
-    use_only = _effective({FLOWS: int(Permission.USE)})
+    does not hold: holding only bits that are not actions of the resource
+    grants nothing assignable."""
+    ungrantable_only = _effective({AGENTS: int(Permission.USE | Permission.LIST)})
 
-    assert not use_only.covers({FLOWS: int(Permission.READ)})
+    assert not ungrantable_only.covers({AGENTS: int(Permission.READ)})
 
 
 def test_grantable_bits_are_still_compared_exactly():
     """Masking drops only what is ungrantable on that resource -- every action
     the resource does declare still counts."""
-    caller = _effective({FLOWS: int(Permission.READ | Permission.USE)})
+    caller = _effective({AGENTS: int(Permission.READ | Permission.USE)})
 
-    assert caller.covers({FLOWS: int(Permission.READ)})
-    assert not caller.covers({FLOWS: int(Permission.READ | Permission.EXPORT)})
+    assert caller.covers({AGENTS: int(Permission.READ)})
+    assert not caller.covers({AGENTS: int(Permission.READ | Permission.EXPORT)})
 
 
-def test_flows_run_is_compared_like_any_grantable_bit():
-    """`run` is an action of `flows`, so a caller without it cannot hand it out."""
+def test_flows_use_is_compared_like_any_grantable_bit():
+    """`use` is an action of `flows`, so a caller without it cannot hand it out,
+    and Org Admin's old `flows: 31` no longer covers a role holding it."""
     reader = _effective({FLOWS: int(Permission.READ)})
-    runner = _effective({FLOWS: int(Permission.READ | Permission.RUN)})
+    flows_user = _effective({FLOWS: int(Permission.READ | Permission.USE)})
 
-    assert not reader.covers({FLOWS: int(Permission.READ | Permission.RUN)})
-    assert runner.covers({FLOWS: int(Permission.READ | Permission.RUN)})
+    assert not reader.covers({FLOWS: int(Permission.READ | Permission.USE)})
+    assert not _effective({FLOWS: 31}).covers({FLOWS: int(Permission.READ | Permission.USE)})
+    assert flows_user.covers({FLOWS: int(Permission.READ | Permission.USE)})

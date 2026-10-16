@@ -175,7 +175,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     interface EditSetup {
         fixture: ComponentFixture<WebhookTriggersSectionComponent>;
         httpMock: HttpTestingController;
-        /** Read by the fake `can()` on every call, so a test can grant FLOWS:RUN between presses. */
+        /** Read by the fake `can()` on every call, so a test can grant Flows:Use between presses. */
         access: { canRunFlows: boolean };
         confirm: ReturnType<typeof vi.fn>;
         open: ReturnType<typeof vi.spyOn>;
@@ -195,7 +195,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
                     provide: PermissionsService,
                     useValue: {
                         can: (resource: ResourceCode, action: ActionCode) =>
-                            resource === ResourceCode.Flows && action === ActionCode.Run ? access.canRunFlows : true,
+                            resource === ResourceCode.Flows && action === ActionCode.Use ? access.canRunFlows : true,
                     },
                 },
             ],
@@ -274,17 +274,17 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     });
 
     // The wording for every usage is covered in the edit-permission service spec.
-    it('shows the Run permission warning instead of the edit dialog when a flow uses the trigger', () => {
+    it('shows the Use permission warning instead of the edit dialog when a flow uses the trigger', () => {
         const setup = renderForEdit(false);
 
         pressEdit(setup.fixture);
         answerUsageCheck(setup, IN_USE);
 
         expect(setup.confirm).toHaveBeenCalledExactlyOnceWith({
-            title: 'Run permission required',
+            title: 'Use permission required',
             message: 'This webhook is part of the flow <strong>Orders</strong>.',
             caution:
-                "You can't <strong>edit</strong> it because you don't have the <strong>Run</strong> permission on flows.",
+                "You can't <strong>edit</strong> it because you don't have the <strong>Use</strong> permission on flows.",
             type: 'warning',
             hideConfirm: true,
             cancelText: 'OK',

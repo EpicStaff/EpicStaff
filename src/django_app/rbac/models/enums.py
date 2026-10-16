@@ -32,7 +32,6 @@ class Permission(IntFlag):
     # 32 retired (was DOWNLOAD; folded into EXPORT — same logic).
     USE = 64
     LIST = 128
-    RUN = 256
 
 
 class BuiltInRole:

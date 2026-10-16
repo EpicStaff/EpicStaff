@@ -160,7 +160,7 @@ export class TelegramWebhookRegistrationComponent {
     /** The panel form has a bot key or webhook trigger that is not saved yet. */
     readonly hasUnsavedConnectionChanges = input<boolean>(false);
     /**
-     * The user cannot change this node (no Flows:Update, a version preview, or no Flows:Run for a trigger
+     * The user cannot change this node (no Flows:Update, a version preview, or no Flows:Use for a trigger
      * node): Register (a trigger node write) is hidden and blockers get no how-to.
      */
     readonly readonly = input<boolean>(false);

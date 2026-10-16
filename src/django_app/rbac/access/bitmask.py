@@ -16,7 +16,6 @@ _ACTION_CODE_TO_BIT = {
     "export": Permission.EXPORT,
     "use": Permission.USE,
     "list": Permission.LIST,
-    "run": Permission.RUN,
 }
 
 

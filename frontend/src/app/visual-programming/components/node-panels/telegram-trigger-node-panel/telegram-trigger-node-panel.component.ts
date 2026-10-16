@@ -111,7 +111,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
      * and the live Telegram registration says nothing about an old version, so the check is hidden.
      */
     protected readonly showsWebhookRegistration = !this.flowReadOnly.isPreview;
-    /** A test run saves the flow and starts a session: it needs Flows:Update and Flows:Run, outside a preview. */
+    /** A test run saves the flow and starts a session: it needs Flows:Update and Flows:Use, outside a preview. */
     protected readonly canStartTestRun = this.flowReadOnly.canEditTriggerNodes;
     protected readonly savedBackendId = computed(() => this.savedNode()?.backendId ?? null);
     protected readonly savedBotKeySecretId = computed(

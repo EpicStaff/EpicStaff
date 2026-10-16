@@ -363,16 +363,16 @@ EDITOR = Permission.READ | Permission.UPDATE
 
 @pytest.mark.django_db
 class TestTriggerNodeCodeNeedsRun:
-    """A trigger node's code runs need flows:run on top of flows:update, however
+    """A trigger node's code runs need flows:use on top of flows:update, however
     the request names the code."""
 
     @pytest.mark.parametrize("via_api_key", [False, True], ids=["session", "user-api-key"])
     @pytest.mark.parametrize(
         ("flows_permissions", "expected_status"),
         [
-            pytest.param(EDITOR, 403, id="update-without-run"),
-            pytest.param(Permission.READ | Permission.RUN, 403, id="run-without-update"),
-            pytest.param(EDITOR | Permission.RUN, 200, id="update-and-run"),
+            pytest.param(EDITOR, 403, id="update-without-use"),
+            pytest.param(Permission.READ | Permission.USE, 403, id="use-without-update"),
+            pytest.param(EDITOR | Permission.USE, 200, id="update-and-use"),
         ],
     )
     @pytest.mark.parametrize("named_by", NAMED_BY)
@@ -406,7 +406,7 @@ class TestTriggerNodeCodeNeedsRun:
             ).python_code_id == node.python_code_id
 
     @pytest.mark.parametrize("named_by", NAMED_BY)
-    def test_python_node_code_needs_no_run(
+    def test_python_node_code_needs_no_use(
         self, custom_role_client, acme, acme_graph, redis_client_mock, named_by
     ):
         client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-python")
@@ -426,22 +426,22 @@ class TestTriggerNodeCodeNeedsRun:
 
         assert response.status_code == 200, response.data
 
-    def test_trigger_target_without_run_is_denied_before_the_lookup(
+    def test_trigger_target_without_use_is_denied_before_the_lookup(
         self, custom_role_client, acme, redis_client_mock
     ):
-        """The slot type alone decides the RUN gate, so the 403 says nothing about the id."""
-        client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-no-run")
+        """The slot type alone decides the USE gate, so the 403 says nothing about the id."""
+        client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-no-use")
 
         response = _run_target(client, "webhook_trigger_node", 999_999)
 
         assert response.status_code == 403, response.data
         assert response.data["code"] == "permission_denied"
 
-    def test_foreign_trigger_code_by_python_code_id_stays_not_found_without_run(
+    def test_foreign_trigger_code_by_python_code_id_stays_not_found_without_use(
         self, custom_role_client, acme, beta_graph, redis_client_mock
     ):
-        """By `python_code_id` the RUN gate runs after the visibility check, so another
-        org's trigger code is the endpoint's usual "does not exist", not the RUN 403."""
+        """By `python_code_id` the USE gate runs after the visibility check, so another
+        org's trigger code is the endpoint's usual "does not exist", not the USE 403."""
         client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-id-xorg")
         node = _plain_webhook_trigger_node(beta_graph)
 

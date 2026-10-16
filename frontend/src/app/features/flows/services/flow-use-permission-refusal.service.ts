@@ -5,13 +5,13 @@ import { EMPTY, MonoTypeOperatorFunction, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 /** The 403 the backend sends when a copy, import, partial import, version restore or new flow from a version
- *  would bring in trigger nodes (Webhook, Telegram, Schedule) for a user without FLOWS:RUN; nothing is created. */
-export const FLOW_WITH_TRIGGER_NODES_REQUIRES_RUN_PERMISSION = 'flow_with_trigger_nodes_requires_run_permission';
+ *  would bring in trigger nodes (Webhook, Telegram, Schedule) for a user without Flows:Use; nothing is created. */
+export const FLOW_WITH_TRIGGER_NODES_REQUIRES_USE_PERMISSION = 'flow_with_trigger_nodes_requires_use_permission';
 
-export const RUN_PERMISSION_REQUIRED_TITLE = 'Run permission required';
+export const USE_PERMISSION_REQUIRED_TITLE = 'Use permission required';
 
-/** An operation refused for a user without FLOWS:RUN when what it brings in contains trigger nodes. */
-export type RunPermissionRefusalOperation =
+/** An operation refused for a user without Flows:Use when what it brings in contains trigger nodes. */
+export type UsePermissionRefusalOperation =
     | 'copy'
     | 'import'
     | 'partialImport'
@@ -19,8 +19,8 @@ export type RunPermissionRefusalOperation =
     | 'createFromVersion'
     | 'unpack';
 
-/** What holds the trigger nodes, and the operation as the subject of "… requires the Run permission". */
-const REFUSAL_COPY: Record<RunPermissionRefusalOperation, { source: string; action: string }> = {
+/** What holds the trigger nodes, and the operation as the subject of "… requires the Use permission". */
+const REFUSAL_COPY: Record<UsePermissionRefusalOperation, { source: string; action: string }> = {
     copy: { source: 'This flow', action: '<strong>Copying</strong> it' },
     import: { source: 'This file', action: '<strong>Importing</strong> it' },
     partialImport: { source: 'This file', action: '<strong>Importing</strong> it' },
@@ -29,29 +29,29 @@ const REFUSAL_COPY: Record<RunPermissionRefusalOperation, { source: string; acti
     unpack: { source: 'This subflow', action: '<strong>Unpacking</strong> it' },
 };
 
-function isRunPermissionRefusal(error: unknown): error is HttpErrorResponse {
+function isUsePermissionRefusal(error: unknown): error is HttpErrorResponse {
     return (
         error instanceof HttpErrorResponse &&
         error.status === 403 &&
-        (error.error as { code?: unknown } | null)?.code === FLOW_WITH_TRIGGER_NODES_REQUIRES_RUN_PERMISSION
+        (error.error as { code?: unknown } | null)?.code === FLOW_WITH_TRIGGER_NODES_REQUIRES_USE_PERMISSION
     );
 }
 
 /**
  * Handles the refusal of an operation that would bring trigger nodes into a flow for a user without
- * FLOWS:RUN: says why in an OK-only warning dialog. `catchRefusal` does so for the backend's refusal and
+ * Flows:Use: says why in an OK-only warning dialog. `catchRefusal` does so for the backend's refusal and
  * completes without emitting, so the caller's success and error handling both stay silent; any other error
  * passes through unchanged. The text is the frontend's own, per operation.
  */
 @Injectable({
     providedIn: 'root',
 })
-export class FlowRunPermissionRefusalService {
+export class FlowUsePermissionRefusalService {
     private readonly confirmationDialog = inject(ConfirmationDialogService);
 
-    catchRefusal<T>(operation: RunPermissionRefusalOperation): MonoTypeOperatorFunction<T> {
+    catchRefusal<T>(operation: UsePermissionRefusalOperation): MonoTypeOperatorFunction<T> {
         return catchError((error: unknown) => {
-            if (!isRunPermissionRefusal(error)) {
+            if (!isUsePermissionRefusal(error)) {
                 return throwError(() => error);
             }
             this.showRefusal(operation);
@@ -59,15 +59,15 @@ export class FlowRunPermissionRefusalService {
         });
     }
 
-    /** Says, OK-only, why the operation needs FLOWS:RUN; also for refusals the frontend decides itself. */
-    showRefusal(operation: RunPermissionRefusalOperation): void {
+    /** Says, OK-only, why the operation needs Flows:Use; also for refusals the frontend decides itself. */
+    showRefusal(operation: UsePermissionRefusalOperation): void {
         const { source, action } = REFUSAL_COPY[operation];
         // Static text only, so the markup the dialog renders as HTML needs no escaping.
         // The dialog opens on the call; the result (always a close) needs no subscriber.
         this.confirmationDialog.confirm({
-            title: RUN_PERMISSION_REQUIRED_TITLE,
+            title: USE_PERMISSION_REQUIRED_TITLE,
             message: `${source} contains trigger nodes (Webhook, Telegram, Schedule).`,
-            caution: `${action} requires the <strong>Run</strong> permission on flows.`,
+            caution: `${action} requires the <strong>Use</strong> permission on flows.`,
             type: 'warning',
             hideConfirm: true,
             cancelText: 'OK',

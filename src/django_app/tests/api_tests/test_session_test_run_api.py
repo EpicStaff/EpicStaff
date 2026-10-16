@@ -274,15 +274,15 @@ class TestTriggerTestRunAccess:
         assert session.principal.user_id == member_only.id
         assert session.trigger.is_test_run is True
 
-    def test_custom_role_with_update_and_run_on_flows_can_run(
+    def test_custom_role_with_update_and_use_on_flows_can_run(
         self, client_as, django_user_model, acme, webhook_node, redis_client_mock
     ):
         client = _client_with_flows_permissions(
             client_as,
             django_user_model,
             acme,
-            Permission.UPDATE | Permission.RUN,
-            "flows-update-run",
+            Permission.UPDATE | Permission.USE,
+            "flows-update-use",
         )
 
         response = client.post(
@@ -295,11 +295,11 @@ class TestTriggerTestRunAccess:
     @pytest.mark.parametrize(
         "permissions",
         [
-            pytest.param(Permission.READ | Permission.UPDATE, id="update-without-run"),
-            pytest.param(Permission.READ | Permission.RUN, id="run-without-update"),
+            pytest.param(Permission.READ | Permission.UPDATE, id="update-without-use"),
+            pytest.param(Permission.READ | Permission.USE, id="use-without-update"),
         ],
     )
-    def test_custom_role_lacking_update_or_run_gets_403(
+    def test_custom_role_lacking_update_or_use_gets_403(
         self, custom_role_client, acme, webhook_node, redis_client_mock, permissions,
         via_api_key,
     ):

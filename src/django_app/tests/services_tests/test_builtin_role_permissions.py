@@ -7,7 +7,8 @@ compares these masks when deciding whether the holder of one role may assign
 another, so dead data can refuse a legitimate assignment. That is exactly how
 `flows: USE` on Viewer -- seeded in 0171 as "can run flows", enforced nowhere,
 dormant until `use` became a catalog action for `secrets` -- came to block
-every Org Admin from assigning Viewer.
+every Org Admin from assigning Viewer. `use` on flows now gates running a flow
+and writing trigger nodes; Viewer does not hold it.
 """
 
 import pytest
@@ -64,8 +65,7 @@ def test_org_admin_can_assign_the_lesser_built_ins(target_name):
 
 @pytest.mark.django_db
 def test_secrets_use_is_held_by_org_admin_only():
-    """`use` is an action of `secrets` alone, and among the built-ins only the
-    Org Admin is trusted with it."""
+    """Among the built-ins only the Org Admin is trusted with `use` on secrets."""
     holders = {
         name
         for name in DELEGATED
@@ -79,15 +79,15 @@ def test_secrets_use_is_held_by_org_admin_only():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("role_name", DELEGATED)
-def test_no_built_in_holds_use_outside_secrets(role_name):
-    """`use` is enforced only by SecretReferenceGuard, so it means nothing on
-    any other resource."""
+def test_no_built_in_holds_use_outside_secrets_and_flows(role_name):
+    """`use` is enforced only on secrets (SecretReferenceGuard) and on flows
+    (running, trigger nodes), so it means nothing on any other resource."""
     role = _builtin(role_name)
 
     elsewhere = [
         row.resource_type
         for row in RolePermission.objects.filter(role=role).exclude(
-            resource_type=ResourceType.SECRETS.value
+            resource_type__in=[ResourceType.SECRETS.value, ResourceType.FLOWS.value]
         )
         if row.permissions & int(Permission.USE)
     ]
@@ -119,27 +119,17 @@ def test_viewer_can_still_read_flows():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("role_name", DELEGATED)
-def test_every_delegated_built_in_can_run_flows(role_name):
-    """Running a flow requires `flows: run` (views.py RunSession); every built-in
-    below Superadmin keeps the ability it had when running needed only READ."""
+@pytest.mark.parametrize("role_name", [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER])
+def test_org_admin_and_member_may_run_flows(role_name):
+    """Running a flow requires `flows: use` (views.py RunSession)."""
     role = EffectivePermissions.from_role(_builtin(role_name))
 
-    assert role.can(ResourceType.FLOWS.value, Permission.RUN)
+    assert role.can(ResourceType.FLOWS.value, Permission.USE)
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("role_name", DELEGATED)
-def test_no_built_in_holds_run_outside_flows(role_name):
-    """`run` is an action of `flows` alone."""
-    role = _builtin(role_name)
+def test_viewer_may_not_run_flows():
+    """Viewer is read-only: it holds no `flows: use`, so it cannot run a flow."""
+    viewer = EffectivePermissions.from_role(_builtin(BuiltInRole.VIEWER))
 
-    elsewhere = [
-        row.resource_type
-        for row in RolePermission.objects.filter(role=role).exclude(
-            resource_type=ResourceType.FLOWS.value
-        )
-        if row.permissions & int(Permission.RUN)
-    ]
-
-    assert elsewhere == []
+    assert not viewer.can(ResourceType.FLOWS.value, Permission.USE)

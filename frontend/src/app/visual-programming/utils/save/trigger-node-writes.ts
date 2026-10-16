@@ -4,7 +4,7 @@ import { NodeDiff, NodeDiffByType } from './types';
 
 /**
  * Whether saving this diff would create or change a trigger node (Webhook, Telegram, Schedule), which the
- * backend refuses without Flows:Run. Deleting one is not a write here: it needs only Flows:Update.
+ * backend refuses without Flows:Use. Deleting one is not a write here: it needs only Flows:Update.
  */
 export function hasTriggerNodeWrites(nodeDiff: NodeDiffByType): boolean {
     const typeDiffs: NodeDiff<NodeModel>[] = Object.values(nodeDiff);

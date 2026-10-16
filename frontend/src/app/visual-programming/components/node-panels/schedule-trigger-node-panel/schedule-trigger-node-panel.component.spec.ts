@@ -16,8 +16,8 @@ import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../../../util
 import { withGraphScheduleTriggerRuntimeState } from '../../../utils/save/schedule-trigger-runtime-state';
 import { liveGraph } from '../../../utils/testing/live-graph.fixture';
 import {
-    FLOW_ACTIONS_WITH_RUN,
-    FLOW_ACTIONS_WITHOUT_RUN,
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../../../utils/testing/permissions.fixture';
 import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel.component';
@@ -125,7 +125,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
     }
 
     it('is editable for a user who may update and run flows', () => {
-        const fixture = open(FLOW_ACTIONS_WITH_RUN);
+        const fixture = open(FLOW_ACTIONS_WITH_USE);
 
         expect(element(fixture, 'app-custom-input input')).not.toBeNull();
         expect(element(fixture, 'app-radio-button')).not.toBeNull();
@@ -134,8 +134,8 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
         fixture.destroy();
     });
 
-    it('is read-only without Flows:Run: values shown as text, weekdays cannot be toggled, nothing saved', () => {
-        const fixture = open(FLOW_ACTIONS_WITHOUT_RUN);
+    it('is read-only without Flows:Use: values shown as text, weekdays cannot be toggled, nothing saved', () => {
+        const fixture = open(FLOW_ACTIONS_WITHOUT_USE);
 
         expect(element(fixture, 'app-custom-input input')).toBeNull();
         expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
@@ -152,7 +152,7 @@ describe('ScheduleTriggerNodePanelComponent permissions', () => {
 describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
     afterEach(() => vi.useRealTimers());
 
-    it('moves the saved baseline with a polled is_active, so a user without Flows:Run can still save', () => {
+    it('moves the saved baseline with a polled is_active, so a user without Flows:Use can still save', () => {
         vi.useFakeTimers();
         const [storedSchedule] = liveGraph.schedule_trigger_node_list;
         // The schedule ran its last time between the panel opening and the next poll: the backend turned it off.
@@ -164,7 +164,7 @@ describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
                 { provide: ToastService, useValue: { info: vi.fn() } },
             ],
         });
-        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_RUN });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE });
         const httpMock = TestBed.inject(HttpTestingController);
         const scheduleUrl = (request: { url: string }): boolean =>
             request.url.endsWith(`schedule-trigger-nodes/${storedSchedule.id}/`);
@@ -197,7 +197,7 @@ describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
 
         const nodeDiff = getNodeDiff(buildFlowModelFromGraphDto(savedGraph), flowService.getFlowState());
         expect(nodeDiff.scheduleNodes.toUpdate).toEqual([]);
-        // What the flows page checks before saving for a user without Flows:Run.
+        // What the flows page checks before saving for a user without Flows:Use.
         expect(hasTriggerNodeWrites(nodeDiff)).toBe(false);
         fixture.destroy();
     });

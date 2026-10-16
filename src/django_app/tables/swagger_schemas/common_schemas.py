@@ -2,8 +2,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
 from tables.exceptions import (
-    FlowWithTriggerNodesRequiresRunPermissionError,
-    TriggerNodesRequireRunPermissionError,
+    FlowWithTriggerNodesRequiresUsePermissionError,
+    TriggerNodesRequireUsePermissionError,
 )
 
 UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
@@ -23,20 +23,20 @@ UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     ],
 )
 
-TRIGGER_NODES_REQUIRE_RUN_403_RESPONSE = OpenApiResponse(
+TRIGGER_NODES_REQUIRE_USE_403_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
     description=(
         "The request would create or edit a trigger node (webhook, Telegram, schedule) "
-        "and the caller lacks RUN on flows; nothing was written. Also returned as the "
+        "and the caller lacks USE on flows; nothing was written. Also returned as the "
         "standard `permission_denied` 403 when the caller lacks the endpoint's own permission."
     ),
     examples=[
         OpenApiExample(
-            "Trigger nodes require Run",
+            "Trigger nodes require Use",
             value={
                 "status_code": 403,
-                "code": TriggerNodesRequireRunPermissionError.default_code,
-                "message": TriggerNodesRequireRunPermissionError.default_detail,
+                "code": TriggerNodesRequireUsePermissionError.default_code,
+                "message": TriggerNodesRequireUsePermissionError.default_detail,
             },
             response_only=True,
             status_codes=["403"],
@@ -48,16 +48,16 @@ FLOW_WITH_TRIGGER_NODES_403_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
     description=(
         "The flow, file or snapshot holds a trigger node (webhook, Telegram, schedule) and "
-        "the caller lacks RUN on flows; nothing was written. Also returned as the standard "
+        "the caller lacks USE on flows; nothing was written. Also returned as the standard "
         "`permission_denied` 403 when the caller lacks the endpoint's own permission."
     ),
     examples=[
         OpenApiExample(
-            "Flow with trigger nodes requires Run",
+            "Flow with trigger nodes requires Use",
             value={
                 "status_code": 403,
-                "code": FlowWithTriggerNodesRequiresRunPermissionError.default_code,
-                "message": FlowWithTriggerNodesRequiresRunPermissionError.default_detail,
+                "code": FlowWithTriggerNodesRequiresUsePermissionError.default_code,
+                "message": FlowWithTriggerNodesRequiresUsePermissionError.default_detail,
             },
             response_only=True,
             status_codes=["403"],

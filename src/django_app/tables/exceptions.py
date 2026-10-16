@@ -42,8 +42,8 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
-class TriggerNodesRequireRunPermissionError(CustomAPIExeption):
-    """Raised when a caller without RUN on flows would create or edit a trigger node.
+class TriggerNodesRequireUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would create or edit a trigger node.
 
     Trigger nodes (webhook, Telegram, schedule) start flow runs by themselves, so
     writing one is gated on the same permission as running the flow.
@@ -52,24 +52,24 @@ class TriggerNodesRequireRunPermissionError(CustomAPIExeption):
     status_code = 403
     default_detail = (
         "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or "
-        "editing them requires the Run permission on flows."
+        "editing them requires the Use permission on flows."
     )
-    default_code = "trigger_nodes_require_run_permission"
+    default_code = "trigger_nodes_require_use_permission"
 
 
-class FlowWithTriggerNodesRequiresRunPermissionError(CustomAPIExeption):
-    """Raised when a caller without RUN on flows would copy, import or restore trigger nodes.
+class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would copy, import or restore trigger nodes.
 
-    Distinct from TriggerNodesRequireRunPermissionError (editing one trigger node) so a
+    Distinct from TriggerNodesRequireUsePermissionError (editing one trigger node) so a
     client can tell a refused copy/import/restore from a refused edit.
     """
 
     status_code = 403
     default_detail = (
         "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, "
-        "importing or restoring it requires the Run permission on flows."
+        "importing or restoring it requires the Use permission on flows."
     )
-    default_code = "flow_with_trigger_nodes_requires_run_permission"
+    default_code = "flow_with_trigger_nodes_requires_use_permission"
 
 
 class CodeRunTargetNotFoundError(Exception):

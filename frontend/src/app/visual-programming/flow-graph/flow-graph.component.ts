@@ -96,7 +96,7 @@ import { normalizeOrthogonalWaypoints } from '../core/routing/orthogonal-route-s
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_RUN_MESSAGE } from '../services/flow-readonly.service';
+import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
@@ -269,7 +269,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     /**
      * Nodes auto arrange leaves where they are: moving a trigger node is a change of it, which needs
-     * Flows:Run. The others are arranged around them.
+     * Flows:Use. The others are arranged around them.
      */
     private readonly pinnedNodeIds = computed<ReadonlySet<string>>(
         () =>
@@ -327,7 +327,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public hoveredNodeId = signal<string | null>(null);
 
-    /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Run). */
+    /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
     public isNodeReadOnly(node: NodeModel): boolean {
         return this.flowReadOnly.isNodeTypeReadOnly(node.type);
     }
@@ -836,7 +836,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const { newNodes, newConnections, skippedNodeCount } = this.clipboardService.paste(pastePosition, canPaste);
         if (skippedNodeCount > 0) {
             this.toastService.warning(
-                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_RUN_MESSAGE}`,
+                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
                 6000,
                 'bottom-right'
             );
@@ -1195,7 +1195,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public commitSidePanelToFlow(): boolean {
-        // A panel that may not change its node (a trigger node without Flows:Run) has nothing to commit.
+        // A panel that may not change its node (a trigger node without Flows:Use) has nothing to commit.
         if (!this.nodePanelShell?.hasPanelInstance() || this.nodePanelShell.isNodeReadOnly()) {
             return true;
         }
@@ -1740,7 +1740,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private doPartialImport(file: File): void {
         if (!this.currentFlowId) return;
-        // Through the facade: the backend refuses a file with trigger nodes to a user without Flows:Run, and the
+        // Through the facade: the backend refuses a file with trigger nodes to a user without Flows:Use, and the
         // facade explains that refusal (nothing is emitted then, so nothing below runs).
         this.flowCopyImportFacade.partialImport(this.currentFlowId, file).subscribe({
             next: () => {

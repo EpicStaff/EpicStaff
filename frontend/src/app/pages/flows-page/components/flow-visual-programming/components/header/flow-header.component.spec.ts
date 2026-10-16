@@ -134,7 +134,7 @@ describe('FlowHeaderComponent Run and Get cURL buttons', () => {
     }
 
     it('are shown to a user who can run flows, even without edit rights', () => {
-        const host = render([ActionCode.Read, ActionCode.Run]);
+        const host = render([ActionCode.Read, ActionCode.Use]);
 
         expect(host.querySelector('.run-button')).not.toBeNull();
         expect(host.querySelector('.get-curl-button')).not.toBeNull();

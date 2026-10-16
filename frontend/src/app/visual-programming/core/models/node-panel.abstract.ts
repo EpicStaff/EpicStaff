@@ -16,7 +16,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected uniqueNameValidator = inject(UniqueNodeNameValidatorService);
     protected destroyRef = inject(DestroyRef);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
-    /** Nothing here can be changed: a read-only editor, or a trigger node for a user without Flows:Run. */
+    /** Nothing here can be changed: a read-only editor, or a trigger node for a user without Flows:Use. */
     public readonly isReadOnly = computed(() => this.flowReadOnly.isNodeTypeReadOnly(this.node().type));
     private lastInitializedNodeId: string | null = null;
 

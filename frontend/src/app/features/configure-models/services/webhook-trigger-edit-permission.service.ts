@@ -7,7 +7,7 @@ import { escapeHtml } from '@shared/utils';
 import { catchError, map, Observable, of, tap } from 'rxjs';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
-import { RUN_PERMISSION_REQUIRED_TITLE } from '../../flows/services/flow-run-permission-refusal.service';
+import { USE_PERMISSION_REQUIRED_TITLE } from '../../flows/services/flow-use-permission-refusal.service';
 
 /**
  * What a pressed Edit on a webhook trigger leads to: open the edit dialog, nothing (the user has been told why),
@@ -56,7 +56,7 @@ function describeUsage({ flow_count: flowCount, flows }: WebhookTriggerFlowsResp
 
 /**
  * Decides what a pressed Edit on a webhook trigger does. The backend refuses to save a trigger that flows' trigger
- * nodes use for a user without FLOWS:RUN, so such a user is told why up front, in an OK-only warning, instead of
+ * nodes use for a user without Flows:Use, so such a user is told why up front, in an OK-only warning, instead of
  * after filling in the form.
  */
 @Injectable({
@@ -69,7 +69,7 @@ export class WebhookTriggerEditPermissionService {
 
     /** Emits once. Permissions are read on every call, so a permission granted since the last press counts. */
     decideEdit(triggerId: number): Observable<WebhookTriggerEditDecision> {
-        if (this.permissions.can(ResourceCode.Flows, ActionCode.Run)) {
+        if (this.permissions.can(ResourceCode.Flows, ActionCode.Use)) {
             return of('edit');
         }
         return this.webhookTriggers.getFlows(triggerId).pipe(
@@ -90,10 +90,10 @@ export class WebhookTriggerEditPermissionService {
     private showInUse(usage: WebhookTriggerFlowsResponse): void {
         // The dialog opens on the call; the result (always a close) needs no subscriber.
         this.confirmationDialog.confirm({
-            title: RUN_PERMISSION_REQUIRED_TITLE,
+            title: USE_PERMISSION_REQUIRED_TITLE,
             message: describeUsage(usage),
             caution:
-                "You can't <strong>edit</strong> it because you don't have the <strong>Run</strong> permission on flows.",
+                "You can't <strong>edit</strong> it because you don't have the <strong>Use</strong> permission on flows.",
             type: 'warning',
             hideConfirm: true,
             cancelText: 'OK',

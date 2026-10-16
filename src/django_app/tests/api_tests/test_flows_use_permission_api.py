@@ -1,8 +1,8 @@
-"""flows:RUN gates starting and stopping a flow run.
+"""flows:USE gates starting and stopping a flow run.
 
-POST /api/run-session/ and POST /api/sessions/<id>/stop/ need RUN on flows in the
+POST /api/run-session/ and POST /api/sessions/<id>/stop/ need USE on flows in the
 org that owns the flow; READ alone no longer starts or stops a run. A flow in
-another org still answers 404, never 403, with or without RUN.
+another org still answers 404, never 403, with or without USE.
 """
 
 import pytest
@@ -18,7 +18,7 @@ from tests.fixtures import redis_client_mock  # noqa: F401
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 READER = Permission.READ
-RUNNER = Permission.READ | Permission.RUN
+RUNNER = Permission.READ | Permission.USE
 AUTHENTICATION = [
     pytest.param(False, id="session"),
     pytest.param(True, id="user-api-key"),
@@ -38,12 +38,12 @@ def _runnable_graph(name, org):
 
 @pytest.fixture
 def acme_graph(acme):
-    return _runnable_graph("run-permission-acme-flow", acme)
+    return _runnable_graph("use-permission-acme-flow", acme)
 
 
 @pytest.fixture
 def beta_graph(beta):
-    return _runnable_graph("run-permission-beta-flow", beta)
+    return _runnable_graph("use-permission-beta-flow", beta)
 
 
 def _run(client, graph):
@@ -80,7 +80,7 @@ def test_run_session_with_flows_read_only_gets_403(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("via_api_key", AUTHENTICATION)
-def test_run_session_with_flows_run_starts_session(
+def test_run_session_with_flows_use_starts_session(
     custom_role_client, acme, acme_graph, redis_client_mock, via_api_key  # noqa: F811
 ):
     client = custom_role_client(acme, {ResourceType.FLOWS: RUNNER}, "runner", via_api_key=via_api_key)
@@ -92,7 +92,7 @@ def test_run_session_with_flows_run_starts_session(
 
 
 @pytest.mark.django_db
-def test_run_session_by_uuid_with_flows_run_starts_session(
+def test_run_session_by_uuid_with_flows_use_starts_session(
     custom_role_client, acme, acme_graph, redis_client_mock  # noqa: F811
 ):
     client = custom_role_client(acme, {ResourceType.FLOWS: RUNNER}, "runner")
@@ -117,7 +117,7 @@ def test_run_session_superadmin_needs_no_role(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("flows_permissions", [READER, RUNNER], ids=["without-run", "with-run"])
+@pytest.mark.parametrize("flows_permissions", [READER, RUNNER], ids=["without-use", "with-use"])
 def test_run_session_on_foreign_flow_gets_404(
     custom_role_client, acme, beta_graph, redis_client_mock, flows_permissions  # noqa: F811
 ):
@@ -136,7 +136,7 @@ def test_run_session_built_in_viewer_cannot_run(
     client_as, django_user_model, acme, role_viewer, acme_graph, redis_client_mock  # noqa: F811
 ):
     viewer = django_user_model.objects.create_user(
-        email="run-perm-viewer@example.com", password="StrongPass123!"
+        email="use-perm-viewer@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=viewer, org=acme, role=role_viewer)
 
@@ -170,7 +170,7 @@ def test_stop_session_with_flows_read_only_gets_403(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("via_api_key", AUTHENTICATION)
-def test_stop_session_with_flows_run_stops_it(
+def test_stop_session_with_flows_use_stops_it(
     custom_role_client, acme, acme_graph, redis_client_mock, via_api_key  # noqa: F811
 ):
     client = custom_role_client(acme, {ResourceType.FLOWS: RUNNER}, "runner", via_api_key=via_api_key)
@@ -193,7 +193,7 @@ def test_stop_session_superadmin_needs_no_role(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("flows_permissions", [READER, RUNNER], ids=["without-run", "with-run"])
+@pytest.mark.parametrize("flows_permissions", [READER, RUNNER], ids=["without-use", "with-use"])
 def test_stop_session_on_foreign_session_gets_404(
     custom_role_client, acme, beta_graph, redis_client_mock, flows_permissions  # noqa: F811
 ):

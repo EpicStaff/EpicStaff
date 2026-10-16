@@ -1,7 +1,7 @@
 """GET /api/webhook-triggers/{id}/flows/: which flows hold a trigger node on a webhook trigger.
 
 The settings page asks before opening the edit dialog, so a user who may edit webhooks
-but not run flows learns which flows make the edit need flows:RUN. `flow_count` counts
+but not run flows learns which flows make the edit need flows:USE. `flow_count` counts
 the distinct live flows with a live webhook or Telegram trigger node on the trigger;
 `flows` names the first 50 by name, then id, and only for a caller who may read flows.
 The action is a webhooks READ; another org's trigger is a 404.
@@ -50,7 +50,7 @@ def webhooks_only_client(custom_role_client, acme):
 @pytest.fixture
 def no_webhooks_client(custom_role_client, acme):
     return custom_role_client(
-        acme, {ResourceType.FLOWS: Permission.READ | Permission.RUN}, "wtf-no-webhooks"
+        acme, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "wtf-no-webhooks"
     )
 
 

@@ -33,7 +33,7 @@ class ImportService:
         """Import `export_data` into `org_id`, `main_entity` being the file's main type.
 
         `effective_permissions=None` means a trusted internal caller: both permission
-        checks (CREATE on each new resource, and RUN for trigger nodes) are skipped.
+        checks (CREATE on each new resource, and USE for trigger nodes) are skipped.
         """
         if settings is None:
             settings = ImportSettings()
@@ -42,7 +42,7 @@ class ImportService:
         denied_resources = set()
         export_data = prepare_import_data(export_data)
         # A trigger node in the file is live once created, so the whole import needs
-        # flows:RUN; refused here, before the transaction opens, so nothing is written.
+        # flows:USE; refused here, before the transaction opens, so nothing is written.
         if effective_permissions is not None and TriggerNodeInspector.has_any_in_export(
             export_data
         ):

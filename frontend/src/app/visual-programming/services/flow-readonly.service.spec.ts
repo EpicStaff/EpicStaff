@@ -6,12 +6,12 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import {
-    FLOW_ACTIONS_RUN_WITHOUT_UPDATE,
-    FLOW_ACTIONS_WITH_RUN,
-    FLOW_ACTIONS_WITHOUT_RUN,
+    FLOW_ACTIONS_USE_WITHOUT_UPDATE,
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../utils/testing/permissions.fixture';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_RUN_MESSAGE } from './flow-readonly.service';
+import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from './flow-readonly.service';
 
 function setUp({
     isPreview,
@@ -30,7 +30,7 @@ function setUp({
                 provide: PermissionsService,
                 useValue: {
                     can: (_resource: unknown, action: ActionCode) =>
-                        action === ActionCode.Run ? canRunFlows : canUpdateFlows,
+                        action === ActionCode.Use ? canRunFlows : canUpdateFlows,
                 },
             },
             { provide: ToastService, useValue: toast },
@@ -87,28 +87,28 @@ describe('FlowReadOnlyService', () => {
             {
                 user: 'may update and run flows',
                 isPreview: false,
-                flowActions: FLOW_ACTIONS_WITH_RUN,
+                flowActions: FLOW_ACTIONS_WITH_USE,
                 triggerReadOnly: false,
                 otherReadOnly: false,
             },
             {
                 user: 'may update but not run flows',
                 isPreview: false,
-                flowActions: FLOW_ACTIONS_WITHOUT_RUN,
+                flowActions: FLOW_ACTIONS_WITHOUT_USE,
                 triggerReadOnly: true,
                 otherReadOnly: false,
             },
             {
                 user: 'may run but not update flows',
                 isPreview: false,
-                flowActions: FLOW_ACTIONS_RUN_WITHOUT_UPDATE,
+                flowActions: FLOW_ACTIONS_USE_WITHOUT_UPDATE,
                 triggerReadOnly: true,
                 otherReadOnly: true,
             },
             {
                 user: 'may update and run flows, in a version preview',
                 isPreview: true,
-                flowActions: FLOW_ACTIONS_WITH_RUN,
+                flowActions: FLOW_ACTIONS_WITH_USE,
                 triggerReadOnly: true,
                 otherReadOnly: true,
             },
@@ -125,7 +125,7 @@ describe('FlowReadOnlyService', () => {
             });
         });
 
-        it('explains a blocked trigger node with the Run message (throttled), and nothing for an editable node', () => {
+        it('explains a blocked trigger node with the Use message (throttled), and nothing for an editable node', () => {
             const { service, toast } = setUp({ isPreview: false, canUpdateFlows: true, canRunFlows: false });
 
             service.notifyNodeTypeBlocked(NodeType.PYTHON);
@@ -133,7 +133,7 @@ describe('FlowReadOnlyService', () => {
             service.notifyNodeTypeBlocked(NodeType.TELEGRAM_TRIGGER);
 
             expect(toast.info).toHaveBeenCalledTimes(1);
-            expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_RUN_MESSAGE);
+            expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
         });
 
         it('explains a blocked node in a read-only editor with the read-only message', () => {

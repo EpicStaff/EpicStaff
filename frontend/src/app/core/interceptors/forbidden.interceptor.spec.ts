@@ -105,18 +105,18 @@ describe('forbiddenInterceptor', () => {
 
     const TRIGGER_NODES_REFUSAL = {
         status_code: 403,
-        code: 'trigger_nodes_require_run_permission',
-        message: 'Trigger nodes require the Flows Run permission.',
+        code: 'trigger_nodes_require_use_permission',
+        message: 'Trigger nodes require the Flows Use permission.',
     };
 
-    it('passes a flow_with_trigger_nodes_requires_run_permission 403 to the caller without a refresh or toast', () =>
+    it('passes a flow_with_trigger_nodes_requires_use_permission 403 to the caller without a refresh or toast', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.post('/api/graphs/1/copy/', { name: 'Orders' }).subscribe({
                 next: () => reject(new Error('expected the request to error')),
                 error: (err: HttpErrorResponse) => {
                     try {
                         expect(err.status).toBe(403);
-                        expect(err.error.code).toBe('flow_with_trigger_nodes_requires_run_permission');
+                        expect(err.error.code).toBe('flow_with_trigger_nodes_requires_use_permission');
                         expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
                         expect(profileService.bootstrapUser).not.toHaveBeenCalled();
                         expect(router.navigateByUrl).not.toHaveBeenCalled();
@@ -131,14 +131,14 @@ describe('forbiddenInterceptor', () => {
             httpMock.expectOne('/api/graphs/1/copy/').flush(
                 {
                     status_code: 403,
-                    code: 'flow_with_trigger_nodes_requires_run_permission',
+                    code: 'flow_with_trigger_nodes_requires_use_permission',
                     message: 'This flow contains trigger nodes.',
                 },
                 { status: 403, statusText: 'Forbidden' }
             );
         }));
 
-    it('refreshes permissions on a trigger_nodes_require_run_permission 403 (Run may just have been revoked)', () =>
+    it('refreshes permissions on a trigger_nodes_require_use_permission 403 (Use may just have been revoked)', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.post('/api/graphs/1/save/', {}).subscribe({
                 next: () => reject(new Error('expected the request to error')),

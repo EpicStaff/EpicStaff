@@ -96,7 +96,7 @@ export class FlowGraphCoreMenuComponent {
     public readonly searchTerm = input('');
     public readonly nodeSelected = output<{ type: NodeType; data: unknown }>();
 
-    /** Matching the search, without the types this user may not add (trigger nodes without Flows:Run). */
+    /** Matching the search, without the types this user may not add (trigger nodes without Flows:Use). */
     public readonly filteredBlocks = computed(() =>
         this.blocks.filter(
             (block) =>

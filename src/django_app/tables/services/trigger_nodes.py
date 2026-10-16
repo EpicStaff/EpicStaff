@@ -3,10 +3,10 @@
 Which node types are triggers is declared once, by `starts_runs` in the bulk-save
 NODE_TYPE_REGISTRY; everything here derives from it. A trigger node starts flow runs
 by itself, so writing one — directly, or by copying, importing or restoring a flow
-that holds one — requires RUN on flows (`TriggerNodeAccess`, shared as
+that holds one — requires USE on flows (`TriggerNodeAccess`, shared as
 `trigger_node_access`). `TriggerNodeInspector` answers whether a source holds a
 trigger node, and which flows hold one on a webhook trigger. The module-level
-functions answer whether running a piece of code needs RUN because a trigger node
+functions answer whether running a piece of code needs USE because a trigger node
 owns it.
 """
 
@@ -17,8 +17,8 @@ from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
 from tables.exceptions import (
-    FlowWithTriggerNodesRequiresRunPermissionError,
-    TriggerNodesRequireRunPermissionError,
+    FlowWithTriggerNodesRequiresUsePermissionError,
+    TriggerNodesRequireUsePermissionError,
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.strategies.nodes.node_maps import NODE_RELATIONS
@@ -38,7 +38,7 @@ TRIGGER_NODE_TYPES: frozenset[str] = frozenset(
 
 
 class TriggerNodeAccess:
-    """Who may write trigger nodes: the flows:RUN gates around them.
+    """Who may write trigger nodes: the flows:USE gates around them.
 
     The resolver decides; superadmin passes through it, never through a check here.
     """
@@ -50,15 +50,15 @@ class TriggerNodeAccess:
         """Assert `user` may create or edit trigger nodes in `org_id`.
 
         For the bulk flow save and the trigger node endpoints. Deleting a trigger node
-        needs no RUN: it stops runs.
+        needs no USE: it stops runs.
 
         Raises:
             OrgMembershipRequiredError (403): `user` is not a member of `org_id`.
-            TriggerNodesRequireRunPermissionError (403): the role lacks RUN on flows.
+            TriggerNodesRequireUsePermissionError (403): the role lacks USE on flows.
         """
         effective_permissions = self._resolver.resolve(user=user, org_id=org_id)
-        if not effective_permissions.can(ResourceType.FLOWS, Permission.RUN):
-            raise TriggerNodesRequireRunPermissionError()
+        if not effective_permissions.can(ResourceType.FLOWS, Permission.USE):
+            raise TriggerNodesRequireUsePermissionError()
 
     def assert_may_recreate(self, effective_permissions: EffectivePermissions) -> None:
         """Assert the caller may copy, import or restore a flow that holds trigger nodes.
@@ -67,11 +67,11 @@ class TriggerNodeAccess:
         For callers that already hold resolved permissions (the import services).
 
         Raises:
-            FlowWithTriggerNodesRequiresRunPermissionError (403): the role lacks RUN on
+            FlowWithTriggerNodesRequiresUsePermissionError (403): the role lacks USE on
                 flows.
         """
-        if not effective_permissions.can(ResourceType.FLOWS, Permission.RUN):
-            raise FlowWithTriggerNodesRequiresRunPermissionError()
+        if not effective_permissions.can(ResourceType.FLOWS, Permission.USE):
+            raise FlowWithTriggerNodesRequiresUsePermissionError()
 
     def assert_user_may_recreate(self, user, org_id: int) -> None:
         """Resolve `user` in `org_id`, then apply `assert_may_recreate`."""
@@ -165,7 +165,7 @@ class TriggerNodeInspector:
 
 
 def is_trigger_node_model(model: type) -> bool:
-    """Return whether `model` is a trigger node type; running its code needs FLOWS.RUN."""
+    """Return whether `model` is a trigger node type; running its code needs FLOWS.USE."""
     return model in TRIGGER_NODE_MODELS
 
 
@@ -181,7 +181,7 @@ _TRIGGER_NODE_PYTHON_CODE_FIELDS: tuple[tuple[type, str], ...] = tuple(
 def trigger_node_owns_python_code(python_code_id: int, org_id: int) -> bool:
     """Return whether a live trigger node in `org_id` holds this PythonCode.
 
-    Running such code needs FLOWS.RUN however the request names it, by the code's id
+    Running such code needs FLOWS.USE however the request names it, by the code's id
     or by the node's code slot. One EXISTS query per trigger PythonCode field.
     """
     return any(

@@ -114,7 +114,7 @@ describe('FlowSessionsTableComponent stop button', () => {
                     provide: PermissionsService,
                     useValue: {
                         can: (resource: ResourceCode, action: ActionCode) =>
-                            canRun && resource === ResourceCode.Flows && action === ActionCode.Run,
+                            canRun && resource === ResourceCode.Flows && action === ActionCode.Use,
                         canAny: () => false,
                     } as unknown as PermissionsService,
                 },

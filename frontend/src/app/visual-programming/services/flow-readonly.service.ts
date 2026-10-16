@@ -8,12 +8,12 @@ import { ToastService } from '../../services/notifications';
 import { isTriggerNodeType } from '../core/helpers/trigger-node-type.util';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 
-export const TRIGGER_NODES_NEED_RUN_MESSAGE =
-    'Adding or changing trigger nodes (Webhook, Telegram, Schedule) needs the Run permission on flows.';
+export const TRIGGER_NODES_NEED_USE_MESSAGE =
+    'Adding or changing trigger nodes (Webhook, Telegram, Schedule) needs the Use permission on flows.';
 
 /**
  * Whether the visual-programming editor may change the flow: not for a user with Flows:Read
- * without Flows:Update, and never inside a version preview. Trigger nodes also need Flows:Run.
+ * without Flows:Update, and never inside a version preview. Trigger nodes also need Flows:Use.
  * Also owns the throttled messages shown when a write interaction is blocked.
  *
  * `providedIn: 'root'` for the live editor; the version preview gets its own instance through
@@ -33,10 +33,10 @@ export class FlowReadOnlyService {
 
     /**
      * A trigger node starts flow runs on its own, so creating or changing one (its fields, but also
-     * its position) needs Flows:Run on top of an editable flow. Deleting one does not.
+     * its position) needs Flows:Use on top of an editable flow. Deleting one does not.
      */
     public readonly canEditTriggerNodes = computed(
-        () => !this.isReadOnly() && this.perms.can(ResourceCode.Flows, ActionCode.Run)
+        () => !this.isReadOnly() && this.perms.can(ResourceCode.Flows, ActionCode.Use)
     );
 
     private readonly blocked$ = new Subject<void>();
@@ -52,7 +52,7 @@ export class FlowReadOnlyService {
         });
         this.triggerNodesBlocked$
             .pipe(throttleTime(3000), takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.toast.info(TRIGGER_NODES_NEED_RUN_MESSAGE));
+            .subscribe(() => this.toast.info(TRIGGER_NODES_NEED_USE_MESSAGE));
     }
 
     /** Whether a node of this type may not be created or changed in this editor. */
