@@ -3,6 +3,7 @@ from dataclasses import replace
 from django.db import transaction
 from django.utils import timezone
 from rbac.identity.api_keys.principals import SystemServicePrincipal
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
     AgentNodeData,
     EdgeData,
@@ -180,6 +181,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             SessionPrincipal.objects.create(
                 session=session, **self._resolve_principal_fields(user, api_key)
             )
+        logger.log(
+            BENCH_LEVEL, "bench {checkpoint}", checkpoint="session_created", session_id=session.pk
+        )
         return session
 
     def create_session_data(
@@ -301,6 +305,13 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_data=session_data,
                 org_id=graph.org_id,
                 storage_credentials=storage_credentials,
+            )
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="published",
+                session_id=session.pk,
+                received_n=received_n,
             )
             if received_n == 0:
                 logger.error(

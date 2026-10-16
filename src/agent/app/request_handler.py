@@ -15,6 +15,7 @@ from loguru import logger
 from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.factory import RunnerFactory
+from shared.bench_log import BENCH_LEVEL
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 
@@ -71,6 +72,12 @@ class RequestHandler:
             stream: name of the stream the message was read from.
         """
         correlation_id = envelope.correlation_id
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="request_consumed",
+            correlation_id=correlation_id,
+        )
         logger.info(
             "handling request type={} correlation_id={}",
             envelope.type,

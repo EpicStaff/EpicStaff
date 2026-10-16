@@ -2,10 +2,15 @@ import sys
 import traceback
 from types import TracebackType
 
+import settings
 from loguru import logger
+from src.shared.bench_log import add_bench_sink, without_bench
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
+logger.add(
+    sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL, filter=without_bench()
+)
+add_bench_sink(sys.stdout, settings.LOG_LEVEL)
 # logger.add("logs/file.log", rotation="1 MB", compression="zip")
 
 

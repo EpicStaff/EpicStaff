@@ -1,0 +1,319 @@
+{
+    "Flow": [
+        {
+            "id": 9,
+            "edge_list": [
+                {
+                    "id": 21,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 32,
+                    "end_node_id": 27
+                },
+                {
+                    "id": 22,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 27,
+                    "end_node_id": 28
+                },
+                {
+                    "id": 23,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 28,
+                    "end_node_id": 29
+                },
+                {
+                    "id": 24,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 29,
+                    "end_node_id": 30
+                },
+                {
+                    "id": 25,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 30,
+                    "end_node_id": 31
+                },
+                {
+                    "id": 26,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {},
+                    "start_node_id": 31,
+                    "end_node_id": 33
+                }
+            ],
+            "uuid": "1a064206-b4df-4e7e-8eb8-6339d9c66e02",
+            "name": "benchmark flow - payload 300kb",
+            "description": "",
+            "metadata": {
+                "nodes": [],
+                "groups": [],
+                "connections": []
+            },
+            "time_to_live": 3600,
+            "enable_persistent_variables": false,
+            "epicchat_enabled": false,
+            "org": 5,
+            "nodes": [
+                {
+                    "id": 29,
+                    "python_code": {
+                        "code": "def main(payload: str):\n    payload += \"3\"\n    return payload",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 1220,
+                            "y": 100
+                        },
+                        "nodeNumber": 3
+                    },
+                    "node_name": "Python-Node #3",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 31,
+                    "python_code": {
+                        "code": "def main(payload: str):\n    payload += \"5\"\n    return payload",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 2100,
+                            "y": 100
+                        },
+                        "nodeNumber": 5
+                    },
+                    "node_name": "Python-Node #5",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 30,
+                    "python_code": {
+                        "code": "def main(payload: str):\n    payload += \"4\"\n    return payload",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 1660,
+                            "y": 100
+                        },
+                        "nodeNumber": 6
+                    },
+                    "node_name": "Python-Node #4",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 33,
+                    "python_code": {
+                        "code": "def main(payload: str):\n    payload += \"6\"\n    return payload",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 2540,
+                            "y": 100
+                        },
+                        "nodeNumber": 7
+                    },
+                    "node_name": "Python-Node #6",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 28,
+                    "python_code": {
+                        "code": "def main(payload: str):\n    payload += \"2\"\n    return payload",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 780,
+                            "y": 100
+                        },
+                        "nodeNumber": 2
+                    },
+                    "node_name": "Python-Node #2",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 27,
+                    "python_code": {
+                        "code": "def main(payload: str) -> str:\n    # generate 300kb payload\n    return payload + (\"epicstaff\" * 34133) + \"1\"",
+                        "libraries": "",
+                        "entrypoint": "main",
+                        "global_kwargs": {}
+                    },
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-brand-python",
+                        "size": {
+                            "width": 330,
+                            "height": 60
+                        },
+                        "color": "#ffcf3f",
+                        "position": {
+                            "x": 340,
+                            "y": -80
+                        },
+                        "nodeNumber": 1
+                    },
+                    "node_name": "Python-Node #1",
+                    "input_map": {
+                        "payload": "variables.payload"
+                    },
+                    "output_variable_path": "variables.payload",
+                    "test_input": {
+                        "payload": ""
+                    },
+                    "use_storage": false,
+                    "node_type": "PythonNode"
+                },
+                {
+                    "id": 32,
+                    "is_soft_deleted": false,
+                    "soft_deleted_at": null,
+                    "metadata": {
+                        "icon": "ti ti-filled ti-player-play",
+                        "size": {
+                            "width": 125,
+                            "height": 60
+                        },
+                        "color": "#d3d3d3",
+                        "position": {
+                            "x": 100,
+                            "y": 100
+                        },
+                        "nodeNumber": 4
+                    },
+                    "variables": {
+                        "variables": {
+                            "payload": ""
+                        },
+                        "persistent_variables": {
+                            "user": [],
+                            "organization": []
+                        }
+                    },
+                    "node_type": "StartNode"
+                }
+            ],
+            "labels": [
+                2
+            ]
+        }
+    ],
+    "Label": [
+        {
+            "id": 2,
+            "name": "benchmark",
+            "parent": null,
+            "metadata": {
+                "color": "orange"
+            },
+            "scope": "flow"
+        }
+    ],
+    "main_entity": "Flow",
+    "version": 3
+}

@@ -8,6 +8,7 @@ from models.state import State
 from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from utils.singleton_meta import SingletonMeta
@@ -102,6 +103,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             await self.redis_service.apublish(settings.CODE_EXEC_CHANNEL, code_task_message)
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="sandbox_dispatched",
+                session_id=code_task_data.session_id,
+                execution_id=unique_task_id,
+            )
             logger.info("Waiting for code_results")
 
             event_loop = asyncio.get_running_loop()
