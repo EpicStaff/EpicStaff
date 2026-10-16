@@ -73,7 +73,7 @@ export function chordFromEvent(event: KeyboardEvent, isMac: boolean): KeyChord |
     if (isMac ? event.metaKey : event.ctrlKey) parts.push('Mod');
     if (isMac && event.ctrlKey) parts.push('Ctrl');
     if (event.altKey) parts.push('Alt');
-    if (event.shiftKey) parts.push('Shift');
+    if (event.shiftKey && event.key !== '/') parts.push('Shift');
     parts.push(mainKeyFromEvent(event));
     return parts.join('+');
 }
@@ -92,10 +92,14 @@ export function mainKeyFromEvent(event: Pick<KeyboardEvent, 'key' | 'code'>): st
 }
 
 export function formatChord(chord: KeyChord, isMac: boolean): string[] {
-    const modifierLabels = isMac ? MAC_MODIFIER_LABELS : MODIFIER_LABELS;
     const parts = chord.split('+');
     const code = parts.pop() ?? '';
-    return [...parts.map((modifier) => modifierLabels[modifier] ?? modifier), keyLabel(code)];
+    return [...formatKeyLabels(parts, isMac), keyLabel(code)];
+}
+
+export function formatKeyLabels(keys: readonly string[], isMac: boolean): string[] {
+    const modifierLabels = isMac ? MAC_MODIFIER_LABELS : MODIFIER_LABELS;
+    return keys.map((key) => modifierLabels[key] ?? key);
 }
 
 export function isEditableTarget(element: HTMLElement): boolean {

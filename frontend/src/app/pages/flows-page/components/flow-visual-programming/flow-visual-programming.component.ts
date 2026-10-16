@@ -140,8 +140,10 @@ import {
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
-import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
-import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+import {
+    SHORTCUTS_MODAL_HEIGHT_PX,
+    ShortcutsModalComponent,
+} from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
 
 /**
@@ -1790,7 +1792,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public isShortcutsOpen = signal(false);
     public shortcutsPos = signal<{ top: number; left: number } | null>(null);
-    public readonly shortcutSections = FLOW_SHORTCUT_SECTIONS;
 
     public openShortcutsModal(rect: DOMRect): void {
         if (this.isShortcutsOpen()) {
@@ -1798,7 +1799,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return;
         }
 
-        const top = rect.top;
+        const screenMargin = 16;
+        const lowestTop = window.innerHeight - screenMargin - SHORTCUTS_MODAL_HEIGHT_PX;
+        const top = Math.max(screenMargin, Math.min(rect.top, lowestTop));
         const left = rect.right + 8;
 
         this.shortcutsPos.set({ top, left });

@@ -122,6 +122,7 @@ describe('resolveTreeKeyAction', () => {
             ['undo (German)', ctrl('z', 'KeyY')],
             ['save (Dvorak)', ctrl('s', 'Semicolon')],
             ['shortcuts dialog (RU)', ctrl('.', 'Slash')],
+            ['shortcuts dialog (German, Shift+7)', ctrl('/', 'Digit7')],
         ])('shields %s by the key the keymap matches', (_label, event) => {
             expect(resolveTreeKeyAction(event, IDLE).stopPropagation).toBe(true);
         });

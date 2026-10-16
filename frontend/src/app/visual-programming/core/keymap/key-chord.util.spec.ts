@@ -16,6 +16,9 @@ describe('chordFromEvent', () => {
         ['Shift+1', { key: '!', code: 'Digit1', shiftKey: true }, 'Shift+Digit1'],
         ['Ctrl+7', { key: '7', code: 'Digit7', ctrlKey: true }, 'Mod+Digit7'],
         ['Ctrl+/', { key: '/', code: 'Slash', ctrlKey: true }, 'Mod+Slash'],
+        ['German Ctrl+/ (Shift+7)', { key: '/', code: 'Digit7', ctrlKey: true, shiftKey: true }, 'Mod+Slash'],
+        ['French Ctrl+/ (Shift+colon)', { key: '/', code: 'Period', ctrlKey: true, shiftKey: true }, 'Mod+Slash'],
+        ['US Ctrl+Shift+/ (types ?)', { key: '?', code: 'Slash', ctrlKey: true, shiftKey: true }, 'Mod+Shift+Slash'],
     ] as const)('names the key the layout prints, else the physical key: %s', (_label, init, expected) => {
         expect(chordFromEvent(keydown(init), false)).toBe(expected);
     });

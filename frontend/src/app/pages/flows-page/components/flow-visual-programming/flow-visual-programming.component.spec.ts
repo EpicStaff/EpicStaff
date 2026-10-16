@@ -418,6 +418,20 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(component.shortcutsPos()).toEqual({ top: 20, left: 48 });
         });
 
+        it.each([
+            ['moves it up so its bottom stays on screen', 900, 218],
+            ['pins it to the top margin in a window shorter than the modal', 500, 16],
+        ])('when the shortcuts button is low, %s', (_case, windowHeight, expectedTop) => {
+            vi.stubGlobal('innerHeight', windowHeight);
+            try {
+                component.openShortcutsModal(new DOMRect(10, 700, 30, 40));
+
+                expect(component.shortcutsPos()).toEqual({ top: expectedTop, left: 48 });
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
+
         it('keeps the preview open while the restore dialog is shown and after Cancel', () => {
             const dialogResult$ = new Subject<string>();
             enterPreview(VERSION_A);

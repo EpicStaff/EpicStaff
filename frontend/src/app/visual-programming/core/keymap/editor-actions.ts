@@ -77,7 +77,7 @@ export const EDITOR_ACTIONS = [
         id: 'navigating.shortcuts',
         label: 'Keyboard shortcuts',
         section: 'Navigating',
-        defaultChords: ['Mod+Slash', 'Mod+Shift+Slash'],
+        defaultChords: ['Mod+Slash'],
         rebindable: false,
     },
     {
@@ -93,7 +93,7 @@ export const EDITOR_ACTIONS = [
         label: 'Add/remove selection',
         section: 'Selection',
         defaultChords: [],
-        displayKeys: ['Ctrl/⌘', 'click'],
+        displayKeys: ['Mod', 'click'],
         rebindable: false,
     },
     {
