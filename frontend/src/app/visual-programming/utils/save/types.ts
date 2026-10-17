@@ -51,8 +51,9 @@ export interface ConnectionDiff {
 
 /**
  * Identity keys of a node item the bulk save creates. `node_number_hint` is wire-only and sent
- * for numbered node types alone: the number the canvas shows, which the server keeps when it is
- * still free in the block it numbers this save's new nodes from, and replaces otherwise.
+ * for numbered node types alone. It is an ordering key: the server sorts this save's new nodes by
+ * it and numbers them consecutively from the graph's counter, so the number the canvas shows may
+ * differ from the hint.
  */
 export interface CreatedNodeItemKeys {
     id: null;

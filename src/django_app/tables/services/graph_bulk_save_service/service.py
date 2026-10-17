@@ -480,30 +480,21 @@ class GraphBulkSaveService:
     def _assign_node_numbers(graph: Graph, node_saveables: list[_NodeSaveable]) -> None:
         """Give created numbered nodes one contiguous block above the counter.
 
-        The client's optimistic badge (node_number_hint) is honoured when it falls
-        inside the block and no earlier node claimed it, so badges do not reshuffle
-        just because the registry saves node types in a fixed order. The remaining
-        nodes take the free numbers in ascending order, in hint order (nodes without a
-        hint last, ties in registry then payload order).
+        The client's optimistic badge (node_number_hint) is only an ordering key: the
+        nodes are sorted by it (unhinted last, ties in registry then payload order) and
+        take the block's numbers in that order. A hint never sets a number, so numbers
+        stay contiguous from the counter and badges keep their relative order even when
+        the registry saves node types in a fixed order or the editor deleted unsaved nodes.
         """
         created = [
             saveable for saveable in node_saveables if saveable.is_create and saveable.is_numbered
         ]
-        block = NodeNumberService().reserve(graph.id, len(created))
-        free_numbers = set(block)
-        unassigned = []
-        for saveable in created:
-            if saveable.node_number_hint in free_numbers:
-                saveable.assigned_node_number = saveable.node_number_hint
-                free_numbers.discard(saveable.node_number_hint)
-            else:
-                unassigned.append(saveable)
-        # A node a new graph receives (extract to subflow) carries a hint above the block,
-        # so the leftovers keep the hints' relative order instead of the node-type order.
-        unassigned.sort(
+        created.sort(
             key=lambda saveable: (saveable.node_number_hint is None, saveable.node_number_hint or 0)
         )
-        for saveable, number in zip(unassigned, sorted(free_numbers), strict=True):
+        for saveable, number in zip(
+            created, NodeNumberService().reserve(graph.id, len(created)), strict=True
+        ):
             saveable.assigned_node_number = number
 
     def _execute_deletions(self, graph: Graph, deleted_data: dict) -> int:

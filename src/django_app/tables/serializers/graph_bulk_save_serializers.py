@@ -28,8 +28,8 @@ class BulkSaveEntityMixin:
     temp_id: wire-only UUID, FE assigns to new nodes so edges can reference them
     before real DB ids are known. Never persisted
     node_number_hint: wire-only, the "#N" badge the editor showed for a new node.
-    Honoured on create only while it falls inside the block the save reserves;
-    ignored on update. Never persisted
+    Only orders the nodes created in one save; the number comes from the counter.
+    Ignored on update. Never persisted
     """
 
     def get_fields(self):

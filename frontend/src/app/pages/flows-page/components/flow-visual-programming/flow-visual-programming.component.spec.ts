@@ -1062,7 +1062,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsaved] });
             }
 
-            /** The server could not honour hint 4 and numbered the node #13, the next one its counter issues. */
+            /** The server ordered the new node by hint 4 and numbered it #13, the next one its counter issues. */
             function respondWithNodeNumbered13(): void {
                 flowsApi['bulkSaveGraph'].mockReturnValue(
                     of(

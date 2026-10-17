@@ -146,7 +146,7 @@ describe('node numbers from the save response', () => {
         }
     );
 
-    it('keeps a hint the server honoured', () => {
+    it("keeps the node number when the server's number matches the hint", () => {
         const sent = flowOf({ ...mapPythonNodeToModel(livePython), id: 'new-python', backendId: null, nodeNumber: 4 });
         const response = { python_node_list: [{ ...livePython, id: 40, node_number: 4 }] } as unknown as GraphDto;
 
@@ -155,7 +155,7 @@ describe('node numbers from the save response', () => {
         expect(patched.nodes[0]).toEqual(expect.objectContaining({ backendId: 40, nodeNumber: 4 }));
     });
 
-    it('takes the reassigned number when the server did not honour the hint', () => {
+    it("takes the server's number when the server assigned a different number than the hint", () => {
         const sent = flowOf({ ...mapPythonNodeToModel(livePython), id: 'new-python', backendId: null, nodeNumber: 4 });
         const response = { python_node_list: [{ ...livePython, id: 40, node_number: 6 }] } as unknown as GraphDto;
 

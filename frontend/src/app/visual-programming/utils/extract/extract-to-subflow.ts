@@ -20,7 +20,7 @@ const START_NODE_HORIZONTAL_OFFSET = 200;
 
 /**
  * Moves the selection into a new subflow behind a subgraph node numbered `subGraphNodeNumber`. The moved
- * nodes keep their numbers: the subflow's save sends them as hints for its own counter.
+ * nodes send their old numbers as ordering hints; the new subflow numbers them 1..K in that order.
  */
 export function extractToSubflow(
     parentFlow: FlowModel,
