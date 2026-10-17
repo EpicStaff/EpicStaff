@@ -391,8 +391,6 @@ class TestReplaceKeepsTriggerSetup:
 
         assert response.status_code == 200
         node = holder.telegram_trigger_node_list.get()
-        # Recreated nodes are renumbered; the key follows the trigger, not the name.
-        assert node.node_name != "Telegram Bot #7"
         assert node.webhook_trigger_id == trigger.id
         assert node.telegram_bot_api_key_secret_id == bot_key.id
         registered_nodes = [

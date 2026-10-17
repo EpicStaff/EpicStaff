@@ -1,4 +1,3 @@
-import re
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -38,6 +37,7 @@ from tables.models import (
 )
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
+from tables.services.node_number_service import NodeNumberService
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -270,6 +270,10 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         self.wipe_graph_children(graph)
+        # The imported nodes take 1..K in source order, as in a newly imported flow.
+        NodeNumberService().restart(graph.id)
+        # The serializer saves this same instance next; a stale counter would be written back.
+        graph.refresh_from_db(fields=["node_number_seq"])
         return replaced_telegram_keys
 
     def _restore_telegram_bot_keys(
@@ -384,12 +388,10 @@ class GraphStrategy(EntityImportExportStrategy):
         old_graph_id: int | None = None,
         user=None,
     ) -> list:
-        # Mirror the frontend's node numbering: a single graph-wide counter that
-        # starts above the highest metadata["nodeNumber"] already present in the
-        # graph, so imported nodes count up from the top instead of filling gaps
-        # (which could reuse an existing number). Each numbered node also gets its
-        # assigned number written back into metadata["nodeNumber"].
-        counter = self._max_node_number(graph)
+        # Each node is numbered from the graph's counter as it is saved, so creating
+        # them in source-number order keeps the source order: #1, #4, #5 become the
+        # next three numbers in that order. Nodes without a number go last.
+        nodes_data = sorted(nodes_data, key=self._source_order_key)
         created_nodes = []
 
         for node_data in nodes_data:
@@ -412,12 +414,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 )
                 continue
 
-            if node_data.get("node_name"):
-                counter += 1
-                node_data["node_name"] = self._with_node_number(node_data["node_name"], counter)
-                metadata = node_data.get("metadata") or {}
-                metadata["nodeNumber"] = counter
-                node_data["metadata"] = metadata
+            node_data.pop("node_number", None)
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
@@ -441,34 +438,20 @@ class GraphStrategy(EntityImportExportStrategy):
 
         return created_nodes
 
-    def _with_node_number(self, name: str, number: int) -> str:
-        """Strip any trailing "#N" / "# N" suffix and append " #{number}"."""
-        base = re.sub(r"\s*#\s*\d+$", "", name).strip()
-        return f"{base} #{number}"
+    @staticmethod
+    def _source_order_key(node_data: dict) -> tuple[bool, int, int]:
+        """Order by source number, then by source id; a value that is not an int counts as absent.
 
-    def _max_node_number(self, graph: Graph) -> int:
-        """Return the highest ``metadata["nodeNumber"]`` across all of the
-        graph's nodes (0 if none)."""
-        max_num = 0
-        for relation in NODE_RELATIONS.values():
-            if not hasattr(graph, relation):
-                continue
-            qs = getattr(graph, relation)
-            if not hasattr(qs, "values_list"):
-                continue
-            model = qs.model
-            if not any(
-                f.name == "metadata" for f in model._meta.get_fields() if hasattr(f, "column")
-            ):
-                continue
-            for metadata in qs.values_list("metadata", flat=True):
-                if isinstance(metadata, dict):
-                    number = metadata.get("nodeNumber")
-                    # Exact type match: excludes bool (a subclass of int) without
-                    # a separate isinstance(number, bool) guard.
-                    if type(number) is int:
-                        max_num = max(max_num, number)
-        return max_num
+        The file is user input, so a non-int must not reach the comparison (it
+        would raise TypeError mid-import).
+        """
+
+        def int_or_none(value: object) -> int | None:
+            # Exact type match: bool is a subclass of int.
+            return value if type(value) is int else None
+
+        number = int_or_none(node_data.get("node_number"))
+        return number is None, number or 0, int_or_none(node_data.get("id")) or 0
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:

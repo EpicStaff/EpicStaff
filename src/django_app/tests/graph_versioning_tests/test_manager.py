@@ -549,9 +549,8 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
 
     assert graph.classification_decision_table_node_list.count() == 1
     restored = graph.classification_decision_table_node_list.first()
-    # Restore renumbers named nodes (mirrors the frontend's node numbering),
-    # so the recreated node picks up the next free "#N" suffix.
-    assert restored.node_name == "classifier_node #1"
+    # The badge lives in node_number, so restore no longer rewrites the name.
+    assert restored.node_name == "classifier_node"
 
 
 @pytest.mark.django_db
