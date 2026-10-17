@@ -101,6 +101,8 @@ export class ClipboardService {
             return newNodeId;
         });
 
+        const newNumberByOldId = this.assignNewNodeNumbers(clipboardNodes);
+
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
             const newNodeId = newNodeIds[index];
@@ -120,7 +122,7 @@ export class ClipboardService {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
-                nodeNumber: isNumberedNodeType(oldNode.type) ? this.flowService.getNextNodeNumber() : undefined,
+                nodeNumber: newNumberByOldId.get(oldNode.id),
                 position: {
                     x: oldNode.position.x + offsetX,
                     y: oldNode.position.y + offsetY,
@@ -180,6 +182,23 @@ export class ClipboardService {
         const returnedNodes = newNodes.map((n) => finalNodeById.get(n.id) ?? n);
 
         return { newNodes: returnedNodes, newConnections };
+    }
+
+    /**
+     * Issues new numbers to the numbered nodes in ascending order of their source number, so the copies
+     * keep the originals' relative order whatever order the selection came in. Nodes without a source
+     * number go last; ties keep clipboard order.
+     */
+    private assignNewNodeNumbers(clipboardNodes: NodeModel[]): Map<string, number> {
+        const sourceNumber = (node: NodeModel): number => node.nodeNumber ?? Number.MAX_SAFE_INTEGER;
+        const newNumberByOldId = new Map<string, number>();
+
+        clipboardNodes
+            .filter((node) => isNumberedNodeType(node.type))
+            .sort((first, second) => sourceNumber(first) - sourceNumber(second))
+            .forEach((node) => newNumberByOldId.set(node.id, this.flowService.getNextNodeNumber()));
+
+        return newNumberByOldId;
     }
 
     private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {

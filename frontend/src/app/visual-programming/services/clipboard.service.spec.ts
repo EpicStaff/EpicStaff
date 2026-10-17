@@ -71,4 +71,49 @@ describe('ClipboardService paste', () => {
         expect(noteCopy.nodeNumber).toBeUndefined();
         expect(pythonCopy.nodeNumber).toBe(3);
     });
+
+    it('numbers the copies in the order of the source numbers, not the selection order', () => {
+        const ninth = canvasNode('python-9', NodeType.PYTHON, { node_name: 'Nine', nodeNumber: 9 });
+        const fifth = canvasNode('task-5', NodeType.TASK, { node_name: 'Five', nodeNumber: 5 });
+        const seventh = canvasNode('python-7', NodeType.PYTHON, { node_name: 'Seven', nodeNumber: 7 });
+        flowService.setNodeNumberFloor(11);
+
+        const copies = copyAndPaste(ninth, fifth, seventh);
+
+        expect(copies.map((copy) => [copy.node_name, copy.nodeNumber])).toEqual([
+            ['Nine', 14],
+            ['Five', 12],
+            ['Seven', 13],
+        ]);
+    });
+
+    it('numbers a copied note-and-nodes selection without a note using up a number', () => {
+        const seventh = canvasNode('python-7', NodeType.PYTHON, { node_name: 'Seven', nodeNumber: 7 });
+        const note = canvasNode('note-1', NodeType.NOTE, { node_name: 'Remember this' });
+        const fifth = canvasNode('task-5', NodeType.TASK, { node_name: 'Five', nodeNumber: 5 });
+        flowService.setNodeNumberFloor(11);
+
+        const copies = copyAndPaste(seventh, note, fifth);
+
+        expect(copies.map((copy) => [copy.node_name, copy.nodeNumber])).toEqual([
+            ['Seven', 13],
+            ['Remember this', undefined],
+            ['Five', 12],
+        ]);
+    });
+
+    it('numbers a copy of a node that has no number last', () => {
+        const legacy = canvasNode('python-1', NodeType.PYTHON, { node_name: 'Legacy' });
+        const fifth = canvasNode('task-5', NodeType.TASK, { node_name: 'Five', nodeNumber: 5 });
+        const seventh = canvasNode('python-7', NodeType.PYTHON, { node_name: 'Seven', nodeNumber: 7 });
+        flowService.setNodeNumberFloor(11);
+
+        const copies = copyAndPaste(legacy, fifth, seventh);
+
+        expect(copies.map((copy) => [copy.node_name, copy.nodeNumber])).toEqual([
+            ['Legacy', 14],
+            ['Five', 12],
+            ['Seven', 13],
+        ]);
+    });
 });
