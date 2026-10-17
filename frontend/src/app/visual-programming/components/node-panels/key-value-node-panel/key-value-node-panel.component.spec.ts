@@ -49,6 +49,7 @@ const ALL_ACTIONS = [ActionCode.Create, ActionCode.Read, ActionCode.Update, Acti
 const DTO: GetKeyValueNodeRequest = {
     id: 12,
     graph: 1,
+    node_number: 1,
     node_name: 'Key-Value #1',
     key_value_table: 3,
     mode: 'read',

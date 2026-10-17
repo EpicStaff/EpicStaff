@@ -67,7 +67,7 @@ export function mapScheduleTriggerNodeToModel(dto: GetScheduleTriggerNodeRequest
         backendId: dto.id,
         type: NodeType.SCHEDULE_TRIGGER,
         node_name: dto.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: dto.node_number ?? undefined,
         data,
         position: ui.position,
         ports: null,

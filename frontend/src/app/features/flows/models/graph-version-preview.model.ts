@@ -65,6 +65,8 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
     node_type: TNodeType;
     node_name: string;
     metadata: Record<string, unknown>;
+    /** The node's number in the source graph; the numbers may have gaps. */
+    node_number: number | null;
 }
 
 export interface SnapshotPythonCode {

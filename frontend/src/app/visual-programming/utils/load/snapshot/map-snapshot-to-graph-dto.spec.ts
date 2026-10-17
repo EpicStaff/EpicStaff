@@ -97,6 +97,7 @@ const snapshot: GraphVersionSnapshot = {
             id: ID.schedule,
             node_type: 'ScheduleTriggerNode',
             node_name: 'Schedule',
+            node_number: 9,
             metadata: {},
             is_active: true,
             timezone: 'Europe/Kyiv',
@@ -325,6 +326,49 @@ describe('mapNodeAuthorshipToCanvas', () => {
         expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToNodeUuid).get('python-canvas-id')).toEqual(
             recorded
         );
+    });
+});
+
+describe('buildPreviewFlowModel (node numbers)', () => {
+    // A version keeps the numbers its nodes had in the source graph, gaps included; restoring it
+    // numbers them 1..K in that order, and the preview shows what the restore will give.
+    const version: GraphVersionSnapshot = {
+        nodes: [
+            exported('StartNode', liveStart),
+            exported('PythonNode', {
+                ...livePython,
+                node_number: 5,
+                python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+            }),
+            exported('TaskNode', { ...liveTask, node_number: 1, inline_surface: null }),
+            exported('AgentNode', { ...liveAgent, node_number: 4 }),
+            exported('FileExtractorNode', { ...liveFileExtractor, node_number: 4 }),
+            exported('AudioTranscriptionNode', { ...liveAudio, node_number: null }),
+            exported('GraphNote', liveNote),
+        ],
+    };
+
+    it('renumbers the nodes 1..K by source number, an equal number by id, an unnumbered node last', () => {
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(version, secretsByName, availableFlows);
+        const numberOf = (id: number): number | undefined =>
+            nodeWithSnapshotId(flow, snapshotIdToNodeUuid, id).nodeNumber;
+
+        expect(numberOf(ID.task)).toBe(1);
+        expect(numberOf(ID.agent)).toBe(2);
+        expect(numberOf(ID.fileExtractor)).toBe(3);
+        expect(numberOf(ID.python)).toBe(4);
+        expect(numberOf(ID.audio)).toBe(5);
+    });
+
+    it('leaves Start and Note unnumbered', () => {
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(version, secretsByName, availableFlows);
+
+        expect(nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.start).nodeNumber).toBeUndefined();
+        expect(nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.note).nodeNumber).toBeUndefined();
+    });
+
+    it('sets the counter to the number of numbered nodes, as a restore does', () => {
+        expect(mapSnapshotToGraphDto(version, secretsByName).node_number_seq).toBe(5);
     });
 });
 

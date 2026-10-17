@@ -76,6 +76,7 @@ describe('PythonNodePanelComponent secrets', () => {
 /** The Python node as the backend stores it. */
 const STORED_NODE: PythonNode = {
     id: 31,
+    node_number: 1,
     node_name: 'Python #1',
     graph: 1,
     python_code: { id: 5, libraries: ['requests'], code: 'def main(count): return count', entrypoint: 'main' },

@@ -575,6 +575,7 @@ describe('FlowVisualProgrammingComponent', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
             graph: 1,
+            node_number: 1,
             node_name: 'Webhook Trigger #1',
             python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
             input_map: {},
@@ -777,6 +778,7 @@ describe('FlowVisualProgrammingComponent', () => {
                             {
                                 id: 21,
                                 graph: graphId,
+                                node_number: 1,
                                 node_name: 'Webhook Trigger #1',
                                 python_code: STORED_PYTHON_CODE,
                                 input_map: {},
@@ -949,6 +951,47 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
             expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+    });
+
+    describe('graph node counter', () => {
+        // The graph has issued numbers up to 12 (nodes since deleted); the canvas only holds #1.
+        const counterGraph = graphDto({ python_node_list: [livePython], node_number_seq: 12 });
+        let nextRouteId = 200;
+        const livePythonNode = () => flowService.getFlowState().nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        it('numbers a new node after the loaded graph counter, not after the canvas', () => {
+            openFlow(counterGraph);
+
+            expect(flowService.getNextNodeNumber()).toBe(13);
+        });
+
+        it('continues from the counter a flow save returns', () => {
+            openFlow(counterGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [livePython], node_number_seq: 20 }))
+            );
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowService.getNextNodeNumber()).toBe(21);
+        });
+
+        it('continues from the counter a single-node save returns', () => {
+            openFlow(counterGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [livePython], node_number_seq: 30 }))
+            );
+
+            TestBed.inject(SidePanelService).requestSaveNode({ ...livePythonNode(), node_name: 'Renamed' });
+
+            expect(flowService.getNextNodeNumber()).toBe(31);
         });
     });
 
@@ -1211,6 +1254,7 @@ describe('FlowVisualProgrammingComponent', () => {
             ...UNEDITED_NODE,
             id: 50,
             metadata: {},
+            node_number: 1,
             node_name: 'Agent #1',
             input_map: {},
             output_variable_path: null,
@@ -1289,6 +1333,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 ...UNEDITED_NODE,
                 id,
                 graph: 1,
+                node_number: id,
                 node_name: name,
                 pre_python_code: null,
                 pre_input_map: {},
@@ -1840,6 +1885,7 @@ describe('FlowVisualProgrammingComponent', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
                 id: 41,
+                node_number: 1,
                 node_name: 'Inner flow',
                 graph: 1,
                 subgraph: 9,

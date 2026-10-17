@@ -60,6 +60,7 @@ function snapshotFor(pythonNodeName: string): GraphVersionSnapshot {
             {
                 id: 2,
                 node_type: 'PythonNode',
+                node_number: 1,
                 node_name: pythonNodeName,
                 metadata: {},
                 input_map: {},

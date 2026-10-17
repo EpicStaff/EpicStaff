@@ -130,6 +130,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     ScheduleTriggerNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         is_active: node.is_active,
         current_runs: node.current_runs ?? 0,
@@ -153,6 +154,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     KnowledgeNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map ?? {},
         output_variable_path: node.output_variable_path,
@@ -170,6 +172,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     KeyValueNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map,
         output_variable_path: node.output_variable_path,
@@ -191,10 +194,13 @@ export function mapSnapshotToGraphDto(
 ): GraphDto {
     const context: AdapterContext = { secretsByName, secretDeclarations: snapshot.secret_declarations };
     const nodeLists = emptyNodeLists();
+    const knownNodes = (snapshot.nodes ?? []).filter((node) => Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type));
+    const restoredNumbers = restoredNodeNumbers(knownNodes);
 
-    for (const node of snapshot.nodes ?? []) {
-        if (!Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type)) continue;
-        (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(adaptNode(node, context));
+    for (const node of knownNodes) {
+        (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(
+            adaptNode(node, context, restoredNumbers.get(node))
+        );
     }
 
     return {
@@ -205,6 +211,7 @@ export function mapSnapshotToGraphDto(
         name: '',
         description: '',
         save_version: 0,
+        node_number_seq: restoredNumbers.size,
         created_at: '',
         ...NO_AUTHORSHIP,
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
@@ -260,9 +267,37 @@ export function mapNodeAuthorshipToCanvas(
     return authorshipByNodeId;
 }
 
-function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
+function adaptNode(node: SnapshotNode, context: AdapterContext, restoredNumber: number | undefined): unknown {
     const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
-    return { ...adapter(node, context), ...NO_AUTHORSHIP };
+    const adapted = { ...adapter(node, context), ...NO_AUTHORSHIP };
+    return restoredNumber === undefined ? adapted : { ...adapted, node_number: restoredNumber };
+}
+
+type NumberedSnapshotNode = Exclude<SnapshotNode, { node_type: 'StartNode' | 'EndNode' | 'GraphNote' }>;
+
+function isNumberedSnapshotNode(node: SnapshotNode): node is NumberedSnapshotNode {
+    return node.node_type !== 'StartNode' && node.node_type !== 'EndNode' && node.node_type !== 'GraphNote';
+}
+
+/**
+ * The numbers a restore gives the version's nodes: the version keeps its source numbers, gaps included
+ * (#1, #4, #5), and a restore renumbers them 1..K in that order (backend `node_number_service.source_order`):
+ * by source number, an equal number by id, a node without one last.
+ */
+function restoredNodeNumbers(nodes: readonly SnapshotNode[]): Map<SnapshotNode, number> {
+    const sourceNumber = (node: NumberedSnapshotNode): number | null =>
+        Number.isInteger(node.node_number) ? node.node_number : null;
+    const ordered = nodes.filter(isNumberedSnapshotNode).sort((first, second) => {
+        const firstNumber = sourceNumber(first);
+        const secondNumber = sourceNumber(second);
+        if (firstNumber !== secondNumber) {
+            if (firstNumber === null) return 1;
+            if (secondNumber === null) return -1;
+            return firstNumber - secondNumber;
+        }
+        return first.id - second.id;
+    });
+    return new Map(ordered.map((node, index) => [node, index + 1]));
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {

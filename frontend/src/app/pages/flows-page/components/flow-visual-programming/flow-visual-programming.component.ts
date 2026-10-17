@@ -1131,6 +1131,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     ): void {
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
+        this.flowService.setNodeNumberFloor(graph.node_number_seq);
 
         // What was sent becomes the saved baseline; the canvas keeps what it holds now.
         // Patching the snapshot onto the canvas would revert anything that changed
@@ -1235,6 +1236,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             tap((responseGraph) => {
                 if (!this.isCurrentGraph(graphId)) return;
                 this.setGraphState(responseGraph);
+                this.flowService.setNodeNumberFloor(responseGraph.node_number_seq);
 
                 // The baseline records what was *sent*, patched with what the server
                 // assigned it. Reading the node back off the canvas would bake in
@@ -1691,6 +1693,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
+        this.flowService.setNodeNumberFloor(graph.node_number_seq);
         const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
         // The saved baseline captures the as-persisted snapshot used for dirty-tracking.
