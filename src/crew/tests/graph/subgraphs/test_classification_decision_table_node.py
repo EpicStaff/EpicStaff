@@ -85,6 +85,12 @@ def make_node_data(
     )
 
 
+def recording_redis_service() -> MagicMock:
+    redis_service = MagicMock()
+    redis_service.aadd_graph_message = AsyncMock()
+    return redis_service
+
+
 def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
     """Compile a ClassificationDecisionTableNodeSubgraph and return the compiled graph."""
     graph_builder = StateGraph(State)
@@ -93,7 +99,7 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
         node_data=node_data,
         graph_builder=graph_builder,
         stop_event=StopEvent(),
-        redis_service=MagicMock(),
+        redis_service=recording_redis_service(),
     )
     return builder.build()
 
@@ -460,7 +466,7 @@ async def test_error_route_emits_finish_after_error(
     node_data = make_node_data(
         condition_groups=groups, next_error_node="error_node"
     ).model_copy(update=node_data_overrides)
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -508,7 +514,7 @@ def expression_batch_calls(calls: list[dict]) -> list[dict]:
 
 
 def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -522,7 +528,7 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
 def published_messages(redis_service: MagicMock) -> list[dict]:
     return [
         json.loads(added.args[1])["message_data"]
-        for added in redis_service.add_graph_message.call_args_list
+        for added in redis_service.aadd_graph_message.await_args_list
     ]
 
 

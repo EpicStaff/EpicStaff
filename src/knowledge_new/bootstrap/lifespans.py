@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
@@ -25,6 +26,13 @@ def on_startup(fn: Callable):
 def on_shutdown(fn: Callable):
     _lifespans["on_shutdown"].append(fn)
     return fn
+
+
+@on_startup
+def configure_logging():
+    # loguru's default handler prints every frame's variable values in tracebacks,
+    # which writes the caller's provider keys to the log whenever an embedder call fails.
+    logger.configure(handlers=[{"sink": sys.stderr, "diagnose": False}])
 
 
 @on_startup

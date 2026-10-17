@@ -11,13 +11,16 @@ Scope: accidental disclosure by an author who is already permitted to read the
 secret. A determined author can still exfiltrate by encoding or chunking the value,
 or by sending it out over the network. This is a safety net, not a boundary.
 
-Gated by the SANDBOX_MASK_SECRET environment variable (default on), parsed into
-MASK_SECRET at import time. When it is false ExecuteCodeHandler skips
-these functions entirely, so debugging can see real values -- and plaintext
-credentials then reach every consumer listed above, including persisted rows
-and container logs. It is a development affordance, not something to carry
-into an environment holding real credentials. masking_enabled() reports the
-setting; scrub() itself always masks.
+Gated by the required SANDBOX_MASK_SECRET environment variable, parsed into
+MASK_SECRET at import time by the strict Env.bool: an unset or unrecognised value
+fails startup, so only an explicit false value turns masking off.
+ExecuteCodeHandler always builds the masking set and scrubs every stream; when
+masking is off it only leaves the user's secrets out of that set, so debugging can
+see their real values while the per-execution storage credentials stay masked.
+Those plaintext user secrets then reach every consumer listed above, including
+persisted rows and container logs. It is a development affordance, not something
+to carry into an environment holding real credentials. masking_enabled() reports
+the setting; scrub() itself always masks.
 """
 
 import json

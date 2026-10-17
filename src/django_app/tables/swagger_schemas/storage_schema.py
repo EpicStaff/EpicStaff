@@ -108,8 +108,10 @@ STORAGE_MOVE_SWAGGER = {
     "summary": "Move a file or folder",
     "description": (
         "Moves a file or folder from one location to another. "
-        "To move across organizations, provide `source_org_id` and "
-        "`destination_org_id` — the user must be a member of both orgs. "
+        "To move across organizations, provide both `source_org_id` and "
+        "`destination_org_id`, two different organizations; this requires a superadmin. "
+        "Within the active organization, omit both. Giving only one of them, or the same "
+        "organization twice, is a 400. "
         "A move across organizations that doesn't fit the destination's storage quota "
         "first purges the destination's oldest storage recycle bin entries, just enough "
         "of them, and lists them in `recycle_bin_purged` (always empty within one "
@@ -128,8 +130,10 @@ STORAGE_COPY_SWAGGER = {
     "summary": "Copy a file or folder",
     "description": (
         "Creates a copy of a file or folder at the destination path. "
-        "To copy across organizations, provide `source_org_id` and "
-        "`destination_org_id` — the user must be a member of both orgs. "
+        "To copy across organizations, provide both `source_org_id` and "
+        "`destination_org_id`, two different organizations; this requires a superadmin. "
+        "Within the active organization, omit both. Giving only one of them, or the same "
+        "organization twice, is a 400. "
         "A copy that doesn't fit the destination's storage quota first purges the "
         "destination's oldest storage recycle bin entries, just enough of them, and lists "
         "them in `recycle_bin_purged`; if the whole bin isn't enough, nothing is purged "

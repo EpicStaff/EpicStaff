@@ -71,6 +71,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public allowCopy: boolean = false;
     @Input() public readonly: boolean = false;
     @Input() public allowExpand: boolean = false;
+    /** For an optional field: empty content stays empty (not `{}`) and counts as valid. */
+    public readonly allowEmpty = input(false);
     /** Label and tooltip of the expand icon; a host whose expand does something else (e.g. swaps panes) names it. */
     public readonly expandLabel = input('Expand editor');
     @Input() public jsonSchema?: object;
@@ -120,6 +122,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         return (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco ?? null;
     }
 
+    private get emptyValue(): string {
+        return this.allowEmpty() ? '' : '{}';
+    }
+
     private get schemaMode(): boolean {
         return !!this.jsonSchema && !!this.monacoGlobal;
     }
@@ -157,7 +163,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             this.cdr.markForCheck();
         } else if (!isFirst && this.monacoEditor && newValue !== this.lastExternalValue) {
             this.lastExternalValue = newValue;
-            this.setValueAndFormat(newValue || '{}');
+            this.setValueAndFormat(newValue || this.emptyValue);
             this.cdr.markForCheck();
         }
     }
@@ -170,7 +176,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             ...this.editorOptions,
             readOnly: this.readonly || this.editorOptions.readOnly,
         });
-        this.setValueAndFormat(this.jsonData || '{}');
+        this.setValueAndFormat(this.jsonData || this.emptyValue);
         this.editorReady.emit(editor);
         if (this.usesMarkers) {
             if (this.schemaMode) {
@@ -199,7 +205,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.lastExternalValue = newValue;
 
         try {
-            JSON.parse(newValue);
+            if (!(this.allowEmpty() && !newValue.trim())) JSON.parse(newValue);
             this.jsonIsValid = true;
             if (!this.usesMarkers) {
                 this.errorsChange.emit([]);

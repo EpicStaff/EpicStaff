@@ -14,6 +14,10 @@ LIVE_CHANNEL = "session:update:1:status"
 class _StubStream(SSEMixin):
     ping_interval = 0.05
 
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
     async def get_initial_data(self):
         return
         yield
@@ -90,6 +94,10 @@ class _IdleLiveStream(SSEMixin):
 
     def get_channels(self):
         return [LIVE_CHANNEL]
+
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
 
     async def get_initial_data(self):
         return

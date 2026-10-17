@@ -142,10 +142,13 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         super().__init__(**kwargs)
         self.manager = get_storage_manager()
 
-    def _assert_cross_org_superadmin(self, request, src_org_id, dst_org_id) -> bool:
+    def _assert_cross_org_superadmin(self, request, src_org_id) -> bool:
         """True when this is a cross-org transfer; such transfers require
-        superadmin (operating across organizations is a platform action)."""
-        cross_org = bool(src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id))
+        superadmin (operating across organizations is a platform action).
+
+        The transfer serializer guarantees both org ids or neither, and that they differ.
+        """
+        cross_org = src_org_id is not None
         # TODO: refactor by checking permision of READ in src_org_id then check permission of
         # CREATE in dst_org_id, Part of cross-org RBAC feature
         if cross_org and not getattr(request.user, "is_superadmin", False):
@@ -315,12 +318,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         recycle_bin_purged = []
         try:
-            if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+            if self._assert_cross_org_superadmin(request, src_org_id):
+                bin_access = StorageBinPurgeAccess.for_request(request, dst_org_id)
                 purged = self.manager.move_cross_org(
-                    int(src_org_id),
+                    src_org_id,
                     from_path,
-                    int(dst_org_id),
+                    dst_org_id,
                     to_path,
                     user=request.user,
                     bin_purge=bin_access.grant,
@@ -348,12 +351,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         dst_org_id = serializer.validated_data.get("destination_org_id")
 
         try:
-            if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
-                bin_access = StorageBinPurgeAccess.for_request(request, int(dst_org_id))
+            if self._assert_cross_org_superadmin(request, src_org_id):
+                bin_access = StorageBinPurgeAccess.for_request(request, dst_org_id)
                 purged = self.manager.copy_cross_org(
-                    int(src_org_id),
+                    src_org_id,
                     from_path,
-                    int(dst_org_id),
+                    dst_org_id,
                     to_path,
                     user=request.user,
                     bin_purge=bin_access.grant,
