@@ -936,7 +936,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = this.validationMessageLabel(taskNode, `Untitled task #${index + 1}`);
+            const label = this.validationMessageLabel(taskNode, 'Untitled task', index);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -991,7 +991,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = this.validationMessageLabel(agentNode, `Untitled agent #${index + 1}`);
+            const label = this.validationMessageLabel(agentNode, 'Untitled agent', index);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -1028,7 +1028,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (invalidKeys.length === 0) return;
 
-            const label = this.validationMessageLabel(cdtNode, `Untitled decision table #${index + 1}`);
+            const label = this.validationMessageLabel(cdtNode, 'Untitled decision table', index);
             const detail =
                 invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
             messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
@@ -1037,10 +1037,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return messages;
     }
 
-    /** The node's trimmed name with its number, so same-named nodes are told apart; `fallback` when it has none. */
-    private validationMessageLabel(node: NodeModel, fallback: string): string {
+    /**
+     * The node's trimmed name with its badge number, so same-named nodes are told apart. A node without a name
+     * is labelled `fallbackName` with its badge; one with neither gets its list position in parentheses, which
+     * cannot be mistaken for a badge.
+     */
+    private validationMessageLabel(node: NodeModel, fallbackName: string, index: number): string {
         const name = node.node_name?.trim();
-        return name ? formatNodeLabel({ node_name: name, nodeNumber: node.nodeNumber }) : fallback;
+        if (name) return formatNodeLabel({ node_name: name, nodeNumber: node.nodeNumber });
+        if (node.nodeNumber == null) return `${fallbackName} (${index + 1})`;
+        return formatNodeLabel({ node_name: fallbackName, nodeNumber: node.nodeNumber });
     }
 
     /**

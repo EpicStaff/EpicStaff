@@ -55,6 +55,7 @@ import { mapClassificationDecisionTableNodeToModel } from '../../../../visual-pr
 import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
 import {
+    liveAgent,
     liveClassificationTable,
     livePython,
     liveTask,
@@ -956,6 +957,56 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
             expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+    });
+
+    describe('save blocked by an invalid node', () => {
+        let nextRouteId = 300;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        function saveAndReadToast(): string {
+            component.onGraphSave(flowService.getFlowState());
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            return toast['error'].mock.calls.at(-1)![0] as string;
+        }
+
+        it('names a nameless task by its badge number, like the badge on the canvas', () => {
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '  ', node_number: 8 }] }));
+
+            expect(saveAndReadToast()).toContain('"Untitled task #8" is missing node name');
+        });
+
+        it('names a nameless agent by its badge number', () => {
+            openFlow(graphDto({ agent_node_list: [{ ...liveAgent, node_name: '', node_number: 9 }] }));
+
+            expect(saveAndReadToast()).toContain('"Untitled agent #9" is missing node name');
+        });
+
+        it('shows the position in parentheses when a nameless node has no badge number yet', () => {
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '' }] }));
+            const flow = flowService.getFlowState();
+            flowService.setFlow({
+                ...flow,
+                nodes: flow.nodes.map((node) => ({ ...node, nodeNumber: undefined })),
+            });
+            const position = flow.nodes.findIndex((node) => node.type === NodeType.TASK) + 1;
+
+            expect(saveAndReadToast()).toContain(`"Untitled task (${position})" is missing node name`);
+        });
+
+        it('keeps the trimmed name and its badge number for a named node', () => {
+            openFlow(
+                graphDto({
+                    task_node_list: [{ ...liveTask, node_name: ' Summarise ', node_number: 4, instructions: '' }],
+                })
+            );
+
+            expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
         });
     });
 

@@ -130,8 +130,8 @@ export class FlowService {
      * is not shown a number the backend already gave out. Replaces the previous value: a different graph
      * may have a lower counter. `setFlow` keeps it.
      */
-    public setNodeNumberFloor(seq: number): void {
-        this.nodeNumberFloor = seq;
+    public setNodeNumberFloor(nodeNumberSeq: number): void {
+        this.nodeNumberFloor = nodeNumberSeq;
     }
 
     public getNextNodeNumber(): number {

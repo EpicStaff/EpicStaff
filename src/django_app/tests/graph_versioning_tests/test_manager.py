@@ -526,15 +526,14 @@ def test_create_graph_from_snapshot_recreates_edge_with_remapped_node_ids(
 
 
 @pytest.mark.django_db
-def test_restore_does_not_raise_integrity_error_for_classification_decision_table_node(
+def test_restore_replaces_classification_decision_table_node_instead_of_duplicating_it(
     manager, graph
 ):
     """
-    Restore must not raise IntegrityError for ClassificationDecisionTableNode.
+    Restore wipes ClassificationDecisionTableNode rows before recreating them.
 
-    Before the fix, wipe_graph_children() did not delete
-    classification_decision_table_node_list rows. The subsequent recreate
-    would violate unique_graph_node_name_for_classification_dt_node.
+    wipe_graph_children() once skipped classification_decision_table_node_list,
+    so a restore left the old row next to the recreated one.
     """
     from tables.models import ClassificationDecisionTableNode
 

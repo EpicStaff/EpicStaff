@@ -311,7 +311,7 @@ class ClassificationDecisionTableNodeSaveable(_SerializerSaveable):
 
     def save(self):
         node = super().save()
-        # NOTE: s.update() now upserts prompt_configs by prompt_key (stable IDs).
+        # NOTE: the serializer's update upserts prompt_configs by prompt_key (stable IDs).
 
         if self._deferred is not None:
             self._deferred.set_node_id(node.id)
@@ -347,7 +347,7 @@ class ClassificationDecisionTableNodeSaveable(_SerializerSaveable):
         if self._condition_groups_data is not None:
             # Build prompt map keyed by old prompt ID → new prompt instance,
             # using prompt_key as the stable bridge.
-            # After s.update() the prompts are upserted, so their IDs are stable
+            # The serializer's update upserts the prompts, so their IDs are stable
             # across saves. We still need to map the frontend's integer prompt PK
             # to the current DB instance in case this is a newly-created node.
             node_prompts = list(node.prompt_configs.all())
