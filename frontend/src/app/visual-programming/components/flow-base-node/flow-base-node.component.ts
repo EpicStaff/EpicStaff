@@ -27,6 +27,7 @@ import { KeyValueTablesStorageService } from '../../../features/key-value-tables
 import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
+import { canvasTitleCarriesNumber, formatCanvasTitle } from '../../core/helpers/format-node-label.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -45,6 +46,7 @@ import {
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../services/flow-settings.service';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
@@ -75,6 +77,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly llmConfigStorage = inject(LlmConfigStorageService);
     private readonly keyValueTablesStorage = inject(KeyValueTablesStorageService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     @Input({ required: true }) node!: NodeModel;
@@ -216,9 +219,22 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
 
+    /** The #N chip: shown for a numbered node, unless its title already carries the number. */
     public get hasNumberChip(): boolean {
         if (this.node.type === NodeType.START || this.node.type === NodeType.END) return false;
-        return this.node.nodeNumber != null;
+        return this.node.nodeNumber != null && !this.numberShownInTitle;
+    }
+
+    /** The tab above the node: the #N chip, or a Key-Value node's summary that rides in it even once the title shows the number. */
+    public get hasNumberTab(): boolean {
+        return this.hasNumberChip || (this.numberShownInTitle && this.keyValueSummary !== null);
+    }
+
+    private get numberShownInTitle(): boolean {
+        if (!this.flowSettings.showNodeNumbersInTitles()) return false;
+        // Table nodes draw their own title from node_name (see their components), not from getNodeTitle.
+        const isTable = this.node.type === NodeType.TABLE || this.node.type === NodeType.CLASSIFICATION_TABLE;
+        return canvasTitleCarriesNumber(isTable ? this.node.node_name : getNodeTitle(this.node), this.node);
     }
 
     public get hasDeleteChip(): boolean {
@@ -301,7 +317,8 @@ export class FlowBaseNodeComponent implements OnInit {
     }
 
     public getNodeTitle(): string {
-        return getNodeTitle(this.node);
+        const title = getNodeTitle(this.node);
+        return this.flowSettings.showNodeNumbersInTitles() ? formatCanvasTitle(title, this.node) : title;
     }
 
     onNodeSizeChanged(size: { width: number; height: number }): void {

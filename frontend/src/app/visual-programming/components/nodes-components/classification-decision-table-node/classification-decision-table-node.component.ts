@@ -7,13 +7,14 @@ import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
+import { formatCanvasTitle, formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../../services/flow-settings.service';
 
 @Component({
     selector: 'app-classification-decision-table-node',
@@ -29,6 +30,7 @@ export class ClassificationDecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public readonly headerHeightPx = CDT_HEADER_HEIGHT;
@@ -73,7 +75,10 @@ export class ClassificationDecisionTableNodeComponent {
     }
 
     get title(): string {
-        return this.node.node_name || 'Classification Table';
+        if (!this.node.node_name) return 'Classification Table';
+        return this.flowSettings.showNodeNumbersInTitles()
+            ? formatCanvasTitle(this.node.node_name, this.node)
+            : this.node.node_name;
     }
 
     get inputPort() {

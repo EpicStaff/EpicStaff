@@ -6,6 +6,7 @@ export class FlowSettingsService {
 
     readonly arrowColorsEnabled = signal<boolean>(true);
     readonly showInputsOutputs = signal<boolean>(false);
+    readonly showNodeNumbersInTitles = signal<boolean>(false);
     readonly timezone = signal<string>(FlowSettingsService.defaultTimezone());
 
     constructor() {
@@ -26,6 +27,8 @@ export class FlowSettingsService {
             if (typeof parsed['arrowColors'] === 'boolean') this.arrowColorsEnabled.set(parsed['arrowColors']);
             if (typeof parsed['showInputsOutputs'] === 'boolean')
                 this.showInputsOutputs.set(parsed['showInputsOutputs']);
+            if (typeof parsed['showNodeNumbersInTitles'] === 'boolean')
+                this.showNodeNumbersInTitles.set(parsed['showNodeNumbersInTitles']);
             if (typeof parsed['timezone'] === 'string' && parsed['timezone']) this.timezone.set(parsed['timezone']);
         } catch {
             // fallback to defaults
@@ -38,6 +41,7 @@ export class FlowSettingsService {
             JSON.stringify({
                 arrowColors: this.arrowColorsEnabled(),
                 showInputsOutputs: this.showInputsOutputs(),
+                showNodeNumbersInTitles: this.showNodeNumbersInTitles(),
                 timezone: this.timezone(),
             })
         );

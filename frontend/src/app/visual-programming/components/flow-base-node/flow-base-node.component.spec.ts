@@ -10,6 +10,7 @@ import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { DecisionTableNodeModel, NodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../services/flow-settings.service';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
@@ -217,6 +218,149 @@ describe('FlowBaseNodeComponent node number', () => {
             render(tableNode, [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }]);
 
             expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
+        });
+    });
+});
+
+describe('FlowBaseNodeComponent node numbers in titles', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+    let settings: FlowSettingsService;
+
+    const text = (selector: string): string | undefined =>
+        fixture.nativeElement.querySelector(selector)?.textContent?.trim();
+
+    function render(node: NodeModel, { numbersInTitles }: { numbersInTitles: boolean }): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                {
+                    provide: LlmConfigStorageService,
+                    useValue: { isConfigsLoaded: signal(false), configs: signal([]), getAllConfigs: () => of([]) },
+                },
+                {
+                    provide: KeyValueTablesStorageService,
+                    useValue: { tables: signal([]), loadTables: () => of([]) },
+                },
+            ],
+        });
+        settings = TestBed.inject(FlowSettingsService);
+        settings.showNodeNumbersInTitles.set(numbersInTitles);
+        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    const pythonNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 3 } as NodeModel;
+
+    const tableLikeNode = (type: NodeType, overrides: Record<string, unknown> = {}): NodeModel =>
+        ({
+            id: 'table',
+            backendId: null,
+            type,
+            node_name: 'Route',
+            nodeNumber: 3,
+            data: { name: 'Route', table: { default_next_node: null, next_error_node: null, condition_groups: [] } },
+            position: { x: 0, y: 0 },
+            ports: [],
+            color: '',
+            icon: '',
+            size: { width: 300, height: 200 },
+            input_map: {},
+            output_variable_path: null,
+            ...overrides,
+        }) as unknown as NodeModel;
+
+    beforeEach(() => localStorage.clear());
+
+    it('off: titles the node with its name and keeps the number in the chip', () => {
+        render(pythonNode, { numbersInTitles: false });
+
+        expect(text('.interactive-node-body .title')).toBe('Fetch');
+        expect(text('.node-number')).toBe('#3');
+    });
+
+    it('on: titles the node "Name #N" and drops the chip, so the number is shown once', () => {
+        render(pythonNode, { numbersInTitles: true });
+
+        expect(text('.interactive-node-body .title')).toBe('Fetch #3');
+        expect(text('.node-number')).toBeUndefined();
+        expect(text('.node-number-badge')).toBeUndefined();
+    });
+
+    it('follows the setting while the node is on the canvas', () => {
+        render(pythonNode, { numbersInTitles: false });
+
+        settings.showNodeNumbersInTitles.set(true);
+        fixture.detectChanges();
+        expect(text('.interactive-node-body .title')).toBe('Fetch #3');
+        expect(text('.node-number-badge')).toBeUndefined();
+
+        settings.showNodeNumbersInTitles.set(false);
+        fixture.detectChanges();
+        expect(text('.interactive-node-body .title')).toBe('Fetch');
+        expect(text('.node-number')).toBe('#3');
+    });
+
+    it('on: a node without a number shows just its name', () => {
+        render({ ...pythonNode, nodeNumber: undefined }, { numbersInTitles: true });
+
+        expect(text('.interactive-node-body .title')).toBe('Fetch');
+        expect(text('.node-number-badge')).toBeUndefined();
+    });
+
+    it('on: a numbered node without a name keeps its chip, so the number is still shown', () => {
+        render({ ...pythonNode, node_name: '' }, { numbersInTitles: true });
+
+        expect(text('.interactive-node-body .title')).toBe('');
+        expect(text('.node-number')).toBe('#3');
+    });
+
+    it('on: the End node keeps its plain title', () => {
+        render({ id: 'end', type: NodeType.END, node_name: 'End', nodeNumber: 5 } as NodeModel, {
+            numbersInTitles: true,
+        });
+
+        expect(text('.interactive-node-body .title')).toBe('End');
+    });
+
+    it('on: a Key-Value node keeps its summary tab but not the number in it', () => {
+        render({ ...KEY_VALUE_NODE, nodeNumber: 3 }, { numbersInTitles: true });
+
+        expect(text('.interactive-node-body .title')).toBe('Key-Value #3');
+        expect(text('.node-number')).toBeUndefined();
+        expect(text('.node-number-badge.has-summary')).toContain('Write');
+        expect(text('.node-number-badge.has-summary')).not.toContain('#3');
+    });
+
+    describe.each([
+        { type: NodeType.TABLE, titleSelector: '.decision-table__header .title', fallback: 'Decision Table' },
+        {
+            type: NodeType.CLASSIFICATION_TABLE,
+            titleSelector: '.decision-table__header .title',
+            fallback: 'Classification Table',
+        },
+    ])('on a $type node', ({ type, titleSelector, fallback }) => {
+        it('off: titles the table with its name and keeps the number in the badge', () => {
+            render(tableLikeNode(type), { numbersInTitles: false });
+
+            expect(text(titleSelector)).toBe('Route');
+            expect(text('.node-number-badge')).toBe('#3');
+        });
+
+        it('on: titles the table "Name #N" and drops the badge', () => {
+            render(tableLikeNode(type), { numbersInTitles: true });
+
+            expect(text(titleSelector)).toBe('Route #3');
+            expect(text('.node-number-badge')).toBeUndefined();
+        });
+
+        it('on: a table without a name shows its default title and keeps the badge', () => {
+            render(tableLikeNode(type, { node_name: '' }), { numbersInTitles: true });
+
+            expect(text(titleSelector)).toBe(fallback);
+            expect(text('.node-number-badge')).toBe('#3');
         });
     });
 });

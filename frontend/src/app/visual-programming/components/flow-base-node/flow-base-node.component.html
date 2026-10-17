@@ -71,7 +71,7 @@
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
-        [class.has-number-chip]="hasNumberChip"
+        [class.has-number-chip]="hasNumberTab"
         [class.has-delete-chip]="hasDeleteChip"
         [class.has-key-value-accent]="keyValueStripeColor"
         [style.--key-value-accent]="keyValueStripeColor"
@@ -164,21 +164,25 @@
                 }
             </div>
             <!-- Action bar above the node box, hover/selected-only: #N chip (plus a Key-Value node's summary) at left, delete chip at right -->
-            @if (hasNumberChip || hasDeleteChip) {
+            @if (hasNumberTab || hasDeleteChip) {
                 <div class="node-action-bar">
-                    @if (hasNumberChip) {
+                    @if (hasNumberTab) {
                         <div
                             class="node-number-badge"
                             [class.has-summary]="keyValueSummaryValue"
                             [attr.title]="keyValueSummaryValue?.full"
                         >
-                            <span class="node-number">#{{ node.nodeNumber }}</span>
+                            @if (hasNumberChip) {
+                                <span class="node-number">#{{ node.nodeNumber }}</span>
+                            }
                             @if (keyValueSummaryValue) {
                                 <span
                                     class="summary"
                                     aria-hidden="true"
                                 >
-                                    <span class="summary-separator summary-separator--number">-</span>
+                                    @if (hasNumberChip) {
+                                        <span class="summary-separator summary-separator--number">-</span>
+                                    }
                                     @for (part of keyValueSummaryValue.captionParts; track $index) {
                                         @if (!$first) {
                                             <span class="summary-separator">/</span>

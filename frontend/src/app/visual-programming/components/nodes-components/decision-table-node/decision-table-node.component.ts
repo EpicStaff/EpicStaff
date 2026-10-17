@@ -4,13 +4,14 @@ import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
+import { formatCanvasTitle, formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../../services/flow-settings.service';
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
@@ -23,6 +24,7 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
+    private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
@@ -64,7 +66,10 @@ export class DecisionTableNodeComponent {
     }
 
     get title(): string {
-        return this.node.node_name || 'Decision Table';
+        if (!this.node.node_name) return 'Decision Table';
+        return this.flowSettings.showNodeNumbersInTitles()
+            ? formatCanvasTitle(this.node.node_name, this.node)
+            : this.node.node_name;
     }
 
     get inputPort() {
