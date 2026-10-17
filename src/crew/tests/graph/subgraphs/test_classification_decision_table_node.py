@@ -5,8 +5,9 @@ Sandbox (RunPythonCodeService.run_code) is patched to execute the generated code
 in-process so expression/manipulation logic is fully exercised.
 LLM calls (litellm.acompletion) are replaced with AsyncMock.
 
-NOTE: The CDT subgraph uses `src.crew.services.run_python_code_service.RunPythonCodeService`
-(absolute import). We must patch that exact class, not the bare `services.*` alias.
+NOTE: Patch `services.run_python_code_service.RunPythonCodeService`, the module path the
+CDT subgraph and every other caller import; a second import path would be a second
+class with its own singleton.
 """
 
 from __future__ import annotations
@@ -21,11 +22,10 @@ from langgraph.graph import END, StateGraph
 from models.state import State
 from services.graph.events import StopEvent
 
-# Import via the same absolute path the CDT uses so we patch the right object
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from src.crew.services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -33,7 +33,7 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
-from src.crew.utils.singleton_meta import SingletonMeta
+from utils.singleton_meta import SingletonMeta
 
 
 # ---------------------------------------------------------------------------
