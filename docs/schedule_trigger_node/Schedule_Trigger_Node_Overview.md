@@ -39,7 +39,8 @@ Persisted in Django (`tables_scheduletriggernode`). One row per node.
 |---|---|---|
 | `id` | bigint | PK. Part of the global node sequence. |
 | `graph_id` | FK | Graph this node belongs to. `related_name="schedule_trigger_node_list"`. |
-| `node_name` | varchar(255) | Unique per graph. |
+| `node_name` | varchar(255) | Free-form label; may repeat within a graph. |
+| `node_number` | int, nullable | The node's `#N` badge in its graph. Assigned by the server from `Graph.node_number_seq`; read-only over the API. |
 | `is_active` | bool, default **`False`** | Master on/off switch. Manager only registers jobs for active nodes. New nodes are inactive by default; activation requires a fully configured schedule (see §3). |
 | `timezone` | varchar(64), default `"UTC"` | IANA tz name (e.g. `Europe/Kyiv`, `America/New_York`). Per-node — there is **no** server-wide timezone for schedules. All datetime columns are stored in UTC; this field is the rendering / wall-clock context for the API and APScheduler trigger building. |
 | `run_mode` | choice, **nullable** | `once` or `repeat`. `null` on drafts. |

@@ -194,7 +194,8 @@ The filename is `CDT_<node_name>.csv`.
 ```
 ClassificationDecisionTableNode
 ├── graph (FK → Graph)
-├── node_name (unique per graph)
+├── node_name (free-form label; may repeat within the graph)
+├── node_number (#N badge, assigned by the server)
 ├── pre_python_code, post_python_code (FK → PythonCode)
 ├── pre_input_map, pre_output_variable_path
 ├── post_input_map, post_output_variable_path
