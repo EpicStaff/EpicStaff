@@ -129,7 +129,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return match?.[1] ?? '0';
     })();
 
-    // Stable storage key: graphId + nodeNumber (nodeNumber is in metadata, survives save/delete cycles)
+    // Storage key: graphId + the number the server gave the node (its node_number). A save that gives a
+    // new table another number than it showed carries the stored layout to the new key.
     readonly gridStorageId = computed(() => {
         const nodeNum = this.node().nodeNumber ?? this.node().backendId ?? 0;
         return `${this.graphIdFromUrl}_${nodeNum}`;

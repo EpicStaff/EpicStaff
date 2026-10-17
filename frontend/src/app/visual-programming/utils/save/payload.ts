@@ -1,4 +1,5 @@
 import { slugifyPortName } from '../../core/helpers/helpers';
+import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
@@ -20,7 +21,7 @@ import {
 import { toStoredCdtExplanations } from '../cdt-explanations';
 import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
-import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
+import { ConnectionDiff, CreatedNodeItemKeys, NodeDiff, NodeDiffByType } from './types';
 
 function resolveNodeRef(
     uuid: string | null,
@@ -289,6 +290,11 @@ function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] 
     });
 }
 
+function createdNodeItemKeys(node: NodeModel): CreatedNodeItemKeys {
+    const hint = isNumberedNodeType(node.type) ? node.nodeNumber : undefined;
+    return { id: null, temp_id: node.id, ...(hint != null ? { node_number_hint: hint } : {}) };
+}
+
 export function buildBulkSavePayload(
     graphId: number,
     nodeDiff: NodeDiffByType,
@@ -297,11 +303,8 @@ export function buildBulkSavePayload(
     idMap: Map<string, number>,
     saveVersion: number
 ): Record<string, unknown> {
-    const nodeItems = <T extends { id: string; backendId: number | null }>(
-        diff: NodeDiff<T>,
-        mapPayload: (node: T) => Record<string, unknown>
-    ) => [
-        ...diff.toCreate.map((node) => ({ id: null, temp_id: node.id, ...mapPayload(node) })),
+    const nodeItems = <T extends NodeModel>(diff: NodeDiff<T>, mapPayload: (node: T) => Record<string, unknown>) => [
+        ...diff.toCreate.map((node) => ({ ...createdNodeItemKeys(node), ...mapPayload(node) })),
         ...diff.toUpdate.map(({ current: node }) => ({ id: node.backendId, ...mapPayload(node) })),
     ];
 
