@@ -11,6 +11,7 @@ from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
 from src.shared.models import CodeResultData, CodeTaskData
+from src.shared.redis_keys import crew_code_result_channel
 from utils.logger import logger
 
 # Deliberately no STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here:
@@ -203,6 +204,18 @@ async def listen_redis():
             await asyncio.sleep(1)
 
 
+async def publish_code_result(code_task_data: CodeTaskData, result: CodeResultData) -> None:
+    """Publish the execution's result to the channel its caller listens on.
+
+    Every result goes through here, so the normal, cancelled and failed paths
+    cannot drift apart on where a caller expects its result.
+    """
+    channel = settings.CODE_RESULT_CHANNEL
+    if code_task_data.reply_to_crew_channel:
+        channel = crew_code_result_channel(channel)
+    await redis_service.async_publish(channel=channel, message=result.model_dump())
+
+
 async def run(code_task_data: CodeTaskData):
     """
     Run the dynamic virtual environment execution chain.
@@ -227,24 +240,23 @@ async def run(code_task_data: CodeTaskData):
         except asyncio.CancelledError:
             # A temporary storage credential may already have been minted for
             # this execution_id by django_app and handed over in the task
-            # payload. Cancellation must still reach the code_results publish
-            # below, or django_app's code_results handler never revokes it and
-            # it leaks until the TTL sweep. Publish the same way the two error
-            # paths below do, then re-raise so the task correctly reports as
-            # cancelled.
+            # payload. Cancellation must still publish a result, or
+            # django_app's code_results handler never revokes it and it leaks
+            # until the TTL sweep. Publish the same way the two paths below do,
+            # then re-raise so the task correctly reports as cancelled.
             logger.warning(
                 "Execution cancelled (execution_id={}); publishing result so any minted "
                 "storage credential is revoked",
                 code_task_data.execution_id,
             )
-            await redis_service.async_publish(
-                channel=settings.CODE_RESULT_CHANNEL,
-                message=CodeResultData(
+            await publish_code_result(
+                code_task_data,
+                CodeResultData(
                     execution_id=code_task_data.execution_id,
                     stderr="Execution cancelled.",
                     stdout="",
                     returncode=1,
-                ).model_dump(),
+                ),
             )
             raise
         except Exception as e:
@@ -252,21 +264,21 @@ async def run(code_task_data: CodeTaskData):
             # return an error CodeResultData rather than raise (see
             # dynamic_venv_executor_chain.py). This is defense in depth: if
             # something still escapes uncaught, we must still publish a
-            # code_results message so callers waiting on this execution_id
+            # result so callers waiting on this execution_id
             # don't hang, and so any temporary storage credential minted for
             # it is revoked by django_app's code_results handler.
             logger.exception(
                 "Unhandled exception running execution chain (execution_id={})",
                 code_task_data.execution_id,
             )
-            await redis_service.async_publish(
-                channel=settings.CODE_RESULT_CHANNEL,
-                message=CodeResultData(
+            await publish_code_result(
+                code_task_data,
+                CodeResultData(
                     execution_id=code_task_data.execution_id,
                     stderr=f"Unhandled exception running execution chain: {e}",
                     stdout="",
                     returncode=1,
-                ).model_dump(),
+                ),
             )
             return
 
@@ -293,9 +305,7 @@ async def run(code_task_data: CodeTaskData):
             except Exception as e:
                 logger.warning(f"Failed to publish storage mutations: {e}")
 
-        await redis_service.async_publish(
-            channel=settings.CODE_RESULT_CHANNEL, message=result.model_dump()
-        )
+        await publish_code_result(code_task_data, result)
 
     finally:
         if execution_dir.exists():

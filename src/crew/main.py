@@ -55,6 +55,7 @@ async def main():
         logger.info("Initializing Redis connection...")
         await redis_service.connect()
         logger.info("Redis connection established.")
+        await python_code_executor_service.subscribe_to_results()
 
         await key_value_client.start()
 

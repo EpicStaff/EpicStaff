@@ -86,13 +86,6 @@ class AsyncPubSubGroup:
         if self._redis:
             await self._redis.close()
 
-    def unsubscribe(self, subscriber: AsyncPubsubSubscriber):
-        if subscriber in self._subscribers:
-            self._subscribers.remove(subscriber)
-            logger.info(f"Unsubscribed from channel {self._channel}")
-        else:
-            logger.warning(f"Subscriber not found in channel {self._channel}")
-
 
 class SyncPubsubSubscriber:
     def __init__(self, callback):
@@ -140,13 +133,6 @@ class SyncPubSubGroup:
             self._thread.join()
         self._pubsub.unsubscribe(self._channel)
         self._pubsub.close()
-
-    def unsubscribe(self, subscriber: SyncPubsubSubscriber):
-        if subscriber in self._subscribers:
-            self._subscribers.remove(subscriber)
-            logger.info(f"Unsubscribed from channel {self._channel}")
-        else:
-            logger.warning(f"Subscriber not found in channel {self._channel}")
 
 
 def _encode(message: dict | str) -> str:
@@ -281,17 +267,3 @@ class RedisService(metaclass=SingletonMeta):
             json.dumps(variables),
             ex=SESSION_FINAL_VARIABLES_TTL_SECONDS,
         )
-
-    def unsubscribe(self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber):
-        if isinstance(subscriber, AsyncPubsubSubscriber):
-            if channel in self._async_pubsub_groups:
-                self._async_pubsub_groups[channel].unsubscribe(subscriber)
-                logger.info(f"Unsubscribed from channel {channel}")
-            else:
-                logger.warning(f"Channel {channel} not found for unsubscribe operation.")
-        elif isinstance(subscriber, SyncPubsubSubscriber):
-            if channel in self._sync_pubsub_groups:
-                self._sync_pubsub_groups[channel].unsubscribe(subscriber)
-                logger.info(f"Unsubscribed from channel {channel}")
-            else:
-                logger.warning(f"Channel {channel} not found for unsubscribe operation.")
