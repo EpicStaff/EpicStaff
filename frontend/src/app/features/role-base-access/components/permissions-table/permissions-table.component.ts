@@ -1,8 +1,23 @@
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    input,
+    model,
+    output,
+    signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
 import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
 
 import { ACTION_ICONS, GROUP_META, GroupMeta } from '../../constants/permission-table.constant';
+import { formatAuditHistoryDays } from '../../utils';
+import { AuditHistoryDialogComponent } from '../audit-history-dialog/audit-history-dialog.component';
 
 interface CatalogGroup {
     key: string;
@@ -27,6 +42,9 @@ export class PermissionsTableComponent {
     /** Set of `${resource}:${action}` keys the actor is NOT allowed to grant (ceiling rule).
      *  Ignored in readonly mode (all cells are already non-interactive). */
     disabledPermissions = input<Set<string>>(new Set<string>());
+    /** Days of audit history the role can see (0 = unlimited), shown on the Audit row and edited from it.
+     *  Null hides the control. */
+    auditHistoryDays = model<number | null>(null);
 
     permissionToggle = output<{ resourceType: ResourceCode; action: ActionCode }>();
     /** Toggles ALL applicable & grantable actions for a resource on/off. */
@@ -41,6 +59,8 @@ export class PermissionsTableComponent {
     enableRecommendedForResource = output<{ resourceCode: ResourceCode; keys: string[] }>();
 
     private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly dialog = inject(Dialog);
+    private readonly destroyRef = inject(DestroyRef);
 
     searchTerm = signal('');
     collapsedGroups = signal<Set<string>>(new Set());
@@ -51,6 +71,16 @@ export class PermissionsTableComponent {
     lastShownPendingResourceCode = signal<ResourceCode | null>(null);
 
     totalSelected = computed(() => this.selectedPermissions().size);
+
+    protected readonly auditResourceCode = ResourceCode.Audit;
+    protected readonly auditHistoryLabel = computed(() => {
+        const days = this.auditHistoryDays();
+        return days === null ? '' : formatAuditHistoryDays(days);
+    });
+    // the window only matters to a role that can view audit at all
+    protected readonly canViewAudit = computed(() =>
+        this.selectedPermissions().has(`${ResourceCode.Audit}:${ActionCode.Read}`)
+    );
 
     private readonly groupedCatalog = computed<CatalogGroup[]>(() => {
         const catalog = this.catalog();
@@ -427,6 +457,17 @@ export class PermissionsTableComponent {
             next.add(signature);
             return next;
         });
+    }
+
+    openAuditHistoryDialog(): void {
+        const days = this.auditHistoryDays();
+        if (days === null || this.readonly() || !this.canViewAudit()) return;
+        this.dialog
+            .open<number, number>(AuditHistoryDialogComponent, { width: '560px', data: days })
+            .closed.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result !== undefined) this.auditHistoryDays.set(result);
+            });
     }
 
     onShowNextPending(): void {

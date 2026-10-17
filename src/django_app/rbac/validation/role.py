@@ -6,6 +6,7 @@ from rbac.access.catalog import (
     platform_actions_for,
 )
 from rbac.models.enums import BuiltInRole
+from rbac.models.role import AUDIT_HISTORY_DAYS_MAX
 from rbac.validation.base import BaseRBACValidator, FieldError
 
 _RESERVED_NAMES = frozenset(
@@ -34,12 +35,15 @@ class RoleValidationService(BaseRBACValidator):
         errors.extend(self._validate_description(data.get("description")))
         permissions, perm_errors = self._validate_permissions(data.get("permissions"))
         errors.extend(perm_errors)
+        audit_history_days = data.get("audit_history_days", 0)
+        errors.extend(self._validate_audit_history_days(audit_history_days))
         self._raise_if_any(errors)
         return {
             "org_id": int(data["org_id"]),
             "name": data["name"].strip(),
             "description": self._clean_description(data.get("description")),
             "permissions": permissions,
+            "audit_history_days": audit_history_days,
         }
 
     def validate_update(self, data: dict) -> dict:
@@ -60,6 +64,11 @@ class RoleValidationService(BaseRBACValidator):
             errors.extend(perm_errors)
             if not perm_errors:
                 cleaned["permissions"] = permissions
+        if "audit_history_days" in data:
+            days_errors = self._validate_audit_history_days(data["audit_history_days"])
+            errors.extend(days_errors)
+            if not days_errors:
+                cleaned["audit_history_days"] = data["audit_history_days"]
         self._raise_if_any(errors)
         return cleaned
 
@@ -89,6 +98,23 @@ class RoleValidationService(BaseRBACValidator):
                     "description",
                     value,
                     f"Must be {_MAX_DESCRIPTION} characters or fewer.",
+                )
+            ]
+        return []
+
+    @staticmethod
+    def _validate_audit_history_days(value: Any) -> list[FieldError]:
+        # bool is an int subclass; reject it so `true` is not stored as 1 day.
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or not 0 <= value <= AUDIT_HISTORY_DAYS_MAX
+        ):
+            return [
+                FieldError(
+                    "audit_history_days",
+                    value,
+                    f"Must be an integer from 0 (unlimited) to {AUDIT_HISTORY_DAYS_MAX}.",
                 )
             ]
         return []

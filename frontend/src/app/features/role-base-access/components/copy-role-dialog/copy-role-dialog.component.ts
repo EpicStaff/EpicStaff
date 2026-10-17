@@ -122,6 +122,7 @@ export class CopyRoleDialogComponent {
                         name,
                         description: src.description,
                         permissions: src.permissions,
+                        audit_history_days: src.audit_history_days,
                     })
                 ),
                 finalize(() => this.isSubmitting.set(false)),

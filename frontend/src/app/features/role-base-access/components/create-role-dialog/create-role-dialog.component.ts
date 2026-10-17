@@ -20,6 +20,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
 import { RolesService } from '../../services/admin/roles.service';
+import { DEFAULT_AUDIT_HISTORY_DAYS } from '../../utils';
 import { PermissionsTableComponent } from '../permissions-table/permissions-table.component';
 
 /** Snapshot passed to the dialog when opening it in duplicate-mode. */
@@ -28,6 +29,7 @@ export interface DuplicateRoleSource {
     description: string | null;
     permissions: string[];
     orgId: number | null;
+    auditHistoryDays: number;
 }
 
 export interface CreateRoleDialogData {
@@ -101,6 +103,11 @@ export class CreateRoleDialogComponent implements OnInit {
     });
 
     readonly selectedPermissions = signal<Set<string>>(this.initialSelectedPermissions());
+    readonly auditHistoryDays = signal<number>(
+        this.dialogData?.role?.audit_history_days ??
+            this.dialogData?.duplicateSource?.auditHistoryDays ??
+            DEFAULT_AUDIT_HISTORY_DAYS
+    );
 
     private initialName(): string {
         if (this.dialogData?.role) return this.dialogData.role.name;
@@ -331,12 +338,18 @@ export class CreateRoleDialogComponent implements OnInit {
         this.isSubmitting.set(true);
 
         const request$ = this.isEditMode
-            ? this.rolesService.updateRole(this.dialogData!.role!.id, { name, description, permissions })
+            ? this.rolesService.updateRole(this.dialogData!.role!.id, {
+                  name,
+                  description,
+                  permissions,
+                  audit_history_days: this.auditHistoryDays(),
+              })
             : this.rolesService.createRole({
                   org_id: this.targetOrgId()!,
                   name,
                   description,
                   permissions,
+                  audit_history_days: this.auditHistoryDays(),
               });
 
         request$
@@ -367,6 +380,7 @@ export class CreateRoleDialogComponent implements OnInit {
             description: this.form.controls.description.value || null,
             permissions: Array.from(this.selectedPermissions()),
             orgId: this.targetOrgId(),
+            auditHistoryDays: this.auditHistoryDays(),
         };
         this.dialog.open<CreateRoleDialogResult, CreateRoleDialogData>(CreateRoleDialogComponent, {
             width: 'calc(100vw - 2rem)',

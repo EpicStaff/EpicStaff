@@ -135,7 +135,9 @@ ROLES_CREATE_POST = {
         "Creates an org-scoped custom role (org_id in the body). Requires "
         "ROLES create in that org; the caller can only grant permissions "
         "they themselves hold (ceiling rule). An empty `permissions` list "
-        "is a valid 'no access' role."
+        "is a valid 'no access' role. Optional `audit_history_days` "
+        "(0..36500, default 0 = unlimited) limits how many days back the "
+        "role's holders can see audit data."
     ),
     "request": RoleWriteSerializer,
     "responses": {
@@ -152,6 +154,7 @@ ROLES_CREATE_POST = {
                 "name": "Billing Manager",
                 "description": "Manage billing secrets",
                 "permissions": [{"resource_type": "secrets", "actions": ["read", "use"]}],
+                "audit_history_days": 90,
             },
             request_only=True,
         ),
@@ -164,12 +167,13 @@ ROLES_CREATE_POST = {
 }
 
 ROLES_UPDATE_PATCH = {
-    "summary": "Edit a custom role (name / description / permissions)",
+    "summary": "Edit a custom role (name / description / permissions / audit_history_days)",
     "description": (
         "Partial update. If `permissions` is sent it fully replaces the "
-        "role's matrix. Built-in roles are immutable; the ceiling rule "
-        "applies to added bits. Changes take effect for assignees on their "
-        "next request."
+        "role's matrix. `audit_history_days` (0..36500, 0 = unlimited) "
+        "applies from the holder's next audit token. Built-in roles are "
+        "immutable; the ceiling rule applies to added bits. Changes take "
+        "effect for assignees on their next request."
     ),
     "request": RoleWriteSerializer,
     "responses": {

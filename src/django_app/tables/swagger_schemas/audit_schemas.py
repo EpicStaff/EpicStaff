@@ -11,7 +11,8 @@ AUDIT_TOKEN_CREATE = {
         "the `auditor` service — the frontend never calls Django again for "
         "audit reads/exports after this. Claims: `org_id`, `actions` "
         "(only the AUDIT actions the caller actually has — `read`/`export`), "
-        "`retention_days` (from the org's `audit_retention_days` setting), "
+        "`retention_days` (the caller's role `audit_history_days` in the "
+        "active org; always 0 = unlimited for superadmin and Org Admin), "
         "`exp`. Returns 403 before minting anything if the caller has no "
         "AUDIT permission at all in the active org."
     ),
