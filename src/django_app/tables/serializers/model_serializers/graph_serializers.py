@@ -335,5 +335,6 @@ class GraphSerializer(
         if labels is not None:
             instance.labels.set(labels)
 
-        instance.refresh_from_db(fields=["save_version"])
+        # The counter may have moved since this instance was loaded; return the stored one.
+        instance.refresh_from_db(fields=["save_version", "node_number_seq"])
         return instance

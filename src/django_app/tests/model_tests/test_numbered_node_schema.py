@@ -5,6 +5,7 @@ from tables.models import (
     ClassificationDecisionTableNode,
     DecisionTableNode,
     EndNode,
+    Graph,
     GraphNote,
     PythonCode,
     PythonNode,
@@ -13,6 +14,7 @@ from tables.models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
+from tables.services.node_number_service import NodeNumberService
 
 HASHED_NODE_BUILDERS = {
     "agent": lambda graph: AgentNode.objects.create(graph=graph),
@@ -78,3 +80,44 @@ def test_renumbering_a_node_does_not_change_its_content_hash(graph, node_kind):
 
     assert node.node_number == 7
     assert node.content_hash == hash_before
+
+
+def _stored_counter(graph) -> int:
+    return Graph.all_objects.values_list("node_number_seq", flat=True).get(pk=graph.pk)
+
+
+# Graph.save() on an instance loaded before numbers were issued must not lower the counter,
+# or the next node would be given a number a live node already holds.
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "save_kwargs",
+    [
+        pytest.param({}, id="full-save"),
+        pytest.param({"update_fields": ["name", "node_number_seq"]}, id="update-fields-naming-the-counter"),
+    ],
+)
+def test_saving_a_stale_graph_instance_keeps_the_issued_counter(graph, save_kwargs):
+    stale_graph = Graph.objects.get(pk=graph.pk)
+    NodeNumberService().reserve(graph.pk, 3)
+
+    stale_graph.name = "renamed"
+    stale_graph.save(**save_kwargs)
+
+    assert _stored_counter(graph) == 3
+    assert Graph.objects.get(pk=graph.pk).name == "renamed"
+
+
+@pytest.mark.django_db
+def test_node_created_after_a_stale_graph_save_gets_a_fresh_number(graph):
+    stale_graph = Graph.objects.get(pk=graph.pk)
+    first = PythonNode.objects.create(
+        graph=graph, python_code=PythonCode.objects.create(code="def main(): return None")
+    )
+
+    stale_graph.description = "edited"
+    stale_graph.save()
+    second = PythonNode.objects.create(
+        graph=graph, python_code=PythonCode.objects.create(code="def main(): return None")
+    )
+
+    assert (first.node_number, second.node_number) == (1, 2)

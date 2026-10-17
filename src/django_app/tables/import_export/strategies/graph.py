@@ -257,7 +257,8 @@ class GraphStrategy(EntityImportExportStrategy):
         # The import carries no expected save_version, so bump unconditionally: an
         # editor still holding the old content then gets a conflict on its next save.
         Graph.objects.filter(pk=graph.pk).update(save_version=F("save_version") + 1)
-        # The serializer's full save() would otherwise write the stale counter back.
+        # The serializer saves this same instance next; its full save() would otherwise
+        # write the old save_version back.
         graph.refresh_from_db()
         GraphVersioningService().save_version(
             graph=graph,
@@ -273,8 +274,6 @@ class GraphStrategy(EntityImportExportStrategy):
         # The imported nodes are numbered in source order right above the numbers the
         # wipe left behind (legacy CrewNodes), so 1..K when nothing survives.
         NodeNumberService().rewind_to_surviving_nodes(graph.id)
-        # The serializer saves this same instance next; a stale counter would be written back.
-        graph.refresh_from_db(fields=["node_number_seq"])
         return replaced_telegram_keys
 
     def _restore_telegram_bot_keys(

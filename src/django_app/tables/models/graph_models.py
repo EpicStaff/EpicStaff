@@ -76,8 +76,31 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
         default=False, help_text="If 'True' -> flow is connected to EpicChat widget."
     )
     save_version = models.BigIntegerField(default=1)
-    # High-water mark of issued node badge numbers; never lowered.
+    # High-water mark of issued node badge numbers. Written only by NodeNumberService,
+    # and lowered only when the graph's whole content is rebuilt (rewind_to_surviving_nodes).
     node_number_seq = models.IntegerField(default=0, editable=False)
+
+    def save(self, *args, **kwargs):
+        """Save the graph, never writing `node_number_seq` on an update.
+
+        The counter moves only through NodeNumberService's UPDATEs. A full save of an
+        instance loaded before a number was issued would otherwise write its stale value
+        back and lower the counter, and the next number issued would repeat one that a
+        live node holds. An insert still writes the default.
+        """
+        if not self._state.adding and self.pk is not None and not kwargs.get("force_insert"):
+            update_fields = kwargs.get("update_fields")
+            if update_fields is None:
+                deferred_fields = self.get_deferred_fields()
+                update_fields = [
+                    field.name
+                    for field in self._meta.concrete_fields
+                    if not field.primary_key and field.attname not in deferred_fields
+                ]
+            kwargs["update_fields"] = [
+                field_name for field_name in update_fields if field_name != "node_number_seq"
+            ]
+        super().save(*args, **kwargs)
 
     @classmethod
     def increment_version_if_current(cls, pk: int, expected: int) -> int:

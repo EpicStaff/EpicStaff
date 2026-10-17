@@ -142,6 +142,29 @@ def test_unhinted_node_takes_the_number_left_by_hinted_ones(auth_client, graph):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("python_hint", "agent_hint", "expected"),
+    [
+        # The registry writes python before agent; the leftovers follow the hints instead.
+        pytest.param(9, 4, {"python": 2, "agent": 1}, id="hints-above-block-keep-their-order"),
+        pytest.param(None, 7, {"python": 2, "agent": 1}, id="unhinted-goes-after-hinted"),
+        pytest.param(5, 5, {"python": 1, "agent": 2}, id="equal-hints-keep-registry-order"),
+    ],
+)
+def test_leftover_numbers_follow_hint_order_in_a_new_graph(
+    auth_client, graph, python_hint, agent_hint, expected
+):
+    response = _save(
+        auth_client,
+        graph,
+        python_node_list=[_python(graph, "python", hint=python_hint)],
+        agent_node_list=[_new("agent_node_list", graph, "agent", hint=agent_hint)],
+    )
+
+    assert _numbers_by_name(response) == expected
+
+
+@pytest.mark.django_db
 def test_update_ignores_hint_and_keeps_number(auth_client, graph):
     existing = _python_node(graph, "existing")
 

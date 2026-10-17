@@ -483,7 +483,8 @@ class GraphBulkSaveService:
         The client's optimistic badge (node_number_hint) is honoured when it falls
         inside the block and no earlier node claimed it, so badges do not reshuffle
         just because the registry saves node types in a fixed order. The remaining
-        nodes take the free numbers in ascending order, in registry then payload order.
+        nodes take the free numbers in ascending order, in hint order (nodes without a
+        hint last, ties in registry then payload order).
         """
         created = [
             saveable for saveable in node_saveables if saveable.is_create and saveable.is_numbered
@@ -497,6 +498,11 @@ class GraphBulkSaveService:
                 free_numbers.discard(saveable.node_number_hint)
             else:
                 unassigned.append(saveable)
+        # A node a new graph receives (extract to subflow) carries a hint above the block,
+        # so the leftovers keep the hints' relative order instead of the node-type order.
+        unassigned.sort(
+            key=lambda saveable: (saveable.node_number_hint is None, saveable.node_number_hint or 0)
+        )
         for saveable, number in zip(unassigned, sorted(free_numbers), strict=True):
             saveable.assigned_node_number = number
 

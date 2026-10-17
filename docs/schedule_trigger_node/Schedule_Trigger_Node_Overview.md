@@ -152,8 +152,8 @@ Enforced before any DB write, on any payload that touches schedule fields
 
 Standard `ModelViewSet` exposing full CRUD at `/api/schedule-trigger-nodes/`.
 Filters: `graph`, `is_active`, `run_mode`. Uses
-`IdempotentNodeCreateMixin` (upsert on `(graph, node_name)` duplicates) and
 `ContentHashPreconditionMixin` (optimistic concurrency via `content_hash`).
+Every POST creates a new node; node names may repeat within a graph.
 
 ### 4.2 Django — `schedule_trigger_post_save_handler` / `schedule_trigger_post_delete_handler`
 

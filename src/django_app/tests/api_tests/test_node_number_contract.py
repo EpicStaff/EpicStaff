@@ -2,6 +2,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
+from tables.models import Graph
 from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
@@ -20,6 +21,8 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.models.python_models import PythonCode
+from tables.serializers.model_serializers.graph_serializers import GraphSerializer
+from tables.services.node_number_service import NodeNumberService
 from tests.fixtures import *  # noqa: F401,F403
 
 _PYTHON_CODE_DATA = {"code": "def main(): return 42", "entrypoint": "main", "libraries": []}
@@ -189,6 +192,38 @@ def test_patch_graph_cannot_change_node_number_seq(auth_client, graph):
 
 
 @pytest.mark.django_db
+def test_patch_graph_keeps_numbers_issued_since_the_graph_was_loaded(auth_client, graph):
+    NodeNumberService().reserve(graph.id, 3)
+
+    response = auth_client.patch(
+        _graph_url(graph.id), {"name": "renamed", "save_version": graph.save_version}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["node_number_seq"] == 3
+    graph.refresh_from_db()
+    assert (graph.name, graph.node_number_seq) == ("renamed", 3)
+
+
+@pytest.mark.django_db
+def test_graph_update_on_an_instance_loaded_before_a_mint_keeps_the_counter(graph):
+    # A PATCH loads the graph before taking the row lock; a node created in between
+    # moves the counter, and the update must not write the loaded value back.
+    stale_graph = Graph.objects.get(pk=graph.pk)
+    NodeNumberService().reserve(graph.id, 3)
+
+    serializer = GraphSerializer(
+        stale_graph, data={"name": "renamed", "save_version": graph.save_version}, partial=True
+    )
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+
+    graph.refresh_from_db()
+    assert (graph.name, graph.node_number_seq) == ("renamed", 3)
+    assert serializer.data["node_number_seq"] == 3
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("list_key", list(BULK_CREATE_PAYLOADS))
 def test_bulk_save_ignores_node_number_on_create(auth_client, graph, list_key):
     node_payload = {"graph": graph.id, "node_number": 99, **BULK_CREATE_PAYLOADS[list_key]}
@@ -229,3 +264,45 @@ def test_bulk_save_ignores_node_number_on_update(auth_client, graph, list_key):
     assert saved["id"] == node.id
     assert saved["node_number"] == 1
     assert response.data["node_number_seq"] == 1
+
+
+# Node names are free-form labels and may repeat, so a per-node POST never matches an
+# existing node by name: each one creates a node with its own number.
+SAME_NAME_CREATE_ROUTES = {
+    "python_node": ("pythonnode-list", PythonNode, {"python_code": _PYTHON_CODE_DATA}),
+    "decision_table_node": ("decisiontablenode-list", DecisionTableNode, {"condition_groups": []}),
+}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("route", list(SAME_NAME_CREATE_ROUTES))
+def test_posting_the_same_node_name_twice_creates_two_numbered_nodes(auth_client, graph, route):
+    list_route, model, extra_payload = SAME_NAME_CREATE_ROUTES[route]
+    payload = {"graph": graph.id, "node_name": "Repeated", **extra_payload}
+
+    first = auth_client.post(reverse(list_route), payload, format="json")
+    second = auth_client.post(reverse(list_route), payload, format="json")
+
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+    assert second.status_code == status.HTTP_201_CREATED, second.content
+    assert first.data["id"] != second.data["id"]
+    assert (first.data["node_number"], second.data["node_number"]) == (1, 2)
+    assert sorted(
+        model.objects.filter(graph=graph, node_name="Repeated").values_list("node_number", flat=True)
+    ) == [1, 2]
+
+
+@pytest.mark.django_db
+def test_posting_a_name_two_nodes_already_share_creates_a_third(auth_client, graph):
+    for _ in range(2):
+        PythonNode.objects.create(graph=graph, python_code=_python_code(), node_name="Repeated")
+
+    response = auth_client.post(
+        reverse("pythonnode-list"),
+        {"graph": graph.id, "node_name": "Repeated", "python_code": _PYTHON_CODE_DATA},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert response.data["node_number"] == 3
+    assert PythonNode.objects.filter(graph=graph, node_name="Repeated").count() == 3
