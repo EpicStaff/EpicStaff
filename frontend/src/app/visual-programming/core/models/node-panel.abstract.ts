@@ -1,10 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { notWhitespaceValidator } from '@shared/form-validators';
 
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
-import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
 import { NodeModel } from './node.model';
+
+/** The backend's `node_name` column length. */
+const NODE_NAME_MAX_LENGTH = 255;
 
 @Component({
     template: '',
@@ -13,7 +16,6 @@ import { NodeModel } from './node.model';
 })
 export abstract class BaseSidePanel<T extends NodeModel> {
     protected fb = inject(FormBuilder);
-    protected uniqueNameValidator = inject(UniqueNodeNameValidatorService);
     protected destroyRef = inject(DestroyRef);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
     public readonly isReadOnly = this.flowReadOnly.isReadOnly;
@@ -168,21 +170,22 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         this.dirtyCheckTick.update((v) => v + 1);
     }
 
+    /** Names may repeat within a flow: the node's #N badge, not its name, tells nodes apart. */
     protected createNodeNameValidators(additionalValidators: ValidatorFn[] = []): ValidatorFn[] {
-        const currentNodeId = this.node().id;
         return [
             Validators.required,
-            this.uniqueNameValidator.createSyncUniqueNameValidator(currentNodeId),
+            notWhitespaceValidator(),
+            Validators.maxLength(NODE_NAME_MAX_LENGTH),
             ...additionalValidators,
         ];
     }
 
     protected getNodeNameErrorMessage(): string {
-        const nodeNameControl = this.form.get('node_name');
-        if (nodeNameControl && nodeNameControl.errors) {
-            return this.uniqueNameValidator.getValidationErrorMessage(nodeNameControl.errors);
-        }
-        return '';
+        const errors = this.form.get('node_name')?.errors;
+        if (!errors) return '';
+        if (errors['required'] || errors['whitespace']) return 'Node name is required';
+        if (errors['maxlength']) return `Node name must be at most ${NODE_NAME_MAX_LENGTH} characters`;
+        return 'Invalid node name';
     }
 
     /**

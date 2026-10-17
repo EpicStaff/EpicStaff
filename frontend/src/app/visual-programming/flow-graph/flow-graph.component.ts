@@ -1689,20 +1689,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.importComplete.emit();
             },
             error: (err: HttpErrorResponse) => {
-                const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
                 const rawMessage =
                     (err.error as Record<string, string>)?.['message'] ??
                     (err.error as Record<string, string>)?.['detail'] ??
                     null;
-                if (body.includes('node_name must make a unique set')) {
-                    this.toastService.error(
-                        'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
-                        6000,
-                        'bottom-right'
-                    );
-                } else {
-                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
-                }
+                this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
             },
         });
     }

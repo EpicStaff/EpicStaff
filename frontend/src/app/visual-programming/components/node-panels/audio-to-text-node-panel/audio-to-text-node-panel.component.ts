@@ -23,7 +23,7 @@ interface InputMapPair {
                     <div class="node-name-field">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="The unique identifier used to reference this Audio to Text node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N badge identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"

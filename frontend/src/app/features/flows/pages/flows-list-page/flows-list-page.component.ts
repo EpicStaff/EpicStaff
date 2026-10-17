@@ -62,6 +62,7 @@ import {
     FlowNodesByFile,
     hasReviewableItems,
     ImportReviewDialogCloseResult,
+    toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
@@ -566,6 +567,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 .filter((node): node is JsonObject => typeof node === 'object' && node !== null && !Array.isArray(node))
                 .filter((node) => !FlowsListPageComponent.EXCLUDED_NODE_TYPES.has(String(node['node_type'] ?? '')))
                 .map((node) => ({
+                    id: toFileNodeId(node['id']),
                     name: String(node['node_name'] ?? node['node_type'] ?? 'Node'),
                     node_type: String(node['node_type'] ?? ''),
                 }));

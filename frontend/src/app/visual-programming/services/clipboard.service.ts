@@ -3,8 +3,8 @@ import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
+import { isNumberedNodeType } from '../core/helpers/node-number.util';
 import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../core/models/node.model';
@@ -101,8 +101,6 @@ export class ClipboardService {
             return newNodeId;
         });
 
-        const nodeNumbers = clipboardNodes.map(() => this.flowService.getNextNodeNumber());
-
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
             const newNodeId = newNodeIds[index];
@@ -117,17 +115,17 @@ export class ClipboardService {
 
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
+            // The copy keeps its name (names may repeat); the number, which tells the two apart, is new.
             return {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
-                nodeNumber: nodeNumbers[index],
+                nodeNumber: isNumberedNodeType(oldNode.type) ? this.flowService.getNextNodeNumber() : undefined,
                 position: {
                     x: oldNode.position.x + offsetX,
                     y: oldNode.position.y + offsetY,
                 },
                 ports: newPorts,
-                node_name: generateNodeDisplayName(oldNode.type),
                 data: newData,
             };
         });

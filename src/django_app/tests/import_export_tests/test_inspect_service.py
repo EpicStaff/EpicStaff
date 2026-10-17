@@ -275,6 +275,74 @@ class TestInspectServiceFlowNodes:
         result = InspectService().inspect(FLOW_EXPORT)
         assert len(result["review_items"]) == 2
 
+    def test_nodes_sharing_a_name_are_told_apart_by_file_node_id(self):
+        python_code = {
+            "code": "def main(): return {}",
+            "libraries": "",
+            "entrypoint": "main",
+            "global_kwargs": {},
+        }
+        data = {
+            "Flow": [
+                {
+                    "id": 1,
+                    "name": "duplicate_names",
+                    "nodes": [
+                        {
+                            "id": 31,
+                            "python_code": python_code,
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                        {
+                            "id": 58,
+                            "python_code": python_code,
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                    ],
+                }
+            ],
+            "main_entity": "Flow",
+            "version": 2,
+        }
+
+        items = InspectService().inspect(data)["review_items"]
+
+        assert [item["node_name"] for item in items] == ["Python Node", "Python Node"]
+        assert [item["node_id"] for item in items] == [31, 58]
+
+    @pytest.mark.parametrize("file_id", ["31", True, False, 31.0, None])
+    def test_node_id_is_none_when_file_id_is_not_an_integer(self, file_id):
+        data = {
+            "Flow": [
+                {
+                    "id": 1,
+                    "name": "hand_made",
+                    "nodes": [
+                        {
+                            "id": file_id,
+                            "python_code": {
+                                "code": "def main(): return {}",
+                                "libraries": "",
+                                "entrypoint": "main",
+                                "global_kwargs": {},
+                            },
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                    ],
+                }
+            ],
+            "main_entity": "Flow",
+            "version": 2,
+        }
+
+        items = InspectService().inspect(data)["review_items"]
+
+        assert len(items) == 1
+        assert items[0]["node_id"] is None
+
 
 class TestInspectServiceClassificationNode:
     def test_classification_node_carries_both_code_keys(self):

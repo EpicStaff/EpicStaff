@@ -22,10 +22,8 @@ import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
-import { NodeNameValidatorService } from '../services/node-name-validator.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
-import { UniqueNodeNameValidatorService } from '../services/unique-node-name.validator';
 import { FlowVersionPreviewComponent } from './flow-version-preview.component';
 
 const EDITOR_SERVICES: Type<unknown>[] = [
@@ -35,8 +33,6 @@ const EDITOR_SERVICES: Type<unknown>[] = [
     SidePanelService,
     ClipboardService,
     NodeFactoryService,
-    NodeNameValidatorService,
-    UniqueNodeNameValidatorService,
 ];
 
 const CREATOR: UserSummary = { id: 7, display_name: 'Ivan Bohun', avatar_url: null };

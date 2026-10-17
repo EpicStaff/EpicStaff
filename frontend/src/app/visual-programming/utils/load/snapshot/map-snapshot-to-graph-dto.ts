@@ -8,6 +8,7 @@ import {
     SnapshotNodeType,
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
+import { isNumberedSnapshotNodeType, UnnumberedSnapshotNodeType } from '../../../core/helpers/node-number.util';
 import { FlowModel } from '../../../core/models/flow.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
@@ -273,10 +274,10 @@ function adaptNode(node: SnapshotNode, context: AdapterContext, restoredNumber: 
     return restoredNumber === undefined ? adapted : { ...adapted, node_number: restoredNumber };
 }
 
-type NumberedSnapshotNode = Exclude<SnapshotNode, { node_type: 'StartNode' | 'EndNode' | 'GraphNote' }>;
+type NumberedSnapshotNode = Exclude<SnapshotNode, { node_type: UnnumberedSnapshotNodeType }>;
 
 function isNumberedSnapshotNode(node: SnapshotNode): node is NumberedSnapshotNode {
-    return node.node_type !== 'StartNode' && node.node_type !== 'EndNode' && node.node_type !== 'GraphNote';
+    return isNumberedSnapshotNodeType(node.node_type);
 }
 
 /**

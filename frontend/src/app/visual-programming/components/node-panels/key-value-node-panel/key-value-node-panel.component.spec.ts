@@ -37,7 +37,6 @@ import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { mapKeyValueNodeToModel } from '../../../utils/load/nodes/key-value-node.mapper';
 import { getNodeDiff } from '../../../utils/save/diff';
@@ -176,10 +175,6 @@ function createPanel(
             { provide: Dialog, useValue: { open: openDialog } },
             // The panel shell, mounted by some tests below, reads node authorship from the flow page's store.
             NodeAuthorshipStore,
-            {
-                provide: UniqueNodeNameValidatorService,
-                useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },
-            },
             {
                 provide: SidePanelService,
                 // The shell's side of it too, for the Ctrl+S spec.

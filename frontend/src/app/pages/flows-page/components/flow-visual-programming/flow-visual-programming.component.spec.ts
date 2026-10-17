@@ -993,6 +993,88 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(flowService.getNextNodeNumber()).toBe(31);
         });
+
+        describe('partial import', () => {
+            /** The canvas holds the saved #1 plus an unsaved node numbered `localNumber`. */
+            function openFlowWithUnsavedNode(localNumber: number): void {
+                openFlow(graphDto({ python_node_list: [livePython], node_number_seq: 10 }));
+                const unsavedNode = {
+                    ...livePythonNode(),
+                    id: 'unsaved-python',
+                    backendId: null,
+                    node_name: 'Local',
+                    nodeNumber: localNumber,
+                };
+                const flow = flowService.getFlowState();
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsavedNode] });
+            }
+
+            /** The backend numbered the imported node #11 from its counter, which now reads 12. */
+            function importNodeNumbered11(): void {
+                flowsApi['getGraphById'].mockReturnValue(
+                    of(
+                        graphDto({
+                            python_node_list: [
+                                livePython,
+                                { ...livePython, id: 50, node_number: 11, node_name: 'Report #2' },
+                            ],
+                            node_number_seq: 12,
+                        })
+                    )
+                );
+                component.handlePartialImportComplete();
+            }
+
+            const numberOf = (nodeName: string) =>
+                flowService.getFlowState().nodes.find((node) => node.node_name === nodeName)?.nodeNumber;
+
+            it('keeps the imported node its number and name, and moves an unsaved node holding that number past the counter', () => {
+                openFlowWithUnsavedNode(11);
+
+                importNodeNumbered11();
+
+                expect(numberOf('Report #2')).toBe(11);
+                expect(numberOf('Local')).toBe(13);
+                expect(numberOf(livePython.node_name)).toBe(1);
+            });
+
+            it('moves every unsaved node an imported number collides with, one after another', () => {
+                openFlowWithUnsavedNode(11);
+                const flow = flowService.getFlowState();
+                const secondUnsaved = {
+                    ...flow.nodes.at(-1)!,
+                    id: 'unsaved-python-2',
+                    node_name: 'Local 2',
+                    nodeNumber: 12,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, secondUnsaved] });
+                flowsApi['getGraphById'].mockReturnValue(
+                    of(
+                        graphDto({
+                            python_node_list: [
+                                livePython,
+                                { ...livePython, id: 50, node_number: 11, node_name: 'Imported 1' },
+                                { ...livePython, id: 51, node_number: 12, node_name: 'Imported 2' },
+                            ],
+                            node_number_seq: 12,
+                        })
+                    )
+                );
+
+                component.handlePartialImportComplete();
+
+                expect(['Imported 1', 'Imported 2', 'Local', 'Local 2'].map(numberOf)).toEqual([11, 12, 13, 14]);
+            });
+
+            it('leaves an unsaved node alone when no imported node holds its number', () => {
+                openFlowWithUnsavedNode(13);
+
+                importNodeNumbered11();
+
+                expect(numberOf('Local')).toBe(13);
+                expect(flowService.getNextNodeNumber()).toBe(14);
+            });
+        });
     });
 
     describe('node authorship for the details dialog', () => {
@@ -1369,6 +1451,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
         const CDT_GRAPH = graphDto({
             save_version: 1,
+            node_number_seq: 22,
             classification_decision_table_node_list: [cdtDto(21, 'Triage', 'spam'), cdtDto(22, 'Refunds', 'refund')],
         });
 
@@ -1864,6 +1947,14 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(toast['success']).toHaveBeenCalledWith('Extracted selection into subflow "Spam handling"');
             });
 
+            it('numbers the new subgraph node after the parent graph counter', () => {
+                component.onExtractToSubflow(new Set([table(21).id]));
+                answerSubflowSave();
+
+                const subgraphNode = flowService.nodes().find((node) => node.type === NodeType.SUBGRAPH);
+                expect(subgraphNode?.nodeNumber).toBe(23);
+            });
+
             it('holds an explanation save until it is done, and then sends nothing for the extracted table', () => {
                 explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 4 }));
                 component.onExtractToSubflow(new Set([table(21).id]));
@@ -1934,6 +2025,14 @@ describe('FlowVisualProgrammingComponent', () => {
                 );
                 expect(flowsStorage.deleteFlow).toHaveBeenCalledWith(9);
                 expect(component.isSaving()).toBe(false);
+            });
+
+            it('numbers the inlined nodes after the parent graph counter and keeps their names', () => {
+                component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
+
+                const inlined = flowService.nodes().find((node) => node.node_name === 'Inner');
+                // The inner flow numbered it #31; in the parent it takes the next number after #22.
+                expect(inlined?.nodeNumber).toBe(23);
             });
         });
 

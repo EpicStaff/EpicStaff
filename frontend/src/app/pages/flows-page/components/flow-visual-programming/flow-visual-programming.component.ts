@@ -519,6 +519,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     // buildFlowModelFromGraphDto (the shared post-load pipeline); also refresh availableFlowLights.
                     this.setGraphState(graph);
                     this.availableFlowLights.set(flows);
+                    this.flowService.setNodeNumberFloor(graph.node_number_seq);
 
                     const serverFlow = this.loadedFlowState();
 
@@ -539,24 +540,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                     const currentState = this.flowService.getFlowState();
 
-                    // The backend numbers imported nodes against saved DB state only, so it has
-                    // no knowledge of unsaved canvas nodes. Re-issue numbers from the frontend
-                    // sequence (which sees all live nodes) to prevent collisions with unsaved nodes.
-                    // Only auto-numbered names ("... #N") are touched; custom names are left as-is.
-                    const renumberedNewNodes = newServerNodes.map((n) => {
-                        if (!/#\s*\d+\s*$/.test(n.node_name ?? '')) {
-                            return n;
-                        }
-                        const newNumber = this.flowService.getNextNodeNumber();
-                        return {
-                            ...n,
-                            nodeNumber: newNumber,
-                            node_name: (n.node_name ?? '').replace(/#\s*\d+\s*$/, `#${newNumber}`),
-                        };
-                    });
+                    // The imported nodes keep the numbers the backend gave them from the graph counter.
+                    // An unsaved canvas node may hold one of them (the backend never saw it): that
+                    // node moves to a number past the counter, set as the floor above.
+                    const importedNumbers = new Set(newServerNodes.map((n) => n.nodeNumber));
+                    const localNodes = currentState.nodes.map((n) =>
+                        n.backendId === null && n.nodeNumber !== undefined && importedNumbers.has(n.nodeNumber)
+                            ? { ...n, nodeNumber: this.flowService.getNextNodeNumber() }
+                            : n
+                    );
 
                     const mergedFlow = normalizeFlowPorts({
-                        nodes: [...currentState.nodes, ...renumberedNewNodes],
+                        nodes: [...localNodes, ...newServerNodes],
                         connections: [...currentState.connections, ...newServerConnections],
                     });
 
@@ -748,7 +743,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.currentFlowState(),
             selectedNodeIds,
             generateUuid(),
-            newGraphDto.id
+            newGraphDto.id,
+            this.flowService.getNextNodeNumber()
         );
 
         // Step 4: Build the subflow save payload (empty previous = all creates).
@@ -813,7 +809,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(subflowGraph));
 
         // Step 6: Run the unpack utility.
-        const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel);
+        const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel, () =>
+            this.flowService.getNextNodeNumber()
+        );
 
         // Step 7: Update the parent flow and save.
         this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
