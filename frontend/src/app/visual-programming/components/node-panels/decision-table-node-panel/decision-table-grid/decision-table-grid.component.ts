@@ -24,6 +24,7 @@ import {
     themeQuartz,
 } from 'ag-grid-community';
 
+import { formatNodeLabel } from '../../../../core/helpers/format-node-label.util';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
@@ -71,7 +72,7 @@ export class DecisionTableGridComponent implements OnInit {
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                label: node.node_name ? formatNodeLabel(node) : node.id,
             }));
     });
 

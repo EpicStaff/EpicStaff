@@ -50,7 +50,7 @@ const DTO: GetKeyValueNodeRequest = {
     id: 12,
     graph: 1,
     node_number: 1,
-    node_name: 'Key-Value #1',
+    node_name: 'Key-Value',
     key_value_table: 3,
     mode: 'read',
     entries: [
@@ -3017,7 +3017,7 @@ describe('KeyValueNodePanelComponent', () => {
             vi.advanceTimersByTime(1000);
 
             expect(panel.form.disabled).toBe(true);
-            expect(panel.form.getRawValue()).toMatchObject({ node_name: 'Key-Value #1', mode: 'write' });
+            expect(panel.form.getRawValue()).toMatchObject({ node_name: 'Key-Value', mode: 'write' });
             expect(triggerAutosave).not.toHaveBeenCalled();
 
             flowReadOnly.set(false);

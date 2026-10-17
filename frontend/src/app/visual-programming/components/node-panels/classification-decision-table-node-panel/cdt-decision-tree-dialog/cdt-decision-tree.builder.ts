@@ -7,6 +7,7 @@
  * diagram is a faithful drawing of what actually runs rather than an interpretation.
  */
 
+import { formatNodeLabel } from '../../../../core/helpers/format-node-label.util';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import {
     composeExpression,
@@ -294,7 +295,9 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
     ];
 
     return {
-        title: input.nodeName,
+        title: input.nodeName.trim()
+            ? formatNodeLabel({ node_name: input.nodeName, nodeNumber: input.nodeNumber })
+            : input.nodeName,
         blocks,
         edges,
         groups,
@@ -416,7 +419,7 @@ function resolveRowTarget(
     if (!row.route_code?.trim()) return { state: 'unrouted' };
 
     const targetId = resolveRouteTargetId(row, input, canvasRowsByPort);
-    return targetId ? { state: 'node', label: resolveNodeLabel(targetId, input.nodes) } : { state: 'no-capture' };
+    return targetId ? nodeTarget(targetId, input.nodes) : { state: 'no-capture' };
 }
 
 /** What `resolveRouteTargetId` reads: a slice of `CdtDecisionTreeInput`, so the grid can pass live state. */
@@ -466,14 +469,31 @@ export function routePortIdsWithTarget(
     return portIds;
 }
 
+function findTargetNode(targetId: string, nodes: readonly CdtTreeNodeRef[]): CdtTreeNodeRef | undefined {
+    return nodes.find((node) => node.id === targetId) ?? nodes.find((node) => node.node_name === targetId);
+}
+
 /**
- * Resolve a canvas node id to a display label, falling back to `node #<id>` —
- * the same convention the CSV export uses.
+ * Resolve a canvas node id to its plain name, falling back to `node #<id>` — the same
+ * convention the CSV export uses. This is what the explain request sends: it never
+ * carries the node number, so renumbering a node does not outdate stored explanations.
  */
-export function resolveNodeLabel(targetId: string, nodes: readonly CdtTreeNodeRef[]): string {
-    const found = nodes.find((node) => node.id === targetId) ?? nodes.find((node) => node.node_name === targetId);
+export function resolveNodeName(targetId: string, nodes: readonly CdtTreeNodeRef[]): string {
+    const found = findTargetNode(targetId, nodes);
     if (!found) return `node #${targetId}`;
     return found.node_name?.trim() || `node #${found.nodeNumber ?? found.backendId ?? targetId}`;
+}
+
+/** The drawn label of a canvas node: its name with its number, so same-named nodes are told apart. */
+function resolveNodeLabel(targetId: string, nodes: readonly CdtTreeNodeRef[]): string {
+    const found = findTargetNode(targetId, nodes);
+    const name = found?.node_name?.trim();
+    if (!found || !name) return resolveNodeName(targetId, nodes);
+    return formatNodeLabel({ node_name: name, nodeNumber: found.nodeNumber });
+}
+
+function nodeTarget(targetId: string, nodes: readonly CdtTreeNodeRef[]): Extract<CdtTreeTarget, { state: 'node' }> {
+    return { state: 'node', label: resolveNodeLabel(targetId, nodes), name: resolveNodeName(targetId, nodes) };
 }
 
 /**
@@ -488,8 +508,8 @@ function terminatorContent(
 ): Partial<CdtTreeBlock> {
     if (!targetId) return { target: { state: 'end' }, title: emptyTitle };
 
-    const label = resolveNodeLabel(targetId, nodes);
-    return { target: { state: 'node', label }, title: label };
+    const target = nodeTarget(targetId, nodes);
+    return { target, title: target.label };
 }
 
 /**

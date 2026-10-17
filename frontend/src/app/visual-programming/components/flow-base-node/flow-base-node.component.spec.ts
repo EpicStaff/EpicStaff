@@ -7,7 +7,8 @@ import { of } from 'rxjs';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
-import { NodeModel } from '../../core/models/node.model';
+import { DecisionTableNodeModel, NodeModel } from '../../core/models/node.model';
+import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
@@ -18,7 +19,7 @@ const KEY_VALUE_NODE = {
         id: 12,
         graph: 1,
         node_number: 1,
-        node_name: 'Key-Value #1',
+        node_name: 'Key-Value',
         key_value_table: 3,
         mode: 'write',
         entries: [
@@ -151,5 +152,71 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         });
 
         expect(summaryTab()).toBeNull();
+    });
+});
+
+describe('FlowBaseNodeComponent node number', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+
+    const text = (selector: string): string => fixture.nativeElement.querySelector(selector)!.textContent!.trim();
+
+    function render(node: NodeModel, otherNodes: NodeModel[] = []): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
+                {
+                    provide: KeyValueTablesStorageService,
+                    useValue: { tables: signal([]), loadTables: () => of([]) },
+                },
+            ],
+        });
+        TestBed.inject(FlowService).setFlow({ nodes: [node, ...otherNodes], connections: [] });
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    it('titles the node with its name and shows the number only in the badge', () => {
+        render({ ...KEY_VALUE_NODE, nodeNumber: 3 });
+
+        expect(text('.interactive-node-body .title')).toBe('Key-Value');
+        expect(text('.node-number')).toBe('#3');
+    });
+
+    describe('on a decision table', () => {
+        const fetchNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 4 } as NodeModel;
+        const tableNode = {
+            id: 'table',
+            backendId: null,
+            type: NodeType.TABLE,
+            node_name: 'Route',
+            nodeNumber: 3,
+            data: {
+                name: 'Route',
+                table: { default_next_node: 'fetch', next_error_node: null, condition_groups: [] },
+            },
+            position: { x: 0, y: 0 },
+            ports: [],
+            color: '',
+            icon: '',
+            size: { width: 300, height: 200 },
+            input_map: {},
+            output_variable_path: null,
+        } as unknown as DecisionTableNodeModel;
+
+        it('titles the table with its name and shows the number only in the badge', () => {
+            render(tableNode, [fetchNode]);
+
+            expect(text('.decision-table__header .title')).toBe('Route');
+            expect(text('.node-number-badge')).toBe('#3');
+        });
+
+        it('names the next node with its number, so same-named nodes are told apart', () => {
+            render(tableNode, [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }]);
+
+            expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
+        });
     });
 });

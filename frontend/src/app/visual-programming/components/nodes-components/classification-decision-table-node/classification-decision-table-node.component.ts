@@ -7,8 +7,8 @@ import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
-import { splitNodeTitleBadge } from '../../../core/helpers/split-node-title.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { ViewPort } from '../../../core/models/port.model';
@@ -57,7 +57,7 @@ export class ClassificationDecisionTableNodeComponent {
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
-        return node ? node.node_name : idOrName;
+        return node ? formatNodeLabel(node) : idOrName;
     }
 
     get nextErrorNode() {
@@ -69,11 +69,11 @@ export class ClassificationDecisionTableNodeComponent {
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
-        return node ? node.node_name : idOrName;
+        return node ? formatNodeLabel(node) : idOrName;
     }
 
-    get titleParts(): { label: string; badge: string | null } {
-        return splitNodeTitleBadge(this.node.node_name || 'Classification Table', this.node.nodeNumber);
+    get title(): string {
+        return this.node.node_name || 'Classification Table';
     }
 
     get inputPort() {

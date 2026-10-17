@@ -15,6 +15,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
+import { formatNodeLabel } from '../../core/helpers/format-node-label.util';
 import { NodeModel } from '../../core/models/node.model';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
 
@@ -340,8 +341,8 @@ export class NodesSearchComponent implements OnChanges {
             return true;
         }
 
-        // Search by node name
-        if (node.node_name && node.node_name.toLowerCase().includes(query)) {
+        // Search by node name and number, as the result list labels it
+        if (node.node_name && formatNodeLabel(node).toLowerCase().includes(query)) {
             return true;
         }
 

@@ -40,10 +40,7 @@
             ></i>
         </div>
         <div class="title">
-            <span class="title__label">{{ titleParts.label }}</span>
-            @if (titleParts.badge) {
-                <span class="title__badge">{{ titleParts.badge }}</span>
-            }
+            <span class="title__label">{{ title }}</span>
         </div>
         @if (errorMessages.length > 0) {
             <div

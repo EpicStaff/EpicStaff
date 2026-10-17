@@ -5,6 +5,7 @@ import { generateUuid } from '@shared/utils';
 import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
 import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode } from '../core/helpers/helpers';
+import { isNumberedNodeType } from '../core/helpers/node-number.util';
 import { findNearestFreePosition, getCollisionBounds, snapPointToGrid } from '../core/helpers/node-placement.utils';
 import { getDefaultNodeSize } from '../core/helpers/node-size.util';
 import { NodeModel } from '../core/models/node.model';
@@ -29,9 +30,8 @@ export class NodeFactoryService {
         const icon = NODE_ICONS[type] || 'ti ti-help';
         const size = getDefaultNodeSize(type, nodeData);
         const ports: ViewPort[] = type === NodeType.NOTE ? [] : generatePortsForNode(id, type, nodeData);
-        const nodeNumber =
-            type === NodeType.START || type === NodeType.END ? undefined : this.flowService.getNextNodeNumber();
-        const nodeName = generateNodeDisplayName(type, nodeNumber);
+        const nodeNumber = isNumberedNodeType(type) ? this.flowService.getNextNodeNumber() : undefined;
+        const nodeName = generateNodeDisplayName(type);
         const snappedPosition = snapPointToGrid(overrides?.position ?? { x: 0, y: 0 });
 
         return {

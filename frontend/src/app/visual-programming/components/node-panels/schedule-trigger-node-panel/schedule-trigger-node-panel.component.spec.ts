@@ -3,6 +3,7 @@ import { NodeType } from '@shared/models';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
+import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel.component';
 
@@ -73,5 +74,37 @@ describe('ScheduleTriggerNodePanelComponent with backendId null', () => {
         expect(timezoneButton).not.toBeNull();
         expect(timezoneButton.disabled).toBe(true);
         fixture.destroy();
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent naming', () => {
+    function updatedName(nodeName: string): string {
+        TestBed.configureTestingModule({
+            providers: [{ provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } }],
+        });
+        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        const node = { ...unsavedScheduleNode, id: 'schedule-2', node_name: nodeName, nodeNumber: 2 };
+        TestBed.inject(FlowService).setFlow({
+            nodes: [{ ...unsavedScheduleNode, node_name: 'Every hour', nodeNumber: 1 }, node],
+            connections: [],
+        });
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        const name = fixture.componentInstance.createUpdatedNode().node_name;
+        fixture.destroy();
+        return name;
+    }
+
+    // The node's schedule is every hour; another node is already called "Every hour".
+    it.each(['Schedule Trigger', 'Schedule Trigger #4', 'Every hour #2', 'Every day'])(
+        'renames auto-generated "%s" after its schedule, with no suffix, even when the name is taken',
+        (nodeName) => {
+            expect(updatedName(nodeName)).toBe('Every hour');
+        }
+    );
+
+    it('keeps a name the user gave it', () => {
+        expect(updatedName('Nightly import')).toBe('Nightly import');
     });
 });

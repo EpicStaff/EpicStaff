@@ -64,6 +64,7 @@ import { KeyValueTablesStorageService } from '../../../../features/key-value-tab
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { KEY_VALUE_MODE_LABELS } from '../../../core/constants/key-value-mode-visuals';
+import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import {
     canConfigureMode,
     duplicateWriteKeys,
@@ -355,7 +356,8 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         this.form.markAllAsTouched();
         if (this.form.invalid) {
             const nodeName: string = this.form.value.node_name?.trim() || this.node().node_name;
-            this.toastService.error(`Fix the highlighted fields in "${nodeName}" to save the flow.`);
+            const nodeLabel = formatNodeLabel({ node_name: nodeName, nodeNumber: this.node().nodeNumber });
+            this.toastService.error(`Fix the highlighted fields in "${nodeLabel}" to save the flow.`);
             return null;
         }
         return super.captureForValidation();

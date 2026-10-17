@@ -19,6 +19,7 @@ import { NodeType } from '@shared/models';
 import { ToastService } from '../../../../services/notifications';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
@@ -155,7 +156,7 @@ export class NodePanelShellComponent {
         if (!n) return '';
         if (n.node_name === '__start__') return 'Start';
         if (n.type === 'end' || n.node_name === '__end_node__') return 'End';
-        return n.node_name;
+        return n.node_name ? formatNodeLabel(n) : '';
     });
 
     public readonly shouldShowExpandButton = computed(() => {

@@ -2,23 +2,6 @@ import { NodeType } from '@shared/models';
 
 import { DecisionTableNodeModel, NodeModel, SubGraphNodeModel } from '../models/node.model';
 
-/** Strips any auto-generated counter suffix, e.g. "Python-Node (#2)" or "Python-Node #2" → "Python-Node" */
-function stripCounter(name: string | null | undefined): string {
-    if (!name) return '';
-    return name
-        .replace(/\s*\(#\d+\)\s*$/, '')
-        .replace(/\s*#\d+\s*$/, '')
-        .trim();
-}
-
-/** Returns "Base Name #N" where N is the nodeNumber, or just "Base Name" if no number. */
-function withNumber(baseName: string, node: NodeModel): string {
-    if (node.nodeNumber != null) {
-        return `${baseName} #${node.nodeNumber}`;
-    }
-    return baseName;
-}
-
 export function getNodeTitle(node: NodeModel): string {
     if (!node) return 'Unknown Node';
 
@@ -37,9 +20,9 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.AGENT:
             return node.node_name || '';
 
-        // Entity-name types — display the referenced entity name with the badge number.
+        // Entity-name types — display the referenced entity name.
         case NodeType.TABLE:
-            return withNumber(stripCounter((node as DecisionTableNodeModel).data.name), node);
+            return (node as DecisionTableNodeModel).data.name ?? '';
 
         // Fixed-name types
         case NodeType.START:

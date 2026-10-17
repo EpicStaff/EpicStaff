@@ -3,6 +3,7 @@ import { ActionCode, NodeType } from '@shared/models';
 import { KeyValueEntryLookup } from '../../../features/key-value-tables/models/key-value-table.model';
 import { KeyValueEntry, KeyValueMode, KeyValueNodeData } from '../models/key-value-node.model';
 import { KeyValueNodeModel, NodeModel } from '../models/node.model';
+import { formatNodeLabel } from './format-node-label.util';
 import { isPathUnder } from './variable-path.util';
 
 // Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over
@@ -269,7 +270,7 @@ export function invalidKeyValueNodeMessages(nodes: NodeModel[]): string[] {
     return nodes
         .filter((node): node is KeyValueNodeModel => node.type === NodeType.KEY_VALUE)
         .filter((node) => !hasValidKeyValueEntries(node.data))
-        .map((node) => `"${node.node_name}" has invalid keys or variable paths`);
+        .map((node) => `"${formatNodeLabel(node)}" has invalid keys or variable paths`);
 }
 
 /**

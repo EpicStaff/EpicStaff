@@ -3,7 +3,7 @@ import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
+import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
 import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -101,13 +101,7 @@ export class ClipboardService {
             return newNodeId;
         });
 
-        // Assign sequential badge numbers and generate names in one pass
-        const nodesToCreate = clipboardNodes.map((oldNode) => ({
-            type: oldNode.type,
-            data: oldNode.data,
-        }));
-        const nodeNumbers = nodesToCreate.map(() => this.flowService.getNextNodeNumber());
-        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, nodeNumbers);
+        const nodeNumbers = clipboardNodes.map(() => this.flowService.getNextNodeNumber());
 
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
@@ -133,7 +127,7 @@ export class ClipboardService {
                     y: oldNode.position.y + offsetY,
                 },
                 ports: newPorts,
-                node_name: displayNames[index],
+                node_name: generateNodeDisplayName(oldNode.type),
                 data: newData,
             };
         });

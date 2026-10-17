@@ -89,6 +89,7 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
+import { formatNodeLabel } from '../../../../visual-programming/core/helpers/format-node-label.util';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import {
     CdtExplanations,
@@ -907,7 +908,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = taskNode.node_name?.trim() || `Untitled task #${index + 1}`;
+            const label = this.validationMessageLabel(taskNode, `Untitled task #${index + 1}`);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -962,7 +963,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
+            const label = this.validationMessageLabel(agentNode, `Untitled agent #${index + 1}`);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -999,13 +1000,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (invalidKeys.length === 0) return;
 
-            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const label = this.validationMessageLabel(cdtNode, `Untitled decision table #${index + 1}`);
             const detail =
                 invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
             messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
         });
 
         return messages;
+    }
+
+    /** The node's trimmed name with its number, so same-named nodes are told apart; `fallback` when it has none. */
+    private validationMessageLabel(node: NodeModel, fallback: string): string {
+        const name = node.node_name?.trim();
+        return name ? formatNodeLabel({ node_name: name, nodeNumber: node.nodeNumber }) : fallback;
     }
 
     private cleanupCdtGridState(flowState: FlowModel): void {

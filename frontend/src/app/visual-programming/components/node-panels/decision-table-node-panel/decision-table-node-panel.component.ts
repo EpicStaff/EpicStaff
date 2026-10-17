@@ -11,6 +11,7 @@ import {
 import { NodeType } from '@shared/models';
 
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
+import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
@@ -61,7 +62,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             )
             .map((node) => ({
                 value: node.id,
-                name: node.node_name || node.id,
+                name: node.node_name ? formatNodeLabel(node) : node.id,
             }));
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];

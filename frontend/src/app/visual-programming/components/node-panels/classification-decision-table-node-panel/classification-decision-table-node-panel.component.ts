@@ -46,6 +46,7 @@ import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
+import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';
@@ -345,7 +346,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             )
             .map((node) => ({
                 value: node.id,
-                name: node.node_name || node.id,
+                name: node.node_name ? formatNodeLabel(node) : node.id,
             }));
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];
@@ -964,6 +965,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeId: this.node().id,
             backendId: this.node().backendId,
             nodeName: this.form.value.node_name ?? this.node().node_name ?? '',
+            nodeNumber: this.node().nodeNumber,
             preCode: this.preCode,
             postCode: this.postCode,
             preInputMap: this.serializeInputMap('pre_input_map'),
