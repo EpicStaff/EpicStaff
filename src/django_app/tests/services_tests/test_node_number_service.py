@@ -4,8 +4,12 @@ from datetime import datetime, timezone
 import pytest
 from django.db import connection
 
-from tables.models import AgentNode, DecisionTableNode, Graph
-from tables.services.node_number_service import NodeNumberService, source_order
+from tables.models import AgentNode, Crew, CrewNode, DecisionTableNode, Graph
+from tables.services.node_number_service import (
+    NodeNumberService,
+    source_order,
+    source_order_key,
+)
 
 
 @pytest.mark.django_db
@@ -107,28 +111,46 @@ def test_supplied_number_below_counter_does_not_lower_it(graph):
 
 
 @pytest.mark.django_db
-def test_restart_refuses_a_graph_that_still_has_a_node(graph):
-    AgentNode.objects.create(graph=graph, node_name="A")
-    with pytest.raises(ValueError):
-        NodeNumberService().restart(graph.id)
+def test_rewind_takes_an_empty_graph_to_zero(graph):
+    NodeNumberService().reserve(graph.id, 5)
+
+    NodeNumberService().rewind_to_surviving_nodes(graph.id)
+
     graph.refresh_from_db()
-    assert graph.node_number_seq == 1
+    assert graph.node_number_seq == 0
 
 
 @pytest.mark.django_db
-def test_restart_refuses_a_graph_that_only_has_a_soft_deleted_node(graph):
-    node = DecisionTableNode.objects.create(graph=graph, node_name="T")
+def test_rewind_stops_at_the_highest_number_a_surviving_crew_node_holds(graph):
+    CrewNode.objects.create(
+        graph=graph, node_name="legacy", crew=Crew.objects.create(org=graph.org, name="c"), node_number=4
+    )
+    NodeNumberService().reserve(graph.id, 5)
+
+    NodeNumberService().rewind_to_surviving_nodes(graph.id)
+
+    graph.refresh_from_db()
+    assert graph.node_number_seq == 4
+    assert AgentNode.objects.create(graph=graph, node_name="B").node_number == 5
+
+
+@pytest.mark.django_db
+def test_rewind_counts_the_number_a_soft_deleted_node_holds(graph):
+    node = DecisionTableNode.objects.create(graph=graph, node_name="T", node_number=3)
     DecisionTableNode.all_objects.filter(pk=node.pk).update(
         active=False, soft_deleted_at=datetime.now(timezone.utc)
     )
-    with pytest.raises(ValueError):
-        NodeNumberService().restart(graph.id)
+
+    NodeNumberService().rewind_to_surviving_nodes(graph.id)
+
+    graph.refresh_from_db()
+    assert graph.node_number_seq == 3
 
 
 @pytest.mark.django_db
-def test_restart_resets_an_empty_graph(graph):
+def test_rewind_lets_an_emptied_graph_number_from_one(graph):
     AgentNode.objects.create(graph=graph, node_name="A").delete()
-    NodeNumberService().restart(graph.id)
+    NodeNumberService().rewind_to_surviving_nodes(graph.id)
     graph.refresh_from_db()
     assert graph.node_number_seq == 0
     assert AgentNode.objects.create(graph=graph, node_name="B").node_number == 1
@@ -156,10 +178,37 @@ def test_concurrent_reserves_never_overlap(graph):
     [
         ({10: 4, 11: 1, 12: None, 13: 5}, {11: 1, 10: 2, 13: 3, 12: 4}),
         ({}, {}),
-        ({"a": 1, "b": 4, "c": 5}, {"a": 1, "b": 2, "c": 3}),
+        ({7: 1, 8: 4, 9: 5}, {7: 1, 8: 2, 9: 3}),
         ({3: 2, 1: 2, 2: 2}, {1: 1, 2: 2, 3: 3}),
         ({9: None, 4: None}, {4: 1, 9: 2}),
     ],
 )
 def test_source_order_renumbers_from_one_keeping_source_order(numbers_by_key, expected):
     assert source_order(numbers_by_key) == expected
+
+
+@pytest.mark.parametrize("non_int_number", ["3", True, 3.0, None])
+def test_a_non_int_number_sorts_after_every_numbered_node(non_int_number):
+    # Values from an import file are user input: a non-int counts as no number.
+    nodes = [(non_int_number, 1), (1_000_000, 9), (1, 8)]
+
+    ordered = sorted(nodes, key=lambda node: source_order_key(*node))
+
+    assert ordered == [(1, 8), (1_000_000, 9), (non_int_number, 1)]
+
+
+@pytest.mark.parametrize("non_int_tiebreak", ["1", False, 1.0, None])
+def test_a_non_int_tiebreak_sorts_as_the_lowest_tiebreak(non_int_tiebreak):
+    nodes = [(5, 2), (5, non_int_tiebreak), (None, 3)]
+
+    ordered = sorted(nodes, key=lambda node: source_order_key(*node))
+
+    assert ordered == [(5, non_int_tiebreak), (5, 2), (None, 3)]
+
+
+def test_source_order_key_sorts_numbered_ascending_then_unnumbered_by_tiebreak():
+    nodes = [(None, 4), (5, 1), (1, 9), (None, 2), (5, 0)]
+
+    ordered = sorted(nodes, key=lambda node: source_order_key(*node))
+
+    assert ordered == [(1, 9), (5, 0), (5, 1), (None, 2), (None, 4)]

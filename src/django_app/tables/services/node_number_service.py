@@ -1,8 +1,6 @@
-from collections.abc import Hashable
-
 from django.apps import apps
 from django.db import transaction
-from django.db.models import F, Value
+from django.db.models import F, Max, Value
 from django.db.models.functions import Greatest
 from tables.models import Graph
 from utils.singleton_meta import SingletonMeta
@@ -33,21 +31,22 @@ class NodeNumberService(metaclass=SingletonMeta):
             node_number_seq=Greatest(F("node_number_seq"), Value(number))
         )
 
-    def restart(self, graph_id: int) -> None:
-        """Reset the counter of a graph whose content is about to be rebuilt.
+    def rewind_to_surviving_nodes(self, graph_id: int) -> None:
+        """Rewind the counter of a rebuilt graph to the highest number its rows still hold.
 
-        Reusing numbers is only safe when nothing holds one, so soft-deleted nodes
-        count as holding theirs.
-
-        Raises:
-            ValueError: The graph still has a node of any numbered type.
+        Called after the graph's content was wiped, so the rebuilt nodes are numbered
+        right above what survives (from 1 when nothing does). Rows the wipe does not
+        remove, such as legacy CrewNodes and soft-deleted nodes, keep their numbers,
+        and no number they hold is issued again.
         """
-        if any(
-            model._base_manager.filter(graph_id=graph_id).exists()
+        surviving_numbers = (
+            model._base_manager.filter(graph_id=graph_id)
+            .aggregate(highest=Max("node_number"))
+            .get("highest")
             for model in _numbered_node_models()
-        ):
-            raise ValueError("Cannot restart node numbering while the graph still has nodes")
-        Graph.all_objects.filter(pk=graph_id).update(node_number_seq=0)
+        )
+        highest_surviving = max((number for number in surviving_numbers if number), default=0)
+        Graph.all_objects.filter(pk=graph_id).update(node_number_seq=highest_surviving)
 
 
 def _numbered_node_models() -> list[type]:
@@ -56,15 +55,32 @@ def _numbered_node_models() -> list[type]:
     return [model for model in apps.get_models() if issubclass(model, NumberedNode)]
 
 
-def source_order(numbers_by_key: dict[Hashable, int | None]) -> dict[Hashable, int]:
+def source_order_key(number: object, tiebreak: object) -> tuple[bool, int, int]:
+    """Sort key for a node of a graph being rebuilt: by source number, then by `tiebreak`.
+
+    Nodes without a source number go last. The values can come from an import file,
+    so anything that is not an int (bool included) counts as absent instead of
+    raising TypeError in the sort.
+
+    Args:
+        tiebreak: The node's source id; orders equal numbers and the unnumbered nodes.
+    """
+    number = _int_or_none(number)
+    return number is None, number or 0, _int_or_none(tiebreak) or 0
+
+
+def _int_or_none(value: object) -> int | None:
+    # Exact type match: bool is a subclass of int.
+    return value if type(value) is int else None
+
+
+def source_order(numbers_by_node_id: dict[int, int | None]) -> dict[int, int]:
     """Renumber 1..K keeping the source order: #1, #4, #5 -> 1, 2, 3.
 
-    Keys without a source number go last. Ties, and the unnumbered keys among
-    themselves, are ordered by key so the result is deterministic; this requires
-    the keys to be mutually sortable.
+    Ordered by `source_order_key`, the same rule an import uses.
     """
-    ordered_keys = sorted(
-        numbers_by_key,
-        key=lambda key: (numbers_by_key[key] is None, numbers_by_key[key] or 0, key),
+    ordered_node_ids = sorted(
+        numbers_by_node_id,
+        key=lambda node_id: source_order_key(numbers_by_node_id[node_id], node_id),
     )
-    return {key: position for position, key in enumerate(ordered_keys, start=1)}
+    return {node_id: position for position, node_id in enumerate(ordered_node_ids, start=1)}

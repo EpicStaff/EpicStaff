@@ -37,7 +37,7 @@ from tables.models import (
 )
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
-from tables.services.node_number_service import NodeNumberService
+from tables.services.node_number_service import NodeNumberService, source_order_key
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -270,8 +270,9 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         self.wipe_graph_children(graph)
-        # The imported nodes take 1..K in source order, as in a newly imported flow.
-        NodeNumberService().restart(graph.id)
+        # The imported nodes are numbered in source order right above the numbers the
+        # wipe left behind (legacy CrewNodes), so 1..K when nothing survives.
+        NodeNumberService().rewind_to_surviving_nodes(graph.id)
         # The serializer saves this same instance next; a stale counter would be written back.
         graph.refresh_from_db(fields=["node_number_seq"])
         return replaced_telegram_keys
@@ -391,7 +392,12 @@ class GraphStrategy(EntityImportExportStrategy):
         # Each node is numbered from the graph's counter as it is saved, so creating
         # them in source-number order keeps the source order: #1, #4, #5 become the
         # next three numbers in that order. Nodes without a number go last.
-        nodes_data = sorted(nodes_data, key=self._source_order_key)
+        nodes_data = sorted(
+            nodes_data,
+            key=lambda node_data: source_order_key(
+                node_data.get("node_number"), node_data.get("id")
+            ),
+        )
         created_nodes = []
 
         for node_data in nodes_data:
@@ -437,21 +443,6 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
 
         return created_nodes
-
-    @staticmethod
-    def _source_order_key(node_data: dict) -> tuple[bool, int, int]:
-        """Order by source number, then by source id; a value that is not an int counts as absent.
-
-        The file is user input, so a non-int must not reach the comparison (it
-        would raise TypeError mid-import).
-        """
-
-        def int_or_none(value: object) -> int | None:
-            # Exact type match: bool is a subclass of int.
-            return value if type(value) is int else None
-
-        number = int_or_none(node_data.get("node_number"))
-        return number is None, number or 0, int_or_none(node_data.get("id")) or 0
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:

@@ -133,6 +133,12 @@ class TestNodeNumberIsExported:
         }
         assert numbers == {"Agent": 1, "Second agent": 4, "Python": 5}
 
+    def test_export_and_snapshot_leave_out_the_graph_counter(self, source_flow):
+        version = GraphVersioningService().save_version(graph=source_flow, name="v1")
+
+        assert "node_number_seq" not in _export(source_flow)[EntityType.GRAPH][0]
+        assert "node_number_seq" not in version.snapshot
+
 
 @pytest.mark.django_db
 class TestFullImportRenumbersInSourceOrder:
@@ -158,7 +164,7 @@ class TestFullImportRenumbersInSourceOrder:
         agent_metadata = imported.agent_node_list.values_list("metadata", flat=True)
         assert all("nodeNumber" not in (metadata or {}) for metadata in agent_metadata)
 
-    def test_replace_existing_restarts_numbering_from_one(self, client_as, admin_acme, acme):
+    def test_replace_existing_numbers_from_one(self, client_as, admin_acme, acme):
         holder = _flow(acme, "Holder")
         _agent_node(holder, "Late", 7)
         _python_node(holder, "Early", 3)
@@ -173,6 +179,29 @@ class TestFullImportRenumbersInSourceOrder:
         assert Graph.objects.filter(org=acme).count() == 1
         assert _numbers_by_name(holder) == {"Early": 1, "Late": 2}
         assert holder.node_number_seq == 2
+
+    def test_replace_existing_numbers_above_a_legacy_crew_node_the_wipe_keeps(
+        self, client_as, admin_acme, acme
+    ):
+        holder = _flow(acme, "Holder")
+        crew_node = CrewNode.objects.create(
+            graph=holder,
+            node_name="legacy crew",
+            crew=Crew.objects.create(org=acme, name="legacy"),
+            node_number=4,
+        )
+        _python_node(holder, "Python", 1)
+        _agent_node(holder, "Agent", 2)
+        export_data = _export(holder)
+
+        response = _import(
+            client_as(admin_acme), acme, export_data, preserve_uuids=True, replace_existing=True
+        )
+
+        assert response.status_code == 200, response.content
+        assert _numbers_by_name(holder) == {"Python": 5, "Agent": 6}
+        assert holder.node_number_seq == 6
+        assert CrewNode.objects.get(pk=crew_node.pk).node_number == 4
 
 
 @pytest.mark.django_db

@@ -41,6 +41,7 @@ from tables.models.graph_models import StartNode, TelegramTriggerNode
 from tables.models.python_models import linked_secrets_prefetch
 from tables.services.copy_services.helpers import next_copy_name
 from tables.services.key_value_table_service import KeyValueTableService
+from tables.services.node_number_service import NodeNumberService
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
@@ -866,6 +867,9 @@ class GraphVersioningManager:
         self, graph: Graph, filtered_snapshot: dict, available_deps: dict, user=None
     ) -> IDMapper:
         self._graph_strategy.wipe_graph_children(graph)
+        # The restored nodes are numbered in source order right above the numbers the
+        # wipe left behind (legacy CrewNodes), so 1..K when nothing survives.
+        NodeNumberService().rewind_to_surviving_nodes(graph.id)
         self._update_graph_scalars(graph, filtered_snapshot)
 
         id_mapper = self._build_identity_id_mapper(available_deps)
