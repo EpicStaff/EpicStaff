@@ -77,7 +77,8 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
     )
     save_version = models.BigIntegerField(default=1)
     # High-water mark of issued node badge numbers. Written only by NodeNumberService,
-    # and lowered only when the graph's whole content is rebuilt (rewind_to_surviving_nodes).
+    # and lowered only when an import replaces the graph's content (rewind_to_surviving_nodes).
+    # A version restore keeps it.
     node_number_seq = models.IntegerField(default=0, editable=False)
 
     def save(self, *args, **kwargs):

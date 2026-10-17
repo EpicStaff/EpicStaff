@@ -13,18 +13,21 @@ export const UNNUMBERED_SNAPSHOT_NODE_TYPES = {
     GraphNote: NodeType.NOTE,
 } as const satisfies Partial<Record<SnapshotNodeType, NodeType>>;
 
-export type UnnumberedSnapshotNodeType = keyof typeof UNNUMBERED_SNAPSHOT_NODE_TYPES;
-
 const UNNUMBERED_NODE_TYPES: ReadonlySet<NodeType> = new Set(Object.values(UNNUMBERED_SNAPSHOT_NODE_TYPES));
+
+/** Highest usable node number; mirrors the backend's MAX_BADGE_NUMBER. */
+export const MAX_NODE_NUMBER = 1_000_000;
+
+/** `value` when it is a usable node number (an integer in 1..MAX_NODE_NUMBER), else null. */
+export function usableNodeNumberOrNull(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_NODE_NUMBER
+        ? value
+        : null;
+}
 
 /** Whether nodes of `type` get a number from the graph's counter. */
 export function isNumberedNodeType(type: NodeType): boolean {
     return !UNNUMBERED_NODE_TYPES.has(type);
-}
-
-/** Whether nodes an export or snapshot tags `nodeType` get a number from the graph's counter. */
-export function isNumberedSnapshotNodeType(nodeType: SnapshotNodeType): boolean {
-    return !Object.hasOwn(UNNUMBERED_SNAPSHOT_NODE_TYPES, nodeType);
 }
 
 /**

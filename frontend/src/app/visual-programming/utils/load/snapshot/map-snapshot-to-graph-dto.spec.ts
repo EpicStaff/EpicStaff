@@ -330,8 +330,8 @@ describe('mapNodeAuthorshipToCanvas', () => {
 });
 
 describe('buildPreviewFlowModel (node numbers)', () => {
-    // A version keeps the numbers its nodes had in the source graph, gaps included; restoring it
-    // numbers them 1..K in that order, and the preview shows what the restore will give.
+    // A version keeps the numbers its nodes had in the source graph, gaps included, and restoring
+    // it keeps them too, so the preview shows the stored numbers as they are.
     const version: GraphVersionSnapshot = {
         nodes: [
             exported('StartNode', liveStart),
@@ -342,33 +342,56 @@ describe('buildPreviewFlowModel (node numbers)', () => {
             }),
             exported('TaskNode', { ...liveTask, node_number: 1, inline_surface: null }),
             exported('AgentNode', { ...liveAgent, node_number: 4 }),
-            exported('FileExtractorNode', { ...liveFileExtractor, node_number: 4 }),
-            exported('AudioTranscriptionNode', { ...liveAudio, node_number: null }),
             exported('GraphNote', liveNote),
         ],
     };
+    const numberOf = (snapshot: GraphVersionSnapshot, id: number): number | undefined => {
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(snapshot, secretsByName, availableFlows);
+        return nodeWithSnapshotId(flow, snapshotIdToNodeUuid, id).nodeNumber;
+    };
 
-    it('renumbers the nodes 1..K by source number, an equal number by id, an unnumbered node last', () => {
-        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(version, secretsByName, availableFlows);
-        const numberOf = (id: number): number | undefined =>
-            nodeWithSnapshotId(flow, snapshotIdToNodeUuid, id).nodeNumber;
-
-        expect(numberOf(ID.task)).toBe(1);
-        expect(numberOf(ID.agent)).toBe(2);
-        expect(numberOf(ID.fileExtractor)).toBe(3);
-        expect(numberOf(ID.python)).toBe(4);
-        expect(numberOf(ID.audio)).toBe(5);
+    it('keeps the stored numbers #1, #4 and #5, gaps included', () => {
+        expect(numberOf(version, ID.task)).toBe(1);
+        expect(numberOf(version, ID.agent)).toBe(4);
+        expect(numberOf(version, ID.python)).toBe(5);
     });
 
     it('leaves Start and Note unnumbered', () => {
-        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(version, secretsByName, availableFlows);
-
-        expect(nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.start).nodeNumber).toBeUndefined();
-        expect(nodeWithSnapshotId(flow, snapshotIdToNodeUuid, ID.note).nodeNumber).toBeUndefined();
+        expect(numberOf(version, ID.start)).toBeUndefined();
+        expect(numberOf(version, ID.note)).toBeUndefined();
     });
 
-    it('sets the counter to the number of numbered nodes, as a restore does', () => {
+    it.each([1, 1_000_000])('shows the boundary number %s as stored', (stored) => {
+        const boundary: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+
+        expect(numberOf(boundary, ID.task)).toBe(stored);
+    });
+
+    it.each([0, -1, 1_000_001, 4.5, null])('does not show the unusable stored number %s as stored', (stored) => {
+        const unusable: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+        const [adaptedTask] = mapSnapshotToGraphDto(unusable, secretsByName).task_node_list ?? [];
+
+        expect(adaptedTask.node_number).toBeNull();
+        expect(numberOf(unusable, ID.task)).not.toBe(stored);
+    });
+
+    it('sets the counter floor to the highest usable stored number', () => {
         expect(mapSnapshotToGraphDto(version, secretsByName).node_number_seq).toBe(5);
+    });
+
+    it('ignores an unusable stored number when setting the counter floor', () => {
+        const withUnusable: GraphVersionSnapshot = {
+            nodes: [
+                exported('TaskNode', { ...liveTask, node_number: 2, inline_surface: null }),
+                exported('AgentNode', { ...liveAgent, node_number: 1_000_001 }),
+            ],
+        };
+
+        expect(mapSnapshotToGraphDto(withUnusable, secretsByName).node_number_seq).toBe(2);
     });
 });
 

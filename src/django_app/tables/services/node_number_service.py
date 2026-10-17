@@ -3,14 +3,16 @@ from django.db import transaction
 from django.db.models import F, Max, Value
 from django.db.models.functions import Greatest
 from tables.models import Graph
+from tables.utils.legacy_node_number import badge_number_or_none
 from utils.singleton_meta import SingletonMeta
 
 
 class NodeNumberService(metaclass=SingletonMeta):
     """Issues graph-scoped "#N" badge numbers from `Graph.node_number_seq`.
 
-    The counter only ever moves up, so a number is never issued twice in a graph,
-    even after the node that held it is deleted. The UPDATE row-locks the graph until
+    The counter moves up only, except when an import replaces the graph's content
+    (`rewind_to_surviving_nodes`), so between such rebuilds a number is never issued
+    twice in a graph, even after the node that held it is deleted. The UPDATE row-locks the graph until
     the surrounding transaction ends, so concurrent callers are serialised without a
     separate `select_for_update`.
     """
@@ -47,6 +49,44 @@ class NodeNumberService(metaclass=SingletonMeta):
         )
         highest_surviving = max((number for number in surviving_numbers if number), default=0)
         Graph.all_objects.filter(pk=graph_id).update(node_number_seq=highest_surviving)
+
+    def keepable_numbers(self, graph_id: int, stored_numbers: list[object]) -> list[int | None]:
+        """Decide which stored numbers the nodes of a rebuilt graph may keep.
+
+        Called after the graph's content was wiped. A stored number is kept when it is
+        a usable badge number, no row of the graph still holds it (legacy CrewNodes and
+        soft-deleted nodes survive the wipe), and no earlier entry kept it already.
+        Issues one query per numbered node model.
+
+        Args:
+            stored_numbers: The nodes' stored numbers, in the order they are created;
+                on a duplicate the first entry wins.
+
+        Returns:
+            One entry per stored number: the number to keep, or None where the node
+            must be numbered from the counter instead.
+        """
+        taken_numbers = self._held_numbers(graph_id)
+        kept_numbers = []
+        for stored_number in stored_numbers:
+            number = badge_number_or_none(stored_number)
+            if number is None or number in taken_numbers:
+                kept_numbers.append(None)
+                continue
+            taken_numbers.add(number)
+            kept_numbers.append(number)
+        return kept_numbers
+
+    @staticmethod
+    def _held_numbers(graph_id: int) -> set[int]:
+        held_numbers = set()
+        for model in _numbered_node_models():
+            held_numbers.update(
+                model._base_manager.filter(
+                    graph_id=graph_id, node_number__isnull=False
+                ).values_list("node_number", flat=True)
+            )
+        return held_numbers
 
 
 def _numbered_node_models() -> list[type]:

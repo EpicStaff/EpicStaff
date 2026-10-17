@@ -8,7 +8,7 @@ import {
     SnapshotNodeType,
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
-import { isNumberedSnapshotNodeType, UnnumberedSnapshotNodeType } from '../../../core/helpers/node-number.util';
+import { usableNodeNumberOrNull } from '../../../core/helpers/node-number.util';
 import { FlowModel } from '../../../core/models/flow.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
@@ -196,12 +196,9 @@ export function mapSnapshotToGraphDto(
     const context: AdapterContext = { secretsByName, secretDeclarations: snapshot.secret_declarations };
     const nodeLists = emptyNodeLists();
     const knownNodes = (snapshot.nodes ?? []).filter((node) => Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type));
-    const restoredNumbers = restoredNodeNumbers(knownNodes);
 
     for (const node of knownNodes) {
-        (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(
-            adaptNode(node, context, restoredNumbers.get(node))
-        );
+        (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(adaptNode(node, context));
     }
 
     return {
@@ -212,7 +209,7 @@ export function mapSnapshotToGraphDto(
         name: '',
         description: '',
         save_version: 0,
-        node_number_seq: restoredNumbers.size,
+        node_number_seq: highestStoredNodeNumber(knownNodes),
         created_at: '',
         ...NO_AUTHORSHIP,
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
@@ -268,37 +265,24 @@ export function mapNodeAuthorshipToCanvas(
     return authorshipByNodeId;
 }
 
-function adaptNode(node: SnapshotNode, context: AdapterContext, restoredNumber: number | undefined): unknown {
+function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
     const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
     const adapted = { ...adapter(node, context), ...NO_AUTHORSHIP };
-    return restoredNumber === undefined ? adapted : { ...adapted, node_number: restoredNumber };
-}
-
-type NumberedSnapshotNode = Exclude<SnapshotNode, { node_type: UnnumberedSnapshotNodeType }>;
-
-function isNumberedSnapshotNode(node: SnapshotNode): node is NumberedSnapshotNode {
-    return isNumberedSnapshotNodeType(node.node_type);
+    return 'node_number' in adapted
+        ? { ...adapted, node_number: usableNodeNumberOrNull(adapted.node_number) }
+        : adapted;
 }
 
 /**
- * The numbers a restore gives the version's nodes: the version keeps its source numbers, gaps included
- * (#1, #4, #5), and a restore renumbers them 1..K in that order (backend `node_number_service.source_order`):
- * by source number, an equal number by id, a node without one last.
+ * The preview's counter floor: the highest usable number the version stores. A restore keeps the usable
+ * stored numbers and never lowers the counter, so the live counter can only be higher.
  */
-function restoredNodeNumbers(nodes: readonly SnapshotNode[]): Map<SnapshotNode, number> {
-    const sourceNumber = (node: NumberedSnapshotNode): number | null =>
-        Number.isInteger(node.node_number) ? node.node_number : null;
-    const ordered = nodes.filter(isNumberedSnapshotNode).sort((first, second) => {
-        const firstNumber = sourceNumber(first);
-        const secondNumber = sourceNumber(second);
-        if (firstNumber !== secondNumber) {
-            if (firstNumber === null) return 1;
-            if (secondNumber === null) return -1;
-            return firstNumber - secondNumber;
-        }
-        return first.id - second.id;
+function highestStoredNodeNumber(nodes: readonly SnapshotNode[]): number {
+    const storedNumbers = nodes.flatMap((node) => {
+        const storedNumber = 'node_number' in node ? usableNodeNumberOrNull(node.node_number) : null;
+        return storedNumber === null ? [] : [storedNumber];
     });
-    return new Map(ordered.map((node, index) => [node, index + 1]));
+    return Math.max(0, ...storedNumbers);
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {

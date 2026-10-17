@@ -15,7 +15,8 @@ _EXCLUDED_GRAPH_SCALARS = (
     "created_at",
     "updated_at",
     "save_version",
-    # The restored nodes are renumbered from 1, so the counter the version saved is stale.
+    # The live counter, not the one the version stored, is the graph's high-water mark
+    # of issued numbers.
     "node_number_seq",
 )
 

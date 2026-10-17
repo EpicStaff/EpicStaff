@@ -335,6 +335,7 @@ class GraphStrategy(EntityImportExportStrategy):
         is_partial: bool = False,
         old_graph_id: int | None = None,
         user=None,
+        preserve_node_numbers: bool = False,
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
@@ -342,6 +343,10 @@ class GraphStrategy(EntityImportExportStrategy):
         node and is recorded as its last editor, and references that need a permission
         check (e.g. a key-value table) gate on it. `None` means there is no acting user,
         so nodes get no author and no last edit.
+
+        By default the nodes are numbered from the graph's counter in source order.
+        `preserve_node_numbers` keeps each node's stored number instead (version
+        restore); see `_create_nodes` for the numbers that cannot be kept.
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -350,7 +355,13 @@ class GraphStrategy(EntityImportExportStrategy):
 
         # Pass 1: create all nodes and build the old→new node ID mapping
         created_nodes = self._create_nodes(
-            nodes_data, graph, node_mapper, id_mapper, old_graph_id, user
+            nodes_data,
+            graph,
+            node_mapper,
+            id_mapper,
+            old_graph_id,
+            user,
+            preserve_node_numbers=preserve_node_numbers,
         )
 
         # Pass 2: create edges with remapped node IDs,
@@ -387,39 +398,32 @@ class GraphStrategy(EntityImportExportStrategy):
         id_mapper: IDMapper,
         old_graph_id: int | None = None,
         user=None,
+        preserve_node_numbers: bool = False,
     ) -> list:
-        # Each node is numbered from the graph's counter as it is saved, so creating
-        # them in source-number order keeps the source order: #1, #4, #5 become the
-        # next three numbers in that order. Nodes without a number go last.
-        nodes_data = sorted(
-            nodes_data,
-            key=lambda node_data: source_order_key(
-                node_data.get("node_number"), node_data.get("id")
-            ),
+        supported_nodes = self._supported_nodes(
+            sorted(
+                nodes_data,
+                key=lambda node_data: source_order_key(
+                    node_data.get("node_number"), node_data.get("id")
+                ),
+            )
+        )
+        stored_numbers = [node_data.pop("node_number", None) for _, node_data in supported_nodes]
+        if preserve_node_numbers:
+            kept_numbers = NodeNumberService().keepable_numbers(graph.id, stored_numbers)
+        else:
+            kept_numbers = [None] * len(supported_nodes)
+        # A node without a kept number is numbered from the graph's counter as it is
+        # saved, and a kept number raises the counter. Creating the kept ones first and
+        # then the rest in source order puts every counter number above all kept ones,
+        # and renumbers #1, #4, #5 to the next three numbers in that order.
+        nodes_to_create = sorted(
+            zip(supported_nodes, kept_numbers, strict=True), key=lambda pair: pair[1] is None
         )
         created_nodes = []
 
-        for node_data in nodes_data:
-            node_type = node_data.pop("node_type")
-            # Backwards compat: old exports used "NoteNode"
-            if node_type == "NoteNode":
-                node_type = "GraphNote"
+        for (entity_type, node_data), node_number in nodes_to_create:
             old_id = node_data.get("id")
-
-            # Old archives contain node types that no longer exist, and a type can
-            # still be mapped while its strategy is gone — hence both checks.
-            # The edge passes below drop anything that pointed at them.
-            entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
-            if entity_type is None or not entity_registry.has_strategy(entity_type):
-                logger.warning(
-                    "Skipping node id={} of unsupported node_type={} during import "
-                    "(no longer supported)",
-                    old_id,
-                    node_type,
-                )
-                continue
-
-            node_data.pop("node_number", None)
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
@@ -434,7 +438,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper, user=user)
+            node = strategy.create_entity(node_data, id_mapper, user=user, node_number=node_number)
             if node:
                 created_nodes.append(node)
 
@@ -442,6 +446,30 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
 
         return created_nodes
+
+    @staticmethod
+    def _supported_nodes(nodes_data: list) -> list[tuple[EntityType, dict]]:
+        supported_nodes = []
+        for node_data in nodes_data:
+            node_type = node_data.pop("node_type")
+            # Backwards compat: old exports used "NoteNode"
+            if node_type == "NoteNode":
+                node_type = "GraphNote"
+
+            # Old archives contain node types that no longer exist, and a type can
+            # still be mapped while its strategy is gone — hence both checks.
+            # The edge passes drop anything that pointed at them.
+            entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
+            if entity_type is None or not entity_registry.has_strategy(entity_type):
+                logger.warning(
+                    "Skipping node id={} of unsupported node_type={} during import "
+                    "(no longer supported)",
+                    node_data.get("id"),
+                    node_type,
+                )
+                continue
+            supported_nodes.append((entity_type, node_data))
+        return supported_nodes
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:

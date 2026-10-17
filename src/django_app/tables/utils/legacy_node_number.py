@@ -6,7 +6,8 @@ _TRAILING_BADGE = re.compile(r"\s*#\s*(\d+)\s*$")
 MAX_BADGE_NUMBER = 1_000_000
 
 
-def _badge_number_or_none(number: object) -> int | None:
+def badge_number_or_none(number: object) -> int | None:
+    """Return `number` when it is a usable badge number (an int in 1..MAX_BADGE_NUMBER), else None."""
     # Exact type match: bool is a subclass of int and is not a badge number.
     if type(number) is int and 1 <= number <= MAX_BADGE_NUMBER:
         return number
@@ -21,11 +22,11 @@ def split_legacy_node_name(node_name: str, metadata_number: object) -> tuple[str
     remains, so "Step #2" on node #5 stays as the user typed it. A number outside
     1..MAX_BADGE_NUMBER counts as no number.
     """
-    number = _badge_number_or_none(metadata_number)
+    number = badge_number_or_none(metadata_number)
     match = _TRAILING_BADGE.search(node_name or "")
     if match is None:
         return node_name, number
-    suffix_number = _badge_number_or_none(int(match.group(1)))
+    suffix_number = badge_number_or_none(int(match.group(1)))
     if number is None:
         number = suffix_number
     label = node_name[: match.start()]
