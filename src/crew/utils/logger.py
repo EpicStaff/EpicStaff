@@ -5,7 +5,17 @@ from types import TracebackType
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
+# `diagnose=False` matters: with loguru's default, a `logger.exception` traceback prints
+# the value of every identifier on each displayed source line. Crew's frames carry the
+# sandbox submit body, so a default sink would write `secrets` plaintext and
+# `storage_credentials.secret_key` to stdout on any failed submit.
+logger.add(
+    sys.stdout,
+    format="{time} {level} {message}",
+    level="INFO",
+    diagnose=False,
+    backtrace=False,
+)
 # logger.add("logs/file.log", rotation="1 MB", compression="zip")
 
 

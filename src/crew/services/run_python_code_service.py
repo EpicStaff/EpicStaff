@@ -87,7 +87,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 )
             except Exception as error:
                 # The result will never arrive, so do not wait on it: fail the node now.
-                logger.exception("Sandbox submit failed for {}", unique_task_id)
+                # The class name, never the traceback: the frame below holds the submit
+                # body with resolved secret plaintext and the storage secret key.
+                logger.error(
+                    "Sandbox submit failed for {} ({})", unique_task_id, type(error).__name__
+                )
                 return {
                     "execution_id": unique_task_id,
                     "result_data": None,
