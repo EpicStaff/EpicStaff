@@ -15,27 +15,11 @@ export function formatEmbeddingEstimate(embedding: IndexingEstimate['embedding']
     return `${tokensText} · ${prefix}${formatCostUsd(cost)}`;
 }
 
-export function formatLlmEstimate(llm: NonNullable<IndexingEstimate['llm']>): string | null {
-    const tokensMin = toFiniteNumber(llm?.tokens_min);
-    const tokensMax = toFiniteNumber(llm?.tokens_max);
-    if (tokensMin === null || tokensMax === null) return null;
-    const tokensText = `${formatTokens(tokensMin)}–${formatTokens(tokensMax)} tokens`;
-    const costMin = toFiniteNumber(llm.cost_usd_min);
-    const costMax = toFiniteNumber(llm.cost_usd_max);
-    if (costMin === null || costMax === null) return tokensText;
-    const costMinText = formatCostUsd(costMin);
-    const costMaxText = formatCostUsd(costMax);
-    const costText = costMinText === costMaxText ? costMinText : `${costMinText}–${costMaxText}`;
-    return `${tokensText} · ${costText}`;
-}
-
 /** Plain-text lines (no markup) describing the estimate. Invalid values are skipped. */
-export function getIndexingEstimateLines(estimate: IndexingEstimate): string[] {
+function getIndexingEstimateLines(estimate: IndexingEstimate): string[] {
     const lines: string[] = [];
     const embeddingText = formatEmbeddingEstimate(estimate.embedding);
     if (embeddingText) lines.push(`Embedding: ${embeddingText}`);
-    const llmText = estimate.llm ? formatLlmEstimate(estimate.llm) : null;
-    if (llmText) lines.push(`LLM extraction (rough estimate): ${llmText}`);
     return lines;
 }
 

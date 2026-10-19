@@ -1,10 +1,7 @@
 import pytest
 from application.commands import GetIndexEstimate
 from application.orchestrators.estimating import build_estimator
-from application.orchestrators.estimating.strategies import (
-    GraphEstimateOrchestrator,
-    NaiveEstimateOrchestrator,
-)
+from application.orchestrators.estimating.strategies import NaiveEstimateOrchestrator
 from domain.enums import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
@@ -17,12 +14,9 @@ from domain.models import (
     ChunkingConfig,
     Document,
     EmbeddingConfig,
-    GraphEstimateConfig,
-    GraphEstimateOverrides,
     PreviewChunk,
     Rag,
 )
-from graphrag_input import TextDocument
 from infrastructure import token_estimation
 
 OPENAI_EMBEDDING = EmbeddingConfig(
@@ -79,29 +73,6 @@ class FakeNaiveRepo:
         self.writes.append("update_document")
 
 
-class FakeGraphRepo:
-    def __init__(self, documents: list[TextDocument], config: GraphEstimateConfig, rag: Rag):
-        self.documents = documents
-        self.config = config
-        self.rag = rag
-
-    async def get_rag(self, rag_id: int):
-        return self.rag
-
-    async def get_estimate_config(self, rag_id: int):
-        return self.config
-
-    async def get_documents(self, rag_id: int, ids: frozenset[int]):
-        return [d for d in self.documents if int(d.id) in ids]
-
-    async def get_indexed_documents_excluding(self, rag_id: int, ids: frozenset[int]):
-        return [
-            d
-            for d in self.documents
-            if int(d.id) not in ids and d.raw_data["status"] == DocumentStatusEnum.COMPLETED
-        ]
-
-
 class FakeUoW:
     def __init__(self, naive_rag_repo=None, graph_rag_repo=None):
         self.naive_rag_repo = naive_rag_repo
@@ -117,28 +88,6 @@ class FakeUoW:
 def _naive(documents: list[Document], **kwargs) -> tuple[NaiveEstimateOrchestrator, FakeNaiveRepo]:
     repo = FakeNaiveRepo(documents, **kwargs)
     return NaiveEstimateOrchestrator(FakeUoW(naive_rag_repo=repo)), repo
-
-
-def _graph_config(**overrides) -> GraphEstimateConfig:
-    values = dict(
-        embedding=OPENAI_EMBEDDING,
-        llm_provider="openai",
-        llm_model="gpt-4o-mini",
-        chunk_size=100,
-        chunk_overlap=10,
-        max_gleanings=1,
-    )
-    return GraphEstimateConfig(**{**values, **overrides})
-
-
-def _text_document(doc_id: int, text: str, status: str = "new") -> TextDocument:
-    return TextDocument(
-        id=str(doc_id),
-        text=text,
-        title=f"doc_{doc_id}.txt",
-        creation_date="2024-01-01T00:00:00",
-        raw_data={"status": status},
-    )
 
 
 async def test_naive_uses_preview_chunks_when_they_exist():
@@ -160,7 +109,6 @@ async def test_naive_uses_preview_chunks_when_they_exist():
     assert result.embedding.tokens == expected_tokens
     assert result.embedding.exact is True
     assert result.embedding.cost_usd == pytest.approx(expected_tokens * 0.02 / 1_000_000)
-    assert result.llm is None
     assert repo.writes == []
 
 
@@ -272,125 +220,12 @@ async def test_naive_unknown_rag_raises():
         await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
 
 
-async def test_graph_returns_llm_block_with_custom_prices():
-    text = "word " * 500
-    config = _graph_config(input_cost_per_token=0.001, output_cost_per_token=0.002)
-    repo = FakeGraphRepo([_text_document(1, text)], config, _rag())
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-
-    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
-
-    assert result.rag_type == RAGStrategy.GRAPH
-    assert result.document_count == 1
-    assert result.chunk_count > 1
-    assert result.llm.calls == result.chunk_count * 2
-    assert result.llm.tokens_max == result.llm.tokens_min * 2
-    assert result.llm.tokens_min > result.embedding.tokens
-    assert result.llm.cost_usd_max == pytest.approx(result.llm.cost_usd_min * 2)
-    assert result.llm.cost_usd_min > 0
-
-
-async def test_graph_index_config_overrides_apply_on_top_of_stored_config():
-    text = "word " * 500
-    stored = _graph_config(chunk_size=200, chunk_overlap=10, max_gleanings=0)
-    repo = FakeGraphRepo([_text_document(1, text)], stored, _rag())
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-    document_ids = frozenset({1})
-
-    baseline = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=document_ids))
-    overridden = await orchestrator.execute(
-        GetIndexEstimate(
-            rag_id=1,
-            document_ids=document_ids,
-            index_config=GraphEstimateOverrides(chunk_size=50, max_gleanings=2),
-        )
-    )
-
-    assert overridden.chunk_count > baseline.chunk_count
-    assert baseline.llm.calls == baseline.chunk_count
-    assert overridden.llm.calls == overridden.chunk_count * 3
-    assert repo.config == stored
-
-
-def test_graph_estimate_overrides_leave_unset_fields_alone():
-    config = _graph_config(chunk_size=100, chunk_overlap=10, max_gleanings=1)
-
-    applied = GraphEstimateOverrides(chunk_overlap=20).apply_to(config)
-
-    assert (applied.chunk_size, applied.chunk_overlap, applied.max_gleanings) == (100, 20, 1)
-
-
-async def test_naive_ignores_index_config_overrides():
-    orchestrator, _ = _naive([_document(1)])
-    document_ids = frozenset({1})
-
-    plain = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=document_ids))
-    with_overrides = await orchestrator.execute(
-        GetIndexEstimate(
-            rag_id=1,
-            document_ids=document_ids,
-            index_config=GraphEstimateOverrides(chunk_size=5),
-        )
-    )
-
-    assert with_overrides == plain
-
-
-async def test_graph_llm_cost_is_null_for_unpriced_model_without_custom_prices():
-    config = _graph_config(llm_model="no-such-model-x")
-    repo = FakeGraphRepo([_text_document(1, "short text")], config, _rag())
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-
-    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
-
-    assert result.llm.cost_usd_min is None
-    assert result.llm.cost_usd_max is None
-    assert result.llm.calls == 2
-
-
-async def test_graph_reindex_of_completed_index_includes_other_completed_documents():
-    documents = [
-        _text_document(1, "alpha beta", status=DocumentStatusEnum.COMPLETED),
-        _text_document(2, "gamma delta", status=DocumentStatusEnum.COMPLETED),
-        _text_document(3, "epsilon", status=DocumentStatusEnum.NEW),
-    ]
-    repo = FakeGraphRepo(documents, _graph_config(), _rag(IndexStatusEnum.COMPLETED))
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-
-    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
-
-    assert result.document_count == 2
-
-
-async def test_graph_update_run_counts_only_selected_new_documents():
-    documents = [
-        _text_document(1, "alpha beta", status=DocumentStatusEnum.COMPLETED),
-        _text_document(3, "epsilon", status=DocumentStatusEnum.NEW),
-    ]
-    repo = FakeGraphRepo(documents, _graph_config(), _rag(IndexStatusEnum.COMPLETED))
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-
-    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({3})))
-
-    assert result.document_count == 1
-
-
-def test_build_estimator_registers_both_strategies():
+def test_build_estimator_supports_only_naive():
     uow = FakeUoW()
     assert isinstance(build_estimator(RAGStrategy.NAIVE, uow), NaiveEstimateOrchestrator)
-    assert isinstance(build_estimator(RAGStrategy.GRAPH, uow), GraphEstimateOrchestrator)
+    with pytest.raises(UnsupportedError):
+        build_estimator(RAGStrategy.GRAPH, uow)
     with pytest.raises(UnsupportedError):
         build_estimator("other", uow)
 
 
-async def test_graph_not_completed_index_counts_only_selected_documents_even_if_completed():
-    documents = [
-        _text_document(1, "alpha beta", status=DocumentStatusEnum.COMPLETED),
-        _text_document(2, "gamma delta", status=DocumentStatusEnum.COMPLETED),
-    ]
-    repo = FakeGraphRepo(documents, _graph_config(), _rag(IndexStatusEnum.OUTDATED))
-    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
-
-    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
-
-    assert result.document_count == 1

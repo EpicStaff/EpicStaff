@@ -3,7 +3,6 @@ import { Observable, of } from 'rxjs';
 import { map, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
-import { IndexingEstimate } from '../../../../models/base-rag.model';
 import { CollectionGraphRag, CreateGraphRagIndexConfigRequest } from '../../../../models/graph-rag.model';
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { GraphRagService } from '../../../../services/graph-rag.service';
@@ -98,23 +97,6 @@ export class GraphRagStrategy implements RagCreationStrategy {
                 this.collectionsStorage.markConfigsAsProcessing(this.indexingConfigIds);
             }),
             map(() => true)
-        );
-    }
-
-    estimateIndexing(
-        configIds: number[],
-        indexConfig?: CreateGraphRagIndexConfigRequest
-    ): Observable<IndexingEstimate | null> {
-        const ragId = this.graphRagSignal()?.graph_rag_id;
-        if (!ragId || !configIds.length) return of(null);
-
-        return this.ragIndexingService.estimateIndexingOrNull(
-            {
-                rag_id: ragId,
-                rag_type: 'graph',
-                document_config_ids: configIds,
-            },
-            indexConfig
         );
     }
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from domain.models import ChunkingConfig, GraphEstimateOverrides, SearchConfig
+from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
@@ -62,4 +62,3 @@ class GetMetrics(Command):
 class GetIndexEstimate(Command):
     rag_id: int
     document_ids: frozenset[int]
-    index_config: GraphEstimateOverrides | None = None

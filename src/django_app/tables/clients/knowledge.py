@@ -56,16 +56,11 @@ class KnowledgeClient:
         strategy: RAGStrategy,
         rag_id: int,
         document_ids: frozenset[int],
-        index_config: dict | None = None,
     ) -> dict:
-        """Estimate indexing, optionally with unsaved GraphRAG `index_config` overrides."""
-        payload: dict = {"document_ids": list(document_ids)}
-        if index_config:
-            payload["index_config"] = index_config
         response = self._request(
             method="post",
             url=f"rags/{strategy}/{rag_id}/index-estimate/",
-            json=payload,
+            json={"document_ids": list(document_ids)},
         )
         return response.json()
 

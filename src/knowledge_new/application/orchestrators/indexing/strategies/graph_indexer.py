@@ -11,7 +11,7 @@ from domain.errors import (
     RagNotFoundError,
     RepositoryError,
 )
-from domain.models import GraphEstimateConfig, Rag
+from domain.models import GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage, UsageTally
 from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -142,7 +142,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             return
         try:
             async with self.uow:
-                pricing = await self.uow.graph_rag_repo.get_estimate_config(rag_id=rag_id)
+                pricing = await self.uow.graph_rag_repo.get_pricing_config(rag_id=rag_id)
                 run = IndexingRunUsage(
                     embedding_tokens=tally.embedding_tokens,
                     llm_input_tokens=tally.llm_input_tokens,
@@ -156,7 +156,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             logger.warning("Could not store indexing usage of RAG(id={}): {}", rag_id, error)
 
     @staticmethod
-    def _cost_usd(tally: UsageTally, pricing: GraphEstimateConfig | None) -> float | None:
+    def _cost_usd(tally: UsageTally, pricing: GraphPricingConfig | None) -> float | None:
         """None when the RAG's pricing config is gone or a model has no price."""
         if pricing is None:
             return None

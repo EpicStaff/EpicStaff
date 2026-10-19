@@ -12,7 +12,6 @@ const ESTIMATE: IndexingEstimate = {
     document_count: 1,
     chunk_count: 2,
     embedding: { tokens: 10, exact: true, cost_usd: 0.1 },
-    llm: null,
 };
 const ESTIMATE_URL = 'http://api/process-rag-indexing/estimate/';
 
@@ -57,22 +56,6 @@ describe('RagIndexingService estimate', () => {
         http.expectOne(ESTIMATE_URL);
         vi.advanceTimersByTime(30001);
         expect(result).toBeNull();
-    });
-
-    it('sends index_config only when provided', () => {
-        const indexConfig = {
-            file_type: 'text',
-            chunk_size: 300,
-            chunk_overlap: 50,
-            chunk_strategy: 'tokens',
-            entity_types: ['person'],
-            max_gleanings: 1,
-            max_cluster_size: 10,
-        } as const;
-        service.estimateIndexing(REQUEST, { ...indexConfig, entity_types: ['person'] }).subscribe();
-        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual({ ...REQUEST, index_config: indexConfig });
-        service.estimateIndexing(REQUEST).subscribe();
-        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual(REQUEST);
     });
 
     it('estimateIndexing propagates errors', () => {

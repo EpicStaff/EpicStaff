@@ -9,7 +9,7 @@ from application.orchestrators.indexing.strategies import graph_indexer
 from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
-from domain.models import EmbeddingConfig, GraphEstimateConfig, Rag
+from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage
 from graphrag_input import TextDocument
 
@@ -67,13 +67,10 @@ def _make_request(document_ids: frozenset[int], rag_id: int = 1) -> RunIndex:
     )
 
 
-_PRICING = GraphEstimateConfig(
+_PRICING = GraphPricingConfig(
     embedding=EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
     llm_provider="openai",
     llm_model="gpt-4o-mini",
-    chunk_size=1200,
-    chunk_overlap=100,
-    max_gleanings=1,
 )
 
 
@@ -90,7 +87,7 @@ class FakeGraphRagRepo:
         other_document_statuses: dict[int, str] | None = None,
         get_rag_raises: BaseException | None = None,
         get_documents_raises: BaseException | None = None,
-        pricing: GraphEstimateConfig | None = None,
+        pricing: GraphPricingConfig | None = None,
     ):
         self._pricing = pricing or _PRICING
         self.usage_runs: list[IndexingRunUsage] = []
@@ -113,7 +110,7 @@ class FakeGraphRagRepo:
             raise self._get_rag_raises
         return self._rag
 
-    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig:
+    async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig:
         return self._pricing
 
     async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage) -> None:
@@ -721,7 +718,7 @@ async def test_missing_pricing_config_leaves_cost_null_and_does_not_fail_the_run
     async def no_pricing(rag_id: int):
         return None
 
-    monkeypatch.setattr(repo, "get_estimate_config", no_pricing)
+    monkeypatch.setattr(repo, "get_pricing_config", no_pricing)
     monkeypatch.setattr(
         graph_indexer, "build_index", _calling_build_index(embeddings=1, completions=1)
     )

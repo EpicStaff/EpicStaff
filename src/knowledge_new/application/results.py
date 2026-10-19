@@ -6,7 +6,6 @@ from domain.models import FoundChunk, SearchUsage
 __all__ = [
     "EmbeddingEstimate",
     "IndexEstimateResult",
-    "LlmEstimate",
     "MetricsResult",
     "Result",
     "SearchResult",
@@ -45,18 +44,8 @@ class EmbeddingEstimate:
 
 
 @dataclass(frozen=True)
-class LlmEstimate:
-    calls: int
-    tokens_min: int
-    tokens_max: int
-    cost_usd_min: float | None
-    cost_usd_max: float | None
-
-
-@dataclass(frozen=True)
 class IndexEstimateResult(Result):
     rag_type: RAGStrategy
     document_count: int
     chunk_count: int
     embedding: EmbeddingEstimate
-    llm: LlmEstimate | None = None

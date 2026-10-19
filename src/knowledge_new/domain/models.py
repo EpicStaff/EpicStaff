@@ -32,8 +32,7 @@ __all__ = [
     "Embedding",
     "EmbeddingConfig",
     "FoundChunk",
-    "GraphEstimateConfig",
-    "GraphEstimateOverrides",
+    "GraphPricingConfig",
     "GraphSearchConfig",
     "IndexRequest",
     "IndexedChunk",
@@ -151,26 +150,11 @@ class Embedding(ValueObject):
     tokens: int
 
 
-class GraphEstimateConfig(ValueObject):
-    """The settings of a GraphRAG that decide the size and price of an index run."""
+class GraphPricingConfig(ValueObject):
+    """The settings of a GraphRAG needed to price its actual LLM and embedding usage."""
 
     embedding: EmbeddingConfig
     llm_provider: str
     llm_model: str
     input_cost_per_token: float | None = None
     output_cost_per_token: float | None = None
-    chunk_size: int
-    chunk_overlap: int
-    max_gleanings: int
-
-
-class GraphEstimateOverrides(ValueObject):
-    """Unsaved index settings an estimate is computed with instead of the stored ones."""
-
-    chunk_size: int | None = None
-    chunk_overlap: int | None = None
-    max_gleanings: int | None = None
-
-    def apply_to(self, config: GraphEstimateConfig) -> GraphEstimateConfig:
-        """Return `config` with every field set on these overrides replaced."""
-        return config.model_copy(update=self.model_dump(exclude_none=True))

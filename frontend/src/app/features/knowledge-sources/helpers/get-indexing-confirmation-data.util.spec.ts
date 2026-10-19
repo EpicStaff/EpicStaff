@@ -9,7 +9,6 @@ const ESTIMATE: IndexingEstimate = {
     document_count: 1,
     chunk_count: 2,
     embedding: { tokens: 10, exact: true, cost_usd: 0.1 },
-    llm: null,
 };
 
 describe('getIndexingConfirmationDataWithEstimate', () => {

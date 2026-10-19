@@ -109,6 +109,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
             });
     }
 
+    protected override readonly estimatesIndexing = true;
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
 }

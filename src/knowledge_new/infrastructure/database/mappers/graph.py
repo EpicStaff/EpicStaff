@@ -1,6 +1,6 @@
 from domain.enums import SlotEnum
 from domain.errors import GraphRagConfigNotFoundError
-from domain.models import EmbeddingConfig, GraphEstimateConfig, Rag
+from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -119,8 +119,8 @@ def graph_rag_update_values(rag: Rag) -> dict:
     }
 
 
-def graph_rag_orm_to_estimate_config(orm_rag: GraphRag) -> GraphEstimateConfig:
-    """Map a GraphRag with its relations loaded to the config an estimate needs.
+def graph_rag_orm_to_pricing_config(orm_rag: GraphRag) -> GraphPricingConfig:
+    """Map a GraphRag with its relations loaded to the config needed to price its usage.
 
     Raises:
         GraphRagConfigNotFoundError: If the LLM or embedder has no model or provider set.
@@ -135,8 +135,7 @@ def graph_rag_orm_to_estimate_config(orm_rag: GraphRag) -> GraphEstimateConfig:
         or embedding_model.embedding_provider is None
     ):
         raise GraphRagConfigNotFoundError(rag_id=orm_rag.graph_rag_id)
-    index_config: GraphRagIndexConfig = orm_rag.index_config
-    return GraphEstimateConfig(
+    return GraphPricingConfig(
         embedding=EmbeddingConfig(
             provider=embedding_model.embedding_provider.name.lower(),
             model=embedding_model.name,
@@ -146,7 +145,4 @@ def graph_rag_orm_to_estimate_config(orm_rag: GraphRag) -> GraphEstimateConfig:
         llm_model=llm_model.name,
         input_cost_per_token=llm_config.input_cost_per_token,
         output_cost_per_token=llm_config.output_cost_per_token,
-        chunk_size=index_config.chunk_size,
-        chunk_overlap=index_config.chunk_overlap,
-        max_gleanings=index_config.max_gleanings,
     )

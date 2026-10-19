@@ -10,7 +10,6 @@ import {
     StartIndexingDtoResponse,
     StopIndexingDtoRequest,
 } from '../models/base-rag.model';
-import { CreateGraphRagIndexConfigRequest } from '../models/graph-rag.model';
 
 // The dialog no longer waits on the estimate; estimates for large selections can take several seconds.
 const ESTIMATE_TIMEOUT_MS = 30000;
@@ -24,12 +23,8 @@ export class RagIndexingService {
         return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
     }
 
-    estimateIndexing(
-        dto: StartIndexingDtoRequest,
-        indexConfig?: CreateGraphRagIndexConfigRequest
-    ): Observable<IndexingEstimate> {
-        const body = indexConfig ? { ...dto, index_config: indexConfig } : dto;
-        return this.http.post<IndexingEstimate>(`${this.configService.apiUrl}process-rag-indexing/estimate/`, body, {
+    estimateIndexing(dto: StartIndexingDtoRequest): Observable<IndexingEstimate> {
+        return this.http.post<IndexingEstimate>(`${this.configService.apiUrl}process-rag-indexing/estimate/`, dto, {
             context: new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true),
         });
     }
@@ -37,11 +32,8 @@ export class RagIndexingService {
     /**
      * Informational only: a failed or slow estimate resolves to null so it can never block indexing.
      */
-    estimateIndexingOrNull(
-        dto: StartIndexingDtoRequest,
-        indexConfig?: CreateGraphRagIndexConfigRequest
-    ): Observable<IndexingEstimate | null> {
-        return this.estimateIndexing(dto, indexConfig).pipe(
+    estimateIndexingOrNull(dto: StartIndexingDtoRequest): Observable<IndexingEstimate | null> {
+        return this.estimateIndexing(dto).pipe(
             timeout(ESTIMATE_TIMEOUT_MS),
             catchError(() => of(null))
         );

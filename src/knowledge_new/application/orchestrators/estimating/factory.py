@@ -6,7 +6,6 @@ from domain.errors import UnsupportedError
 
 _STRATEGIES: dict[RAGStrategy, type[AbstractEstimateOrchestrator]] = {
     RAGStrategy.NAIVE: strategies.NaiveEstimateOrchestrator,
-    RAGStrategy.GRAPH: strategies.GraphEstimateOrchestrator,
 }
 
 
@@ -17,5 +16,5 @@ def build_estimator(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractE
         UnsupportedError: If no estimator is registered for `strategy`.
     """
     if strategy not in _STRATEGIES:
-        raise UnsupportedError("estimate strategy", strategy)
+        raise UnsupportedError(that="estimate strategy", got=strategy)
     return _STRATEGIES[strategy](uow)

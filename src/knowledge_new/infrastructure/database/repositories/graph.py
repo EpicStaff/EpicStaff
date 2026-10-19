@@ -1,13 +1,13 @@
 from domain.enums import DocumentStatusEnum, SlotEnum
-from domain.models import GraphEstimateConfig, Rag
+from domain.models import GraphPricingConfig, Rag
 from domain.ports.repositories import AbstractGraphRagRepository
 from domain.usage import IndexingRunUsage, merge_indexing_usage
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from infrastructure.database.mappers.graph import (
     graph_document_orm_to_text_document,
-    graph_rag_orm_to_estimate_config,
     graph_rag_orm_to_graphrag_config,
+    graph_rag_orm_to_pricing_config,
     graph_rag_orm_to_rag,
     graph_rag_update_values,
 )
@@ -153,12 +153,11 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             return graph_rag_orm_to_graphrag_config(rag, slot=resolved_slot)
         return None
 
-    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig | None:
+    async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig | None:
         result = await self._session.execute(
             select(GraphRag)
             .where(GraphRag.graph_rag_id == rag_id)
             .options(
-                joinedload(GraphRag.index_config),
                 joinedload(GraphRag.llm)
                 .joinedload(LLMConfig.model)
                 .joinedload(LLMModel.llm_provider),
@@ -168,9 +167,9 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             )
         )
         rag = result.scalar_one_or_none()
-        if rag is None or None in (rag.llm, rag.embedder, rag.index_config):
+        if rag is None or None in (rag.llm, rag.embedder):
             return None
-        return graph_rag_orm_to_estimate_config(rag)
+        return graph_rag_orm_to_pricing_config(rag)
 
     async def remove_rag(self, rag_id: int):
         await self._session.execute(

@@ -280,29 +280,6 @@ class GraphRagIndexConfigUpdateSerializer(serializers.Serializer):
         return attrs
 
 
-class GraphRagIndexConfigEstimateSerializer(GraphRagIndexConfigUpdateSerializer):
-    """Unsaved index settings an indexing estimate is computed with.
-
-    Same fields and validation as `GraphRagIndexConfigUpdateSerializer`, but an empty
-    object is allowed and a key the update endpoint does not know is an error rather
-    than silently dropped, so a mistyped setting cannot be estimated as the stored one.
-    """
-
-    def to_internal_value(self, data):
-        if isinstance(data, dict):
-            unknown_keys = sorted(set(data) - set(self.fields))
-            if unknown_keys:
-                raise serializers.ValidationError(
-                    {key: ["Unknown index config field."] for key in unknown_keys}
-                )
-        return super().to_internal_value(data)
-
-    def validate(self, attrs):
-        # Overlap vs size is checked against the stored config by the view: a partial
-        # override is only valid or not once merged with the stored values.
-        return attrs
-
-
 class GraphRagDocumentIdsSerializer(serializers.Serializer):
     """
     Serializer for adding/removing documents from GraphRag.

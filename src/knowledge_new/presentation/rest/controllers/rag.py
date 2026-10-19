@@ -14,7 +14,6 @@ from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
 from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
-from domain.models import GraphEstimateOverrides
 from infrastructure.graphrag.availability import is_graphrag_available
 from litestar import Controller, delete, get, post, status_codes
 from litestar.connection import ASGIConnection
@@ -122,14 +121,7 @@ class RagController(Controller):
         data: schemas.IndexEstimateInputSchema,
         uow: AbstractUnitOfWork,
     ) -> schemas.IndexEstimateOutputSchema:
-        overrides = (
-            None
-            if data.index_config is None
-            else GraphEstimateOverrides.model_validate(data.index_config)
-        )
-        command = commands.GetIndexEstimate(
-            rag_id=rag_id, document_ids=data.document_ids, index_config=overrides
-        )
+        command = commands.GetIndexEstimate(rag_id=rag_id, document_ids=data.document_ids)
         orchestrator = build_estimator(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.IndexEstimateOutputSchema.model_validate(result)

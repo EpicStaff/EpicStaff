@@ -63,13 +63,6 @@ export interface IndexingEstimate {
         exact: boolean;
         cost_usd: number | null;
     };
-    llm: {
-        calls: number;
-        tokens_min: number;
-        tokens_max: number;
-        cost_usd_min: number | null;
-        cost_usd_max: number | null;
-    } | null;
 }
 
 export interface StopIndexingDtoRequest {

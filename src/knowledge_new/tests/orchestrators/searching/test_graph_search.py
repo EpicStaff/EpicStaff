@@ -20,7 +20,7 @@ from application.orchestrators.searching.strategies.graph_search import (
 from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import UnsupportedError
-from domain.models import EmbeddingConfig, GraphEstimateConfig, SearchUsage
+from domain.models import EmbeddingConfig, GraphPricingConfig, SearchUsage
 from infrastructure.graphrag import usage_metrics
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from src.shared.models.knowledge_new import (
@@ -50,12 +50,12 @@ def _make_graph_rag_config() -> GraphRagConfig:
 
 
 class FakeGraphRagRepo:
-    def __init__(self, estimate_config: GraphEstimateConfig | None = None):
+    def __init__(self, pricing_config: GraphPricingConfig | None = None):
         self.requested_rag_ids: list[int] = []
-        self.estimate_config = estimate_config
+        self.pricing_config = pricing_config
 
-    async def get_estimate_config(self, rag_id: int) -> GraphEstimateConfig | None:
-        return self.estimate_config
+    async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig | None:
+        return self.pricing_config
 
     async def get_config(self, rag_id: int) -> GraphRagConfig:
         self.requested_rag_ids.append(rag_id)
@@ -335,16 +335,13 @@ async def test_no_extra_headers_leaves_call_args_without_headers(
     assert "extra_headers" not in config.completion_models["default_completion_model"].call_args
 
 
-def _pricing(**overrides) -> GraphEstimateConfig:
+def _pricing(**overrides) -> GraphPricingConfig:
     values = dict(
         embedding=EmbeddingConfig(provider="openai", model="text-embedding-3-small"),
         llm_provider="openai",
         llm_model="no-such-model-x",
-        chunk_size=100,
-        chunk_overlap=10,
-        max_gleanings=1,
     )
-    return GraphEstimateConfig(**{**values, **overrides})
+    return GraphPricingConfig(**{**values, **overrides})
 
 
 def _install_metered_searcher(monkeypatch, *, embedding=0, input_tokens=0, output_tokens=0):

@@ -8,7 +8,7 @@ from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import GraphRagConfigNotFoundError, UnsupportedError
-from domain.models import GraphEstimateConfig, SearchUsage
+from domain.models import GraphPricingConfig, SearchUsage
 from domain.usage import UsageTally
 from graphrag.api import basic_search, drift_search, global_search, local_search
 from graphrag.config.models.basic_search_config import BasicSearchConfig
@@ -169,19 +169,19 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
 
         return SearchResult(result=result, usage=self._usage(tally, pricing))
 
-    async def _get_pricing(self, rag_id: int) -> GraphEstimateConfig | None:
+    async def _get_pricing(self, rag_id: int) -> GraphPricingConfig | None:
         """Return the RAG's model names and custom prices, None when they cannot be resolved.
 
         Only the cost of the search depends on it, so a missing pricing config must not
         fail the search itself.
         """
         try:
-            return await self.uow.graph_rag_repo.get_estimate_config(rag_id=rag_id)
+            return await self.uow.graph_rag_repo.get_pricing_config(rag_id=rag_id)
         except GraphRagConfigNotFoundError:
             return None
 
     @staticmethod
-    def _usage(tally: UsageTally, pricing: GraphEstimateConfig | None) -> SearchUsage:
+    def _usage(tally: UsageTally, pricing: GraphPricingConfig | None) -> SearchUsage:
         """Convert the metered `tally` to a `SearchUsage`; a cost is None when unpriced."""
         embedding_cost_usd = None
         llm_cost_usd = None

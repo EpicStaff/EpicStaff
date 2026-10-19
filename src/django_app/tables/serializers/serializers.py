@@ -6,7 +6,6 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
-from tables.serializers.graph_rag_serializers import GraphRagIndexConfigEstimateSerializer
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.validators.trigger_payload_validator import validate_trigger_payload
@@ -149,12 +148,6 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
     document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
-
-
-class ProcessRagIndexingEstimateSerializer(ProcessRagIndexingSerializer):
-    """Indexing estimate body: the indexing body plus optional unsaved GraphRAG settings."""
-
-    index_config = GraphRagIndexConfigEstimateSerializer(required=False)
 
 
 class BulkExportSerializer(serializers.Serializer):

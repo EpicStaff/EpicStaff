@@ -7,11 +7,11 @@ import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import {
+    getIndexingConfirmationData,
     getIndexingConfirmationDataWithEstimate,
     IndexingDocumentInfo,
 } from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
-import { CreateGraphRagIndexConfigRequest } from '../../models/graph-rag.model';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../services/rag-indexing.service';
 
@@ -29,6 +29,8 @@ export abstract class RagConfigurationDialogComponent {
     protected pollingService = inject(KnowledgeSourcesPollingService);
 
     protected readonly isPreparingIndexing = signal(false);
+
+    protected readonly estimatesIndexing: boolean = false;
 
     protected abstract onClose(): void;
     protected abstract runIndexing(): void;
@@ -61,20 +63,15 @@ export abstract class RagConfigurationDialogComponent {
             });
     }
 
-    protected confirmIndexing(
-        documents: IndexingDocumentInfo[],
-        configIds: number[],
-        indexConfig?: CreateGraphRagIndexConfigRequest
-    ): Observable<ConfirmationResult> {
+    protected confirmIndexing(documents: IndexingDocumentInfo[], configIds: number[]): Observable<ConfirmationResult> {
+        if (!this.estimatesIndexing) return this.confirmation.confirm(getIndexingConfirmationData(documents));
+
         const estimate$ = configIds.length
-            ? this.ragIndexingService.estimateIndexingOrNull(
-                  {
-                      rag_id: this.data.ragId,
-                      rag_type: this.data.ragType,
-                      document_config_ids: configIds,
-                  },
-                  indexConfig
-              )
+            ? this.ragIndexingService.estimateIndexingOrNull({
+                  rag_id: this.data.ragId,
+                  rag_type: this.data.ragType,
+                  document_config_ids: configIds,
+              })
             : of(null);
 
         return this.confirmation.confirm(getIndexingConfirmationDataWithEstimate(documents, estimate$));

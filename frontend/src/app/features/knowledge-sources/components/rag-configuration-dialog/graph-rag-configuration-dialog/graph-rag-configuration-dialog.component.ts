@@ -117,7 +117,7 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
             : of(null);
 
         this.isPreparingIndexing.set(true);
-        this.confirmIndexing(ragComponent.getIndexingDocuments(), configIds, shouldSave ? config : undefined)
+        this.confirmIndexing(ragComponent.getIndexingDocuments(), configIds)
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => delete$),
