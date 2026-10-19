@@ -61,6 +61,15 @@ def test_submit_without_a_venv_id_uses_the_default_venv(client, venv_repository,
     assert dispatcher.dispatched[0].venv_hash == "1abc"
 
 
+def test_submit_without_a_session_id_is_accepted(client, venv_repository, dispatcher):
+    venv_repository.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+
+    response = client.post("/executions", json={**SUBMISSION, "session_id": None})
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert dispatcher.dispatched[0].session_id is None
+
+
 def test_submit_with_storage_carries_the_storage_fields_to_the_worker(
     client, venv_repository, dispatcher
 ):

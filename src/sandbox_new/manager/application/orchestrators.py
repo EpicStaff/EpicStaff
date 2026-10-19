@@ -187,7 +187,7 @@ class JobOrchestrator:
         self,
         *,
         execution_id: str,
-        session_id: int,
+        session_id: int | None,
         code: str,
         entrypoint: str,
         global_kwargs: dict[str, Any],

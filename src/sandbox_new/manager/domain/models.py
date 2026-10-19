@@ -129,7 +129,8 @@ class StorageCredentials(ValueObject):
 
 class Job(Entity):
     id: UUID | None = Field(default=None, frozen=True)
-    session_id: int
+    # A tool path at session start submits without a session of its own.
+    session_id: int | None = None
     execution_id: str
     venv_id: int
     venv_hash: str | None = None
