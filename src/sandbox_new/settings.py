@@ -30,6 +30,7 @@ PREDEFINED_VENV_PACKAGES = (
     SHARED_DIR / "dotdict",
     SHARED_DIR / "epicstaff_secrets",
     SHARED_DIR / "epicstaff_common",
+    SHARED_DIR / "epicstaff_storage",
 )
 
 # How many executions the worker runs concurrently.
