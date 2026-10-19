@@ -133,12 +133,34 @@ export interface GraphVersionUpdateRequest {
     description: string;
 }
 
+/**
+ * Node-anchored warning types (all carry `node_id`) and the keys each adds:
+ * - `fk_nulled`: `field` (the nulled foreign key) and `missing_id`;
+ * - `decision_table_ref_cleared`: `field` (the route) and `missing_node_id`;
+ * - `surface_dropped`, `inline_tool_dropped`: `missing_id`;
+ * - `secret_declaration_dropped`: `field` (`python_code`, `pre_python_code`, `post_python_code` or
+ *   `telegram_bot_api_key_secret`) and `missing_name`.
+ */
 export interface RestoreWarning {
-    type: 'node_skipped' | 'edge_dropped' | string;
+    type: 'node_skipped' | 'edge_dropped' | 'secret_declaration_dropped' | string;
     node_name?: string;
     node_type?: string;
+    /**
+     * The node the warning is about: its snapshot id in a preview response; its new node id (or absent)
+     * in a restore response. Absent for graph-level warnings.
+     */
     node_id?: number;
+    /**
+     * The node field the warning is about, e.g. `agent_definition` (`fk_nulled`), `default_next_node_id`
+     * (`decision_table_ref_cleared`) or `python_code` (`secret_declaration_dropped`).
+     */
+    field?: string;
+    /** Id of the missing entity (agent, trigger, subflow, surface, tool). */
+    missing_id?: number;
+    /** Id of the missing node a decision-table route pointed at (`decision_table_ref_cleared`). */
     missing_node_id?: number;
+    /** Name of the missing secret (`secret_declaration_dropped`). */
+    missing_name?: string;
     reason: string;
 }
 

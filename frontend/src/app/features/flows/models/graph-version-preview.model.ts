@@ -251,4 +251,11 @@ export interface PreviewGraphVersionResponse {
      * recorded node authorship; a node missing from it has no recorded author or editor.
      */
     node_authorship: Record<string, SnapshotNodeAuthorship>;
+    /**
+     * Secret name → secret id, for the names the previewed nodes declared (`snapshot.secret_declarations`) that
+     * still exist in the flow's organisation: what a restore re-links. A declared name missing here gets a
+     * `secret_declaration_dropped` warning instead. The backend resolves them, so the preview needs no access
+     * to the secrets list.
+     */
+    resolved_secrets: Record<string, number>;
 }

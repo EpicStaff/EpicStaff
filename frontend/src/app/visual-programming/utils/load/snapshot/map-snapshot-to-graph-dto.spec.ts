@@ -1,37 +1,26 @@
 import { NodeType } from '@shared/models';
 
-import {
-    GraphVersionSnapshot,
-    SnapshotNode,
-    SnapshotNodeType,
-} from '../../../../features/flows/models/graph-version-preview.model';
-import { Edge } from '../../../core/models/edge.model';
+import { GraphVersionSnapshot } from '../../../../features/flows/models/graph-version-preview.model';
 import { FlowModel } from '../../../core/models/flow.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../core/models/knowledge-retriever-node.model';
 import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
 import {
     LIVE_AUTHORSHIP,
     LIVE_NODE_ID as ID,
-    LIVE_NODE_UUID as UUID,
     LIVE_WEBHOOK_TRIGGER_ID,
-    liveAgent,
-    liveAudio,
-    liveClassificationTable,
-    liveDecisionTable,
-    liveEdges,
-    liveEnd,
-    liveFileExtractor,
     liveGraph,
     liveKeyValue,
-    liveKnowledge,
-    liveNote,
-    livePython,
-    liveStart,
     liveSubgraph,
     liveTask,
     liveTelegram,
     liveWebhook,
 } from '../../testing/live-graph.fixture';
+import {
+    exported,
+    liveGraphSnapshot,
+    SNAPSHOT_AVAILABLE_FLOWS,
+    SNAPSHOT_SECRETS_BY_NAME,
+} from '../../testing/version-snapshot.fixture';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
     buildPreviewFlowModel,
@@ -42,100 +31,13 @@ import {
 } from './map-snapshot-to-graph-dto';
 import { toLocalNaiveIso } from './snapshot-field-adapters';
 
-const secretsByName = new Map([
-    ['API_KEY', 101],
-    ['BOT_KEY', 102],
-]);
-const availableFlows = [{ id: 99 }];
+const secretsByName = SNAPSHOT_SECRETS_BY_NAME;
+const availableFlows = SNAPSHOT_AVAILABLE_FLOWS;
+const snapshot = liveGraphSnapshot;
 
-// The live API side of the comparison is `liveGraph`; the version export stores the same graph below.
+// The live API side of the comparison is `liveGraph`; the version export stores the same graph.
 // Authorship is not exported either: the preview leaves it unknown (null).
 const authorshipFields = Object.keys(LIVE_AUTHORSHIP);
-
-/** What the export does to a row whose shape is otherwise identical: drop DB columns and authorship, tag the type. */
-function exported<T extends object>(nodeType: SnapshotNodeType, row: T): SnapshotNode {
-    const copy: Record<string, unknown> = { ...row, node_type: nodeType };
-    for (const field of ['graph', 'created_at', 'updated_at', ...authorshipFields]) delete copy[field];
-    return copy as unknown as SnapshotNode;
-}
-
-function exportedEdge(edge: Edge): Omit<Edge, 'graph'> {
-    const copy: Partial<Edge> = { ...edge };
-    delete copy.graph;
-    return copy as Omit<Edge, 'graph'>;
-}
-
-const snapshot: GraphVersionSnapshot = {
-    nodes: [
-        exported('StartNode', liveStart),
-        exported('EndNode', liveEnd),
-        exported('GraphNote', liveNote),
-        exported('PythonNode', {
-            ...livePython,
-            python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: 'requests pandas' },
-        }),
-        exported('TaskNode', {
-            ...liveTask,
-            inline_surface: {
-                instructions: 'Be brief',
-                tools: {
-                    PythonCodeTool: [{ python_tool_id: 21, mode: 'allow' }],
-                    MCPTool: [{ mcp_tool_id: 31, mode: 'deny' }],
-                },
-            },
-        }),
-        exported('AgentNode', liveAgent),
-        exported('FileExtractorNode', liveFileExtractor),
-        exported('AudioTranscriptionNode', liveAudio),
-        exported('SubgraphNode', liveSubgraph),
-        exported('WebhookTriggerNode', {
-            ...liveWebhook,
-            webhook_trigger_path: undefined,
-            python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
-        }),
-        exported('TelegramTriggerNode', { ...liveTelegram, telegram_bot_api_key_secret_id: undefined }),
-        {
-            id: ID.schedule,
-            uuid: UUID.schedule,
-            node_type: 'ScheduleTriggerNode',
-            node_name: 'Schedule',
-            metadata: {},
-            is_active: true,
-            timezone: 'Europe/Kyiv',
-            run_mode: 'repeat',
-            start_date_time: '2026-07-01T09:00:00Z',
-            every: 1,
-            unit: 'hours',
-            weekdays: [],
-            end_type: 'on_date',
-            end_date_time: '2026-12-01T10:00:00Z',
-            max_runs: null,
-            current_runs: 2,
-            next_run_date_time: '2026-07-01T10:00:00Z',
-        },
-        exported('DecisionTableNode', liveDecisionTable),
-        exported('ClassificationDecisionTableNode', {
-            ...liveClassificationTable,
-            pre_python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: 'numpy', global_kwargs: {} },
-        }),
-        exported('KnowledgeNode', {
-            ...liveKnowledge,
-            search_configs: undefined,
-            // The export writes the Decimal column as a string.
-            naive_search_config: { search_limit: 3, similarity_threshold: '0.70', is_suggested: false },
-        }),
-        exported('KeyValueNode', { ...liveKeyValue, key_value_table_name: 'Customers' }),
-    ],
-    edge_list: liveEdges.map((edge) => exportedEdge(edge)),
-    metadata: {},
-    secret_declarations: {
-        nodes: {
-            [ID.python]: { python_code: ['API_KEY', 'DELETED_SECRET'] },
-            [ID.classificationTable]: { pre_python_code: ['API_KEY'] },
-        },
-        telegram: { [ID.telegram]: 'BOT_KEY' },
-    },
-};
 
 /** Canvas ids are random; replace each by its order of first appearance. DB columns and authorship are not exported. */
 function comparable(flow: FlowModel): unknown {
@@ -150,8 +52,8 @@ function comparable(flow: FlowModel): unknown {
     return JSON.parse(json);
 }
 
-function nodeWithSnapshotId(flow: FlowModel, snapshotIdToNodeUuid: Map<number, string>, id: number): NodeModel {
-    return flow.nodes.find((node) => node.id === snapshotIdToNodeUuid.get(id))!;
+function nodeWithSnapshotId(flow: FlowModel, snapshotIdToCanvasId: Map<number, string>, id: number): NodeModel {
+    return flow.nodes.find((node) => node.id === snapshotIdToCanvasId.get(id))!;
 }
 
 describe('mapSnapshotToGraphDto', () => {
@@ -215,8 +117,8 @@ describe('mapSnapshotToGraphDto', () => {
 });
 
 describe('buildPreviewFlowModel', () => {
-    const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(snapshot, secretsByName, availableFlows);
-    const byId = (id: number): NodeModel => nodeWithSnapshotId(flow, snapshotIdToNodeUuid, id);
+    const { flow, snapshotIdToCanvasId } = buildPreviewFlowModel(snapshot, secretsByName, availableFlows);
+    const byId = (id: number): NodeModel => nodeWithSnapshotId(flow, snapshotIdToCanvasId, id);
 
     it('equals the live loader result for the same graph (ignoring canvas ids)', () => {
         const liveFlow = buildFlowModelFromGraphDto(liveGraph, availableFlows);
@@ -233,8 +135,8 @@ describe('buildPreviewFlowModel', () => {
 
     it('detaches every node from the backend and maps every snapshot id to a canvas node', () => {
         expect(flow.nodes.every((node) => node.backendId === null)).toBe(true);
-        expect([...snapshotIdToNodeUuid.keys()].sort((a, b) => a - b)).toEqual(Object.values(ID));
-        expect(new Set(snapshotIdToNodeUuid.values())).toEqual(new Set(flow.nodes.map((node) => node.id)));
+        expect([...snapshotIdToCanvasId.keys()].sort((a, b) => a - b)).toEqual(Object.values(ID));
+        expect(new Set(snapshotIdToCanvasId.values())).toEqual(new Set(flow.nodes.map((node) => node.id)));
     });
 
     it('resolves declared secrets by name and leaves out ones the organisation no longer has', () => {
@@ -250,14 +152,14 @@ describe('buildPreviewFlowModel', () => {
         const table = byId(ID.decisionTable).data as {
             table: { default_next_node: string; condition_groups: { next_node: string }[] };
         };
-        expect(table.table.default_next_node).toBe(snapshotIdToNodeUuid.get(ID.task));
-        expect(table.table.condition_groups[0].next_node).toBe(snapshotIdToNodeUuid.get(ID.end));
+        expect(table.table.default_next_node).toBe(snapshotIdToCanvasId.get(ID.task));
+        expect(table.table.condition_groups[0].next_node).toBe(snapshotIdToCanvasId.get(ID.end));
 
         const connected = (sourceId: number, targetId: number): boolean =>
             flow.connections.some(
                 (connection) =>
-                    connection.sourceNodeId === snapshotIdToNodeUuid.get(sourceId) &&
-                    connection.targetNodeId === snapshotIdToNodeUuid.get(targetId)
+                    connection.sourceNodeId === snapshotIdToCanvasId.get(sourceId) &&
+                    connection.targetNodeId === snapshotIdToCanvasId.get(targetId)
             );
         expect(connected(ID.start, ID.python)).toBe(true);
         expect(connected(ID.decisionTable, ID.end)).toBe(true);
@@ -340,25 +242,25 @@ describe('mapNodeAuthorshipToCanvas', () => {
         last_edited_by: null,
         last_edited_at: '2026-04-01T09:05:00Z',
     };
-    const snapshotIdToNodeUuid = new Map([
+    const snapshotIdToCanvasId = new Map([
         [1, 'start-canvas-id'],
         [2, 'python-canvas-id'],
     ]);
 
     it('re-keys the recorded authorship from snapshot node ids to canvas node ids', () => {
-        expect(mapNodeAuthorshipToCanvas({ '2': recorded }, snapshotIdToNodeUuid)).toEqual(
+        expect(mapNodeAuthorshipToCanvas({ '2': recorded }, snapshotIdToCanvasId)).toEqual(
             new Map([['python-canvas-id', recorded]])
         );
     });
 
     it('drops an entry whose node is not on the canvas', () => {
-        expect(mapNodeAuthorshipToCanvas({ '3': recorded }, snapshotIdToNodeUuid)).toEqual(new Map());
+        expect(mapNodeAuthorshipToCanvas({ '3': recorded }, snapshotIdToCanvasId)).toEqual(new Map());
     });
 
     it('keeps only the four authorship fields', () => {
         const withExtra = { ...recorded, node_name: 'Python' } as typeof recorded;
 
-        expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToNodeUuid).get('python-canvas-id')).toEqual(
+        expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToCanvasId).get('python-canvas-id')).toEqual(
             recorded
         );
     });

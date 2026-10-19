@@ -1,5 +1,6 @@
 import { NodeType } from '@shared/models';
 
+import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
@@ -194,7 +195,7 @@ function toAudioToTextComparable(node: AudioToTextNodeModel): unknown {
 
 function toEndComparable(node: EndNodeModel): unknown {
     return {
-        output_map: node.data.output_map ?? { context: 'variables.context' },
+        output_map: node.data.output_map ?? { ...MISSING_END_OUTPUT_MAP },
         metadata: toNodeMetadata(node),
     };
 }
@@ -286,7 +287,7 @@ function toKeyValueComparable(node: KeyValueNodeModel): unknown {
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         key_value_table: node.data?.key_value_table ?? null,
-        mode: node.data?.mode ?? 'read',
+        mode: node.data?.mode ?? DEFAULT_KEY_VALUE_MODE,
         entries: node.data?.entries ?? [],
         metadata: toNodeMetadata(node),
     };

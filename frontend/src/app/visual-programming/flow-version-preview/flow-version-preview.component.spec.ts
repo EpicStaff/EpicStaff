@@ -4,8 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FDragStartedEvent } from '@foblex/flow';
 import { NodeType, UserSummary } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
-import { of, Subject, throwError } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import {
@@ -99,7 +98,6 @@ describe('FlowVersionPreviewComponent', () => {
                         },
                     },
                 },
-                { provide: SecretsStorageService, useValue: { getSecrets: () => of([]) } },
                 { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
                 // A user who may edit flows: any read-only below comes from the preview itself.
                 { provide: PermissionsService, useValue: { can: () => true } },
@@ -129,10 +127,11 @@ describe('FlowVersionPreviewComponent', () => {
         versionId: number,
         snapshot: GraphVersionSnapshot,
         warnings: RestoreWarning[] = [],
-        nodeAuthorship: Record<string, SnapshotNodeAuthorship> = {}
+        nodeAuthorship: Record<string, SnapshotNodeAuthorship> = {},
+        resolvedSecrets: Record<string, number> = {}
     ): Promise<void> {
         const response = responses.get(versionId)!;
-        response.next({ snapshot, warnings, node_authorship: nodeAuthorship });
+        response.next({ snapshot, warnings, node_authorship: nodeAuthorship, resolved_secrets: resolvedSecrets });
         response.complete();
         await fixture.whenStable();
         fixture.detectChanges();
@@ -198,7 +197,7 @@ describe('FlowVersionPreviewComponent', () => {
 
         expect(firstResponse.observed).toBe(false);
         await respond(2, 'Second');
-        firstResponse.next({ snapshot: snapshotFor('First'), warnings: [], node_authorship: {} });
+        firstResponse.next({ snapshot: snapshotFor('First'), warnings: [], node_authorship: {}, resolved_secrets: {} });
         fixture.detectChanges();
 
         const names = previewFlowService()
@@ -308,21 +307,20 @@ describe('FlowVersionPreviewComponent', () => {
         ).toContain('Sixth');
     });
 
-    // F-05: the secrets list failing must not block the preview.
-    it('still renders when the secrets list cannot be loaded', async () => {
-        TestBed.overrideProvider(SecretsStorageService, {
-            useValue: { getSecrets: () => throwError(() => new Error('secrets down')) },
-        });
+    // The secrets list needs a permission members and viewers lack; the preview response alone is enough.
+    it('links the declared secrets the backend resolved, and leaves out the ones it did not', async () => {
+        const snapshot: GraphVersionSnapshot = {
+            ...snapshotFor('Python'),
+            secret_declarations: { nodes: { '2': { python_code: ['API_KEY', 'GONE_KEY'] } } },
+        };
         fixture = TestBed.createComponent(FlowVersionPreviewComponent);
         await render(1);
-        await respond(1, 'Without secrets');
+        await respondWith(1, snapshot, [], {}, { API_KEY: 12 });
 
-        expect((fixture.nativeElement as HTMLElement).querySelector('.preview-state--error')).toBeNull();
-        expect(
-            previewFlowService()
-                .nodes()
-                .map((node) => node.node_name)
-        ).toContain('Without secrets');
+        const pythonNode = previewFlowService()
+            .nodes()
+            .find((node) => node.type === NodeType.PYTHON)!;
+        expect(pythonNode.data).toEqual(expect.objectContaining({ secret_ids: [12], secret_names: ['API_KEY'] }));
     });
 
     it('keeps Exit available when the version fails to load', async () => {

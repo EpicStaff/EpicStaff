@@ -3,8 +3,7 @@ import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, effect, inject, input, output, viewChild } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, SpinnerComponent } from '@shared/components';
-import { SecretsStorageService } from '@shared/services';
-import { catchError, filter, forkJoin, fromEvent, of } from 'rxjs';
+import { filter, fromEvent } from 'rxjs';
 
 import {
     RestoreWarningsDialogComponent,
@@ -53,21 +52,19 @@ export class FlowVersionPreviewComponent {
     // destroying the component.
     protected readonly preview = rxResource({
         params: () => this.versionId(),
-        stream: ({ params: versionId }) =>
-            forkJoin({
-                response: this.flowsApiService.previewGraphVersion(versionId),
-                secrets: this.secretsStorageService.getSecrets().pipe(catchError(() => of([]))),
-            }),
+        stream: ({ params: versionId }) => this.flowsApiService.previewGraphVersion(versionId),
     });
     // An old or malformed snapshot can make the mappers throw; that shows the error state instead
     // of breaking the page.
     private readonly previewBuild = computed<{ model: PreviewFlowModel | null; failed: boolean }>(() => {
-        const loaded = this.preview.hasValue() ? this.preview.value() : undefined;
-        if (!loaded) return { model: null, failed: false };
-        const secretsByName = new Map(loaded.secrets.map((secret) => [secret.name, secret.id]));
+        const response = this.preview.hasValue() ? this.preview.value() : undefined;
+        if (!response) return { model: null, failed: false };
         try {
+            // Resolved by the backend like a restore does, so a user who cannot read the secrets list
+            // still sees the secrets a restore would re-link.
+            const secretsByName = new Map(Object.entries(response.resolved_secrets));
             return {
-                model: buildPreviewFlowModel(loaded.response.snapshot, secretsByName, this.flowsLight()),
+                model: buildPreviewFlowModel(response.snapshot, secretsByName, this.flowsLight()),
                 failed: false,
             };
         } catch (error) {
@@ -78,13 +75,13 @@ export class FlowVersionPreviewComponent {
     protected readonly previewModel = computed(() => this.previewBuild().model);
     protected readonly hasFailed = computed(() => !!this.preview.error() || this.previewBuild().failed);
     protected readonly warnings = computed<RestoreWarning[]>(() =>
-        this.preview.hasValue() ? this.preview.value().response.warnings : []
+        this.preview.hasValue() ? this.preview.value().warnings : []
     );
     // Empty for a version saved before node authorship was recorded. Re-keyed whenever the canvas is rebuilt.
     private readonly nodeAuthorshipByNodeId = computed<ReadonlyMap<string, SnapshotNodeAuthorship>>(() => {
         const model = this.previewModel();
         if (!model || !this.preview.hasValue()) return new Map();
-        return mapNodeAuthorshipToCanvas(this.preview.value().response.node_authorship, model.snapshotIdToNodeUuid);
+        return mapNodeAuthorshipToCanvas(this.preview.value().node_authorship, model.snapshotIdToCanvasId);
     });
 
     // This preview's own store, read by a node's "Node Details" dialog and the Start window's footer.
@@ -93,7 +90,6 @@ export class FlowVersionPreviewComponent {
     );
 
     private readonly flowsApiService = inject(FlowsApiService);
-    private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly previewClipboard = inject(ClipboardService);
@@ -137,7 +133,7 @@ export class FlowVersionPreviewComponent {
             )
             .subscribe((snapshotNodeId) => {
                 // Warnings name nodes by their id in the snapshot; preview nodes have no backend id.
-                const nodeId = this.previewModel()?.snapshotIdToNodeUuid.get(snapshotNodeId);
+                const nodeId = this.previewModel()?.snapshotIdToCanvasId.get(snapshotNodeId);
                 if (nodeId) {
                     this.flowGraph()?.openNodePanel(nodeId);
                 }

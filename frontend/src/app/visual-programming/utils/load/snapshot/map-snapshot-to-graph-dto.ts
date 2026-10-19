@@ -184,7 +184,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
 /**
  * Turns a stored version snapshot (export format) into the live GraphDto shape, so the preview
  * goes through exactly the same loaders as the live canvas. Pure: `secretsByName` (the
- * organisation's current secrets) is passed in. Node types this build does not know are skipped.
+ * declared names the backend resolved, the preview's `resolved_secrets`) is passed in. Node types this build does not know are skipped.
  */
 export function mapSnapshotToGraphDto(
     snapshot: GraphVersionSnapshot,
@@ -217,24 +217,24 @@ export function mapSnapshotToGraphDto(
 /**
  * The canvas model for a version preview: snapshot → GraphDto → the live post-load pipeline, then
  * every node is detached from the backend (`backendId: null`) so no panel fetches or polls live
- * data. `snapshotIdToNodeUuid` maps snapshot node ids to canvas node ids (for warnings that point
+ * data. `snapshotIdToCanvasId` maps snapshot node ids to canvas node ids (for warnings that point
  * at a node).
  */
 export function buildPreviewFlowModel(
     snapshot: GraphVersionSnapshot,
     secretsByName: ReadonlyMap<string, number>,
     availableFlows: readonly Pick<GetGraphLightRequest, 'id'>[]
-): { flow: FlowModel; snapshotIdToNodeUuid: Map<number, string> } {
+): { flow: FlowModel; snapshotIdToCanvasId: Map<number, string> } {
     const loadedFlow = buildFlowModelFromGraphDto(mapSnapshotToGraphDto(snapshot, secretsByName), availableFlows);
 
-    const snapshotIdToNodeUuid = new Map<number, string>();
+    const snapshotIdToCanvasId = new Map<number, string>();
     for (const node of loadedFlow.nodes) {
-        if (node.backendId !== null) snapshotIdToNodeUuid.set(node.backendId, node.id);
+        if (node.backendId !== null) snapshotIdToCanvasId.set(node.backendId, node.id);
     }
 
     return {
         flow: { ...loadedFlow, nodes: loadedFlow.nodes.map((node) => ({ ...node, backendId: null })) },
-        snapshotIdToNodeUuid,
+        snapshotIdToCanvasId,
     };
 }
 
@@ -245,11 +245,11 @@ export function buildPreviewFlowModel(
  */
 export function mapNodeAuthorshipToCanvas(
     nodeAuthorship: Readonly<Record<string, SnapshotNodeAuthorship>>,
-    snapshotIdToNodeUuid: ReadonlyMap<number, string>
+    snapshotIdToCanvasId: ReadonlyMap<number, string>
 ): Map<string, SnapshotNodeAuthorship> {
     const authorshipByNodeId = new Map<string, SnapshotNodeAuthorship>();
     for (const [snapshotNodeId, authorship] of Object.entries(nodeAuthorship)) {
-        const nodeId = snapshotIdToNodeUuid.get(Number(snapshotNodeId));
+        const nodeId = snapshotIdToCanvasId.get(Number(snapshotNodeId));
         if (nodeId === undefined) continue;
         authorshipByNodeId.set(nodeId, {
             created_by: authorship.created_by ?? null,
