@@ -209,11 +209,6 @@ class GraphBulkSaveService:
             # be written into (or moved to) another graph that skips the checks below.
             item_data["graph"] = graph.id
 
-            graph_error = self._foreign_graph_error(item_data, graph, index)
-            if graph_error is not None:
-                result.errors.append(graph_error)
-                continue
-
             item_id = item_data.get("id")
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
@@ -316,10 +311,6 @@ class GraphBulkSaveService:
             item_data = dict(item_data)
             item_data["graph"] = graph.id
 
-            graph_error = self._foreign_graph_error(item_data, graph, index)
-            if graph_error is not None:
-                result.errors.append(graph_error)
-                continue
             item_id = item_data.get("id")
 
             start_parsed = self._parse_node_ref(
@@ -369,20 +360,6 @@ class GraphBulkSaveService:
                 )
 
         return result
-
-    @staticmethod
-    def _foreign_graph_error(item_data: dict, graph: Graph, index: int) -> dict | None:
-        """Return an item error when its `graph` is not the flow being saved.
-
-        Checked on the raw value, before the serializer resolves it, so the
-        answer is the same whether the other flow exists, is in this
-        organization or not. A missing or null `graph` is left to the
-        serializer, which requires it.
-        """
-        graph_value = item_data.get("graph")
-        if graph_value is None or str(graph_value) == str(graph.pk):
-            return None
-        return {"index": index, "errors": {"graph": ["Must be this flow."]}}
 
     @staticmethod
     def _parse_node_ref(
