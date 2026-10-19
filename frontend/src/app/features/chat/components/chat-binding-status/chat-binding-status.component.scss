@@ -1,0 +1,21 @@
+@use '../../../../../styles/status-chip';
+
+// The flow sessions' status chip: live is green, paused neutral, broken red.
+.binding-status {
+    @include status-chip.chip;
+    @include status-chip.completed;
+
+    &--paused {
+        @include status-chip.pending;
+    }
+
+    &--broken {
+        @include status-chip.error;
+    }
+
+    // Focusable only while it has a reason to show.
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}

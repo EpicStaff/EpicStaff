@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="!canSubmit()"
+>
     <div class="header">
         <span class="title">{{ dialogTitle() }}</span>
         <div class="actions">

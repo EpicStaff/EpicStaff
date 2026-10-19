@@ -19,7 +19,6 @@ gap by simulating the real sandbox wrapping for every tool `main.py` under
 `src/shared/tools/`.
 """
 
-import ast
 from pathlib import Path
 
 import pytest
@@ -59,36 +58,13 @@ def _indent(source: str) -> str:
 
 
 @pytest.mark.parametrize("main_path", _TOOL_MAIN_FILES, ids=_TOOL_IDS)
-def test_tool_main_has_no_future_import(main_path: Path) -> None:
-    """Mechanism-level guard: the sandbox always prepends boilerplate ahead
-    of the tool body, so no tool `main.py` may use `from __future__` at
-    all — it can never legally be the first statement post-assembly.
-
-    Parses the AST rather than substring-matching so a comment merely
-    *mentioning* `from __future__` (e.g. explaining why it must be avoided)
-    doesn't produce a false positive.
-    """
-    source = main_path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(main_path))
-    future_imports = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == "__future__"
-    ]
-    assert not future_imports, (
-        f"{main_path} uses `from __future__`, which the sandbox's "
-        "wrap_code() assembly breaks by prepending boilerplate before it "
-        "(SyntaxError at exec time in the sandbox container)."
-    )
-
-
-@pytest.mark.parametrize("main_path", _TOOL_MAIN_FILES, ids=_TOOL_IDS)
 def test_tool_main_compiles_with_sandbox_header_prepended(main_path: Path) -> None:
     """Simulates the real sandbox assembly (ExecuteCodeHandler.wrap_code) and
     asserts the combined source still compiles. This is the check that
     actually catches the s3_bash_tool class of bug — importing main.py
     directly by path, as the rest of this suite does, never exercises the
-    sandbox's boilerplate-prepend step."""
+    sandbox's boilerplate-prepend step. A `from __future__` import anywhere in a
+    tool fails here too: after the header it is no longer the first statement."""
     source = main_path.read_text(encoding="utf-8")
     wrapped = _SANDBOX_HEADER + _indent(source) + _SANDBOX_FOOTER
     compile(wrapped, f"<sandbox:{main_path.parent.name}/code.py>", "exec")

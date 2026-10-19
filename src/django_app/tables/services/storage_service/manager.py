@@ -1,28 +1,40 @@
 import io
 import mimetypes
 import re
+import uuid
 import zipfile
 from collections.abc import Iterator, Mapping
 
+from django.db import transaction
 from django.db.models import Case, F, IntegerField, Q, QuerySet, Sum, Value, When
 from django.db.models.functions import Lower
 from django.utils.dateparse import parse_datetime
 from rbac.authorship import org_member_ids, represent_authorship_time
+from rbac.models import Organization
 from tables.models import StorageFile
-from tables.services.storage_service.base import AbstractStorageBackend
+from tables.services.storage_service.base import AbstractStorageBackend, SourceCleanupError
 from tables.services.storage_service.dataclasses import (
+    BinPurgeGrant,
     FileDownload,
     FileInfo,
     FileListItem,
     FolderInfo,
+    PurgedBinEntry,
     TreeNode,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.path_utils import sanitize_storage_path, storage_key
+from tables.services.storage_service.path_utils import (
+    sanitize_storage_path,
+    storage_key,
+    trash_batch_prefix,
+    trash_storage_key,
+)
 from tables.services.storage_service.quota import (
     ensure_fits_quota,
     record_files_within_quota,
 )
+from tables.services.storage_service.recycle_bin import StorageRecycleBinService
+from utils.logger import logger
 
 # Digits capped: int() refuses strings past 4300 digits, which would surface as a 500.
 _BYTE_RANGE = re.compile(r"bytes=(\d{1,18})-(\d{0,18})")
@@ -213,9 +225,115 @@ class StorageManager:
             return FileDownload(self._backend.download(key))
         return FileDownload(*self._backend.download_range(key, *byte_range))
 
-    def delete(self, org_id: int, path: str) -> None:
-        self._backend.delete(self._build_storage_key(org_id, path))
-        StorageFileSync.on_delete(org_id, path)
+    def delete(self, org_id: int, path: str, *, user: object | None) -> uuid.UUID | None:
+        """Move a file, or a folder with everything under it, to the recycle bin.
+
+        `user` is recorded as who deleted it.
+
+        The rows are binned first and the objects moved second, inside one
+        transaction. If copying to the trash fails, the rows stay live and the
+        partial trash copies are removed. If only deleting the originals fails,
+        every object is already in the trash, so the rows stay binned and the
+        leftover originals get one more delete. Returns the batch, or None when
+        nothing live sits at `path` (unindexed objects there are left alone).
+
+        Raises:
+            ValueError: the path is unsafe or inside the reserved recycle-bin folder.
+        """
+        live_key = self._build_storage_key(org_id, path)  # validates before any DB work
+        with transaction.atomic():
+            # The org row lock restores and uploads take, first as they do: a delete
+            # runs alone among them, so a restore can't move a folder back into a
+            # subtree this delete is binning, nor an upload land in it meanwhile.
+            Organization.objects.select_for_update().get(pk=org_id)
+            subtree = StorageFileSync.on_soft_delete(org_id, path, user=user)
+            if subtree is None:
+                return None
+            trash_key = trash_storage_key(org_id, subtree.batch, subtree.root_path)
+            try:
+                self._backend.rename(live_key, trash_key)
+            except FileNotFoundError:
+                # A folder made only by an upload's ancestors has no marker,
+                # and index drift can leave a row without an object.
+                logger.warning("Storage key {} has no objects; only its rows were binned", live_key)
+            except SourceCleanupError as error:
+                # Every object reached the trash, and some sources may already be
+                # gone: the trash is now the copy that counts, so the rows stay
+                # binned. The leftover sources are duplicates.
+                self._delete_leftover_sources(error.source_keys)
+            except Exception:
+                # The copy failed, so no source was deleted yet: the live
+                # objects are intact. Drop the partial trash copies.
+                self._discard_trash_batch(org_id, subtree.batch)
+                raise
+        return subtree.batch
+
+    def _delete_leftover_sources(self, source_keys: list[str]) -> None:
+        try:
+            self._backend.delete_keys(source_keys)
+        except Exception:
+            # Left in place, the reconciler would index them as live files again.
+            logger.exception(
+                "Could not delete {count} leftover source objects (first: {first}); "
+                "they are duplicates of objects already moved",
+                count=len(source_keys),
+                first=source_keys[:5],
+            )
+
+    def move_from_trash(
+        self, org_id: int, batch: uuid.UUID, trashed_path: str, destination_path: str
+    ) -> None:
+        """Move a binned file or folder's objects from its trash batch back to a live path.
+
+        A folder made only by an upload's ancestors has no objects; that's fine.
+        Known limitation: keys carry no trailing slash, so if one batch holds
+        both a file "a" and a folder "a/" (storage allows it), the folder's key
+        resolves to the file. Same for delete_trash_path.
+
+        Raises:
+            FileExistsError: an object already sits at the destination.
+        """
+        destination_key = self._build_storage_key(org_id, destination_path)
+        try:
+            self._backend.rename(trash_storage_key(org_id, batch, trashed_path), destination_key)
+        except FileExistsError:
+            raise  # checked before anything was copied: the destination isn't ours
+        except FileNotFoundError:
+            logger.warning("Trash path {} of batch {} has no objects", trashed_path, batch)
+        except SourceCleanupError as error:
+            # Every object reached the live path; the trash copies left are duplicates.
+            self._delete_leftover_sources(error.source_keys)
+        except Exception:
+            # The copy failed partway. rename checked the destination was free
+            # first, so whatever sits there now is a partial copy of ours: left
+            # behind it would block every retry and be indexed as live files.
+            self._discard_partial_copy(destination_key)
+            raise
+
+    def _discard_partial_copy(self, destination_key: str) -> None:
+        try:
+            self._backend.delete(destination_key)  # the file key, else everything under the folder
+        except Exception:
+            logger.exception("Could not remove the partial restore copy at {}", destination_key)
+
+    def delete_trash_path(self, org_id: int, batch: uuid.UUID, trashed_path: str) -> None:
+        """Delete a binned file's objects, or a binned folder's, from its trash batch."""
+        # backend.delete: the exact file key, else everything under the folder.
+        self._backend.delete(trash_storage_key(org_id, batch, trashed_path))
+
+    def delete_trash_batch(self, org_id: int, batch: uuid.UUID) -> None:
+        """Delete every object of a trash batch."""
+        self._backend.delete_prefix(trash_batch_prefix(org_id, batch))
+
+    def _discard_trash_batch(self, org_id: int, batch: uuid.UUID) -> None:
+        try:
+            self._backend.delete_prefix(trash_batch_prefix(org_id, batch))
+        except Exception:
+            logger.exception(
+                "Could not remove the partial trash copies of batch {batch} in org {org_id}",
+                batch=batch,
+                org_id=org_id,
+            )
 
     def mkdir(self, org_id: int, path: str, *, user: object | None = None) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
@@ -251,10 +369,15 @@ class StorageManager:
         if destination_exists:
             raise FileExistsError(f"Destination already exists: {destination_path}")
 
-        self._backend.rename(
-            self._build_storage_key(org_id, source_path),
-            self._build_storage_key(org_id, destination_path),
-        )
+        try:
+            self._backend.rename(
+                self._build_storage_key(org_id, source_path),
+                self._build_storage_key(org_id, destination_path),
+            )
+        except SourceCleanupError as error:
+            # Every object reached the destination: record the move, and the
+            # sources left behind are duplicates.
+            self._delete_leftover_sources(error.source_keys)
         # rename never dedupes — the guard above confirmed this exact path was
         # free, so destination_path IS the actual path (unlike move).
         StorageFileSync.on_move(org_id, source_path, destination_path, user=user)
@@ -266,8 +389,13 @@ class StorageManager:
         destination_path: str,
         *,
         user: object | None = None,
-    ) -> None:
-        self._copy_within_quota(org_id, source_path, org_id, destination_path, user=user)
+        bin_purge: BinPurgeGrant | None = None,
+    ) -> list[PurgedBinEntry]:
+        """Copy within the org's quota; returns the bin entries purged to make room.
+        Only a `bin_purge` grant lets the copy purge the org's storage bin to fit."""
+        return self._copy_within_quota(
+            org_id, source_path, org_id, destination_path, user=user, bin_purge=bin_purge
+        )
 
     def _copy_within_quota(
         self,
@@ -278,9 +406,12 @@ class StorageManager:
         *,
         user: object | None = None,
         authors_by_path_within: Mapping[str, int | None] | None = None,
-    ) -> None:
+        bin_purge: BinPurgeGrant | None = None,
+    ) -> list[PurgedBinEntry]:
         """Copy source into the destination folder and record the copies within its org's quota.
         Over quota the copies are deleted again; the org lock is never held across the S3 copy.
+        Returns the destination org's bin entries purged to make room, which only a
+        `bin_purge` grant allows (see record_files_within_quota).
 
         The copies are authored by `user` unless `authors_by_path_within` is given: it maps
         each source row's path within the copied entry ("" for the entry itself, see
@@ -288,7 +419,9 @@ class StorageManager:
         author. Ancestor folders the copy creates are still authored by `user`.
         """
         # Early reject only: rows of files that predate size tracking count as 0 here.
-        ensure_fits_quota(dst_org_id, self._recorded_size(src_org_id, source_path))
+        ensure_fits_quota(
+            dst_org_id, self._recorded_size(src_org_id, source_path), bin_purge=bin_purge
+        )
 
         copied = self._backend.copy(
             self._build_storage_key(src_org_id, source_path),
@@ -314,8 +447,14 @@ class StorageManager:
             )
 
         try:
-            record_files_within_quota(
-                dst_org_id, files, folders, user=user, authors_by_path=authors_by_path
+            return record_files_within_quota(
+                dst_org_id,
+                files,
+                folders,
+                recycle_bin=StorageRecycleBinService(self),
+                bin_purge=bin_purge,
+                user=user,
+                authors_by_path=authors_by_path,
             )
         except BaseException:
             self._backend.discard_keys([key for key, _ in copied])
@@ -644,13 +783,18 @@ class StorageManager:
         dst_path: str,
         *,
         user: object | None = None,
-    ) -> None:
+        bin_purge: BinPurgeGrant | None = None,
+    ) -> list[PurgedBinEntry]:
         """
         Copy a file or folder from one org to another, within the destination
         org's quota. Caller authorization (superadmin) is enforced at the API
         layer. Uses a server-side S3 copy — no data streams through the app.
+        Returns the destination org's bin entries purged to make room, which only
+        a `bin_purge` grant allows.
         """
-        self._copy_within_quota(src_org_id, src_path, dst_org_id, dst_path, user=user)
+        return self._copy_within_quota(
+            src_org_id, src_path, dst_org_id, dst_path, user=user, bin_purge=bin_purge
+        )
 
     def move_cross_org(
         self,
@@ -660,10 +804,13 @@ class StorageManager:
         dst_path: str,
         *,
         user: object | None = None,
-    ) -> None:
+        bin_purge: BinPurgeGrant | None = None,
+    ) -> list[PurgedBinEntry]:
         """
         Move a file or folder from one org to another, within the destination
-        org's quota; over quota the source stays untouched. Caller authorization
+        org's quota; over quota the source stays untouched. Returns the destination
+        org's bin entries purged to make room, which only a `bin_purge` grant
+        allows. Caller authorization
         (superadmin) is enforced at the API layer. Non-atomic: if the delete step
         fails after a successful copy, the file will exist in both orgs.
 
@@ -673,7 +820,7 @@ class StorageManager:
         own author. Every moved row gets `user` as its last editor: the move is an edit in
         the destination org.
         """
-        self._copy_within_quota(
+        purged = self._copy_within_quota(
             src_org_id,
             src_path,
             dst_org_id,
@@ -682,6 +829,8 @@ class StorageManager:
             authors_by_path_within=self._kept_authors_by_path_within(
                 src_org_id, src_path, dst_org_id
             ),
+            bin_purge=bin_purge,
         )
         self._backend.delete(self._build_storage_key(src_org_id, src_path))
         StorageFileSync.on_delete(src_org_id, src_path.rstrip("/"))
+        return purged

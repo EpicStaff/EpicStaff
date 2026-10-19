@@ -106,7 +106,13 @@ class HasOrgPermission(BaseRbacPermission):
     _resolver = PermissionResolver()
 
     def _authorize(self, request, view, resource_type, required) -> bool:
-        org_id = self._org_context.resolve(request=request, view_kwargs=view.kwargs)
+        # Cached under the key the scoping mixins and serializer fields read, so the
+        # view does not run the membership query a second time.
+        if not hasattr(request, "_rbac_active_org_id"):
+            request._rbac_active_org_id = self._org_context.resolve(
+                request=request, view_kwargs=view.kwargs
+            )
+        org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
         if not effective.can(resource_type, required):

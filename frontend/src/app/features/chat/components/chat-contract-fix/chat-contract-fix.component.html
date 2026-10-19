@@ -1,0 +1,50 @@
+<app-hint-message tone="warning">
+    <section
+        class="contract-fix text-body-small"
+        [attr.aria-labelledby]="titleId"
+    >
+        <h3
+            class="contract-fix__title text-body-small-large"
+            [id]="titleId"
+        >
+            Fix flow
+        </h3>
+        @if (isFixable()) {
+            <p class="contract-fix__text">
+                Adds any of these that are missing, and changes nothing the flow already has:
+            </p>
+            <ul class="contract-fix__list">
+                <li>Start node Domain variables: {{ startVariableNames }}</li>
+                <li>End node outputs: {{ endOutputNames }}</li>
+            </ul>
+            @if (canEditFlow()) {
+                <div class="contract-fix__actions">
+                    <app-button
+                        type="outline-primary"
+                        [disabled]="isApplying()"
+                        (click)="apply()"
+                    >
+                        {{ isApplying() ? 'Applying...' : 'Apply to flow' }}
+                    </app-button>
+                </div>
+            } @else {
+                <p class="contract-fix__text">Someone who can edit this flow must apply these changes.</p>
+            }
+        } @else {
+            <p class="contract-fix__text">
+                @if (missing().missing_start_node || missing().missing_end_node) {
+                    The flow needs a start node and an end node; add them in the flow editor.
+                } @else {
+                    Add what is missing in the flow editor.
+                }
+            </p>
+            @if (canReadFlows()) {
+                <a
+                    class="contract-fix__link"
+                    [routerLink]="['/flows', graphId()]"
+                    >Open flow</a
+                >
+            }
+        }
+    </section>
+</app-hint-message>

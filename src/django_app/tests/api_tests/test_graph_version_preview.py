@@ -405,6 +405,7 @@ def test_preview_counts_a_name_that_exists_only_in_another_org_as_missing(
     graph, secret = _acme_flow_declaring(acme=acme, secret_name="SHARED_NAME")
     version = GraphVersioningService().save_version(graph, name="v1")
     secret.delete()
+    type(secret).all_objects.get(pk=secret.pk).purge()
     secret_service.create(text="sk-beta", org=beta, name="SHARED_NAME")
     acme_client = client_as(admin_acme)
     acme_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
@@ -452,10 +453,7 @@ def test_preview_resolves_secrets_in_a_query_count_that_does_not_grow_with_decla
 
 
 @pytest.mark.django_db
-def test_preview_of_a_soft_deleted_version_returns_404(
-    client, graph_with_declared_secret, settings
-):
-    settings.SOFT_DELETE = True
+def test_preview_of_a_soft_deleted_version_returns_404(client, graph_with_declared_secret):
     graph, _ = graph_with_declared_secret
     version_id = save_version(client=client, graph=graph)
     delete_response = client.delete(reverse("graph-versions-detail", args=[version_id]))

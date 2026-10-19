@@ -40,7 +40,6 @@ export interface GetGraphLightRequest extends Partial<AuthorshipFields> {
     name: string;
     description: string;
     tags?: string[];
-    epicchat_enabled?: boolean;
     label_ids?: number[];
     created_at?: string;
     updated_at?: string;
@@ -111,7 +110,7 @@ export interface UpdateGraphDtoRequest {
 // Body of `PATCH /graphs/{id}/`: only the writable graph metadata the app patches. The read-only
 // author, timestamps and last edit of a loaded graph are never sent back.
 export type PatchGraphDtoRequest = Partial<
-    Pick<GraphDto, 'name' | 'description' | 'tags' | 'label_ids' | 'epicchat_enabled' | 'save_version'>
+    Pick<GraphDto, 'name' | 'description' | 'tags' | 'label_ids' | 'save_version'>
 >;
 
 export interface GraphVersionCreateRequest {

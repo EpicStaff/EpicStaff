@@ -2,14 +2,17 @@ import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FDragStartedEvent } from '@foblex/flow';
+import { FCreateConnectionEvent, FDragStartedEvent, FReassignConnectionEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { of } from 'rxjs';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
+import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
+import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel } from '../core/models/node.model';
+import { ClassificationDecisionTableNodeModel, GraphNoteModel, NodeModel } from '../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
@@ -18,6 +21,7 @@ import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
+import { createFlowConnection } from '../utils/connection.factory';
 import { createStartNode } from '../utils/load';
 import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import { FlowGraphComponent } from './flow-graph.component';
@@ -331,6 +335,144 @@ describe('FlowGraphComponent', () => {
             expect(info).toHaveBeenCalledTimes(1);
             expect(info).toHaveBeenCalledWith('You have read-only access to this flow.');
             expect(copy).toHaveBeenCalled();
+        });
+    });
+
+    // The Continue rule's canvas half: a route-code output whose row has Continue on
+    // cannot be wired, by drawing a connection or by dragging an existing one onto it.
+    describe('Classification Decision Table route ports with Continue on', () => {
+        const BLOCKED_PORT = 'table1_decision-route-approve';
+        const OPEN_PORT = 'table1_decision-route-reject';
+
+        function rule(routeCode: string, continueFlag: boolean, order: number): ConditionGroup {
+            return {
+                group_name: routeCode,
+                group_type: 'simple',
+                expression: null,
+                conditions: [],
+                manipulation: null,
+                next_node: null,
+                order,
+                route_code: routeCode,
+                continue_flag: continueFlag,
+                dock_visible: true,
+            };
+        }
+
+        function tableNode(): ClassificationDecisionTableNodeModel {
+            const rows = [rule('approve', true, 1), rule('reject', false, 2)];
+            return {
+                id: 'table1',
+                backendId: null,
+                type: NodeType.CLASSIFICATION_TABLE,
+                node_name: 'Triage',
+                data: { name: 'Triage', table: { condition_groups: rows } },
+                position: { x: 0, y: 0 },
+                ports: generatePortsForClassificationDecisionTableNode('table1', rows),
+                color: '',
+                icon: '',
+                size: { width: 300, height: 200 },
+                input_map: {},
+                output_variable_path: null,
+            } as unknown as ClassificationDecisionTableNodeModel;
+        }
+
+        function pythonNode(id: string): NodeModel {
+            return {
+                id,
+                backendId: null,
+                type: NodeType.PYTHON,
+                node_name: id,
+                data: {},
+                position: { x: 400, y: 0 },
+                ports: generatePortsForNode(id, NodeType.PYTHON),
+                color: '',
+                icon: '',
+                size: { width: 200, height: 100 },
+                input_map: {},
+                output_variable_path: null,
+            } as unknown as NodeModel;
+        }
+
+        let component: FlowGraphComponent;
+        let flowService: FlowService;
+        let warning: ReturnType<typeof vi.spyOn>;
+
+        function setUp(connections: FlowModel['connections'] = []): void {
+            const fixture = mount(false, {
+                nodes: [tableNode(), pythonNode('py1'), pythonNode('py2')],
+                connections,
+            });
+            component = fixture.componentInstance;
+            flowService = TestBed.inject(FlowService);
+            warning = vi.spyOn(TestBed.inject(ToastService), 'warning').mockImplementation(() => undefined);
+        }
+
+        function connect(fOutputId: string, fInputId: string): void {
+            component.onConnectionAdded({ fOutputId, fInputId } as unknown as FCreateConnectionEvent);
+        }
+
+        it('refuses to wire a route code whose row has Continue on, and says why', () => {
+            setUp();
+
+            connect(BLOCKED_PORT, 'py1_python-in');
+
+            expect(flowService.connections()).toEqual([]);
+            expect(warning).toHaveBeenCalledExactlyOnceWith(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                5000,
+                'bottom-right'
+            );
+        });
+
+        it('wires a route code whose row has Continue off', () => {
+            setUp();
+
+            connect(OPEN_PORT, 'py1_python-in');
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual([OPEN_PORT]);
+            expect(warning).not.toHaveBeenCalled();
+        });
+
+        it('leaves connections from other node types alone', () => {
+            setUp();
+
+            connect('py1_python-out', 'py2_python-in');
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual(['py1_python-out']);
+            expect(warning).not.toHaveBeenCalled();
+        });
+
+        it('refuses to move an existing connection onto a blocked route port', () => {
+            const existing = createFlowConnection('table1', 'py1', OPEN_PORT, 'py1_python-in');
+            setUp([existing]);
+
+            component.onReassignConnection({
+                connectionId: existing.id,
+                endpoint: 'source',
+                nextSourceId: BLOCKED_PORT,
+            } as unknown as FReassignConnectionEvent);
+
+            expect(flowService.connections().map((connection) => connection.sourcePortId)).toEqual([OPEN_PORT]);
+            expect(warning).toHaveBeenCalledExactlyOnceWith(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                5000,
+                'bottom-right'
+            );
+        });
+
+        it('still moves a connection to a new target from an open route port', () => {
+            const existing = createFlowConnection('table1', 'py1', OPEN_PORT, 'py1_python-in');
+            setUp([existing]);
+
+            component.onReassignConnection({
+                connectionId: existing.id,
+                endpoint: 'target',
+                nextTargetId: 'py2_python-in',
+            } as unknown as FReassignConnectionEvent);
+
+            expect(flowService.connections().map((connection) => connection.targetPortId)).toEqual(['py2_python-in']);
+            expect(warning).not.toHaveBeenCalled();
         });
     });
 });

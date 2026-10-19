@@ -44,6 +44,7 @@ from tables.models import (
     PythonCodeTool,
     StartNode,
 )
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 
 
 @pytest.fixture
@@ -211,12 +212,7 @@ class TestToolDeletedAfterExport:
         tool_entries = [*data[EntityType.PYTHON_CODE_TOOL], *data[EntityType.MCP_TOOL]]
 
         for entry in tool_entries:
-            assert not {
-                "created_at",
-                "updated_at",
-                "is_soft_deleted",
-                "soft_deleted_at",
-            } & set(entry)
+            assert not {"created_at", "updated_at", *SOFT_DELETE_FIELD_NAMES} & set(entry)
 
 
 def _as_legacy_file(file_content: str) -> str:
@@ -311,8 +307,9 @@ class TestLegacyToolEntries:
     ):
         data = json.loads(_as_legacy_file(export_file))
         python_tool_entry = data[EntityType.PYTHON_CODE_TOOL][0]
+        # The flag under its old name (a legacy file) and its current one.
         python_tool_entry.update(
-            {"is_soft_deleted": True, "soft_deleted_at": "2020-01-03T00:00:00Z"}
+            {"is_soft_deleted": True, "active": False, "soft_deleted_at": "2020-01-03T00:00:00Z"}
         )
         agent_flow["python_tool"].delete()
 
@@ -321,7 +318,7 @@ class TestLegacyToolEntries:
         new_tool = PythonCodeTool.all_objects.get(
             id=id_mapper.get(EntityType.PYTHON_CODE_TOOL, python_tool_entry["id"])
         )
-        assert new_tool.is_soft_deleted is False
+        assert new_tool.active is True
         assert new_tool.soft_deleted_at is None
 
     @pytest.mark.parametrize("legacy_shape", ["without_entrypoint_and_kwargs", "blank_entrypoint"])

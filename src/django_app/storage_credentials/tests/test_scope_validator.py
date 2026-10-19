@@ -1,16 +1,10 @@
 """`CredentialScopeValidator` is the last check before a trusted scope
 (org_id/storage_org_prefix/storage_allowed_paths) is used to mint a MinIO
-temporary service account (a sandboxed
-process claiming its own org_id/prefix).
+temporary service account (a sandboxed process claiming its own org_id/prefix).
 
-Real behaviour, confirmed by reading `scope_validator.py` rather than assumed
-from the plan: every entry of `storage_allowed_paths` is always namespaced
-under `storage_org_prefix` (`f"{prefix}/{path}"`), so a path can never
-literally "escape" the prefix through this function the way an absolute,
-already-prefixed path might in a naive implementation -- the only way to
-trigger `CredentialScopeValidationError` on a path is `..` traversal or an
-empty entry. See the discrepancy note on
-`test_path_naming_another_orgs_prefix_is_nested_not_rejected` below.
+Every entry of `storage_allowed_paths` is always namespaced under
+`storage_org_prefix` (`f"{prefix}/{path}"`), so a path can only "escape" the
+prefix through `..` traversal or an empty entry.
 """
 
 import pytest
@@ -34,120 +28,56 @@ def warning_logs():
     logger.remove(sink_id)
 
 
-def test_paths_that_are_subsets_of_the_prefix_pass(validator):
-    scoped_folders = validator.validate(
-        org_id=1,
-        storage_org_prefix="org_1",
-        storage_allowed_paths=["flowA", "flowB/subdir"],
-    )
+@pytest.mark.parametrize(
+    ("paths", "scoped_folders"),
+    [
+        (["flowA", "flowB/subdir"], {"org_1/flowA", "org_1/flowB/subdir"}),
+        # Naming another org's prefix only creates a folder inside this org.
+        (["org_2/secret"], {"org_1/org_2/secret"}),
+    ],
+    ids=["subfolders", "another-orgs-name-is-nested"],
+)
+def test_allowed_paths_are_scoped_under_the_org_prefix(validator, paths, scoped_folders):
+    assert validator.validate(org_id=1, storage_org_prefix="org_1", storage_allowed_paths=paths) == scoped_folders
 
-    assert scoped_folders == {"org_1/flowA", "org_1/flowB/subdir"}
 
-
-def test_path_traversal_is_rejected(validator):
+@pytest.mark.parametrize(
+    ("org_id", "prefix", "paths"),
+    [
+        (1, "org_1", ["../org_2/secret"]),
+        (1, "org_1", ["flowA/../../org_2/secret"]),
+        # Fail closed: no paths must never default to the whole org prefix.
+        (1, "org_1", None),
+        (1, "org_1", []),
+        (1, "org_1", [""]),
+        (0, "org_1", ["flowA"]),
+        (1, "", ["flowA"]),
+    ],
+    ids=["traversal", "nested-traversal", "paths-unset", "paths-empty", "empty-path", "no-org", "no-prefix"],
+)
+def test_a_scope_that_could_reach_outside_its_folders_is_rejected(validator, org_id, prefix, paths):
     with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1,
-            storage_org_prefix="org_1",
-            storage_allowed_paths=["../org_2/secret"],
-        )
+        validator.validate(org_id=org_id, storage_org_prefix=prefix, storage_allowed_paths=paths)
 
 
-def test_path_traversal_in_a_nested_segment_is_rejected(validator):
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1,
-            storage_org_prefix="org_1",
-            storage_allowed_paths=["flowA/../../org_2/secret"],
-        )
-
-
-def test_none_storage_allowed_paths_is_rejected(validator):
-    """Fail closed: an unset `storage_allowed_paths` must not default to
-    the whole org prefix. Every caller must pass an explicit, narrow path."""
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=None
-        )
-
-
-def test_empty_list_storage_allowed_paths_is_rejected(validator):
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
-        )
-
-
-def test_empty_storage_allowed_paths_error_message_leaks_no_internals(validator):
-    """This message is rendered verbatim to the API client, so it must stay
-    user-actionable without naming internal modules, call sites or model
-    classes. The deeper diagnostic (missing session_id, no graph-level
-    storage items) belongs in the server-side log, not in the response."""
+def test_a_missing_scope_is_explained_to_the_client_without_internals_but_logged_in_full(
+    validator, warning_logs
+):
+    """The message is rendered verbatim to the API client; the diagnostic (which
+    session, which org) belongs in the server log."""
     with pytest.raises(CredentialScopeValidationError) as exc_info:
-        validator.validate(
-            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[]
-        )
+        validator.validate(org_id=7, storage_org_prefix="org_7", storage_allowed_paths=[])
 
     message = str(exc_info.value)
-
     assert message == CredentialScopeValidationError.default_detail
-
-    for internal_reference in (
-        "converter_service",
-        ".py",
-        "session_id",
-        "GraphStorageFile",
-    ):
+    for internal_reference in ("converter_service", ".py", "session_id", "GraphStorageFile"):
         assert internal_reference not in message
-
-
-def test_empty_storage_allowed_paths_logs_the_internal_diagnostic(validator, warning_logs):
-    """The detail removed from the client-facing message must not be lost --
-    operators still need it, from the log."""
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=7, storage_org_prefix="org_7", storage_allowed_paths=[]
-        )
-
     logged = "".join(warning_logs)
     assert "org_id=7" in logged
     assert "session_id" in logged
 
 
-def test_missing_org_id_is_rejected(validator):
+@pytest.mark.parametrize("path", [".recycle-bin", "/.recycle-bin/batch/report.pdf"])
+def test_a_path_inside_the_recycle_bin_is_rejected(validator, path):
     with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=0, storage_org_prefix="org_1", storage_allowed_paths=["flowA"]
-        )
-
-
-def test_missing_storage_org_prefix_is_rejected(validator):
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1, storage_org_prefix="", storage_allowed_paths=["flowA"]
-        )
-
-
-def test_an_empty_path_entry_is_rejected(validator):
-    with pytest.raises(CredentialScopeValidationError):
-        validator.validate(
-            org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[""]
-        )
-
-
-def test_path_naming_another_orgs_prefix_is_nested_not_rejected(validator):
-    """DISCREPANCY vs. the test plan: the plan expected a path like
-    "org_2/..." under `storage_org_prefix="org_1"` to raise
-    `CredentialScopeValidationError` ("path outside the org prefix"). The
-    real implementation always prepends `storage_org_prefix` to every entry
-    (`f"{prefix}/{path}"`), so this string is not treated as an absolute,
-    escaping path -- it is nested one level deeper under org_1, and MinIO's
-    policy Resource ends up scoped to `org_1/org_2/...`, which is still
-    fully inside org_1's own prefix and not a cross-org leak. There is no
-    code path in this validator that lets a `storage_allowed_paths` entry
-    resolve outside `storage_org_prefix` short of `..` traversal."""
-    scoped_folders = validator.validate(
-        org_id=1, storage_org_prefix="org_1", storage_allowed_paths=["org_2/secret"]
-    )
-
-    assert scoped_folders == {"org_1/org_2/secret"}
+        validator.validate(org_id=1, storage_org_prefix="org_1", storage_allowed_paths=[path])

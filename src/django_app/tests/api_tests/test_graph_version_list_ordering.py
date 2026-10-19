@@ -114,7 +114,7 @@ class TestGraphVersionListOrdering:
             _create_version(acme_graph, f"all-{index}", shared_created_at) for index in range(4)
         ]
         GraphVersion.all_objects.filter(pk=tied_versions[1].pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
         expected_ids = sorted((version.id for version in tied_versions), reverse=True)
 

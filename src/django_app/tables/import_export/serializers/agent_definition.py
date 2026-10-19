@@ -2,8 +2,10 @@ from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import InstructionListField
 from rest_framework import serializers
 
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
-class AgentDefinitionImportSerializer(serializers.ModelSerializer):
+
+class AgentDefinitionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     instruction_list = InstructionListField(required=False)
 
     class Meta:

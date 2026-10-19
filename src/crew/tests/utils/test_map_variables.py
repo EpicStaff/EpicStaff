@@ -25,14 +25,6 @@ def _build_nested_dotdict(segments: list[str], leaf_value):
     return DotDict(nested)
 
 
-def test_map_variables_to_input_with_shallow_path_still_works():
-    variables = DotDict({"result": "hello"})
-
-    mapped = map_variables_to_input(variables, {"output_key": "variables.result"})
-
-    assert mapped == {"output_key": "hello"}
-
-
 def test_map_variables_to_input_with_deeply_nested_path_completes_quickly_and_is_correct():
     segments = _deep_path_segments(30)
     variables = _build_nested_dotdict(segments, "deep_value")

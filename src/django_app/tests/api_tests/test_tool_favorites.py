@@ -82,252 +82,83 @@ def _make_mcp_tool(org, name="mcp-tool") -> McpTool:
     )
 
 
-# ---- toggle: PythonCodeTool ----
+KINDS = {
+    "python": (PYTHON_TOOL_URL, _make_python_tool, PythonCodeToolFavorite),
+    "mcp": (MCP_TOOL_URL, _make_mcp_tool, McpToolFavorite),
+}
+EACH_KIND = pytest.mark.parametrize("kind", list(KINDS))
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_favorite_post_creates_favorite(client_a, member_a, org_a):
-    tool = _make_python_tool(org_a)
-    resp = client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    assert resp.status_code == 200
-    assert PythonCodeToolFavorite.objects.filter(user=member_a, tool=tool).count() == 1
+@EACH_KIND
+def test_favorite_toggle_is_idempotent_both_ways(client_a, member_a, org_a, kind):
+    url, make_tool, favorite = KINDS[kind]
+    tool = make_tool(org_a)
+
+    added = [client_a.post(f"{url}{tool.id}/favorite/") for _ in range(2)]
+    count_after_adding = favorite.objects.filter(user=member_a, tool=tool).count()
+    removed = [client_a.delete(f"{url}{tool.id}/favorite/") for _ in range(2)]
+
+    assert [response.status_code for response in added + removed] == [200] * 4
+    assert count_after_adding == 1
+    assert not favorite.objects.filter(user=member_a, tool=tool).exists()
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_favorite_post_idempotent(client_a, member_a, org_a):
-    tool = _make_python_tool(org_a)
-    resp1 = client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    resp2 = client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert PythonCodeToolFavorite.objects.filter(user=member_a, tool=tool).count() == 1
+@EACH_KIND
+def test_is_favorite_is_per_user_on_list_and_detail(client_a, client_a2, org_a, kind):
+    url, make_tool, _ = KINDS[kind]
+    tool = make_tool(org_a)
+    client_a.post(f"{url}{tool.id}/favorite/")
+
+    mine = {row["id"]: row for row in _results(client_a.get(url))}
+    theirs = {row["id"]: row for row in _results(client_a2.get(url))}
+
+    assert mine[tool.id]["is_favorite"] is True
+    assert client_a.get(f"{url}{tool.id}/").data["is_favorite"] is True
+    assert theirs[tool.id]["is_favorite"] is False
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_favorite_delete_removes_favorite(client_a, member_a, org_a):
-    tool = _make_python_tool(org_a)
-    client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    resp = client_a.delete(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    assert resp.status_code == 200
-    assert PythonCodeToolFavorite.objects.filter(user=member_a, tool=tool).count() == 0
+@EACH_KIND
+def test_favoriting_another_orgs_tool_is_404(client_a, org_b, kind):
+    url, make_tool, favorite = KINDS[kind]
+    other = make_tool(org_b, name="theirs")
 
+    resp = client_a.post(f"{url}{other.id}/favorite/")
 
-@pytest.mark.django_db
-def test_pythoncodetool_favorite_delete_idempotent(client_a, member_a, org_a):
-    tool = _make_python_tool(org_a)
-    resp1 = client_a.delete(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    resp2 = client_a.delete(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert PythonCodeToolFavorite.objects.filter(user=member_a, tool=tool).count() == 0
-
-
-# ---- toggle: McpTool ----
-
-
-@pytest.mark.django_db
-def test_mcptool_favorite_post_creates_favorite(client_a, member_a, org_a):
-    tool = _make_mcp_tool(org_a)
-    resp = client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    assert resp.status_code == 200
-    assert McpToolFavorite.objects.filter(user=member_a, tool=tool).count() == 1
-
-
-@pytest.mark.django_db
-def test_mcptool_favorite_post_idempotent(client_a, member_a, org_a):
-    tool = _make_mcp_tool(org_a)
-    resp1 = client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    resp2 = client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert McpToolFavorite.objects.filter(user=member_a, tool=tool).count() == 1
-
-
-@pytest.mark.django_db
-def test_mcptool_favorite_delete_removes_favorite(client_a, member_a, org_a):
-    tool = _make_mcp_tool(org_a)
-    client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    resp = client_a.delete(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    assert resp.status_code == 200
-    assert McpToolFavorite.objects.filter(user=member_a, tool=tool).count() == 0
-
-
-@pytest.mark.django_db
-def test_mcptool_favorite_delete_idempotent(client_a, member_a, org_a):
-    tool = _make_mcp_tool(org_a)
-    resp1 = client_a.delete(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    resp2 = client_a.delete(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert McpToolFavorite.objects.filter(user=member_a, tool=tool).count() == 0
-
-
-# ---- cross-user isolation ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_favorite_is_per_user(client_a, client_a2, org_a):
-    tool = _make_python_tool(org_a)
-    client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-
-    rows_a = {t["id"]: t for t in _results(client_a.get(PYTHON_TOOL_URL))}
-    rows_a2 = {t["id"]: t for t in _results(client_a2.get(PYTHON_TOOL_URL))}
-
-    assert rows_a[tool.id]["is_favorite"] is True
-    assert rows_a2[tool.id]["is_favorite"] is False
-
-
-@pytest.mark.django_db
-def test_mcptool_favorite_is_per_user(client_a, client_a2, org_a):
-    tool = _make_mcp_tool(org_a)
-    client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-
-    rows_a = {t["id"]: t for t in _results(client_a.get(MCP_TOOL_URL))}
-    rows_a2 = {t["id"]: t for t in _results(client_a2.get(MCP_TOOL_URL))}
-
-    assert rows_a[tool.id]["is_favorite"] is True
-    assert rows_a2[tool.id]["is_favorite"] is False
-
-
-# ---- cross-org isolation (mirrors test_mcptool_copy_cross_org_404) ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_favorite_cross_org_404(client_a, org_b):
-    other = _make_python_tool(org_b, name="theirs")
-    resp = client_a.post(f"{PYTHON_TOOL_URL}{other.id}/favorite/")
     assert resp.status_code == 404
-    assert not PythonCodeToolFavorite.objects.filter(tool=other).exists()
+    assert not favorite.objects.filter(tool=other).exists()
 
 
 @pytest.mark.django_db
-def test_mcptool_favorite_cross_org_404(client_a, org_b):
-    other = _make_mcp_tool(org_b, name="theirs")
-    resp = client_a.post(f"{MCP_TOOL_URL}{other.id}/favorite/")
-    assert resp.status_code == 404
-    assert not McpToolFavorite.objects.filter(tool=other).exists()
+@EACH_KIND
+def test_is_favorite_filter(client_a, org_a, kind):
+    url, make_tool, _ = KINDS[kind]
+    favorited = make_tool(org_a, name="favorited")
+    not_favorited = make_tool(org_a, name="not-favorited")
+    client_a.post(f"{url}{favorited.id}/favorite/")
 
-
-# ---- is_favorite field on list/detail ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_is_favorite_in_list_and_detail(client_a, org_a):
-    tool = _make_python_tool(org_a)
-    client_a.post(f"{PYTHON_TOOL_URL}{tool.id}/favorite/")
-
-    list_rows = {t["id"]: t for t in _results(client_a.get(PYTHON_TOOL_URL))}
-    assert list_rows[tool.id]["is_favorite"] is True
-
-    detail = client_a.get(f"{PYTHON_TOOL_URL}{tool.id}/")
-    assert detail.data["is_favorite"] is True
-
-
-@pytest.mark.django_db
-def test_mcptool_is_favorite_in_list_and_detail(client_a, org_a):
-    tool = _make_mcp_tool(org_a)
-    client_a.post(f"{MCP_TOOL_URL}{tool.id}/favorite/")
-
-    list_rows = {t["id"]: t for t in _results(client_a.get(MCP_TOOL_URL))}
-    assert list_rows[tool.id]["is_favorite"] is True
-
-    detail = client_a.get(f"{MCP_TOOL_URL}{tool.id}/")
-    assert detail.data["is_favorite"] is True
-
-
-# ---- ?is_favorite filter ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_is_favorite_filter(client_a, org_a):
-    favorited = _make_python_tool(org_a, name="favorited")
-    not_favorited = _make_python_tool(org_a, name="not-favorited")
-    client_a.post(f"{PYTHON_TOOL_URL}{favorited.id}/favorite/")
-
-    true_ids = {t["id"] for t in _results(client_a.get(PYTHON_TOOL_URL, {"is_favorite": "true"}))}
-    false_ids = {t["id"] for t in _results(client_a.get(PYTHON_TOOL_URL, {"is_favorite": "false"}))}
+    true_ids = {row["id"] for row in _results(client_a.get(url, {"is_favorite": "true"}))}
+    false_ids = {row["id"] for row in _results(client_a.get(url, {"is_favorite": "false"}))}
 
     assert favorited.id in true_ids and not_favorited.id not in true_ids
     assert not_favorited.id in false_ids and favorited.id not in false_ids
 
 
 @pytest.mark.django_db
-def test_mcptool_is_favorite_filter(client_a, org_a):
-    favorited = _make_mcp_tool(org_a, name="favorited")
-    not_favorited = _make_mcp_tool(org_a, name="not-favorited")
-    client_a.post(f"{MCP_TOOL_URL}{favorited.id}/favorite/")
+@EACH_KIND
+def test_favorites_sort_first_only_when_asked(client_a, org_a, kind):
+    url, make_tool, _ = KINDS[kind]
+    oldest, middle, newest = (make_tool(org_a, name=name) for name in ("a-tool", "b-tool", "c-tool"))
+    client_a.post(f"{url}{oldest.id}/favorite/")
 
-    true_ids = {t["id"] for t in _results(client_a.get(MCP_TOOL_URL, {"is_favorite": "true"}))}
-    false_ids = {t["id"] for t in _results(client_a.get(MCP_TOOL_URL, {"is_favorite": "false"}))}
+    by_favorite = [row["id"] for row in _results(client_a.get(url, {"ordering": "favorite"}))]
+    default = [row["id"] for row in _results(client_a.get(url))]
+    filtered = [row["id"] for row in _results(client_a.get(url, {"is_favorite": "false"}))]
 
-    assert favorited.id in true_ids and not_favorited.id not in true_ids
-    assert not_favorited.id in false_ids and favorited.id not in false_ids
-
-
-# ---- ?ordering=favorite ----
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_ordering_favorite_puts_favorites_first(client_a, org_a):
-    tool1 = _make_python_tool(org_a, name="a-tool")
-    tool2 = _make_python_tool(org_a, name="b-tool")
-    tool3 = _make_python_tool(org_a, name="c-tool")
-    client_a.post(f"{PYTHON_TOOL_URL}{tool3.id}/favorite/")
-
-    resp = client_a.get(PYTHON_TOOL_URL, {"ordering": "favorite"})
-    ids = [t["id"] for t in _results(resp)]
-    assert ids[0] == tool3.id
-    assert set(ids) == {tool1.id, tool2.id, tool3.id}
-
-
-@pytest.mark.django_db
-def test_pythoncodetool_default_ordering_unaffected_by_favorites(client_a, org_a):
-    tool1 = _make_python_tool(org_a, name="a-tool")
-    tool2 = _make_python_tool(org_a, name="b-tool")
-    tool3 = _make_python_tool(org_a, name="c-tool")
-    client_a.post(f"{PYTHON_TOOL_URL}{tool3.id}/favorite/")
-
-    resp_before = [t["id"] for t in _results(client_a.get(PYTHON_TOOL_URL))]
-
-    # Favoriting must not change default (no `ordering` param) order, and the
-    # default order itself must be deterministic (-id) regardless of filters
-    # (e.g. is_favorite) being applied — see migration 0210.
-    assert resp_before == [tool3.id, tool2.id, tool1.id]
-
-    resp_filtered = [
-        t["id"]
-        for t in _results(client_a.get(PYTHON_TOOL_URL, {"is_favorite": "false"}))
-    ]
-    assert resp_filtered == [tool2.id, tool1.id]
-
-
-@pytest.mark.django_db
-def test_mcptool_ordering_favorite_puts_favorites_first(client_a, org_a):
-    tool1 = _make_mcp_tool(org_a, name="a-tool")
-    tool2 = _make_mcp_tool(org_a, name="b-tool")
-    tool3 = _make_mcp_tool(org_a, name="c-tool")
-    client_a.post(f"{MCP_TOOL_URL}{tool3.id}/favorite/")
-
-    resp = client_a.get(MCP_TOOL_URL, {"ordering": "favorite"})
-    ids = [t["id"] for t in _results(resp)]
-    assert ids[0] == tool3.id
-    assert set(ids) == {tool1.id, tool2.id, tool3.id}
-
-
-@pytest.mark.django_db
-def test_mcptool_default_ordering_unaffected_by_favorites(client_a, org_a):
-    tool1 = _make_mcp_tool(org_a, name="a-tool")
-    tool2 = _make_mcp_tool(org_a, name="b-tool")
-    tool3 = _make_mcp_tool(org_a, name="c-tool")
-    client_a.post(f"{MCP_TOOL_URL}{tool3.id}/favorite/")
-
-    resp_before = [t["id"] for t in _results(client_a.get(MCP_TOOL_URL))]
-
-    # Default order must be deterministic (-id) and unaffected by favorites,
-    # and stay consistent when a filter (e.g. is_favorite) is applied.
-    assert resp_before == [tool3.id, tool2.id, tool1.id]
-
-    resp_filtered = [
-        t["id"] for t in _results(client_a.get(MCP_TOOL_URL, {"is_favorite": "false"}))
-    ]
-    assert resp_filtered == [tool2.id, tool1.id]
+    assert by_favorite[0] == oldest.id
+    assert set(by_favorite) == {oldest.id, middle.id, newest.id}
+    # The default order is deterministic (-id), whatever is favorited or filtered.
+    assert default == [newest.id, middle.id, oldest.id]
+    assert filtered == [newest.id, middle.id]

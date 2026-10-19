@@ -50,6 +50,7 @@
         "ag-grid-angular": "36.1.0",
         "ag-grid-community": "36.1.0",
         "docx-preview": "^0.3.7",
+        "dompurify": "^3.4.14",
         "jsonc-parser": "3.3.1",
         "marked": "18.0.10",
         "monaco-editor": "0.55.1",
@@ -82,7 +83,7 @@
         "vitest": "^4.1.11"
     },
     "overrides": {
-        "dompurify": "^3.4.14",
+        "dompurify": "$dompurify",
         "@xmldom/xmldom": "^0.9.12",
         "fast-uri": "^4.1.4",
         "qs": "^6.16.0"

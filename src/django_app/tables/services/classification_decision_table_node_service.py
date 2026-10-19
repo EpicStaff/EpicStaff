@@ -1,9 +1,12 @@
 import json
 from dataclasses import dataclass
 
+from django.db import transaction
+from django.utils import timezone
 from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from tables.exceptions import ClassificationDecisionTableNodeNotFoundError
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.import_export.enums import EntityType
 from tables.import_export.export_tabular_projections.export_classification_decision_table_csv import (
     export_condition_groups_csv,
@@ -13,7 +16,7 @@ from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
-from tables.models.graph_models import ClassificationDecisionTableNode
+from tables.models.graph_models import ClassificationDecisionTableNode, Graph
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     ClassificationConditionGroupSectionSerializer,
     ClassificationConditionGroupSerializer,
@@ -34,6 +37,12 @@ class NodeExportResult:
     content_type: str | None = None
     filename: str | None = None
     errors: list | None = None
+
+
+@dataclass
+class ExplanationsSaveResult:
+    explanations: dict
+    save_version: int
 
 
 class ClassificationDecisionTableNodeService:
@@ -157,3 +166,58 @@ class ClassificationDecisionTableNodeService:
             content_type="application/json",
             filename=generate_file_name(f"{node.node_name}", prefix="CDT"),
         )
+
+    def save_explanations(
+        self,
+        node: ClassificationDecisionTableNode,
+        *,
+        explanations: dict,
+        expected_save_version: int,
+        user,
+    ) -> ExplanationsSaveResult:
+        """Replace the node's `metadata["explanations"]` and nothing else.
+
+        Versioned like a bulk save: the flow's `save_version` must equal
+        `expected_save_version`, and a success bumps it and tells the flow's open
+        editors once the transaction commits. Every other metadata key, and every
+        other field of the node, is left as stored. No version snapshot is taken.
+
+        Args:
+            node: Already resolved within the caller's organization; only its
+                `pk` and `graph_id` are used.
+
+        Raises:
+            ClassificationDecisionTableNodeNotFoundError: The node was deleted meanwhile.
+            GraphSaveVersionConflictError: The flow was saved since the caller loaded it.
+        """
+        graph_id = node.graph_id
+        with transaction.atomic():
+            # Graph row first, node row second: the order bulk save takes them in,
+            # so the two cannot deadlock each other.
+            new_save_version = Graph.increment_version_if_current(
+                pk=graph_id, expected=expected_save_version
+            )
+            # Re-read under lock so a concurrent write to another metadata key is
+            # kept rather than overwritten by the caller's copy.
+            locked_node = (
+                ClassificationDecisionTableNode.objects.select_for_update()
+                .filter(pk=node.pk, graph_id=graph_id)
+                .first()
+            )
+            if locked_node is None:
+                raise ClassificationDecisionTableNodeNotFoundError(node.pk)
+            locked_node.metadata = {**(locked_node.metadata or {}), "explanations": explanations}
+            locked_node.save(update_fields=["metadata", "updated_at"])
+
+            transaction.on_commit(
+                lambda: GraphEditNotifier.notify_graph_saved(
+                    graph_id=graph_id,
+                    new_save_version=new_save_version,
+                    user=user,
+                    saved_at=timezone.now().isoformat(),
+                ),
+                # The save is already committed; a failed broadcast must not turn it into a 500.
+                robust=True,
+            )
+
+        return ExplanationsSaveResult(explanations=explanations, save_version=new_save_version)

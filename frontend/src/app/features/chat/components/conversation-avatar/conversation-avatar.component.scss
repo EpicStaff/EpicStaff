@@ -1,0 +1,15 @@
+// The desk avatar's palette and dark letters, round as person avatars are.
+:host {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--color-text-on-bright);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+    user-select: none;
+}

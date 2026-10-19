@@ -204,6 +204,44 @@ def add_org_header_postprocessing_hook(result, generator, request, public, **kwa
     return result
 
 
+_UPLOAD_STREAM_RESPONSE = {
+    "type": "object",
+    "required": ["status", "path", "recycle_bin_purged"],
+    "properties": {
+        "status": {"type": "string", "enum": ["DONE"]},
+        "path": {"type": "string", "description": "The stored file, or the archive's folder."},
+        "size": {"type": "integer", "description": "Bytes stored; plain files only."},
+        "extracted": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Paths of the unpacked files; archives only.",
+        },
+        "recycle_bin_purged": {
+            "type": "array",
+            "description": (
+                "Storage recycle bin entries purged, oldest first, to make room; "
+                "empty when the upload fit or the caller may not purge."
+            ),
+            "items": {
+                "type": "object",
+                "required": ["name", "size"],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": (
+                            "Org-relative path of the entry; a folder's ends in '/'. "
+                            "Null unless the caller has FILES:READ in the organization."
+                        ),
+                    },
+                    "size": {"type": "integer", "description": "Bytes freed."},
+                },
+            },
+        },
+    },
+}
+
+
 def add_stream_upload_postprocessing_hook(result, generator, request, public, **kwargs):
     """Add the streaming-upload endpoint to the schema; it is raw ASGI, which the generator misses."""
     result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
@@ -216,9 +254,16 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
                 "DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE (default 2gb; none = unlimited). "
                 "An archive (.zip/.tar*) up to DJANGO_MAX_ARCHIVE_FILE_SIZE is unpacked "
                 "into a new folder instead. Over either cap: 413 upload_too_large. "
-                "Everything is also bounded by the organization storage quota "
-                "(413 storage_quota_exceeded). GET /api/storage/upload-limits/ "
-                "returns the limits."
+                "Everything is also bounded by the organization storage quota: a write "
+                "that doesn't fit first purges the organization's oldest storage recycle "
+                "bin entries, just enough of them, and lists them in `recycle_bin_purged`; "
+                "if the whole bin isn't enough, nothing is purged "
+                "(413 storage_quota_exceeded). Only a user session (not an API key) "
+                "holding FILES:DELETE may cause a purge; for anyone else the bin counts "
+                "as used and the upload gets the 413. The purge commits with the file's "
+                "row, before object storage completes the upload: if that completion "
+                "then fails, the request fails but the purged entries stay purged. "
+                "GET /api/storage/upload-limits/ returns the limits."
             ),
             "parameters": [
                 {
@@ -244,8 +289,11 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
             },
             "responses": {
                 "200": {
-                    "description": "Uploaded.",
-                    "content": {"application/json": {"schema": {"type": "object"}}},
+                    "description": (
+                        "Uploaded. A plain file answers `path` and `size`, an unpacked "
+                        "archive `path` (its new folder) and `extracted`."
+                    ),
+                    "content": {"application/json": {"schema": _UPLOAD_STREAM_RESPONSE}},
                 },
                 "400": {"description": "Blocked extension, bad archive or missing filename."},
                 "401": {"description": "Not authenticated."},

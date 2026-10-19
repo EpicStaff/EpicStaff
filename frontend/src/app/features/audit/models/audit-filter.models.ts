@@ -1,6 +1,6 @@
 import { generateUuid } from '@shared/utils';
 
-import { AuditEventKind, AuditEventStatus, AuditNodeType, AuditRunType } from './audit-session.models';
+import { AuditEventKind, AuditEventStatus, AuditNodeType } from './audit-session.models';
 
 export type AuditFilterOp =
     | 'equals'
@@ -25,6 +25,9 @@ export interface AuditEnumOption {
     value: string;
     label: string;
     icon?: string;
+    // Tabler font icon (e.g. "ti ti-robot"), used for node types so they match the flow editor
+    iconClass?: string;
+    iconColor?: string;
 }
 
 export interface AuditNumberFilter {
@@ -100,7 +103,6 @@ export interface AuditFilterState {
     dateFrom: string | null;
     dateTo: string | null;
     nodeTypes: AuditNodeType[];
-    runTypes: AuditRunType[];
     flow: AuditValuesFilter;
     id: AuditIdFilter;
     error: AuditConditionGroup[];
@@ -132,7 +134,6 @@ export const EMPTY_AUDIT_FILTER: AuditFilterState = {
     dateFrom: null,
     dateTo: null,
     nodeTypes: [],
-    runTypes: [],
     flow: { op: 'in', values: [] },
     id: { mode: 'in', from: '', to: '', value: '', values: [] },
     error: [createAuditConditionGroup()],
@@ -168,6 +169,9 @@ export function removeAuditCondition(
     const nonEmpty = next.filter((group) => group.conditions.length > 0);
     return nonEmpty.length > 0 ? nonEmpty : next.slice(0, 1);
 }
+
+// field the backend treats as full-text search across the event
+export const FREE_TEXT_FIELD = '__text__';
 
 export const VALUE_FREE_OPS: AuditFilterOp[] = ['is_empty', 'is_not_empty', 'key_exists', 'key_not_exists'];
 

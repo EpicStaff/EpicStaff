@@ -15,9 +15,11 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+import websockets
 
 from domain.models.realtime_tool import RealtimeTool, ToolParameters
 from infrastructure.providers.elevenlabs import elevenlabs_agent_provisioner as provisioner_module
+from infrastructure.providers.elevenlabs import elevenlabs_realtime_agent_client as client_module
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
     remote_agent_name,
@@ -190,7 +192,7 @@ def _described_tool(name: str, description: str, parameter: str) -> RealtimeTool
     return tool
 
 
-async def _provision(provisioner, *, org_id, config_id, instructions, tools) -> str:
+async def _provision(provisioner, *, org_id, config_id, instructions, tools, temperature=None) -> str:
     return await provisioner.get_or_create_agent(
         api_key="key",
         agent_name=remote_agent_name(org_id, config_id),
@@ -199,6 +201,7 @@ async def _provision(provisioner, *, org_id, config_id, instructions, tools) -> 
         voice="21m00Tcm4TlvDq8ikWAM",
         rt_tools=tools,
         llm_model="gemini-2.5-flash",
+        temperature=temperature,
     )
 
 
@@ -515,6 +518,69 @@ async def test_editing_only_a_tool_description_reprovisions_the_agent(provisione
 
     [record] = fake_api.tool_records_of(agent_id)
     assert record["description"] == "new description"
+
+
+@pytest.mark.parametrize("temperature", [0.0, 0.7], ids=["zero", "set"])
+async def test_the_agent_prompt_carries_the_configured_temperature(provisioner, fake_api, temperature):
+    agent_id = await _provision(
+        provisioner, org_id=1, config_id=10, instructions="x", tools=[], temperature=temperature
+    )
+
+    assert fake_api.prompt_section_of(agent_id)["temperature"] == temperature
+
+
+async def test_an_unset_temperature_is_left_to_the_elevenlabs_default(provisioner, fake_api):
+    agent_id = await _provision(provisioner, org_id=1, config_id=10, instructions="x", tools=[])
+
+    # An explicit null would tell ElevenLabs to send no temperature to the LLM at all.
+    assert "temperature" not in fake_api.prompt_section_of(agent_id)
+
+
+async def test_changing_only_the_temperature_reprovisions_the_agent(provisioner, fake_api):
+    agent_id = await _provision(
+        provisioner, org_id=1, config_id=10, instructions="same", tools=[], temperature=0.2
+    )
+
+    await _provision(
+        provisioner, org_id=1, config_id=10, instructions="same", tools=[], temperature=0.9
+    )
+
+    assert fake_api.prompt_section_of(agent_id)["temperature"] == 0.9
+
+
+class FakeConvaiSocket:
+    async def send(self, message: str) -> None:
+        pass
+
+
+@pytest.mark.parametrize("stale_agent", [False, True], ids=["fresh", "stale-agent-reprovisioned"])
+async def test_client_provisions_its_agent_with_its_temperature(
+    provisioner, fake_api, monkeypatch, stale_agent
+):
+    handshakes: list[str] = []
+
+    async def connect(url, extra_headers):
+        handshakes.append(url)
+        if stale_agent and len(handshakes) == 1:
+            # The agent was deleted on ElevenLabs' side; the client re-provisions it.
+            fake_api.agents.clear()
+            raise websockets.exceptions.InvalidHandshake("HTTP 404")
+        return FakeConvaiSocket()
+
+    monkeypatch.setattr(client_module.websockets, "connect", connect)
+    client = ElevenLabsRealtimeAgentClient(
+        api_key="key",
+        connection_key="conn",
+        agent_provisioner=provisioner,
+        org_id=1,
+        rt_agent_definition_id=10,
+        temperature=0.4,
+    )
+
+    await client.connect()
+
+    assert len(handshakes) == (2 if stale_agent else 1)
+    assert fake_api.prompt_section_of(client.agent_id)["temperature"] == 0.4
 
 
 async def test_invalidate_cache_removes_the_entry_get_or_create_wrote(provisioner, fake_api):

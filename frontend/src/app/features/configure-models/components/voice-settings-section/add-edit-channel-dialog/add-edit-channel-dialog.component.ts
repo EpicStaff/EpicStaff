@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
+    BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
     SelectComponent,
@@ -11,6 +12,7 @@ import {
     ToggleSwitchComponent,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { RealtimeChannel, TwilioChannel, WebhookTriggerModel, WebhookTriggerWrite } from '@shared/models';
 import {
     RealtimeChannelService,
@@ -18,7 +20,7 @@ import {
     TwilioPhoneNumber,
     WebhookTriggerService,
 } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
 import { Observable, of, switchMap } from 'rxjs';
 
 import { AgentDefinition } from '../../../../agent-definitions/models/agent-definition.model';
@@ -34,12 +36,14 @@ export interface AddEditChannelDialogData {
     templateUrl: './add-edit-channel-dialog.component.html',
     styleUrls: ['./add-edit-channel-dialog.component.scss'],
     imports: [
+        BinnedSecretNoteComponent,
         ReactiveFormsModule,
         CustomInputComponent,
         SelectComponent,
         ButtonComponent,
         WebhookTriggerFieldComponent,
         ToggleSwitchComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -78,13 +82,9 @@ export class AddEditChannelDialogComponent implements OnInit {
             .map((d) => ({ name: d.name, value: d.id })),
     ]);
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     phoneNumberItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
@@ -109,6 +109,7 @@ export class AddEditChannelDialogComponent implements OnInit {
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
+        trackPickedSecrets(this.form, ['auth_token_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         this.agentDefinitionsApi
             .getAgentDefinitions()

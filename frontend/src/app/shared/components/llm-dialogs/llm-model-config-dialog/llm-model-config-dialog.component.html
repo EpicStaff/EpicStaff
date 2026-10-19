@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="isSaveDisabled()"
+>
     <div class="header">
         <h2 class="title">
             {{ title() }}
@@ -36,6 +40,10 @@
                 />
                 <app-validation-errors [control]="form.get('model')!" />
             </div>
+            <app-llm-reasoning-effort-field
+                [control]="reasoningEffortControl"
+                [modelId]="selectedModelId()"
+            />
             <div>
                 <app-select
                     formControlName="api_key_secret_id"
@@ -47,6 +55,7 @@
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="form.get('api_key_secret_id')?.value" />
                 @if (!form.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
@@ -184,7 +193,7 @@
         </app-button>
         <app-button
             type="primary"
-            [disabled]="form.invalid || isSaving() || isLoading()"
+            [disabled]="isSaveDisabled()"
             (click)="onSave()"
         >
             {{ saveLabel() }}

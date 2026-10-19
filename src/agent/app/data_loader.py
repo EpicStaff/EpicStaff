@@ -14,6 +14,7 @@ import json
 
 import redis.asyncio as aioredis
 from loguru import logger
+from redis.exceptions import RedisError
 
 from app.exceptions import DataLoadError
 from app.logging_utils import redacted_dump
@@ -102,6 +103,21 @@ class DataLoader:
         )
 
         return request
+
+    async def is_withdrawn(self, envelope: StreamEnvelope) -> bool:
+        """Return whether crew deleted the request key, which it does when it stops waiting.
+
+        A missing key also means its 24 h TTL (set by crew) expired, so a longer run stops.
+        A Redis error counts as not withdrawn: a blip must not fail a healthy run.
+        """
+        assert self._client is not None, "call connect() first"
+        request_key = self._extract_request_key(envelope)
+
+        try:
+            return not await self._client.exists(request_key)
+        except RedisError as error:
+            logger.warning("withdrawal check failed key={}, continuing: {}", request_key, error)
+            return False
 
     def _extract_request_key(self, envelope: StreamEnvelope) -> str:
         # PROVISIONAL: envelope payload must carry {"request_key": "agent:request:<id>"}

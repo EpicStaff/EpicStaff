@@ -1,0 +1,131 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
+// The desk settings dialog's frame, for one field.
+.alias-dialog {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    background-color: var(--color-background-body);
+    border-radius: 0.75rem;
+    color: var(--color-text-primary);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 24px 24px 16px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__title {
+        margin: 0;
+        font-size: var(--text-h3-size);
+        font-weight: var(--text-h3-weight);
+        line-height: var(--text-h3-line-height);
+    }
+
+    &__icon-btn {
+        display: inline-flex;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 24px;
+    }
+
+    &__label {
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+
+    // The shared text input's look.
+    &__input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 12px;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: var(--text-body-medium-size);
+        transition: border-color 0.2s ease;
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        &--invalid,
+        &--invalid:focus {
+            border-color: var(--color-status-error);
+        }
+    }
+
+    &__hint,
+    &__error {
+        margin: 0;
+    }
+
+    &__hint {
+        color: var(--color-text-secondary);
+    }
+
+    &__error {
+        color: var(--color-status-error);
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 0 24px 24px;
+    }
+}
+
+// Phones: a sheet from the bottom edge (see `ChatBindingActionsService`), rounded on top only, its field large enough
+// that iOS does not zoom into it, and its actions clear of the home indicator.
+@include bp.phone {
+    .alias-dialog {
+        width: 100%;
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+        border-radius: 0.75rem 0.75rem 0 0;
+
+        &__header {
+            padding: 16px 16px 12px;
+        }
+
+        &__form {
+            padding: 16px;
+        }
+
+        &__input {
+            min-height: touch.$target-size;
+            font-size: touch.$input-font-size;
+        }
+
+        &__actions {
+            padding: 0 16px max(16px, env(safe-area-inset-bottom, 0px));
+        }
+    }
+}

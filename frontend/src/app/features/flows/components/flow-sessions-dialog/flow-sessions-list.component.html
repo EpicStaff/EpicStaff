@@ -1,34 +1,30 @@
 <div class="dialog-wrapper">
     <div class="dialog-header">
         <h2>Sessions for {{ flow.name }}</h2>
-        <app-icon-button
-            icon="x"
-            size="2rem"
-            ariaLabel="Close dialog"
-            tooltip="Close"
-            (onClick)="dialogRef.close()"
-        ></app-icon-button>
+        <button
+            type="button"
+            class="close-button"
+            aria-label="Close dialog"
+            matTooltip="Close"
+            matTooltipPosition="below"
+            (click)="dialogRef.close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.5rem"
+            />
+        </button>
     </div>
 
     <div class="dialog-content">
         <div class="filter-controls">
-            <app-flow-session-node-filter-dropdown
-                [nodeGroups]="availableNodeGroups()"
-                [value]="nodeFilter()"
-                (valueChange)="onNodeFilterChange($event)"
-            ></app-flow-session-node-filter-dropdown>
-
-            <label class="error-cause-filter">
-                <span>Show first failed</span>
-                <div
-                    class="toggle-switch"
-                    [class.active]="isErrorCauseFilter()"
-                    (click)="onIsErrorCauseChange()"
-                    [class.disabled]="!nodeFilter()"
-                >
-                    <div class="toggle-thumb"></div>
-                </div>
-            </label>
+            <app-search
+                class="id-search"
+                icon="search-bold"
+                iconSize="1rem"
+                placeholder="Search by ID..."
+                (searchTermChange)="onIdSearchChange($event)"
+            />
 
             <div class="action-buttons">
                 <button
@@ -40,9 +36,10 @@
                 </button>
                 <app-action-dropdown-button
                     *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-                    [label]="'Export (' + (selectedIds().size === 0 ? totalCount : selectedIds().size) + ')'"
+                    [label]="'Export (' + (selectedIds().size === 0 ? totalCount() : selectedIds().size) + ')'"
                     [items]="exportItems"
-                    [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount === 0)"
+                    [buttonWidth]="null"
+                    [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount() === 0)"
                     (mainClick)="onExport('json')"
                     (itemClick)="onExportItemSelected($event)"
                 />
@@ -73,25 +70,32 @@
         </div>
 
         <div class="pagination-container">
-            @if (isLoaded() && totalCount > pageSize()) {
+            <div class="page-size-selector">
+                <span>Sessions to display:</span>
+                <app-input-number
+                    class="page-size-input"
+                    ariaLabel="Sessions to display"
+                    [alwaysShowSteps]="true"
+                    [min]="pageSizeMin"
+                    [max]="pageSizeMax()"
+                    [stepSize]="pageSizeStep"
+                    [(value)]="pageSizeDraft"
+                    (changed)="onPageSizeChange($event)"
+                    (focusout)="onPageSizeCommit()"
+                    (wheel)="$event.preventDefault()"
+                    (keydown.enter)="onPageSizeCommit()"
+                />
+            </div>
+            @if (isLoaded() && totalCount() > pageSize()) {
                 <app-pagination-controls
                     [pageSize]="pageSize()"
-                    [totalCount]="totalCount"
+                    [totalCount]="totalCount()"
                     [currentPage]="currentPage()"
                     [maxPagesToShow]="5"
                     (pageChange)="onPageChange($event)"
                 >
                 </app-pagination-controls>
             }
-            <label class="page-size-selector">
-                <span>Sessions per page</span>
-                <app-select
-                    mod="small"
-                    [items]="pageSizeItems"
-                    [selectedValue]="pageSize()"
-                    (changed)="onPageSizeChange($any($event))"
-                />
-            </label>
         </div>
     </div>
 </div>

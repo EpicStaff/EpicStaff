@@ -1,10 +1,9 @@
 import time
 
-import psycopg2
+import psycopg
 from django.core.management.base import BaseCommand
 from django_app.settings import env
 from loguru import logger
-from psycopg2 import OperationalError
 
 
 class Command(BaseCommand):
@@ -19,17 +18,17 @@ class Command(BaseCommand):
 
         for attempt in range(1, 151):
             try:
-                conn = psycopg2.connect(
+                with psycopg.connect(
                     host=db_host,
                     port=db_port,
                     user=db_user,
                     password=db_password,
                     dbname=db_name,
-                )
-                conn.close()
+                ):
+                    pass
                 logger.success("Postgres is ready!")
                 return  # success
-            except OperationalError:
+            except psycopg.OperationalError:
                 logger.warning(f"Trying again to connect to Postgres: {attempt}/150")
                 time.sleep(2)
 

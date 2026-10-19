@@ -1,18 +1,48 @@
-.date-filter__trigger {
+:host {
     display: flex;
-    width: 100%;
-    align-items: center;
-    padding: 6px 10px;
-    border: 1px solid var(--color-divider-subtle);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    font-size: 12px;
-    text-align: left;
+    flex-direction: column;
+    gap: 8px;
+}
 
-    &.is-set {
-        border-color: var(--color-primary);
-        color: var(--color-text-primary);
+.date-filter__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.date-filter__time {
+    flex: none;
+    width: 85px;
+}
+
+.date-filter__date {
+    flex: none;
+    width: 105px;
+}
+
+.date-filter__separator {
+    flex: none;
+    color: var(--color-text-secondary);
+}
+
+// The shared pickers are 40px form fields; here they are compact so four fit on one row in "between".
+// The parent class lifts specificity above the pickers' own (lazy-loaded, so later) styles, which win a tie.
+:host ::ng-deep {
+    .time-picker .time-picker__trigger,
+    .date-picker .date-picker__trigger {
+        height: 28px;
+        gap: 2px;
+        padding: 0 4px;
+    }
+
+    .time-picker .time-picker__input,
+    .date-picker .date-picker__input {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        font-family: var(--font-family);
+        font-size: 12px;
+        font-weight: 400;
+        font-style: normal;
     }
 }

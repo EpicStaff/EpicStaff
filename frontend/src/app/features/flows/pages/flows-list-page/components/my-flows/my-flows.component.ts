@@ -28,6 +28,7 @@ import { LABELS_STORE } from '@shared/services';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-card/flow-card.component';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
@@ -58,6 +59,7 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
@@ -234,7 +236,7 @@ export class MyFlowsComponent implements AfterViewChecked {
 
     private confirmAndDeleteFlow(flow: GetGraphLightRequest): void {
         this.confirmationDialogService
-            .confirmDeleteWithTruncation(flow.name, 50)
+            .confirmMoveToRecycleBin(flow.name, this.recycleBinSettings.retentionDays(), 50)
             .subscribe((result: ConfirmationResult) => {
                 if (result === true) {
                     this.flowsService.deleteFlow(flow.id).subscribe({

@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
+from src.shared.models import GraphData, SessionData
 
 from agents.models import Surface
 from agents.models.surface_models import (
@@ -19,6 +20,9 @@ from agents.models.surface_models import (
     AgentInlineSurfaceKnowledge,
     SurfaceKnowledge,
     SurfaceNaiveSearchConfig,
+)
+from storage_credentials.services.session_credential_service import (
+    session_credential_service,
 )
 from tables.models.graph_models import AgentNode, Graph, TaskNode
 from tables.models.knowledge_models.collection_models import SourceCollection
@@ -61,13 +65,10 @@ def agent_node(graph):
     return AgentNode.objects.create(graph=graph, node_name="warning-agent-node")
 
 
-class _FakeGraphDump:
-    def model_dump(self, mode=None):
-        return {}
-
-
-class _FakeSessionData:
-    graph = _FakeGraphDump()
+def _empty_session_data() -> SessionData:
+    """Real session data with an empty graph: only the session's own records are under
+    test, and a hand-made stand-in breaks as soon as production reads a new field."""
+    return SessionData(id=1, org_id=1, graph=GraphData(name="stub", entrypoint="__end__", end_node=None))
 
 
 def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = None):
@@ -75,10 +76,13 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     don't need a fully wired, runnable graph."""
     sm = session_manager or SessionManagerService()
     monkeypatch.setattr(
-        sm, "create_session_data", lambda session, **kwargs: _FakeSessionData()
+        sm, "create_session_data", lambda session, **kwargs: _empty_session_data()
     )
     monkeypatch.setattr(
         sm.redis_service, "publish_session_data", lambda session_data, **kwargs: 2
+    )
+    monkeypatch.setattr(
+        session_credential_service, "issue_for_session", lambda **kwargs: None
     )
     return sm
 
@@ -153,7 +157,7 @@ class TestSessionWarningPersistence:
         monkeypatch.setattr(
             sm.persistent_variables_service,
             "build_run_variables",
-            lambda graph, user, payload: type(
+            lambda graph, user, payload, allow_persistent_override=False: type(
                 "RunVariablesResult",
                 (),
                 {

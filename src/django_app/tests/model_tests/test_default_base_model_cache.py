@@ -1,49 +1,30 @@
 from unittest.mock import patch
 
 import pytest
-from tables.models.base_models import DefaultBaseModel
 from tables.models.crew_models import DefaultAgentConfig
 
-# `DefaultBaseModel._load_cache` is cleared before/after every test by the
-# repo-wide autouse fixture in tests/conftest.py -- no file-local fixture
-# needed here. DefaultAgentConfig stands in for every DefaultBaseModel
-# singleton; DefaultModels is per-organization and not cached.
+# The load cache is cleared around every test by the repo-wide autouse fixture in
+# tests/conftest.py. DefaultAgentConfig stands in for every DefaultBaseModel singleton.
+
+TTL = DefaultAgentConfig._CACHE_TTL_SECONDS
+CLOCK = "tables.models.base_models.time.monotonic"
 
 
 @pytest.mark.django_db
-def test_load_serves_the_cached_instance_within_the_ttl():
-    """A second load() within the TTL window does not hit the database again."""
-    first = DefaultAgentConfig.load()
-    with patch.object(DefaultAgentConfig.objects, "get_or_create") as mock_get_or_create:
-        second = DefaultAgentConfig.load()
-    assert second is first
-    mock_get_or_create.assert_not_called()
-
-
-@pytest.mark.django_db
-def test_load_refetches_once_the_cache_entry_is_older_than_the_ttl():
-    """After the TTL elapses, load() re-fetches from the database and re-primes the cache with a fresh timestamp."""
-    first = DefaultAgentConfig.load()
-    first_cached_at = DefaultBaseModel._load_cache[DefaultAgentConfig][1]
-
-    # load() calls time.monotonic() twice when the cache is stale: once for
-    # the TTL-elapsed check, once more to stamp the re-cached entry. Feeding
-    # both calls the SAME mocked value would make this test unable to tell
-    # "re-primed with a fresh timestamp" apart from "left the stale timestamp
-    # in place" -- side_effect gives each call a distinct, ordered value.
-    future = first_cached_at + DefaultAgentConfig._CACHE_TTL_SECONDS + 100
-    later = future + 1
-    with patch("tables.models.base_models.time.monotonic", side_effect=[future, later]):
-        refetched = DefaultAgentConfig.load()
-
-    assert refetched.pk == 1
-    second_cached_at = DefaultBaseModel._load_cache[DefaultAgentConfig][1]
-    assert second_cached_at == later
-    assert second_cached_at != first_cached_at
-
-    # A subsequent load(), using the real clock, must not hit the DB again --
-    # `later` is far enough in the future that the real clock won't have
-    # caught up to it, so this call should still be served from cache.
-    with patch.object(DefaultAgentConfig.objects, "get_or_create") as mock_get_or_create:
+def test_load_serves_the_cached_defaults_until_the_ttl_elapses():
+    with patch(CLOCK, return_value=1000.0):
         DefaultAgentConfig.load()
-    mock_get_or_create.assert_not_called()
+    DefaultAgentConfig.objects.filter(pk=1).update(max_iter=7)
+
+    with patch(CLOCK, return_value=1000.0 + TTL - 1):
+        within_ttl = DefaultAgentConfig.load()
+    with patch(CLOCK, return_value=1000.0 + TTL + 1):
+        after_ttl = DefaultAgentConfig.load()
+    # The refetch restarts the TTL from the moment it happened.
+    DefaultAgentConfig.objects.filter(pk=1).update(max_iter=9)
+    with patch(CLOCK, return_value=1000.0 + 2 * TTL):
+        within_new_ttl = DefaultAgentConfig.load()
+
+    assert within_ttl.max_iter == 20
+    assert after_ttl.max_iter == 7
+    assert within_new_ttl.max_iter == 7

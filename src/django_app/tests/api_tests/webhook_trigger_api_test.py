@@ -6,18 +6,18 @@ from django.urls import reverse
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
-from rbac.models.enums import BuiltInRole, ResourceType
+from rbac.models.enums import BuiltInRole
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
     WebhookTrigger,
+    WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
-from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.models import PythonCode
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
-from tables.views.model_view_sets import WebhookTriggerViewSet
 from rest_framework.test import APIClient
 
 # `NgrokWebhookConfig.auth_token` is now a Secret reference
@@ -553,125 +553,76 @@ class TestWebhookTriggerOrgIsolation:
         assert "auth_token" not in ngrok_config
 
 
+def _trigger_detail(trigger):
+    return reverse("webhooktrigger-detail", args=[trigger.id])
+
+
+def _ngrok_trigger(org, path):
+    trigger = WebhookTrigger.objects.create(path=path, provider_type=ProviderType.NGROK, org=org)
+    NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token_secret=_make_secret(org, "old"))
+    return trigger
+
+
+def _localhost_trigger(org, path):
+    trigger = WebhookTrigger.objects.create(path=path, provider_type=ProviderType.LOCALHOST, org=org)
+    LocalhostWebhookConfig.objects.create(trigger=trigger, name="lh", domain="localhost:8080")
+    return trigger
+
+
 @pytest.mark.django_db
-class TestWebhookTriggerProviderSwitchCleanup:
-    """Cover WebhookTriggerNestedSerializer.update — switching provider_type
-    must delete the orphan config from the previous provider in both
-    directions, and when the provider is cleared entirely."""
-
-    def _update(self, instance, data):
-        serializer = WebhookTriggerNestedSerializer()
-        return serializer.update(instance, data)
-
-    def test_switch_ngrok_to_localhost_deletes_ngrok_config(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="switchNgrokToLocal", provider_type=ProviderType.NGROK, org=default_org
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
-        )
-
-        self._update(
-            trigger,
-            {
-                "provider_type": ProviderType.LOCALHOST,
-                "localhost_config": {"name": "lh", "domain": "localhost:8080"},
+@pytest.mark.parametrize(
+    ("make_trigger", "payload", "expected_provider", "kept_config"),
+    [
+        (
+            _ngrok_trigger,
+            lambda org: {"provider_type": "localhost", "localhost_config": {"name": "lh", "domain": "localhost:8080"}},
+            ProviderType.LOCALHOST,
+            LocalhostWebhookConfig,
+        ),
+        (
+            _localhost_trigger,
+            lambda org: {
+                "provider_type": "ngrok",
+                "ngrok_config": {"name": "ng", "auth_token_secret_id": _make_secret(org, "new").id, "domain": None},
             },
-        )
+            ProviderType.NGROK,
+            NgrokWebhookConfig,
+        ),
+        (_localhost_trigger, lambda org: {"provider_type": None}, None, None),
+    ],
+    ids=["ngrok-to-localhost", "localhost-to-ngrok", "provider-cleared"],
+)
+def test_switching_provider_deletes_the_previous_providers_config(
+    auth_client, default_org, make_trigger, payload, expected_provider, kept_config
+):
+    trigger = make_trigger(default_org, "switch-path")
 
-        trigger.refresh_from_db()
-        assert trigger.provider_type == ProviderType.LOCALHOST
-        assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
-        assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
+    response = auth_client.patch(_trigger_detail(trigger), payload(default_org), format="json")
 
-    def test_switch_localhost_to_ngrok_deletes_localhost_config(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="switchLocalToNgrok", provider_type=ProviderType.LOCALHOST, org=default_org
-        )
-        LocalhostWebhookConfig.objects.create(
-            trigger=trigger, name="lh", domain="localhost:8080"
-        )
+    assert response.status_code == 200, response.json()
+    trigger.refresh_from_db()
+    assert trigger.provider_type == expected_provider
+    remaining = {
+        config_model
+        for config_model in (NgrokWebhookConfig, LocalhostWebhookConfig)
+        if config_model.objects.filter(trigger=trigger).exists()
+    }
+    assert remaining == ({kept_config} if kept_config else set())
 
-        self._update(
-            trigger,
-            {
-                "provider_type": ProviderType.NGROK,
-                "ngrok_config": {
-                    "name": "ng",
-                    "auth_token_secret": _make_secret(default_org, "tok"),
-                    "domain": None,
-                },
-            },
-        )
 
-        trigger.refresh_from_db()
-        assert trigger.provider_type == ProviderType.NGROK
-        assert NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
-        assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+@pytest.mark.django_db
+def test_same_provider_updates_its_config_in_place(auth_client, default_org):
+    trigger = _ngrok_trigger(default_org, "same-provider")
+    new_secret = _make_secret(default_org, "new")
 
-    def test_update_deletes_orphan_independent_of_new_config_presence(self, default_org):
-        """Internal `update()` contract: cleanup of the old provider's config
-        must not depend on the new provider's config being supplied.
+    response = auth_client.patch(
+        _trigger_detail(trigger),
+        {"provider_type": "ngrok", "ngrok_config": {"name": "ng", "auth_token_secret_id": new_secret.id, "domain": None}},
+        format="json",
+    )
 
-        Note: via the API, `validate()` rejects provider=ngrok/localhost
-        without the matching config, so this exact payload can't reach the
-        endpoint — but the cleanup must not be coupled to config presence
-        (the original bug nested deletion inside the `and X_data` branch).
-        The real API-reachable case of this class of bug is covered by
-        `test_clear_provider_deletes_existing_config`."""
-        trigger = WebhookTrigger.objects.create(
-            path="switchNoData", provider_type=ProviderType.NGROK, org=default_org
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
-        )
-
-        self._update(trigger, {"provider_type": ProviderType.LOCALHOST})
-
-        trigger.refresh_from_db()
-        assert trigger.provider_type == ProviderType.LOCALHOST
-        assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
-
-    def test_clear_provider_deletes_existing_config(self, default_org):
-        trigger = WebhookTrigger.objects.create(
-            path="clearProvider", provider_type=ProviderType.LOCALHOST, org=default_org
-        )
-        LocalhostWebhookConfig.objects.create(
-            trigger=trigger, name="lh", domain="localhost:8080"
-        )
-
-        self._update(trigger, {"provider_type": None})
-
-        trigger.refresh_from_db()
-        assert trigger.provider_type is None
-        assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
-
-    def test_no_provider_change_keeps_config(self, default_org):
-        """Same provider + new config data updates in place, no deletion."""
-        trigger = WebhookTrigger.objects.create(
-            path="sameProvider", provider_type=ProviderType.NGROK, org=default_org
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "old")
-        )
-
-        new_secret = _make_secret(default_org, "new")
-        self._update(
-            trigger,
-            {
-                "provider_type": ProviderType.NGROK,
-                "ngrok_config": {
-                    "name": "ng",
-                    "auth_token_secret": new_secret,
-                    "domain": None,
-                },
-            },
-        )
-
-        trigger.refresh_from_db()
-        assert trigger.provider_type == ProviderType.NGROK
-        cfg = NgrokWebhookConfig.objects.get(trigger=trigger)
-        assert cfg.auth_token_secret_id == new_secret.id
+    assert response.status_code == 200, response.json()
+    assert NgrokWebhookConfig.objects.get(trigger=trigger).auth_token_secret_id == new_secret.id
 
 
 @pytest.mark.django_db
@@ -764,99 +715,38 @@ class TestWebhookTriggerTwilioOnlyVisibility:
 
 
 @pytest.mark.django_db
-class TestWebhookTriggerDuplicatePathValidation:
-    """PUT/PATCH to /api/webhook-triggers/<id>/ with a `path` that collides
-    with another existing WebhookTrigger (regardless of `provider_type`)
-    must fail cleanly with a serializer ValidationError (-> 400), not blow
-    up with a raw IntegrityError from the DB's `unique=True` constraint on
-    `path` at save time."""
+@pytest.mark.parametrize(
+    ("method", "payload"),
+    [
+        ("put", {"path": "taken-path", "provider_type": "ngrok", "ngrok_config": {"name": "ng", "domain": None}}),
+        # A PATCH that omits provider_type must still compare against the trigger's own provider.
+        ("patch", {"path": "taken-path"}),
+    ],
+    ids=["full-update", "partial-update-without-provider"],
+)
+def test_renaming_a_trigger_onto_a_taken_path_is_a_400_not_an_integrity_error(
+    auth_client, default_org, method, payload
+):
+    WebhookTrigger.objects.create(path="taken-path", provider_type=ProviderType.NGROK, org=default_org)
+    trigger = _ngrok_trigger(default_org, "my-own-path")
 
-    def test_full_update_colliding_path_and_provider_is_rejected(self, default_org):
-        """Full PUT-style call (all fields present) with a path that
-        collides with another trigger's `path` is rejected by validate()
-        before hitting the DB."""
-        WebhookTrigger.objects.create(
-            path="taken-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        other_trigger = WebhookTrigger.objects.create(
-            path="my-own-path", provider_type=ProviderType.NGROK, org=default_org
-        )
+    response = getattr(auth_client, method)(_trigger_detail(trigger), payload, format="json")
 
-        # `auth_token_secret_id` is intentionally omitted (it's optional and
-        # would need serializer context to resolve an
-        # OrgScopedPrimaryKeyRelatedField) — this test only exercises the
-        # path-collision rejection in `validate()`, not credential handling.
-        serializer = WebhookTriggerNestedSerializer(
-            instance=other_trigger,
-            data={
-                "path": "taken-path",
-                "provider_type": "ngrok",
-                "ngrok_config": {
-                    "name": "ng",
-                    "domain": None,
-                },
-            },
-        )
+    assert response.status_code == 400, response.json()
+    assert "already exists" in str(response.json()).lower()
+    trigger.refresh_from_db()
+    assert trigger.path == "my-own-path"
 
-        assert not serializer.is_valid()
-        assert "non_field_errors" in serializer.errors
-        assert (
-            "already exists" in str(serializer.errors["non_field_errors"][0]).lower()
-        )
-        # nothing was mutated at the DB level
-        other_trigger.refresh_from_db()
-        assert other_trigger.path == "my-own-path"
 
-    def test_partial_update_omitting_provider_type_still_detects_collision(
-        self, default_org
-    ):
-        """The actual bug repro: a PATCH-style partial update
-        supplies only `path` and omits `provider_type` from the payload.
-        The fallback to self.instance.provider_type must still catch a
-        collision with another trigger sharing that provider_type — before
-        the fix, data.get("provider_type") returned None here and the
-        duplicate check silently no-opped."""
-        WebhookTrigger.objects.create(
-            path="taken-ngrok-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        other_trigger = WebhookTrigger.objects.create(
-            path="my-ngrok-path", provider_type=ProviderType.NGROK, org=default_org
-        )
+@pytest.mark.django_db
+def test_renaming_a_trigger_onto_a_free_path_succeeds(auth_client, default_org):
+    trigger = _ngrok_trigger(default_org, "original-path")
 
-        serializer = WebhookTriggerNestedSerializer(
-            instance=other_trigger,
-            data={"path": "taken-ngrok-path"},
-            partial=True,
-        )
+    response = auth_client.patch(_trigger_detail(trigger), {"path": "brand-new-unique-path"}, format="json")
 
-        assert not serializer.is_valid()
-        assert "non_field_errors" in serializer.errors
-        assert (
-            "already exists" in str(serializer.errors["non_field_errors"][0]).lower()
-        )
-        other_trigger.refresh_from_db()
-        assert other_trigger.path == "my-ngrok-path"
-
-    def test_partial_update_to_new_non_colliding_path_succeeds(self, default_org):
-        """Sanity check: renaming a trigger's path to something new and
-        non-colliding must still succeed (no false positive from the
-        duplicate check)."""
-        trigger = WebhookTrigger.objects.create(
-            path="original-path", provider_type=ProviderType.NGROK, org=default_org
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
-        )
-
-        serializer = WebhookTriggerNestedSerializer(
-            instance=trigger,
-            data={"path": "brand-new-unique-path"},
-            partial=True,
-        )
-
-        assert serializer.is_valid(), serializer.errors
-        updated = serializer.save()
-        assert updated.path == "brand-new-unique-path"
+    assert response.status_code == 200, response.json()
+    trigger.refresh_from_db()
+    assert trigger.path == "brand-new-unique-path"
 
 
 @pytest.mark.django_db
@@ -976,89 +866,37 @@ class TestWebhookTriggerCreateDoesNotMerge:
 
 
 @pytest.mark.django_db
-class TestWebhookTriggerLiveUrlIncludesPath:
-    """`WebhookTriggerNestedSerializer.to_representation()` must
-    return the full routable URL (`<tunnel-base>/webhooks/<path>`), not just
-    the bare tunnel base, since that's the actual inbound route the
-    `webhook` service exposes (`POST /webhooks/{custom_path:path}` in
-    `src/webhook/app/controllers/webhook_routes.py`)."""
-
-    def test_live_url_appends_trigger_path_when_tunnel_url_available(
-        self, default_org
-    ):
-        trigger = WebhookTrigger.objects.create(
-            path="my-trigger-path",
-            provider_type=ProviderType.NGROK,
-            org=default_org,
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
-        )
-
-        with mock.patch(
-            "tables.services.webhook_trigger_service.WebhookTriggerService"
-            ".get_tunnel_url_for_trigger",
-            return_value="https://abcd1234.ngrok-free.app",
-        ):
-            data = WebhookTriggerNestedSerializer(trigger).data
-
-        assert (
-            data["live_url"]
-            == "https://abcd1234.ngrok-free.app/webhooks/my-trigger-path"
-        )
-
-    def test_live_url_stays_bare_path_for_telegram_linked_trigger(
-        self, default_org
-    ):
-        """Prefix-based exclusivity routing was removed --
-        `live_url` always reflects the bare path now, even for a trigger
-        linked to a `TelegramTriggerNode`."""
-        trigger = WebhookTrigger.objects.create(
-            path="tg-live-url-path",
-            provider_type=ProviderType.NGROK,
-            org=default_org,
-        )
+@pytest.mark.parametrize(
+    ("tunnel_url", "telegram_linked", "expected_live_url"),
+    [
+        ("https://abcd1234.ngrok-free.app", False, "https://abcd1234.ngrok-free.app/webhooks/my-trigger-path"),
+        # Telegram-linked triggers are routed by the same bare path.
+        ("https://abcd1234.ngrok-free.app", True, "https://abcd1234.ngrok-free.app/webhooks/my-trigger-path"),
+        # No tunnel yet: no URL rather than "None/<path>".
+        (None, False, None),
+    ],
+    ids=["tunnel-up", "telegram-linked", "no-tunnel"],
+)
+def test_live_url_is_the_tunnel_base_plus_the_webhook_route(
+    auth_client, default_org, tunnel_url, telegram_linked, expected_live_url
+):
+    """The webhook service routes POST /webhooks/<path>, so that is the URL to show."""
+    trigger = _ngrok_trigger(default_org, "my-trigger-path")
+    if telegram_linked:
         TelegramTriggerNode.objects.create(
             node_name="tg-live-url-node",
             graph=Graph.objects.create(name="g-live-url", org=default_org),
             webhook_trigger=trigger,
         )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng-tg", auth_token_secret=_make_secret(default_org, "tok")
-        )
 
-        with mock.patch(
-            "tables.services.webhook_trigger_service.WebhookTriggerService"
-            ".get_tunnel_url_for_trigger",
-            return_value="https://abcd1234.ngrok-free.app",
-        ):
-            data = WebhookTriggerNestedSerializer(trigger).data
+    with mock.patch(
+        "tables.services.webhook_trigger_service.WebhookTriggerService.get_tunnel_url_for_trigger",
+        return_value=tunnel_url,
+    ):
+        response = auth_client.get(_trigger_detail(trigger))
 
-        assert (
-            data["live_url"]
-            == "https://abcd1234.ngrok-free.app/webhooks/tg-live-url-path"
-        )
-
-    def test_live_url_stays_none_when_no_tunnel_url_available(self, default_org):
-        """No live tunnel yet -> live_url must stay None, not become
-        `None/<path>`."""
-        trigger = WebhookTrigger.objects.create(
-            path="my-trigger-path",
-            provider_type=ProviderType.NGROK,
-            org=default_org,
-        )
-        NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
-        )
-
-        with mock.patch(
-            "tables.services.webhook_trigger_service.WebhookTriggerService"
-            ".get_tunnel_url_for_trigger",
-            return_value=None,
-        ):
-            data = WebhookTriggerNestedSerializer(trigger).data
-
-        assert data["live_url"] is None
+    assert response.status_code == 200, response.json()
+    assert response.json()["live_url"] == expected_live_url
 
 
 @pytest.mark.django_db
@@ -2094,9 +1932,6 @@ class TestWebhookTriggerRbacResourceType:
     alternative the ticket considered and rejected in favor of a dedicated
     resource)."""
 
-    def test_resource_type_is_webhooks(self):
-        assert WebhookTriggerViewSet.rbac_resource_type == ResourceType.WEBHOOKS
-
     def test_viewer_can_read_but_not_write(self, viewer_client, default_org):
         trigger = WebhookTrigger.objects.create(
             org=default_org, path="viewer-read-only", provider_type=None
@@ -2150,3 +1985,45 @@ class TestWebhookTriggerRbacResourceType:
         )
         assert response.status_code == 403
 
+
+
+@pytest.mark.django_db
+class TestBinnedTriggerNodeStillClaimsItsTrigger:
+    """A trigger node in the recycle bin keeps its trigger until it's purged,
+    so restoring its flow can't give one trigger two node types."""
+
+    def _bin_webhook_node_without_auth(self, default_org, trigger):
+        binned_flow = Graph.objects.create(org=default_org, name="Binned flow")
+        WebhookTriggerNode.objects.create(
+            node_name="Binned webhook node",
+            graph=binned_flow,
+            webhook_trigger=trigger,
+            python_code=PythonCode.objects.create(
+                code="def handler(event, context):\n    return event", entrypoint="handler"
+            ),
+        )
+        # No auth row: the node-type check alone must see the binned node.
+        WebhookTriggerAuth.objects.filter(trigger=trigger).delete()
+        binned_flow.delete()
+
+    def test_telegram_node_cannot_take_a_trigger_held_by_a_binned_webhook_node(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        trigger = WebhookTrigger.objects.create(path="held-by-binned-node", provider_type=None, org=default_org)
+        self._bin_webhook_node_without_auth(default_org, trigger)
+
+        response = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            TestCrossTypeTriggerNodeConflictValidation()._telegram_node_payload("Telegram", graph, trigger.id),
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+
+    def test_twilio_cannot_reserve_a_trigger_held_by_a_binned_webhook_node(self, default_org):
+        trigger = WebhookTrigger.objects.create(path="twilio-held-by-binned", provider_type=None, org=default_org)
+        self._bin_webhook_node_without_auth(default_org, trigger)
+
+        with pytest.raises(ValueError, match="already has a webhook or Telegram trigger node"):
+            # A Twilio reservation takes no secret; a TwilioChannel fills it in.
+            WebhookTriggerService().set_trigger_auth_secret(trigger, None, kind=WebhookTriggerAuthKind.TWILIO)
