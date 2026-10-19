@@ -2,6 +2,7 @@ import asyncio
 import signal
 import socket
 import sys
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 import settings
@@ -20,9 +21,42 @@ from app.sandbox.client import SandboxClient
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from loguru import logger
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from shared.knowledge.client import KnowledgeClient
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
+
+
+async def _ensure_request_group(client: RedisStreamClient) -> None:
+    await client.ensure_group(
+        stream=settings.AGENT_REQUEST_STREAM,
+        group=settings.AGENT_CONSUMER_GROUP,
+        start_id="0",
+        mkstream=True,
+    )
+
+
+async def _read_requests(
+    client: RedisStreamClient, consumer_name: str, count: int
+) -> list[StreamMessage]:
+    try:
+        return await client.read(
+            streams={settings.AGENT_REQUEST_STREAM: ">"},
+            group=settings.AGENT_CONSUMER_GROUP,
+            consumer=consumer_name,
+            count=count,
+            block_ms=5000,
+        )
+    except ResponseError as error:
+        # Redis lost the group (restart without persistence, FLUSHALL); redis-py
+        # never retries a ResponseError, so recreate the group here.
+        if "NOGROUP" not in str(error):
+            raise
+        logger.warning("consumer group missing, recreating it: {}", error)
+        await _ensure_request_group(client)
+        return []
 
 
 async def _process_message(
@@ -65,16 +99,24 @@ async def consume_requests(
     consumer_name: str,
     max_concurrent_runs: int,
     stop: asyncio.Event,
+    *,
+    read_retry_initial_delay_s: float,
+    read_retry_max_delay_s: float,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Handle request-stream messages concurrently until ``stop`` is set.
 
     Reads only as many messages as there are free run slots, so messages this
     replica cannot start yet stay unclaimed in the stream for other replicas
-    instead of waiting in this consumer's pending list. On stop, or when reading
-    the stream fails, returns or raises only after every in-flight run has
-    finished, so no run is cancelled before publishing its result.
+    instead of waiting in this consumer's pending list. A connection or timeout
+    error is logged and retried with a doubling delay capped at
+    ``read_retry_max_delay_s``, so a Redis outage never ends the process; any
+    other Redis error is permanent and propagates. On stop or cancellation, finishes only
+    after every in-flight run has finished, so no run is cancelled before
+    publishing its result.
     """
     in_flight: set[asyncio.Task] = set()
+    read_retry_delay_s = read_retry_initial_delay_s
 
     try:
         while not stop.is_set():
@@ -84,13 +126,16 @@ async def consume_requests(
                 await asyncio.wait(in_flight, return_when=asyncio.FIRST_COMPLETED)
                 continue
 
-            messages = await client.read(
-                streams={settings.AGENT_REQUEST_STREAM: ">"},
-                group=settings.AGENT_CONSUMER_GROUP,
-                consumer=consumer_name,
-                count=free_slots,
-                block_ms=5000,
-            )
+            try:
+                messages = await _read_requests(client, consumer_name, free_slots)
+            except (RedisConnectionError, RedisTimeoutError):
+                logger.exception(
+                    "reading the request stream failed, retrying in {} s", read_retry_delay_s
+                )
+                await sleep(read_retry_delay_s)
+                read_retry_delay_s = min(read_retry_delay_s * 2, read_retry_max_delay_s)
+                continue
+            read_retry_delay_s = read_retry_initial_delay_s
 
             for message in messages:
                 task = asyncio.create_task(_process_message(client, handler, message))
@@ -127,12 +172,7 @@ async def main() -> None:
         password=settings.REDIS_PASSWORD,
     )
     await client.connect()
-    await client.ensure_group(
-        stream=settings.AGENT_REQUEST_STREAM,
-        group=settings.AGENT_CONSUMER_GROUP,
-        start_id="0",
-        mkstream=True,
-    )
+    await _ensure_request_group(client)
 
     sandbox_client = SandboxClient(
         host=settings.REDIS_HOST,
@@ -154,7 +194,9 @@ async def main() -> None:
     await loader.connect()
 
     llm = LiteLLMClient()
-    mcp_gateway = McpToolGateway(FastMCPClientFactory())
+    mcp_gateway = McpToolGateway(
+        FastMCPClientFactory(), describe_cache_ttl_s=settings.AGENT_MCP_DESCRIBE_CACHE_TTL
+    )
     deps = RunnerDependencies(
         resolver=AgentResolver(sandbox_client, mcp_gateway, knowledge_client),
         loop=DefaultAgentLoop(llm, settings.AGENT_CONTEXT_WARNING_RATIO),
@@ -192,7 +234,15 @@ async def main() -> None:
         settings.AGENT_MAX_CONCURRENT_RUNS,
     )
 
-    await consume_requests(client, handler, consumer_name, settings.AGENT_MAX_CONCURRENT_RUNS, stop)
+    await consume_requests(
+        client,
+        handler,
+        consumer_name,
+        settings.AGENT_MAX_CONCURRENT_RUNS,
+        stop,
+        read_retry_initial_delay_s=settings.AGENT_REDIS_READ_RETRY_INITIAL_DELAY,
+        read_retry_max_delay_s=settings.AGENT_REDIS_READ_RETRY_MAX_DELAY,
+    )
 
     await loader.close()
     await client.close()

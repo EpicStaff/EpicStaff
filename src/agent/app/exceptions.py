@@ -51,5 +51,13 @@ class InvalidOutputSchemaError(AgentServiceError):
     """
 
 
+class RunCancelled(BaseException):
+    """Raised when crew withdrew the run (the user stopped the session).
+
+    A ``BaseException``, like ``asyncio.CancelledError``, so the ``except Exception``
+    blocks in the loop and runners cannot turn it into a published result or error.
+    """
+
+
 class McpToolError(AgentServiceError):
     """Raised when an MCP tool call or discovery fails."""
