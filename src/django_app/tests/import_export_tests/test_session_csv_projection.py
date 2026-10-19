@@ -14,7 +14,6 @@ from tables.import_export.export_tabular_projections.session import (
 )
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
-from tables.import_export.strategies.session import _node_types_by_name
 from tables.models.graph_models import Graph, GraphSessionMessage
 from tables.models.session_models import Session
 from tables.services.graph_message_store import GraphMessageStore
@@ -29,23 +28,7 @@ USAGE = {
 }
 STATE = {"variables": {"agent_result": ANSWER}, "state_history": []}
 
-GRAPH_SCHEMA = {
-    "graph_id": 3,
-    "name": "agent flow",
-    "entrypoint": "agent_1 #5",
-    "agent_node_list": [{"node_name": "agent_1 #5"}],
-    "task_node_list": [{"node_name": "task_1 #7"}],
-    "python_node_list": [{"node_name": "python_1 #8"}],
-    "classification_decision_table_node_list": [{"node_name": "cdt_1 #9"}],
-    "subgraph_node_list": [{"node_name": "subflow_1 #10"}],
-    "key_value_node_list": [{"node_name": "kv_1 #11"}],
-    "webhook_trigger_node_data_list": [{"node_name": "webhook_1 #12"}],
-    "edge_list": [{"start_key": "agent_1 #5", "end_key": "__end_node__ #6"}],
-    "end_node": {"node_name": "__end_node__ #6", "output_map": {}},
-}
-
-
-def _message(message_id, created_at, name, execution_order, message_data):
+def _message(message_id, created_at, name, execution_order, message_data, node_type=""):
     return {
         "id": message_id,
         "session_id": 7,
@@ -54,12 +37,13 @@ def _message(message_id, created_at, name, execution_order, message_data):
         "execution_order": execution_order,
         "uuid": str(uuid.uuid4()),
         "message_data": message_data,
+        "node_type": node_type,
     }
 
 
 # Copied from a real Agent-node session export, long texts shortened.
 AGENT_SESSION_MESSAGES = [
-    _message(41, "2026-10-07T12:41:02.809000Z", "agent_1 #5", 0, {"input": {}, "message_type": "start"}),
+    _message(41, "2026-10-07T12:41:02.809000Z", "agent_1 #5", 0, {"input": {}, "message_type": "start"}, node_type="AGENT"),
     _message(
         42,
         "2026-10-07T12:41:02.822000Z",
@@ -134,8 +118,9 @@ AGENT_SESSION_MESSAGES = [
             "message_type": "finish",
             "additional_data": {},
         },
+        node_type="AGENT",
     ),
-    _message(46, "2026-10-07T12:41:09.971000Z", "__end_node__ #6", 1, {"input": {}, "message_type": "start"}),
+    _message(46, "2026-10-07T12:41:09.971000Z", "__end_node__ #6", 1, {"input": {}, "message_type": "start"}, node_type="END"),
     _message(47, "2026-10-07T12:41:09.971000Z", "__end_node__ #6", 1, {"context": {"agent_result": ANSWER}}),
     # Same created_at as its start row, and placed before it on purpose.
     _message(
@@ -149,6 +134,7 @@ AGENT_SESSION_MESSAGES = [
             "message_type": "finish",
             "additional_data": {},
         },
+        node_type="END",
     ),
     _message(
         49,
@@ -221,6 +207,7 @@ OTHER_NODE_MESSAGES = [
             "message_type": "finish",
             "additional_data": {},
         },
+        node_type="TASK",
     ),
     _message(
         63,
@@ -237,6 +224,7 @@ OTHER_NODE_MESSAGES = [
                 "returncode": 0,
             },
         },
+        node_type="PYTHON",
     ),
     _message(
         64,
@@ -253,6 +241,7 @@ OTHER_NODE_MESSAGES = [
                 "returncode": 1,
             },
         },
+        node_type="PYTHON",
     ),
     _message(
         65,
@@ -289,6 +278,7 @@ OTHER_NODE_MESSAGES = [
                 "total_cost_usd": 0.00002,
             },
         },
+        node_type="CLASSIFICATION_DECISION_TABLE",
     ),
     _message(
         68,
@@ -309,6 +299,7 @@ OTHER_NODE_MESSAGES = [
             "subgraph_id": 12,
             "subgraph_execution_id": "sub-1",
         },
+        node_type="SUBGRAPH",
     ),
     _message(
         70,
@@ -323,6 +314,7 @@ OTHER_NODE_MESSAGES = [
         "subflow_1 #10",
         6,
         {"message_type": "subgraph_finish", "state": STATE, "output": {"result": "ok"}, "subgraph_execution_id": "sub-1"},
+        node_type="SUBGRAPH",
     ),
     _message(
         72,
@@ -337,6 +329,7 @@ OTHER_NODE_MESSAGES = [
             "entries": [{"key": "lang", "path": "variables.lang", "found": True, "value": "en"}],
             "deleted_count": None,
         },
+        node_type="KEY_VALUE",
     ),
 ]
 
@@ -348,7 +341,6 @@ def _session_item(messages, session_id=7):
             "status": "end",
             "graph": 3,
             "graph_name": "agent flow",
-            "node_types": _node_types_by_name(GRAPH_SCHEMA),
             "principal": {"kind": "user", "user": 2, "api_key": None, "email": "admin@example.com"},
         },
         "messages": [{**message, "session_id": session_id} for message in messages],
@@ -514,7 +506,7 @@ def test_other_node_message_rows():
 @pytest.mark.django_db
 def test_exported_session_csv_carries_flow_and_node_type(default_org):
     graph = Graph.objects.create(name="csv flow", org=default_org)
-    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END, graph_schema=GRAPH_SCHEMA)
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.END)
     for message in AGENT_SESSION_MESSAGES[:1] + AGENT_SESSION_MESSAGES[4:5]:
         GraphSessionMessage.objects.create(
             session=session,
@@ -522,6 +514,7 @@ def test_exported_session_csv_carries_flow_and_node_type(default_org):
             name=message["name"],
             execution_order=message["execution_order"],
             message_data=message["message_data"],
+            node_type=message["node_type"],
             uuid=uuid.uuid4(),
         )
 
@@ -531,8 +524,7 @@ def test_exported_session_csv_carries_flow_and_node_type(default_org):
     assert (start["flow_id"], start["flow_name"], start["session_status"]) == (str(graph.id), "csv flow", "end")
     assert (start["node_type"], finish["node_type"]) == ("agent", "agent")
     [exported] = data[EntityType.SESSION]
-    assert "graph_schema" not in exported["session"]
-    assert exported["session"]["node_types"]["__end_node__ #6"] == "end"
+    assert "node_types" not in exported["session"]
     assert finish["duration_ms"] == "7158"
     assert finish["cost_usd"] == "0.0001542"
 
@@ -564,22 +556,15 @@ def test_finish_without_start_has_no_duration():
     assert rows["45"]["duration_ms"] == ""
 
 
-def test_old_rows_without_stored_node_type_fall_back_to_graph_schema():
-    rows = _rows_by_message_id(AGENT_SESSION_MESSAGES[:1])
-
-    assert rows["41"]["node_type"] == "agent"
-
-
-def test_stored_node_type_wins_and_spreads_to_untyped_rows_of_the_same_node():
+def test_untyped_rows_take_the_stored_type_of_the_same_node():
     start = {**AGENT_SESSION_MESSAGES[0], "name": "inner_agent #2", "node_type": "AGENT"}
     stream = {**AGENT_SESSION_MESSAGES[1], "name": "inner_agent #2", "node_type": ""}
-    # Stored type beats the graph_schema type ("python") for the same name.
-    python_start = {**OTHER_NODE_MESSAGES[3], "node_type": "WEBHOOK_TRIGGER"}
+    other_node = {**AGENT_SESSION_MESSAGES[2], "name": "untyped_node #4", "node_type": ""}
 
-    rows = _rows_by_message_id([start, stream, python_start])
+    rows = _rows_by_message_id([start, stream, other_node])
 
     assert (rows["41"]["node_type"], rows["42"]["node_type"]) == ("agent", "agent")
-    assert rows["63"]["node_type"] == "webhook_trigger"
+    assert rows["43"]["node_type"] == ""
 
 
 def test_cost_is_a_fixed_decimal():
@@ -644,7 +629,7 @@ def test_parent_and_subflow_nodes_with_the_same_name_keep_their_own_type():
 def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default_org):
     root_graph = Graph.objects.create(name="root flow", org=default_org)
     child_graph = Graph.objects.create(name="child flow", org=default_org)
-    root = Session.objects.create(graph=root_graph, status=Session.SessionStatus.END, graph_schema=GRAPH_SCHEMA)
+    root = Session.objects.create(graph=root_graph, status=Session.SessionStatus.END)
     execution_id = str(uuid.uuid4())
     inner_finish = {
         "message_type": "finish",
@@ -653,9 +638,9 @@ def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default
         "subgraph_execution_ids": [execution_id],
     }
     for node_type, message_data in [
-        ("", {"message_type": "subgraph_start", "input": {}, "subgraph_id": child_graph.id, "subgraph_execution_id": execution_id}),
+        ("SUBGRAPH", {"message_type": "subgraph_start", "input": {}, "subgraph_id": child_graph.id, "subgraph_execution_id": execution_id}),
         ("AGENT", inner_finish),
-        ("", {"message_type": "subgraph_finish", "output": {}, "subgraph_execution_id": execution_id}),
+        ("SUBGRAPH", {"message_type": "subgraph_finish", "output": {}, "subgraph_execution_id": execution_id}),
     ]:
         GraphSessionMessage.objects.create(
             session=root,

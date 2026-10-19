@@ -20,7 +20,7 @@ def session_manager(monkeypatch):
     session_manager = SessionManagerService()
 
     # A real, empty SessionData: the test graph has no nodes to build one from, and
-    # code that walks the payload (storage demand, graph_schema) keeps up with new fields.
+    # code that walks the payload (storage demand, publishing) keeps up with new fields.
     def empty_session_data(session, **kwargs):
         graph = GraphData(name=GRAPH_NAME, entrypoint="__end__", end_node=None)
         return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
@@ -102,15 +102,6 @@ def test_failure_before_publish_marks_session_error(graph, session_manager, monk
     assert "redis is down" in session.status_data["reason"]
     assert session.finished_at is not None
     assert session.status_updated_at >= session.created_at
-
-
-@pytest.mark.django_db
-def test_graph_schema_is_stored(graph, session_manager, monkeypatch):
-    _stub_publish(monkeypatch, session_manager, received_count=1)
-
-    session_id = _run(session_manager, graph)
-
-    assert Session.objects.get(pk=session_id).graph_schema["name"] == GRAPH_NAME
 
 
 @pytest.mark.django_db

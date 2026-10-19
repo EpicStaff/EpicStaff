@@ -19,6 +19,8 @@ from utils.set_output_variables import set_output_variables
 
 
 class SubGraphNode:
+    TYPE = "SUBGRAPH"
+
     def __init__(
         self,
         session_id: int,
@@ -178,6 +180,7 @@ class SubGraphNode:
             name=self.node_name,
             execution_order=execution_order,
             message_data=start_message_data,
+            node_type=self.TYPE,
         )
         writer(graph_message)
 
@@ -262,7 +265,7 @@ class SubGraphNode:
     def _create_state_history_item(self, subgraph_input, subgraph_output) -> dict:
         """Create state history item for subgraph execution."""
         return {
-            "type": "SUBGRAPH",
+            "type": self.TYPE,
             "name": self.node_name,
             "additional_data": {
                 "input_map": self.input_map,
@@ -291,6 +294,7 @@ class SubGraphNode:
             name=self.node_name,
             execution_order=execution_order,
             message_data=finish_message_data,
+            node_type=self.TYPE,
         )
         writer(graph_message)
 

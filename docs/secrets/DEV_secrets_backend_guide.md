@@ -42,9 +42,10 @@ tests pass:
 - **django_app is the only decryption authority.** `SECRET_KEY` is set on the `django_app`
   service only — not in `x-common-env`. `crew`, `sandbox`, `manager` and `realtime` cannot
   decrypt anything; they receive already-resolved plaintext or nothing.
-- **Resolution happens on a copy.** `resolve_payload()` deep-copies before filling, because
-  the caller's object is what gets persisted to `Session.graph_schema`. Resolving in place
-  would write plaintext into the database.
+- **Resolution happens on a copy.** `resolve_payload()` deep-copies before filling, so
+  plaintext exists only in the payload published to Redis. The caller's object stays
+  unresolved; resolving in place would leave plaintext on it for any later code that logs
+  or stores it.
 - **A Secret is immutable.** Create and delete only. Rotating a credential means creating a
   new `Secret` and repointing references. `value` is `editable=False` and there is no update
   endpoint. Several design decisions follow from this — see §7.
@@ -202,14 +203,14 @@ a `{name: plaintext}` dict out. (No collision with the suffix rule —
 `"secret_names".endswith("_secret_id")` is `False`.)
 
 The carrier fields are declared `Field(exclude=True)` on the pydantic models, so
-`model_dump()` omits them. That is what keeps **both** plaintext *and* secret ids out of
-`Session.graph_schema`, which is built from the unresolved original:
+`model_dump()` omits them. That is what keeps secret ids out of the published Redis payload,
+and resolving on a copy keeps plaintext off the caller's unresolved original:
 
 ```python
 # tables/services/redis_service.py
 def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
-    # Resolve here, not upstream: the caller's object is what gets persisted
-    # to Session.graph_schema, so plaintext must exist only on this copy.
+    # Resolve here, not upstream: the caller's object stays unresolved,
+    # so plaintext must exist only on this copy.
     resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
     return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 ```
@@ -218,7 +219,7 @@ def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int
 object — logging `resolved` would write credentials into the log stream.
 
 The regression guard for all of this is
-`tests/services_tests/test_graph_schema_no_plaintext.py`.
+`tests/services_tests/test_session_payload_no_plaintext.py`.
 
 ### 4.2 Errors
 
@@ -383,8 +384,7 @@ Consequences worth knowing:
 - **Never log a resolved payload.** Log the unresolved one. `redis_service.py` shows the
   pattern.
 - **Never put a resolved value in `global_kwargs`.** It is repr-interpolated into generated
-  source that gets written to disk, and it is nested inside `GraphData`, which becomes
-  `Session.graph_schema`. Two leaks in one.
+  source that gets written to disk.
 - **Never resolve in place.** `resolve_payload` copies for a reason.
 - **Do not add a `default=` to `get_secret()`.** A silently-`None` credential fails later
   and more confusingly than an immediate exception.
@@ -402,7 +402,7 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | `secret_service` is the only writer | `tests/services_tests/test_secret_service_call_sites.py` |
 | CRUD API, permissions | `tests/api_tests/test_secret_api.py` |
 | Cross-org reference isolation | `tests/api_tests/test_secret_selection_cross_org.py`, `test_init_realtime_cross_org_secret.py`, `tests/services_tests/test_default_config_cross_org_secret.py` |
-| No plaintext or ids in `graph_schema` | `tests/services_tests/test_graph_schema_no_plaintext.py` |
+| No secret ids in the Redis payload, no plaintext on the caller's object | `tests/services_tests/test_session_payload_no_plaintext.py` |
 | Import/export exclusion guard | `tests/import_export_tests/test_secret_export_exclusion.py` |
 | Copy services preserve the FK | `tests/services_tests/test_copy_services_secret_fk.py` |
 | Allow-list: session start and save time | `tests/services_tests/test_secret_declaration_validator.py`, `tests/api_tests/test_secret_declaration_api.py` |

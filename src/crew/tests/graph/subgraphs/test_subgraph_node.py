@@ -165,6 +165,19 @@ async def test_child_messages_are_tagged_with_the_subgraph_run():
     assert all(message.message_data["subgraph_execution_ids"] == [run_id] for message in inner)
 
 
+async def test_start_and_finish_payloads_carry_the_subgraph_node_type():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.result")
+    messages = []
+
+    await node.run(_parent_state(), writer=messages.append)
+
+    start, *inner, finish = messages
+    assert start.to_payload()["node_type"] == "SUBGRAPH"
+    assert finish.to_payload()["node_type"] == "SUBGRAPH"
+    # The child's own rows keep the child node's type, not the wrapping subflow's.
+    assert {message.to_payload()["node_type"] for message in inner} - {""} == {"PYTHON"}
+
+
 async def test_compiled_child_is_reused_across_runs_with_fresh_state(monkeypatch):
     node = _subgraph_node(
         _python_child("def main(x): return {'doubled': x * 2}", input_map={"x": "variables.x"}),

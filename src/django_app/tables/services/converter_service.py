@@ -441,7 +441,7 @@ class ConverterService(metaclass=SingletonMeta):
             # -- get_secret(f"KEY_{env}") -- work, since no static parse could see
             # it. The parser is now only a validator (declaration_validator.py).
             # Names only: resolution happens in redis_service, on the copy that
-            # goes to Redis -- never on the object that becomes graph_schema.
+            # goes to Redis -- never on the caller's object.
             # Iterating .all() reuses a prefetch of `secrets` when the caller made one.
             secret_names=[secret.name for secret in python_code.secrets.all()],
             org_id=org_id,

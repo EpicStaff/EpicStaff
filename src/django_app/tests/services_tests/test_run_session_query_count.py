@@ -31,7 +31,7 @@ SECRET_NAME = "query-count-key"
 
 # Exact budget for representative_graph. If a change raises it, find the new
 # query; if it lowers it, update the number.
-RUN_SESSION_QUERY_COUNT = 63
+RUN_SESSION_QUERY_COUNT = 62
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:

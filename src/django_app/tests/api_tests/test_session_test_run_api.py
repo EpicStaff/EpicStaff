@@ -179,8 +179,6 @@ class TestWebhookTriggerTestRun:
         assert len(trigger_node_data) == 1
         assert "test_payload" not in trigger_node_data[0]
         assert STORED_TEST_PAYLOAD_MARKER not in json.dumps(published)
-        session = Session.objects.get(pk=response.data["session_id"])
-        assert STORED_TEST_PAYLOAD_MARKER not in json.dumps(session.graph_schema)
 
     def test_node_without_selected_webhook_trigger_runs_with_null_path(
         self, acme_client, webhook_node, redis_client_mock
