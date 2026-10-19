@@ -237,6 +237,100 @@ async def test_describe_raises_mcp_tool_error_on_connection_failure():
 
 
 # ---------------------------------------------------------------------------
+# describe — caching
+# ---------------------------------------------------------------------------
+
+
+class _CountingFactory:
+    """Hands out one fresh fake client per connect; ``outcomes`` is consumed in order."""
+
+    def __init__(self, outcomes: list) -> None:
+        self._outcomes = outcomes
+        self.connects = 0
+
+    def create(self, data: McpToolData):
+        self.connects += 1
+        outcome = self._outcomes.pop(0) if self._outcomes else [FakeTool(name=data.tool_name)]
+        if isinstance(outcome, BaseException):
+            return _make_client(raise_on_enter=outcome)
+        return _make_client(list_tools_result=outcome)
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.mark.parametrize(("elapsed_s", "expected_connects"), [(299.9, 1), (300.0, 2)])
+async def test_describe_reuses_a_result_for_five_minutes(elapsed_s, expected_connects):
+    factory = _CountingFactory([[FakeTool(name="search", description="Search.")]])
+    clock = _FakeClock()
+    gateway = McpToolGateway(factory, clock=clock)
+
+    first = await gateway.describe(_mcp_data("search"))
+    clock.now += elapsed_s
+    second = await gateway.describe(_mcp_data("search"))
+
+    assert factory.connects == expected_connects
+    assert second.input_schema == first.input_schema
+
+
+async def test_describe_does_not_share_results_between_credentials():
+    factory = _CountingFactory([])
+    gateway = McpToolGateway(factory, clock=_FakeClock())
+    data = _mcp_data("search")
+
+    await gateway.describe(data.model_copy(update={"auth": "token-org-a"}))
+    await gateway.describe(data.model_copy(update={"auth": "token-org-b"}))
+
+    assert factory.connects == 2
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ConnectionError("refused"), [FakeTool(name="other_tool")]],
+    ids=["unreachable", "tool-missing"],
+)
+async def test_failed_describe_is_not_cached(failure):
+    factory = _CountingFactory([failure])
+    gateway = McpToolGateway(factory, clock=_FakeClock())
+
+    with pytest.raises(McpToolError):
+        await gateway.describe(_mcp_data("search"))
+    result = await gateway.describe(_mcp_data("search"))
+
+    assert factory.connects == 2
+    assert result.description == "[external MCP tool description] A fake tool."
+
+
+async def test_describe_cache_evicts_the_oldest_entry_when_full():
+    factory = _CountingFactory([])
+    gateway = McpToolGateway(factory, clock=_FakeClock(), max_cached_descriptions=2)
+
+    for tool_name in ("a", "b", "c"):
+        await gateway.describe(_mcp_data(tool_name))
+    await gateway.describe(_mcp_data("c"))
+    await gateway.describe(_mcp_data("a"))
+
+    assert factory.connects == 4
+
+
+async def test_mutating_a_described_schema_does_not_change_the_cached_one():
+    factory = _CountingFactory([])
+    gateway = McpToolGateway(factory, clock=_FakeClock())
+
+    for _ in range(2):
+        described = await gateway.describe(_mcp_data("search"))
+        described.input_schema["properties"]["injected"] = {"type": "string"}
+    latest = await gateway.describe(_mcp_data("search"))
+
+    assert latest.input_schema == {"type": "object", "properties": {}}
+
+
+# ---------------------------------------------------------------------------
 # call — success paths
 # ---------------------------------------------------------------------------
 
