@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, ElementRef, inject, Injectable, signal } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { FFlowComponent, FReassignConnectionEvent } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 
@@ -21,6 +21,15 @@ interface ConnectionEndGrab {
 }
 
 /**
+ * Callbacks the component provides so the handler can interact with
+ * the host view without holding component-level references directly.
+ */
+export interface ReassignHandlerCallbacks {
+    detectChanges(): void;
+    queryConnectionElement(connectionId: string): Element | null;
+}
+
+/**
  * Handles connection reassignment logic for the flow editor.
  *
  * Manages the grab → suppress → reassign lifecycle when a user drags
@@ -29,13 +38,11 @@ interface ConnectionEndGrab {
  * Provided at the FlowGraphComponent level — one instance per editor.
  */
 @Injectable()
-export class FlowReassignHandler {
+export class FlowReassignHandlerService {
     private readonly flowService = inject(FlowService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly toastService = inject(ToastService);
     private readonly routingOrchestrator = inject(FlowRoutingOrchestratorService);
-    private readonly cd = inject(ChangeDetectorRef);
-    private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     // ── State ────────────────────────────────────────────────────────
     readonly suppressedConnectionIds = signal<ReadonlySet<string>>(new Set<string>());
@@ -50,18 +57,23 @@ export class FlowReassignHandler {
      * and redirects the mouse event onto the drag handle when the
      * grab originates from a port.
      */
-    handleMouseDown(event: MouseEvent, isEditingLocked: boolean, fFlowComponent: FFlowComponent): void {
+    handleMouseDown(
+        event: MouseEvent,
+        isEditingLocked: boolean,
+        fFlowComponent: FFlowComponent,
+        callbacks: ReassignHandlerCallbacks
+    ): void {
         const isPlainPress = event.button === 0 && !event.shiftKey && !event.ctrlKey && !event.metaKey;
         const grab = isPlainPress && !isEditingLocked ? this.resolveConnectionEndGrab(event, fFlowComponent) : null;
 
         this.groupIds = grab?.group.map((conn) => conn.id) ?? [];
-        this.suppressNeighbours(grab);
+        this.suppressNeighbours(grab, callbacks);
 
         if (!grab?.fromPort) {
             return;
         }
 
-        const connectionElement = this.findConnectionElement(grab.connection.id);
+        const connectionElement = callbacks.queryConnectionElement(grab.connection.id);
         const handle = connectionElement && this.getDragHandle(connectionElement, grab.endpoint);
         if (!handle) {
             return;
@@ -249,7 +261,7 @@ export class FlowReassignHandler {
         return new Set(fFlowComponent.getSelection().fConnectionIds);
     }
 
-    private suppressNeighbours(grab: ConnectionEndGrab | null): void {
+    private suppressNeighbours(grab: ConnectionEndGrab | null, callbacks: ReassignHandlerCallbacks): void {
         const suppressed = new Set<string>();
         if (grab) {
             const portId = grab.endpoint === 'source' ? grab.connection.sourcePortId : grab.connection.targetPortId;
@@ -265,17 +277,13 @@ export class FlowReassignHandler {
         this.suppressedConnectionIds.set(suppressed);
         // Foblex picks the connection to reassign later in this same mousedown,
         // so the disabled flags must reach it synchronously.
-        this.cd.detectChanges();
+        callbacks.detectChanges();
     }
 
     private connectionsAtPort(portId: string): ConnectionModel[] {
         return this.flowService
             .connections()
             .filter((conn) => conn.sourcePortId === portId || conn.targetPortId === portId);
-    }
-
-    private findConnectionElement(connectionId: string): Element | null {
-        return this.hostElement.nativeElement.querySelector(`f-connection[id="${CSS.escape(connectionId)}"]`);
     }
 
     private getDragHandle(connectionElement: Element, endpoint: 'source' | 'target'): Element | null {

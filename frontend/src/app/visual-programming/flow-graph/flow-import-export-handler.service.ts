@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { DestroyRef, inject, Injectable } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
 import { downloadBlob } from '@shared/utils';
 
@@ -17,12 +18,13 @@ import { FlowSelectionManagerService } from './flow-selection-manager.service';
  * Provided at the FlowGraphComponent level — one instance per editor.
  */
 @Injectable()
-export class FlowImportExportHandler {
+export class FlowImportExportService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
+    private readonly destroyRef = inject(DestroyRef);
 
     // ── Import state ────────────────────────────────────────────────
     private _preImportBackendIds: Set<number> | null = null;
@@ -38,7 +40,8 @@ export class FlowImportExportHandler {
 
     // ── Export: selected as JSON ────────────────────────────────────
 
-    onExportSelectedAsJson(): void {
+    onExportSelectedAsJson(currentFlowId: number | null): void {
+        if (!currentFlowId) return;
         const selectedIds = this.selectionManager.selectedNodeIds();
         const nodes = this.flowService.nodes();
         const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId === null);
@@ -46,7 +49,7 @@ export class FlowImportExportHandler {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        this.triggerPartialExport(selectedIds);
+        this.triggerPartialExport(selectedIds, currentFlowId);
     }
 
     // ── Export: selected as CSV ─────────────────────────────────────
@@ -67,27 +70,33 @@ export class FlowImportExportHandler {
                 continue;
             }
 
-            this.importExportService.cdtExport(node.backendId, 'json').subscribe({
-                next: (blob) => {
-                    blob.text().then((text) => {
-                        const parsed = JSON.parse(text) as Record<string, unknown>;
-                        const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
-                        const csv = this.cdtExportImportService.exportToCsv(exportData);
-                        this.cdtExportImportService.downloadFile(
-                            csv,
-                            node.node_name + '.csv',
-                            'text/csv;charset=utf-8;'
-                        );
-                    });
-                },
-                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
-            });
+            this.importExportService
+                .cdtExport(node.backendId, 'json')
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    next: (blob) => {
+                        blob.text()
+                            .then((text) => {
+                                const parsed = JSON.parse(text) as Record<string, unknown>;
+                                const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
+                                const csv = this.cdtExportImportService.exportToCsv(exportData);
+                                this.cdtExportImportService.downloadFile(
+                                    csv,
+                                    node.node_name + '.csv',
+                                    'text/csv;charset=utf-8;'
+                                );
+                            })
+                            .catch(() => this.toastService.error('Export failed', 3000, 'bottom-right'));
+                    },
+                    error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+                });
         }
     }
 
     // ── Export: all as JSON ─────────────────────────────────────────
 
-    onExportAllAsJson(): void {
+    onExportAllAsJson(currentFlowId: number | null): void {
+        if (!currentFlowId) return;
         const exportable = this.flowService.nodes().filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
         if (exportable.length === 0) {
             this.toastService.warning('No nodes to export', 3000, 'bottom-right');
@@ -97,7 +106,7 @@ export class FlowImportExportHandler {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        this.triggerPartialExport([]);
+        this.triggerPartialExport([], currentFlowId);
     }
 
     // ── Import ─────────────────────────────────────────────────────
@@ -141,44 +150,31 @@ export class FlowImportExportHandler {
 
     // ── Private helpers ────────────────────────────────────────────
 
-    private triggerPartialExport(nodeIds: string[]): void {
-        const currentFlowId = this.resolveCurrentFlowId();
-        if (!currentFlowId) return;
+    private triggerPartialExport(nodeIds: string[], currentFlowId: number): void {
         const body = this.buildPartialExportBody(nodeIds);
         const filename = nodeIds.length > 0 ? 'selected-nodes.json' : 'all-nodes.json';
-        this.importExportService.partialExport(currentFlowId, body).subscribe({
-            next: (blob) => {
-                downloadBlob(blob, filename);
-                const count = Object.entries(body)
-                    .filter(([key]) => key !== 'edge_list')
-                    .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
-                const isExportAll = nodeIds.length === 0;
-                const hasStartOrEnd =
-                    !isExportAll &&
-                    this.flowService
-                        .nodes()
-                        .some((n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END));
-                const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
-                this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
-            },
-            error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
-        });
-    }
-
-    /**
-     * The `currentFlowId` lives on the component as an `@Input`. Export methods that were called
-     * from the template always had it in scope. The handler needs it for the API call, so we
-     * store it when the component sets it and read it back here.
-     */
-    private _currentFlowId: number | null = null;
-
-    /** Called by the component whenever its `currentFlowId` input changes. */
-    setCurrentFlowId(id: number | null): void {
-        this._currentFlowId = id;
-    }
-
-    private resolveCurrentFlowId(): number | null {
-        return this._currentFlowId;
+        this.importExportService
+            .partialExport(currentFlowId, body)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) => {
+                    downloadBlob(blob, filename);
+                    const count = Object.entries(body)
+                        .filter(([key]) => key !== 'edge_list')
+                        .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
+                    const isExportAll = nodeIds.length === 0;
+                    const hasStartOrEnd =
+                        !isExportAll &&
+                        this.flowService
+                            .nodes()
+                            .some(
+                                (n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END)
+                            );
+                    const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
+                    this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+                },
+                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+            });
     }
 
     private buildPartialExportBody(selectedIds: string[]): PartialExportRequest {
@@ -266,38 +262,41 @@ export class FlowImportExportHandler {
     }
 
     private doPartialImport(file: File, currentFlowId: number, onImportComplete: () => void): void {
-        this.importExportService.partialImport(currentFlowId, file).subscribe({
-            next: () => {
-                this.toastService.success('Import successful', 3000, 'bottom-right');
-                const currentNodes = this.flowService.nodes();
-                this._preImportBackendIds = new Set(
-                    currentNodes.map((n) => n.backendId).filter((id): id is number => id !== null)
-                );
-                this._importPositionSnapshot = new Map(
-                    currentNodes
-                        .filter((n): n is typeof n & { backendId: number } => n.backendId !== null)
-                        .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
-                );
-                this.fitAfterNextFlowChange = true;
-                onImportComplete();
-            },
-            error: (err: HttpErrorResponse) => {
-                const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
-                const rawMessage =
-                    (err.error as Record<string, string>)?.['message'] ??
-                    (err.error as Record<string, string>)?.['detail'] ??
-                    null;
-                if (body.includes('node_name must make a unique set')) {
-                    this.toastService.error(
-                        'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
-                        6000,
-                        'bottom-right'
+        this.importExportService
+            .partialImport(currentFlowId, file)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => {
+                    this.toastService.success('Import successful', 3000, 'bottom-right');
+                    const currentNodes = this.flowService.nodes();
+                    this._preImportBackendIds = new Set(
+                        currentNodes.map((n) => n.backendId).filter((id): id is number => id !== null)
                     );
-                } else {
-                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
-                }
-            },
-        });
+                    this._importPositionSnapshot = new Map(
+                        currentNodes
+                            .filter((n): n is typeof n & { backendId: number } => n.backendId !== null)
+                            .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
+                    );
+                    this.fitAfterNextFlowChange = true;
+                    onImportComplete();
+                },
+                error: (err: HttpErrorResponse) => {
+                    const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
+                    const rawMessage =
+                        (err.error as Record<string, string>)?.['message'] ??
+                        (err.error as Record<string, string>)?.['detail'] ??
+                        null;
+                    if (body.includes('node_name must make a unique set')) {
+                        this.toastService.error(
+                            'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
+                            6000,
+                            'bottom-right'
+                        );
+                    } else {
+                        this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
+                    }
+                },
+            });
     }
 
     private shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {

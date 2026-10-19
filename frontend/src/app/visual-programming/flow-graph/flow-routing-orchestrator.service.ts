@@ -6,7 +6,7 @@ import { isStacked } from '../core/geometry/wire-direction';
 import { isBackwardConnection } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
 import { NodeModel } from '../core/models/node.model';
-import { curveHitsObstacle } from '../core/routing/curved.path-builder';
+import { curveHitsObstacle } from '../core/routing/curved-obstacle-detection';
 import { obstacleRect, routingObstacles } from '../core/routing/obstacles';
 import { normalizeOrthogonalWaypoints, refreshFrozenWireWaypoints } from '../core/routing/orthogonal-route-shapes';
 import { resolveWireEnds, routeAll } from '../core/routing/route-all';

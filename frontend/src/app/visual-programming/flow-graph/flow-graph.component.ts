@@ -98,8 +98,8 @@ import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
 import { normalizeFlowPorts } from '../utils/load';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
-import { FlowImportExportHandler } from './flow-import-export-handler.service';
-import { FlowReassignHandler } from './flow-reassign-handler.service';
+import { FlowImportExportService } from './flow-import-export-handler.service';
+import { FlowReassignHandlerService, ReassignHandlerCallbacks } from './flow-reassign-handler.service';
 import { FlowRoutingOrchestratorService } from './flow-routing-orchestrator.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
 
@@ -116,19 +116,17 @@ const CONNECTION_REFUSED_TOAST_MS = 5000;
         '(document:pointercancel)': 'resetReassignHighlight()',
     },
     providers: [
-        CurvedPathBuilder,
         {
             provide: F_CONNECTION_BUILDERS,
-            useFactory: (curvedBuilder: CurvedPathBuilder) => ({
+            useValue: {
                 orthogonal: new OrthogonalPathBuilder(),
-                'adaptive-curve': curvedBuilder,
-            }),
-            deps: [CurvedPathBuilder],
+                'adaptive-curve': new CurvedPathBuilder(),
+            },
         },
         KeyValueEntryDraftsService,
         FlowArrangeAnimatorService,
-        FlowImportExportHandler,
-        FlowReassignHandler,
+        FlowImportExportService,
+        FlowReassignHandlerService,
         FlowRoutingOrchestratorService,
         FlowSelectionManagerService,
     ],
@@ -215,6 +213,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly isArranging = this.arrangeAnimator.isArranging;
     protected readonly flowSettings = inject(FlowSettingsService);
     public smartRoutingEnabled = signal<boolean>(false);
+    protected readonly hoveredConnectionId = signal<string | null>(null);
+    public hoveredNodeId = signal<string | null>(null);
 
     public readonly selectionManager = inject(FlowSelectionManagerService);
 
@@ -229,14 +229,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return map;
     });
 
-    protected readonly backwardConnectionIds = computed<Set<string>>(() =>
-        this.routingOrchestrator.backwardConnectionIds()
-    );
-
-    protected readonly hoveredConnectionId = signal<string | null>(null);
-
     protected readonly sortedConnections = computed(() => {
-        const backwardIds = this.backwardConnectionIds();
+        const backwardIds = this.routingOrchestrator.backwardConnectionIds();
         const hiddenIds = this.hiddenConnectionIds();
         const hoveredId = this.hoveredConnectionId();
         const selectedIds = this.selectionManager.selectedConnectionIds();
@@ -263,8 +257,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     });
 
-    public hoveredNodeId = signal<string | null>(null);
-
     protected readonly hoveredNodeConnectionIds = computed(() => {
         const nodeId = this.hoveredNodeId();
         if (!nodeId) return new Set<string>();
@@ -286,7 +278,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private draggingElements = new Set<string>();
     private isDragging = false;
     private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
-    protected readonly reassignHandler = inject(FlowReassignHandler);
+    protected readonly reassignHandler = inject(FlowReassignHandlerService);
 
     /** Version preview: read-only (via flowReadOnly), and import/export and files are hidden. */
     protected readonly isPreview = inject(FLOW_EDITOR_PREVIEW);
@@ -300,7 +292,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly cd = inject(ChangeDetectorRef);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
-    private readonly importExportHandler = inject(FlowImportExportHandler);
+    private readonly importExportHandler = inject(FlowImportExportService);
     /** The flow page's store in the live editor, the preview's own (empty) one in a version preview. */
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
@@ -401,9 +393,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['currentFlowId']) {
-            this.importExportHandler.setCurrentFlowId(this.currentFlowId);
-        }
         if (changes['flowState'] && !changes['flowState'].firstChange) {
             const stateToApply = this.importExportHandler.processImportedFlowState(this.flowState);
             this.applyIncomingFlowState(stateToApply);
@@ -452,9 +441,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return { position: PointExtensions.sum(transform.position, transform.scaledPosition), scale: transform.scale };
     }
 
+    private readonly reassignCallbacks: ReassignHandlerCallbacks = {
+        detectChanges: () => this.cd.detectChanges(),
+        queryConnectionElement: (connectionId) =>
+            this.hostElement.nativeElement.querySelector(`f-connection[id="${CSS.escape(connectionId)}"]`),
+    };
+
     public onFlowMouseDown(event: MouseEvent): void {
         const isLocked = event.shiftKey || this.selectionManager.multiSelectActive() || this.isEditingLocked();
-        this.reassignHandler.handleMouseDown(event, isLocked, this.fFlowComponent);
+        this.reassignHandler.handleMouseDown(event, isLocked, this.fFlowComponent, this.reassignCallbacks);
     }
 
     public onReassignConnection(event: FReassignConnectionEvent): void {
@@ -1118,7 +1113,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.importExportHandler.onExportSelectedAsJson();
+        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId);
     }
 
     public onExportSelectedAsCsv(): void {
@@ -1126,7 +1121,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportAllAsJson(): void {
-        this.importExportHandler.onExportAllAsJson();
+        this.importExportHandler.onExportAllAsJson(this.currentFlowId);
     }
 
     public onImportNodes(): void {

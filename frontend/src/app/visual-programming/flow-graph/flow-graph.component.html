@@ -159,10 +159,10 @@
                     "
                     [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
-                    [class.is-backward]="backwardConnectionIds().has(connection.id)"
+                    [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
                     [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
-                    [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'

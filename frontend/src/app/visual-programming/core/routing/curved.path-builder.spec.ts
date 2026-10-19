@@ -1,6 +1,7 @@
 import { EFConnectableSide, IFConnectionBuilderRequest } from '@foblex/flow';
 
-import { CurvedPathBuilder, curveHitsObstacle } from './curved.path-builder';
+import { CurvedPathBuilder } from './curved.path-builder';
+import { curveHitsObstacle } from './curved-obstacle-detection';
 import { Rect } from './obstacles';
 
 function request(
