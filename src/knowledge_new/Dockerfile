@@ -82,7 +82,7 @@ COPY --from=builder /app /app
 # file above exists.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
-# trace, see docs/backend-runtime-fetch-audit.md item 7).
+# trace, see the litellm finding in docs/backend-runtime-fetch-audit.md).
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app:/app/src/knowledge \
     PYTHONSAFEPATH=1 \

@@ -1,5 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+// Type-only: brings in the HttpErrorResponse.validationErrors augmentation this util reads.
+import type {} from '../../core/interceptors/validation-errors.interceptor';
+
 /**
  * Extracts a human-readable message from an HttpErrorResponse
  */
@@ -33,6 +36,18 @@ export function extractHttpErrorMessage(err: HttpErrorResponse, fallback = 'Unkn
     }
 
     return err?.message || fallback;
+}
+
+/**
+ * The reasons a validation error gives for one field, read from the `errors` list that
+ * validationErrorsInterceptor attaches as `validationErrors`. Empty when the field is not named.
+ */
+export function extractFieldErrorMessages(err: HttpErrorResponse, field: string): string[] {
+    if (!Array.isArray(err.validationErrors)) return [];
+    return err.validationErrors
+        .filter((item) => item.field === field)
+        .map((item) => item.reason)
+        .filter(Boolean);
 }
 
 const UNDECLARED_SECRET_CALLS =

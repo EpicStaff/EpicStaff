@@ -125,4 +125,13 @@ describe('JsonEditorComponent header action', () => {
         expect(actionTooltip()).toBe('Select fields first');
         expect(action).not.toHaveBeenCalled();
     });
+
+    it('treats empty content as valid only when empty is allowed', () => {
+        const validity: boolean[] = [];
+        fixture.componentInstance.validationChange.subscribe((valid) => validity.push(valid));
+        fixture.componentInstance.onJsonChange('');
+        fixture.componentRef.setInput('allowEmpty', true);
+        fixture.componentInstance.onJsonChange('  ');
+        expect(validity).toEqual([false, true]);
+    });
 });

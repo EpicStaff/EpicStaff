@@ -1,5 +1,6 @@
 import dataclasses
 
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -100,7 +101,9 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @extend_schema(**ORGANIZATIONS_CREATE_POST)
     def create(self, request):
         cleaned = self._validator.validate_create(request.data)
-        org = self._service.create_organization(name=cleaned["name"])
+        org = self._service.create_organization(
+            name=cleaned["name"], audit_retention_days=cleaned["audit_retention_days"]
+        )
         return Response(
             OrganizationResponseSerializer(org).data,
             status=status.HTTP_201_CREATED,
@@ -109,9 +112,18 @@ class OrganizationAdminViewSet(CrossOrgAdminViewSet):
     @extend_schema(**ORGANIZATIONS_UPDATE_PATCH)
     def partial_update(self, request, pk=None):
         cleaned = self._validator.validate_rename(request.data)
-        org = self._service.rename_organization(
-            actor=request.user, org_id=int(pk), name=cleaned["name"]
-        )
+        # One transaction so a failed retention update rolls back the rename.
+        with transaction.atomic():
+            if "name" in cleaned:
+                org = self._service.rename_organization(
+                    actor=request.user, org_id=int(pk), name=cleaned["name"]
+                )
+            if "audit_retention_days" in cleaned:
+                org = self._service.update_audit_retention(
+                    org_id=int(pk),
+                    audit_retention_days=cleaned["audit_retention_days"],
+                    actor=request.user,
+                )
         return Response(OrganizationResponseSerializer(org).data)
 
     @action(detail=True, methods=["post"], url_path="deactivate")

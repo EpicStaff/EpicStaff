@@ -13,6 +13,15 @@ function render(value: number): ComponentFixture<InputNumberComponent> {
     return fixture;
 }
 
+function renderWithError(value: number): HTMLElement {
+    const fixture = TestBed.createComponent(InputNumberComponent);
+    fixture.componentRef.setInput('max', 10);
+    fixture.componentRef.setInput('errorMessage', 'At most 10');
+    fixture.componentRef.setInput('value', value);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+}
+
 // The step buttons react to mousedown, not click, so the input keeps focus while stepping.
 function step(fixture: ComponentFixture<InputNumberComponent>, direction: 'plus' | 'minus'): number | null {
     const emitted: (number | null)[] = [];
@@ -42,5 +51,21 @@ describe('InputNumberComponent', () => {
         fixture.detectChanges();
         const field = (fixture.nativeElement as HTMLElement).querySelector('input');
         expect(field?.getAttribute('aria-label')).toBe('Sessions to display');
+    });
+
+    it('marks the input invalid and points it at the error text', () => {
+        const host = renderWithError(11);
+        const input = host.querySelector('input') as HTMLInputElement;
+        const describedBy = input.getAttribute('aria-describedby') ?? '';
+
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        expect(host.querySelector(`#${describedBy}`)?.textContent?.trim()).toBe('At most 10');
+    });
+
+    it('leaves a valid input without an error description', () => {
+        const input = renderWithError(5).querySelector('input') as HTMLInputElement;
+
+        expect(input.getAttribute('aria-invalid')).toBe('false');
+        expect(input.hasAttribute('aria-describedby')).toBe(false);
     });
 });

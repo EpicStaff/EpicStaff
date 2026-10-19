@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse } from '@shared/models';
 
+import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -15,6 +16,7 @@ const COLLAPSED_WIDTH = 60;
 const EXPANDED_WIDTH = 240;
 const ORG_NAME = 'Acme Research and Development Group';
 const DISPLAY_NAME = 'Jane Doe';
+const WAITING_COUNT = 4;
 
 const USER = {
     id: 7,
@@ -45,7 +47,11 @@ describe('LeftSidebarComponent', () => {
                         canOpenConfigureModelsDialog: () => true,
                     },
                 },
-                { provide: ConfigService, useValue: { isAuditTrailEnabled: false } },
+                { provide: ConfigService, useValue: { isAuditTrailEnabled: false, isChatEnabled: true } },
+                {
+                    provide: ChatInboxStreamService,
+                    useValue: { waitingCount: signal(WAITING_COUNT), start: vi.fn(), stop: vi.fn() },
+                },
             ],
         });
 
@@ -170,6 +176,30 @@ describe('LeftSidebarComponent', () => {
 
             const orgLabel = element.querySelector('.org-menu-btn .sidenav-row-label')!;
             expect(orgLabel.textContent!.trim()).toBe('Workspace');
+        });
+    });
+
+    describe('Conversations item', () => {
+        beforeEach(() => render(COLLAPSED_WIDTH));
+
+        it('opens the bindings list and stays active on every binding page', async () => {
+            const router = TestBed.inject(Router);
+
+            navLink('Conversations')!.click();
+            await fixture.whenStable();
+            expect(router.url).toBe('/chat-bindings');
+
+            await router.navigateByUrl('/chat-bindings/b-1');
+            fixture.detectChanges();
+            expect(navLink('Conversations')!.classList).toContain('active');
+        });
+
+        it('links its waiting count to the all-bindings inbox', () => {
+            const badgeLink = element.querySelector<HTMLAnchorElement>('.sidenav-badge-link')!;
+
+            expect(badgeLink.textContent!.trim()).toBe(String(WAITING_COUNT));
+            expect(badgeLink.getAttribute('href')).toBe('/chat-bindings/all');
+            expect(badgeLink.getAttribute('aria-label')).toBe('Conversations inbox: 4 waiting for a person');
         });
     });
 });

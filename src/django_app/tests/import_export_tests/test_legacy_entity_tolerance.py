@@ -6,11 +6,14 @@ Importing such a file must succeed with the unsupported parts skipped — never 
 KeyError / 500.
 """
 
+from copy import deepcopy
+
 import pytest
 
-from tables.models import CrewNode, Graph, PythonCode, PythonNode
+from tables.models import CrewNode, Graph, LLMConfig, PythonCode, PythonNode
 from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.enums import EntityType, NodeType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.schemas import ImportSettings
@@ -151,3 +154,87 @@ def test_legacy_conditional_edges_are_dropped_not_imported(
     # Only the PythonNode's code is created; the edge's code is discarded with it.
     assert PythonCode.objects.count() == python_code_count_before + 1
     assert not PythonCode.objects.filter(code=LEGACY_CONDITIONAL_EDGE_CODE).exists()
+
+
+@pytest.fixture
+def llm_config_strategy():
+    yield entity_registry.get_strategy(EntityType.LLM_CONFIG)
+
+
+def _llm_model_mapper(llm_model) -> IDMapper:
+    id_mapper = IDMapper()
+    id_mapper.map(EntityType.LLM_MODEL, llm_model.id, llm_model.id, was_created=False)
+    return id_mapper
+
+
+def _exported_llm_config_entry(strategy, config, **changes) -> dict:
+    entry = deepcopy(strategy.export_entity(config))
+    entry["id"] = config.id + 100_000
+    entry.update(changes)
+    return entry
+
+
+@pytest.mark.django_db
+def test_llm_config_entry_from_before_reasoning_effort_does_not_reuse_a_config_with_effort(
+    llm_config_strategy, llm_config, default_org
+):
+    LLMConfig.objects.filter(pk=llm_config.pk).update(reasoning_effort="high")
+    llm_config.refresh_from_db()
+    entry = _exported_llm_config_entry(llm_config_strategy, llm_config)
+    del entry["reasoning_effort"]
+
+    imported = llm_config_strategy.import_entity(
+        entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
+    )
+
+    assert imported.pk != llm_config.pk
+    imported.refresh_from_db()
+    assert imported.reasoning_effort is None
+
+
+@pytest.mark.django_db
+def test_llm_config_entry_from_before_reasoning_effort_reuses_an_equivalent_config(
+    llm_config_strategy, llm_config, default_org
+):
+    entry = _exported_llm_config_entry(llm_config_strategy, llm_config)
+    del entry["reasoning_effort"]
+
+    imported = llm_config_strategy.import_entity(
+        entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
+    )
+
+    assert imported.pk == llm_config.pk
+
+
+@pytest.mark.django_db
+def test_llm_config_entry_with_a_field_unknown_to_this_version_imports(
+    llm_config_strategy, llm_config, default_org
+):
+    entry = _exported_llm_config_entry(
+        llm_config_strategy, llm_config, field_from_a_newer_version="value"
+    )
+
+    imported = llm_config_strategy.import_entity(
+        entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
+    )
+
+    assert imported.pk == llm_config.pk
+
+
+@pytest.mark.django_db
+def test_new_llm_config_with_a_field_unknown_to_this_version_is_created(
+    llm_config_strategy, llm_config, default_org
+):
+    entry = _exported_llm_config_entry(
+        llm_config_strategy,
+        llm_config,
+        temperature=1.1,
+        field_from_a_newer_version="value",
+    )
+
+    imported = llm_config_strategy.import_entity(
+        entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
+    )
+
+    assert imported.pk != llm_config.pk
+    assert imported.temperature == 1.1

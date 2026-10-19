@@ -37,6 +37,11 @@ EXECUTION_TIMEOUT = env.time("SANDBOX_EXECUTION_TIMEOUT")
 
 BLOCK_NETWORK = env.bool("SANDBOX_BLOCK_NETWORK")
 
+# Escape hatch for kernels without Landlock: false lets executions run unconfined
+# instead of being refused. A deliberately temporary, security-relevant knob.
+REQUIRE_ISOLATION_ENV_VAR = "SANDBOX_REQUIRE_ISOLATION"
+REQUIRE_ISOLATION = env.bool(REQUIRE_ISOLATION_ENV_VAR)
+
 REQUIRE_SIGNAL_ISOLATION_ENV_VAR = "SANDBOX_REQUIRE_SIGNAL_ISOLATION"
 REQUIRE_SIGNAL_ISOLATION = env.bool(REQUIRE_SIGNAL_ISOLATION_ENV_VAR)
 

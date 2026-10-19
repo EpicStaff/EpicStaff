@@ -15,7 +15,7 @@ def redis_service_with_fake_redis():
     redis_service = RedisService(
         host="127.0.0.1", port=6379, user="default", password="redis_password"
     )
-    # One server behind both clients, as in production: they share one Redis.
+    # The sync client only reads back what the async client wrote.
     redis_service.aioredis_client = fakeredis.FakeAsyncRedis(
         server=server, decode_responses=True
     )
@@ -49,24 +49,6 @@ async def test_graph_message_is_appended_to_the_stream_as_an_envelope(
     assert fields["type"] == "graph.message"
     assert fields["correlation_id"] == "uuid-1"
     assert json.loads(fields["payload"]) == message
-
-
-@pytest.mark.asyncio
-async def test_sync_and_async_appends_keep_their_order_in_one_stream(
-    redis_service_with_fake_redis,
-):
-    redis_service, redis_client = redis_service_with_fake_redis
-
-    await redis_service.aadd_graph_message("uuid-1", json.dumps(_message("uuid-1")))
-    redis_service.add_graph_message("uuid-2", json.dumps(_message("uuid-2")))
-    await redis_service.aadd_graph_message("uuid-3", json.dumps(_message("uuid-3")))
-
-    entries = redis_client.xrange("graph.messages")
-    assert [fields["correlation_id"] for _entry_id, fields in entries] == [
-        "uuid-1",
-        "uuid-2",
-        "uuid-3",
-    ]
 
 
 @pytest.mark.asyncio

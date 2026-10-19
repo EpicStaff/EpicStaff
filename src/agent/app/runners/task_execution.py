@@ -17,11 +17,11 @@ from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
-from app.output.enforcer import StructuredOutputEnforcer
-from app.output.schema import add_usage, as_object_schema
+from app.output.enforcer import EnforcementResult, StructuredOutputEnforcer
+from app.output.schema import add_usage, as_object_schema, validate_output
 from app.runners.deps import RunnerDependencies
 from app.tools.registry import ToolRegistry
-from shared.models.agent_service import AgentSpec, LoopResult, StopReason
+from shared.models.agent_service import AgentSpec, LoopResult, StopReason, TokenUsage
 
 
 def _default_max_iter() -> int:
@@ -34,6 +34,15 @@ def _schema_max_retries() -> int:
     import settings
 
     return settings.AGENT_SCHEMA_MAX_RETRIES
+
+
+def _schema_valid_final_text(final_text: str | None, output_schema: dict) -> object | None:
+    try:
+        candidate = json.loads(final_text or "")
+    except json.JSONDecodeError:
+        return None
+
+    return candidate if validate_output(candidate, output_schema).ok else None
 
 
 async def run_task_through_loop(
@@ -63,7 +72,9 @@ async def run_task_through_loop(
       ``FAILURE_STOP_REASONS``) while an ``output_schema`` was requested,
       raise ``AgentServiceError`` without ever invoking the enforcer.
     - if an ``output_schema`` was requested and the plain loop succeeded,
-      enforce it and fold the enforcer's usage into the plain loop's result.
+      use its final text as-is when it is JSON that already matches the
+      schema (unless the loop hit max_iter); otherwise enforce it and fold
+      the enforcer's usage into the plain loop's result.
 
     ``max_iter_fn`` / ``schema_max_retries_fn`` are injected (defaulting to
     the module-level settings loaders) so callers can pass their own
@@ -104,8 +115,18 @@ async def run_task_through_loop(
         raise AgentServiceError(result.error or f"agent loop failed ({result.stop_reason})")
 
     if output_schema:
-        enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
-        enforcement = await enforcer.enforce(context, output_schema, emitter)
+        # A loop cut off by max_iter keeps text written before its last tool results.
+        parsed = None
+        if result.stop_reason != StopReason.MAX_ITER_REACHED.value:
+            parsed = _schema_valid_final_text(result.final_text, output_schema)
+
+        if parsed is not None:
+            enforcement = EnforcementResult(
+                parsed=parsed, token_usage=TokenUsage(), iterations=0, tool_invocations=0
+            )
+        else:
+            enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
+            enforcement = await enforcer.enforce(context, output_schema, emitter)
         result = result.model_copy(
             update={
                 "final_text": json.dumps(enforcement.parsed),

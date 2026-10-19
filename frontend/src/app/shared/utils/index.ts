@@ -13,6 +13,7 @@ export * from './get-relative-time.util';
 export * from './http-error.util';
 export * from './import-preview.util';
 export * from './json-parser.util';
+export * from './navigation.util';
 export * from './picked-secrets.util';
 export * from './recycle-bin-notice.util';
 export * from './retry-after.util';
