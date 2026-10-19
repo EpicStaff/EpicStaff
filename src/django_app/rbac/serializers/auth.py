@@ -62,6 +62,11 @@ class TokenIntrospectResponseSerializer(serializers.Serializer):
     active = serializers.BooleanField()
     user_id = serializers.IntegerField(required=False)
     email = serializers.EmailField(required=False)
+    display_name = serializers.CharField(
+        required=False,
+        help_text="The token user's display name, never empty: the stored name, or one "
+        "derived from the email when none is stored.",
+    )
     scopes = serializers.ListField(child=serializers.CharField(), required=False)
     org_ids = serializers.ListField(
         child=serializers.IntegerField(),

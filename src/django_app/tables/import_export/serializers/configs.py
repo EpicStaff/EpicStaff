@@ -16,6 +16,10 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
+from tables.serializers.utils.llm_config_data_validation import (
+    LLMConfigDataFieldsValidationMixin,
+)
+from tables.utils.litellm_model_info import validate_reasoning_effort
 from tables.validators.extra_headers_validator import validate_extra_headers
 from tables.validators.token_price_validator import validate_token_prices_set_together
 
@@ -44,7 +48,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
-class LLMConfigImportSerializer(BaseConfigImportSerializer):
+class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
     model_fk_field = "model"
@@ -66,6 +70,7 @@ class LLMConfigImportSerializer(BaseConfigImportSerializer):
         validate_token_prices_set_together(
             attrs.get("input_cost_per_token"), attrs.get("output_cost_per_token")
         )
+        validate_reasoning_effort(attrs.get("model"), attrs.get("reasoning_effort"))
         return attrs
 
 

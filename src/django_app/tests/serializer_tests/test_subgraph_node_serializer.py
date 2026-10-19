@@ -1,5 +1,4 @@
 import pytest
-from django.test import override_settings
 from rest_framework import status
 
 from tables.models import Graph
@@ -44,19 +43,16 @@ class TestSubGraphNodeSerializerSubgraphDetail:
         assert data["subgraph_detail"]["name"] == "subgraph-target-flow"
         assert data["subgraph_detail"]["description"] == "target description"
 
-    @override_settings(SOFT_DELETE=False)
-    def test_subgraph_detail_is_none_after_target_is_hard_deleted(
-        self, subgraph_node, target_graph
-    ):
+    def test_subgraph_detail_is_none_after_target_is_purged(self, subgraph_node, target_graph):
         target_graph.delete()
+        target_graph.purge()
 
         data = _serialize(subgraph_node.id)
 
         assert data["subgraph"] is None
         assert data["subgraph_detail"] is None
 
-    @override_settings(SOFT_DELETE=True)
-    def test_subgraph_detail_is_none_after_target_is_soft_deleted(
+    def test_subgraph_detail_is_none_while_target_is_in_the_recycle_bin(
         self, subgraph_node, target_graph
     ):
         target_graph.delete()

@@ -238,6 +238,7 @@ class TokenIntrospectView(APIView):
                 "active": True,
                 "user_id": user.pk,
                 "email": access.get("email"),
+                "display_name": user.effective_display_name,
                 "scopes": access.get("scopes", []),
                 "org_ids": org_ids,
                 "is_superadmin": user.is_superadmin,

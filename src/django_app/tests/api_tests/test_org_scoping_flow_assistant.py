@@ -5,14 +5,30 @@ read or patch another org's assistant, attach a cross-org LLMConfig, and start a
 conversation row against another org's graph. Now: org context + FLOWS verb gate +
 row scope (another org's graph is a 404, before any conversation lookup) + an
 org-scoped llm_config.
+
+The reply stream authenticates with an SSE ticket that names only the user, so it is
+gated by the org that owns the conversation's flow, before the stream (and its LLM
+call) starts.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
+from asgiref.sync import sync_to_async
+from django.db.models import Max
+from django.test import AsyncClient, Client
+from django.urls import reverse
 from rest_framework.test import APIClient
 
+from rbac.identity.tickets import sse_ticket_service
 from tables.models import Graph
-from tables.models.flow_assistant_models import FlowAssistantConversation
-from tables.models.llm_models import LLMConfig
+from tables.models.flow_assistant_models import (
+    FlowAssistant,
+    FlowAssistantConversation,
+    FlowAssistantMessage,
+)
+from tables.models.llm_models import LLMConfig, LLMModel, Provider
+from tables.services.llm_clients.base import DoneEvent, TokenEvent
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -109,3 +125,151 @@ def test_the_assistants_llm_config_must_be_the_orgs_own(admin_a, org_a, org_b, o
     assert resp.status_code == expected_status, resp.data
     if expected_status == 400:
         assert "llm_config" in str(resp.data)
+
+
+# ── GET /api/flow-assistants/<graph_id>/conversations/<id>/stream/ (SSE) ─────
+
+
+def _member(user, org, role):
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+@pytest.fixture
+def member_role(db):
+    return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+
+
+@pytest.fixture
+def two_org_user(db, django_user_model, org_a, org_b, member_role):
+    """Member of Org A; in Org B their custom role holds no FLOWS permission."""
+    user = django_user_model.objects.create_user(email="two-orgs-stream@example.com", password="StrongPass123!")
+    _member(user, org_a, member_role)
+    return _member(user, org_b, Role.objects.create(name="No flows", org=org_b, is_built_in=False))
+
+
+@pytest.fixture
+def other_member_a(db, django_user_model, org_a, member_role):
+    user = django_user_model.objects.create_user(email="other-member-a@example.com", password="StrongPass123!")
+    return _member(user, org_a, member_role)
+
+
+@pytest.fixture
+def superadmin_user(db, django_user_model):
+    user = django_user_model.objects.create_user(email="superadmin-stream@example.com", password="StrongPass123!")
+    user.is_superadmin = True
+    user.save()
+    return user
+
+
+def _pending_conversation(user, org) -> FlowAssistantConversation:
+    """A conversation of `user` in `org` whose last message waits for the assistant's reply."""
+    model = LLMModel.objects.create(name=f"stream-model-{org.id}", llm_provider=Provider.objects.create(name=f"p-{org.id}"))
+    assistant = FlowAssistant.objects.create(
+        graph=_graph(org), llm_config=LLMConfig.objects.create(custom_name=f"stream-cfg-{org.id}", model=model, org=org)
+    )
+    conversation = FlowAssistantConversation.objects.create(
+        flow_assistant=assistant, organization_user=OrganizationUser.objects.get(user=user, org=org)
+    )
+    FlowAssistantMessage.objects.create(conversation=conversation, message_index=0, role="user", content="what does this flow do?")
+    return conversation
+
+
+def _stream_url(conversation_id, graph_id):
+    return reverse("flow-assistant-stream", args=[graph_id, conversation_id])
+
+
+def _stream(user, conversation):
+    ticket, _ = sse_ticket_service.issue(user)
+    return Client().get(_stream_url(conversation.pk, conversation.flow_assistant.graph_id), {"ticket": ticket})
+
+
+def _missing_conversation(conversation):
+    missing_id = FlowAssistantConversation.objects.aggregate(max_id=Max("id"))["max_id"] + 1000
+    return FlowAssistantConversation(pk=missing_id, flow_assistant=conversation.flow_assistant)
+
+
+@pytest.fixture
+def llm_client():
+    """The LLM client the stream would bill; streams one short plain-text reply."""
+
+    async def reply(messages, tools):
+        yield TokenEvent(content="hi")
+        yield DoneEvent()
+
+    client = MagicMock()
+    client.stream_completion = reply
+    with patch("tables.services.flow_assistant.service.get_llm_client", return_value=client) as get_llm_client:
+        yield get_llm_client
+
+
+def test_stream_in_an_org_without_flows_read_is_refused_before_the_llm_is_called(two_org_user, org_b, llm_client):
+    response = _stream(two_org_user, _pending_conversation(two_org_user, org_b))
+
+    assert response.status_code == 403, response.content
+    assert not response.streaming
+    assert response.json()["status_code"] == 403
+    llm_client.assert_not_called()
+
+
+@pytest.mark.parametrize("caller", ["other_member_a", "superadmin_user"])
+def test_another_users_conversation_answers_like_a_missing_one(request, two_org_user, org_a, caller, llm_client):
+    conversation = _pending_conversation(two_org_user, org_a)
+    stranger = request.getfixturevalue(caller)
+
+    foreign = _stream(stranger, conversation)
+    missing = _stream(stranger, _missing_conversation(conversation))
+
+    assert foreign.status_code == 404, foreign.content
+    assert (foreign.status_code, foreign.content) == (missing.status_code, missing.content)
+    llm_client.assert_not_called()
+
+
+def _soft_delete(conversation, org_a):
+    conversation.deleted_at = conversation.started_at
+    conversation.save(update_fields=["deleted_at"])
+
+
+def _deactivate_the_org(conversation, org_a):
+    # The user stays a member, but of an org that no longer grants anything.
+    org_a.is_active = False
+    org_a.save(update_fields=["is_active"])
+
+
+def _move_to_another_flow(conversation, org_a):
+    # The URL names this flow while the conversation belongs to another one.
+    another_flow = Graph.objects.create(name="another flow", org=org_a)
+    conversation.flow_assistant = FlowAssistant.objects.create(graph=another_flow)
+
+
+@pytest.mark.parametrize(
+    "make_unstreamable",
+    [_soft_delete, _deactivate_the_org, _move_to_another_flow],
+    ids=["soft_deleted", "org_deactivated", "graph_id_of_another_flow"],
+)
+def test_conversation_the_user_may_no_longer_stream_answers_like_a_missing_one(
+    two_org_user, org_a, llm_client, make_unstreamable
+):
+    conversation = _pending_conversation(two_org_user, org_a)
+    missing = _stream(two_org_user, _missing_conversation(conversation))
+
+    make_unstreamable(conversation, org_a)
+    response = _stream(two_org_user, conversation)
+
+    assert response.status_code == 404, response.content
+    assert response.content == missing.content
+    llm_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_in_an_org_with_flows_read_streams_the_reply(two_org_user, org_a, llm_client):
+    conversation = await sync_to_async(_pending_conversation)(two_org_user, org_a)
+    ticket, _ = await sync_to_async(sse_ticket_service.issue)(two_org_user)
+
+    response = await AsyncClient().get(_stream_url(conversation.pk, conversation.flow_assistant.graph_id), {"ticket": ticket})
+    frames = [frame async for frame in response.streaming_content]
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "text/event-stream"
+    assert b"event: done\n" in frames

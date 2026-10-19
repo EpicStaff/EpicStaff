@@ -14,7 +14,6 @@ from typing import Any
 
 import egress_firewall
 import settings
-from isolation import REQUIRE_ISOLATION_ENV_VAR, isolation_required
 from jail import build_jail
 from landlock import abi_version
 from network_policy import NetworkPolicy, decide_network_policy
@@ -545,7 +544,7 @@ except Exception:
         isolation_abi = abi_version()
         argv = [str(python_executable), str(temp_code_path)]
         if isolation_abi < 1:
-            if isolation_required():
+            if settings.REQUIRE_ISOLATION:
                 logger.error(
                     "Sandbox isolation unavailable (kernel lacks Landlock); "
                     "refusing to execute {}.",
@@ -564,7 +563,7 @@ except Exception:
                 "Sandbox isolation unavailable (kernel lacks Landlock); "
                 "executing {} UNCONFINED because {}=false.",
                 context["execution_id"],
-                REQUIRE_ISOLATION_ENV_VAR,
+                settings.REQUIRE_ISOLATION_ENV_VAR,
             )
 
         signal_isolation_policy = decide_signal_isolation_policy(

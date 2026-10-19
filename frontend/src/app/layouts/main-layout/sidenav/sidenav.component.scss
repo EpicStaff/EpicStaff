@@ -1,3 +1,5 @@
+@use '../../../../styles/count-badge';
+
 // Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar; expanded, it stretches
 // but keeps the same left edge ($row-inset) and inner padding, so icons stay put when the sidebar expands.
 $row-size: 2.5rem;
@@ -6,8 +8,6 @@ $nav-icon-size: 1.4rem;
 $nav-icon-padding: ($row-size - $nav-icon-size) * 0.5;
 $avatar-size: 1.5rem; // app-org-avatar and app-user-avatar are 24px
 $avatar-padding: ($row-size - $avatar-size) * 0.5;
-// Must match chat-icon-size on <epic-chat> in sidenav.component.html.
-$chat-launcher-size: 2rem;
 
 :host {
     display: block;
@@ -199,6 +199,56 @@ $chat-launcher-size: 2rem;
             display: flex;
             justify-content: center;
 
+            // On the icon box's top-right corner, 2px inside the collapsed row; it stays on the icon when the row
+            // stretches.
+            .sidenav-badge {
+                @include count-badge.pill;
+                position: absolute;
+                top: calc(2px - #{$nav-icon-padding});
+                right: calc(2px - #{$nav-icon-padding});
+            }
+
+            // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
+            // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
+            // Anchored to the row's left edge, which does not move when the sidebar expands.
+            .sidenav-badge-link {
+                position: absolute;
+                top: -4px;
+                left: calc(#{$row-inset} + #{$row-size} + 6px);
+                transform: translateX(-100%);
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 24px;
+                height: 24px;
+                text-decoration: none;
+                border-radius: 12px;
+
+                .sidenav-badge {
+                    position: static;
+                }
+
+                &:focus-visible {
+                    outline: 1px solid var(--accent-color);
+                }
+            }
+
+            // Closes the bottom group with a divider like the workspace switcher's (.org-menu-wrapper
+            // above): it shrinks to the button, so the line is as wide as the button.
+            &.recycle-bin-block {
+                width: fit-content;
+                margin: 0 auto;
+                padding: 0 0 8px;
+                border-bottom: 1px solid var(--color-divider-subtle);
+            }
+
+            // The size of the nav icons above (app-svg-icon size="1.4rem"): Tabler's glyph has the same 24px box.
+            .recycle-bin-icon {
+                font-size: 1.4rem;
+                line-height: 1;
+            }
+
             .sidenav-nav-link {
                 display: flex;
                 align-items: center;
@@ -224,6 +274,7 @@ $chat-launcher-size: 2rem;
                 }
 
                 .sidenav-link-icon {
+                    position: relative;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -240,19 +291,6 @@ $chat-launcher-size: 2rem;
                 &.active .sidenav-link-icon,
                 &.active .sidenav-row-label {
                     color: var(--accent-color);
-                }
-
-                // The launcher is wider than the row icons: centre it in the 40px row with equal padding.
-                &.epic-chat-slot {
-                    overflow: visible;
-                    padding: 0 ($row-size - $chat-launcher-size) * 0.5;
-                }
-
-                // Fills the rest of the row, so the whole row past the launcher opens and closes the chat.
-                .epic-chat-label {
-                    flex: 1 1 auto;
-                    align-self: stretch;
-                    line-height: $row-size;
                 }
             }
         }
@@ -307,15 +345,6 @@ $chat-launcher-size: 2rem;
     &.opened {
         background-color: var(--graphite-750);
     }
-}
-
-// The widget's shadow root forces its host to display: block and width: 100%, and stretches the launcher to that
-// width, so the host is sized here to exactly the launcher: the row layout then never depends on widget internals.
-.epic-chat-host {
-    display: block;
-    flex: 0 0 $chat-launcher-size;
-    width: $chat-launcher-size;
-    min-width: $chat-launcher-size;
 }
 
 // Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.

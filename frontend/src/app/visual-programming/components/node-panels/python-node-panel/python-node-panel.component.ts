@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import {
@@ -9,7 +9,7 @@ import {
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { Subject } from 'rxjs';
+import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -39,6 +39,15 @@ import {
     STORED_GRAPH_OUTDATED_MESSAGE,
     StoredCodeState,
 } from '../shared/python-code-test-run/stored-python-code';
+import {
+    areValidParameterNames,
+    diffNames,
+    haveSameNames,
+    namedKeys,
+    parseMainParameters,
+    planInputListChanges,
+    rewriteMainParameters,
+} from './python-main-signature.util';
 import { PythonTerminalComponent } from './python-terminal/python-terminal.component';
 
 @Component({
@@ -60,6 +69,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
 })
 export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly graphId = input<number | null>(null);
+    private readonly inputMap = viewChild(InputMapComponent);
     public readonly isFormCollapsed = signal<boolean>(false);
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
@@ -99,6 +109,14 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
     private readonly pythonCodeChange$ = new Subject<string>();
+    /**
+     * The signature and Input List names last seen in step: each side applies to the other only how its own
+     * names moved away from these, so opening a node never syncs and an echo of a sync is a no-op.
+     */
+    private lastCodeParameterNames: string[] | null = null;
+    private lastInputListNames: string[] = [];
+    /** Set while a code edit rewrites the rows, so their change events do not rewrite the code back. */
+    private isApplyingCodeToInputList = false;
     private readonly formDirtyTick = signal(0);
     public readonly testInputDirty = computed(() => {
         this.formDirtyTick();
@@ -165,6 +183,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     constructor() {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
+            this.syncInputListFromCode();
             this.sidePanelService.triggerAutosave();
         });
         effect(() => {
@@ -300,6 +319,12 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             this.formDirtyTick.update((v) => v + 1);
         });
 
+        this.lastCodeParameterNames = parseMainParameters(this.pythonCode)?.names ?? null;
+        this.lastInputListNames = namedKeys(this.inputMapPairs.getRawValue());
+        merge(form.get('input_map')!.valueChanges, form.get('test_input')!.valueChanges)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.syncCodeFromInputList());
+
         return form;
     }
 
@@ -384,6 +409,49 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     private initializeInputMap(form: FormGroup): void {
         initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
+    }
+
+    /** The keys of the rows the user edits now: the test values in Test mode, the Input List otherwise. */
+    private activeInputListNames(): string[] {
+        return namedKeys(
+            (this.form.get(this.isOpenTestMode() ? 'test_input' : 'input_map') as FormArray).getRawValue()
+        );
+    }
+
+    private syncInputListFromCode(): void {
+        const inputMap = this.inputMap();
+        if (!this.form || !inputMap || this.isReadOnly()) return;
+        const parameters = parseMainParameters(this.pythonCode);
+        if (parameters === null || haveSameNames(parameters.names, this.lastCodeParameterNames)) return;
+        const changes = planInputListChanges(this.lastCodeParameterNames, parameters);
+        this.lastCodeParameterNames = parameters.names;
+
+        this.isApplyingCodeToInputList = true;
+        try {
+            inputMap.applyKeyChanges(changes);
+        } finally {
+            this.isApplyingCodeToInputList = false;
+        }
+        this.lastInputListNames = this.activeInputListNames();
+        this.formDirtyTick.update((v) => v + 1);
+    }
+
+    private syncCodeFromInputList(): void {
+        if (this.isApplyingCodeToInputList || this.isReadOnly()) return;
+        const names = this.activeInputListNames();
+        // A key still being typed (not a name yet, or another row's) waits, keeping the last names to diff from.
+        if (haveSameNames(names, this.lastInputListNames) || !areValidParameterNames(names)) return;
+        // A signature edit whose debounced sync has not run yet wins; that sync takes the rows as they are then.
+        const parameters = parseMainParameters(this.pythonCode);
+        if (parameters !== null && !haveSameNames(parameters.names, this.lastCodeParameterNames)) return;
+
+        const code = rewriteMainParameters(this.pythonCode, diffNames(this.lastInputListNames, names));
+        this.lastInputListNames = names;
+        if (code === null || code === this.pythonCode) return;
+        this.lastCodeParameterNames = parseMainParameters(code)?.names ?? null;
+        this.pythonCode = code;
+        this.formDirtyTick.update((v) => v + 1);
+        this.pythonCodeChange$.next(code);
     }
 
     onRunTest(variables: Record<string, string>): void {

@@ -126,17 +126,57 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         data_copy.pop("tags", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
-        filters, null_filters = create_filters(data_copy)
+        filters, null_filters = create_filters(self._known_fields_only(data_copy))
 
         return (
             self.config_model.objects.filter(
                 **filters,
                 **null_filters,
                 **fk_filters,
+                **self._defaults_for_missing_fields(data_copy),
             )
             .filter(self.get_org_scope_q(org_id))
             .first()
         )
+
+    def _known_fields_only(self, data: dict) -> dict:
+        # A file from a newer version can carry fields this version does not have;
+        # filtering on them would raise FieldError.
+        concrete_field_names = {
+            name
+            for field in self.config_model._meta.concrete_fields
+            for name in (field.name, field.attname)
+        }
+        return {name: value for name, value in data.items() if name in concrete_field_names}
+
+    def _defaults_for_missing_fields(self, data: dict) -> dict:
+        """Filter missing imported fields on the value create_entity would store for them.
+
+        A file from an older version lacks fields added since. Its config is created
+        with each such field's model default, so only a config holding those defaults
+        is equivalent. Without this an older file would reuse a config whose newer
+        settings (e.g. a reasoning effort) differ from what the file describes.
+        Fields the import serializer does not write (created_at, secrets) are not
+        part of the comparison.
+        """
+        writable_field_names = {
+            name for name, field in self.serializer_class().fields.items() if not field.read_only
+        }
+        filters = {}
+        for field in self.config_model._meta.concrete_fields:
+            if (
+                field.primary_key
+                or field.is_relation
+                or field.name in data
+                or field.name not in writable_field_names
+            ):
+                continue
+            default = field.get_default()
+            if default is None:
+                filters[f"{field.name}__isnull"] = True
+            else:
+                filters[field.name] = default
+        return filters
 
     def remap_foreign_keys(self, data: dict, id_mapper: IDMapper) -> dict:
         old_model_id = data.pop(self.model_fk_field, None)

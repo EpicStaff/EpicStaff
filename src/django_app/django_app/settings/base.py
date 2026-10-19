@@ -1,3 +1,4 @@
+from django.core.exceptions import ImproperlyConfigured
 from rbac.identity.first_setup_mode import FirstSetupMode
 from src.shared import humanize
 
@@ -79,6 +80,21 @@ TELEGRAM_TRIGGER_FIELDS_PATH = BASE_DIR / "tables/utils/data/telegram_fields.jso
 
 GRAPH_WS_TICKET_TTL = 30
 
+
+# Hosts a system-key caller may name in run-session `callback_url`. Anything else is
+# refused, which keeps the sender from being pointed at internal services.
+def parse_callback_hosts(values):
+    # `env.list` returns None for the project's `none` sentinel.
+    return [host.strip().lower() for host in (values or []) if host.strip()]
+
+
+SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
+    env.list("DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS")
+)
+# Shows the `chats` resource in the permission catalog; the chat service itself is a
+# separate container behind the same flag.
+CHAT_ENABLED = env.bool("CHAT_ENABLED")
+
 SSE_TICKET_TTL = 30
 
 PASSWORD_RESET_TOKEN_TTL = env.time("DJANGO_PASSWORD_RESET_TOKEN_TTL")
@@ -109,8 +125,11 @@ TUNNEL_URLS_HASH_KEY = "tunnel_urls"
 
 MALLOC_TRIM_INTERVAL = env.time("DJANGO_MALLOC_TRIM_INTERVAL")
 
-# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
-SOFT_DELETE = env.bool("DJANGO_SOFT_DELETE", False)
+# Days a deleted item stays in the recycle bin before the purge job removes it for good.
+RECYCLE_BIN_RETENTION_DAYS = env.int("DJANGO_RECYCLE_BIN_RETENTION_DAYS")
+if RECYCLE_BIN_RETENTION_DAYS < 1:
+    # 0 would make the nightly purge empty every recycle bin on its next run.
+    raise ImproperlyConfigured("DJANGO_RECYCLE_BIN_RETENTION_DAYS must be at least 1.")
 
 REFRESH_COOKIE_SECURE = env.bool("DJANGO_REFRESH_COOKIE_SECURE")
 

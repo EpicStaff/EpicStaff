@@ -1,0 +1,41 @@
+<button
+    #trigger
+    #origin="cdkOverlayOrigin"
+    cdkOverlayOrigin
+    type="button"
+    class="chat-action-menu__trigger"
+    [attr.aria-label]="label()"
+    [attr.aria-expanded]="isOpen()"
+    (click)="toggle()"
+>
+    <app-svg-icon
+        size="1rem"
+        [icon]="icon()"
+    />
+</button>
+<ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="origin"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="positions"
+    (overlayOutsideClick)="close()"
+    (overlayKeydown)="$event.key === 'Escape' && close()"
+    (detach)="close()"
+>
+    <div
+        class="chat-action-menu"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
+        @for (item of items(); track item.id) {
+            <button
+                type="button"
+                class="chat-action-menu__item"
+                [disabled]="item.disabled"
+                (click)="choose(item)"
+            >
+                {{ item.label }}
+            </button>
+        }
+    </div>
+</ng-template>

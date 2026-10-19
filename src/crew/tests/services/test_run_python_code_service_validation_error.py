@@ -6,26 +6,14 @@ to the model, which carries `secrets` plaintext and
 may contain it.
 """
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from loguru import logger
 
-from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 SECRET_VALUE = "sk-live-SUPERSECRET-0123456789"
 STORAGE_SECRET_KEY = "SK-MINIO-SUPERSECRET-9876543210"
-
-
-@pytest.fixture(autouse=True)
-def _reset_singleton():
-    from utils.singleton_meta import SingletonMeta
-
-    SingletonMeta._instances.pop(RunPythonCodeService, None)
-    yield
-    SingletonMeta._instances.pop(RunPythonCodeService, None)
 
 
 @pytest.fixture
@@ -53,13 +41,10 @@ def make_invalid_python_code_data() -> PythonCodeData:
 
 
 @pytest.mark.asyncio
-async def test_invalid_storage_scope_returns_fixed_error_without_secrets(captured_logs):
-    redis = MagicMock()
-    redis.apublish = AsyncMock()
-    redis.asubscribe = AsyncMock()
-    service = RunPythonCodeService(redis_service=redis)
-
-    result = await service.run_code(
+async def test_invalid_storage_scope_returns_fixed_error_without_secrets(
+    run_python_code_service, sandbox, captured_logs
+):
+    result = await run_python_code_service.run_code(
         python_code_data=make_invalid_python_code_data(),
         inputs={},
         storage_credentials=StorageCredentials(
@@ -71,8 +56,7 @@ async def test_invalid_storage_scope_returns_fixed_error_without_secrets(capture
     assert result["stdout"] == ""
     assert result["stderr"] == "Invalid storage scope for code execution."
 
-    redis.apublish.assert_not_awaited()
-    redis.asubscribe.assert_not_awaited()
+    assert sandbox.tasks == []
 
     logged = "\n".join(captured_logs)
     for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY, "MY_SECRET", "input_value"):
@@ -81,13 +65,8 @@ async def test_invalid_storage_scope_returns_fixed_error_without_secrets(capture
 
 
 @pytest.mark.asyncio
-async def test_invalid_storage_scope_logs_execution_id(captured_logs):
-    redis = MagicMock()
-    redis.apublish = AsyncMock()
-    redis.asubscribe = AsyncMock()
-    service = RunPythonCodeService(redis_service=redis)
-
-    result = await service.run_code(
+async def test_invalid_storage_scope_logs_execution_id(run_python_code_service, captured_logs):
+    result = await run_python_code_service.run_code(
         python_code_data=make_invalid_python_code_data(),
         inputs={},
         storage_credentials=StorageCredentials(

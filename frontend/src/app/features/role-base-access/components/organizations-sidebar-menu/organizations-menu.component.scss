@@ -2,9 +2,7 @@
     position: absolute;
     top: 0;
     left: calc(100% + 8px);
-    // Above the self-hosted "Virtual Assistant" chat widget bundle (public/epicchat-widget),
-    // whose panel/click-outside overlay use z-index 1002, so its popup would otherwise cover this menu.
-    z-index: 2000;
+    z-index: 1000;
 }
 
 .org-menu-panel {

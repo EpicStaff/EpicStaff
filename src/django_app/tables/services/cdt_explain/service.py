@@ -11,6 +11,7 @@ from tables.constants.cdt_explanation_limits import (
     MAX_GENERATED_BY_LENGTH,
 )
 from tables.exceptions import (
+    CdtExplainLLMConfigInvalidError,
     CdtExplainLLMConfigMissingKeyError,
     CdtExplainLLMConfigNotFoundError,
     CdtExplainUpstreamError,
@@ -21,6 +22,7 @@ from tables.models.llm_models import LLMConfig
 from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
+    InvalidLLMConfigError,
     TokenEvent,
     UnsupportedLLMProviderError,
 )
@@ -68,6 +70,8 @@ class CdtExplainService:
             )
         except UnsupportedLLMProviderError as exc:
             raise CdtExplainLLMConfigNotFoundError(llm_config_id) from exc
+        except InvalidLLMConfigError as exc:
+            raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))
         texts, failed_batches = async_to_sync(self._run_batches)(client, table, batches)

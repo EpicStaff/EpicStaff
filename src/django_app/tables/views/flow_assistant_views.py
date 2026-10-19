@@ -19,7 +19,7 @@ from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -39,6 +39,7 @@ from tables.services.flow_assistant import (
     FlowAssistantService,
     build_node_index,
 )
+from tables.services.flow_assistant.conversation_access import get_streamable_conversation
 from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.organization_resolution import resolve_organization_user
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
@@ -280,6 +281,21 @@ class FlowAssistantStreamView(SSEMixin):
     Authentication is via a one-shot SSE ticket (consumed on first use).
     """
 
+    async def authorize(self, request, *args, **kwargs):
+        """Refuse unless the ticket user owns the conversation and holds FLOWS READ in its org.
+
+        Runs before the stream opens, so a refused caller never starts an LLM reply.
+        Keeps the conversation in ``self.conversation`` for `get_live_updates()`.
+        Returns a JSON error response on denial, else None.
+        """
+        try:
+            self.conversation = await sync_to_async(get_streamable_conversation)(
+                self.user, self.kwargs["graph_id"], self.kwargs["conversation_id"]
+            )
+        except APIException as exc:
+            return self.refuse(exc)
+        return None
+
     async def get_initial_data(self):
         # No initial data — the stream starts with the LLM reply
         return
@@ -291,41 +307,7 @@ class FlowAssistantStreamView(SSEMixin):
         The pubsub parameter is ignored (we use an in-process async iterator).
         """
         graph_id = self.kwargs["graph_id"]
-        conversation_id = self.kwargs["conversation_id"]
-        user = self.user  # set by SSEMixin.get() after ticket validation
-
-        # Load conversation — scope check uses organization_user
-        try:
-            conversation = await sync_to_async(
-                lambda: FlowAssistantConversation.objects.select_related(
-                    "flow_assistant__graph",
-                    "flow_assistant__llm_config__model__llm_provider",
-                    "organization_user__user",
-                ).get(
-                    pk=conversation_id,
-                    flow_assistant__graph_id=graph_id,
-                )
-            )()
-        except FlowAssistantConversation.DoesNotExist:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
-
-        # The conversation must belong to the ticket-holder user.
-        # We compare by user_id (not org membership pk) since the ticket is
-        # issued per-user and the SSE flow is stateless w.r.t. org context.
-        if conversation.organization_user.user_id != user.pk:
-            yield {"event": "error", "data": {"type": "error", "detail": "Forbidden."}}
-            return
-
-        if conversation.deleted_at is not None:
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Conversation not found."},
-            }
-            return
+        conversation = self.conversation
 
         # Find the last user message to use as the prompt for this turn.
         last_user_row = await sync_to_async(
@@ -334,6 +316,7 @@ class FlowAssistantStreamView(SSEMixin):
         last_user_message = last_user_row.content if last_user_row else ""
 
         if not last_user_message:
+            await self.release_database_connection_before_error()
             yield {
                 "event": "error",
                 "data": {"type": "error", "detail": "No pending user message found."},
@@ -361,33 +344,16 @@ class FlowAssistantStreamView(SSEMixin):
                 if terminate:
                     return
 
-        except LLMConfigMissingError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigMissingError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {
-                    "type": "error",
-                    "detail": str(exc),
-                },
-            }
-        except LLMConfigInvalidError as exc:
-            logger.warning("FlowAssistant stream error (LLMConfigInvalidError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
-        except SecretResolutionError as exc:
-            logger.warning("FlowAssistant stream error (SecretResolutionError): {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": str(exc)},
-            }
+        except (LLMConfigMissingError, LLMConfigInvalidError, SecretResolutionError) as exc:
+            logger.warning("FlowAssistant stream error ({}): {}", type(exc).__name__, exc)
+            error_detail = str(exc)
         except Exception as exc:
             logger.exception("Unexpected error in FlowAssistantStreamView: {}", exc)
-            yield {
-                "event": "error",
-                "data": {"type": "error", "detail": "Unexpected error."},
-            }
+            error_detail = "Unexpected error."
+        else:
+            return
+        await self.release_database_connection_before_error()
+        yield {"event": "error", "data": {"type": "error", "detail": error_detail}}
 
 
 # ── Audit endpoint ────────────────────────────────────────────────────────────

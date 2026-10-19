@@ -1,7 +1,7 @@
 <div
     class="dialog"
     (appEnterSubmit)="onSubmit()"
-    [appEnterSubmitDisabled]="isSubmitting()"
+    [appEnterSubmitDisabled]="isSubmitting() || isLlmModelResolving()"
 >
     <div class="header">
         <h2 class="title">Add Configuration</h2>
@@ -60,6 +60,10 @@
                     />
                     <app-validation-errors [control]="llmForm.get('model')!" />
                 </div>
+                <app-llm-reasoning-effort-field
+                    [control]="reasoningEffortControl"
+                    [modelId]="selectedLlmModelId()"
+                />
                 <div>
                     <app-select
                         formControlName="api_key_secret_id"
@@ -510,7 +514,7 @@
         <app-button
             type="primary"
             (click)="onSubmit()"
-            [disabled]="isSubmitting() || hasIncompletePricePair() || hasInvalidHeaders()"
+            [disabled]="isSubmitting() || isLlmModelResolving() || hasIncompletePricePair() || hasInvalidHeaders()"
         >
             @if (isSubmitting()) {
                 Creating…

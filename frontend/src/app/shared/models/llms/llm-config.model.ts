@@ -1,6 +1,20 @@
 import { AuthorshipFields } from '../authorship.model';
 import { Tag } from '../tag.model';
 
+/** How hard a reasoning model thinks before answering. `null` on a config means the provider's own default. */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Labels in canonical order, lowest effort first; the select lists them in this order. */
+export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+    none: 'None',
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra high',
+    max: 'Max',
+};
+
 export interface GetLlmConfigRequest extends AuthorshipFields {
     id: number;
     custom_name: string;
@@ -15,6 +29,7 @@ export interface GetLlmConfigRequest extends AuthorshipFields {
     logit_bias: Record<string, number> | null;
     seed: number | null;
     timeout: number | null;
+    reasoning_effort: ReasoningEffort | null;
     is_visible: boolean;
     extra_headers?: Record<string, string>;
     /** USD per token; null means the provider's published pricing. Set together with `output_cost_per_token`. */
@@ -39,6 +54,7 @@ export interface CreateLLMConfigRequest {
     logit_bias?: Record<string, number> | null;
     seed?: number | null;
     timeout?: number | null;
+    reasoning_effort?: ReasoningEffort | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
     input_cost_per_token?: number | null;
@@ -60,6 +76,7 @@ export interface UpdateLLMConfigRequest {
     logit_bias?: Record<string, number> | null;
     seed?: number | null;
     timeout?: number | null;
+    reasoning_effort?: ReasoningEffort | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
     input_cost_per_token?: number | null;

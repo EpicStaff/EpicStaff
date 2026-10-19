@@ -13,6 +13,8 @@ export class ListComponent<T> {
     width = input<string | null>(null);
     emptyTitle = input<string | null>(null);
     emptyDescription = input<string | null>(null);
+    /** Zebra rows; turn off when rows paint their own state backgrounds. */
+    striped = input<boolean>(true);
     trackBy = input<(index: number, item: T) => unknown>((index) => index);
 
     @ContentChild(TemplateRef)

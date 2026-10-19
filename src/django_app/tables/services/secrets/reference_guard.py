@@ -28,9 +28,7 @@ class SecretReferenceGuard:
             if source not in attrs:
                 continue
             incoming = self._normalize(value=attrs[source])
-            current = self._normalize(
-                value=self._current_value(serializer=serializer, source=source)
-            )
+            current = self.current_ids(serializer=serializer, source=source)
             if incoming == current:
                 continue
             self._assert_may_use(serializer=serializer, field_name=field_name)
@@ -68,6 +66,15 @@ class SecretReferenceGuard:
         if not effective.can(ResourceType.SECRETS.value, Permission.USE):
             raise serializers.ValidationError({field_name: _DENIED})
 
+    def current_ids(self, *, serializer, source) -> frozenset:
+        """The pks the persisted row links to through `source`, binned rows included.
+
+        A row in the recycle bin keeps the links to it until it's purged, so "what this
+        row links to now" must count it: the guard compares against it, and
+        KeptLinkPrimaryKeyRelatedField accepts it unchanged.
+        """
+        return self._normalize(value=self._current_value(serializer=serializer, source=source))
+
     @staticmethod
     def _current_value(*, serializer, source):
         """The persisted value, via the serializer's hook, its declared parent attribute, or its own instance, in that order."""
@@ -87,11 +94,13 @@ class SecretReferenceGuard:
 
     @staticmethod
     def _normalize(*, value) -> frozenset:
-        """Collapse None, a single Secret, and a related manager to one comparable set."""
+        """Collapse None, a single row (a Secret or a WebhookTrigger), and a related manager to one comparable set."""
         if value is None:
             return frozenset()
         if hasattr(value, "all"):
-            return frozenset(secret.pk for secret in value.all())
+            # A related manager reads the live manager; a link to a binned row still counts.
+            rows = value(manager="all_objects") if callable(value) else value
+            return frozenset(row.pk for row in rows.all())
         if isinstance(value, (list, tuple, set, frozenset)):
             return frozenset(getattr(item, "pk", item) for item in value)
         return frozenset({getattr(value, "pk", value)})

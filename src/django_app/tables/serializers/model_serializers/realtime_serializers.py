@@ -8,6 +8,7 @@ from rbac.authorship import (
 )
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -29,6 +30,10 @@ from tables.models.webhook_models import (
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 from tables.services.secrets import secret_resolver
 
 
@@ -65,7 +70,7 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RealtimeAgentDefinition
-        fields = "__all__"
+        exclude = SOFT_DELETE_FIELD_NAMES
 
     def validate_language(self, value):
         return value or None
@@ -128,14 +133,14 @@ class OpenAIRealtimeConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
     )
-    transcription_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    transcription_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="transcription_api_key_secret",
         required=False,
         allow_null=True,
@@ -167,8 +172,8 @@ class ElevenLabsRealtimeConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -197,8 +202,8 @@ class GeminiRealtimeConfigSerializer(
 ):
     secret_reference_fields = ("api_key_secret_id",)
 
-    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="api_key_secret",
         required=False,
         allow_null=True,
@@ -231,11 +236,11 @@ class TwilioAuthTokenSecretSerializer(serializers.Serializer):
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
     secret_reference_fields = ("auth_token_secret_id",)
 
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
-    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    auth_token_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="auth_token_secret",
         required=True,
         allow_null=False,
@@ -299,7 +304,10 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
 
 class RealtimeChannelSerializer(
-    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+    ExcludeSoftDeleteFieldsMixin,
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
+    serializers.ModelSerializer,
 ):
     twilio = _TwilioChannelReadSerializer(read_only=True)
     # Legacy pointer at the removed staff-agent API surface (`RealtimeAgent`).

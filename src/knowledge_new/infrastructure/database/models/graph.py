@@ -58,6 +58,7 @@ class LLMConfig(BaseModel):
     timeout = Column(Float, nullable=True)
     input_cost_per_token = Column(Float, nullable=True)
     output_cost_per_token = Column(Float, nullable=True)
+    reasoning_effort = Column(Text, nullable=True)
     is_visible = Column(Boolean, default=True)
 
     model_id = Column(Integer, ForeignKey("tables_llmmodel.id"), nullable=True)

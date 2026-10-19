@@ -22,8 +22,9 @@ class Command:
 class RunIndex(Command):
     rag_id: int
     document_ids: frozenset[int]
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    # Provider keys stay out of repr, so logging a command never writes them in cleartext.
+    embedding_api_key: str = field(repr=False)
+    llm_api_key: str | None = field(default=None, repr=False)
     # Resolved header values can carry credentials; repr=False keeps them out of logs.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
@@ -34,8 +35,9 @@ class RunSearch(Command):
     rag_id: int
     query: str
     search_config: SearchConfig
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    # Provider keys stay out of repr, so logging a command never writes them in cleartext.
+    embedding_api_key: str = field(repr=False)
+    llm_api_key: str | None = field(default=None, repr=False)
     # Resolved header values can carry credentials; repr=False keeps them out of logs.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)

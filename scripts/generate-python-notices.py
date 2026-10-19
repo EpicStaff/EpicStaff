@@ -32,6 +32,13 @@ Usage (from repository root):
     python scripts/generate-python-notices.py
     python scripts/generate-python-notices.py --check   # CI: fail if stale
 
+Run it on Linux, the platform CI and the shipped images use. The scan reads
+what is installed in each venv, so a Windows run drops Linux-only packages,
+adds Windows-only ones and can miss licence texts; --check compares only the
+lockfile hashes and does not catch it. On Windows, use WSL or a Linux
+container against a separate copy of the repository: this script syncs every
+src/*/.venv and would replace the Windows venvs of the working tree.
+
 Requires: Python 3.12+ with uv installed (`uv` must be on PATH).
 Only stdlib is imported by this script itself.
 """

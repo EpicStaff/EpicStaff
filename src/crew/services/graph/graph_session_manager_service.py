@@ -259,8 +259,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 logger.debug("Mode: {}. Chunk: {}", stream_mode, chunk)
                 stop_event.check_stop()
 
-            await asyncio.sleep(0.01)
-
             end_node_result = session_graph_builder.end_node_result
 
             graph_end_data = GraphMessage(
@@ -276,7 +274,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aadd_graph_message(
                 graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
             )
-            await asyncio.sleep(0.05)
 
             org_id = get_session_org(session_id)
             if org_id is not None:

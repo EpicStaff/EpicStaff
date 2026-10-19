@@ -1,0 +1,20 @@
+// The small yellow count pill: the sidenav's Chat badge, and the chat desk avatars and rail. Positioning stays with
+// the host. Dark text in both themes: the fill does not change with the theme.
+
+@mixin pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border-radius: 8px;
+    background-color: var(--color-status-warning);
+    color: var(--color-text-on-bright);
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+    white-space: nowrap;
+}

@@ -50,6 +50,7 @@ const LLM_CONFIG: GetLlmConfigRequest = {
     logit_bias: null,
     seed: null,
     timeout: null,
+    reasoning_effort: null,
     is_visible: true,
     input_cost_per_token: null,
     output_cost_per_token: null,

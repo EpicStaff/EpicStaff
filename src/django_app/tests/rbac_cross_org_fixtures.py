@@ -101,3 +101,11 @@ def custom_role_user(db, django_user_model):
         return user
 
     return _make
+
+
+@pytest.fixture
+def superadmin_in_acme(client_as, superadmin, acme):
+    """A superadmin client with Acme as the active org (superadmins need the header too)."""
+    client = client_as(superadmin)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client

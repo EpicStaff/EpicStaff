@@ -54,7 +54,7 @@ async def run_prompt(llm: LLMData, output_schema) -> dict:
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
-        redis_service=MagicMock(),
+        redis_service=MagicMock(aadd_graph_message=AsyncMock()),
     ).build()
     state = {
         "state_history": [],
