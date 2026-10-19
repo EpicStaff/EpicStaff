@@ -1,8 +1,9 @@
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from conftest import load_tool_main
+from conftest import TOOLS_ROOT, load_tool_main
 
 # natural_language_to_sql_tool/main.py imports sqlalchemy at module level. Per
 # tool_data.yaml's requirements.txt, sqlalchemy (and langchain/litellm) are
@@ -14,13 +15,41 @@ pytest.importorskip(
     reason="installed by the sandbox into this tool's own venv, not a service venv",
 )
 
-POSTGRES_URI = "postgresql+psycopg2://user:pass@localhost/db"
+CONFIGURED_URI = "postgresql+psycopg2://config:pass@localhost/configured"
 
 
-def _tool(**variables):
+def _load(**config):
+    """Load the tool with config fields as module-level globals.
+
+    `config` becomes the agent flow's injected config-field globals.
+    """
     module = load_tool_main("natural_language_to_sql_tool")
-    module.state = {"variables": {"DB_URI": POSTGRES_URI, "READ_ONLY": False, **variables}}
-    return module, module.NaturalLanguageToSQLTool()
+    for name, value in config.items():
+        setattr(module, name, value)
+    return module
+
+
+def _build_agent(module, tool):
+    """Build the SQL agent against a stubbed postgres engine; returns the
+    kwargs the LLM client and the engine factory were constructed with.
+
+    Callers must load the tool with `read_only=False` -- the stub engine
+    can't support SQLAlchemy's real `event.listens_for` machinery that
+    `_create_engine` registers in read-only mode. Use `_engine_on` instead
+    for tests about read-only enforcement itself.
+    """
+    engine = MagicMock()
+    engine.dialect.name = "postgresql"
+
+    with (
+        patch.object(module, "create_engine", return_value=engine) as create_engine,
+        patch.object(module, "ChatLiteLLM") as chat_litellm,
+        patch.object(module, "SQLDatabase"),
+        patch.object(module, "create_sql_agent"),
+    ):
+        tool._create_agent()
+
+    return chat_litellm.call_args.kwargs, create_engine.call_args.args
 
 
 def _engine_on(module, tool, dialect: str):
@@ -43,67 +72,148 @@ def _engine_on(module, tool, dialect: str):
     connection = MagicMock()
     for listener in connect_listeners:
         listener(connection, None)
-    return [call.args[0] for call in connection.cursor.return_value.execute.call_args_list], connection
+    return [
+        call.args[0] for call in connection.cursor.return_value.execute.call_args_list
+    ], connection
 
 
-@pytest.mark.parametrize(
-    ("dialect", "statement"),
-    [
-        ("postgresql", "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"),
-        ("mysql", "SET SESSION TRANSACTION READ ONLY"),
-    ],
-)
-def test_read_only_mode_makes_every_connection_read_only(dialect, statement):
-    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=True)
+def test_config_fields_supply_model_and_api_key():
+    module = _load(
+        db_uri=CONFIGURED_URI,
+        api_key="sk-config",
+        model="gemini/gemini-1.5-pro",
+        read_only=False,
+    )
+    tool = module.NaturalLanguageToSQLTool()
+
+    llm_kwargs, engine_args = _build_agent(module, tool)
+
+    assert llm_kwargs == {"model": "gemini/gemini-1.5-pro", "temperature": 0, "api_key": "sk-config"}
+    assert engine_args == (CONFIGURED_URI,)
+
+
+@pytest.mark.parametrize("model", ["", None])
+def test_blank_config_model_falls_back_to_default(model):
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", model=model, read_only=False)
+    tool = module.NaturalLanguageToSQLTool()
+
+    llm_kwargs, _ = _build_agent(module, tool)
+
+    assert llm_kwargs["model"] == module.DEFAULT_MODEL
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql"])
+def test_read_only_mode_makes_every_connection_read_only(dialect):
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", read_only=True)
+    tool = module.NaturalLanguageToSQLTool()
 
     statements, connection = _engine_on(module, tool, dialect)
 
-    assert statements == [statement]
+    assert statements == [module.READ_ONLY_SESSION_STATEMENTS[dialect]]
     connection.commit.assert_called_once()
 
 
-def test_read_only_mode_refuses_a_dialect_it_cannot_lock_down():
-    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=True)
+def test_read_only_defaults_to_true_when_not_configured():
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config")
+    tool = module.NaturalLanguageToSQLTool()
 
-    with pytest.raises(RuntimeError, match="sqlite"):
-        _engine_on(module, tool, "sqlite")
+    statements, _ = _engine_on(module, tool, "postgresql")
+
+    assert statements == [module.READ_ONLY_SESSION_STATEMENTS["postgresql"]]
+
+
+def test_read_only_none_from_config_defaults_to_true():
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", read_only=None)
+    tool = module.NaturalLanguageToSQLTool()
+
+    statements, _ = _engine_on(module, tool, "postgresql")
+
+    assert statements == [module.READ_ONLY_SESSION_STATEMENTS["postgresql"]]
 
 
 @pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
 def test_read_write_mode_leaves_connections_alone(dialect):
-    module, tool = _tool(OPENAI_API_KEY="sk-test", READ_ONLY=False)
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", read_only=False)
+    tool = module.NaturalLanguageToSQLTool()
 
     statements, _ = _engine_on(module, tool, dialect)
 
     assert statements == []
 
 
-@pytest.mark.parametrize(
-    ("variables", "expected_model", "expected_key"),
-    [
-        ({"OPENAI_API_KEY": "sk-legacy"}, "gpt-4o-mini", "sk-legacy"),
-        ({"API_KEY": "sk-new", "OPENAI_API_KEY": "sk-legacy"}, "gpt-4o-mini", "sk-new"),
-        ({"OPENAI_API_KEY": "sk-test", "MODEL": "anthropic/claude-3-5-sonnet-20241022"},
-         "anthropic/claude-3-5-sonnet-20241022", "sk-test"),
-    ],
-    ids=["legacy-key-default-model", "api-key-wins", "custom-model"],
-)
-def test_the_agent_llm_gets_the_configured_model_and_key(variables, expected_model, expected_key):
-    module, tool = _tool(**variables)
-    engine = MagicMock()
-    engine.dialect.name = "postgresql"
+def test_read_only_mode_refuses_a_dialect_it_cannot_lock_down():
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", read_only=True)
+    tool = module.NaturalLanguageToSQLTool()
+
+    with pytest.raises(RuntimeError, match="sqlite"):
+        _engine_on(module, tool, "sqlite")
+
+
+def test_missing_db_uri_is_returned_as_error_in_main():
+    module = _load(api_key="sk-config")
+
+    result = module.main("how many users are there?")
+
+    assert "db_uri" in result
+    assert result.startswith("Error executing tool:")
+
+
+def test_missing_api_key_is_returned_as_error_in_main():
+    module = _load(db_uri=CONFIGURED_URI)
+
+    result = module.main("how many users are there?")
+
+    assert "api_key" in result
+    assert result.startswith("Error executing tool:")
+
+
+def test_unsupported_dialect_is_caught_and_returned_as_error():
+    module = _load(db_uri="sqlite:///test.db", api_key="sk-config")
+
+    result = module.main("select count(*) from users")
+
+    assert result.startswith("Error executing tool:")
+    assert "sqlite" in result
+
+
+def test_third_party_failure_is_reported_without_leaking_its_content():
+    module = _load(db_uri=CONFIGURED_URI, api_key="sk-config", read_only=False)
 
     with (
-        patch.object(module, "create_engine", return_value=engine),
-        patch.object(module, "ChatLiteLLM") as chat_litellm,
-        patch.object(module, "SQLDatabase"),
-        patch.object(module, "create_sql_agent"),
+        patch.object(
+            module,
+            "create_engine",
+            side_effect=ConnectionError(f"could not connect to {CONFIGURED_URI}"),
+        ),
+        patch.object(module, "ChatLiteLLM"),
     ):
-        tool._create_agent()
+        result = module.main("how many users are there?")
 
-    chat_litellm.assert_called_once_with(model=expected_model, temperature=0, api_key=expected_key)
+    assert result == "Error executing tool: ConnectionError"
+    assert CONFIGURED_URI not in result
 
 
-def test_missing_api_key_is_refused():
-    with pytest.raises(RuntimeError, match="API_KEY"):
-        _tool()
+def test_stray_config_kwargs_are_absorbed_and_globals_win():
+    """Regression test: python_code.global_kwargs folds user_input config
+    into func_kwargs, so main() may also receive config fields as kwargs.
+    The globals remain the source of truth; stray kwargs must be swallowed
+    by **kwargs without a TypeError."""
+    module = _load(db_uri="sqlite:///test.db", api_key="sk-config")
+
+    result = module.main("select count(*) from users", db_uri="unused-stray-kwarg")
+
+    assert result.startswith("Error executing tool:")
+
+
+def test_the_agent_can_neither_see_nor_set_the_connection_settings():
+    schema = json.loads(
+        (TOOLS_ROOT / "natural_language_to_sql_tool" / "args_schema.json").read_text()
+    )
+
+    for field in ("db_uri", "api_key", "model", "read_only"):
+        assert schema["properties"][field]["input_type"] == "user_input"
+
+    assert "db_uri" in schema["required"]
+    assert "api_key" in schema["required"]
+    assert "model" not in schema["required"]
+    assert "read_only" not in schema["required"]

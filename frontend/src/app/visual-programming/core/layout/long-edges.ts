@@ -1,4 +1,4 @@
-import { byId, LayoutEdge, LayoutGraph, LayoutNode } from './layout-graph';
+import { byId, edgesInComponent, LayoutEdge, LayoutGraph, LayoutNode } from './layout-graph';
 
 /**
  * One component with every forward edge between adjacent layers: an edge spanning
@@ -27,8 +27,7 @@ export function splitLongEdges(
         backEdges: [],
         dummyOrigins: new Map(),
     };
-    for (const edge of graph.edges) {
-        if (!members.has(edge.source) || !members.has(edge.target)) continue;
+    for (const edge of edgesInComponent(graph.edges, members)) {
         const span = layers.get(edge.target)! - layers.get(edge.source)!;
         if (backEdges.has(edge.id) || span < 1) {
             layered.backEdges.push(edge);

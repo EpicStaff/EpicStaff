@@ -1,14 +1,25 @@
 # PostgreSQL Search Tool
 
-from sqlalchemy import create_engine, text
+from epicstaff_common import require_setting, resolve_setting, safe_error_message
+from sqlalchemy import create_engine, event, text
 import sqlparse
+
+READ_ONLY_STATEMENT = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"
 
 
 class PostgreSQLSearchTool:
     def __init__(self):
-        self.db_uri = state["variables"]["DB_URI"]
-        self.read_only = state["variables"]["READ_ONLY"]
+        self.db_uri = require_setting(globals(), "db_uri")
+        self.read_only = resolve_setting(globals(), "read_only", True)
         self.engine = create_engine(self.db_uri)
+
+        if self.read_only:
+            @event.listens_for(self.engine, "connect")
+            def _enforce_read_only(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute(READ_ONLY_STATEMENT)
+                cursor.close()
+                dbapi_connection.commit()
 
     def _validate_query(self, query: str):
         query = query.strip()
@@ -57,9 +68,12 @@ class PostgreSQLSearchTool:
                 conn.commit()
                 return self._format_result(result, sql_query)
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": safe_error_message(e)}
 
 
-def main(sql_query):
-    executor = PostgreSQLSearchTool()
-    return executor.run_query(sql_query)
+def main(sql_query, **kwargs):
+    try:
+        executor = PostgreSQLSearchTool()
+        return executor.run_query(sql_query)
+    except Exception as error:
+        return {"error": safe_error_message(error)}

@@ -5,7 +5,29 @@
     "query_text": {
       "type": "string",
       "description": "Natural language question or instruction to be converted into an SQL query and executed."
+    },
+    "db_uri": {
+      "type": "string",
+      "description": "SQLAlchemy connection URI of the database to query, e.g. postgresql+psycopg2://user:pass@host/db. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API key of the LLM provider named by 'model'. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
+    },
+    "model": {
+      "type": "string",
+      "description": "LiteLLM model name used to generate the SQL, e.g. gpt-4o-mini, anthropic/claude-3-5-sonnet-20241022, gemini/gemini-1.5-pro. A bare name means OpenAI.",
+      "default": "gpt-4o-mini",
+      "input_type": "user_input"
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "When true (the default), the database connection itself rejects INSERT, UPDATE, DELETE and DROP. Only the postgresql and mysql dialects can be locked down this way; any other dialect fails instead of running unprotected. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "default": true,
+      "input_type": "user_input"
     }
   },
-  "required": ["query_text"]
+  "required": ["query_text", "db_uri", "api_key"]
 }
