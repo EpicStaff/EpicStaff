@@ -1,6 +1,7 @@
 from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
+from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
 from rbac.authorship import authorship_prefetches
 from rbac.models.enums import ResourceType
@@ -8,6 +9,8 @@ from rbac.scoping.mixins import OrgScopedViewSetMixin
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.services.recycle_bin.sources import RecycleBinSource
+from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 
 from agents.models import AgentDefinition
 from agents.serializers.agent_definition_serializers import (
@@ -16,9 +19,11 @@ from agents.serializers.agent_definition_serializers import (
 )
 
 
-class AgentDefinitionViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class AgentDefinitionViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    recycle_bin_resource_key = RecycleBinSource.AGENT
     queryset = AgentDefinition.objects.select_related(
         "org", "llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())

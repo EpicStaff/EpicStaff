@@ -1,8 +1,10 @@
 from django.conf import settings
 from django.db import models
 
+from tables.models.base_models import SoftDeleteFields, soft_delete_consistency_constraint
 
-class PythonCodeToolFavorite(models.Model):
+
+class PythonCodeToolFavorite(SoftDeleteFields, models.Model):
     """Per-user favorite marker for a `PythonCodeTool`.
 
     Deliberately NOT org-scoped (not `OrgScopedModel`) — favoriting is a
@@ -24,7 +26,10 @@ class PythonCodeToolFavorite(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["user", "tool"],
                 name="unique_python_tool_favorite",
@@ -32,7 +37,7 @@ class PythonCodeToolFavorite(models.Model):
         ]
 
 
-class McpToolFavorite(models.Model):
+class McpToolFavorite(SoftDeleteFields, models.Model):
     """Per-user favorite marker for an `McpTool`. See `PythonCodeToolFavorite`
     for the rationale on not being org-scoped."""
 
@@ -49,7 +54,10 @@ class McpToolFavorite(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["user", "tool"],
                 name="unique_mcp_tool_favorite",

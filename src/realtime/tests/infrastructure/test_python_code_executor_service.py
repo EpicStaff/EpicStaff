@@ -79,63 +79,24 @@ def published_task(fake_redis_service: FakeRedisMessagingService) -> CodeTaskDat
 
 
 @pytest.mark.asyncio
-async def test_run_code_injects_org_id_into_global_kwargs(executor, fake_redis_service):
-    python_code_data = build_python_code_data(org_id=42)
+@pytest.mark.parametrize(
+    ("org_id", "code_globals", "caller_globals", "expected_globals"),
+    [
+        (42, {}, None, {"org_id": 42}),
+        (None, {}, None, {}),
+        (7, {"graph_id": 3, "api_key": "key"}, {"session_id": 11}, {"graph_id": 3, "api_key": "key", "session_id": 11, "org_id": 7}),
+        # The resolved org always wins: tools send it as X-Organization-Id to Django.
+        (7, {"org_id": 999}, {"org_id": 998}, {"org_id": 7}),
+    ],
+    ids=["org", "no-org", "kept-globals", "org-cannot-be-spoofed"],
+)
+async def test_code_task_carries_the_org_into_the_sandbox(
+    executor, fake_redis_service, org_id, code_globals, caller_globals, expected_globals
+):
+    python_code_data = build_python_code_data(org_id=org_id, global_kwargs=code_globals)
 
-    result = await executor.run_code(python_code_data, inputs={})
+    result = await executor.run_code(python_code_data, inputs={"query": "hello"}, additional_global_kwargs=caller_globals)
 
     task = published_task(fake_redis_service)
-    assert task.global_kwargs["org_id"] == 42
-    assert task.org_id == 42
+    assert (task.global_kwargs, task.org_id, task.func_kwargs) == (expected_globals, org_id, {"query": "hello"})
     assert result["result_data"] == "ok"
-
-
-@pytest.mark.asyncio
-async def test_run_code_omits_org_id_global_when_org_id_is_none(
-    executor, fake_redis_service
-):
-    python_code_data = build_python_code_data(org_id=None)
-
-    await executor.run_code(python_code_data, inputs={})
-
-    task = published_task(fake_redis_service)
-    assert "org_id" not in task.global_kwargs
-    assert task.org_id is None
-
-
-@pytest.mark.asyncio
-async def test_run_code_keeps_existing_globals_alongside_org_id(
-    executor, fake_redis_service
-):
-    python_code_data = build_python_code_data(
-        org_id=7, global_kwargs={"graph_id": 3, "api_key": "key"}
-    )
-
-    await executor.run_code(
-        python_code_data,
-        inputs={"query": "hello"},
-        additional_global_kwargs={"session_id": 11},
-    )
-
-    task = published_task(fake_redis_service)
-    assert task.global_kwargs == {
-        "graph_id": 3,
-        "api_key": "key",
-        "session_id": 11,
-        "org_id": 7,
-    }
-    assert task.func_kwargs == {"query": "hello"}
-
-
-@pytest.mark.asyncio
-async def test_run_code_org_id_overrides_caller_supplied_org_id_global(
-    executor, fake_redis_service
-):
-    python_code_data = build_python_code_data(org_id=7, global_kwargs={"org_id": 999})
-
-    await executor.run_code(
-        python_code_data, inputs={}, additional_global_kwargs={"org_id": 998}
-    )
-
-    task = published_task(fake_redis_service)
-    assert task.global_kwargs["org_id"] == 7

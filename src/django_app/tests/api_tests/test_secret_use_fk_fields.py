@@ -71,26 +71,9 @@ def use_client(db, django_user_model, default_org):
 
 
 @pytest.fixture
-def secret_a(default_org):
-    return secret_service.create(
-        text="sk-fkuse-a", org=default_org, name="FKUSE_SECRET_A"
-    )
-
-
-@pytest.fixture
 def secret_b(default_org):
     return secret_service.create(
         text="sk-fkuse-b", org=default_org, name="FKUSE_SECRET_B"
-    )
-
-
-@pytest.fixture
-def llm_config_pointing_at_secret_a(gpt_4o_llm, default_org, secret_a) -> LLMConfig:
-    return LLMConfig.objects.create(
-        custom_name="fkuse-llm-config",
-        model=gpt_4o_llm,
-        api_key_secret=secret_a,
-        org=default_org,
     )
 
 
@@ -226,66 +209,11 @@ class TestFkFieldsAreGated:
 # Task 6b: OpenAIRealtimeConfigSerializer (two guarded fields), McpToolSerializer,
 # TwilioChannelSerializer, TelegramTriggerNodeSerializer, and the quickstart
 # serializer. `no_use_client`/`use_client` above only grant LLM_CONFIGS, so 6b
-# builds its own clients that additionally cover VOICE (Twilio/RealtimeChannel),
-# TOOLS (McpTool) and FLOWS (TelegramTriggerNode) -- each viewset's
-# `rbac_resource_type`, verified against tables/views/model_view_sets.py.
+# uses its own clients (`no_use_client_6b`/`use_client_6b` in conftest.py) that
+# additionally cover VOICE (Twilio/RealtimeChannel), TOOLS (McpTool) and FLOWS
+# (TelegramTriggerNode) -- each viewset's `rbac_resource_type`, verified against
+# tables/views/model_view_sets.py.
 # ---------------------------------------------------------------------------
-
-_FULL_CRUD = int(
-    Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
-)
-
-
-def _client_with_grants(
-    *, org: Organization, django_user_model, email: str, resource_permissions: dict
-):
-    """An APIClient for a user whose custom role holds the given per-resource permission bitmasks."""
-    role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
-    for resource_type, bitmask in resource_permissions.items():
-        RolePermission.objects.create(
-            role=role, resource_type=resource_type, permissions=bitmask
-        )
-    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    client = APIClient()
-    client.force_authenticate(user=user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
-    return client
-
-
-@pytest.fixture
-def no_use_client_6b(db, django_user_model, default_org):
-    """Holds READ (not USE) on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
-    return _client_with_grants(
-        org=default_org,
-        django_user_model=django_user_model,
-        email="fkuse6b_nouse@example.com",
-        resource_permissions={
-            ResourceType.SECRETS.value: int(Permission.READ),
-            ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
-            ResourceType.VOICE.value: _FULL_CRUD,
-            ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
-        },
-    )
-
-
-@pytest.fixture
-def use_client_6b(db, django_user_model, default_org):
-    """Holds READ + USE on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
-    return _client_with_grants(
-        org=default_org,
-        django_user_model=django_user_model,
-        email="fkuse6b_use@example.com",
-        resource_permissions={
-            ResourceType.SECRETS.value: int(Permission.READ | Permission.USE),
-            ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
-            ResourceType.VOICE.value: _FULL_CRUD,
-            ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
-        },
-    )
-
 
 @pytest.fixture
 def mcp_tool_pointing_at_secret_a(default_org, secret_a) -> McpTool:
@@ -531,23 +459,6 @@ def test_use_holder_can_remove_the_fk_secret(
     assert response.status_code == 200, response.json()
     instance.refresh_from_db()
     assert instance.api_key_secret_id is None
-
-
-@pytest.fixture
-def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTool:
-    python_code = PythonCode.objects.create(
-        code="def main(**kwargs):\n    return 1\n",
-        entrypoint="main",
-        libraries="",
-        global_kwargs={},
-    )
-    python_code.secrets.set([secret_a])
-    return PythonCodeTool.objects.create(
-        name="fkuse-python-code-tool",
-        description="fkuse python code tool",
-        python_code=python_code,
-        org=default_org,
-    )
 
 
 def _resend_python_code_payload(*, python_code: PythonCode, secret_ids: list[int]):

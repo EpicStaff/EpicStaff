@@ -49,19 +49,8 @@ def test_create_version_returns_201_with_serialized_fields(auth_client, graph):
     assert response.data["name"] == "v1"
     assert response.data["description"] == "first"
     assert response.data["created_at"] is not None
-
-
-@pytest.mark.django_db
-def test_create_version_persists_row_in_db(auth_client, graph):
-    url = reverse("graph-versions-list")
-    payload = {"graph_id": graph.id, "name": "persisted"}
-
-    response = auth_client.post(url, payload, format="json")
-
-    assert response.status_code == status.HTTP_201_CREATED, response.content
     version = GraphVersion.objects.get(id=response.data["id"])
-    assert version.name == "persisted"
-    assert version.graph_id == graph.id
+    assert (version.name, version.graph_id) == ("v1", graph.id)
 
 
 @pytest.mark.django_db
@@ -124,8 +113,7 @@ def test_patch_version_updates_name_and_description(auth_client, make_graph_vers
 
 
 @pytest.mark.django_db
-def test_delete_version_soft_deletes(auth_client, make_graph_version, settings):
-    settings.SOFT_DELETE = True
+def test_delete_version_moves_it_to_the_recycle_bin(auth_client, make_graph_version):
     version = make_graph_version(name="to-delete")
     version_id = version["id"]
 
@@ -145,8 +133,7 @@ def test_delete_version_soft_deletes(auth_client, make_graph_version, settings):
 
 
 @pytest.mark.django_db
-def test_all_endpoint_includes_soft_deleted(auth_client, make_graph_version, settings):
-    settings.SOFT_DELETE = True
+def test_all_endpoint_includes_binned_versions(auth_client, make_graph_version):
     version = make_graph_version(name="will-be-deleted")
     version_id = version["id"]
 
@@ -174,10 +161,11 @@ def test_restore_returns_200_with_response_dict_structure(
     version_id = version["id"]
 
     graph.refresh_from_db()
+    version_before = graph.save_version
     restore_url = reverse("graph-versions-restore", args=[version_id])
     response = auth_client.post(
         restore_url,
-        {"save_version": graph.save_version},
+        {"save_version": version_before},
         format="json",
     )
 
@@ -186,6 +174,8 @@ def test_restore_returns_200_with_response_dict_structure(
     assert response.data["graph_id"] == graph.id
     assert isinstance(response.data["warnings"], list)
     assert response.data["auto_backup_version_id"] is None
+    graph.refresh_from_db()
+    assert graph.save_version == version_before + 1
 
 
 @pytest.mark.django_db
@@ -217,19 +207,17 @@ def test_restore_with_backup_true_creates_backup_version(
 
 
 @pytest.mark.django_db
-def test_restore_nonexistent_version_returns_404(auth_client):
-    restore_url = reverse("graph-versions-restore", args=[99999])
-
-    response = auth_client.post(restore_url, {"save_version": 1}, format="json")
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-
-
-@pytest.mark.django_db
-def test_detail_nonexistent_version_returns_404(auth_client):
-    detail_url = reverse("graph-versions-detail", args=[99999])
-
-    response = auth_client.get(detail_url)
+@pytest.mark.parametrize(
+    ("method", "route", "body"),
+    [
+        ("get", "graph-versions-detail", None),
+        ("post", "graph-versions-restore", {"save_version": 1}),
+        ("post", "graph-versions-create-graph", None),
+    ],
+    ids=["detail", "restore", "create-graph"],
+)
+def test_missing_version_is_404(auth_client, method, route, body):
+    response = getattr(auth_client, method)(reverse(route, args=[99999]), body, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
 
@@ -244,33 +232,15 @@ def test_create_graph_returns_201_with_response_dict_structure(
     auth_client, graph, make_graph_version
 ):
     version = make_graph_version(name="snap-for-create")
-    version_id = version["id"]
 
-    url = reverse("graph-versions-create-graph", args=[version_id])
+    url = reverse("graph-versions-create-graph", args=[version["id"]])
     response = auth_client.post(url, format="json")
 
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert response.data["created"] is True
-    assert "graph_id" in response.data
     assert isinstance(response.data["warnings"], list)
-
-
-@pytest.mark.django_db
-def test_create_graph_creates_new_graph_with_version_name(
-    auth_client, graph, make_graph_version
-):
-    version_name = "unique-version-xyz"
-    version = make_graph_version(name=version_name)
-    version_id = version["id"]
-
-    url = reverse("graph-versions-create-graph", args=[version_id])
-    response = auth_client.post(url, format="json")
-
-    expected_name = f"{graph.name} from {version_name}"
-
-    assert response.status_code == status.HTTP_201_CREATED, response.content
     new_graph = Graph.objects.get(id=response.data["graph_id"])
-    assert new_graph.name == expected_name
+    assert new_graph.name == f"{graph.name} from snap-for-create"
 
 
 @pytest.mark.django_db
@@ -291,57 +261,9 @@ def test_create_graph_unique_name_collision_appends_suffix(
     assert graph.name in new_graph.name
 
 
-@pytest.mark.django_db
-def test_create_graph_nonexistent_version_returns_404(auth_client):
-    url = reverse("graph-versions-create-graph", args=[99999])
-
-    response = auth_client.post(url, format="json")
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-
-
-@pytest.mark.django_db
-def test_create_graph_response_contains_warnings_list(
-    auth_client, graph, make_graph_version
-):
-    version = make_graph_version(name="warnings-check")
-    version_id = version["id"]
-
-    url = reverse("graph-versions-create-graph", args=[version_id])
-    response = auth_client.post(url, format="json")
-
-    assert response.status_code == status.HTTP_201_CREATED, response.content
-    assert "warnings" in response.data
-    assert isinstance(response.data["warnings"], list)
-
-
 # ---------------------------------------------------------------------------
 # Group F: Optimistic locking — restore_version
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_restore_version_success_increments_save_version(
-    auth_client, graph, make_graph_version
-):
-    """Correct save_version → 200, restore happens, save_version bumped."""
-    version = make_graph_version(name="for-lock-restore")
-    version_id = version["id"]
-
-    graph.refresh_from_db()
-    version_before = graph.save_version
-
-    restore_url = reverse("graph-versions-restore", args=[version_id])
-    response = auth_client.post(
-        restore_url,
-        {"save_version": version_before},
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert response.data["restored"] is True
-    graph.refresh_from_db()
-    assert graph.save_version == version_before + 1
 
 
 @pytest.mark.django_db

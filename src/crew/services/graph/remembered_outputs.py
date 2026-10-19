@@ -39,17 +39,3 @@ class RememberedOutputsStore:
 
     async def clear(self, session_id: int) -> None:
         await self._redis_service.aioredis_client.delete(self._key(session_id))
-
-
-def format_remembered_outputs_preamble(outputs: list[tuple[str, str]]) -> str:
-    """Mirror of format_context_preamble in src/agent/app/runners/list_of_tasks.py
-    (LIST_OF_TASKS pattern) — keep the delimiter format in sync manually."""
-    if not outputs:
-        return ""
-    blocks = [f"Task '{name}':\n{output}" for name, output in outputs]
-    joined_blocks = "\n\n".join(blocks)
-    return (
-        "===== PREVIOUS TASKS OUTPUTS =====\n\n"
-        f"{joined_blocks}\n\n"
-        "===== END PREVIOUS TASKS OUTPUTS =====\n\n"
-    )

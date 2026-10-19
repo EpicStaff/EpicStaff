@@ -31,9 +31,10 @@ def test_delete_prefix_still_works_for_a_normal_org_prefix():
         mock_client = mock_boto3.client.return_value
         mock_paginator = mock_client.get_paginator.return_value
         mock_paginator.paginate.return_value = [{"Contents": [{"Key": "org_7/a.txt"}]}]
+        mock_client.delete_objects.return_value = {}  # DeleteObjects with no per-key errors
 
         backend.delete_prefix("")
 
         mock_client.delete_objects.assert_called_once_with(
-            Bucket="test-bucket", Delete={"Objects": [{"Key": "org_7/a.txt"}]}
+            Bucket="test-bucket", Delete={"Objects": [{"Key": "org_7/a.txt"}], "Quiet": True}
         )

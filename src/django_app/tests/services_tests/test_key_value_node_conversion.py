@@ -35,5 +35,7 @@ def test_graph_data_carries_key_value_nodes(graph, node):
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=node.id)
 
     # _build_graph_data has no public wrapper; it is the unit that assembles GraphData.
-    graph_data = SessionManagerService()._build_graph_data(graph, None, None)
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, None, start_node=start_node
+    )
     assert [item.node_name for item in graph_data.key_value_node_list] == [f"persist #{node.id}"]

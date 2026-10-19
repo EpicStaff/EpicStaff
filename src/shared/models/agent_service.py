@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .ai_providers import EmbedderData, LLMData
 from .knowledge import RagSearchConfig
+from .storage_scope import StorageCredentials
 from .tools import BaseToolData
 
 
@@ -191,6 +192,7 @@ class AgentRequest(BaseModel):
     collections: list[CollectionSpec] = Field(default_factory=list)
     s3_files: list[S3FileSpec] = Field(default_factory=list)
     payload: dict = Field(default_factory=dict)
+    storage_credentials: StorageCredentials | None = None
 
 
 class ToolResult(BaseModel):

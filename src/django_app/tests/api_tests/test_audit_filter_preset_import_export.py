@@ -4,8 +4,6 @@ import pytest
 from django.urls import reverse
 
 from tables.import_export.enums import EntityType
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.strategies.audit_filter_preset import AuditFilterPresetStrategy
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tests.helpers import data_to_json_file
 
@@ -196,7 +194,7 @@ class TestAuditFilterPresetImport:
             == 2
         )
 
-    def test_import_duplicate_name_skipped(self, auth_client, preset):
+    def test_import_duplicate_name_creates_numbered_copy(self, auth_client, preset):
         payload = _envelope(
             [{"id": 1, "name": preset.name, "filter_body": {"query": "new"}}]
         )
@@ -204,17 +202,19 @@ class TestAuditFilterPresetImport:
 
         assert response.status_code == 200
         entity_summary = self._entity_summary(response.json())
-        assert entity_summary["created"]["count"] == 0
-        assert entity_summary["reused"]["count"] == 1
-        assert entity_summary["reused"]["items"][0]["name"] == preset.name
-        assert AuditFilterPreset.objects.filter(name=preset.name).count() == 1
-        # existing row untouched - reused, not overwritten
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["reused"]["count"] == 0
+        assert entity_summary["created"]["items"][0]["name"] == "my preset (2)"
+        assert AuditFilterPreset.objects.get(name="my preset (2)").filter_body == {
+            "query": "new"
+        }
+        # existing row untouched - never reused or overwritten
         preset.refresh_from_db()
         assert preset.filter_body == {"query": "status = failed"}
 
     def test_import_missing_name_400s_not_500(self, auth_client):
         """A malformed item (missing the required "name") is rejected with
-        a 400 via AuditFilterPresetStrategy.find_existing's validation, not
+        a 400 via AuditFilterPresetStrategy.create_entity's validation, not
         an unhandled 500. Per the shared ImportService's single atomic
         transaction, this aborts the whole request rather than reporting
         that one item independently in `failed` - see the import_presets
@@ -279,6 +279,257 @@ class TestAuditFilterPresetImport:
         assert created.created_by_id == regular_user.id
         assert created.org_id == default_org.id
 
+    @pytest.fixture
+    def colleague(self, django_user_model):
+        return django_user_model.objects.create_user(
+            email="preset-colleague@example.com", password="StrongPass123!"
+        )
+
+    def test_import_same_search_as_own_private_preset_is_reused(
+        self, auth_client, preset
+    ):
+        payload = _envelope(
+            [{"id": 1, "name": "other name", "filter_body": {"query": " status = failed "}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["count"] == 1
+        assert entity_summary["reused"]["items"][0]["id"] == preset.id
+        assert AuditFilterPreset.objects.count() == 1
+        preset.refresh_from_db()
+        assert preset.name == "my preset"
+        assert preset.filter_body == {"query": "status = failed"}
+
+    @pytest.mark.parametrize("blank_query", ["", "  "])
+    def test_import_blank_query_matches_preset_without_query(
+        self, auth_client, regular_user, default_org, blank_query
+    ):
+        scope = {"children": True}
+        existing = AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=regular_user,
+            name="scope only",
+            filter_body={"match_scope": scope},
+        )
+        payload = _envelope(
+            [
+                {
+                    "id": 1,
+                    "name": "scope only",
+                    "filter_body": {"query": blank_query, "match_scope": scope},
+                }
+            ]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["items"][0]["id"] == existing.id
+
+    def test_import_same_search_as_own_shared_preset_is_reused(
+        self, auth_client, regular_user, default_org
+    ):
+        own_shared = AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=regular_user,
+            name="my shared",
+            filter_body={"query": "status = failed"},
+            is_shared=True,
+        )
+        payload = _envelope(
+            [{"id": 1, "name": "x", "filter_body": {"query": "status = failed"}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["items"][0]["id"] == own_shared.id
+
+    def test_import_prefers_own_preset_over_older_colleagues_shared_one(
+        self, auth_client, regular_user, default_org, colleague
+    ):
+        AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=colleague,
+            name="team",
+            filter_body={"query": "status = failed"},
+            is_shared=True,
+        )
+        own = AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=regular_user,
+            name="mine",
+            filter_body={"query": "status = failed"},
+        )
+        payload = _envelope(
+            [{"id": 1, "name": "x", "filter_body": {"query": "status = failed"}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["reused"]["items"][0]["id"] == own.id
+
+    def test_import_same_search_as_colleagues_shared_preset_is_reused(
+        self, auth_client, default_org, colleague
+    ):
+        shared = AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=colleague,
+            name="team preset",
+            filter_body={"query": "status = failed"},
+            is_shared=True,
+        )
+        payload = _envelope(
+            [{"id": 1, "name": "team preset", "filter_body": {"query": "status = failed"}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["items"][0]["id"] == shared.id
+        assert AuditFilterPreset.objects.count() == 1
+
+    def test_import_same_search_as_colleagues_private_preset_is_created(
+        self, auth_client, default_org, colleague, regular_user
+    ):
+        AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=colleague,
+            name="secret preset",
+            filter_body={"query": "status = failed"},
+        )
+        payload = _envelope(
+            [{"id": 1, "name": "secret preset", "filter_body": {"query": "status = failed"}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["reused"]["count"] == 0
+        assert AuditFilterPreset.objects.filter(created_by=regular_user).count() == 1
+
+    def test_import_same_search_from_another_org_is_created(
+        self, auth_client, django_user_model
+    ):
+        from rbac.models import Organization
+
+        other_org = Organization.objects.create(name="Other org for preset reuse")
+        AuditFilterPreset.objects.create(
+            org=other_org,
+            created_by=django_user_model.objects.create_user(
+                email="preset-other-org@example.com", password="StrongPass123!"
+            ),
+            name="foreign",
+            filter_body={"query": "status = failed"},
+            is_shared=True,
+        )
+        payload = _envelope(
+            [{"id": 1, "name": "foreign", "filter_body": {"query": "status = failed"}}]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        assert self._entity_summary(response.json())["created"]["count"] == 1
+        assert AuditFilterPreset.objects.count() == 2
+
+    def test_import_same_filters_with_other_ui_state_and_name_is_reused(
+        self, auth_client, regular_user, default_org
+    ):
+        filters = {"op": "and", "children": []}
+        existing = AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=regular_user,
+            name="builder preset",
+            filter_body={
+                "filters": filters,
+                "ui_state": {"version": 1, "state": {"mode": "builder"}},
+            },
+        )
+        payload = _envelope(
+            [
+                {
+                    "id": 1,
+                    "name": "renamed",
+                    "filter_body": {
+                        "filters": filters,
+                        "size": 50,
+                        "ui_state": {"version": 1, "state": {"mode": "other"}},
+                    },
+                }
+            ]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 0
+        assert entity_summary["reused"]["items"][0]["id"] == existing.id
+
+    def test_import_different_match_scope_is_created(
+        self, auth_client, regular_user, default_org
+    ):
+        AuditFilterPreset.objects.create(
+            org=default_org,
+            created_by=regular_user,
+            name="scoped",
+            filter_body={"query": "x", "match_scope": {"children": True}},
+        )
+        payload = _envelope(
+            [
+                {
+                    "id": 1,
+                    "name": "scoped",
+                    "filter_body": {"query": "x", "match_scope": {"children": False}},
+                }
+            ]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["reused"]["count"] == 0
+        assert entity_summary["created"]["items"][0]["name"] == "scoped (2)"
+
+    def test_import_two_identical_presets_in_one_file_creates_one(self, auth_client):
+        payload = _envelope(
+            [
+                {"id": 1, "name": "twin", "filter_body": {"query": "a"}},
+                {"id": 2, "name": "twin copy", "filter_body": {"query": "a"}},
+            ]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 200
+        entity_summary = self._entity_summary(response.json())
+        assert entity_summary["created"]["count"] == 1
+        assert entity_summary["reused"]["count"] == 1
+        assert AuditFilterPreset.objects.count() == 1
+
+    def test_import_malformed_entry_matching_existing_search_400s(
+        self, auth_client, preset
+    ):
+        payload = _envelope(
+            [
+                {
+                    "id": 1,
+                    "name": "bad",
+                    "filter_body": {"query": "status = failed", "not_a_key": 1},
+                }
+            ]
+        )
+        response = self._import(auth_client, payload)
+
+        assert response.status_code == 400
+
     def test_import_wrong_main_entity_400s(self, auth_client):
         payload = {
             "main_entity": EntityType.LABEL,
@@ -301,12 +552,3 @@ class TestAuditFilterPresetImport:
         response = auth_client.post(url, {"file": file}, format="multipart")
 
         assert response.status_code == 400
-
-
-@pytest.mark.django_db
-def test_find_existing_without_owner_never_matches_another_users_preset(preset, default_org):
-    found = AuditFilterPresetStrategy().find_existing(
-        {"name": preset.name}, IDMapper(), org_id=default_org.id
-    )
-
-    assert found is None

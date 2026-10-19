@@ -33,11 +33,13 @@ class PythonCodeCleanupService:
 
     @classmethod
     def _owned_by_any_owner(cls) -> Q:
+        # The base manager also sees owners in the recycle bin: they still own
+        # the code, and reclaiming it would CASCADE-delete them and break a restore.
         condition = Q()
         for relation in cls.owner_relations():
             condition |= Q(
                 Exists(
-                    relation.related_model.objects.filter(
+                    relation.related_model._base_manager.filter(
                         **{relation.field.attname: OuterRef("id")}
                     )
                 )

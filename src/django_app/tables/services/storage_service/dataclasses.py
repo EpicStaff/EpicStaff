@@ -60,6 +60,26 @@ class FolderInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class PurgedBinEntry:
+    """A storage recycle bin entry purged to make room for a write; sent in its response."""
+
+    name: str  # the entry's org-relative path; a folder's ends in "/"
+    size: int  # bytes freed: a folder's counts everything deleted with it
+
+
+@dataclass(frozen=True, slots=True)
+class BinPurgeGrant:
+    """Leave for a write that doesn't fit the quota to purge the org's oldest storage bin entries.
+
+    The view grants it from the request (see StorageBinPurgeAccess); a write without one
+    fails with 413 and purges nothing. `actor` names who caused the purge in its log: the
+    user, and the API key if one was used.
+    """
+
+    actor: str
+
+
+@dataclass(frozen=True, slots=True)
 class FileDownload:
     """Result of download(); content_range is set only when a part of the file was read."""
 

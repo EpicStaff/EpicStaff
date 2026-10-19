@@ -34,6 +34,7 @@ def _set_env_defaults() -> None:
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
+        "SANDBOX_REQUIRE_ISOLATION": "true",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
         "SANDBOX_BLOCK_PRIVATE_NETWORK": "true",
     }
@@ -55,6 +56,9 @@ def _ensure_src_shared_stub() -> None:
         stdout: str = ""
         returncode: int = 0
 
+        def model_dump(self) -> dict:
+            return dataclasses.asdict(self)
+
     @dataclasses.dataclass
     class CodeTaskData:
         venv_name: str
@@ -65,6 +69,12 @@ def _ensure_src_shared_stub() -> None:
         func_kwargs: dict = dataclasses.field(default_factory=dict)
         global_kwargs: dict = dataclasses.field(default_factory=dict)
         secrets: dict = dataclasses.field(default_factory=dict)
+        use_storage: bool = False
+        storage_allowed_paths: list | None = None
+        storage_org_prefix: str | None = None
+        storage_credentials: Any = None
+        session_id: int | None = None
+        reply_to_crew_channel: bool = False
 
     # src.shared must be a real package pointing at the actual shared/ directory
     # so that src.shared.envtools (and its `from . import humanize`) resolves.
@@ -77,16 +87,25 @@ def _ensure_src_shared_stub() -> None:
     src_shared_mod.__package__ = "src.shared"
 
     src_shared_models_mod = types.ModuleType("src.shared.models")
+    # __path__ makes real submodules (storage_scope) importable while this stub
+    # keeps the heavyweight package __init__.py from executing.
+    src_shared_models_mod.__path__ = [str(shared_dir / "models")]
+    src_shared_models_mod.__package__ = "src.shared.models"
     src_shared_models_mod.CodeResultData = CodeResultData
     src_shared_models_mod.CodeTaskData = CodeTaskData
+
+    src_shared_models_tools_mod = types.ModuleType("src.shared.models.tools")
+    src_shared_models_tools_mod.CodeResultData = CodeResultData
+    src_shared_models_tools_mod.CodeTaskData = CodeTaskData
+    src_shared_models_mod.tools = src_shared_models_tools_mod
 
     src_mod.shared = src_shared_mod
     src_shared_mod.models = src_shared_models_mod
 
     sys.modules.setdefault("src", src_mod)
     sys.modules.setdefault("src.shared", src_shared_mod)
-    # Register the stub so the real models module is never imported.
-    sys.modules["src.shared.models"] = src_shared_models_mod
+    sys.modules.setdefault("src.shared.models", src_shared_models_mod)
+    sys.modules.setdefault("src.shared.models.tools", src_shared_models_tools_mod)
 
 
 # Env defaults must be set before anything imports settings.py.

@@ -8,7 +8,9 @@ runner's orchestration logic is tested in isolation from I/O.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+
+import pytest
+import settings
 
 from app.emitters.base import Emitter
 from app.exceptions import AgentServiceError, SchemaValidationError
@@ -16,7 +18,6 @@ from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
-from app.output.enforcer import EnforcementResult
 from app.resources.resolver import ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.single_task import SingleTaskRunner
@@ -224,6 +225,11 @@ def _request(payload: dict, agents: list[AgentSpec] | None = None) -> AgentReque
     )
 
 
+@pytest.fixture(autouse=True)
+def service_schema_max_retries(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_SCHEMA_MAX_RETRIES", 2)
+
+
 def _runner(resolver=None, loop=None) -> SingleTaskRunner:
     resolver = resolver or FakeResolver()
     loop = loop or FakeLoop()
@@ -326,8 +332,7 @@ async def test_output_schema_no_tools_skips_plain_loop():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do X", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -363,8 +368,7 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     runner = _runner(resolver=FakeResolverWithTools(), loop=answer_loop)
     request = _request({"task_instructions": "Do Y", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -402,8 +406,7 @@ async def test_schema_validation_error_calls_on_error():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do Z", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(request, emitter)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], SchemaValidationError)
@@ -456,44 +459,19 @@ class FailureLoop(AgentLoop):
         )
 
 
-async def test_with_tools_and_schema_main_loop_failure_skips_enforcer():
-    """With tools + output_schema: main loop llm_error → on_error called, enforcer never invoked, on_final not called."""
+@pytest.mark.parametrize(
+    ("stop_reason", "error"),
+    [("llm_error", "rate limited"), ("timeout", "execution exceeded 60s")],
+)
+async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_reason, error):
     emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    loop = FailureLoop(stop_reason="llm_error", error="rate limited")
+    schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+    loop = FailureLoop(stop_reason=stop_reason, error=error)
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
-    request = _request({"task_instructions": "Do X", "output_schema": schema})
 
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}), emitter)
 
-    assert len(emitter.errors) == 1
-    assert "rate limited" in str(emitter.errors[0])
-    assert emitter.finals == []
-    assert loop.call_count == 1
-
-
-async def test_with_tools_and_schema_timeout_skips_enforcer():
-    """With tools + output_schema: main loop timeout → on_error called, enforcer never invoked."""
-    emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    loop = FailureLoop(stop_reason="timeout", error="execution exceeded 60s")
-    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
-    request = _request({"task_instructions": "Do X", "output_schema": schema})
-
-    with patch("app.runners.single_task._schema_max_retries", return_value=2):
-        await runner.execute(request, emitter)
-
-    assert len(emitter.errors) == 1
-    assert "execution exceeded 60s" in str(emitter.errors[0])
+    assert [str(raised) for raised in emitter.errors] == [error]
     assert emitter.finals == []
     assert loop.call_count == 1
 
@@ -503,65 +481,116 @@ async def test_with_tools_and_schema_timeout_skips_enforcer():
 # ---------------------------------------------------------------------------
 
 
-async def test_agent_schema_max_retries_zero_overrides_settings_default():
-    """agent.schema_max_retries=0 → enforcer built with 0, settings fn not used."""
+@pytest.mark.parametrize(
+    ("agent_schema_max_retries", "expected_attempts"),
+    [(0, 1), (None, 3)],
+    ids=["agent-setting-wins-even-when-zero", "falls-back-to-service-setting"],
+)
+async def test_schema_retries_come_from_the_agent_then_the_service_setting(
+    agent_schema_max_retries, expected_attempts
+):
     emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
-    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
+    schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+    # The LLM never calls the answer tool, so every allowed attempt is used.
+    answer_loop = AnswerToolLoop([(None, TokenUsage())] * 5)
     runner = _runner(loop=answer_loop)
-    agent = _agent_spec(schema_max_retries=0)
-    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
+    agent = _agent_spec(schema_max_retries=agent_schema_max_retries)
 
-    with (
-        patch("app.runners.single_task._schema_max_retries") as settings_fn,
-        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
-    ):
-        enforcer_class.return_value.enforce = AsyncMock(
-            return_value=EnforcementResult(
-                parsed={"x": "result"},
-                token_usage=usage,
-                iterations=1,
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent]), emitter)
+
+    assert answer_loop.call_count == expected_attempts
+    assert isinstance(emitter.errors[0], SchemaValidationError)
+
+
+# ---------------------------------------------------------------------------
+# Tests: tools + output_schema when the main loop's final text already matches
+# ---------------------------------------------------------------------------
+
+
+class FinalTextThenAnswerLoop(AgentLoop):
+    """First run() returns ``final_text``; later runs answer via ANSWER_TOOL."""
+
+    def __init__(
+        self, final_text: str | None, answer_args: dict, stop_reason: str = "completed"
+    ) -> None:
+        self._final_text = final_text
+        self._answer_args = answer_args
+        self._stop_reason = stop_reason
+        self.call_count = 0
+
+    async def run(self, context, tools, emitter, stop) -> LoopResult:
+        self.call_count += 1
+        if self.call_count == 1:
+            return LoopResult(
+                final_text=self._final_text,
                 tool_invocations=1,
+                iterations=2,
+                stop_reason=self._stop_reason,
+                token_usage=TokenUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7),
             )
+        await tools.execute(ANSWER_TOOL, self._answer_args)
+        return LoopResult(
+            final_text=None,
+            tool_invocations=1,
+            iterations=1,
+            stop_reason="completed",
+            token_usage=TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4),
         )
-        await runner.execute(request, emitter)
-
-    settings_fn.assert_not_called()
-    enforcer_class.assert_called_once_with(runner._deps.loop, 0)
 
 
-async def test_agent_schema_max_retries_none_falls_back_to_settings():
-    """agent.schema_max_retries=None → settings fn value used for enforcer retries."""
+Y_SCHEMA = {"type": "object", "properties": {"y": {"type": "integer"}}, "required": ["y"]}
+
+
+@pytest.mark.parametrize(
+    ("schema", "final_text", "expected"),
+    [
+        (Y_SCHEMA, '{"y": 42}', {"y": 42}),
+        ({"type": "array", "items": {"type": "string"}}, '["a", "b"]', ["a", "b"]),
+    ],
+    ids=["object", "non-object-schema"],
+)
+async def test_final_text_already_matching_the_schema_skips_enforcement(schema, final_text, expected):
     emitter = FakeEmitter()
-    schema = {
-        "type": "object",
-        "properties": {"x": {"type": "string"}},
-        "required": ["x"],
-    }
-    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
-    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
-    runner = _runner(loop=answer_loop)
-    agent = _agent_spec(schema_max_retries=None)
-    request = _request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent])
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
-    with (
-        patch("app.runners.single_task._schema_max_retries", return_value=7) as settings_fn,
-        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
-    ):
-        enforcer_class.return_value.enforce = AsyncMock(
-            return_value=EnforcementResult(
-                parsed={"x": "result"},
-                token_usage=usage,
-                iterations=1,
-                tool_invocations=1,
-            )
-        )
-        await runner.execute(request, emitter)
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": schema}), emitter)
 
-    settings_fn.assert_called_once()
-    enforcer_class.assert_called_once_with(runner._deps.loop, 7)
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 1
+    assert final.structured_output == expected
+    assert json.loads(final.final_text) == expected
+    assert final.stop_reason == "schema_satisfied"
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (2, 1, 7)
+
+
+@pytest.mark.parametrize(
+    "final_text",
+    [None, "", "The answer is 42.", '```json\n{"y": 42}\n```', '{"y": "forty-two"}', "{}"],
+    ids=["none", "empty", "prose", "fenced-json", "wrong-type", "missing-required"],
+)
+async def test_final_text_not_matching_the_schema_is_enforced(final_text):
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 2
+    assert final.structured_output == {"y": 7}
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (3, 2, 11)
+
+
+async def test_final_text_left_over_from_an_unfinished_tool_loop_is_enforced():
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop('{"y": 42}', answer_args={"y": 7}, stop_reason="max_iter_reached")
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+
+    assert emitter.errors == []
+    assert loop.call_count == 2
+    assert emitter.finals[0].structured_output == {"y": 7}

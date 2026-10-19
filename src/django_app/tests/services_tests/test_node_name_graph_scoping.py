@@ -16,6 +16,7 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.python_models import PythonCode
+from tables.services.converter_service import ConverterService
 from tables.services.session_manager_service import SessionManagerService
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 from utils.graph_utils import NodeNameResolver, resolve_node_names
@@ -75,7 +76,9 @@ def test_session_graph_data_does_not_expose_foreign_node_names(graph, local_node
         next_node_id=foreign_node.id,
     )
 
-    graph_data = SessionManagerService()._build_graph_data(graph, None, None)
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, None, start_node=start_node
+    )
 
     assert FOREIGN_NAME not in graph_data.model_dump_json()
     unknown = f"unknown node #{foreign_node.id}"
@@ -94,3 +97,23 @@ def test_graph_scoped_resolver_memoizes_a_cache_miss(
 
     with django_assert_num_queries(0):
         assert resolver(local_node.id) == first == f"local #{local_node.id}"
+
+
+@pytest.mark.parametrize(
+    "converter_method",
+    [
+        "convert_edge_to_pytdantic",
+        "convert_decision_table_node_to_pydantic",
+        "convert_condition_group_to_pydantic",
+        "convert_classification_decision_table_node_to_pydantic",
+    ],
+)
+def test_converter_rendering_a_stored_node_reference_requires_an_explicit_resolver(
+    converter_method,
+):
+    # The default resolver is unscoped: falling back to it for a stored reference
+    # would render another organization's node name.
+    method = getattr(ConverterService(), converter_method)
+
+    with pytest.raises(TypeError, match="required keyword-only argument: 'resolver'"):
+        method(object())

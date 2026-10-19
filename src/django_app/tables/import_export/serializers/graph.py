@@ -3,8 +3,6 @@ from rest_framework import serializers
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import (
     AudioTranscriptionNode,
-    ClassificationConditionGroup,
-    ClassificationDecisionTableNode,
     Condition,
     ConditionGroup,
     DecisionTableNode,
@@ -21,14 +19,15 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
-    ClassificationDecisionTablePrompt,
     GraphNote,
     ScheduleTriggerNode,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class BaseNodeImportSerializer(serializers.ModelSerializer):
+class BaseNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
@@ -63,7 +62,7 @@ class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
         exclude = ["created_at", "updated_at", "created_by"]
 
 
-class ConditionImportSerializer(serializers.ModelSerializer):
+class ConditionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -71,7 +70,7 @@ class ConditionImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ConditionGroupImportSerializer(serializers.ModelSerializer):
+class ConditionGroupImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     conditions = ConditionImportSerializer(many=True, required=False, read_only=True)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     decision_table_node_id = serializers.PrimaryKeyRelatedField(
@@ -93,63 +92,9 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
         exclude = ["created_at", "updated_at", "created_by"]
 
 
-class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
-    classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
-    classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
-        queryset=ClassificationDecisionTableNode.objects.all(),
-        source="classification_decision_table_node",
-        write_only=True,
-    )
-
-    class Meta:
-        model = ClassificationConditionGroup
-        exclude = ["created_at", "updated_at"]
-
-
-class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ClassificationDecisionTablePrompt
-        fields = [
-            "id",
-            "prompt_key",
-            "prompt_text",
-            "llm_config",
-            "output_schema",
-            "result_variable",
-            "variable_mappings",
-        ]
-
-
-class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
-    condition_groups = ClassificationConditionGroupImportSerializer(
-        many=True, required=False, read_only=True
-    )
-    prompt_configs = ClassificationDecisionTablePromptImportSerializer(
-        many=True, required=False, read_only=True
-    )
-    pre_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    pre_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="pre_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
-    post_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    post_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="post_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
-
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = ClassificationDecisionTableNode
-        exclude = ["created_at", "updated_at", "created_by", "prompts"]
-
-
-class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
+class TelegramTriggerNodeFieldImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     class Meta:
         model = TelegramTriggerNodeField
         exclude = ["telegram_trigger_node"]
@@ -206,7 +151,7 @@ class GraphNoteImportSerializer(BaseNodeImportSerializer):
         exclude = ["created_at", "updated_at", "created_by"]
 
 
-class EdgeImportSerializer(serializers.ModelSerializer):
+class EdgeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = Edge
         exclude = ["created_at", "updated_at", "graph"]
@@ -226,8 +171,7 @@ class GraphImportSerializer(serializers.ModelSerializer):
             "save_version",
             "created_by",
             # Deletion goes through DeleteService, never through a crafted import file.
-            "is_soft_deleted",
-            "soft_deleted_at",
+            *SOFT_DELETE_FIELD_NAMES,
         ]
 
 

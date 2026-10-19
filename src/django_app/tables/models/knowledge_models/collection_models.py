@@ -86,7 +86,7 @@ class SourceCollection(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin, mo
             soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["org", "collection_name"],
-                condition=models.Q(is_soft_deleted=False),
+                condition=models.Q(active=True),
                 name="unique_collection_name_per_org",
             ),
         ]

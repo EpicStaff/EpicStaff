@@ -1,4 +1,4 @@
-"""Verify Session/ScheduleTriggerNode delete side effects fire only after the enclosing transaction commits, not mid-transaction."""
+"""Session / ScheduleTriggerNode delete side effects fire only after the transaction commits."""
 
 from unittest.mock import patch
 
@@ -9,58 +9,46 @@ from tables.models.graph_models import ScheduleTriggerNode
 from tables.models.session_models import Session
 
 
-@pytest.mark.django_db(transaction=True)
-def test_session_stop_does_not_fire_if_the_transaction_rolls_back(graph):
-    session = Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
-
-    with patch("tables.signals.session_signals.SessionManagerService") as mock_service:
-        try:
-            with transaction.atomic():
-                session.delete()
-                raise RuntimeError("force a rollback")
-        except RuntimeError:
-            pass
-
-        mock_service.return_value.stop_session.assert_not_called()
+def _stop_sent(service):
+    return service.return_value.stop_session.call_args_list
 
 
-@pytest.mark.django_db(transaction=True)
-def test_session_stop_fires_after_a_committed_delete(graph, django_capture_on_commit_callbacks):
-    session = Session.objects.create(graph=graph, status=Session.SessionStatus.RUN)
-    session_id = session.pk
+def _publish_sent(service):
+    return service.return_value.redis_client.publish.call_args_list
 
-    with patch("tables.signals.session_signals.SessionManagerService") as mock_service:
-        with django_capture_on_commit_callbacks(execute=True):
-            with transaction.atomic():
-                session.delete()
 
-        mock_service.return_value.stop_session.assert_called_once_with(session_id=session_id)
+DELETES = {
+    # Stopping the session in crew; tells crew a running session vanished.
+    "session": (
+        lambda graph: Session.objects.create(graph=graph, status=Session.SessionStatus.RUN),
+        "tables.signals.session_signals.SessionManagerService",
+        _stop_sent,
+    ),
+    # Telling the manager to drop the schedule.
+    "schedule-trigger": (
+        lambda graph: ScheduleTriggerNode.objects.create(graph=graph, node_name="schedule_node"),
+        "tables.signals.schedule_signals.RedisService",
+        _publish_sent,
+    ),
+}
 
 
 @pytest.mark.django_db(transaction=True)
-def test_schedule_trigger_delete_publish_does_not_fire_if_the_transaction_rolls_back(graph):
-    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="schedule_node")
-
-    with patch("tables.signals.schedule_signals.RedisService") as mock_redis_service:
-        try:
-            with transaction.atomic():
-                node.delete()
-                raise RuntimeError("force a rollback")
-        except RuntimeError:
-            pass
-
-        mock_redis_service.return_value.redis_client.publish.assert_not_called()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_schedule_trigger_delete_publish_fires_after_a_committed_delete(
-    graph, django_capture_on_commit_callbacks
+@pytest.mark.parametrize("deleted", list(DELETES))
+@pytest.mark.parametrize("commits", [True, False], ids=["committed", "rolled-back"])
+def test_delete_notifies_other_services_only_once_committed(
+    graph, django_capture_on_commit_callbacks, deleted, commits
 ):
-    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="schedule_node")
+    create, notifier, notifications = DELETES[deleted]
+    instance = create(graph)
 
-    with patch("tables.signals.schedule_signals.RedisService") as mock_redis_service:
-        with django_capture_on_commit_callbacks(execute=True):
+    with patch(notifier) as service, django_capture_on_commit_callbacks(execute=True):
+        try:
             with transaction.atomic():
-                node.delete()
+                instance.delete()
+                if not commits:
+                    raise RuntimeError("force a rollback")
+        except RuntimeError:
+            pass
 
-        mock_redis_service.return_value.redis_client.publish.assert_called_once()
+    assert len(notifications(service)) == (1 if commits else 0)

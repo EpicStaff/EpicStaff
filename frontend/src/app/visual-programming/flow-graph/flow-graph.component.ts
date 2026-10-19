@@ -56,6 +56,7 @@ import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-f
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
@@ -101,6 +102,9 @@ import { FlowImportExportHandler } from './flow-import-export-handler.service';
 import { FlowReassignHandler } from './flow-reassign-handler.service';
 import { FlowRoutingOrchestratorService } from './flow-routing-orchestrator.service';
 import { FlowSelectionManagerService } from './flow-selection-manager.service';
+
+/** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
+const CONNECTION_REFUSED_TOAST_MS = 5000;
 
 @Component({
     selector: 'app-flow-graph',
@@ -493,6 +497,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         if (this.reassignHandler.hasOccupiedPort(pair.sourcePortId, pair.targetPortId, currentConnections)) {
             this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
+            return;
+        }
+
+        if (this.reassignHandler.isRoutePortBlocked(pair.sourcePortId)) {
+            this.toastService.warning(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                CONNECTION_REFUSED_TOAST_MS,
+                'bottom-right'
+            );
             return;
         }
 

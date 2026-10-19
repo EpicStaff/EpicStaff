@@ -1,0 +1,87 @@
+import { ResourceCode } from '@shared/models';
+
+import { RecycleBinTabDefinition, RecycleBinTabKey } from '../models/recycle-bin.model';
+
+/**
+ * Every tab, written in page order: RECYCLE_BIN_TABS (and so the routes and the tab bar) follows the order
+ * of these entries, so a new tab goes where it should appear on the page.
+ */
+export const RECYCLE_BIN_TAB_BY_KEY: Record<RecycleBinTabKey, RecycleBinTabDefinition> = {
+    flows: {
+        key: 'flows',
+        label: 'Flows',
+        resource: ResourceCode.Flows,
+        sources: ['flow'],
+        pluralNoun: 'flows',
+        countColumn: { label: 'Nodes' },
+    },
+    agents: {
+        key: 'agents',
+        label: 'Agents',
+        resource: ResourceCode.Agents,
+        sources: ['agent'],
+        pluralNoun: 'agents',
+        countColumn: { label: 'Surfaces' },
+    },
+    surfaces: {
+        key: 'surfaces',
+        label: 'Surfaces',
+        resource: ResourceCode.Surfaces,
+        sources: ['surface'],
+        pluralNoun: 'surfaces',
+    },
+    tools: {
+        key: 'tools',
+        label: 'Tools',
+        resource: ResourceCode.Tools,
+        sources: ['python_tool', 'mcp_tool'],
+        pluralNoun: 'tools',
+    },
+    files: {
+        key: 'files',
+        label: 'Files',
+        resource: ResourceCode.Files,
+        sources: ['storage'],
+        pluralNoun: 'files and folders',
+    },
+    'knowledge-sources': {
+        key: 'knowledge-sources',
+        label: 'Knowledge sources',
+        resource: ResourceCode.KnowledgeSources,
+        sources: ['collection'],
+        pluralNoun: 'collections',
+        countColumn: { label: 'Documents' },
+    },
+    'key-value-tables': {
+        key: 'key-value-tables',
+        label: 'Key-value tables',
+        resource: ResourceCode.KeyValueTables,
+        sources: ['key_value_table'],
+        pluralNoun: 'key-value tables',
+        countColumn: { label: 'Keys' },
+    },
+    secrets: {
+        key: 'secrets',
+        label: 'Secrets',
+        resource: ResourceCode.Secrets,
+        sources: ['secret'],
+        pluralNoun: 'secrets',
+    },
+    'voice-channels': {
+        key: 'voice-channels',
+        label: 'Voice channels',
+        resource: ResourceCode.Voice,
+        sources: ['realtime_channel'],
+        pluralNoun: 'voice channels',
+    },
+    'webhook-triggers': {
+        key: 'webhook-triggers',
+        label: 'Webhook triggers',
+        resource: ResourceCode.Webhooks,
+        sources: ['webhook_trigger'],
+        pluralNoun: 'webhook triggers',
+    },
+};
+
+/** Tab order on the page, and the order the default tab is picked in: the order of RECYCLE_BIN_TAB_BY_KEY. */
+export const RECYCLE_BIN_TABS: readonly RecycleBinTabDefinition[] = Object.values(RECYCLE_BIN_TAB_BY_KEY);

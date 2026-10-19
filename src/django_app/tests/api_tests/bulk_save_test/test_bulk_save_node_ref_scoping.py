@@ -25,6 +25,7 @@ from tables.models.graph_models import (
     DecisionTableNode,
     Edge,
     Graph,
+    PythonNode,
     StartNode,
 )
 
@@ -86,7 +87,7 @@ def nonexistent_node_id(graph) -> int:
 def soft_deleted_node(graph) -> StartNode:
     node = StartNode.objects.create(graph=graph, variables={})
     StartNode.all_objects.filter(pk=node.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
     return node
 
@@ -139,7 +140,9 @@ def test_group_next_node_outside_graph_rejected(request, auth_client, graph, tab
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_ROUTING_REF_ERROR}: [{target.id}]"]
+    assert response.data["errors"] == {
+        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{target.id}]"]}]
+    }
     assert not node_model.objects.filter(graph=graph).exists()
     assert not group_model.objects.filter(next_node_id=target.id).exists()
     _assert_save_version_unchanged(graph)
@@ -168,6 +171,36 @@ def test_node_routing_outside_graph_rejected(
     assert field in str(response.data["errors"][list_key])
     assert not node_model.objects.filter(graph=graph).exists()
     assert not node_model.all_objects.filter(**{field: target.id}).exists()
+    _assert_save_version_unchanged(graph)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("table", list(_ROUTING_TABLES))
+def test_group_next_node_outside_graph_reported_on_the_referencing_item(
+    auth_client, graph, other_org_node, table
+):
+    list_key, _, _, group_extra = _ROUTING_TABLES[table]
+    local_target = StartNode.objects.create(graph=graph, variables={})
+
+    def table_item(node_name: str, next_node_id: int) -> dict:
+        group = {"group_name": "group", "order": 0, "next_node_id": next_node_id, **group_extra}
+        return {"graph": graph.id, "node_name": node_name, "condition_groups": [group]}
+
+    response = _post_save(
+        auth_client,
+        graph,
+        **{
+            list_key: [
+                table_item("local_route", local_target.id),
+                table_item("foreign_route", other_org_node.id),
+            ]
+        },
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["errors"] == {
+        list_key: [{"index": 1, "errors": [f"{_ROUTING_REF_ERROR}: [{other_org_node.id}]"]}]
+    }
     _assert_save_version_unchanged(graph)
 
 
@@ -294,3 +327,63 @@ def test_node_update_item_graph_cannot_move_node_to_other_graph(
     start_node.refresh_from_db()
     assert start_node.graph_id == graph.id
     assert not StartNode.objects.filter(graph=sibling_graph).exists()
+
+
+# ---- A node deleted by the same request is outside the graph ----
+# The node still exists while Pass 1 validates, but Pass 2 deletes it before the
+# reference is written, which would leave the reference dangling.
+
+
+@pytest.mark.django_db
+def test_edge_end_node_deleted_in_same_request_rejected(
+    auth_client, graph, start_node, python_node
+):
+    response = _post_save(
+        auth_client,
+        graph,
+        **_edge_payload(graph, start_node.id, python_node.id),
+        deleted={"python_node_ids": [python_node.id]},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{python_node.id}]"]
+    assert PythonNode.objects.filter(pk=python_node.pk).exists()
+    assert not Edge.objects.filter(graph=graph).exists()
+    _assert_save_version_unchanged(graph)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("table", list(_ROUTING_TABLES))
+def test_group_next_node_deleted_in_same_request_rejected(auth_client, graph, start_node, table):
+    list_key, node_model, group_model, group_extra = _ROUTING_TABLES[table]
+
+    response = _post_save(
+        auth_client,
+        graph,
+        **{
+            list_key: [
+                {
+                    "graph": graph.id,
+                    "node_name": "route_to_deleted",
+                    "condition_groups": [
+                        {
+                            "group_name": "group",
+                            "order": 0,
+                            "next_node_id": start_node.id,
+                            **group_extra,
+                        }
+                    ],
+                }
+            ]
+        },
+        deleted={"start_node_ids": [start_node.id]},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert response.data["errors"] == {
+        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{start_node.id}]"]}]
+    }
+    assert StartNode.objects.filter(pk=start_node.pk).exists()
+    assert not node_model.objects.filter(graph=graph).exists()
+    assert not group_model.objects.filter(next_node_id=start_node.id).exists()
+    _assert_save_version_unchanged(graph)

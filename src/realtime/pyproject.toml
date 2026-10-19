@@ -9,7 +9,6 @@ authors = [
 ]
 requires-python = "==3.12.10"
 dependencies = [
-    "aiohttp==3.14.3",
     "asyncpg==0.30.0",
     "fastapi==0.141.1",
     "google-genai==1.19.0",
@@ -17,11 +16,8 @@ dependencies = [
     "loguru==0.7.3",
     "numpy==1.26.4",
     "openai==1.58.1",
-    "psycopg2==2.9.12",
-    "pydantic-settings==2.12.0",
     "pydantic[email]==2.13.4",
     "python-dotenv==1.2.2",
-    "python-multipart==0.0.32",
     "redis==5.3.1",
     "sqlalchemy==2.0.51",
     "tiktoken==0.9.0",
@@ -44,7 +40,6 @@ transitive-pins = [
     "pyjwt==2.13.0",
     "requests==2.34.2",
     "urllib3==2.7.0",
-    "yarl==1.24.5",
     "starlette==1.6.0",
 ]
 

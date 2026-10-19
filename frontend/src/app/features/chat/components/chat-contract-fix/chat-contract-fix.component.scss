@@ -1,0 +1,25 @@
+.contract-fix {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &__title,
+    &__text {
+        margin: 0;
+    }
+
+    &__list {
+        margin: 0;
+        padding-left: 20px;
+    }
+
+    &__actions {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    &__link {
+        align-self: flex-start;
+        color: var(--accent-color);
+    }
+}

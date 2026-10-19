@@ -76,110 +76,134 @@ def _assert_forbidden(response, expected_message):
     assert body["message"] == expected_message
 
 
-# ---- SYSTEM key: rejected, stored state untouched ----
+@pytest.fixture
+def member_key(issue_api_key, member_only):
+    _, key = issue_api_key(user=member_only, name="member-target")
+    return key
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_create_role(system_key_client, acme):
-    response = system_key_client.post(
-        ROLES_URL, {"org_id": acme.id, "name": "SysMade", "permissions": []}, format="json"
-    )
-    _assert_forbidden(response, SYSTEM_KEY_REJECTED)
-    assert not Role.objects.filter(name="SysMade").exists()
+def _org_active(f):
+    f("acme").refresh_from_db()
+    return f("acme").is_active
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_delete_role(system_key_client, custom_role):
-    _assert_forbidden(
-        system_key_client.delete(f"{ROLES_URL}{custom_role.id}/"), SYSTEM_KEY_REJECTED
-    )
-    assert Role.objects.filter(pk=custom_role.id).exists()
+def _membership_role(f):
+    f("member_membership").refresh_from_db()
+    return f("member_membership").role_id
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_create_membership(system_key_client, acme, outsider, role_member):
-    response = system_key_client.post(
-        MEMBERSHIPS_URL,
-        {"org_id": acme.id, "user_id": outsider.id, "role_id": role_member.id},
-        format="json",
-    )
-    _assert_forbidden(response, SYSTEM_KEY_REJECTED)
-    assert not OrganizationUser.objects.filter(user=outsider).exists()
+def _is_superadmin(f):
+    f("outsider").refresh_from_db()
+    return f("outsider").is_superadmin
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_change_membership_role(
-    system_key_client, member_membership, role_member, role_viewer
-):
-    response = system_key_client.patch(
-        f"{MEMBERSHIPS_URL}{member_membership.id}/", {"role_id": role_viewer.id}, format="json"
-    )
-    _assert_forbidden(response, SYSTEM_KEY_REJECTED)
-    member_membership.refresh_from_db()
-    assert member_membership.role_id == role_member.id
+def _key_revoked(f):
+    f("member_key").refresh_from_db()
+    return f("member_key").revoked_at is not None
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_deactivate_organization(system_key_client, acme, beta):
-    _assert_forbidden(
-        system_key_client.post(f"/api/admin/organizations/{acme.id}/deactivate/"),
-        SYSTEM_KEY_REJECTED,
-    )
-    acme.refresh_from_db()
-    assert acme.is_active is True
+# Each admin write: the request, and the state it changes (read before and after).
+WRITES = {
+    "create-role": (
+        lambda c, f: c.post(ROLES_URL, {"org_id": f("acme").id, "name": "Made", "permissions": []}, format="json"),
+        lambda f: Role.objects.filter(name="Made").exists(),
+    ),
+    "delete-role": (
+        lambda c, f: c.delete(f"{ROLES_URL}{f('custom_role').id}/"),
+        lambda f: Role.objects.filter(pk=f("custom_role").id).exists(),
+    ),
+    "create-membership": (
+        lambda c, f: c.post(
+            MEMBERSHIPS_URL,
+            {"org_id": f("acme").id, "user_id": f("outsider").id, "role_id": f("role_member").id},
+            format="json",
+        ),
+        lambda f: OrganizationUser.objects.filter(user=f("outsider")).exists(),
+    ),
+    "change-membership-role": (
+        lambda c, f: c.patch(f"{MEMBERSHIPS_URL}{f('member_membership').id}/", {"role_id": f("role_viewer").id}, format="json"),
+        _membership_role,
+    ),
+    "deactivate-organization": (
+        # beta exists, so acme is not the last active organization.
+        lambda c, f: f("beta") and c.post(f"/api/admin/organizations/{f('acme').id}/deactivate/"),
+        _org_active,
+    ),
+    "create-organization": (
+        lambda c, f: c.post("/api/admin/organizations/", {"name": "SysOrg"}, format="json"),
+        lambda f: Organization.objects.filter(name="SysOrg").exists(),
+    ),
+    "grant-superadmin": (
+        lambda c, f: c.post(f"{USERS_URL}{f('outsider').id}/grant-superadmin/"),
+        _is_superadmin,
+    ),
+    "reset-users": (
+        lambda c, f: c.post(
+            "/api/auth/reset-user/", {"email": "taken-over@example.com", "password": "StrongPass123!"}, format="json"
+        ),
+        lambda f: f("django_user_model").objects.filter(email="taken-over@example.com").exists(),
+    ),
+    "admin-reset-password": (
+        lambda c, f: c.post(
+            "/api/auth/admin/password-reset/", {"user_id": f("outsider").id, "new_password": "BrandNewPass123!"}, format="json"
+        ),
+        lambda f: f("outsider").__class__.objects.get(pk=f("outsider").pk).check_password("StrongPass123!"),
+    ),
+    "revoke-api-key": (lambda c, f: c.post(f"{API_KEYS_URL}{f('member_key').id}/revoke/"), _key_revoked),
+    "delete-api-key": (
+        lambda c, f: c.delete(f"{API_KEYS_URL}{f('member_key').id}/"),
+        lambda f: ApiKey.objects.filter(pk=f("member_key").pk).exists(),
+    ),
+}
+
+READS = {
+    "roles": lambda c, f: c.get(ROLES_URL),
+    "memberships": lambda c, f: c.get(MEMBERSHIPS_URL),
+    "organizations": lambda c, f: c.get("/api/admin/organizations/"),
+    "users": lambda c, f: c.get(USERS_URL),
+    "api-keys": lambda c, f: c.get(API_KEYS_URL),
+}
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_create_organization(system_key_client):
-    response = system_key_client.post(
-        "/api/admin/organizations/", {"name": "SysOrg"}, format="json"
-    )
-    _assert_forbidden(response, SYSTEM_KEY_REJECTED)
-    assert not Organization.objects.filter(name="SysOrg").exists()
+def _client(request, caller):
+    if caller == "system-key":
+        return request.getfixturevalue("system_key_client")
+    user = request.getfixturevalue("superadmin" if caller == "superadmin-user-key" else "admin_acme")
+    return request.getfixturevalue("user_key_client")(user)
 
 
-@pytest.mark.django_db
-def test_system_key_cannot_grant_superadmin(system_key_client, outsider):
-    _assert_forbidden(
-        system_key_client.post(f"{USERS_URL}{outsider.id}/grant-superadmin/"), SYSTEM_KEY_REJECTED
-    )
-    outsider.refresh_from_db()
-    assert outsider.is_superadmin is False
+REFUSED = [
+    # The SYSTEM key is refused on the whole admin surface.
+    *[("system-key", "write", name, SYSTEM_KEY_REJECTED) for name in WRITES if name not in ("reset-users", "admin-reset-password", "revoke-api-key")],
+    *[("system-key", "write", name, JWT_ONLY_ENDPOINT) for name in ("reset-users", "admin-reset-password")],
+    *[("system-key", "read", name, SYSTEM_KEY_REJECTED) for name in READS],
+    # A USER key may read with its owner's permissions, but every write is JWT-only --
+    # even for an org admin who holds roles:create, even for a superadmin.
+    ("admin-user-key", "write", "create-role", API_KEY_WRITE_REJECTED),
+    ("admin-user-key", "write", "revoke-api-key", API_KEY_WRITE_REJECTED),
+    ("admin-user-key", "read", "api-keys", JWT_ONLY_ENDPOINT),
+    ("superadmin-user-key", "write", "reset-users", JWT_ONLY_ENDPOINT),
+    ("superadmin-user-key", "write", "grant-superadmin", API_KEY_WRITE_REJECTED),
+]
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "url", [ROLES_URL, MEMBERSHIPS_URL, "/api/admin/organizations/", USERS_URL]
+    ("caller", "kind", "name", "message"), REFUSED, ids=[f"{caller}-{kind}-{name}" for caller, kind, name, _ in REFUSED]
 )
-def test_system_key_cannot_read_admin_surface(system_key_client, url):
-    _assert_forbidden(system_key_client.get(url), SYSTEM_KEY_REJECTED)
+def test_api_key_on_the_admin_surface_is_refused_and_changes_nothing(request, caller, kind, name, message):
+    f = request.getfixturevalue
+    client = _client(request, caller)
+    if kind == "read":
+        _assert_forbidden(READS[name](client, f), message)
+        return
+    send, state = WRITES[name]
+    before = state(f)
 
+    _assert_forbidden(send(client, f), message)
 
-@pytest.mark.django_db
-def test_system_key_cannot_reset_users(system_key_client, superadmin, django_user_model):
-    response = system_key_client.post(
-        "/api/auth/reset-user/",
-        {"email": "taken-over@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    _assert_forbidden(response, JWT_ONLY_ENDPOINT)
-    assert django_user_model.objects.filter(pk=superadmin.pk).exists()
-    assert not django_user_model.objects.filter(email="taken-over@example.com").exists()
-
-
-@pytest.mark.django_db
-def test_system_key_cannot_admin_reset_password(system_key_client, outsider):
-    response = system_key_client.post(
-        "/api/auth/admin/password-reset/",
-        {"user_id": outsider.id, "new_password": "BrandNewPass123!"},
-        format="json",
-    )
-    _assert_forbidden(response, JWT_ONLY_ENDPOINT)
-    outsider.refresh_from_db()
-    assert outsider.check_password("StrongPass123!")
-
-
-# ---- USER key: reads keep working, writes are JWT-only ----
+    assert state(f) == before
+    assert f("django_user_model").objects.filter(pk=f("superadmin").pk).exists()
 
 
 @pytest.mark.django_db
@@ -190,117 +214,22 @@ def test_user_key_can_still_list_roles(user_key_client, admin_acme, custom_role)
 
 
 @pytest.mark.django_db
-def test_user_key_cannot_create_role_even_with_roles_create(user_key_client, admin_acme, acme):
-    response = user_key_client(admin_acme).post(
-        ROLES_URL, {"org_id": acme.id, "name": "KeyMade", "permissions": []}, format="json"
-    )
-    _assert_forbidden(response, API_KEY_WRITE_REJECTED)
-    assert not Role.objects.filter(name="KeyMade").exists()
+@pytest.mark.parametrize(
+    ("name", "expected_status"),
+    [
+        ("create-role", status.HTTP_201_CREATED),
+        ("delete-role", status.HTTP_200_OK),
+        ("create-membership", status.HTTP_201_CREATED),
+        ("change-membership-role", status.HTTP_200_OK),
+        ("deactivate-organization", status.HTTP_200_OK),
+    ],
+)
+def test_superadmin_jwt_still_performs_the_write(request, superadmin_jwt_client, name, expected_status):
+    f = request.getfixturevalue
+    send, state = WRITES[name]
+    before = state(f)
 
+    response = send(superadmin_jwt_client, f)
 
-@pytest.mark.django_db
-def test_superadmin_user_key_cannot_reset_users(user_key_client, superadmin, django_user_model):
-    response = user_key_client(superadmin).post(
-        "/api/auth/reset-user/",
-        {"email": "taken-over@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    _assert_forbidden(response, JWT_ONLY_ENDPOINT)
-    assert django_user_model.objects.filter(pk=superadmin.pk).exists()
-
-
-@pytest.mark.django_db
-def test_superadmin_user_key_cannot_grant_superadmin(user_key_client, superadmin, outsider):
-    _assert_forbidden(
-        user_key_client(superadmin).post(f"{USERS_URL}{outsider.id}/grant-superadmin/"),
-        API_KEY_WRITE_REJECTED,
-    )
-    outsider.refresh_from_db()
-    assert outsider.is_superadmin is False
-
-
-# ---- /api/admin/api-keys/: the base gate answers first, DenyApiKeyAuth covers USER-key reads ----
-
-
-@pytest.fixture
-def member_key(issue_api_key, member_only):
-    _, key = issue_api_key(user=member_only, name="member-target")
-    return key
-
-
-@pytest.mark.django_db
-def test_system_key_cannot_list_api_keys(system_key_client):
-    _assert_forbidden(system_key_client.get(API_KEYS_URL), SYSTEM_KEY_REJECTED)
-
-
-@pytest.mark.django_db
-def test_user_key_cannot_list_api_keys(user_key_client, admin_acme):
-    _assert_forbidden(user_key_client(admin_acme).get(API_KEYS_URL), JWT_ONLY_ENDPOINT)
-
-
-@pytest.mark.django_db
-def test_user_key_cannot_revoke_api_key(user_key_client, admin_acme, member_key):
-    _assert_forbidden(
-        user_key_client(admin_acme).post(f"{API_KEYS_URL}{member_key.id}/revoke/"),
-        API_KEY_WRITE_REJECTED,
-    )
-    member_key.refresh_from_db()
-    assert member_key.revoked_at is None
-
-
-@pytest.mark.django_db
-def test_system_key_cannot_delete_api_key(system_key_client, member_key):
-    _assert_forbidden(
-        system_key_client.delete(f"{API_KEYS_URL}{member_key.id}/"), SYSTEM_KEY_REJECTED
-    )
-    assert ApiKey.objects.filter(pk=member_key.pk).exists()
-
-
-# ---- superadmin JWT: the same five writes still succeed ----
-
-
-@pytest.mark.django_db
-def test_superadmin_jwt_creates_role(superadmin_jwt_client, acme):
-    response = superadmin_jwt_client.post(
-        ROLES_URL, {"org_id": acme.id, "name": "JwtMade", "permissions": []}, format="json"
-    )
-    assert response.status_code == status.HTTP_201_CREATED, response.content
-    assert Role.objects.filter(name="JwtMade", org=acme).exists()
-
-
-@pytest.mark.django_db
-def test_superadmin_jwt_deletes_role(superadmin_jwt_client, custom_role):
-    response = superadmin_jwt_client.delete(f"{ROLES_URL}{custom_role.id}/")
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert not Role.objects.filter(pk=custom_role.id).exists()
-
-
-@pytest.mark.django_db
-def test_superadmin_jwt_creates_membership(superadmin_jwt_client, acme, outsider, role_member):
-    response = superadmin_jwt_client.post(
-        MEMBERSHIPS_URL,
-        {"org_id": acme.id, "user_id": outsider.id, "role_id": role_member.id},
-        format="json",
-    )
-    assert response.status_code == status.HTTP_201_CREATED, response.content
-    assert OrganizationUser.objects.get(user=outsider, org=acme).role_id == role_member.id
-
-
-@pytest.mark.django_db
-def test_superadmin_jwt_changes_membership_role(
-    superadmin_jwt_client, member_membership, role_viewer
-):
-    response = superadmin_jwt_client.patch(
-        f"{MEMBERSHIPS_URL}{member_membership.id}/", {"role_id": role_viewer.id}, format="json"
-    )
-    assert response.status_code == status.HTTP_200_OK, response.content
-    member_membership.refresh_from_db()
-    assert member_membership.role_id == role_viewer.id
-
-
-@pytest.mark.django_db
-def test_superadmin_jwt_deactivates_organization(superadmin_jwt_client, acme, beta):
-    response = superadmin_jwt_client.post(f"/api/admin/organizations/{acme.id}/deactivate/")
-    assert response.status_code == status.HTTP_200_OK, response.content
-    acme.refresh_from_db()
-    assert acme.is_active is False
+    assert response.status_code == expected_status, response.content
+    assert state(f) != before

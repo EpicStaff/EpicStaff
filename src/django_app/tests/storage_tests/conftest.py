@@ -114,6 +114,18 @@ def api_client():
 
 
 @pytest.fixture
+def admin_client(client_as, admin_acme, acme):
+    """An Acme org admin with Acme as the active org.
+
+    Needs the cross-org fixtures (`from tests.rbac_cross_org_fixtures import *`)
+    in the test module.
+    """
+    client = client_as(admin_acme)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client
+
+
+@pytest.fixture
 def stream_backend(monkeypatch, settings, backend):
     """Send every streamed upload to the test's in-memory `backend`, with room for any size."""
     settings.ORG_STORAGE_QUOTA = 10**9

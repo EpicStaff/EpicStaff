@@ -17,6 +17,7 @@ from tables.serializers.storage_serializers import (
     StorageRemoveFromGraphSerializer,
     StorageRenameSerializer,
     StorageSearchResponseSerializer,
+    StorageTransferResponseSerializer,
     StorageTreeResponseSerializer,
     StorageUploadLimitsResponseSerializer,
 )
@@ -107,22 +108,42 @@ STORAGE_MOVE_SWAGGER = {
     "summary": "Move a file or folder",
     "description": (
         "Moves a file or folder from one location to another. "
-        "To move across organizations, provide `source_org_id` and "
-        "`destination_org_id` — the user must be a member of both orgs."
+        "To move across organizations, provide both `source_org_id` and "
+        "`destination_org_id`, two different organizations; this requires a superadmin. "
+        "Within the active organization, omit both. Giving only one of them, or the same "
+        "organization twice, is a 400. "
+        "A move across organizations that doesn't fit the destination's storage quota "
+        "first purges the destination's oldest storage recycle bin entries, just enough "
+        "of them, and lists them in `recycle_bin_purged` (always empty within one "
+        "organization); if the whole bin isn't enough, nothing is purged and it's a 413. "
+        "Only a user session (not an API key) holding FILES:DELETE in the destination "
+        "may cause a purge; for anyone else the bin counts as used and it's a 413. "
+        "An entry's `name` is null unless the caller has FILES:READ there. "
+        "The purge commits with the copy, so if removing the source then fails, "
+        "the request fails but the entries stay purged."
     ),
     "request": StorageMoveSerializer,
-    "responses": {200: StorageFromToResponseSerializer},
+    "responses": {200: StorageTransferResponseSerializer},
 }
 
 STORAGE_COPY_SWAGGER = {
     "summary": "Copy a file or folder",
     "description": (
         "Creates a copy of a file or folder at the destination path. "
-        "To copy across organizations, provide `source_org_id` and "
-        "`destination_org_id` — the user must be a member of both orgs."
+        "To copy across organizations, provide both `source_org_id` and "
+        "`destination_org_id`, two different organizations; this requires a superadmin. "
+        "Within the active organization, omit both. Giving only one of them, or the same "
+        "organization twice, is a 400. "
+        "A copy that doesn't fit the destination's storage quota first purges the "
+        "destination's oldest storage recycle bin entries, just enough of them, and lists "
+        "them in `recycle_bin_purged`; if the whole bin isn't enough, nothing is purged "
+        "and it's a 413. "
+        "Only a user session (not an API key) holding FILES:DELETE in the destination "
+        "may cause a purge; for anyone else the bin counts as used and it's a 413. "
+        "An entry's `name` is null unless the caller has FILES:READ there."
     ),
     "request": StorageCopySerializer,
-    "responses": {200: StorageFromToResponseSerializer},
+    "responses": {200: StorageTransferResponseSerializer},
 }
 
 STORAGE_ADD_TO_GRAPH_SWAGGER = {
@@ -261,10 +282,13 @@ STORAGE_UPLOAD_LIMITS_SWAGGER = {
         "archive (always set). `free_bytes` is what the active organization may still "
         "upload; it ignores uploads still in flight and does not credit a file the "
         "upload would overwrite, and it shrinks as files are added, so read it again "
-        "before each batch. A file name is uploaded as an archive (and capped by "
-        "`max_archive_size`) iff its lower-cased name ends with one of "
-        "`archive_suffixes` and with none of `document_extensions`; both lists are "
-        "lower-case, include the leading dot and are sorted. Needs FILES:READ."
+        "before each batch. Files in the recycle bin count against it, but an upload "
+        "that doesn't fit purges the oldest storage bin entries first when the caller "
+        "may purge (a user session with FILES:DELETE), so more may fit. A file name is "
+        "uploaded as an archive (and capped by `max_archive_size`) iff its lower-cased "
+        "name ends with one of `archive_suffixes` and with none of `document_extensions`; "
+        "both lists are lower-case, include the leading dot and are sorted. "
+        "Needs FILES:READ."
     ),
     "responses": {200: StorageUploadLimitsResponseSerializer},
 }

@@ -1,0 +1,26 @@
+@if (supportsReasoning()) {
+    <div>
+        <app-select
+            [formControl]="control()"
+            label="Reasoning Effort"
+            variant="boxed"
+            placeholder="Provider default"
+            tooltipText="How much the model reasons before answering. Provider default sends nothing and keeps the provider's own setting."
+            [items]="items"
+        />
+        <div role="alert">
+            @if (hasServerErrors()) {
+                <app-validation-errors [control]="control()" />
+            }
+        </div>
+        <app-hint-message>
+            Higher effort is slower and costs more, and reasoning tokens count against Max Tokens.
+            @if (samplingHint(); as hint) {
+                {{ hint }}
+            }
+            @if (supportedEffortsHint(); as supportedHint) {
+                {{ supportedHint }}
+            }
+        </app-hint-message>
+    </div>
+}

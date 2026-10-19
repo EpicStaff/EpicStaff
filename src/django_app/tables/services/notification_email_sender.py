@@ -8,7 +8,7 @@ class NotificationEmailSender:
 
     Delivers via Django's configured `send_mail` / `EMAIL_BACKEND` -- the
     SAME transport `PasswordResetEmailSender` uses (see
-    tables/services/rbac/utils/password_reset_email_sender.py). Reusing it
+    rbac/identity/passwords/email_sender.py). Reusing it
     here (rather than writing a parallel SMTP client) keeps exactly one place
     in the codebase talking to the mail transport, so SMTP config/creds only
     ever live in one spot.

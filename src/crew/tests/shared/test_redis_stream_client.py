@@ -1,6 +1,5 @@
 """
-Tests for the shared Redis Streams client publish path and the per-run
-result stream name helper, against fakeredis.
+Tests for the shared Redis Streams client publish path, against fakeredis.
 """
 
 import fakeredis
@@ -8,7 +7,7 @@ import pytest
 import pytest_asyncio
 import redis.asyncio as aioredis
 
-from src.shared.redis_streams import RedisStreamClient, agent_result_stream
+from src.shared.redis_streams import RedisStreamClient
 
 
 @pytest_asyncio.fixture
@@ -19,16 +18,6 @@ async def stream_client(monkeypatch):
     await client.connect()
     yield client, fake_redis
     await client.close()
-
-
-def test_agent_result_stream_appends_correlation_id_to_prefix():
-    assert agent_result_stream("agent.results", "abc-123") == "agent.results:abc-123"
-
-
-def test_agent_result_stream_differs_per_correlation_id():
-    assert agent_result_stream("agent.results", "run-a") != agent_result_stream(
-        "agent.results", "run-b"
-    )
 
 
 @pytest.mark.asyncio

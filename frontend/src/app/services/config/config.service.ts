@@ -10,7 +10,8 @@ export interface AppConfig {
     type: string;
     realtimeApiUrl?: string;
     auditorUrl?: string;
-    isEpicChatEnabled?: boolean;
+    isChatEnabled?: boolean;
+    chatApiUrl?: string;
     isAuditTrailEnabled?: boolean;
 }
 
@@ -26,7 +27,8 @@ export class ConfigService {
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
-                isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                isChatEnabled: environment.isChatEnabled ?? false,
+                chatApiUrl: environment.chatApiUrl,
                 isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
             };
             return;
@@ -43,7 +45,8 @@ export class ConfigService {
 
                             realtimeApiUrl: environment.realtimeApiUrl,
                             auditorUrl: environment.auditorUrl,
-                            isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+                            isChatEnabled: environment.isChatEnabled ?? false,
+                            chatApiUrl: environment.chatApiUrl,
                             isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
                         } as AppConfig);
                     })
@@ -58,7 +61,7 @@ export class ConfigService {
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
-                isEpicChatEnabled: false,
+                isChatEnabled: false,
                 isAuditTrailEnabled: false,
             };
         }
@@ -92,11 +95,19 @@ export class ConfigService {
         return this.config.auditorUrl;
     }
 
-    get isEpicChatEnabled(): boolean {
-        return this.config?.isEpicChatEnabled ?? false;
-    }
-
     get isAuditTrailEnabled(): boolean {
         return this.config?.isAuditTrailEnabled ?? false;
+    }
+
+    get isChatEnabled(): boolean {
+        return this.config?.isChatEnabled ?? false;
+    }
+
+    get chatApiUrl(): string {
+        if (!this.config?.chatApiUrl) {
+            console.warn('Chat API URL not available, using fallback');
+            return environment.chatApiUrl || '/chat/';
+        }
+        return this.config.chatApiUrl;
     }
 }

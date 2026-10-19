@@ -188,14 +188,7 @@ export class FlowGraphCoreMenuComponent {
     public onBlockClicked(type: NodeType): void {
         let data: unknown = null;
 
-        if (type === NodeType.PYTHON) {
-            data = {
-                name: 'Python Code Node',
-                libraries: [],
-                code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
-                entrypoint: 'main',
-            };
-        } else if (type === NodeType.TABLE) {
+        if (type === NodeType.TABLE) {
             data = {
                 name: 'Decision Table',
                 table: {

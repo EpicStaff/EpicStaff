@@ -1,7 +1,10 @@
 import { ChangeDetectorRef, ElementRef, inject, Injectable, signal } from '@angular/core';
 import { FFlowComponent, FReassignConnectionEvent } from '@foblex/flow';
+import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../services/notifications';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
+import { isRoutePortBlockedByContinue } from '../components/node-panels/classification-decision-table-node-panel/cdt-route-continue.util';
 import { isConnectionValid } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
 import { CustomPortId } from '../core/models/port.model';
@@ -281,6 +284,16 @@ export class FlowReassignHandler {
         );
     }
 
+    /** A Classification Decision Table route-code port whose row has Continue on; see `isRoutePortBlockedByContinue`. */
+    isRoutePortBlocked(sourcePortId: CustomPortId): boolean {
+        const sourceNodeId = sourcePortId.split('_')[0];
+        const sourceNode = this.flowService.nodes().find((node) => node.id === sourceNodeId);
+        if (sourceNode?.type !== NodeType.CLASSIFICATION_TABLE) {
+            return false;
+        }
+        return isRoutePortBlockedByContinue(sourceNode.data.table?.condition_groups ?? [], sourceNode.id, sourcePortId);
+    }
+
     private getReassignError(
         sourcePortId: CustomPortId,
         targetPortId: CustomPortId,
@@ -294,6 +307,9 @@ export class FlowReassignHandler {
         }
         if (this.hasOccupiedPort(sourcePortId, targetPortId, connections)) {
             return 'This port already has a connection';
+        }
+        if (this.isRoutePortBlocked(sourcePortId)) {
+            return CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue;
         }
         return null;
     }

@@ -19,7 +19,8 @@ export class ButtonComponent {
         | 'ghost'
         | 'icon'
         | 'outline-primary'
-        | 'outline-secondary' = 'primary';
+        | 'outline-secondary'
+        | 'outline-danger' = 'primary';
     @Input() mod: 'default' | 'small' = 'default';
     @Input() leftIcon?: string; // e.g., 'ui/x'
     @Input() iconSize: string = '1.1rem';
@@ -27,6 +28,8 @@ export class ButtonComponent {
     @Input() rightIcon?: string;
     @Input() rightIconColor?: string;
     @Input() ariaLabel?: string;
+    /** The id of what describes the button (read when it gets the focus); null for none. */
+    readonly ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
 
     public shouldCollapseToIcon = false;

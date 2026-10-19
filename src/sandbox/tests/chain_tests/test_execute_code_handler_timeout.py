@@ -30,16 +30,17 @@ pytest.importorskip(
 import settings
 import dynamic_venv_executor_chain as chain_mod
 from dynamic_venv_executor_chain import ExecuteCodeHandler
+from secret_scrubber import MASK
 
 from conftest import copy_shared_libs_into_jail, make_execute_context
 
 
 def _context(tmp_path: Path, **overrides) -> dict[str, Any]:
+    overrides.setdefault("secrets", {})
     return make_execute_context(
         tmp_path,
         python_executable=sys.executable,
         execution_id="exec-timeout-test",
-        secrets={},
         **overrides,
     )
 
@@ -126,32 +127,6 @@ def _wait_until_dead(pid: int, timeout: float = 5.0) -> bool:
 
 
 class TestExecutionTimeout:
-    def test_infinite_loop_is_killed_and_reported_as_timeout(
-        self, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
-        context = _context(
-            tmp_path,
-            code="def main(**kwargs):\n    while True:\n        pass",
-        )
-
-        result = _run(context)
-
-        assert result.returncode == 124
-        assert result.execution_id == context["execution_id"]
-        assert "exceeded" in result.stderr.lower()
-        assert "terminated" in result.stderr.lower()
-
-    def test_fast_job_still_returns_zero(self, tmp_path, monkeypatch):
-        """The timeout path must not regress the happy path."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 5)
-        context = _context(tmp_path, code="def main(**kwargs):\n    return 1")
-
-        result = _run(context)
-
-        assert result.returncode == 0
-        assert result.result_data == "1"
-
     @pytest.mark.skipif(
         os.name != "posix", reason="process-group kill (killpg) is POSIX-only"
     )
@@ -288,3 +263,79 @@ class TestExecutionTimeout:
         assert marker in result.stdout
         assert "exceeded" in result.stderr.lower()
         assert "terminated" in result.stderr.lower()
+
+
+STORAGE_ACCESS_KEY_VALUE = "timeout-temp-ak-8f2c"
+STORAGE_SECRET_KEY_VALUE = "timeout-temp-sk-41ab"
+USER_SECRET_VALUE = "timeout-user-secret-7d31"
+
+_LEAK_THEN_HANG_CODE = (
+    "def main(**kwargs):\n"
+    "    import os\n"
+    "    import sys\n"
+    "    print(os.environ['STORAGE_ACCESS_KEY'])\n"
+    "    print(os.environ['STORAGE_SECRET_KEY'])\n"
+    "    print(get_secret('K'))\n"
+    "    sys.stderr.write(os.environ['STORAGE_ACCESS_KEY'] + chr(10))\n"
+    "    sys.stdout.flush()\n"
+    "    sys.stderr.flush()\n"
+    "    while True:\n"
+    "        pass\n"
+)
+
+
+class TestTimeoutOutputIsScrubbed:
+    """A timed-out job's partial output goes through the same masking set as a
+    job that finished.
+
+    The drain path recovers whatever the child wrote before it was killed, and
+    that text reaches PythonCodeResult, the SSE stream and the tool observation
+    handed to the LLM exactly like normal output does. A temporary storage
+    credential is still live at that moment, so the timeout path must mask it
+    unconditionally -- MASK_SECRET gates user secrets only.
+    """
+
+    def _storage_context(self, tmp_path: Path, code: str, **overrides):
+        return _context(
+            tmp_path,
+            code=code,
+            use_storage=True,
+            temp_storage_access_key=STORAGE_ACCESS_KEY_VALUE,
+            temp_storage_secret_key=STORAGE_SECRET_KEY_VALUE,
+            secrets={"K": USER_SECRET_VALUE},
+            **overrides,
+        )
+
+    def test_timed_out_job_stdout_does_not_contain_temp_storage_credentials(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MASK_SECRET", True)
+        context = self._storage_context(tmp_path, _LEAK_THEN_HANG_CODE)
+
+        result = _run_bounded(context, bound_seconds=10)
+
+        assert result.returncode == 124
+        assert STORAGE_ACCESS_KEY_VALUE not in result.stdout
+        assert STORAGE_SECRET_KEY_VALUE not in result.stdout
+        assert STORAGE_ACCESS_KEY_VALUE not in result.stderr
+        assert STORAGE_SECRET_KEY_VALUE not in result.stderr
+        assert USER_SECRET_VALUE not in result.stdout
+        assert MASK in result.stdout
+
+    def test_timed_out_job_masks_storage_credentials_even_when_mask_secret_is_false(
+        self, tmp_path, monkeypatch
+    ):
+        """MASK_SECRET=False is a debugging opt-out for the developer's own
+        secrets. It must not extend to a live temporary storage credential."""
+        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MASK_SECRET", False)
+        context = self._storage_context(tmp_path, _LEAK_THEN_HANG_CODE)
+
+        result = _run_bounded(context, bound_seconds=10)
+
+        assert result.returncode == 124
+        assert STORAGE_ACCESS_KEY_VALUE not in result.stdout
+        assert STORAGE_SECRET_KEY_VALUE not in result.stdout
+        assert STORAGE_ACCESS_KEY_VALUE not in result.stderr
+        assert USER_SECRET_VALUE in result.stdout

@@ -36,31 +36,27 @@ def fake_libc(monkeypatch, settings):
     yield fake
 
 
-def test_repeated_starts_run_one_daemon_thread(fake_libc):
-    memory_trim.start_periodic_malloc_trim()
-    first_thread = memory_trim._trim_thread
-
-    memory_trim.start_periodic_malloc_trim()
-
-    assert memory_trim._trim_thread is first_thread
-    assert first_thread.is_alive()
-    assert first_thread.daemon
+def _trim_threads() -> set[threading.Thread]:
+    return {thread for thread in threading.enumerate() if thread.name == "malloc-trim"}
 
 
-def test_concurrent_starts_run_one_thread(fake_libc):
-    started_threads = []
+@pytest.fixture
+def started_trim_threads(fake_libc):
+    """The malloc-trim threads started during the test (earlier tests leave theirs parked)."""
+    already_running = _trim_threads()
+    return lambda: _trim_threads() - already_running
 
-    def start_and_record():
-        memory_trim.start_periodic_malloc_trim()
-        started_threads.append(memory_trim._trim_thread)
 
-    callers = [threading.Thread(target=start_and_record) for _ in range(8)]
+def test_repeated_and_concurrent_starts_run_one_daemon_thread(started_trim_threads):
+    callers = [threading.Thread(target=memory_trim.start_periodic_malloc_trim) for _ in range(8)]
     for caller in callers:
         caller.start()
     for caller in callers:
         caller.join()
+    memory_trim.start_periodic_malloc_trim()
 
-    assert len({id(thread) for thread in started_threads}) == 1
+    (thread,) = started_trim_threads()
+    assert thread.daemon
 
 
 def test_thread_trims_once_the_interval_elapses(fake_libc, settings):
@@ -72,7 +68,8 @@ def test_thread_trims_once_the_interval_elapses(fake_libc, settings):
     assert fake_libc.trim_arguments == [0]
 
 
-def test_dead_thread_is_replaced(fake_libc):
+def test_thread_inherited_through_fork_is_replaced(fake_libc):
+    """A forked child inherits the parent's thread object, which is not alive there."""
     finished_thread = threading.Thread(target=lambda: None)
     finished_thread.start()
     finished_thread.join()
@@ -84,20 +81,16 @@ def test_dead_thread_is_replaced(fake_libc):
     assert memory_trim._trim_thread.is_alive()
 
 
-def test_interval_none_starts_nothing(fake_libc, settings):
-    settings.MALLOC_TRIM_INTERVAL = None
+@pytest.mark.parametrize("disabled_by", ["interval-none", "no-glibc"])
+def test_disabled_trim_starts_nothing(started_trim_threads, settings, monkeypatch, disabled_by):
+    if disabled_by == "interval-none":
+        settings.MALLOC_TRIM_INTERVAL = None
+    else:
+        monkeypatch.setattr(memory_trim, "_libc", None)
 
     memory_trim.start_periodic_malloc_trim()
 
-    assert memory_trim._trim_thread is None
-
-
-def test_missing_glibc_starts_nothing(fake_libc, monkeypatch):
-    monkeypatch.setattr(memory_trim, "_libc", None)
-
-    memory_trim.start_periodic_malloc_trim()
-
-    assert memory_trim._trim_thread is None
+    assert started_trim_threads() == set()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc")
@@ -105,7 +98,7 @@ def test_read_rss_mb_reports_this_process():
     assert memory_trim.read_rss_mb() > 0
 
 
-def test_redis_listener_starts_the_trim_thread(fake_libc, monkeypatch):
+def test_redis_listener_starts_the_trim_thread(started_trim_threads, monkeypatch):
     monkeypatch.setattr(
         redis_pubsub.RedisPubSub,
         "_create_redis_client",
@@ -117,15 +110,14 @@ def test_redis_listener_starts_the_trim_thread(fake_libc, monkeypatch):
 
     pubsub.listen_for_redis_messages_worker()
 
-    assert memory_trim._trim_thread is not None
-    assert memory_trim._trim_thread.is_alive()
+    assert len(started_trim_threads()) == 1
 
 
 class _StopConsuming(BaseException):
     """Not an Exception, so run()'s start-over loop does not catch it."""
 
 
-def test_graph_message_consumer_starts_the_trim_thread(fake_libc, monkeypatch):
+def test_graph_message_consumer_starts_the_trim_thread(started_trim_threads, monkeypatch):
     consumer = GraphMessageStreamConsumer(
         redis_client=fakeredis.FakeRedis(decode_responses=True),
         store=None,
@@ -135,7 +127,7 @@ def test_graph_message_consumer_starts_the_trim_thread(fake_libc, monkeypatch):
     trim_thread_when_consuming = []
 
     def record_and_stop():
-        trim_thread_when_consuming.append(memory_trim._trim_thread)
+        trim_thread_when_consuming.extend(started_trim_threads())
         raise _StopConsuming
 
     # run() never returns on its own; stop it once it starts consuming.
@@ -144,5 +136,4 @@ def test_graph_message_consumer_starts_the_trim_thread(fake_libc, monkeypatch):
     with pytest.raises(_StopConsuming):
         consumer.run()
 
-    assert trim_thread_when_consuming[0] is not None
-    assert trim_thread_when_consuming[0].is_alive()
+    assert len(trim_thread_when_consuming) == 1

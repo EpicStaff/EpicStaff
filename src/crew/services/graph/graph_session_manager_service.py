@@ -84,6 +84,32 @@ def _dispatch_session_audit(build_audit_coroutine: Callable[[], Coroutine]) -> N
         logger.warning("Session audit dispatch failed, dropping: {}", audit_exc)
 
 
+async def _audit_skipped_session(session_data: SessionData, session_status: str) -> None:
+    """Record a session that was stopped or expired before it left the queue.
+
+    The end event is parented to the identity document that add_session_start
+    creates, so the start must be written first even though nothing ran.
+    """
+    audit_writer = get_session_audit_writer()
+    await audit_writer.add_session_start(
+        session_id=session_data.id,
+        org_id=session_data.org_id,
+        flow_name=session_data.graph.name,
+        event_id=str(uuid.uuid4()),
+        run_type=session_data.run_type,
+    )
+    await audit_writer.add_session_end(
+        session_id=session_data.id,
+        org_id=session_data.org_id,
+        name="Session Skipped",
+        flow_name=session_data.graph.name,
+        event_id=str(uuid.uuid4()),
+        status="failed",
+        details={"reason": "stopped while queued", "session_status": session_status},
+        run_type=session_data.run_type,
+    )
+
+
 @dataclass
 class SessionCoroItem:
     coro: CoroutineType
@@ -233,8 +259,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 logger.debug("Mode: {}. Chunk: {}", stream_mode, chunk)
                 stop_event.check_stop()
 
-            await asyncio.sleep(0.01)
-
             end_node_result = session_graph_builder.end_node_result
 
             graph_end_data = GraphMessage(
@@ -250,7 +274,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aadd_graph_message(
                 graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
             )
-            await asyncio.sleep(0.05)
 
             org_id = get_session_org(session_id)
             if org_id is not None:
@@ -457,6 +480,12 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     async def session_runner(self, data: SessionData, stop_event: StopEvent):
         async with self._semaphore:
             logger.info(f"Acquired semaphore for session {data.id}")
+            # Stopped or expired while waiting for a slot: the stop/timeout
+            # handler already published the final status, so running would overwrite it.
+            if stop_event.is_set():
+                logger.info("Session {} was stopped while queued, skipping", data.id)
+                _dispatch_session_audit(lambda: _audit_skipped_session(data, stop_event.status))
+                return
             await self.run_session(data, stop_event)
             self.counter += 1
             logger.debug(f"Tasks executed: {self.counter}")

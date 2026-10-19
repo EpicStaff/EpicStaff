@@ -1,0 +1,38 @@
+:host {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease;
+
+    &:hover:not(.active) {
+        color: var(--color-text-primary);
+        border-color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    &.active {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+        background: var(--iris-alpha-8);
+    }
+}
