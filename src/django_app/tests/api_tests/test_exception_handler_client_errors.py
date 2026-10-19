@@ -77,6 +77,26 @@ def test_other_upstream_failures_render_as_502_with_the_upstream_body(error_type
     }
 
 
+def test_unreachable_dependency_renders_as_503():
+    exc = errors.ClientConnectionError("The service could not be reached.")
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.status_code == 503
+    assert response.data == {
+        "status_code": 503,
+        "code": "upstream_service_unreachable",
+        "message": "The service could not be reached.",
+    }
+
+
+def test_unreachable_dependency_without_a_message_falls_back_to_the_default():
+    response = custom_exception_handler(errors.ClientConnectionError(), {})
+
+    assert response.status_code == 503
+    assert response.data["message"] == "A server error occurred."
+
+
 def test_timeout_without_a_response_renders_as_502():
     response = custom_exception_handler(errors.ClientTimeoutError(), {})
 

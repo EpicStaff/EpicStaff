@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 from django.utils import timezone
 from foundation.transport.http import ClientError
 from loguru import logger
@@ -363,17 +362,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         channel, so the PENDING row would stay PENDING for good -- it is marked
         ERROR here instead, and any minted credentials are revoked.
 
-        `httpx.HTTPError` is caught alongside `ClientError` because the transport
-        translates only timeouts and non-2xx responses; an unreachable sandbox
-        raises `httpx.ConnectError`, which is the likeliest failure of the two.
-
         Returns:
             The execution id, whether the submit succeeded or failed.
         """
         try:
             with SandboxExecutionClient() as client:
                 client.submit(code_task_data)
-        except (ClientError, httpx.HTTPError) as error:
+        except ClientError as error:
             # The class name, never the error: it holds the sandbox response and,
             # through it, the submitted body with resolved secret plaintext.
             return self._fail_execution(

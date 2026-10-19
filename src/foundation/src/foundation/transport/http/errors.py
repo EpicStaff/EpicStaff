@@ -4,6 +4,7 @@ __all__ = [
     "ERROR_BY_STATUS",
     "ClientBadGatewayError",
     "ClientConflictError",
+    "ClientConnectionError",
     "ClientError",
     "ClientForbiddenError",
     "ClientGatewayTimeoutError",
@@ -26,6 +27,17 @@ class ClientError(Exception):
 
 class ClientTimeoutError(ClientError):
     """Raised when the request times out before a response arrives."""
+
+
+class ClientConnectionError(ClientError):
+    """Raised when the service could not be reached at all.
+
+    The request never got a response -- the connection was refused, the host did
+    not resolve, or the link failed mid-request -- so unlike `ClientHTTPStatusError`
+    there is no response to inspect. Why the connection failed is not distinguished:
+    to a caller it is one fact, the dependency is unreachable. Callers decide what
+    that means for them; this transport only names it.
+    """
 
 
 class ClientHTTPStatusError(ClientError):

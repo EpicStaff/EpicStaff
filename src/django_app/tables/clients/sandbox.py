@@ -34,12 +34,8 @@ class SandboxExecutionClient(Client):
         """Hand one execution to the sandbox and return its acceptance payload.
 
         Raises:
-            ClientError: The sandbox timed out or rejected the submission.
-            httpx.HTTPError: The sandbox could not be reached at all; the transport
-                translates only timeouts and non-2xx responses, so a connection
-                failure arrives untranslated.
-
-        Nothing arrives on the result channel in either case.
+            ClientError: The sandbox was unreachable, timed out, or rejected the
+                submission. Nothing arrives on the result channel.
         """
         response = self.post(url="/executions", json=_submit_body(code_task_data))
         return response.json()

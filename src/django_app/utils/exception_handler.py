@@ -2,6 +2,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django_app.settings import DEBUG
 from foundation.transport.http.errors import (
+    ClientConnectionError,
     ClientError,
     ClientNotFoundError,
     ClientRateLimitError,
@@ -50,10 +51,12 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
     Only a missing resource, a rejected payload and rate limiting describe the caller's
-    own request, so those statuses pass through. Every other upstream failure - timeout,
-    upstream auth, conflict, 5xx - is a failure of this gateway's dependency rather than
-    anything the caller did, and is reported as a bad gateway: passing an upstream 401 or
-    409 through would tell the caller something false about their own request.
+    own request, so those statuses pass through. A dependency that could not be reached
+    at all is service unavailable, which tells the caller the request is worth retrying.
+    Every other upstream failure - timeout, upstream auth, conflict, 5xx - is a failure
+    of this gateway's dependency rather than anything the caller did, and is reported as
+    a bad gateway: passing an upstream 401 or 409 through would tell the caller something
+    false about their own request.
     """
     detail = _upstream_detail(exc)
 
@@ -63,6 +66,11 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         return ValidationError(detail)
     if isinstance(exc, ClientRateLimitError):
         return Throttled(detail=detail)
+    if isinstance(exc, ClientConnectionError):
+        unreachable_error = APIException(detail)
+        unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        unreachable_error.default_code = "upstream_service_unreachable"
+        return unreachable_error
 
     upstream_error = APIException(detail)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY

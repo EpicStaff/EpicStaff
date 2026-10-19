@@ -168,8 +168,8 @@ def test_a_refused_submission_revokes_the_credentials_it_minted(
 def test_an_unreachable_sandbox_revokes_the_credentials_it_minted(
     gateway, org, user, python_code, sandbox_intake
 ):
-    """A connection failure is a raw httpx error, not a ClientError: catching only
-    the latter would let it escape the view and strand the run as PENDING."""
+    """The transport reports an unreachable sandbox as a ClientError, so the run
+    fails here rather than escaping the view and stranding the row as PENDING."""
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
     sandbox_intake.transport_error = httpx.ConnectError("connection refused")
 
