@@ -185,6 +185,9 @@ services:
       REALTIME_DB_PASSWORD: ${REALTIME_DB_PASSWORD:?}
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
+      SANDBOX_HOST: ${SANDBOX_HOST:?}
+      SANDBOX_PORT: ${SANDBOX_PORT:?}
+      REALTIME_SANDBOX_TIMEOUT: ${REALTIME_SANDBOX_TIMEOUT:?}
     networks:
       - backend-network
     depends_on:
@@ -196,6 +199,8 @@ services:
 #        condition: service_started
       django_app:
         condition: service_healthy
+      sandbox_new:
+        condition: service_started
 
   manager:
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:-latest}
