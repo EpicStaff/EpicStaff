@@ -57,6 +57,7 @@ x-communication-env: &communication-env
 
 services:
   django_app:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     build:
       context: .
@@ -164,6 +165,7 @@ services:
       retries: 100
 
   realtime:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
     container_name: realtime
     build:
@@ -199,6 +201,7 @@ services:
         condition: service_healthy
 
   manager:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
     build:
       context: .
@@ -232,6 +235,7 @@ services:
         condition: service_healthy
 
   crewdb:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
     build:
       context: ./crewdb
@@ -297,6 +301,7 @@ services:
       start_period: 5s
 
   crew:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
     build:
       context: .
@@ -337,6 +342,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   sandbox:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/sandbox:${IMAGE_TAG:?}
     build:
       context: .
@@ -434,6 +440,7 @@ services:
     restart: on-failure
 
   frontend:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
     build:
       context: ../frontend
@@ -451,6 +458,7 @@ services:
       - frontend-network
 
   webhook:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
     container_name: webhook
     build:
@@ -577,6 +585,7 @@ services:
   # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    restart: unless-stopped
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
     profiles: ["auditor"]
@@ -607,6 +616,7 @@ services:
       start_period: 30s
 
   auditor:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
     profiles: ["auditor"]
@@ -650,6 +660,7 @@ services:
       start_period: 5s
 
   knowledge_new:
+    restart: unless-stopped
     container_name: knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
     build:
