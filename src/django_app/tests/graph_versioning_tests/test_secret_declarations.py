@@ -383,6 +383,51 @@ class TestRestoreFailsClosed:
         assert [w["type"] for w in result["warnings"]] == ["secret_declaration_dropped"]
 
 
+    def test_a_dropped_declaration_is_anchored_to_the_restored_node_and_field(
+        self, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        secret.delete()
+
+        result = _restore(version=version, graph=graph)
+
+        restored = PythonNode.objects.get(graph=graph)
+        assert result["warnings"] == [
+            {
+                "type": "secret_declaration_dropped",
+                "node_name": "Python-Node #1",
+                "node_id": restored.pk,
+                "field": "python_code",
+                "missing_name": "STRIPE_KEY",
+                "reason": (
+                    'Secret "STRIPE_KEY" was declared when this version was saved, but it '
+                    "no longer exists in this organization. The declaration was not restored."
+                ),
+            }
+        ]
+
+    def test_a_dropped_bot_key_is_anchored_to_the_restored_telegram_node(
+        self, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="TG_TOKEN")
+        TelegramTriggerNode.objects.create(
+            graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+        )
+        version = _save(graph=graph)
+        secret.delete()
+
+        result = _restore(version=version, graph=graph)
+
+        restored = TelegramTriggerNode.objects.get(graph=graph)
+        [warning] = result["warnings"]
+        assert warning["node_id"] == restored.pk
+        assert warning["field"] == "telegram_bot_api_key_secret"
+        assert warning["missing_name"] == "TG_TOKEN"
+        assert "so the bot token was not restored" in warning["reason"]
+
+
 @pytest.mark.django_db
 class TestBackwardCompatibility:
     def test_a_snapshot_without_the_block_restores_unchanged(self, graph):
@@ -422,6 +467,35 @@ class TestBackwardCompatibility:
 
         assert [w["type"] for w in warnings] == ["secret_declaration_dropped"]
         assert "not restored" in warnings[0]["reason"]
+
+    def test_an_unmapped_node_keeps_no_node_id_after_remapping(self, manager, graph, default_org):
+        """The snapshot id would point at an unrelated node of the restored graph."""
+        _secret(org=default_org, name="STRIPE_KEY")
+        warnings = manager.restore_secret_declarations(
+            graph=graph,
+            declarations={"nodes": {"999": {"python_code": ["STRIPE_KEY"]}}},
+            node_mapper=IDMapper(),
+        )
+
+        manager.change_old_warnings_ids(warnings, IDMapper())
+
+        [warning] = warnings
+        assert "node_id" not in warning
+        assert warning["field"] == "python_code"
+        assert warning["missing_name"] == "STRIPE_KEY"
+
+    def test_a_preview_of_a_snapshot_without_the_block_resolves_nothing(
+        self, service, graph
+    ):
+        _python_node(graph=graph, name="STRIPE_KEY")
+        version = _save(graph=graph)
+        del version.snapshot["secret_declarations"]
+        version.save(update_fields=["snapshot"])
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {}
+        assert preview["warnings"] == []
 
 
 def _with_legacy_conditional_edge(*, version, source_node_id):
@@ -486,6 +560,155 @@ class TestLegacyConditionalEdgeSnapshot:
         assert "conditional_edge_list" not in preview["snapshot"]
         assert set(preview["snapshot"]["secret_declarations"]) == {"nodes", "telegram"}
         assert len(preview["snapshot"]["nodes"]) == 1
+
+
+@pytest.mark.django_db
+class TestPreviewResolvesDeclarationsLikeARestore:
+    """The preview reports what a restore would re-link, so a caller needs no access
+    to the secrets list to see it. Only declared names are resolved, never written."""
+
+    def test_a_declared_name_resolves_to_its_secret_id_and_nothing_else_is_listed(
+        self, service, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _secret(org=default_org, name="UNDECLARED_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"STRIPE_KEY": secret.pk}
+        assert preview["warnings"] == []
+
+    def test_a_deleted_name_is_reported_on_its_node_and_field_and_left_out(
+        self, service, graph, default_org
+    ):
+        kept = _secret(org=default_org, name="STRIPE_KEY")
+        deleted = _secret(org=default_org, name="GONE_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[kept, deleted])
+        version = _save(graph=graph)
+        deleted.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"STRIPE_KEY": kept.pk}
+        assert preview["warnings"] == [
+            {
+                "type": "secret_declaration_dropped",
+                "node_name": "Python-Node #1",
+                "node_id": node.pk,
+                "field": "python_code",
+                "missing_name": "GONE_KEY",
+                "reason": (
+                    'Secret "GONE_KEY" was declared when this version was saved, but it '
+                    "no longer exists in this organization. The declaration was not restored."
+                ),
+            }
+        ]
+
+    def test_classification_table_pre_and_post_are_reported_per_field(
+        self, service, graph, default_org
+    ):
+        pre_secret = _secret(org=default_org, name="PRE_KEY")
+        post_secret = _secret(org=default_org, name="POST_KEY")
+        pre = PythonCode.objects.create(code=CODE.format(name="PRE_KEY"))
+        pre.secrets.set([pre_secret])
+        post = PythonCode.objects.create(code=CODE.format(name="POST_KEY"))
+        post.secrets.set([post_secret])
+        node = ClassificationDecisionTableNode.objects.create(
+            graph=graph, node_name="CDT", pre_python_code=pre, post_python_code=post
+        )
+        version = _save(graph=graph)
+        post_secret.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"PRE_KEY": pre_secret.pk}
+        assert [
+            (warning["node_id"], warning["field"], warning["missing_name"])
+            for warning in preview["warnings"]
+        ] == [(node.pk, "post_python_code", "POST_KEY")]
+
+    def test_a_telegram_bot_key_resolves_to_its_secret_id(self, service, graph, default_org):
+        secret = _secret(org=default_org, name="TG_TOKEN")
+        TelegramTriggerNode.objects.create(
+            graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+        )
+        version = _save(graph=graph)
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"TG_TOKEN": secret.pk}
+        assert preview["warnings"] == []
+
+    def test_a_deleted_telegram_bot_key_is_reported_on_the_bot_key_field(
+        self, service, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="TG_TOKEN")
+        node = TelegramTriggerNode.objects.create(
+            graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+        )
+        version = _save(graph=graph)
+        secret.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {}
+        assert preview["warnings"] == [
+            {
+                "type": "secret_declaration_dropped",
+                "node_name": "TG",
+                "node_id": node.pk,
+                "field": "telegram_bot_api_key_secret",
+                "missing_name": "TG_TOKEN",
+                "reason": (
+                    'Secret "TG_TOKEN" was declared when this version was saved, but it '
+                    "no longer exists in this organization, so the bot token was not "
+                    "restored. The declaration was not restored."
+                ),
+            }
+        ]
+
+    def test_a_node_filtered_out_of_the_preview_resolves_nothing(
+        self, service, graph, default_org
+    ):
+        """A node of a removed type is not in the preview, so its declaration has no node
+        to anchor to and its names must not reach the map."""
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _secret(org=default_org, name="CREW_KEY")
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        crew_node_id = node.pk + 1000
+        version.snapshot["nodes"].append(
+            {"id": crew_node_id, "node_type": "CrewNode", "node_name": "Crew Node #1"}
+        )
+        version.snapshot["secret_declarations"]["nodes"][str(crew_node_id)] = {
+            "python_code": ["CREW_KEY"]
+        }
+        version.save(update_fields=["snapshot"])
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"STRIPE_KEY": secret.pk}
+        assert [warning["type"] for warning in preview["warnings"]] == ["node_type_unsupported"]
+
+    def test_the_preview_reports_the_drop_a_restore_then_reports(
+        self, service, graph, default_org
+    ):
+        """Same warning, same words; only the node id differs, since a restore gives the
+        node a new one."""
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        snapshot_node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        secret.delete()
+
+        [preview_warning] = service.preview_version(version)["warnings"]
+        [restore_warning] = _restore(version=version, graph=graph)["warnings"]
+
+        restored_node = PythonNode.objects.get(graph=graph)
+        assert preview_warning["node_id"] == snapshot_node.pk
+        assert restore_warning["node_id"] == restored_node.pk
+        assert {**preview_warning, "node_id": None} == {**restore_warning, "node_id": None}
 
 
 @pytest.mark.django_db
