@@ -82,6 +82,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     use_storage=python_code_data.use_storage,
                     storage_allowed_paths=python_code_data.storage_allowed_paths or [],
                     storage_org_prefix=python_code_data.storage_org_prefix,
+                    storage_credentials=storage_credentials,
                     timeout=None,
                 )
             except Exception as error:

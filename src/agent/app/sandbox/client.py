@@ -16,7 +16,9 @@ class SandboxClient:
 
     Intake is `POST /executions` (sandbox_new's HTTP API). Results come back on the
     shared Redis result channel and are matched to their pending request by
-    execution_id, exactly as before.
+    execution_id, exactly as before. The task's storage credentials are minted
+    upstream and only passed through here; sandbox_new rejects a task with
+    `use_storage` set and no credentials.
     """
 
     def __init__(
@@ -112,6 +114,11 @@ class SandboxClient:
                     "use_storage": task.use_storage,
                     "storage_allowed_paths": task.storage_allowed_paths or [],
                     "storage_org_prefix": task.storage_org_prefix,
+                    "storage_credentials": (
+                        task.storage_credentials.model_dump()
+                        if task.storage_credentials is not None
+                        else None
+                    ),
                     "timeout": None,
                 },
             )

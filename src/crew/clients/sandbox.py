@@ -3,10 +3,14 @@
 crew submits a code execution to sandbox_new over HTTP (`POST /executions`) and
 receives the result back on the Redis result channel, unchanged. The request body
 mirrors sandbox_new's ExecutionSubmitSchema; the venv is addressed by `venv_id`
-(None means sandbox_new's default venv).
+(None means sandbox_new's default venv). Storage credentials are minted upstream
+by django_app and only passed through here; sandbox_new rejects an execution with
+`use_storage` set and no credentials.
 """
 
 from typing import Any
+
+from src.shared.models.storage_scope import StorageCredentials
 
 from clients.http_client import AsyncClient
 
@@ -26,6 +30,7 @@ class SandboxClient(AsyncClient):
         use_storage: bool,
         storage_allowed_paths: list[str],
         storage_org_prefix: str | None,
+        storage_credentials: StorageCredentials | None,
         timeout: float | None,
     ) -> None:
         """Hand one execution to sandbox_new. Raises ClientError on a failed submit."""
@@ -44,6 +49,9 @@ class SandboxClient(AsyncClient):
                 "use_storage": use_storage,
                 "storage_allowed_paths": storage_allowed_paths,
                 "storage_org_prefix": storage_org_prefix,
+                "storage_credentials": (
+                    storage_credentials.model_dump() if storage_credentials is not None else None
+                ),
                 "timeout": timeout,
             },
         )
