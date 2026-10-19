@@ -382,6 +382,17 @@ async def test_sdk_retries_are_off_and_timeout_follows_litellm_global(acompletio
     assert request["timeout"] == 1234.0
 
 
+async def test_llm_config_timeout_wins_over_litellm_global(acompletion, monkeypatch):
+    monkeypatch.setattr(litellm, "request_timeout", 1234.0)
+    model_config = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test", timeout=120.0)
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(acompletion, model_config)
+
+    assert acompletion_kwargs["timeout"] == 120.0
+
+
 # ---------------------------------------------------------------------------
 # Tests — cached_prompt_tokens extraction
 # ---------------------------------------------------------------------------

@@ -211,6 +211,8 @@ class LiteLLMClient(LLMClient):
             retry = retry.with_max_retries(runtime_max_retries)
 
         extra_kwargs = _kwargs_for_acompletion(model_config)
+        # The LLM config's own timeout wins; litellm's global is the fallback, as with the Router.
+        extra_kwargs.setdefault("timeout", litellm.request_timeout)
 
         if stream:
             extra_kwargs["stream_options"] = {"include_usage": True}
@@ -224,7 +226,6 @@ class LiteLLMClient(LLMClient):
                     tools=litellm_tools,
                     # RetryPolicy owns retries; SDK retries would multiply the attempts.
                     max_retries=0,
-                    timeout=litellm.request_timeout,
                     _skip_mcp_handler=True,  # agent handles MCP itself; don't import litellm.proxy stack
                     **extra_kwargs,
                 )

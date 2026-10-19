@@ -279,9 +279,10 @@ Converts `ToolSpec`s into the litellm/OpenAI function-call format, resolves a
 (`_STRIPPED_MODEL_CONFIG_KEYS = {"max_retry_limit", "max_rpm"}`) and forwards
 the rest of `model_config` (including `model`, `api_key`, `base_url`,
 `api_version`). Each attempt calls
-`litellm.acompletion(..., max_retries=0, timeout=litellm.request_timeout)`
-inside `retry.aretry(...)`; `max_retries=0` keeps provider-SDK retries off so
-only `RetryPolicy` retries. With `stream=True` it adds
+`litellm.acompletion(..., max_retries=0)` inside `retry.aretry(...)`;
+`max_retries=0` keeps provider-SDK retries off so only `RetryPolicy` retries.
+`timeout` is the LLM config's own value, or `litellm.request_timeout` when the
+config has none. With `stream=True` it adds
 `stream_options={"include_usage": True}` and opens a lazily-opened stream
 (`CustomStreamWrapper.fetch_stream()`) inside the attempt, so connect errors are
 retried. Usage/cost normalization: `_usage_dict` normalizes
