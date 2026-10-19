@@ -51,7 +51,9 @@ def _python_child(code: str, input_map: dict | None = None) -> GraphData:
     )
 
 
-def _subgraph_node(child: GraphData, output_variable_path: str, input_map=None, **services) -> SubGraphNode:
+def _subgraph_node(
+    child: GraphData, output_variable_path: str, input_map=None, audit_retention_days=0, **services
+) -> SubGraphNode:
     parent_builder = SimpleNamespace(
         **{
             "redis_service": None,
@@ -73,6 +75,7 @@ def _subgraph_node(child: GraphData, output_variable_path: str, input_map=None, 
         unique_subgraph_list=[SubGraphData(id=7, data=child)],
         graph_builder=StateGraph(State),
         org_id=1,
+        audit_retention_days=audit_retention_days,
         session_graph_builder=parent_builder,
         stop_event=StopEvent(),
     )
@@ -202,6 +205,24 @@ async def test_compiled_child_is_reused_across_runs_with_fresh_state(monkeypatch
     assert len(compile_calls) == 1
     assert second["variables"].result.doubled == 10
     assert [item["output"]["doubled"] for item in second["state_history"]] == [4, 10]
+
+
+async def test_child_flow_is_built_with_the_parents_audit_retention(monkeypatch):
+    node = _subgraph_node(
+        _python_child("def main(): return {'done': True}"), "variables.result", audit_retention_days=90
+    )
+    compiled_session_data = []
+    real_compile = SessionGraphBuilder.compile_from_schema
+
+    def recording_compile(builder, session_data):
+        compiled_session_data.append(session_data)
+        return real_compile(builder, session_data)
+
+    monkeypatch.setattr(SessionGraphBuilder, "compile_from_schema", recording_compile)
+
+    await node.run(_parent_state(), writer=lambda message: None)
+
+    assert [session_data.audit_retention_days for session_data in compiled_session_data] == [90]
 
 
 class FakeKeyValueClient:

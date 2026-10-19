@@ -28,6 +28,7 @@ class SubGraphNode:
         unique_subgraph_list: list[SubGraphData],
         graph_builder: StateGraph,
         org_id: int,
+        audit_retention_days: int,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
         session_graph_builder=None,
         stop_event=None,
@@ -38,6 +39,7 @@ class SubGraphNode:
         self._graph_builder = graph_builder
         self.session_id = session_id
         self.org_id = org_id
+        self.audit_retention_days = audit_retention_days
         self.node_name = subgraph_node_data.node_name
         self.input_map = subgraph_node_data.input_map
         self.subgraph_data = self._get_graph_data(subgraph_node_data.subgraph_id)
@@ -82,6 +84,7 @@ class SubGraphNode:
             initial_state=initial_state,
             storage_credentials=self.storage_credentials,
             org_id=self.org_id,
+            audit_retention_days=self.audit_retention_days,
         )
 
     def _create_subgraph_builder(self):

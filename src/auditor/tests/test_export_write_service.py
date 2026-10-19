@@ -94,11 +94,28 @@ async def test_only_the_callers_org_is_exported(export):
     [
         ("json", ["[]"]),
         # The header is written before the scan, so the columns show even with no rows.
-        ("csv", [",".join(SessionAuditEvent.model_fields)]),
+        (
+            "csv",
+            [",".join(name for name in SessionAuditEvent.model_fields if name != "retention_days")],
+        ),
     ],
 )
 async def test_export_matching_nothing_is_still_a_valid_file(export, export_format, expected_lines):
     assert (await export([], export_format=export_format)).splitlines() == expected_lines
+
+
+async def test_json_export_leaves_out_the_events_retention_days(export):
+    [row] = await _json_rows(export, [_event(retention_days=90)])
+
+    assert row["id"] == "evt-1"
+    assert "retention_days" not in row
+
+
+async def test_csv_export_has_no_retention_days_column(export):
+    [row] = await _csv_rows(export, [_event(retention_days=90)])
+
+    assert row["id"] == "evt-1"
+    assert "retention_days" not in row
 
 
 async def test_json_export_is_pretty_printed_utf8(export):

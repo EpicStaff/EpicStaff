@@ -79,3 +79,24 @@ async def test_query_with_no_hits_and_size_zero_does_not_raise():
 
     assert events == []
     assert next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_written_document_keeps_the_events_retention_days(monkeypatch):
+    indexed_sources: list[dict] = []
+
+    async def recording_bulk(client, actions, raise_on_error):
+        indexed_sources.extend(action["_source"] for action in actions)
+        return len(indexed_sources), []
+
+    monkeypatch.setattr("app.repositories.opensearch_repository.async_bulk", recording_bulk)
+    repository = OpenSearchAuditRepository(
+        _FakeOpenSearchClient([]), SESSIONS_INDEX, SessionAuditEvent
+    )
+    event = SessionAuditEvent(
+        id="evt-tiered", org_id=1, session_id=1, kind="event",
+        event_time=datetime.now(timezone.utc), retention_days=90,
+    )
+
+    assert await repository.write_batch([event]) is None
+    assert [source["retention_days"] for source in indexed_sources] == [90]

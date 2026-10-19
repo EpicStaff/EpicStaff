@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from django.utils import timezone
+from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.models import (
     AgentNodeData,
@@ -14,6 +15,7 @@ from src.shared.models import (
     SubGraphNodeData,
     TaskNodeData,
 )
+from src.shared.retention import DataType
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
@@ -223,13 +225,15 @@ class SessionManagerService(metaclass=SingletonMeta):
             # back out before it becomes a live flow variable.
             initial_state["__token_budget__"] = token_budget
 
+        org_id = session.graph.org_id
         return SessionData(
             id=session.pk,
-            org_id=session.graph.org_id,
+            org_id=org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
             run_type=run_type,
+            audit_retention_days=effective_retention_days_for_org(org_id, DataType.AUDIT),
         )
 
     def _mark_session_error(self, session: Session, reason: str) -> None:

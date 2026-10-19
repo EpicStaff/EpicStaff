@@ -23,7 +23,7 @@ def session_manager(monkeypatch):
     # code that walks the payload (storage demand, publishing) keeps up with new fields.
     def empty_session_data(session, **kwargs):
         graph = GraphData(name=GRAPH_NAME, entrypoint="__end__", end_node=None)
-        return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
+        return SessionData(id=session.id, org_id=session.graph.org_id, audit_retention_days=0, graph=graph)
 
     monkeypatch.setattr(session_manager, "create_session_data", empty_session_data)
     return session_manager

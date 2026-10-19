@@ -126,3 +126,26 @@ async def test_ingest_missing_api_key_is_401(client_factory):
         )
 
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_ingest_keeps_each_events_retention_and_defaults_a_missing_one_to_unlimited(
+    client_factory,
+):
+    tiered_event = dict(_make_event("evt-tiered"), retention_days=90)
+    event_without_retention = _make_event("evt-old-sender")
+    del event_without_retention["retention_days"]
+    repository = FakeRepository(errors=None)
+    client = await client_factory(repository)
+    async with client:
+        resp = await client.post(
+            "/api/audit/sessions/events",
+            json=[tiered_event, event_without_retention],
+            headers={"X-API-Key": API_KEY},
+        )
+
+    assert resp.status_code == 200
+    assert [(event.id, event.retention_days) for event in repository.received_events] == [
+        ("evt-tiered", 90),
+        ("evt-old-sender", 0),
+    ]

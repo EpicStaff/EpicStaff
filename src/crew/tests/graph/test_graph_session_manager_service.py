@@ -21,14 +21,20 @@ import pytest
 import redis
 from dotdict import DotDict
 from fakeredis import FakeAsyncRedis
+from loguru import logger
 
 from models.graph_models import FinishMessageData, GraphMessage
 from services.graph.events import StopEvent
+from services.graph.exceptions import StopSession
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.redis_service import RedisService
+from src.crew.services.graph import session_audit_provider
+from src.crew.services.graph.session_audit_provider import emit_session_audit_event
+from src.shared.audit.writers.session_writer import SessionAuditWriter
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
+from tests.graph.recording_audit_client import RecordingAuditClient
 
 
 def make_finish_chunk(
@@ -113,7 +119,9 @@ def service():
     return svc
 
 
-def _session_data(session_id: int, token_budget: int | None = None) -> SessionData:
+def _session_data(
+    session_id: int, token_budget: int | None = None, audit_retention_days: int = 0
+) -> SessionData:
     initial_state = {}
     if token_budget is not None:
         initial_state["__token_budget__"] = token_budget
@@ -122,6 +130,7 @@ def _session_data(session_id: int, token_budget: int | None = None) -> SessionDa
         org_id=1,
         graph=GraphData(name="g", entrypoint="__end__", end_node=None),
         initial_state=initial_state,
+        audit_retention_days=audit_retention_days,
     )
 
 
@@ -513,3 +522,120 @@ async def test_session_stopped_while_queued_is_audited_as_skipped(service, monke
         "reason": "stopped while queued",
         "session_status": "expired",
     }
+
+
+@pytest.fixture
+def audit_client(monkeypatch):
+    client = RecordingAuditClient()
+    writer = SessionAuditWriter(client)
+    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
+    monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer", lambda: writer
+    )
+    return client
+
+
+@pytest.fixture
+def captured_logs():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING")
+    yield lines
+    logger.remove(sink_id)
+
+
+async def _wait_for_audit_events(client, count: int) -> None:
+    async with asyncio.timeout(1):
+        while len(client.events) < count:
+            await asyncio.sleep(0)
+
+
+class RaisingCompiledGraph:
+    def __init__(self, error: BaseException):
+        self._error = error
+
+    async def astream(self, input, config, stream_mode):
+        raise self._error
+        yield
+
+
+AUDITED_SESSION_ID = 61
+
+# Every way a session can end. The event count is the session start (identity
+# document + event), any node events, and the session end.
+TERMINAL_PATHS = [
+    pytest.param(
+        lambda: FakeCompiledGraph([make_finish_chunk(AUDITED_SESSION_ID, 10)]),
+        False,
+        "Session End",
+        4,
+        id="completed",
+    ),
+    pytest.param(
+        lambda: RaisingCompiledGraph(RuntimeError("node crashed")),
+        False,
+        "Session Failed",
+        3,
+        id="failed",
+    ),
+    pytest.param(
+        lambda: RaisingCompiledGraph(asyncio.CancelledError()),
+        False,
+        "Session Cancelled",
+        3,
+        id="cancelled",
+    ),
+    pytest.param(
+        lambda: RaisingCompiledGraph(StopSession(status="stop")),
+        False,
+        "Session Stopped",
+        3,
+        id="stopped",
+    ),
+    pytest.param(
+        lambda: FakeCompiledGraph([]),
+        True,
+        "Session Skipped",
+        3,
+        id="skipped-in-queue",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("build_graph", "stopped_while_queued", "end_event_name", "event_count"), TERMINAL_PATHS
+)
+async def test_every_audit_event_carries_the_sessions_retention_and_none_follow_the_end(
+    service,
+    monkeypatch,
+    audit_client,
+    captured_logs,
+    build_graph,
+    stopped_while_queued,
+    end_event_name,
+    event_count,
+):
+    _patch_builder(monkeypatch, build_graph())
+    stop_event = StopEvent()
+    if stopped_while_queued:
+        stop_event.set()
+
+    await service.session_runner(
+        _session_data(AUDITED_SESSION_ID, audit_retention_days=90), stop_event
+    )
+    await _wait_for_audit_events(audit_client, event_count)
+
+    assert audit_client.events[-1].name == end_event_name
+    assert [event.retention_days for event in audit_client.events] == [90] * event_count
+
+    logs_before_late_message = len(captured_logs)
+    _, late_message = make_finish_chunk(AUDITED_SESSION_ID, 1)
+    emit_session_audit_event(GraphMessage.encode_payload(late_message.to_payload()))
+    await asyncio.sleep(0)
+
+    assert len(audit_client.events) == event_count
+    assert any(
+        f"No audit context for session {AUDITED_SESSION_ID}" in line
+        for line in captured_logs[logs_before_late_message:]
+    )
