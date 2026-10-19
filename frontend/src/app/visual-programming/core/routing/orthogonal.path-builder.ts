@@ -7,6 +7,9 @@ import {
     normalizeOrthogonalWaypoints,
     orthogonalStretches,
 } from './orthogonal-route-shapes';
+import { isWithinStraightLineThreshold, straightLine } from './path-builder-shared';
+
+const STRAIGHT_LINE_THRESHOLD = 30;
 
 /**
  * Foblex connection builder `'orthogonal'`: draws `[source, ...waypoints, target]`
@@ -15,15 +18,21 @@ import {
  * candidate is drawn as the stretch it moves. Without waypoints (while a node is dragged or
  * animated) it draws the fallback shape.
  *
- * Candidates: one per stretch between consecutive raw anchors, on the middle of its middle segment.
- * Foblex inserts a dragged candidate at raw waypoint index `candidates.indexOf(candidate)`, so
- * candidate i has to lie between raw waypoints i-1 and i.
+ * Candidates: one per stretch between consecutive normalized interior points, on the middle of its
+ * middle segment. Using the normalized interior (instead of the raw waypoints) ensures candidates
+ * sit on the rendered path — keepStubs and collapseShortBridges can shift the shape away from the
+ * raw waypoints. Foblex inserts a dragged candidate at `candidates.indexOf(candidate)` inside the
+ * current waypoints array; after release, `onWaypointsChanged` re-normalizes.
  */
 export class OrthogonalPathBuilder implements IFConnectionBuilder {
     handle({ source, target, radius, waypoints }: IFConnectionBuilderRequest): IFConnectionBuilderResponse {
+        if (isWithinStraightLineThreshold(source, target, STRAIGHT_LINE_THRESHOLD)) {
+            return straightLine(source, target);
+        }
+
         const interior = waypoints?.length ? normalizeOrthogonalWaypoints(source, waypoints, target) : [];
         const points = interior.length ? [source, ...interior, target] : fallbackRoutePoints(source, target);
-        const stretches = waypoints?.length ? orthogonalStretches(source, waypoints, target) : [points];
+        const stretches = interior.length ? orthogonalStretches(source, interior, target) : segmentPairs(points);
         return {
             path: buildRoundedOrthogonalPath(points, radius),
             points,
@@ -32,6 +41,14 @@ export class OrthogonalPathBuilder implements IFConnectionBuilder {
             candidates: stretches.map(middleOfMiddleSegment),
         };
     }
+}
+
+function segmentPairs(points: IPoint[]): IPoint[][] {
+    const pairs: IPoint[][] = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        pairs.push([points[i], points[i + 1]]);
+    }
+    return pairs;
 }
 
 function middleOfMiddleSegment(stretch: IPoint[]): IPoint {
