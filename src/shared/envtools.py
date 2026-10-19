@@ -1,6 +1,6 @@
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import EllipsisType
 from typing import Any
@@ -30,9 +30,16 @@ class Env:
     BOOLEAN_FALSE_VALUES = frozenset({"0", "f", "n", "no", "false", "off"})
     NONE_VALUE = "none"
 
-    def __init__(self):
+    def __init__(self, environ: Mapping[str, str] | None = None):
+        """Snapshot the variables to read from.
+
+        Args:
+            environ: Variables to read instead of ``os.environ``, so a caller (a test,
+                a config loader) can build an Env over a known mapping without
+                touching the process environment.
+        """
         self._envs: dict[str, str] = {}
-        self._envs.update(os.environ)
+        self._envs.update(os.environ if environ is None else environ)
 
     def __contains__(self, variable):
         return variable in self._envs
