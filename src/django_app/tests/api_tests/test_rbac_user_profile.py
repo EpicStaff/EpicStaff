@@ -265,6 +265,10 @@ def custom_entry(action="node.task", keys="Shift+KeyT"):
     return {"action": action, "keys": keys}
 
 
+def subgraph_entry(params, keys="Shift+KeyG"):
+    return custom_entry(action="node.subgraph", keys=keys) | {"params": params}
+
+
 def save_shortcuts(user, value):
     user.custom_shortcuts = value
     user.save(update_fields=["custom_shortcuts"])
@@ -322,11 +326,25 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
         shortcuts([custom_entry(action=" !~", keys=" !~")]),
         shortcuts([custom_entry(keys=f"Shift+Key{index}") for index in range(100)]),
         shortcuts([custom_entry(keys=None) for _ in range(100)]),
+        shortcuts([subgraph_entry({"flowId": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Main flow"})]),
+        shortcuts([subgraph_entry({f"param{index}": index for index in range(5)})]),
+        shortcuts([subgraph_entry({"x" * 64: "y" * 64})]),
+        shortcuts([subgraph_entry({" !~": " !~"})]),
+        shortcuts([subgraph_entry({"flowId": 0})]),
+        shortcuts([subgraph_entry({"flowId": 2**53 - 1})]),
+        shortcuts([
+            custom_entry(),
+            subgraph_entry({"flowId": 12}, keys="Shift+KeyA"),
+            subgraph_entry({"flowId": 13}, keys=None),
+        ]),
     ],
     ids=[
         "empty", "unknown-action", "two-keys", "same-action-twice", "null-keys", "repeated-null-keys",
         "null-keys-beside-a-chord", "action-at-limit", "keys-at-limit", "printable-ascii-edges",
-        "entries-at-limit", "entries-at-limit-all-null",
+        "entries-at-limit", "entries-at-limit-all-null", "params-int", "params-string", "params-at-limit",
+        "param-name-and-value-at-limit", "param-printable-ascii-edges", "param-int-zero", "param-int-at-limit",
+        "entries-with-and-without-params",
     ],
 )
 def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
@@ -378,6 +396,32 @@ def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
         shortcuts([custom_entry(action="node.agent"), custom_entry(action="node.task")]),
         shortcuts([custom_entry(keys=None), custom_entry(action="node.agent"), custom_entry(keys=None), custom_entry()]),
         shortcuts([custom_entry(keys=["Shift+KeyA"]), custom_entry(keys=["Shift+KeyA"])]),
+        shortcuts([subgraph_entry([12])]),
+        shortcuts([subgraph_entry("flowId=12")]),
+        shortcuts([subgraph_entry(None)]),
+        shortcuts([subgraph_entry(12)]),
+        shortcuts([subgraph_entry({})]),
+        shortcuts([subgraph_entry({f"param{index}": index for index in range(6)})]),
+        shortcuts([subgraph_entry({"flowId": 12}) | {"extra": "x"}]),
+        shortcuts([subgraph_entry({"": 12})]),
+        shortcuts([subgraph_entry({"x" * 65: 12})]),
+        shortcuts([subgraph_entry({"flowName": ""})]),
+        shortcuts([subgraph_entry({"flowName": "x" * 65})]),
+        shortcuts([subgraph_entry({"flowId": True})]),
+        shortcuts([subgraph_entry({"flowId": False})]),
+        shortcuts([subgraph_entry({"flowId": 12.0})]),
+        shortcuts([subgraph_entry({"flowId": 12.5})]),
+        shortcuts([subgraph_entry({"flowId": {"id": 12}})]),
+        shortcuts([subgraph_entry({"flowId": [12]})]),
+        shortcuts([subgraph_entry({"flowId": None})]),
+        shortcuts([subgraph_entry({"flowId": -1})]),
+        shortcuts([subgraph_entry({"flowId": 2**53})]),
+        shortcuts([subgraph_entry({"flow\u0000Id": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Main\u0000"})]),
+        shortcuts([subgraph_entry({"flowІd": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Головний"})]),
+        shortcuts([subgraph_entry({"flowName": "Main\tflow"})]),
+        shortcuts([custom_entry(), subgraph_entry({"flowId": 12}, keys="Shift+KeyT")]),
     ],
     ids=[
         "null", "list", "string", "empty-object", "old-flat-map", "overrides-present", "missing-custom",
@@ -386,7 +430,12 @@ def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
         "null-action", "non-string-keys", "list-keys", "empty-action", "empty-keys", "action-over-limit",
         "keys-over-limit", "entries-over-limit", "nul-keys", "nul-action", "lone-surrogate-keys",
         "lone-surrogate-action", "non-ascii-keys", "tab-in-keys", "delete-char-in-keys", "duplicate-keys",
-        "duplicate-keys-between-nulls", "duplicate-non-hashable-keys",
+        "duplicate-keys-between-nulls", "duplicate-non-hashable-keys", "params-list", "params-string",
+        "params-null", "params-int", "params-empty", "params-over-limit", "item-with-params-and-extra-key",
+        "empty-param-name", "param-name-over-limit", "empty-param-string", "param-string-over-limit",
+        "param-true", "param-false", "param-whole-float", "param-float", "param-object", "param-list",
+        "param-null", "param-negative-int", "param-int-over-limit", "nul-param-name", "nul-param-string",
+        "non-ascii-param-name", "non-ascii-param-string", "tab-in-param-string", "duplicate-keys-with-params",
     ],
 )
 def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
@@ -414,8 +463,13 @@ def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
         {"overrides": {}, "custom": []},
         shortcuts([custom_entry(keys="\u0000")]),
         shortcuts([custom_entry(), custom_entry(action="node.agent")]),
+        shortcuts([subgraph_entry({"flowId": True})]),
+        shortcuts([subgraph_entry({"flowId": {"id": 12}})]),
     ],
-    ids=["not-an-object", "old-flat-map", "overrides-present", "nul-keys", "duplicate-keys"],
+    ids=[
+        "not-an-object", "old-flat-map", "overrides-present", "nul-keys", "duplicate-keys", "param-true",
+        "param-object",
+    ],
 )
 def test_a_rejected_shortcut_patch_does_not_change_the_display_name(member_acme, custom_shortcuts):
     member_acme.display_name = "Keep"

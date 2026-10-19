@@ -4,10 +4,17 @@ from typing import Any
 from django.core.files.uploadedfile import UploadedFile
 from tables.models.user import (
     SHORTCUTS_MAX_CUSTOM_ENTRIES,
+    SHORTCUTS_MAX_PARAM_INTEGER,
+    SHORTCUTS_MAX_PARAMS,
     SHORTCUTS_MAX_TEXT_LENGTH,
 )
 
 from rbac.validation.base import BaseRBACValidator, FieldError
+
+_CUSTOM_ENTRY_SHAPE_REASON = (
+    '"custom" must be a list of objects with exactly the keys "action" and "keys", '
+    'plus an optional "params".'
+)
 
 
 class UserValidationService(BaseRBACValidator):
@@ -231,13 +238,17 @@ class UserValidationService(BaseRBACValidator):
             return 'Must be an object with exactly the key "custom".'
         custom = value["custom"]
         if not isinstance(custom, list):
-            return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
+            return _CUSTOM_ENTRY_SHAPE_REASON
         if len(custom) > SHORTCUTS_MAX_CUSTOM_ENTRIES:
             return f'"custom" must have {SHORTCUTS_MAX_CUSTOM_ENTRIES} entries or fewer.'
+        if not all(_has_shortcut_entry_shape(entry) for entry in custom):
+            return _CUSTOM_ENTRY_SHAPE_REASON
+        params_list = [entry["params"] for entry in custom if "params" in entry]
         if not all(
-            isinstance(entry, dict) and entry.keys() == {"action", "keys"} for entry in custom
+            isinstance(params, dict) and 0 < len(params) <= SHORTCUTS_MAX_PARAMS
+            for params in params_list
         ):
-            return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
+            return f'"params" must be an object with 1 to {SHORTCUTS_MAX_PARAMS} entries.'
         if not all(_is_shortcut_text(entry["action"]) for entry in custom):
             return (
                 "Action ids must be non-empty printable ASCII strings "
@@ -248,6 +259,16 @@ class UserValidationService(BaseRBACValidator):
             return (
                 "Keys must be null or non-empty printable ASCII strings "
                 f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
+            )
+        if not all(
+            _is_shortcut_text(name) and _is_shortcut_param_value(param_value)
+            for params in params_list
+            for name, param_value in params.items()
+        ):
+            return (
+                "Param names must be non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer; each value must be "
+                f"such a string or an integer from 0 to {SHORTCUTS_MAX_PARAM_INTEGER}."
             )
         if len(set(assigned_keys)) != len(assigned_keys):
             return 'Each "custom" entry with keys must have different keys.'
@@ -288,6 +309,19 @@ class UserValidationService(BaseRBACValidator):
         )
         self._raise_if_any(errors)
         return {"ticket": ticket, "new_password": new_password}
+
+
+def _has_shortcut_entry_shape(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.keys() in (
+        {"action", "keys"},
+        {"action", "keys", "params"},
+    )
+
+
+def _is_shortcut_param_value(param_value: Any) -> bool:
+    if type(param_value) is int:
+        return 0 <= param_value <= SHORTCUTS_MAX_PARAM_INTEGER
+    return _is_shortcut_text(param_value)
 
 
 def _is_shortcut_text(text: Any) -> bool:
