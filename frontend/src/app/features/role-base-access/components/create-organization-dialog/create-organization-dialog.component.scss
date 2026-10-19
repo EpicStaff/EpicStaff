@@ -68,6 +68,42 @@
             gap: 8px;
         }
 
+        .data-retention,
+        .data-retention-status {
+            grid-column: 2;
+            margin-top: 16px;
+        }
+
+        // Aligned with the selects, not centred on the whole block (the audit hint makes it taller):
+        // skip the column label and its gap, then a line as tall as the select (40px) centres the text on it.
+        .data-retention__label {
+            align-self: start;
+            margin-top: calc(16px + var(--text-body-small-large-size) * var(--text-body-small-large-line-height) + 4px);
+            line-height: 40px;
+        }
+
+        .data-retention {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 240px));
+            column-gap: 16px;
+            align-items: start;
+        }
+
+        .data-retention-status {
+            display: block;
+        }
+
+        .data-retention__column {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .data-retention__hint {
+            color: var(--color-ks-transparent-text-60);
+        }
+
         // fixed with flex, not width alone: app-select grows to fill a flex row, and the stepper's native
         // input keeps its default ~20-character width unless min-width lets the item shrink below it
         .retention__unit,

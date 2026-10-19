@@ -34,6 +34,8 @@
                 type="button"
                 class="selector__btn"
                 [disabled]="isDisabled()"
+                [attr.id]="triggerLabelledBy() ? triggerId : null"
+                [attr.aria-labelledby]="triggerLabelledBy()"
                 [ngClass]="'selector__btn--' + mod()"
                 [class.selector__btn--invalid]="invalid()"
                 [class.selector__btn--open]="open()"

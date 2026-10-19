@@ -38,6 +38,8 @@ export interface SelectItem<T = unknown> {
 
 export type SelectVariant = 'default' | 'boxed';
 
+let nextSelectId = 0;
+
 @Component({
     selector: 'app-select',
     imports: [NgClass, OverlayModule, TooltipComponent, AppSvgIconComponent],
@@ -79,6 +81,11 @@ export class SelectComponent implements ControlValueAccessor {
     readonly = input<boolean>(false);
     /** Text shown in readonly mode when no value is selected. */
     readonlyEmptyPlaceholder = input<string>('—');
+    /**
+     * Id of an external element that names the select (e.g. a column header). The trigger is then
+     * labelled by that element and by its own text, so the selected value is still announced.
+     */
+    ariaLabelledby = input<string | null>(null);
 
     changed = output<unknown>();
     opened = output<void>();
@@ -92,6 +99,11 @@ export class SelectComponent implements ControlValueAccessor {
         const term = this.search().toLowerCase().trim();
         if (!term) return this.items();
         return this.items().filter((i) => i.name.toLowerCase().includes(term));
+    });
+    protected readonly triggerId = `app-select-trigger-${nextSelectId++}`;
+    protected readonly triggerLabelledBy = computed(() => {
+        const labelId = this.ariaLabelledby();
+        return labelId ? `${labelId} ${this.triggerId}` : null;
     });
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
