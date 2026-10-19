@@ -527,6 +527,14 @@ describe('FlowVersionPreviewComponent', () => {
             expect(closed).not.toHaveBeenCalled();
         });
 
+        it('leaves Esc pressed in the shortcuts popover to the popover', () => {
+            const popover = document.body.appendChild(document.createElement('app-shortcuts-modal'));
+            const button = popover.appendChild(document.createElement('button'));
+            pressEscape(button);
+            popover.remove();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
         it('stops listening once the preview is gone', () => {
             fixture.destroy();
             pressEscape();

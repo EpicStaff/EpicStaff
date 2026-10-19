@@ -1,11 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { GetMeResponse } from '@shared/models';
+import { GetMeResponse, ShortcutSettings } from '@shared/models';
 
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
-import { PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
+import { ToastMessage, ToastService } from '../../../../../../services/notifications';
+import { KeymapService, PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
 import { ShortcutsModalComponent } from './shortcuts-modal.component';
 
 const PROFILE_URL = '/api/profile/';
@@ -42,16 +43,34 @@ const NODE_LABELS_AND_LETTERS: readonly (readonly [string, string])[] = [
     ['End', 'E'],
 ];
 
+const BASE_SECTIONS = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Nodes'];
+
 interface RenderedRow {
     label: string;
     chords: string[][];
 }
 
+interface RenderedCustomRow {
+    label: string;
+    keys: string;
+}
+
+type CustomRow = { action: string; keys: string | null };
+
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
 describe('ShortcutsModalComponent', () => {
     let fixture: ComponentFixture<ShortcutsModalComponent>;
     let httpMock: HttpTestingController;
+    let toasts: ToastMessage[];
+    let closedCount: number;
 
     function setUp(isMac = false): void {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         TestBed.configureTestingModule({
             imports: [ShortcutsModalComponent],
             providers: [
@@ -62,9 +81,11 @@ describe('ShortcutsModalComponent', () => {
             ],
         });
         httpMock = TestBed.inject(HttpTestingController);
+        toasts = [];
+        TestBed.inject(ToastService).toasts$.subscribe((current) => (toasts = current));
     }
 
-    function loadUser(custom: { action: string; keys: string | null }[]): void {
+    function loadUser(custom: CustomRow[]): void {
         TestBed.inject(ProfileService).getCurrentUser().subscribe();
         httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, custom_shortcuts: { custom } });
     }
@@ -73,15 +94,50 @@ describe('ShortcutsModalComponent', () => {
         fixture = TestBed.createComponent(ShortcutsModalComponent);
         fixture.componentRef.setInput('open', true);
         fixture.componentRef.setInput('pos', { top: 10, left: 10 });
+        closedCount = 0;
+        fixture.componentInstance.closed.subscribe(() => (closedCount += 1));
+        render();
+    }
+
+    function render(): void {
         fixture.detectChanges();
+        TestBed.tick();
+    }
+
+    function nextPatch(): { body: unknown; succeed: () => void; fail: () => void } {
+        const request = httpMock.expectOne({ method: 'PATCH', url: PROFILE_URL });
+        const body = request.request.body as { custom_shortcuts: ShortcutSettings };
+        return {
+            body,
+            succeed: () => {
+                request.flush({ ...BASE_USER, custom_shortcuts: body.custom_shortcuts });
+                render();
+            },
+            fail: () => {
+                request.flush({ detail: 'boom' }, { status: 500, statusText: 'Server Error' });
+                render();
+            },
+        };
     }
 
     function text(element: Element): string {
-        return (element.textContent ?? '').trim();
+        return (element.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    function root(): HTMLElement {
+        return fixture.nativeElement;
     }
 
     function sectionTitles(): string[] {
-        return Array.from(fixture.nativeElement.querySelectorAll('.shortcuts__card-title'), text);
+        return Array.from(root().querySelectorAll('.shortcuts__card-title'), text);
+    }
+
+    function cardOf(sectionTitle: string): Element {
+        const card = Array.from(root().querySelectorAll('.shortcuts__card') as NodeListOf<Element>).find(
+            (candidate) => text(candidate.querySelector('.shortcuts__card-title')!) === sectionTitle
+        );
+        if (!card) throw new Error(`No "${sectionTitle}" section rendered`);
+        return card;
     }
 
     function rowsOf(sectionTitle: string): RenderedRow[] {
@@ -89,11 +145,7 @@ describe('ShortcutsModalComponent', () => {
     }
 
     function rowElementsOf(sectionTitle: string): Element[] {
-        const card = Array.from(fixture.nativeElement.querySelectorAll('.shortcuts__card') as NodeListOf<Element>).find(
-            (candidate) => text(candidate.querySelector('.shortcuts__card-title')!) === sectionTitle
-        );
-        if (!card) throw new Error(`No "${sectionTitle}" section rendered`);
-        return Array.from(card.querySelectorAll('.shortcuts__row'));
+        return Array.from(cardOf(sectionTitle).querySelectorAll('.shortcuts__row'));
     }
 
     function readRow(row: Element): RenderedRow {
@@ -110,11 +162,94 @@ describe('ShortcutsModalComponent', () => {
         return { label: text(row.querySelector('.shortcuts__label')!), chords };
     }
 
+    function nodeRow(label: string): string {
+        const row = rowElementsOf('Nodes').find((candidate) => readRow(candidate).label === label)!;
+        return text(row.querySelector('.shortcuts__keys')!);
+    }
+
+    function customRows(): RenderedCustomRow[] {
+        return rowElementsOf('Custom').map((row) => ({
+            label: text(row.querySelector('.shortcuts__label')!),
+            keys: text(row.querySelector('.shortcuts__keys')!),
+        }));
+    }
+
+    function buttonNamed(name: string, container: Element = root()): HTMLButtonElement {
+        const button = Array.from(container.querySelectorAll('button')).find(
+            (candidate) => (candidate.getAttribute('aria-label') ?? text(candidate)) === name
+        );
+        if (!button) throw new Error(`No "${name}" button rendered`);
+        return button;
+    }
+
+    function hasButton(name: string, container: Element = root()): boolean {
+        return Array.from(container.querySelectorAll('button')).some(
+            (candidate) => (candidate.getAttribute('aria-label') ?? text(candidate)) === name
+        );
+    }
+
+    function click(button: HTMLElement): void {
+        button.click();
+        render();
+    }
+
+    function editor(): HTMLElement | null {
+        return root().querySelector('app-shortcut-editor');
+    }
+
+    function actionPicker(): HTMLInputElement {
+        return editor()!.querySelector('input[role="combobox"]')!;
+    }
+
+    function keysBox(): HTMLButtonElement {
+        return editor()!.querySelector('.shortcut-editor__recorder')!;
+    }
+
+    function saveButton(): HTMLButtonElement {
+        return buttonNamed('Save', editor()!);
+    }
+
+    function feedback(): string {
+        const message = editor()!.querySelector('.shortcut-editor__feedback');
+        return message ? text(message) : '';
+    }
+
+    function pickAction(label: string): void {
+        const input = actionPicker();
+        input.focus();
+        input.value = label.slice(0, 4);
+        input.dispatchEvent(new Event('input'));
+        render();
+        const option = Array.from(editor()!.querySelectorAll('[role="option"]')).find(
+            (candidate) => text(candidate) === label
+        );
+        if (!option) throw new Error(`No "${label}" option in the picker`);
+        (option as HTMLElement).click();
+        render();
+    }
+
+    function press(target: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+        target.dispatchEvent(event);
+        render();
+        return event;
+    }
+
+    function record(init: KeyboardEventInit): KeyboardEvent {
+        click(keysBox());
+        return press(keysBox(), init);
+    }
+
+    function startAdding(): void {
+        click(buttonNamed('Add shortcut'));
+    }
+
     afterEach(() => {
         try {
             httpMock.verify();
         } finally {
             TestBed.resetTestingModule();
+            vi.unstubAllGlobals();
         }
     });
 
@@ -122,18 +257,17 @@ describe('ShortcutsModalComponent', () => {
         setUp();
         openModal();
 
-        expect(sectionTitles()).toEqual(['Editing', 'Navigating', 'Selection', 'Zoom', 'Nodes']);
+        expect(sectionTitles()).toEqual(BASE_SECTIONS);
     });
 
     it('keeps the same height when minimized', () => {
         setUp();
         openModal();
-        const modal = (): HTMLElement => fixture.nativeElement.querySelector('.shortcuts__modal');
+        const modal = (): HTMLElement => root().querySelector('.shortcuts__modal')!;
         const height = (): string => modal().style.getPropertyValue('--shortcuts-modal-height');
         const wideHeight = height();
 
-        fixture.nativeElement.querySelector('.shortcuts__size-btn').click();
-        fixture.detectChanges();
+        click(root().querySelector('.shortcuts__size-btn')!);
 
         expect(modal().classList).toContain('shortcuts__modal--compact');
         expect(wideHeight).toBe('666px');
@@ -211,39 +345,6 @@ describe('ShortcutsModalComponent', () => {
         ]);
     });
 
-    it('shows a custom key after the base key', () => {
-        setUp();
-        loadUser([{ action: 'node.python', keys: 'Shift+KeyB' }]);
-        openModal();
-
-        expect(rowsOf('Nodes')[0]).toEqual({
-            label: 'Python Code Node',
-            chords: [
-                ['Shift', 'P'],
-                ['Shift', 'B'],
-            ],
-        });
-    });
-
-    it('keeps a node listed without keys when its default key went to another node', () => {
-        setUp();
-        loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
-        openModal();
-
-        const nodes = rowsOf('Nodes');
-        expect(nodes.find((row) => row.label === 'Python Code Node')).toEqual({
-            label: 'Python Code Node',
-            chords: [],
-        });
-        expect(nodes.find((row) => row.label === 'Agent Node')).toEqual({
-            label: 'Agent Node',
-            chords: [
-                ['Shift', 'A'],
-                ['Shift', 'P'],
-            ],
-        });
-    });
-
     it.each([
         ['Windows/Linux', false, [['Ctrl', 'click']], [['Shift', 'drag']]],
         ['macOS', true, [['⌘', 'click']], [['⇧', 'drag']]],
@@ -265,5 +366,501 @@ describe('ShortcutsModalComponent', () => {
             { label: 'Zoom in', chords: [['Mouse wheel up']] },
             { label: 'Zoom out', chords: [['Mouse wheel down']] },
         ]);
+    });
+
+    describe('base rows', () => {
+        it('show only the built-in key; the extra key is listed under Custom', () => {
+            setUp();
+            loadUser([{ action: 'node.python', keys: 'Shift+KeyB' }]);
+            openModal();
+
+            expect(rowsOf('Nodes')[0]).toEqual({ label: 'Python Code Node', chords: [['Shift', 'P']] });
+            expect(customRows()).toEqual([{ label: 'Python Code Node', keys: 'Shift B' }]);
+        });
+
+        it('say Not set for a node whose key a custom shortcut took', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
+            openModal();
+
+            expect(nodeRow('Python Code Node')).toBe('Not set');
+            expect(nodeRow('Agent Node')).toBe('Shift A');
+        });
+
+        it('have no edit, delete or reset controls', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
+            openModal();
+
+            for (const title of BASE_SECTIONS) {
+                expect(cardOf(title).querySelectorAll('button')).toHaveLength(0);
+            }
+        });
+    });
+
+    describe('custom section', () => {
+        it('is hidden while the user has no custom shortcuts', () => {
+            setUp();
+            openModal();
+
+            expect(sectionTitles()).toEqual(BASE_SECTIONS);
+            expect(hasButton('Add shortcut')).toBe(true);
+        });
+
+        it('lists each custom shortcut with its keys, or Not set, after Nodes', () => {
+            setUp();
+            loadUser([
+                { action: 'node.agent', keys: 'Alt+KeyB' },
+                { action: 'editing.save', keys: null },
+            ]);
+            openModal();
+
+            expect(sectionTitles()).toEqual([...BASE_SECTIONS, 'Custom']);
+            expect(customRows()).toEqual([
+                { label: 'Agent Node', keys: 'Alt B' },
+                { label: 'Save', keys: 'Not set' },
+            ]);
+        });
+
+        it('deletes a row and saves the list without it', () => {
+            setUp();
+            loadUser([
+                { action: 'node.agent', keys: 'Shift+KeyP' },
+                { action: 'node.task', keys: 'Alt+KeyK' },
+            ]);
+            openModal();
+
+            click(buttonNamed('Delete Agent Node shortcut'));
+
+            expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt K' }]);
+            expect(nodeRow('Python Code Node')).toBe('Shift P');
+            const patch = nextPatch();
+            expect(patch.body).toEqual({ custom_shortcuts: { custom: [{ action: 'node.task', keys: 'Alt+KeyK' }] } });
+            patch.succeed();
+            expect(document.activeElement).toBe(buttonNamed('Add shortcut'));
+        });
+    });
+
+    describe('keys pressed in the popover', () => {
+        it('do not reach the canvas', () => {
+            setUp();
+            const undo = vi.fn();
+            const deleteNodes = vi.fn();
+            const keymap = TestBed.inject(KeymapService);
+            keymap.register('editing.undo', undo);
+            keymap.register('editing.delete', deleteNodes);
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+            click(buttonNamed('Delete Agent Node shortcut'));
+            nextPatch().succeed();
+            const focused = document.activeElement as HTMLElement;
+
+            press(focused, { key: 'z', code: 'KeyZ', ctrlKey: true });
+            press(focused, { key: 'Delete', code: 'Delete' });
+
+            expect(focused).toBe(buttonNamed('Add shortcut'));
+            expect(undo).not.toHaveBeenCalled();
+            expect(deleteNodes).not.toHaveBeenCalled();
+            expect(closedCount).toBe(0);
+        });
+
+        it('Esc closes the popover', () => {
+            setUp();
+            openModal();
+
+            press(buttonNamed('Add shortcut'), { key: 'Escape', code: 'Escape' });
+
+            expect(closedCount).toBe(1);
+        });
+
+        it('still lets the keyboard shortcuts key toggle the popover', () => {
+            setUp();
+            const toggleShortcuts = vi.fn();
+            TestBed.inject(KeymapService).register('navigating.shortcuts', toggleShortcuts);
+            openModal();
+
+            press(buttonNamed('Add shortcut'), { key: '/', code: 'Slash', ctrlKey: true });
+
+            expect(toggleShortcuts).toHaveBeenCalledOnce();
+        });
+    });
+
+    describe('adding a shortcut', () => {
+        it('moves focus into the action picker', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+
+            expect(document.activeElement).toBe(actionPicker());
+        });
+
+        it('takes a node key with a warning, saves it and leaves that node Not set', () => {
+            setUp();
+            const pythonNode = vi.fn();
+            TestBed.inject(KeymapService).register('node.python', pythonNode);
+            openModal();
+
+            startAdding();
+            pickAction('Agent Node');
+            const recorded = record({ key: 'P', code: 'KeyP', shiftKey: true });
+
+            expect(pythonNode).not.toHaveBeenCalled();
+            expect(recorded.defaultPrevented).toBe(true);
+            expect(text(keysBox())).toContain('Shift+P');
+            expect(feedback()).toBe(
+                "Shift+P is Python Code Node's key — saving moves it here; Python Code Node will have no key"
+            );
+            expect(saveButton().disabled).toBe(false);
+
+            click(saveButton());
+
+            expect(editor()).toBeNull();
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Shift P' }]);
+            expect(nodeRow('Python Code Node')).toBe('Not set');
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.agent', keys: 'Shift+KeyP' }] },
+            });
+            patch.succeed();
+        });
+
+        it('records the physical key on a Ukrainian layout', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            pickAction('Agent Node');
+            record({ key: 'Л', code: 'KeyK', altKey: true, shiftKey: true });
+
+            expect(text(keysBox())).toContain('Alt+Shift+K');
+        });
+
+        it('ignores a lone modifier press while recording', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            pickAction('Agent Node');
+            record({ key: 'Shift', code: 'ShiftLeft', shiftKey: true });
+            press(keysBox(), { key: 'B', code: 'KeyB', shiftKey: true });
+
+            expect(text(keysBox())).toContain('Shift+B');
+        });
+
+        it('saves on Enter once Save is enabled', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            record({ key: 'm', code: 'KeyM', altKey: true });
+            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+            expect(editor()).not.toBeNull();
+
+            pickAction('Task Node');
+            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+
+            expect(editor()).toBeNull();
+            expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt M' }]);
+            nextPatch().succeed();
+        });
+
+        it.each([
+            [
+                'a reserved key',
+                false,
+                [],
+                'Agent Node',
+                { key: 's', code: 'KeyS', ctrlKey: true },
+                'Ctrl+S is reserved',
+            ],
+            [
+                'a key without a modifier',
+                false,
+                [],
+                'Agent Node',
+                { key: 'q', code: 'KeyQ' },
+                'Add a modifier key (Ctrl, Alt or Shift)',
+            ],
+            [
+                'a key without a modifier on a Mac',
+                true,
+                [],
+                'Agent Node',
+                { key: 'q', code: 'KeyQ' },
+                'Add a modifier key (⌘, ⌥ or ⇧)',
+            ],
+            [
+                'a key another custom shortcut has',
+                false,
+                [{ action: 'node.task', keys: 'Alt+KeyK' }],
+                'Agent Node',
+                { key: 'k', code: 'KeyK', altKey: true },
+                'Already used by your Task Node shortcut',
+            ],
+            [
+                'the action own built-in key',
+                false,
+                [],
+                'Python Code Node',
+                { key: 'P', code: 'KeyP', shiftKey: true },
+                "Shift+P is already Python Code Node's key",
+            ],
+            [
+                'a physical Ctrl key on a Mac',
+                true,
+                [],
+                'Agent Node',
+                { key: 'k', code: 'KeyK', ctrlKey: true },
+                'Use ⌘, ⌥ or ⇧ instead of Ctrl',
+            ],
+        ] as const)('refuses %s and keeps Save disabled', (_case, isMac, stored, action, keys, message) => {
+            setUp(isMac);
+            loadUser([...stored]);
+            openModal();
+
+            startAdding();
+            pickAction(action);
+            record(keys);
+
+            expect(feedback()).toBe(message);
+            expect(saveButton().disabled).toBe(true);
+            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+            expect(editor()).not.toBeNull();
+        });
+
+        it('Esc in the picker closes its list, then the editor, and focus goes back to Add shortcut', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            press(actionPicker(), { key: 'Escape', code: 'Escape' });
+
+            expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
+            expect(editor()).not.toBeNull();
+
+            press(actionPicker(), { key: 'Escape', code: 'Escape' });
+
+            expect(editor()).toBeNull();
+            expect(document.activeElement).toBe(buttonNamed('Add shortcut'));
+            expect(closedCount).toBe(0);
+        });
+
+        it('picks an action with the arrow keys and Enter', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            press(actionPicker(), { key: 'ArrowDown', code: 'ArrowDown' });
+            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+
+            expect(actionPicker().value).toBe('Classification Decision Table');
+            expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
+            expect(saveButton().disabled).toBe(false);
+        });
+
+        it.each([
+            [99, ''],
+            [100, 'You can have up to 100 custom shortcuts'],
+        ])('with %i custom shortcuts saved, says "%s" about one more', (count, message) => {
+            setUp();
+            loadUser(Array.from({ length: count }, () => ({ action: 'node.agent', keys: null })));
+            openModal();
+
+            startAdding();
+            pickAction('Task Node');
+            record({ key: 'm', code: 'KeyM', altKey: true });
+
+            expect(feedback()).toBe(message);
+            expect(saveButton().disabled).toBe(message !== '');
+        });
+
+        it('keeps Save disabled until an action is picked', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            record({ key: 'B', code: 'KeyB', altKey: true });
+
+            expect(saveButton().disabled).toBe(true);
+        });
+    });
+
+    describe('editing a shortcut', () => {
+        it('opens pre-filled and saves the new action and key in place', () => {
+            setUp();
+            loadUser([
+                { action: 'node.agent', keys: 'Alt+KeyB' },
+                { action: 'editing.save', keys: 'Alt+KeyS' },
+            ]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+
+            expect(document.activeElement).toBe(actionPicker());
+            expect(actionPicker().value).toBe('Agent Node');
+            expect(text(keysBox())).toContain('Alt+B');
+
+            pickAction('Task Node');
+            record({ key: 'm', code: 'KeyM', altKey: true });
+            click(saveButton());
+
+            expect(customRows()).toEqual([
+                { label: 'Task Node', keys: 'Alt M' },
+                { label: 'Save', keys: 'Alt S' },
+            ]);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'node.task', keys: 'Alt+KeyM' },
+                        { action: 'editing.save', keys: 'Alt+KeyS' },
+                    ],
+                },
+            });
+            patch.succeed();
+        });
+
+        it('can clear the key and save the row without one', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+            click(buttonNamed('Clear keys', editor()!));
+            click(saveButton());
+
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Not set' }]);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({ custom_shortcuts: { custom: [{ action: 'node.agent', keys: null }] } });
+            patch.succeed();
+        });
+
+        it('Esc cancels recording, then closes the editor, and only a further Esc closes the popover', () => {
+            setUp();
+            const editorEscape = vi.fn();
+            TestBed.inject(KeymapService).register('editing.escape', editorEscape, { allowInEditable: true });
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+            click(keysBox());
+            expect(text(keysBox())).toContain('Press keys');
+
+            press(keysBox(), { key: 'Escape', code: 'Escape' });
+
+            expect(editor()).not.toBeNull();
+            expect(text(keysBox())).toContain('Alt+B');
+
+            press(keysBox(), { key: 'Escape', code: 'Escape' });
+
+            expect(editor()).toBeNull();
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Alt B' }]);
+            expect(document.activeElement).toBe(buttonNamed('Edit Agent Node shortcut'));
+            expect(root().querySelector('.shortcuts__modal')).not.toBeNull();
+            expect(closedCount).toBe(0);
+            expect(editorEscape).not.toHaveBeenCalled();
+
+            press(document.activeElement as HTMLElement, { key: 'Escape', code: 'Escape' });
+
+            expect(closedCount).toBe(1);
+            expect(editorEscape).not.toHaveBeenCalled();
+        });
+
+        it('keeps the picked action when the Action field is clicked and Enter pressed', () => {
+            setUp();
+            loadUser([{ action: 'editing.save', keys: 'Alt+KeyS' }]);
+            openModal();
+
+            click(buttonNamed('Edit Save shortcut'));
+            click(actionPicker());
+            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+
+            expect(actionPicker().value).toBe('Save');
+            expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
+        });
+
+        it('closes, rolls back and tells the user when the save fails and the row is gone', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+            record({ key: 'm', code: 'KeyM', altKey: true });
+            click(saveButton());
+            click(buttonNamed('Edit Agent Node shortcut'));
+            expect(editor()).not.toBeNull();
+
+            nextPatch().fail();
+
+            expect(editor()).toBeNull();
+            expect(document.activeElement).toBe(buttonNamed('Add shortcut'));
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Alt B' }]);
+            expect(toasts.map((toast) => toast.message)).toEqual(['Could not save shortcut']);
+        });
+    });
+
+    describe('reset to defaults', () => {
+        it('is hidden while no custom shortcut holds a node key', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            expect(hasButton('Reset to defaults')).toBe(false);
+        });
+
+        it('says how many shortcuts lose their keys, then gives the nodes their keys back', () => {
+            setUp();
+            loadUser([
+                { action: 'node.agent', keys: 'Shift+KeyP' },
+                { action: 'node.task', keys: 'Shift+KeyA' },
+                { action: 'editing.save', keys: 'Alt+KeyS' },
+            ]);
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                '2 custom shortcuts will lose their keys. Every node gets its own key back.'
+            );
+
+            click(buttonNamed('Reset', dialog));
+
+            expect(nodeRow('Python Code Node')).toBe('Shift P');
+            expect(nodeRow('Agent Node')).toBe('Shift A');
+            expect(customRows()).toEqual([
+                { label: 'Agent Node', keys: 'Not set' },
+                { label: 'Task Node', keys: 'Not set' },
+                { label: 'Save', keys: 'Alt S' },
+            ]);
+            expect(hasButton('Reset to defaults')).toBe(false);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'node.agent', keys: null },
+                        { action: 'node.task', keys: null },
+                        { action: 'editing.save', keys: 'Alt+KeyS' },
+                    ],
+                },
+            });
+            patch.succeed();
+        });
+
+        it('changes nothing when the confirmation is cancelled', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                '1 custom shortcut will lose its key. Every node gets its own key back.'
+            );
+            click(buttonNamed('Cancel', dialog));
+
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Shift P' }]);
+            expect(nodeRow('Python Code Node')).toBe('Not set');
+        });
     });
 });

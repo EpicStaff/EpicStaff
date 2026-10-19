@@ -1,0 +1,171 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    margin: 4px 0;
+    border: 1px solid var(--color-ks-line);
+    border-radius: 8px;
+    background: var(--color-ks-transparent-black-28);
+    break-inside: avoid;
+}
+
+.shortcut-editor__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.shortcut-editor__label {
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcut-editor__input,
+.shortcut-editor__recorder {
+    box-sizing: border-box;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background: var(--color-input-background);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    transition: border-color 0.2s ease;
+
+    &:hover,
+    &:focus-visible {
+        border-color: var(--accent-color);
+        outline: none;
+    }
+}
+
+.shortcut-editor__input::placeholder {
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcut-editor__list {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    background: var(--color-input-background);
+    scrollbar-width: thin;
+    scrollbar-color: var(--graphite-750) transparent;
+}
+
+.shortcut-editor__group:not(:first-child) {
+    margin-top: 4px;
+}
+
+.shortcut-editor__group-title {
+    padding: 4px 8px;
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcut-editor__option,
+.shortcut-editor__empty {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-ks-transparent-text-80);
+}
+
+.shortcut-editor__option {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &--active {
+        background: var(--color-ks-hover-row);
+        color: var(--color-text-primary);
+    }
+
+    &[aria-selected='true'] {
+        color: var(--accent-color);
+    }
+}
+
+.shortcut-editor__empty {
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcut-editor__keys {
+    display: flex;
+    gap: 8px;
+}
+
+.shortcut-editor__recorder {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    cursor: pointer;
+
+    &--empty {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &--recording {
+        border-color: var(--accent-color);
+        color: var(--accent-color);
+    }
+}
+
+.shortcut-editor__clear {
+    all: unset;
+    padding: 0 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-ks-transparent-text-60);
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+}
+
+.shortcut-editor__feedback {
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-error);
+
+    &--warning {
+        color: var(--color-ks-status-warning);
+    }
+}
+
+.shortcut-editor__visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.shortcut-editor__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}

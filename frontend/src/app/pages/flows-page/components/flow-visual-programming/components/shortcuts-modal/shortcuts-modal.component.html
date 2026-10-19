@@ -10,6 +10,7 @@
         [style.left.px]="pos()!.left"
         [style.--shortcuts-modal-height]="modalHeightPx + 'px'"
         (click)="$event.stopPropagation()"
+        (keydown)="onModalKeydown($event)"
         [class.shortcuts__modal--compact]="size() === 'compact'"
         [class.shortcuts__modal--wide]="size() === 'wide'"
     >
@@ -77,6 +78,9 @@
                                         </div>
 
                                         <div class="shortcuts__keys">
+                                            @if (row.isNotSet) {
+                                                <span class="shortcuts__not-set">Not set</span>
+                                            }
                                             @for (chord of row.chords; track $index; let first = $first) {
                                                 @if (!first) {
                                                     <span class="shortcuts__or">or</span>
@@ -92,6 +96,84 @@
                                 }
                             </div>
                         </section>
+                    }
+
+                    @if (customRows().length > 0) {
+                        <section class="shortcuts__card">
+                            <div class="shortcuts__card-title">Custom</div>
+
+                            <div class="shortcuts__card-body">
+                                @for (row of customRows(); track row.shortcut.id; let i = $index) {
+                                    @if (row.shortcut.id === editedShortcutId()) {
+                                        <app-shortcut-editor
+                                            [shortcut]="row.shortcut"
+                                            (closed)="closeEditor()"
+                                        />
+                                    } @else {
+                                        <div
+                                            class="shortcuts__row shortcuts__row--custom"
+                                            [class.shortcuts__row--alt]="i % 2 === 0"
+                                        >
+                                            <div
+                                                class="shortcuts__label"
+                                                [attr.title]="row.label"
+                                            >
+                                                {{ row.label }}
+                                            </div>
+
+                                            <div class="shortcuts__keys">
+                                                @if (row.keys) {
+                                                    @for (key of row.keys; track $index) {
+                                                        <span class="shortcuts__key">
+                                                            {{ key }}
+                                                        </span>
+                                                    }
+                                                } @else {
+                                                    <span class="shortcuts__not-set">Not set</span>
+                                                }
+                                            </div>
+
+                                            <div class="shortcuts__row-actions">
+                                                <app-edit-button
+                                                    tooltip="Edit"
+                                                    [ariaLabel]="'Edit ' + row.label + ' shortcut'"
+                                                    (triggered)="startEditing(row.shortcut.id)"
+                                                />
+                                                <app-delete-button
+                                                    variant="default"
+                                                    tooltip="Delete"
+                                                    [ariaLabel]="'Delete ' + row.label + ' shortcut'"
+                                                    (triggered)="deleteShortcut(row.shortcut.id)"
+                                                />
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    @if (isAdding()) {
+                        <app-shortcut-editor (closed)="closeEditor()" />
+                    } @else {
+                        <div class="shortcuts__add-line">
+                            <app-button
+                                #addButton
+                                type="ghost"
+                                mod="small"
+                                leftIcon="plus"
+                                (click)="startAdding()"
+                                >Add shortcut</app-button
+                            >
+                            @if (resetClearCount() > 0) {
+                                <app-button
+                                    type="outline-secondary"
+                                    mod="small"
+                                    (click)="confirmReset()"
+                                    >Reset to defaults</app-button
+                                >
+                            }
+                        </div>
                     }
                 </div>
             </div>

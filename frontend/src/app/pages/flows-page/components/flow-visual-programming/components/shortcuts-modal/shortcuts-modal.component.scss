@@ -330,6 +330,43 @@
     color: var(--fog-200);
 }
 
+.shortcuts__not-set {
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcuts__row--custom {
+    gap: 8px;
+
+    .shortcuts__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.shortcuts__row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.shortcuts__flow > app-shortcut-editor {
+    margin-top: 16px;
+}
+
+.shortcuts__add-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    break-inside: avoid;
+}
+
 @media (max-width: bp.$breakpoint-shortcuts) {
     @include shortcutsOneColumnLayout();
     @include shortcutsCustomScroll();

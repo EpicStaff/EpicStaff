@@ -1,0 +1,135 @@
+<div class="shortcut-editor__field">
+    <label
+        class="shortcut-editor__label"
+        [attr.for]="idPrefix + '-action'"
+        >Action</label
+    >
+    <input
+        #pickerInput
+        class="shortcut-editor__input"
+        type="text"
+        role="combobox"
+        autocomplete="off"
+        placeholder="Search actions"
+        [id]="idPrefix + '-action'"
+        [value]="query()"
+        [attr.aria-expanded]="isListOpen()"
+        [attr.aria-controls]="isListOpen() ? idPrefix + '-actions' : null"
+        aria-autocomplete="list"
+        [attr.aria-activedescendant]="activeOption()?.elementId ?? null"
+        (input)="onQueryInput(pickerInput.value)"
+        (click)="openPicker()"
+        (blur)="closePicker()"
+        (keydown)="onPickerKeydown($event)"
+    />
+    @if (isListOpen()) {
+        <div
+            class="shortcut-editor__list"
+            role="listbox"
+            aria-label="Actions"
+            [id]="idPrefix + '-actions'"
+            (mousedown)="$event.preventDefault()"
+        >
+            @for (group of groups(); track group.title) {
+                <div
+                    class="shortcut-editor__group"
+                    role="group"
+                    [attr.aria-labelledby]="group.titleId"
+                >
+                    <div
+                        class="shortcut-editor__group-title"
+                        role="presentation"
+                        [id]="group.titleId"
+                    >
+                        {{ group.title }}
+                    </div>
+                    @for (option of group.options; track option.id) {
+                        <div
+                            #optionElement
+                            class="shortcut-editor__option"
+                            role="option"
+                            [id]="option.elementId"
+                            [attr.aria-selected]="option.id === action()"
+                            [class.shortcut-editor__option--active]="option.elementId === activeOption()?.elementId"
+                            (click)="pick(option)"
+                        >
+                            {{ option.label }}
+                        </div>
+                    }
+                </div>
+            } @empty {
+                <div class="shortcut-editor__empty">No matching actions</div>
+            }
+        </div>
+    }
+</div>
+
+<div class="shortcut-editor__field">
+    <span
+        class="shortcut-editor__label"
+        [id]="idPrefix + '-keys-label'"
+        >Keys</span
+    >
+    <div class="shortcut-editor__keys">
+        <button
+            type="button"
+            class="shortcut-editor__recorder"
+            [class.shortcut-editor__recorder--recording]="isRecording()"
+            [class.shortcut-editor__recorder--empty]="!isRecording() && chordText() === null"
+            [id]="idPrefix + '-keys'"
+            [attr.aria-labelledby]="idPrefix + '-keys-label ' + idPrefix + '-keys'"
+            [attr.aria-describedby]="feedback() ? idPrefix + '-feedback' : null"
+            [attr.aria-pressed]="isRecording()"
+            (click)="toggleRecording()"
+            (blur)="stopRecording()"
+            (keydown)="onRecorderKeydown($event)"
+        >
+            @if (isRecording()) {
+                Press keys…
+            } @else {
+                {{ chordText() ?? 'Click, then press keys' }}
+            }
+        </button>
+        @if (chordText() !== null && !isRecording()) {
+            <button
+                type="button"
+                class="shortcut-editor__clear"
+                aria-label="Clear keys"
+                (click)="clearKeys()"
+            >
+                Clear
+            </button>
+        }
+    </div>
+    <span
+        class="shortcut-editor__visually-hidden"
+        aria-live="polite"
+        >{{ announcement() }}</span
+    >
+    @if (feedback(); as message) {
+        <div
+            class="shortcut-editor__feedback"
+            [class.shortcut-editor__feedback--warning]="message.severity === 'warning'"
+            [id]="idPrefix + '-feedback'"
+            [attr.role]="message.severity === 'error' ? 'alert' : 'status'"
+        >
+            {{ message.text }}
+        </div>
+    }
+</div>
+
+<div class="shortcut-editor__actions">
+    <app-button
+        type="secondary"
+        mod="small"
+        (click)="closed.emit()"
+        >Cancel</app-button
+    >
+    <app-button
+        type="primary"
+        mod="small"
+        [disabled]="!canSave()"
+        (click)="save()"
+        >Save</app-button
+    >
+</div>
