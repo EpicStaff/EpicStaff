@@ -1,0 +1,361 @@
+<div
+    class="bindings-dialog"
+    [class.bindings-dialog--editing]="!revealedSecret()"
+>
+    <header class="bindings-dialog__header">
+        <span class="bindings-dialog__title">{{ formTitle() }}</span>
+        <button
+            type="button"
+            class="bindings-dialog__icon-btn"
+            aria-label="Close dialog"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    @if (revealedSecret(); as secret) {
+        <div class="bindings-dialog__secret">
+            <app-copy-field
+                label="Identity secret (shown once)"
+                [value]="secret"
+                [hidden]="true"
+                info="Store it now; it is never shown again. Editing identity back to signed issues a new one."
+            />
+        </div>
+        <div class="bindings-dialog__actions">
+            <app-button
+                type="primary-white"
+                (click)="close()"
+                >Done</app-button
+            >
+        </div>
+    } @else {
+        <div class="bindings-dialog__tabs">
+            @for (tab of tabs; track tab.id) {
+                <app-tab-button
+                    mod="sm"
+                    [active]="tab.id === activeTab()"
+                    (action)="activeTab.set(tab.id)"
+                >
+                    {{ tab.label }}
+                </app-tab-button>
+                @if (!$last) {
+                    <div
+                        class="bindings-dialog__tab-divider"
+                        aria-hidden="true"
+                    >
+                        /
+                    </div>
+                }
+            }
+        </div>
+        <form
+            class="bindings-dialog__form"
+            [formGroup]="form"
+            (ngSubmit)="submit()"
+        >
+            @if (errorMessage()) {
+                <div class="bindings-dialog__error-message">{{ errorMessage() }}</div>
+            }
+            <!-- Always present, so a refusal shown under a field is also read out when it appears. -->
+            <p
+                class="visually-hidden"
+                role="alert"
+            >
+                {{ fieldRefusalAnnouncement() }}
+            </p>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'general'"
+            >
+                <app-custom-input
+                    label="Name"
+                    formControlName="name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('name')"
+                    placeholder="e.g. Support bot"
+                />
+                <app-custom-input
+                    label="Displayed bot name"
+                    formControlName="bot_display_name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('bot_display_name')"
+                    tooltipText="Shown to visitors in the chat widget."
+                />
+                <app-select
+                    label="Flow"
+                    formControlName="graph_id"
+                    [items]="flowItems()"
+                    [required]="true"
+                    [showSearch]="true"
+                    placeholder="Select a flow"
+                    tooltipText="The start node must declare chat_history and user_message; the end node must return reply."
+                />
+                @for (contractError of contractErrors(); track contractError) {
+                    <div class="bindings-dialog__contract-error text-body-small">{{ contractError }}</div>
+                }
+                @if (contractGaps(); as gaps) {
+                    <app-chat-contract-fix
+                        [graphId]="gaps.graphId"
+                        [missing]="gaps.missing"
+                        (applied)="recheckContract()"
+                    />
+                }
+                <!--
+                    Native radios sharing a name, so the pair is one group: one Tab stop, the arrow keys move between
+                    them. The forms API does not set the DOM name, hence `name`. The whole card is the click target; each
+                    radio is named by its title only and described by its line, so the line is read once.
+                -->
+                <fieldset class="bindings-dialog__style">
+                    <legend class="bindings-dialog__style-legend">Style</legend>
+                    @for (option of styleOptions; track option.value) {
+                        <label class="bindings-dialog__style-card">
+                            <input
+                                type="radio"
+                                class="bindings-dialog__style-radio"
+                                name="style"
+                                formControlName="style"
+                                [value]="option.value"
+                                [attr.aria-labelledby]="styleTextId(option.value, 'name')"
+                                [attr.aria-describedby]="styleTextId(option.value, 'description')"
+                            />
+                            <span class="bindings-dialog__style-text">
+                                <span
+                                    class="text-body-medium"
+                                    [id]="styleTextId(option.value, 'name')"
+                                    >{{ option.label }}</span
+                                >
+                                <span
+                                    class="bindings-dialog__style-description text-body-small"
+                                    [id]="styleTextId(option.value, 'description')"
+                                    >{{ option.description }}</span
+                                >
+                            </span>
+                        </label>
+                    }
+                </fieldset>
+                @if (isSwitchingToSupport() && backlogEffects().length) {
+                    <ng-container
+                        [ngTemplateOutlet]="backlogWarning"
+                        [ngTemplateOutletContext]="{ id: null }"
+                    />
+                }
+                <app-chips-input
+                    label="Allowed origins"
+                    formControlName="allowed_origins"
+                    inputPlaceholder="https://www.example.com"
+                    tooltipText="Sites allowed to embed this chat. Test conversations skip this check."
+                />
+                <app-select
+                    label="Identity"
+                    formControlName="identity_mode"
+                    [items]="identityItems"
+                    tooltipText="Signed: your backend issues an HS256 token with the identity secret shown once after saving."
+                />
+            </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'limits'"
+            >
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="History window"
+                        formControlName="history_window"
+                        [min]="0"
+                        [max]="200"
+                        tooltipText="Messages passed to the flow as history."
+                    />
+                    <app-input-number
+                        label="Max message length"
+                        formControlName="max_message_length"
+                        [min]="1"
+                    />
+                </div>
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="Max turns per UTC day"
+                        formControlName="max_turns"
+                        [min]="0"
+                        tooltipText="Per conversation per UTC day. 0 blocks every message."
+                    />
+                    <app-input-number
+                        label="Messages per minute"
+                        formControlName="messages_per_minute"
+                        [min]="0"
+                        [max]="1000"
+                        tooltipText="Per conversation. 0 blocks every message."
+                    />
+                </div>
+                <div class="bindings-dialog__row">
+                    <app-input-number
+                        label="Daily tokens per conversation"
+                        formControlName="token_budget_per_conversation"
+                        [required]="true"
+                        [min]="1"
+                        [stepSize]="1000"
+                        [max]="budgetCaps().token_budget_per_conversation"
+                        [invalid]="!!budgetCapMessage('token_budget_per_conversation')"
+                        [errorMessage]="budgetCapMessage('token_budget_per_conversation')"
+                        [tooltipText]="budgetTooltips().token_budget_per_conversation"
+                    />
+                    <app-input-number
+                        label="Daily tokens per desk"
+                        formControlName="daily_token_budget"
+                        [required]="true"
+                        [min]="1"
+                        [stepSize]="1000"
+                        [max]="budgetCaps().daily_token_budget"
+                        [invalid]="!!budgetCapMessage('daily_token_budget')"
+                        [errorMessage]="budgetCapMessage('daily_token_budget')"
+                        [tooltipText]="budgetTooltips().daily_token_budget"
+                    />
+                </div>
+                <app-select
+                    label="When the budget is exhausted"
+                    formControlName="on_budget_exhausted"
+                    [items]="onExhaustedItems"
+                />
+                @if (form.controls.on_budget_exhausted.value === 'reply') {
+                    <app-textarea
+                        label="Budget exhausted message"
+                        formControlName="budget_exhausted_message"
+                        [rows]="2"
+                    />
+                }
+            </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'handoff'"
+            >
+                <app-toggle-switch
+                    label="Human handoff enabled"
+                    formControlName="handoff_enabled"
+                    tooltipText="The flow, a budget or an error can hand the conversation to an operator."
+                />
+                <app-custom-input
+                    label="Displayed operator name"
+                    formControlName="operator_display_name"
+                    [required]="true"
+                    [errorMessage]="textFieldError('operator_display_name')"
+                    tooltipText="Shown to visitors in the chat widget."
+                />
+            </div>
+            <div
+                class="bindings-dialog__tab"
+                [hidden]="activeTab() !== 'inactivity'"
+            >
+                <app-input-number
+                    label="Response time (minutes)"
+                    formControlName="response_time_minutes"
+                    [required]="true"
+                    [min]="1"
+                    [max]="durationCaps().response_time_seconds"
+                    [invalid]="!!durationCapMessage('response_time_seconds')"
+                    [errorMessage]="durationCapMessage('response_time_seconds')"
+                    [tooltipText]="durationTooltips().response_time_seconds"
+                />
+                <app-select
+                    label="Then"
+                    formControlName="on_response_timeout"
+                    [items]="onResponseTimeoutItems"
+                    [required]="true"
+                    tooltipText="What happens once a visitor has waited for a person longer than the response time."
+                />
+                @if (responseTimeoutAction() === 'handback') {
+                    <app-textarea
+                        label="Hand-back notice"
+                        formControlName="handback_message"
+                        [rows]="2"
+                        tooltipText="The bot's message to the visitor when the conversation goes back to it. Leave it empty to post nothing."
+                    />
+                }
+                @if (isOngoing()) {
+                    <!-- Ongoing conversations never close by themselves: the stored value stays for a switch to Support. -->
+                    <app-input-number
+                        label="Close after (hours)"
+                        placeholder="Never"
+                        tooltipText="Ongoing conversations never close by themselves."
+                        [disabled]="true"
+                    />
+                    @if (responseTimeoutAction() === 'wait') {
+                        <app-hint-message tone="warning">
+                            Nothing ends a visitor's wait on an Ongoing desk with Keep waiting: they can wait for a
+                            person for ever.
+                        </app-hint-message>
+                    }
+                } @else {
+                    <app-input-number
+                        label="Close after (hours)"
+                        formControlName="close_after_hours"
+                        [required]="true"
+                        [min]="1"
+                        [max]="durationCaps().close_after_seconds"
+                        [invalid]="!!durationCapMessage('close_after_seconds')"
+                        [errorMessage]="durationCapMessage('close_after_seconds')"
+                        [tooltipText]="durationTooltips().close_after_seconds"
+                    />
+                }
+                <!-- Always there while the warning applies, so Save can point at it from any tab. -->
+                @if (backlogEffects().length) {
+                    <ng-container
+                        [ngTemplateOutlet]="backlogWarning"
+                        [ngTemplateOutletContext]="{ id: backlogWarningId() }"
+                    />
+                }
+            </div>
+            <!--
+                What a save does to the desk's existing conversations, on the tab where the change was made. Only one
+                copy has the id (ids are unique), which Save's description points at.
+            -->
+            <ng-template
+                #backlogWarning
+                let-id="id"
+            >
+                <app-hint-message
+                    class="bindings-dialog__backlog"
+                    tone="warning"
+                    [attr.id]="id"
+                >
+                    <p class="bindings-dialog__backlog-lead">
+                        Applies to this desk's existing conversations too, once you save:
+                    </p>
+                    <ul class="bindings-dialog__backlog-effects">
+                        @for (effect of backlogEffects(); track effect) {
+                            <li>{{ effect }}</li>
+                        }
+                    </ul>
+                </app-hint-message>
+            </ng-template>
+        </form>
+
+        <div class="bindings-dialog__actions">
+            @if (!isCreating() && canUpdate()) {
+                <app-button
+                    class="bindings-dialog__rotate"
+                    type="ghost"
+                    leftIcon="refresh"
+                    (click)="rotateKey()"
+                    >Rotate key</app-button
+                >
+            }
+            <app-button
+                type="outline-primary"
+                (click)="close()"
+                >Cancel</app-button
+            >
+            <!-- Read on focus: a save that closes or hands back existing conversations cannot be undone. -->
+            <app-button
+                type="primary-white"
+                [disabled]="isSubmitting()"
+                [ariaDescribedby]="backlogEffects().length ? backlogWarningId() : null"
+                (click)="submit()"
+            >
+                {{ isSubmitting() ? 'Saving...' : 'Save' }}
+            </app-button>
+        </div>
+    }
+</div>

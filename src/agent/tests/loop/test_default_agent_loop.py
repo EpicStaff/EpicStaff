@@ -22,6 +22,7 @@ from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -176,6 +177,7 @@ def make_context(
         attachments=[],
         correlation_id="test-corr",
         messages=messages,
+        is_cancelled=never_cancelled,
     )
 
 
@@ -198,7 +200,7 @@ def tool_chunks(call_id: str, name: str, args: str) -> list[LLMChunk]:
 
 async def _model_config(llm: LLMData, tool_choice=None) -> dict:
     agent = AgentSpec(id=1, name="a", instructions="i", llm=llm)
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice)
+    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice, is_cancelled=never_cancelled)
     fake_llm = FakeLLMClient([text_chunks("ok")])
 
     await DefaultAgentLoop(fake_llm).run(context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5))

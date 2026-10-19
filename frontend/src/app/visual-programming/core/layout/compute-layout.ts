@@ -7,7 +7,7 @@ import { assignLefts } from './columns';
 import { assignTops } from './coordinates';
 import { findBackEdges } from './cycles';
 import { assignLayers } from './layering';
-import { buildLayoutGraph } from './layout-graph';
+import { buildLayoutGraph, GRID } from './layout-graph';
 import { splitLongEdges } from './long-edges';
 import { orderLayers } from './ordering';
 
@@ -28,7 +28,6 @@ const CANVAS_START_X = 100;
 const CANVAS_START_Y = 100;
 const COMPONENT_VERTICAL_GAP = 500;
 const ISOLATED_HORIZONTAL_GAP = 180;
-const GRID = 20;
 // The gap between two layers (columns.ts), kept between the arranged block and a pinned node.
 const PINNED_NODE_CLEARANCE = 100;
 

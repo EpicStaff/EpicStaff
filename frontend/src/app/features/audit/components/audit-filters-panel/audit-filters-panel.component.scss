@@ -192,18 +192,20 @@
 .filters-panel__operators {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    justify-content: center;
+    gap: 5px;
 }
 
 .filters-panel__operator {
-    padding: 2px 8px;
+    padding: 1px 6px;
     border: 1px solid var(--color-input-border);
     border-radius: 4px;
     background: none;
     color: var(--accent-color);
-    font-size: var(--text-body-small-size);
-    font-weight: var(--text-body-small-weight);
-    line-height: var(--text-body-small-line-height);
+    // Between the caption (10px) and body-small (12px) tokens, so every operator fits on one row.
+    font-size: 0.6875rem;
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
     cursor: pointer;
 
     &:hover {

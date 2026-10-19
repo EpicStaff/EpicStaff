@@ -62,10 +62,11 @@ describe('OrthogonalPathBuilder', () => {
             { x: 40, y: 100 },
             { x: 80, y: 100 },
         ]);
-        // Two stretches (source → waypoint, waypoint → elbow → target): two candidates.
+        // Three stretches (source stub, riser, target stub): three candidates.
         expect(response.candidates).toEqual([
             { x: 20, y: 0 },
             { x: 40, y: 50 },
+            { x: 60, y: 100 },
         ]);
     });
 
@@ -87,12 +88,11 @@ describe('OrthogonalPathBuilder', () => {
         ]);
         expect(response.secondPoint).toEqual({ x: 60, y: 0 });
         expect(response.penultimatePoint).toEqual({ x: 60, y: 100 });
-        // Foblex's insert index counts the raw list: one candidate per raw stretch.
+        // One candidate per normalized stretch: source stub, riser, target stub.
         expect(response.candidates).toEqual([
-            { x: 20, y: 0 },
-            { x: 50, y: 0 },
-            { x: 60, y: 75 },
-            { x: 60, y: 100 },
+            { x: 30, y: 0 },
+            { x: 60, y: 50 },
+            { x: 70, y: 100 },
         ]);
     });
 
@@ -100,6 +100,11 @@ describe('OrthogonalPathBuilder', () => {
         const response = new OrthogonalPathBuilder().handle(request([]));
 
         expect(response.points).toEqual(fallbackRoutePoints({ x: 0, y: 0 }, { x: 80, y: 100 }));
-        expect(response.candidates).toEqual([{ x: 40, y: 50 }]); // the middle of the riser
+        // One candidate per segment pair: source stub, riser, target stub.
+        expect(response.candidates).toEqual([
+            { x: 20, y: 0 },
+            { x: 40, y: 50 },
+            { x: 60, y: 100 },
+        ]);
     });
 });

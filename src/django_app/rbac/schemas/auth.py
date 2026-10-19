@@ -162,7 +162,7 @@ TOKEN_INTROSPECT_POST = {
         "an API key and passes a JWT in the body to get its claims back. "
         "Requires a SYSTEM-type API key — user-owned keys are rejected. "
         "Intended for internal services / gateways that should not hold "
-        "`JWT_SECRET` but still need to verify bearer tokens. "
+        "the JWT signing key (`DJANGO_SECRET_KEY`) but still need to verify bearer tokens. "
         "See `docs/rbac/auth_endpoints.md` for full behavior."
     ),
     "request": TokenIntrospectRequestSerializer,

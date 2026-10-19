@@ -2,6 +2,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     inject,
     input,
     model,
@@ -9,7 +10,8 @@ import {
     output,
     signal,
 } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
@@ -44,6 +46,10 @@ import {
     isFieldAvailable,
     isFieldEnabled,
 } from '../../utils/audit-filter-compatibility.util';
+import { auditFilterToQueryText } from '../../utils/audit-query-text.util';
+import { queryToBuilderState } from '../../utils/audit-query-to-builder.util';
+import { compileAuditFilter } from '../../utils/compile-audit-filter.util';
+import { clearAuditFilterField, describeAuditFilter } from '../../utils/describe-audit-filter.util';
 import { insertQueryText } from '../../utils/insert-query-text.util';
 import { AuditCheckboxEnumComponent } from '../audit-checkbox-enum/audit-checkbox-enum.component';
 import { AuditConditionFilterComponent } from '../audit-condition-filter/audit-condition-filter.component';
@@ -52,7 +58,7 @@ import { AuditFilterGroupComponent } from '../audit-filter-group/audit-filter-gr
 import { AuditFlowFilterComponent } from '../audit-flow-filter/audit-flow-filter.component';
 import { AuditIdFilterComponent } from '../audit-id-filter/audit-id-filter.component';
 import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope.component';
-import { AuditPresetsComponent } from '../audit-presets/audit-presets.component';
+import { AuditPresetsComponent, DIALOG_CONFIG } from '../audit-presets/audit-presets.component';
 import { AuditTokensFilterComponent } from '../audit-tokens-filter/audit-tokens-filter.component';
 
 export type AuditFilterTab = 'builder' | 'query' | AuditPresetScope;
@@ -115,14 +121,31 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     private readonly toastService = inject(ToastService);
     private readonly presetsStorage = inject(AuditPresetsStorageService);
+    private readonly confirmationDialog = inject(ConfirmationDialogService);
+    private readonly destroyRef = inject(DestroyRef);
 
     public ngOnInit(): void {
         this.presetsStorage.load();
     }
 
+    // Builder and Query Code stay in sync: each switch carries the filters over to the other tab.
     public setActiveTab(tab: AuditFilterTab): void {
-        this.isCreatingPreset.set(false);
-        this.activeTab.set(tab);
+        const current = this.filter();
+        if (tab === 'query' && current.mode === 'builder') {
+            // the search box is its own control, so its text never goes into the query
+            const filters = compileAuditFilter({ ...current, searchText: '' }).filters;
+            const query = filters === undefined ? '' : auditFilterToQueryText(filters);
+            this.filter.set({ ...current, query, mode: 'query' });
+        }
+        if (tab === 'builder' && current.mode === 'query') {
+            const builderState = queryToBuilderState(current.query, current);
+            if (builderState === null) {
+                this.confirmClearComplexQuery();
+                return;
+            }
+            this.filter.set(builderState);
+        }
+        this.showTab(tab);
     }
 
     public createPreset(): void {
@@ -201,6 +224,23 @@ export class AuditFiltersPanelComponent implements OnInit {
     public disabledNodeTypes = computed(() =>
         this.isNodeTypeEnabled() ? [] : this.nodeTypeOptions.map((option) => option.value)
     );
+
+    // Each Builder card shows its applied value, worded like the preset chips.
+    private readonly fieldSummaries = computed<Map<string, string>>(() => {
+        const chips = describeAuditFilter(
+            { ...this.filter(), mode: 'builder' },
+            { agents: this.agentOptions(), tools: this.toolOptions() }
+        );
+        return new Map(chips.map((chip) => [chip.key, chip.value]));
+    });
+
+    public summaryOf(key: string): string {
+        return this.fieldSummaries().get(key) ?? '';
+    }
+
+    public clearField(key: string): void {
+        this.filter.update((current) => ({ ...clearAuditFilterField(current, key), mode: 'builder' }));
+    }
 
     public readonly dateRange = computed<DateRangeFilter>(() => ({
         after: this.filter().dateFrom,
@@ -282,5 +322,36 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     private updateBuilder(change: Partial<AuditFilterState>): void {
         this.filter.update((current) => ({ ...current, ...change, mode: 'builder' }));
+    }
+
+    private showTab(tab: AuditFilterTab): void {
+        this.isCreatingPreset.set(false);
+        this.activeTab.set(tab);
+    }
+
+    // Closing the dialog with the X leaves the panel exactly as it was.
+    private confirmClearComplexQuery(): void {
+        this.confirmationDialog
+            .confirm(
+                {
+                    title: 'This query is too complex for Builder',
+                    message:
+                        'Some query settings are not supported in Builder. You can continue editing in Query Code or clear the current query to start fresh in Builder.',
+                    confirmText: 'Clear and start in Builder',
+                    cancelText: 'Keep editing in Query Code',
+                    type: 'warning',
+                },
+                DIALOG_CONFIG
+            )
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result === true) {
+                    const { matchScope, searchText } = this.filter();
+                    this.filter.set({ ...EMPTY_AUDIT_FILTER, matchScope, searchText });
+                    this.showTab('builder');
+                } else if (result === false) {
+                    this.showTab('query');
+                }
+            });
     }
 }

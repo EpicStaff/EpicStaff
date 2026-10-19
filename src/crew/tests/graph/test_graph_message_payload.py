@@ -51,7 +51,9 @@ class RecordingAuditWriter:
 def redis_service():
     SingletonMeta._instances.pop(RedisService, None)
     service = RedisService(host="127.0.0.1", port=6379, user="default", password="redis_password")
-    service.sync_redis_client = fakeredis.FakeRedis(decode_responses=True)
+    server = fakeredis.FakeServer()
+    service.aioredis_client = fakeredis.FakeAsyncRedis(server=server, decode_responses=True)
+    service.sync_redis_client = fakeredis.FakeRedis(server=server, decode_responses=True)
     yield service
     SingletonMeta._instances.pop(RedisService, None)
 
@@ -100,7 +102,7 @@ async def test_flow_state_in_a_message_is_not_rebuilt_on_the_way_to_the_stream(
     )
     RebuildCountingDict.constructions = 0
 
-    decision_table._publish_message(
+    await decision_table._publish_message(
         graph_message(
             FinishMessageData(output={"route": "a"}, state={"variables": variables})
         )
@@ -114,8 +116,9 @@ async def test_flow_state_in_a_message_is_not_rebuilt_on_the_way_to_the_stream(
     }
 
 
-def test_nested_dataclasses_reach_the_stream_as_objects(decision_table, redis_service):
-    decision_table._publish_message(
+@pytest.mark.asyncio
+async def test_nested_dataclasses_reach_the_stream_as_objects(decision_table, redis_service):
+    await decision_table._publish_message(
         graph_message(FinishMessageData(output=NestedResult(label="a", score=0.5), state={}))
     )
 
@@ -129,7 +132,7 @@ async def test_audit_records_the_message_as_it_was_sent(
 ):
     live_variables = {"counter": 1}
 
-    decision_table._publish_message(graph_message(StartMessageData(input=live_variables)))
+    await decision_table._publish_message(graph_message(StartMessageData(input=live_variables)))
     # The node keeps running and changes its variables before the audit task runs.
     live_variables["counter"] = 2
     live_variables["written_later"] = True
@@ -144,7 +147,7 @@ async def test_audit_records_the_message_as_it_was_sent(
 async def test_stream_and_audit_receive_the_same_message(
     decision_table, redis_service, audit_writer
 ):
-    decision_table._publish_message(
+    await decision_table._publish_message(
         graph_message(FinishMessageData(output={"route": "b"}, state={}))
     )
     await asyncio.sleep(0)

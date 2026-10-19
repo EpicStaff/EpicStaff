@@ -23,6 +23,7 @@ import litellm
 from loguru import logger
 
 from app.emitters.base import Emitter
+from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient
 from app.logging_utils import redact
 from app.loop.context import AgentContext
@@ -60,6 +61,11 @@ def _wrap_tool_result_for_llm(result: ToolResult) -> str:
     }
 
     return json.dumps(envelope, ensure_ascii=False)
+
+
+async def _raise_if_cancelled(context: AgentContext) -> None:
+    if await context.is_cancelled():
+        raise RunCancelled
 
 
 def _model_str(context: AgentContext) -> str:
@@ -251,6 +257,7 @@ class DefaultAgentLoop(AgentLoop):
             chunks: list[LLMChunk] = []
             prompt_tokens = 0
 
+            await _raise_if_cancelled(context)
             async for chunk in self._llm.chat(
                 messages=context.messages,
                 tools=tools.tool_specs(),
@@ -328,6 +335,7 @@ class DefaultAgentLoop(AgentLoop):
             budget_exhausted = False
 
             for call_id, name, args_str in complete_calls:
+                await _raise_if_cancelled(context)
                 await emitter.on_tool_call({"id": call_id, "name": name, "arguments": args_str})
                 logger.debug("tool call id={} name={} args={}", call_id, name, args_str)
 
@@ -503,6 +511,7 @@ class DefaultAgentLoop(AgentLoop):
 
         text_buf = ""
 
+        await _raise_if_cancelled(context)
         async for chunk in self._llm.chat(
             messages=context.messages,
             tools=[],
