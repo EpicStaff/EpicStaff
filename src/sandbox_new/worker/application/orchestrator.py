@@ -1,9 +1,10 @@
 """Runs one job end to end and hands the outcome back to the manager.
 
-Owns the lifecycle the pipeline steps must not: whatever the run does, scoped
-storage credentials are revoked and the per-execution directory is removed, then the
-result (and any captured mutations) are sent back. The pipeline never raises -- a
-failed run lands in the context -- so a result is always produced and sent.
+Owns the lifecycle the pipeline steps must not: whatever the run does, the
+per-execution directory is removed and the result (and any captured mutations) are
+sent back. Storage credentials are not revoked here -- they are issued and revoked
+by django_app, which owns them. The pipeline never raises -- a failed run lands in
+the context -- so a result is always produced and sent.
 """
 
 import asyncio
@@ -14,7 +15,6 @@ from loguru import logger
 from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
 from worker.application.ports.result_sink import AbstractResultSink
-from worker.application.ports.storage_credentials import AbstractStorageCredentials
 from worker.application.secret_scrubber import scrub
 from worker.domain.models import ExecutionResult, Job
 
@@ -26,12 +26,10 @@ class ExecutionOrchestrator:
         self,
         pipeline: Pipeline,
         *,
-        credentials: AbstractStorageCredentials,
         result_sink: AbstractResultSink,
         mask_secrets: bool,
     ):
         self._pipeline = pipeline
-        self._credentials = credentials
         self._result_sink = result_sink
         self._mask_secrets = mask_secrets
 
@@ -66,14 +64,6 @@ class ExecutionOrchestrator:
         )
 
     async def _finalize(self, context: ExecutionContext) -> None:
-        if context.storage_credentials is not None:
-            try:
-                await self._credentials.revoke(context.storage_credentials.access_key)
-            except Exception:
-                logger.exception(
-                    "Failed to revoke storage credentials for {}", context.job.execution_id
-                )
-
         if context.exec_dir is not None:
             try:
                 await asyncio.to_thread(shutil.rmtree, context.exec_dir)

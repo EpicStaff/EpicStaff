@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from worker.domain.models import IsolationPlan, Job, StorageCredentials, StorageMutations
+from worker.domain.models import IsolationPlan, Job, StorageMutations
 
 __all__ = ["ExecutionContext"]
 
@@ -34,8 +34,6 @@ class ExecutionContext(BaseModel):
 
     # The environment handed to the child interpreter.
     env: dict[str, str] = {}
-    # Scoped storage credentials provisioned for this execution; transient.
-    storage_credentials: StorageCredentials | None = None
     # Storage changes the execution reported; published by the orchestrator.
     storage_mutations: StorageMutations | None = None
 

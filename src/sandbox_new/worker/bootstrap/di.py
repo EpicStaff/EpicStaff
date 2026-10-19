@@ -1,8 +1,8 @@
 """Assembles the worker runtime from settings and the shared queues.
 
 The composition root for the worker: it wires the execution pipeline (every step in
-order), the storage-credentials adapter, the queue source/sink, and the job consumer.
-The pipeline is stateless and reused across jobs -- per-job state lives in the context.
+order), the queue source/sink, and the job consumer. The pipeline is stateless and
+reused across jobs -- per-job state lives in the context.
 """
 
 import asyncio
@@ -12,8 +12,7 @@ from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
-from worker.application.ports.storage_credentials import AbstractStorageCredentials
-from worker.application.steps import BuildIsolationPlan, ProvisionStorageStep
+from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
 from worker.infrastructure.execution.steps import (
     CaptureMutationsStep,
     CaptureResultStep,
@@ -23,7 +22,6 @@ from worker.infrastructure.execution.steps import (
     WrapCodeStep,
 )
 from worker.infrastructure.isolation.probe import LandlockIsolationProbe
-from worker.infrastructure.storage.credentials import MinioStorageCredentials
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
 from worker.presentation.job_consumer import JobConsumer
@@ -31,7 +29,7 @@ from worker.presentation.job_consumer import JobConsumer
 __all__ = ["build_job_consumer", "build_pipeline"]
 
 
-def build_pipeline(credentials: AbstractStorageCredentials) -> Pipeline:
+def build_pipeline() -> Pipeline:
     return (
         Pipeline()
         .register(ResolveVenvStep(venvs_dir=settings.VENVS_DIR))
@@ -42,8 +40,7 @@ def build_pipeline(credentials: AbstractStorageCredentials) -> Pipeline:
             )
         )
         .register(
-            ProvisionStorageStep(
-                credentials,
+            ConfigureStorageStep(
                 storage_endpoint=settings.STORAGE_ENDPOINT,
                 storage_bucket=settings.STORAGE_BUCKET,
             )
@@ -69,15 +66,8 @@ def build_job_consumer(
     job_queue: asyncio.Queue[ExecutionJobMessage],
     result_queue: asyncio.Queue[ExecutionResultMessage],
 ) -> JobConsumer:
-    credentials = MinioStorageCredentials(
-        host=settings.STORAGE_ENDPOINT,
-        access_key=settings.STORAGE_ACCESS_KEY,
-        secret_key=settings.STORAGE_SECRET_KEY,
-        bucket=settings.STORAGE_BUCKET,
-    )
     orchestrator = ExecutionOrchestrator(
-        build_pipeline(credentials),
-        credentials=credentials,
+        build_pipeline(),
         result_sink=QueueResultSink(result_queue),
         mask_secrets=settings.MASK_SECRET,
     )

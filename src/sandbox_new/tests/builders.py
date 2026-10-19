@@ -67,6 +67,7 @@ def make_manager_job(**overrides: Any) -> ManagerJob:
         "use_storage": False,
         "storage_allowed_paths": [],
         "storage_org_prefix": None,
+        "storage_credentials": None,
         "timeout": None,
         "error": None,
     }
@@ -86,6 +87,7 @@ def make_worker_job(**overrides: Any) -> WorkerJob:
         "use_storage": False,
         "storage_allowed_paths": [],
         "storage_org_prefix": None,
+        "storage_credentials": None,
         "session_id": 7,
         "timeout": None,
     }

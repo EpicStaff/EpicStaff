@@ -26,6 +26,17 @@ __all__ = [
 ]
 
 
+class StorageCredentials(ValueObject):
+    """Scoped, short-lived storage credentials carried on the job.
+
+    Issued and revoked upstream by django_app, never minted here. Transient: handed
+    to the child via env and then dropped; never persisted or logged.
+    """
+
+    access_key: str
+    secret_key: str
+
+
 class Job(ValueObject):
     execution_id: str
     venv_hash: str
@@ -38,6 +49,8 @@ class Job(ValueObject):
     use_storage: bool = False
     storage_allowed_paths: list[str] = Field(default_factory=list)
     storage_org_prefix: str | None = None
+    # Issued upstream and carried here; required whenever `use_storage` is set.
+    storage_credentials: StorageCredentials | None = None
     session_id: int | None = None
     # None means "use the worker's configured default timeout".
     timeout: float | None = None
@@ -64,17 +77,6 @@ class ExecutionResult(ValueObject):
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
-
-
-class StorageCredentials(ValueObject):
-    """Scoped, short-lived storage credentials provisioned for one execution.
-
-    Transient: handed to the child via env and revoked after the run; never
-    persisted or logged.
-    """
-
-    access_key: str
-    secret_key: str
 
 
 class StorageMutations(ValueObject):

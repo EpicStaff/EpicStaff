@@ -7,7 +7,12 @@ about the database.
 
 import asyncio
 
-from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from common.contracts import (
+    ExecutionJobMessage,
+    ExecutionResultMessage,
+    StorageCredentialsMessage,
+)
+from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from tests.builders import make_manager_job
@@ -27,6 +32,7 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         use_storage=True,
         storage_allowed_paths=["docs/"],
         storage_org_prefix="org1",
+        storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
         session_id=11,
         timeout=12.5,
     )
@@ -45,9 +51,20 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         use_storage=True,
         storage_allowed_paths=["docs/"],
         storage_org_prefix="org1",
+        storage_credentials=StorageCredentialsMessage(
+            access_key="AK123", secret_key="SK456"
+        ),
         session_id=11,
         timeout=12.5,
     )
+
+
+async def test_a_job_without_storage_credentials_puts_none_on_the_wire():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+
+    await QueueJobDispatcher(queue).dispatch(make_manager_job(storage_credentials=None))
+
+    assert queue.get_nowait().storage_credentials is None
 
 
 async def test_dispatch_does_not_put_the_venv_id_on_the_wire():

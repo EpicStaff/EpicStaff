@@ -1,8 +1,8 @@
-"""Success responses of the execution controller.
+"""What the execution controller accepts and what it rejects.
 
-Each request carries ``session_id``: the submit schema makes it optional but the domain
-``Job`` requires it, so a submission without one is rejected today. That mismatch is a
-known defect and is out of scope for a success-only suite.
+Storage is fail-closed at intake: a submission that asks for storage without an org
+prefix or without credentials is rejected outright, because accepting it would tell the
+caller the job was taken and then fail it in the worker.
 """
 
 from litestar import status_codes
@@ -23,6 +23,8 @@ SUBMISSION = {
     "storage_org_prefix": None,
     "timeout": None,
 }
+
+CREDENTIALS = {"access_key": "AK123", "secret_key": "SK456"}
 
 
 def test_submit_against_a_completed_venv_is_accepted_and_dispatched(
@@ -72,6 +74,7 @@ def test_submit_with_storage_carries_the_storage_fields_to_the_worker(
             "use_storage": True,
             "storage_allowed_paths": ["docs/"],
             "storage_org_prefix": "org1",
+            "storage_credentials": CREDENTIALS,
         },
     )
 
@@ -80,3 +83,70 @@ def test_submit_with_storage_carries_the_storage_fields_to_the_worker(
     assert job.use_storage is True
     assert job.storage_allowed_paths == ["docs/"]
     assert job.storage_org_prefix == "org1"
+    assert job.storage_credentials.access_key == "AK123"
+    assert job.storage_credentials.secret_key == "SK456"
+
+
+def test_submit_with_storage_but_no_credentials_is_rejected(
+    client, venv_repository, dispatcher
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={
+            **SUBMISSION,
+            "venv_id": venv.id,
+            "use_storage": True,
+            "storage_org_prefix": "org1",
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+
+
+def test_submit_with_blank_credentials_is_rejected(client, venv_repository, dispatcher):
+    """A credentials object is always truthy, so blank keys would slip past the
+    fail-closed check and fail against the object store inside the sandbox."""
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={
+            **SUBMISSION,
+            "venv_id": venv.id,
+            "use_storage": True,
+            "storage_org_prefix": "org1",
+            "storage_credentials": {"access_key": "", "secret_key": ""},
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+
+
+def test_submit_with_storage_but_no_org_prefix_is_rejected(client, venv_repository, dispatcher):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={
+            **SUBMISSION,
+            "venv_id": venv.id,
+            "use_storage": True,
+            "storage_credentials": CREDENTIALS,
+        },
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+
+
+def test_submit_without_storage_needs_no_credentials(client, venv_repository, dispatcher):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post("/executions", json={**SUBMISSION, "venv_id": venv.id})
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert dispatcher.dispatched[0].storage_credentials is None

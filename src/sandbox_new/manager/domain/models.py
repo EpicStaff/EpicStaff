@@ -10,7 +10,7 @@ from pydantic import Field, field_validator, model_validator
 from manager.domain.enums import JobStatus, VenvStatus
 from manager.domain.types import LibraryString
 
-__all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "Venv"]
+__all__ = ["DEFAULT_VENV_NAME", "Job", "Library", "StorageCredentials", "Venv"]
 
 DEFAULT_VENV_NAME = "default"
 
@@ -116,6 +116,17 @@ class Venv(Entity):
         self.status = VenvStatus.FAILED
 
 
+class StorageCredentials(ValueObject):
+    """Object-store credentials issued for one job by the service that submitted it.
+
+    Transient: carried to the worker in RAM, never persisted and never logged. The
+    sandbox neither mints nor revokes them.
+    """
+
+    access_key: str
+    secret_key: str
+
+
 class Job(Entity):
     id: UUID | None = Field(default=None, frozen=True)
     session_id: int
@@ -132,5 +143,7 @@ class Job(Entity):
     use_storage: bool = False
     storage_allowed_paths: list[str] = Field(default_factory=list)
     storage_org_prefix: str | None = None
+    # Held jobs are dispatched later, so the manager carries these until then.
+    storage_credentials: StorageCredentials | None = None
     timeout: float | None = None
     error: str | None = None

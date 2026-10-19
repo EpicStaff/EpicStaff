@@ -8,7 +8,6 @@ is the one exception -- there is no port behind a subprocess.
 from tests.fakes.isolation import FakeIsolationProbe
 from tests.fakes.process import FakeProcess
 from tests.fakes.repositories import FakeVenvRepository
-from tests.fakes.storage import FAKE_ACCESS_KEY, FAKE_SECRET_KEY, FakeStorageCredentials
 from tests.fakes.transport import (
     FakeJobDispatcher,
     FakeJobFailureSink,
@@ -20,8 +19,6 @@ from tests.fakes.unit_of_work import FakeUnitOfWork
 from tests.fakes.uv_provider import FakeUVProvider
 
 __all__ = [
-    "FAKE_ACCESS_KEY",
-    "FAKE_SECRET_KEY",
     "FakeIsolationProbe",
     "FakeJobDispatcher",
     "FakeJobFailureSink",
@@ -29,7 +26,6 @@ __all__ = [
     "FakeProcess",
     "FakeResultPublisher",
     "FakeResultSink",
-    "FakeStorageCredentials",
     "FakeUVProvider",
     "FakeUnitOfWork",
     "FakeVenvRepository",

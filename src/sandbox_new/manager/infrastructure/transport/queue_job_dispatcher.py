@@ -9,7 +9,7 @@ knows nothing about the database) and enqueues it. The readiness decision lives 
 
 import asyncio
 
-from common.contracts import ExecutionJobMessage
+from common.contracts import ExecutionJobMessage, StorageCredentialsMessage
 
 from manager.application.ports import AbstractJobDispatcher
 from manager.domain.models import Job
@@ -33,6 +33,14 @@ class QueueJobDispatcher(AbstractJobDispatcher):
             use_storage=job.use_storage,
             storage_allowed_paths=job.storage_allowed_paths,
             storage_org_prefix=job.storage_org_prefix,
+            storage_credentials=(
+                None
+                if job.storage_credentials is None
+                else StorageCredentialsMessage(
+                    access_key=job.storage_credentials.access_key,
+                    secret_key=job.storage_credentials.secret_key,
+                )
+            ),
             session_id=job.session_id,
             timeout=job.timeout,
         )

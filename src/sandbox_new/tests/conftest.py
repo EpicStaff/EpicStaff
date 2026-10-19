@@ -24,8 +24,6 @@ _TEST_ENVIRONMENT = {
     "STORAGE_HOST": "localhost",
     "STORAGE_SSL": "false",
     "STORAGE_BUCKET": "sandbox",
-    "STORAGE_USER": "minio",
-    "STORAGE_PASSWORD": "minio123",
 }
 
 for _name, _value in _TEST_ENVIRONMENT.items():
@@ -39,7 +37,6 @@ from tests.fakes import (  # noqa: E402
     FakeJobDispatcher,
     FakeJobFailureSink,
     FakeResultSink,
-    FakeStorageCredentials,
     FakeUnitOfWork,
     FakeUVProvider,
     FakeVenvRepository,
@@ -74,11 +71,6 @@ def failure_sink() -> FakeJobFailureSink:
 @pytest.fixture
 def result_sink() -> FakeResultSink:
     return FakeResultSink()
-
-
-@pytest.fixture
-def storage_credentials() -> FakeStorageCredentials:
-    return FakeStorageCredentials()
 
 
 @pytest.fixture

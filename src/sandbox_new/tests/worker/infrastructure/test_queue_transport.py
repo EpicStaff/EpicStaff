@@ -7,7 +7,11 @@ back into an ``ExecutionResultMessage``.
 
 import asyncio
 
-from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from common.contracts import (
+    ExecutionJobMessage,
+    ExecutionResultMessage,
+    StorageCredentialsMessage,
+)
 from worker.domain.models import ExecutionResult, StorageMutations
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
@@ -27,6 +31,9 @@ async def test_a_wire_job_decodes_into_a_domain_job():
             use_storage=True,
             storage_allowed_paths=["docs/"],
             storage_org_prefix="org1",
+            storage_credentials=StorageCredentialsMessage(
+                access_key="AK123", secret_key="SK456"
+            ),
             session_id=11,
             timeout=12.5,
         )
@@ -44,6 +51,8 @@ async def test_a_wire_job_decodes_into_a_domain_job():
     assert job.use_storage is True
     assert job.storage_allowed_paths == ["docs/"]
     assert job.storage_org_prefix == "org1"
+    assert job.storage_credentials.access_key == "AK123"
+    assert job.storage_credentials.secret_key == "SK456"
     assert job.session_id == 11
     assert job.timeout == 12.5
 
@@ -58,6 +67,7 @@ async def test_a_minimal_wire_job_decodes_with_its_defaults():
 
     assert job.use_storage is False
     assert job.secrets == {}
+    assert job.storage_credentials is None
     assert job.timeout is None
     assert job.session_id is None
 

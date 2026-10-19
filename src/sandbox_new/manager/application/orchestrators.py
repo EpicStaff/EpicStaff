@@ -17,7 +17,7 @@ from manager.application.ports import (
 )
 from manager.domain.enums import VenvStatus
 from manager.domain.errors import VenvNotFoundError
-from manager.domain.models import Job, Library, Venv
+from manager.domain.models import Job, Library, StorageCredentials, Venv
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
 
@@ -197,6 +197,7 @@ class JobOrchestrator:
         use_storage: bool,
         storage_allowed_paths: List[str],
         storage_org_prefix: str | None,
+        storage_credentials: StorageCredentials | None,
         timeout: float | None,
     ) -> Job:
         venv = await self._resolve_venv(venv_id)
@@ -215,6 +216,7 @@ class JobOrchestrator:
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
+            storage_credentials=storage_credentials,
             timeout=timeout,
             error=None,
         )

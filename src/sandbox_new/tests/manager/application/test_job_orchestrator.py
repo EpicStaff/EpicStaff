@@ -10,6 +10,7 @@ from manager.application.holding import JobHoldingRegistry
 from manager.application.orchestrators import JobOrchestrator
 from manager.domain.enums import VenvStatus
 from manager.domain.errors import VenvNotFoundError
+from manager.domain.models import StorageCredentials
 from tests.builders import make_venv
 
 SUBMISSION = {
@@ -23,6 +24,7 @@ SUBMISSION = {
     "use_storage": False,
     "storage_allowed_paths": [],
     "storage_org_prefix": None,
+    "storage_credentials": None,
     "timeout": None,
 }
 
@@ -107,6 +109,7 @@ async def test_a_dispatch_failure_does_not_reach_the_caller(uow, orchestrator, d
     assert dispatcher.dispatched == []
 
 
+
 async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
     uow, orchestrator, dispatcher, holding
 ):
@@ -122,6 +125,31 @@ async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
     assert [job.execution_id for job in dispatcher.dispatched] == ["exec-1"]
     assert dispatcher.dispatched[0].venv_hash == "1built"
     assert holding.pending_venv_ids() == []
+
+
+async def test_a_held_job_keeps_its_storage_credentials_until_it_is_dispatched(
+    uow, orchestrator, dispatcher
+):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
+    await orchestrator.submit(
+        venv_id=venv.id,
+        **{
+            **SUBMISSION,
+            "use_storage": True,
+            "storage_org_prefix": "org1",
+            "storage_credentials": StorageCredentials(
+                access_key="AK123", secret_key="SK456"
+            ),
+        },
+    )
+    built = (await uow.venv_repo.retrieve(venv.id)).model_copy(
+        update={"status": VenvStatus.COMPLETED, "hash": "1built"}
+    )
+    await uow.venv_repo.update(built)
+
+    await orchestrator.flush_pending()
+
+    assert dispatcher.dispatched[0].storage_credentials.access_key == "AK123"
 
 
 async def test_flush_pending_keeps_holding_a_venv_that_is_still_building(

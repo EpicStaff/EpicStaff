@@ -206,6 +206,9 @@ class ExecutionController(Controller):
             use_storage=data.use_storage,
             storage_allowed_paths=data.storage_allowed_paths,
             storage_org_prefix=data.storage_org_prefix,
+            storage_credentials=(
+                None if data.storage_credentials is None else data.storage_credentials.to_domain()
+            ),
             timeout=data.timeout,
         )
         return schemas.ExecutionAcceptedSchema(execution_id=job.execution_id, status=job.status)

@@ -10,7 +10,6 @@ dependencies = [
     "foundation",
     "litestar>=2.24.0",
     "loguru>=0.7.3",
-    "miniopy-async>=1.23.5",
     "packaging>=24.0",
     "piccolo[postgres]>=1.36.0",
     "pydantic==2.13.4",

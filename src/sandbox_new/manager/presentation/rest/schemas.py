@@ -2,16 +2,17 @@ from datetime import datetime
 from typing import Any, Self
 
 from foundation.schemas import Schema
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from manager.domain.enums import JobStatus, VenvStatus
-from manager.domain.models import Library, Venv
+from manager.domain.models import Library, StorageCredentials, Venv
 
 __all__ = [
     "ExecutionAcceptedSchema",
     "ExecutionSubmitSchema",
     "LibraryRetrieveSchema",
     "LibraryWriteSchema",
+    "StorageCredentialsSchema",
     "VenvCreateSchema",
     "VenvListSchema",
     "VenvRetrieveSchema",
@@ -94,6 +95,18 @@ class VenvUpdateSchema(Schema):
     libs: list[LibraryWriteSchema] | None = None
 
 
+class StorageCredentialsSchema(Schema):
+    """Object-store credentials the caller issued for this execution."""
+
+    # Non-empty: a blank key would pass the fail-closed check below (a model is
+    # always truthy) and fail against the object store inside the sandbox instead.
+    access_key: str = Field(min_length=1)
+    secret_key: str = Field(min_length=1)
+
+    def to_domain(self) -> StorageCredentials:
+        return StorageCredentials(access_key=self.access_key, secret_key=self.secret_key)
+
+
 class ExecutionSubmitSchema(Schema):
     execution_id: str
     # Optional: tool paths at session start can submit without a session. Matches
@@ -108,7 +121,34 @@ class ExecutionSubmitSchema(Schema):
     use_storage: bool = False
     storage_allowed_paths: list[str] = []
     storage_org_prefix: str | None = None
+    # The sandbox never mints these: the caller issues them and hands them over.
+    storage_credentials: StorageCredentialsSchema | None = None
     timeout: float | None = None
+
+    @model_validator(mode="after")
+    def require_everything_storage_needs(self) -> Self:
+        """Reject a storage submission that is missing its prefix or its credentials.
+
+        Fail closed: the worker cannot reach storage without both, and a job accepted
+        here would only fail later, after the caller was told it was accepted.
+
+        Raises:
+            ValueError: `use_storage` is set without `storage_org_prefix` or without
+                `storage_credentials`. Rendered as 400.
+        """
+        if not self.use_storage:
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("storage_org_prefix", self.storage_org_prefix),
+                ("storage_credentials", self.storage_credentials),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(f"use_storage requires {' and '.join(missing)}")
+        return self
 
 
 class ExecutionAcceptedSchema(Schema):

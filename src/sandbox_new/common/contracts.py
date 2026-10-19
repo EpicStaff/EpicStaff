@@ -12,7 +12,19 @@ from typing import Any
 from foundation.schemas import Schema
 from pydantic import Field
 
-__all__ = ["ExecutionJobMessage", "ExecutionResultMessage", "StorageMutationsMessage"]
+__all__ = [
+    "ExecutionJobMessage",
+    "ExecutionResultMessage",
+    "StorageCredentialsMessage",
+    "StorageMutationsMessage",
+]
+
+
+class StorageCredentialsMessage(Schema):
+    """Object-store credentials issued upstream for one execution."""
+
+    access_key: str
+    secret_key: str
 
 
 class ExecutionJobMessage(Schema):
@@ -30,6 +42,9 @@ class ExecutionJobMessage(Schema):
     use_storage: bool = False
     storage_allowed_paths: list[str] = Field(default_factory=list)
     storage_org_prefix: str | None = None
+    # Issued by django_app, not by this service. Transient like `secrets`: RAM-only,
+    # never persisted, so they reach the worker without ever touching disk.
+    storage_credentials: StorageCredentialsMessage | None = None
     session_id: int | None = None
     # Per-job override; the worker falls back to its configured default when None.
     timeout: float | None = None
