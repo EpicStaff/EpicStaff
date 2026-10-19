@@ -206,6 +206,8 @@
 // ====================
 $node-actions-fade-duration: 0.2s;
 $node-actions-hide-delay: 0.4s;
+// Every node box and the #N tab that continues its outline share one corner radius.
+$node-border-radius: var(--radius-3xl);
 
 // Hover-revealed node actions hide only after a delay, so a pointer that slips off the node
 // on its way to a button still finds the button there. Gated by visibility, not pointer-events:
@@ -245,9 +247,26 @@ $node-actions-hide-delay: 0.4s;
     color: var(--gray-204);
     font-size: 0.75rem;
     padding: 0 13px;
-    border-radius: 6px 6px 0 0;
+    // The tab continues the node's outline, so its corners match the node's.
+    border-radius: $node-border-radius $node-border-radius 0 0;
     white-space: nowrap;
     pointer-events: none;
+}
+
+// The node corner under the #N tab squares while the tab shows, and re-rounds only once the tab
+// has faded out. $own-transition keeps a transition the node box already declares.
+@mixin node-corner-under-number-tab-idle($own-transition: null) {
+    $corner-transition: border-top-left-radius 0s linear ($node-actions-hide-delay + $node-actions-fade-duration);
+    @if $own-transition {
+        transition: $own-transition, $corner-transition;
+    } @else {
+        transition: $corner-transition;
+    }
+}
+
+@mixin node-corner-under-number-tab-shown {
+    border-top-left-radius: 0;
+    transition-delay: 0s;
 }
 
 @mixin node-action-bar-delete-chip($border-color, $bottom-offset: 0) {

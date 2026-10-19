@@ -1,5 +1,6 @@
 <div
     class="decision-table"
+    [class.has-number-chip]="hasNumberChip()"
     appClickOrDrag
     (actualClick)="onEditClick()"
 >

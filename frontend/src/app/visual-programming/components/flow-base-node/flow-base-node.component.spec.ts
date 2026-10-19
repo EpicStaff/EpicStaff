@@ -362,5 +362,16 @@ describe('FlowBaseNodeComponent node numbers in titles', () => {
             expect(text(titleSelector)).toBe(fallback);
             expect(text('.node-number-badge')).toBe('#3');
         });
+
+        // The squared corner tucks under the badge; with no badge the table keeps all corners round.
+        it("marks the table's badge corner only while the #N badge is shown", () => {
+            render(tableLikeNode(type), { numbersInTitles: false });
+            const table: HTMLElement = fixture.nativeElement.querySelector('.decision-table');
+            expect(table.classList).toContain('has-number-chip');
+
+            settings.showNodeNumbersInTitles.set(true);
+            fixture.detectChanges();
+            expect(table.classList).not.toContain('has-number-chip');
+        });
     });
 });

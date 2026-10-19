@@ -5,7 +5,7 @@
 
     background: var(--color-nodes-background);
 
-    border-radius: 16px;
+    border-radius: mixins.$node-border-radius;
 
     // Outside-the-box bar, only used by NOTE (no header row to embed into).
     // Header-based node types reuse this class inside .node-action-bar (see below).
@@ -129,7 +129,7 @@
         border: 2px solid var(--color-divider-subtle);
         cursor: pointer;
         padding: 1rem;
-        border-radius: 16px;
+        border-radius: mixins.$node-border-radius;
         .header {
             display: flex;
             align-items: center;
@@ -205,8 +205,6 @@
 
             .node-number-badge {
                 @include mixins.node-action-bar-number-badge(var(--color-divider-regular));
-                // The tab continues the node's outline, so its corners match the node's.
-                border-radius: 16px 16px 0 0;
 
                 // A Key-Value node's summary rides in the tab: it stops short of the delete chip
                 // (26px + 4px gap) and ends in "…"; block, since ellipsis skips flex text.
@@ -250,10 +248,8 @@
             margin-top: 1rem;
         }
 
-        // The corner squares under the #N tab, so it re-rounds only once the tab has faded out.
         &.has-number-chip {
-            transition: border-top-left-radius 0s linear
-                (mixins.$node-actions-hide-delay + mixins.$node-actions-fade-duration);
+            @include mixins.node-corner-under-number-tab-idle;
         }
 
         &.is-blocked-llm {
@@ -311,8 +307,7 @@
         }
 
         .interactive-node-body.has-number-chip {
-            border-top-left-radius: 0;
-            transition-delay: 0s;
+            @include mixins.node-corner-under-number-tab-shown;
         }
     }
 
@@ -365,8 +360,7 @@
         }
 
         .interactive-node-body.has-number-chip {
-            border-top-left-radius: 0;
-            transition-delay: 0s;
+            @include mixins.node-corner-under-number-tab-shown;
         }
     }
 

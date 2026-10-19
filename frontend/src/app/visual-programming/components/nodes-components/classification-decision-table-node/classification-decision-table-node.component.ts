@@ -1,5 +1,14 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, Input, Output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    EventEmitter,
+    inject,
+    Input,
+    input,
+    Output,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
@@ -27,6 +36,8 @@ import { FlowSettingsService } from '../../../services/flow-settings.service';
 export class ClassificationDecisionTableNodeComponent {
     @Input({ required: true }) node!: ClassificationDecisionTableNodeModel;
     @Output() actualClick = new EventEmitter<MouseEvent>();
+    /** Whether the #N tab sits on this node's top-left corner (owned by the flow-base-node). */
+    readonly hasNumberChip = input(false);
 
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);

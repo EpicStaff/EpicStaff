@@ -243,12 +243,14 @@
     @case (NodeType.TABLE) {
         <app-decision-table-node
             [node]="decisionTableNode!"
+            [hasNumberChip]="hasNumberChip"
             (actualClick)="onEditClick($event)"
         ></app-decision-table-node>
     }
     @case (NodeType.CLASSIFICATION_TABLE) {
         <app-classification-decision-table-node
             [node]="classificationTableNode!"
+            [hasNumberChip]="hasNumberChip"
             (actualClick)="onEditClick()"
         ></app-classification-decision-table-node>
     }

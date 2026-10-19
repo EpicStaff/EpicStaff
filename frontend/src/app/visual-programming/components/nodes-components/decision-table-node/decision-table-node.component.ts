@@ -1,5 +1,5 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 import { formatNodeLabel } from '@shared/utils';
@@ -23,6 +23,8 @@ import { FlowSettingsService } from '../../../services/flow-settings.service';
 export class DecisionTableNodeComponent {
     @Input({ required: true }) node!: DecisionTableNodeModel;
     @Output() actualClick = new EventEmitter<MouseEvent>();
+    /** Whether the #N tab sits on this node's top-left corner (owned by the flow-base-node). */
+    readonly hasNumberChip = input(false);
 
     private flowService = inject(FlowService);
     private readonly flowSettings = inject(FlowSettingsService);

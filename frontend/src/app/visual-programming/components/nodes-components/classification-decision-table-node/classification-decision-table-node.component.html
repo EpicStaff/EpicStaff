@@ -1,5 +1,6 @@
 <div
     class="decision-table"
+    [class.has-number-chip]="hasNumberChip()"
     [class.is-blocked-llm]="hasMissingLlmConfig || hasEmptyConditionName"
     appClickOrDrag
     (actualClick)="onEditClick()"
