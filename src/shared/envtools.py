@@ -306,7 +306,9 @@ class Env:
 
         level = value.strip().upper()
         if level not in allowed:
-            raise ValueError(f"{variable} must be one of {', '.join(allowed)}, got {value!r}.")
+            raise ValueError(
+                f"{variable}={value!r} is not a log level; use one of {', '.join(allowed)}."
+            )
         return level
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:

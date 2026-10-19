@@ -4,23 +4,28 @@ map $http_upgrade $connection_upgrade {
 }
 
 upstream backend_server {
-    server ${DJANGO_HOST}:${DJANGO_PORT};
+    zone backend_server 64k;
+    server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
 }
 
 upstream frontend_server {
-    server ${FRONTEND_HOST}:${FRONTEND_PORT};
+    zone frontend_server 64k;
+    server ${FRONTEND_HOST}:${FRONTEND_PORT} resolve;
 }
 
 upstream realtime_server {
-    server ${REALTIME_HOST}:${REALTIME_PORT};
+    zone realtime_server 64k;
+    server ${REALTIME_HOST}:${REALTIME_PORT} resolve;
 }
 
 upstream webhook_server {
-    server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
+    zone webhook_server 64k;
+    server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
-# Docker's embedded DNS, used by the /auditor/ location to resolve the auditor
-# at request time.
+# Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
+# recreated container's new IP is picked up without restarting nginx; the
+# /auditor/ location also resolves the auditor through it at request time.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
 # Every location that proxies must include strip-underscore-forwarding-headers.snippet:
@@ -184,13 +189,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
+
     location ~ ^/auditor/api/audit/[^/]+/events/?$ {
         return 404;
     }
 
     location /auditor/ {
-        # The auditor exits on startup when AUDIT_TRAIL_ENABLED is not true, so
-        # its hostname may not exist. A static upstream would be resolved when
+        # The auditor runs only under the auditor compose profile and exits on
+        # startup when AUDIT_TRAIL_ENABLED is not true, so its hostname may not exist. A static upstream would be resolved when
         # nginx starts and a missing host stops nginx entirely; proxying to a
         # variable resolves only when a request arrives, so /auditor/ returns
         # 502 while the auditor is disabled and nothing else is affected.

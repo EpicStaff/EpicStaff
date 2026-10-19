@@ -2,6 +2,15 @@ import { IPoint } from '@foblex/2d';
 
 import { RoutedPath } from './nudging';
 import { Rect } from './obstacles';
+import {
+    AxisSegment,
+    axisSegments,
+    LENGTH_TOLERANCE,
+    MIN_INTERIOR_SEGMENT,
+    rangeOverlap,
+    simplified,
+    STUB,
+} from './routing-constants';
 
 /**
  * Removes kinks: an interior segment shorter than 10 px between two parallel segments is
@@ -13,19 +22,8 @@ import { Rect } from './obstacles';
  * nudging; pure and deterministic (paths in their order, jogs from the source on).
  */
 
-const MIN_INTERIOR_SEGMENT = 10;
-const STUB = 20;
-// Sub-pixel tolerance, as the quality checker uses: closer than this is the same pixel row.
-const EPSILON = 0.5;
 // A collinear run longer than this on top of another wire is an overlap.
 const MIN_OVERLAP = 1;
-
-interface AxisSegment {
-    horizontal: boolean;
-    line: number; // y of a horizontal segment, x of a vertical one
-    low: number; // its extent along the line
-    high: number;
-}
 
 /**
  * `paths` with their jogs removed where that is safe; same ids, same order. `others` (e.g. frozen
@@ -36,7 +34,7 @@ export function removeJogs(paths: RoutedPath[], obstacles: Rect[], others: Route
     working.forEach((routed, pathIndex) => {
         let points = routed.points;
         for (let index = 1; index < points.length - 2; index++) {
-            if (length(points[index], points[index + 1]) >= MIN_INTERIOR_SEGMENT - EPSILON) continue;
+            if (length(points[index], points[index + 1]) >= MIN_INTERIOR_SEGMENT - LENGTH_TOLERANCE) continue;
             const context = [...working.filter((_, otherIndex) => otherIndex !== pathIndex), ...others];
             const straightened = straightenJog(routed, points, index, obstacles, context);
             if (!straightened) continue;
@@ -113,31 +111,10 @@ function isAcceptable(
     return straightened.crossings <= original.crossings && straightened.overlaps <= original.overlaps;
 }
 
-// Drops repeated points and points in the middle of a straight run; null when the path doubles back.
-function simplified(points: IPoint[]): IPoint[] | null {
-    const result: IPoint[] = [];
-    for (const point of points) {
-        const previous = result[result.length - 1];
-        if (previous && previous.x === point.x && previous.y === point.y) continue;
-        const beforePrevious = result[result.length - 2];
-        if (beforePrevious) {
-            const sameX = beforePrevious.x === previous.x && previous.x === point.x;
-            const sameY = beforePrevious.y === previous.y && previous.y === point.y;
-            if (sameX || sameY) {
-                const axis = sameX ? 'y' : 'x';
-                const reverses = (previous[axis] - beforePrevious[axis]) * (point[axis] - previous[axis]) < 0;
-                if (reverses) return null;
-                result.pop();
-            }
-        }
-        result.push(point);
-    }
-    return result;
-}
-
 // The first segment leaves the source, the last enters the target, both east and at least STUB long.
 function hasStubs(points: IPoint[]): boolean {
-    const isStub = (start: IPoint, end: IPoint): boolean => start.y === end.y && end.x - start.x >= STUB - EPSILON;
+    const isStub = (start: IPoint, end: IPoint): boolean =>
+        start.y === end.y && end.x - start.x >= STUB - LENGTH_TOLERANCE;
     return (
         points.length >= 2 &&
         isStub(points[0], points[1]) &&
@@ -148,7 +125,7 @@ function hasStubs(points: IPoint[]): boolean {
 function shortSegmentCount(points: IPoint[]): number {
     let count = 0;
     for (let index = 1; index < points.length - 2; index++) {
-        if (length(points[index], points[index + 1]) < MIN_INTERIOR_SEGMENT - EPSILON) count++;
+        if (length(points[index], points[index + 1]) < MIN_INTERIOR_SEGMENT - LENGTH_TOLERANCE) count++;
     }
     return count;
 }
@@ -186,29 +163,6 @@ function entersObstacle(points: IPoint[], obstacles: Rect[]): boolean {
     return false;
 }
 
-function axisSegments(points: IPoint[]): AxisSegment[] {
-    const segments: AxisSegment[] = [];
-    for (let index = 0; index < points.length - 1; index++) {
-        const [start, end] = [points[index], points[index + 1]];
-        if (start.y === end.y && start.x !== end.x) {
-            segments.push({
-                horizontal: true,
-                line: start.y,
-                low: Math.min(start.x, end.x),
-                high: Math.max(start.x, end.x),
-            });
-        } else if (start.x === end.x && start.y !== end.y) {
-            segments.push({
-                horizontal: false,
-                line: start.x,
-                low: Math.min(start.y, end.y),
-                high: Math.max(start.y, end.y),
-            });
-        }
-    }
-    return segments;
-}
-
 // A proper crossing: each strictly inside the other's extent (a T-junction or shared end doesn't count).
 function crosses(first: AxisSegment, second: AxisSegment): boolean {
     if (first.horizontal === second.horizontal) return false;
@@ -216,8 +170,8 @@ function crosses(first: AxisSegment, second: AxisSegment): boolean {
 }
 
 function overlapsCollinearly(first: AxisSegment, second: AxisSegment): boolean {
-    if (first.horizontal !== second.horizontal || Math.abs(first.line - second.line) >= EPSILON) return false;
-    return Math.min(first.high, second.high) - Math.max(first.low, second.low) > MIN_OVERLAP;
+    if (first.horizontal !== second.horizontal || Math.abs(first.line - second.line) >= LENGTH_TOLERANCE) return false;
+    return rangeOverlap(first.low, first.high, second.low, second.high) > MIN_OVERLAP;
 }
 
 function length(start: IPoint, end: IPoint): number {

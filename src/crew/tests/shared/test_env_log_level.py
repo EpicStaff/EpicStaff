@@ -30,7 +30,7 @@ def test_raises_when_unset_without_default(monkeypatch):
 def test_rejects_unknown_level_naming_the_variable(monkeypatch, raw_value):
     monkeypatch.setenv(VARIABLE, raw_value)
 
-    with pytest.raises(ValueError, match=f"{VARIABLE} must be one of TRACE, DEBUG, INFO, SUCCESS, WARNING"):
+    with pytest.raises(ValueError, match=f"{VARIABLE}=.* is not a log level; use one of TRACE, DEBUG, INFO, SUCCESS, WARNING"):
         Env().log_level(VARIABLE, "INFO")
 
 
@@ -48,7 +48,7 @@ def test_accepts_loguru_success_level(monkeypatch):
 def test_bench_is_rejected_unless_the_service_allows_it(monkeypatch):
     monkeypatch.setenv(VARIABLE, "bench")
 
-    with pytest.raises(ValueError, match=f"{VARIABLE} must be one of TRACE, DEBUG, INFO, SUCCESS"):
+    with pytest.raises(ValueError, match=f"{VARIABLE}=.* is not a log level; use one of TRACE, DEBUG, INFO, SUCCESS"):
         Env().log_level(VARIABLE, "INFO")
     assert Env().log_level(VARIABLE, "INFO", allowed=Env.LOG_LEVELS_WITH_BENCH) == "BENCH"
 

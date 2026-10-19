@@ -84,6 +84,8 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
       DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
+      DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS: ${DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
       DJANGO_TIMEZONE: ${DJANGO_TIMEZONE:?}
       DJANGO_JWT_ACCESS_LIFETIME: ${DJANGO_JWT_ACCESS_LIFETIME:?}
       DJANGO_JWT_REFRESH_LIFETIME: ${DJANGO_JWT_REFRESH_LIFETIME:?}
@@ -445,6 +447,8 @@ services:
       API_URL: ${API_URL:?}
       REALTIME_API_URL: ${REALTIME_API_URL:?}
       AUDITOR_API_URL: ${AUDITOR_API_URL:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_API_URL: ${CHAT_API_URL:?}
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
     networks:
       - frontend-network
@@ -502,8 +506,11 @@ services:
       WEBHOOK_PORT: ${WEBHOOK_PORT:?}
       AUDITOR_HOST: ${AUDITOR_HOST:?}
       AUDITOR_PORT: ${AUDITOR_PORT:?}
+      CHAT_ENABLED: ${CHAT_ENABLED:?}
+      CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
+      - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
     networks:
@@ -515,8 +522,6 @@ services:
       frontend:
         condition: service_started
       realtime:
-        condition: service_started
-      auditor:
         condition: service_started
     restart: always
 
@@ -542,6 +547,7 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
@@ -554,11 +560,14 @@ services:
       AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
       AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
+      AGENT_REDIS_READ_RETRY_INITIAL_DELAY: ${AGENT_REDIS_READ_RETRY_INITIAL_DELAY:?}
+      AGENT_REDIS_READ_RETRY_MAX_DELAY: ${AGENT_REDIS_READ_RETRY_MAX_DELAY:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:?}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:?}
+      AGENT_MCP_DESCRIBE_CACHE_TTL: ${AGENT_MCP_DESCRIBE_CACHE_TTL:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
     depends_on:
@@ -567,9 +576,13 @@ services:
     networks:
       - backend-network
 
+  # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
+  # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
+  # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
+    profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
     environment:
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
@@ -599,6 +612,7 @@ services:
   auditor:
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
+    profiles: ["auditor"]
     build:
       context: .
       dockerfile: ./auditor/Dockerfile.auditor
@@ -667,6 +681,93 @@ services:
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
       KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
 
+  # Chat service and its database. Gated behind profiles: ["chat"]: they start only when
+  # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.
+  # Nothing outside the profile may depend_on them, or a stack without chat would not start.
+  chat:
+    image: ghcr.io/epicstaff/chat:${IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: ./chat/Dockerfile
+    container_name: chat
+    hostname: chat
+    profiles: ["chat"]
+    environment:
+      <<: [*docker-env, *redis-env]
+      CHAT_PORT: ${CHAT_PORT:?}
+      CHAT_LOG_LEVEL: ${CHAT_LOG_LEVEL:?}
+      CHAT_WORKERS: ${CHAT_WORKERS:?}
+      CHAT_DB_HOST: ${CHAT_DB_HOST:?}
+      CHAT_DB_PORT: ${CHAT_DB_PORT:?}
+      CHAT_DB_NAME: ${CHAT_DB_NAME:?}
+      CHAT_DB_USER: ${CHAT_DB_USER:?}
+      CHAT_DB_PASSWORD: ${CHAT_DB_PASSWORD:?}
+      CHAT_REDIS_DB: ${CHAT_REDIS_DB:?}
+      CHAT_DJANGO_URL: ${CHAT_DJANGO_URL:?}
+      CHAT_DJANGO_HOST_HEADER: ${CHAT_DJANGO_HOST_HEADER:?}
+      DJANGO_API_KEY: ${DJANGO_API_KEY:?}
+      CHAT_PUBLIC_BASE_URL: ${CHAT_PUBLIC_BASE_URL:?}
+      CHAT_CALLBACK_URL: ${CHAT_CALLBACK_URL:?}
+      CHAT_TRUSTED_PROXIES: ${CHAT_TRUSTED_PROXIES:?}
+      CHAT_DJANGO_TIMEOUT: ${CHAT_DJANGO_TIMEOUT:?}
+      CHAT_IP_MESSAGE_RATE: ${CHAT_IP_MESSAGE_RATE:?}
+      CHAT_IP_CONVERSATION_RATE: ${CHAT_IP_CONVERSATION_RATE:?}
+      CHAT_RECONCILE_INTERVAL: ${CHAT_RECONCILE_INTERVAL:?}
+      CHAT_STALE_RUN_AFTER: ${CHAT_STALE_RUN_AFTER:?}
+      CHAT_UNCONFIRMED_START_RELEASE: ${CHAT_UNCONFIRMED_START_RELEASE:?}
+      CHAT_RUN_TIMEOUT: ${CHAT_RUN_TIMEOUT:?}
+      CHAT_EVENT_RETENTION: ${CHAT_EVENT_RETENTION:?}
+      CHAT_CALLBACK_MAX_SKEW: ${CHAT_CALLBACK_MAX_SKEW:?}
+      CHAT_IDENTITY_CACHE_TTL: ${CHAT_IDENTITY_CACHE_TTL:?}
+      CHAT_TICKET_TTL: ${CHAT_TICKET_TTL:?}
+      CHAT_VISITOR_TOKEN_IDLE_TTL: ${CHAT_VISITOR_TOKEN_IDLE_TTL:?}
+      CHAT_STREAM_MAX_LIFETIME: ${CHAT_STREAM_MAX_LIFETIME:?}
+      CHAT_STREAM_PING_INTERVAL: ${CHAT_STREAM_PING_INTERVAL:?}
+      CHAT_CONVERSATION_TOKEN_BUDGET_DEFAULT: ${CHAT_CONVERSATION_TOKEN_BUDGET_DEFAULT:?}
+      CHAT_CONVERSATION_TOKEN_BUDGET_MAX: ${CHAT_CONVERSATION_TOKEN_BUDGET_MAX:?}
+      CHAT_DAILY_TOKEN_BUDGET_DEFAULT: ${CHAT_DAILY_TOKEN_BUDGET_DEFAULT:?}
+      CHAT_DAILY_TOKEN_BUDGET_MAX: ${CHAT_DAILY_TOKEN_BUDGET_MAX:?}
+      CHAT_RESPONSE_TIME_DEFAULT: ${CHAT_RESPONSE_TIME_DEFAULT:?}
+      CHAT_RESPONSE_TIME_MAX: ${CHAT_RESPONSE_TIME_MAX:?}
+      CHAT_CLOSE_AFTER_DEFAULT: ${CHAT_CLOSE_AFTER_DEFAULT:?}
+      CHAT_CLOSE_AFTER_MAX: ${CHAT_CLOSE_AFTER_MAX:?}
+    networks:
+      - backend-network
+    depends_on:
+      chatdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      django_app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:$${CHAT_PORT}/chat/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  chatdb:
+    # Same major as crewdb (ankane/pgvector v0.5.1 is Postgres 15); no extensions needed here.
+    image: postgres:15@sha256:c961aa287d8698297cb26cdfadfbe9fd2cbaf77e53cfffe9636e8d8a1e4d842c
+    container_name: chatdb
+    profiles: ["chat"]
+    environment:
+      POSTGRES_USER: ${CHAT_DB_USER:?}
+      POSTGRES_PASSWORD: ${CHAT_DB_PASSWORD:?}
+      POSTGRES_DB: ${CHAT_DB_NAME:?}
+    volumes:
+      - chat_pgdata:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
 volumes:
   sandbox_venvs:
     external: true
@@ -680,6 +781,7 @@ volumes:
   code_instances: {}
   rustfs_data: {}
   auditor_data: {}
+  chat_pgdata: {}
 
 networks:
   backend-network:

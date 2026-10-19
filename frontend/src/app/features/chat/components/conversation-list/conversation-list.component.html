@@ -1,0 +1,134 @@
+<app-conversation-list-toolbar
+    [order]="order()"
+    [isMineOnly]="isMineOnly()"
+    [canFilterMine]="canUse()"
+    [searchError]="store.searchError()"
+    (searchChange)="search.set($event)"
+    (orderChange)="setOrder($event)"
+    (mineOnlyChange)="setMineOnly($event)"
+/>
+
+<!-- The one scroller of the column: section headers stick to its top, each until its own section ends. -->
+<div
+    #scroller
+    class="conversation-list__scroller"
+>
+    <!-- A search the server refused lists nothing; the toolbar says why. -->
+    @if (!store.searchError()) {
+        @for (item of store.view(); track item.section.id) {
+            @let section = item.section;
+            @let state = item.state;
+            <section
+                #sectionElement
+                class="conversation-list__section"
+                [attr.data-section]="section.id"
+            >
+                <app-conversation-section-header
+                    class="conversation-list__section-header"
+                    [label]="section.label"
+                    [icon]="section.icon"
+                    [isExpanded]="item.isExpanded"
+                    [controlsId]="sectionBodyId(section.id)"
+                    [count]="section.id === 'waiting' ? waitingCount() : null"
+                    (toggled)="toggle(section.id)"
+                />
+                <!-- Present while collapsed too, so the header's aria-controls always points at it; empty then. -->
+                <div
+                    class="conversation-list__section-body"
+                    [id]="sectionBodyId(section.id)"
+                    [hidden]="!item.isExpanded"
+                >
+                    @if (item.isExpanded) {
+                        @if (state.isLoading && !state.rows.length) {
+                            <app-spinner
+                                class="conversation-list__loading"
+                                text="Loading conversations…"
+                                [size]="24"
+                                [isOverlay]="false"
+                            />
+                        } @else {
+                            @if (state.rows.length) {
+                                <!--
+                                    One element around the note and the rows: when the last row leaves, Angular removes
+                                    it only after that row has faded, so the note does not vanish first and shift it.
+                                -->
+                                <div>
+                                    @if (section.orderNote) {
+                                        <p class="conversation-list__section-note text-body-small">
+                                            {{ section.orderNote }}
+                                        </p>
+                                    }
+                                    <!-- A plain list, not the shared one: that is a scroll box of its own. -->
+                                    <ul class="conversation-list__rows">
+                                        @for (conversation of state.rows; track conversation.id) {
+                                            <!-- Keyed by id for the motion: a row that changes section is re-created there. -->
+                                            <li
+                                                #rowItem
+                                                [attr.data-id]="conversation.id"
+                                                (animate.enter)="motion.enter($event, conversation.id)"
+                                                (animate.leave)="motion.leave($event, conversation.id)"
+                                            >
+                                                <app-conversation-row
+                                                    [conversation]="conversation"
+                                                    [now]="now()"
+                                                    [deskName]="deskNames()?.get(conversation.binding_id) ?? null"
+                                                    [rules]="deskRules().get(conversation.binding_id) ?? null"
+                                                    [isSelected]="conversation.id === selectedId()"
+                                                    [isTabStop]="conversation.id === tabStopId()"
+                                                    [canTakeOver]="canUse()"
+                                                    [isActionPending]="isActionPending()"
+                                                    (selectRequested)="selectedChange.emit(conversation)"
+                                                    (takeOverRequested)="takeOver(conversation)"
+                                                    (moveRequested)="move(conversation, $event)"
+                                                />
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            } @else {
+                                <div class="conversation-list__section-empty">
+                                    @if (store.isSearching()) {
+                                        <p class="conversation-list__empty-title text-body-medium">No matches</p>
+                                    } @else if (store.isMineOnly()) {
+                                        <p class="conversation-list__empty-title text-body-medium">
+                                            {{ section.mineEmptyTitle }}
+                                        </p>
+                                    } @else {
+                                        <p class="conversation-list__empty-title text-body-medium">
+                                            {{ section.emptyTitle }}
+                                        </p>
+                                        <p class="conversation-list__empty-description text-body-small">
+                                            {{ section.emptyDescription }}
+                                        </p>
+                                    }
+                                </div>
+                            }
+                            @if (state.nextCursor && !state.isLoading) {
+                                <div
+                                    #sentinel
+                                    class="conversation-list__sentinel"
+                                    aria-hidden="true"
+                                    [attr.data-section]="section.id"
+                                ></div>
+                            } @else if (state.isLoading) {
+                                <app-spinner
+                                    class="conversation-list__loading-more"
+                                    [size]="16"
+                                    [isOverlay]="false"
+                                />
+                            }
+                        }
+                    }
+                </div>
+            </section>
+        }
+    }
+</div>
+
+<!-- Always present, so a change of its text is read out once; rows themselves are not live. -->
+<div
+    class="visually-hidden"
+    role="status"
+>
+    {{ replyingAnnouncement() }}
+</div>

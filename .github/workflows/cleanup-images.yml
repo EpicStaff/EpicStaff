@@ -63,6 +63,7 @@ jobs:
             --package code
             --package webhook
             --package frontend
+            --package chat
           )
 
           if [ "$APPLY" = "true" ]; then

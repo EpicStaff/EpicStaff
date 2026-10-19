@@ -29,6 +29,10 @@ async def _database_connection_is_open() -> bool:
 
 
 class _StreamReportingItsConnection(SSEMixin):
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
     async def get_initial_data(self):
         await Session.objects.acount()
         yield {"event": "initial", "data": await _database_connection_is_open()}
@@ -144,6 +148,10 @@ def _failing_query():
 
 
 class _StreamWhoseQueryFails(SSEMixin):
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
     async def get_initial_data(self):
         await sync_to_async(_failing_query)()
         yield {"event": "initial", "data": "never sent"}

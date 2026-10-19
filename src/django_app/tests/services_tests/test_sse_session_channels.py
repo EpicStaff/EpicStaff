@@ -7,6 +7,8 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 
+from rbac.models import OrganizationUser
+from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
 from tables.models.graph_models import Graph, GraphSessionMessage
 from tables.models.session_models import Session
 from tables.views import sse_views
@@ -180,12 +182,15 @@ async def test_test_mode_stream_subscribes_to_nothing(fake_async_redis):
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_flow_assistant_stream_subscribes_to_nothing_and_still_streams(
-    fake_async_redis,
+    fake_async_redis, default_org, org_admin_role, django_user_model
 ):
+    user, graph_id, conversation_id = await sync_to_async(
+        _create_conversation_without_user_message
+    )(default_org, org_admin_role, django_user_model)
     view = FlowAssistantStreamView()
-    # No such conversation: the stream answers with an error event before it uses the user.
-    view.kwargs = {"graph_id": 1, "conversation_id": 999_999}
-    view.user = None
+    view.kwargs = {"graph_id": graph_id, "conversation_id": conversation_id}
+    view.user = user
+    assert await view.authorize(request=None) is None
     frames = view.event_stream()
 
     event_line = await asyncio.wait_for(anext(frames), timeout=2)
@@ -198,9 +203,22 @@ async def test_flow_assistant_stream_subscribes_to_nothing_and_still_streams(
     assert event_line == "event: error\n"
     assert json.loads(data_line.removeprefix("data: ")) == {
         "type": "error",
-        "detail": "Conversation not found.",
+        "detail": "No pending user message found.",
     }
     assert remaining_frames == []
+
+
+def _create_conversation_without_user_message(org, role, django_user_model):
+    user = django_user_model.objects.create_user(
+        email="flow-assistant-channels@example.com", password="StrongPass123!"
+    )
+    organization_user = OrganizationUser.objects.create(user=user, org=org, role=role)
+    graph = Graph.objects.create(name="flow-assistant-channels", org=org)
+    assistant = FlowAssistant.objects.create(graph=graph)
+    conversation = FlowAssistantConversation.objects.create(
+        flow_assistant=assistant, organization_user=organization_user
+    )
+    return user, graph.id, conversation.id
 
 
 @pytest.mark.asyncio

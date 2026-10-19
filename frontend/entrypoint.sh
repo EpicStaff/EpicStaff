@@ -34,6 +34,13 @@ if [ -f "$CONFIG_PATH" ] && [ -s "$CONFIG_PATH" ]; then
   echo "Existing config.json found; skipping generation."
 else
   echo "Generating config.json..."
+  # Read by the same rule as nginx (src/nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh),
+  # so the UI offers the chat pages exactly when nginx routes /chat/.
+  if env_bool CHAT_ENABLED false; then
+    chat_enabled=true
+  else
+    chat_enabled=false
+  fi
   # Parsed by the same rule as the auditor's own entrypoint (src/auditor/entrypoint.sh),
   # so the UI never offers the audit page while the auditor exits. Written as a JSON
   # literal: the shared .env uses Python-style True/False, which would make config.json
@@ -48,6 +55,8 @@ else
   "apiUrl": "${API_URL}",
   "realtimeApiUrl": "${REALTIME_API_URL}",
   "auditorUrl": "${AUDITOR_API_URL}",
+  "isChatEnabled": ${chat_enabled},
+  "chatApiUrl": "${CHAT_API_URL:-/chat/}",
   "isAuditTrailEnabled": ${audit_trail_enabled}
 }
 EOF

@@ -11,7 +11,7 @@ For storage, encryption and the resolver see
 
 ## 1. The trip through Redis
 
-Three channels, one per hop. Nothing polls for the wrong thing; each service listens only on
+Four channels, one per hop. Nothing polls for the wrong thing; each service listens only on
 the channel that is its job.
 
 | Channel | Direction | Carries |
@@ -19,6 +19,7 @@ the channel that is its job.
 | `sessions:schema` | django_app → crew | the whole resolved graph, once per session |
 | `code_exec_tasks` | crew (or django_app, for a Test-mode run) → sandbox | one execution task, including its secrets |
 | `code_results` | sandbox → whoever asked | stdout / stderr / result, already scrubbed |
+| `code_results:crew` | sandbox → crew (tasks sent with `reply_to_crew_channel`) | the same result, read only by crew |
 
 **Step 1 — the allow-list gate, before anything is published.**
 `session_manager_service.run_session` calls
@@ -44,8 +45,8 @@ code_task_data = CodeTaskData(
 )
 ```
 
-It subscribes to `code_results` *before* publishing, then waits for a matching
-`execution_id`.
+It sets `reply_to_crew_channel`, registers the `execution_id` with its one process-wide
+subscription to `code_results:crew` *before* publishing, then waits for that result.
 
 **Step 4 — the sandbox receives the task.** `sandbox/main.py` parses it into `CodeTaskData`
 and **never logs the raw message** — only `code_task_data.log_summary()`, which reports a

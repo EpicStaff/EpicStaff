@@ -1,0 +1,14 @@
+{
+  "secret": "0123456789abcdef0123456789abcdef",
+  "timestamp": "1760000000",
+  "payload": {
+    "session_id": 17,
+    "graph_id": 3,
+    "status": "end",
+    "end_node_result": {"reply": "Hello, Привіт", "actions": [], "request_human": false},
+    "token_usage": {"total_tokens": 42, "prompt_tokens": 40, "completion_tokens": 2},
+    "finished_at": "2026-10-09T12:00:00+00:00"
+  },
+  "body": "{\"end_node_result\":{\"actions\":[],\"reply\":\"Hello, Привіт\",\"request_human\":false},\"finished_at\":\"2026-10-09T12:00:00+00:00\",\"graph_id\":3,\"session_id\":17,\"status\":\"end\",\"token_usage\":{\"completion_tokens\":2,\"prompt_tokens\":40,\"total_tokens\":42}}",
+  "signature": "sha256=efc38fd24010c184072da5c6f146b4d379986c8215f203e2789965cf26b9142d"
+}

@@ -3,5 +3,7 @@ export const environment = {
     apiUrl: '/api/',
     realtimeApiUrl: '/realtime/',
     auditorUrl: '/auditor/',
+    isChatEnabled: false,
+    chatApiUrl: '/chat/',
     isAuditTrailEnabled: false,
 };

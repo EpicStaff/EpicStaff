@@ -46,6 +46,7 @@ from shared.models.tools import (
     PythonCodeData,
     PythonCodeToolData,
 )
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -209,7 +210,7 @@ async def test_python_tool_ref_resolves_to_registry():
     tool = _base_tool("python-code-tool:1", _python_tool_data())
     request = _request([agent], tools=[tool])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     names = {spec.name for spec in resolved.tools.tool_specs()}
     assert "my_tool" in names
@@ -220,7 +221,7 @@ async def test_mcp_tool_ref_resolves_to_registry():
     tool = _base_tool("mcp-tool:4", _mcp_tool_data("mcp_tool"))
     request = _request([agent], tools=[tool])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     names = {spec.name for spec in resolved.tools.tool_specs()}
     assert "mcp_tool" in names
@@ -231,7 +232,7 @@ async def test_unknown_tool_ref_raises():
     request = _request([agent], tools=[])
 
     with pytest.raises(UnknownToolRefError, match="python-code-tool:99"):
-        await _resolver().resolve(agent, request)
+        await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
 
 async def test_unsupported_tool_prefix_raises_agent_service_error():
@@ -250,7 +251,7 @@ async def test_unsupported_tool_prefix_raises_agent_service_error():
     request = _request([agent], tools=[tool])
 
     with pytest.raises(AgentServiceError, match="not supported"):
-        await _resolver().resolve(agent, request)
+        await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
 
 async def test_mcp_gateway_failure_raises_mcp_tool_error():
@@ -261,7 +262,7 @@ async def test_mcp_gateway_failure_raises_mcp_tool_error():
     request = _request([agent], tools=[tool])
 
     with pytest.raises(McpToolError, match="server down"):
-        await _resolver(gateway).resolve(agent, request)
+        await _resolver(gateway).resolve(agent, request, is_cancelled=never_cancelled)
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +275,7 @@ async def test_collection_ref_registers_knowledge_tools():
     agent = _agent_spec(collection_refs=["collection:7"])
     request = _request([agent], collections=[collection])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     names = {spec.name for spec in resolved.tools.tool_specs()}
     assert any("_naive" in n for n in names)
@@ -293,7 +294,7 @@ async def test_collection_ref_multi_entry_fan_out():
     agent = _agent_spec(collection_refs=["collection:7"])
     request = _request([agent], collections=[collection])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     names = {spec.name for spec in resolved.tools.tool_specs()}
     assert any("_naive" in n for n in names)
@@ -306,7 +307,7 @@ async def test_unknown_collection_ref_raises():
     request = _request([agent], collections=[])
 
     with pytest.raises(UnknownCollectionRefError, match="collection:99"):
-        await _resolver().resolve(agent, request)
+        await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +320,7 @@ async def test_s3_ref_produces_single_system_attachment():
     agent = _agent_spec(s3_refs=[88])
     request = _request([agent], s3_files=[s3])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     assert len(resolved.attachments) == 1
     attachment = resolved.attachments[0]
@@ -332,7 +333,7 @@ async def test_no_s3_refs_produces_no_attachments():
     agent = _agent_spec(s3_refs=[])
     request = _request([agent], s3_files=[])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     assert resolved.attachments == []
     assert resolved.context.attachments == []
@@ -343,7 +344,7 @@ async def test_unknown_s3_ref_raises():
     request = _request([agent], s3_files=[])
 
     with pytest.raises(UnknownS3RefError, match="999"):
-        await _resolver().resolve(agent, request)
+        await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
 
 # ---------------------------------------------------------------------------
@@ -360,8 +361,8 @@ async def test_two_agents_share_pool_each_gets_own_registry():
     request = _request([agent_a, agent_b], tools=[tool])
 
     resolver = _resolver()
-    resolved_a = await resolver.resolve(agent_a, request)
-    resolved_b = await resolver.resolve(agent_b, request)
+    resolved_a = await resolver.resolve(agent_a, request, is_cancelled=never_cancelled)
+    resolved_b = await resolver.resolve(agent_b, request, is_cancelled=never_cancelled)
 
     names_a = {spec.name for spec in resolved_a.tools.tool_specs()}
     names_b = {spec.name for spec in resolved_b.tools.tool_specs()}
@@ -379,7 +380,7 @@ async def test_resolved_agent_carries_correct_agent_id():
     agent = _agent_spec(agent_id=42)
     request = _request([agent])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     assert resolved.agent_id == 42
 
@@ -389,7 +390,7 @@ async def test_resolved_agent_context_has_empty_messages():
     agent = _agent_spec()
     request = _request([agent])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     assert resolved.context.messages == []
 
@@ -407,7 +408,7 @@ async def test_knowledge_sink_threaded_to_registry_builder():
     request = _request([agent], collections=[collection])
     sink = MagicMock()
 
-    await _resolver().resolve(agent, request, knowledge_sink=sink)
+    await _resolver().resolve(agent, request, knowledge_sink=sink, is_cancelled=never_cancelled)
 
     sink.register_knowledge_tool.assert_called_once_with("search_test_knowledge_base_naive")
 
@@ -416,6 +417,6 @@ async def test_resolve_without_knowledge_sink_still_works():
     agent = _agent_spec()
     request = _request([agent])
 
-    resolved = await _resolver().resolve(agent, request)
+    resolved = await _resolver().resolve(agent, request, is_cancelled=never_cancelled)
 
     assert resolved.agent_id == agent.id

@@ -11,7 +11,6 @@ logger.add(
     sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL, filter=without_bench()
 )
 add_bench_sink(sys.stdout, settings.LOG_LEVEL)
-# logger.add("logs/file.log", rotation="1 MB", compression="zip")
 
 
 def log_exception(

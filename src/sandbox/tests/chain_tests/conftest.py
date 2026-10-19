@@ -57,6 +57,9 @@ def _ensure_src_shared_stub() -> None:
         stdout: str = ""
         returncode: int = 0
 
+        def model_dump(self) -> dict:
+            return dataclasses.asdict(self)
+
     @dataclasses.dataclass
     class CodeTaskData:
         venv_name: str
@@ -67,6 +70,12 @@ def _ensure_src_shared_stub() -> None:
         func_kwargs: dict = dataclasses.field(default_factory=dict)
         global_kwargs: dict = dataclasses.field(default_factory=dict)
         secrets: dict = dataclasses.field(default_factory=dict)
+        use_storage: bool = False
+        storage_allowed_paths: list | None = None
+        storage_org_prefix: str | None = None
+        storage_credentials: Any = None
+        session_id: int | None = None
+        reply_to_crew_channel: bool = False
 
     # src.shared must be a real package pointing at the actual shared/ directory
     # so that src.shared.envtools (and its `from . import humanize`) resolves.
