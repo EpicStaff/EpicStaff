@@ -428,6 +428,77 @@ editing an unrelated node.
 active org cannot be resolved without one — fail-safe, not fail-open. Any service that
 drives these serializers must thread the request through (`GraphBulkSaveService` does).
 
+**Header markers.** A secret can also be referenced *by name*: `SecretResolver` replaces
+every `epicstaff_secret(<name>)` marker in an `extra_headers` value with the plaintext of
+the org's secret of that name when it resolves a session payload. Such a field is declared
+in `secret_header_fields`, and the guard applies the same delta rule to the **set of marker
+names** (`secret_names_in_headers`, exported from `tables.services.secrets` and shared with
+the resolver, so both read the same regex). Editing a header's other text, adding a header
+without a marker, or resending the same markers needs nothing; adding, renaming or removing
+a marker needs `USE`. On create the persisted set is empty, so any marker needs `USE`.
+
+```python
+class LLMConfigSerializer(SecretReferenceGuardMixin, ...):
+    secret_reference_fields = ("api_key_secret_id",)
+    secret_header_fields = ("extra_headers",)
+```
+
+**Destination changes.** Holding a reference is only half of it; the other half is where
+the request carrying it goes. A serializer whose row decides that overrides two hooks:
+`get_secret_destination(attrs)` returns `{field name: value}` for the destination once
+`attrs` is applied (`{}` → the persisted one), and `carries_secret_reference(attrs)` says
+whether a secret travels there. On **update**, when any destination value changes and a
+secret travels, the guard requires `USE` and names the changed field. Create is not
+checked: a new row reaches a secret only through a reference, which the two rules above
+already gate. `value_after_save(attrs, source, persisted_attribute=...)` on the mixin
+gives the value a field holds once `attrs` is saved, for writing these hooks.
+
+**The destination of a model-backed config is the model's identity, not its `base_url`.**
+Routing depends on more than the base URL: litellm also routes on the model name (a
+Hugging Face model named `https://…` becomes the endpoint when no base URL is set), the
+provider, `api_version` and the deployment, and its rules change between versions. So
+`model_destination(model)` trusts only the superadmin catalog: every built-in model
+(`is_custom=False`, no org) — and no model at all — is the one destination
+`CATALOG_DESTINATION`; a custom model is its own destination, its pk. Switching a
+secret-bearing config among catalog models needs nothing; pointing it at any custom model,
+or moving it between custom models (or off one), needs `USE`. Changes inside a custom model
+are gated on the model row itself: its destination is **every writable field except an
+explicit cosmetic list** (`writable_values_after_save`, blank compared as null), so a field
+added later is gated until someone decides it does not route.
+
+| Serializer | Destination | Carries a secret when |
+|---|---|---|
+| `LLMConfigSerializer` | `model` → `model_destination`; `base_url` → the config's own, read by nothing today but gated so wiring it up later is not a bypass | `api_key_secret` is set or `extra_headers` holds a marker, after the change |
+| `LLMModelSerializer` | `name`, `llm_provider`, `deployment_id`, `api_version`, `base_url` (all writable fields except `description`, `is_visible`, `capabilities`, `tags`) — everything `ConverterService` and the knowledge service send on | any `LLMConfig` using the model carries one (update only; an `exists()` on the key first, then the headers) |
+| `EmbeddingConfigSerializer` | `model` → `model_destination` | `api_key_secret` is set, after the change |
+| `EmbeddingModelSerializer` | `name`, `embedding_provider`, `deployment`, `base_url` (all writable fields except `is_visible`, `tags`) | any `EmbeddingConfig` using the model has `api_key_secret` (one `exists()`, update only) |
+| `OpenAIRealtimeConfigSerializer` | `base_url` (its own; the realtime clients connect to `{base_url}?model=…`, so `model_name` sits in the query string and cannot move the host) | `api_key_secret` or `transcription_api_key_secret` is set, after the change |
+
+Gemini, ElevenLabs and the deprecated `RealtimeConfig` / `RealtimeTranscriptionConfig`
+have no `base_url`, so they have no destination to move. Creating a model or config with
+any field values does not need `USE`. The config viewsets `select_related("model")`
+because every update reads the persisted model.
+
+**Second layer: no URL in a model name.** `reject_url_in_model_name`
+(`tables/validators/model_name_validator.py`) rejects an `LLMModel` or `EmbeddingModel`
+name containing `://` on create and update, through the API serializers and the import
+serializers alike. No catalog name contains one.
+
+**Adding a destination-bearing serializer:** override `get_secret_destination` and
+`carries_secret_reference`, add a row above, and add API tests next to
+`test_secret_use_llm_headers_and_destination.py`. `test_secret_reference_coverage.py`
+fails for any writable `base_url` whose serializer has no destination hooks (or that is
+not in `DESTINATION_EXEMPT` with a reason); an FK-shaped destination is pinned by name in
+`FK_DESTINATION_SERIALIZERS`, and the model serializers' routing-field sets are pinned in
+`test_model_serializers_treat_every_routing_field_as_destination`.
+
+**Import.** Secret FKs never travel in an export file, but header markers do, and they
+resolve by name in the importing org. `LLMConfigStrategy.create_entity` calls
+`SecretReferenceGuard.assert_imported_header_markers_permitted` with the importing user and
+org: a newly created config with markers needs `USE` (a reused equivalent config changes
+nothing and is not checked). The import serializer is listed in `HEADER_EXEMPT` in
+`test_secret_reference_coverage.py` for that reason.
+
 **Diverging one request path.** `secret_reference_fields` is read through
 `get_secret_reference_fields()`, so a subclass may differ from the class its siblings
 share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an

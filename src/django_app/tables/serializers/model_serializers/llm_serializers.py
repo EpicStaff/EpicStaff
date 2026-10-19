@@ -24,11 +24,17 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.services.secrets import secret_names_in_headers
 from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
+from tables.validators.model_name_validator import reject_url_in_model_name
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
-from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin, model_destination
+
+#: LLMModel fields that never affect where a request goes. Every other writable field
+#: is part of the model's destination, so a field added later is gated by default.
+_LLM_MODEL_NON_ROUTING_FIELDS = frozenset({"description", "is_visible", "capabilities", "tags"})
 
 
 class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
@@ -113,6 +119,7 @@ class LLMConfigSerializer(
     serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
+    secret_header_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -158,9 +165,32 @@ class LLMConfigSerializer(
         validate_reasoning_effort(model, reasoning_effort)
         return attrs
 
+    def get_secret_destination(self, attrs) -> dict:
+        """The model's identity (see `model_destination`) and the config's own base_url.
+
+        `LLMConfig.base_url` is read by nothing today, but it is writable and is the
+        obvious field to wire up next, so a change to it is gated too rather than left
+        as a latent bypass.
+        """
+        return {
+            "model": model_destination(self.value_after_save(attrs, "model")),
+            "base_url": self.value_after_save(attrs, "base_url"),
+        }
+
+    def carries_secret_reference(self, attrs) -> bool:
+        api_key_secret = self.value_after_save(
+            attrs, "api_key_secret", persisted_attribute="api_key_secret_id"
+        )
+        return api_key_secret is not None or bool(
+            secret_names_in_headers(self.value_after_save(attrs, "extra_headers"))
+        )
+
 
 class LLMModelSerializer(
-    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin,
+    SecretReferenceGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
@@ -188,6 +218,7 @@ class LLMModelSerializer(
             "reasoning_efforts",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
+        extra_kwargs = {"name": {"validators": [reject_url_in_model_name]}}
         validators = [
             OrgScopedUniqueTogetherValidator(
                 queryset=LLMModel.objects.all(),
@@ -195,6 +226,25 @@ class LLMModelSerializer(
                 message="A model with this name already exists for this provider.",
             )
         ]
+
+    def get_secret_destination(self, attrs) -> dict:
+        """Every writable field except the cosmetic ones: today name, llm_provider,
+        deployment_id, api_version and base_url, all of which the converter sends on."""
+        return self.writable_values_after_save(attrs, exclude=_LLM_MODEL_NON_ROUTING_FIELDS)
+
+    def carries_secret_reference(self, attrs) -> bool:
+        """Whether any config using this model sends a secret to where it routes.
+
+        Not scoped to the active org: a custom model is visible to its own org only, and
+        counting every referencing config can only deny more, never leak.
+        """
+        dependents = LLMConfig.objects.filter(model=self.instance)
+        if dependents.filter(api_key_secret__isnull=False).exists():
+            return True
+        return any(
+            secret_names_in_headers(extra_headers)
+            for extra_headers in dependents.values_list("extra_headers", flat=True)
+        )
 
     def get_supports_reasoning(self, model: LLMModel) -> bool:
         return model_reasoning_support(model).supports_reasoning

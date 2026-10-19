@@ -416,6 +416,8 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | `secrets:USE` guard: delta rule, fail-safe | `tests/services_tests/test_secret_reference_guard.py` |
 | `secrets:USE` coverage — every field gated, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
 | `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py` |
+| `secrets:USE` on LLM header markers and destination changes (LLM, embedding and OpenAI realtime configs and models) | `tests/api_tests/test_secret_use_llm_headers_and_destination.py` |
+| `secrets:USE` on imported header markers | `tests/import_export_tests/test_import_llm_config_header_markers.py` |
 | Version round trip | `tests/graph_versioning_tests/test_secret_declarations.py`, `tests/api_tests/test_graph_version_secret_declarations.py` |
 | Sandbox delivery and scrubbing | `src/sandbox/tests/chain_tests/test_execute_code_handler_env.py`, `test_secret_scrubber.py` |
 

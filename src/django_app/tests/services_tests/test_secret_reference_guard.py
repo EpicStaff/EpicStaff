@@ -11,6 +11,7 @@ from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
+from tables.services.secrets.reference_guard import secret_reference_guard
 
 
 class _Holder:
@@ -252,3 +253,204 @@ class TestPerPathFieldOverride:
         )
         assert not serializer.is_valid()
         assert "api_key_secret_id" in serializer.errors
+
+
+class _HeaderHolder:
+    """A stand-in for a persisted row carrying a header dict."""
+
+    def __init__(self, extra_headers=None):
+        self.extra_headers = extra_headers
+
+
+class _HeaderGuardedSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    secret_header_fields = ("extra_headers",)
+
+    extra_headers = serializers.JSONField(required=False)
+
+
+@pytest.mark.django_db
+class TestHeaderMarkerDeltaRule:
+    """Only the set of marker names counts; the rest of a header's text is free to change."""
+
+    @pytest.mark.parametrize(
+        "persisted,incoming",
+        [
+            # Resent unchanged.
+            ({"X-K": "epicstaff_secret(GUARD_A)"}, {"X-K": "epicstaff_secret(GUARD_A)"}),
+            # Same name, different surrounding text and whitespace inside the marker.
+            (
+                {"X-K": "epicstaff_secret(GUARD_A)"},
+                {"X-K": "Bearer epicstaff_secret( GUARD_A )"},
+            ),
+            # Same name moved to another header, plus a header with no marker.
+            (
+                {"X-K": "epicstaff_secret(GUARD_A)"},
+                {"X-Other": "epicstaff_secret(GUARD_A)", "X-Trace": "1"},
+            ),
+            # No marker on either side.
+            ({}, {"X-Trace": "1"}),
+            (None, {"X-Trace": "1"}),
+        ],
+    )
+    def test_same_marker_names_need_no_permission(
+        self, user_without_use, persisted, incoming
+    ):
+        serializer = _HeaderGuardedSerializer(
+            _HeaderHolder(extra_headers=persisted),
+            data={"extra_headers": incoming},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    @pytest.mark.parametrize(
+        "persisted,incoming",
+        [
+            # Added.
+            ({}, {"X-K": "epicstaff_secret(GUARD_A)"}),
+            # Renamed to another secret.
+            ({"X-K": "epicstaff_secret(GUARD_A)"}, {"X-K": "epicstaff_secret(GUARD_B)"}),
+            # A second one added beside the first.
+            (
+                {"X-K": "epicstaff_secret(GUARD_A)"},
+                {"X-K": "epicstaff_secret(GUARD_A)", "X-L": "epicstaff_secret(GUARD_B)"},
+            ),
+            # Removed.
+            ({"X-K": "epicstaff_secret(GUARD_A)"}, {}),
+        ],
+    )
+    def test_changed_marker_names_without_use_are_rejected(
+        self, user_without_use, persisted, incoming
+    ):
+        serializer = _HeaderGuardedSerializer(
+            _HeaderHolder(extra_headers=persisted),
+            data={"extra_headers": incoming},
+            context={"request": user_without_use},
+        )
+        assert not serializer.is_valid()
+        assert "extra_headers" in serializer.errors
+
+    def test_any_marker_on_create_without_use_is_rejected(self, user_without_use):
+        serializer = _HeaderGuardedSerializer(
+            data={"extra_headers": {"X-K": "epicstaff_secret(GUARD_A)"}},
+            context={"request": user_without_use},
+        )
+        assert not serializer.is_valid()
+        assert "extra_headers" in serializer.errors
+
+    def test_changed_marker_names_with_use_are_allowed(self, user_with_use):
+        serializer = _HeaderGuardedSerializer(
+            _HeaderHolder(extra_headers={"X-K": "epicstaff_secret(GUARD_A)"}),
+            data={"extra_headers": {"X-K": "epicstaff_secret(GUARD_B)"}},
+            context={"request": user_with_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_omitted_header_field_needs_no_permission(self, user_without_use):
+        serializer = _HeaderGuardedSerializer(
+            _HeaderHolder(extra_headers={"X-K": "epicstaff_secret(GUARD_A)"}),
+            data={},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_no_request_in_context_denies_a_marker_change(self):
+        serializer = _HeaderGuardedSerializer(
+            _HeaderHolder(), data={"extra_headers": {"X-K": "epicstaff_secret(GUARD_A)"}}
+        )
+        assert not serializer.is_valid()
+
+
+class _DestinationHolder:
+    """A stand-in for a persisted row that sends a request to `base_url`."""
+
+    def __init__(self, base_url=None, carries_secret=False):
+        self.base_url = base_url
+        self.carries_secret = carries_secret
+
+
+class _DestinationGuardedSerializer(SecretReferenceGuardMixin, serializers.Serializer):
+    base_url = serializers.CharField(required=False, allow_null=True)
+
+    def get_secret_destination(self, attrs):
+        return {"base_url": attrs.get("base_url", self.instance.base_url)}
+
+    def carries_secret_reference(self, attrs):
+        return self.instance.carries_secret
+
+
+@pytest.mark.django_db
+class TestDestinationRule:
+    def test_changing_a_secret_bearing_destination_without_use_is_rejected(
+        self, user_without_use
+    ):
+        serializer = _DestinationGuardedSerializer(
+            _DestinationHolder(base_url="https://api.example.com", carries_secret=True),
+            data={"base_url": "https://attacker.example"},
+            context={"request": user_without_use},
+        )
+        assert not serializer.is_valid()
+        assert "base_url" in serializer.errors
+
+    def test_changing_a_secret_bearing_destination_with_use_is_allowed(
+        self, user_with_use
+    ):
+        serializer = _DestinationGuardedSerializer(
+            _DestinationHolder(base_url="https://api.example.com", carries_secret=True),
+            data={"base_url": "https://attacker.example"},
+            context={"request": user_with_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_changing_a_destination_that_carries_no_secret_is_allowed(
+        self, user_without_use
+    ):
+        serializer = _DestinationGuardedSerializer(
+            _DestinationHolder(base_url="https://api.example.com", carries_secret=False),
+            data={"base_url": "https://elsewhere.example"},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_resending_the_same_destination_needs_no_permission(self, user_without_use):
+        serializer = _DestinationGuardedSerializer(
+            _DestinationHolder(base_url="https://api.example.com", carries_secret=True),
+            data={"base_url": "https://api.example.com"},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_create_is_not_gated_by_the_destination_rule(self, user_without_use):
+        serializer = _DestinationGuardedSerializer(
+            data={"base_url": "https://attacker.example"},
+            context={"request": user_without_use},
+        )
+        assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+class TestImportedHeaderMarkers:
+    @staticmethod
+    def _assert(user, org, headers):
+        secret_reference_guard.assert_imported_header_markers_permitted(
+            user=user, org_id=org.id, headers=headers, field_name="extra_headers"
+        )
+
+    def test_markers_without_use_are_rejected(self, user_without_use, org):
+        with pytest.raises(ValidationError) as exc:
+            self._assert(
+                user_without_use.user, org, {"X-K": "epicstaff_secret(GUARD_A)"}
+            )
+        assert "extra_headers" in exc.value.detail
+
+    def test_markers_with_use_are_allowed(self, user_with_use, org):
+        self._assert(user_with_use.user, org, {"X-K": "epicstaff_secret(GUARD_A)"})
+
+    @pytest.mark.parametrize("headers", [None, {}, {"X-Trace": "1"}, ["X-K"], "X-K: value"])
+    def test_headers_without_markers_need_no_permission(
+        self, user_without_use, org, headers
+    ):
+        self._assert(user_without_use.user, org, headers)
+
+    def test_no_user_denies_markers(self, org):
+        with pytest.raises(ValidationError):
+            self._assert(None, org, {"X-K": "epicstaff_secret(GUARD_A)"})

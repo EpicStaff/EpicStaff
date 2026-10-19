@@ -31,6 +31,43 @@ EXEMPT: set[tuple[str, str]] = {
     ("TwilioAuthTokenSecretSerializer", "auth_token_secret_id"),
 }
 
+#: Field names whose string values the session resolver scans for
+#: `epicstaff_secret(<name>)` markers (SecretResolver's header convention). A writable
+#: field of this name references org secrets by name, exactly like a Secret FK.
+HEADER_MARKER_FIELD_NAMES = {"extra_headers"}
+
+#: Header-marker fields deliberately left out of `secret_header_fields`, each with its reason.
+HEADER_EXEMPT: set[tuple[str, str]] = {
+    # The import serializer is driven by LLMConfigStrategy.create_entity, which has no
+    # request in serializer context; the strategy gates markers itself through
+    # SecretReferenceGuard.assert_imported_header_markers_permitted
+    # (tests/import_export_tests/test_import_llm_config_header_markers.py).
+    ("LLMConfigImportSerializer", "extra_headers"),
+}
+
+#: Field names that set the URL a provider request -- and the secrets it carries -- is
+#: sent to. A serializer writing one must describe its destination to the guard
+#: (override get_secret_destination) so a secret-bearing row cannot be repointed
+#: without secrets:USE. A destination reached through an FK (a config's `model`) cannot
+#: be discovered by name; those serializers are pinned by name in the test below.
+DESTINATION_FIELD_NAMES = {"base_url"}
+
+#: Destination fields deliberately left out, each with its reason.
+DESTINATION_EXEMPT: set[tuple[str, str]] = {
+    # Import serializers only ever create rows (strategies have no update path), and the
+    # destination rule gates updates only: a new row reaches a secret through a
+    # reference, and imports never carry a secret FK (header markers are gated by
+    # LLMConfigStrategy.create_entity).
+    ("LLMConfigImportSerializer", "base_url"),
+    ("LLMModelImportSerializer", "base_url"),
+    ("EmbeddingModelImportSerializer", "base_url"),
+    ("OpenAIRealtimeConfigImportSerializer", "base_url"),
+}
+
+#: Serializers whose destination is an FK to a row holding the base_url; the walk
+#: below cannot find them by field name, so each must be shown to describe one.
+FK_DESTINATION_SERIALIZERS = {"LLMConfigSerializer", "EmbeddingConfigSerializer"}
+
 #: Serializer classes it is fine for `_try_instantiate`/`_secret_fields_of` to be unable
 #: to introspect: DRF's own generic abstract bases (ModelSerializer, ListSerializer,
 #: HyperlinkedModelSerializer, PolymorphicProxySerializer) and this project's
@@ -124,6 +161,12 @@ def _guarded_fields_of(instance):
     return set(getattr(instance, "secret_reference_fields", ()))
 
 
+def _guarded_header_fields_of(instance):
+    """The guarded header-marker field names this serializer INSTANCE reports."""
+    getter = getattr(instance, "get_secret_header_fields", None)
+    return set(getter()) if getter is not None else set()
+
+
 # ---------------------------------------------------------------------------
 # Check 1 -- every Secret-targeting writable field is registered
 # ---------------------------------------------------------------------------
@@ -189,6 +232,135 @@ def test_every_secret_field_is_guarded_or_exempt():
         "secret_reference_fields, or add them to EXEMPT with a written reason: "
         + ", ".join(sorted(unguarded))
     )
+
+
+@pytest.mark.django_db
+def test_every_header_marker_field_is_guarded_or_exempt():
+    discovered = []
+    unguarded = []
+
+    for serializer_class in _all_serializer_classes():
+        instance, error = _try_instantiate(serializer_class)
+        if instance is None:
+            continue
+        try:
+            fields = instance.get_fields()
+        except Exception:
+            # The same abstract bases Check 1 skips; it already fails on any new one.
+            continue
+
+        guarded = _guarded_header_fields_of(instance)
+        for name, field in fields.items():
+            if name not in HEADER_MARKER_FIELD_NAMES or field.read_only:
+                continue
+            discovered.append(f"{serializer_class.__name__}.{name}")
+            if name in guarded or (serializer_class.__name__, name) in HEADER_EXEMPT:
+                continue
+            unguarded.append(f"{serializer_class.__name__}.{name}")
+
+    assert "LLMConfigSerializer.extra_headers" in discovered, (
+        "Discovery is broken: the one known header-marker field was not found, so the "
+        "assertion below would pass vacuously. Found: " + ", ".join(sorted(discovered))
+    )
+    assert not unguarded, (
+        "These writable header fields can carry epicstaff_secret(<name>) markers but are "
+        "not listed in any secret_header_fields tuple. Add them to the owning "
+        "serializer's secret_header_fields, or to HEADER_EXEMPT with a written reason: "
+        + ", ".join(sorted(unguarded))
+    )
+
+
+def _describes_a_destination(serializer_class) -> bool:
+    return (
+        issubclass(serializer_class, SecretReferenceGuardMixin)
+        and serializer_class.get_secret_destination
+        is not SecretReferenceGuardMixin.get_secret_destination
+        and serializer_class.carries_secret_reference
+        is not SecretReferenceGuardMixin.carries_secret_reference
+    )
+
+
+@pytest.mark.django_db
+def test_every_destination_field_is_guarded_or_exempt():
+    discovered = []
+    unguarded = []
+    serializers_by_name = {}
+
+    for serializer_class in _all_serializer_classes():
+        serializers_by_name[serializer_class.__name__] = serializer_class
+        instance, error = _try_instantiate(serializer_class)
+        if instance is None:
+            continue
+        try:
+            fields = instance.get_fields()
+        except Exception:
+            # The same abstract bases Check 1 skips; it already fails on any new one.
+            continue
+
+        for name, field in fields.items():
+            if name not in DESTINATION_FIELD_NAMES or field.read_only:
+                continue
+            discovered.append(f"{serializer_class.__name__}.{name}")
+            if (serializer_class.__name__, name) in DESTINATION_EXEMPT:
+                continue
+            if not _describes_a_destination(serializer_class):
+                unguarded.append(f"{serializer_class.__name__}.{name}")
+
+    for expected in (
+        "LLMModelSerializer.base_url",
+        "EmbeddingModelSerializer.base_url",
+        "OpenAIRealtimeConfigSerializer.base_url",
+    ):
+        assert expected in discovered, (
+            f"Discovery is broken: {expected} was not found, so the assertion below "
+            "would pass vacuously. Found: " + ", ".join(sorted(discovered))
+        )
+    assert not unguarded, (
+        "These writable fields decide where a provider request goes, but their "
+        "serializer does not override get_secret_destination and "
+        "carries_secret_reference, so a secret-bearing row can be repointed without "
+        "secrets:USE. Add the hooks, or add the field to DESTINATION_EXEMPT with a "
+        "written reason: " + ", ".join(sorted(unguarded))
+    )
+    for name in FK_DESTINATION_SERIALIZERS:
+        assert _describes_a_destination(serializers_by_name[name]), (
+            f"{name} sends its secret to the base_url of the row its FK points at, "
+            "but no longer describes that destination to the guard."
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "serializer_path,model_class_path,expected_routing_fields",
+    [
+        (
+            "tables.serializers.model_serializers.llm_serializers.LLMModelSerializer",
+            "tables.models.llm_models.LLMModel",
+            {"name", "llm_provider", "deployment_id", "api_version", "base_url"},
+        ),
+        (
+            "tables.serializers.model_serializers.embedding_serializers.EmbeddingModelSerializer",
+            "tables.models.embedding_models.EmbeddingModel",
+            {"name", "embedding_provider", "deployment", "base_url"},
+        ),
+    ],
+)
+def test_model_serializers_treat_every_routing_field_as_destination(
+    serializer_path, model_class_path, expected_routing_fields
+):
+    """A model row's destination is every writable field but the cosmetic ones.
+
+    Pinned by hand so that adding a writable field to these serializers forces a
+    decision: it routes (update the expected set) or it is cosmetic (add it to the
+    serializer's non-routing set).
+    """
+    from django.utils.module_loading import import_string
+
+    serializer_class = import_string(serializer_path)
+    model_class = import_string(model_class_path)
+    serializer = serializer_class(model_class(name="pinned"))
+
+    assert set(serializer.get_secret_destination({})) == expected_routing_fields
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +512,7 @@ def test_guard_is_reached_through_every_guarded_serializers_validate(mocker):
             )
             continue
 
-        if not _guarded_fields_of(instance):
+        if not _guarded_fields_of(instance) and not _guarded_header_fields_of(instance):
             continue
         guarded_names.append(serializer_class.__name__)
 

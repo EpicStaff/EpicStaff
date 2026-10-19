@@ -419,7 +419,9 @@ because it is a serializer-layer write guard rather than part of the usage/count
 The short version: a reference is treated as *state*, not an operation — omitted from a
 payload or resent unchanged needs nothing; actually changing it requires `secrets:USE`. This
 is what makes the guard usable from a bulk graph save, which resubmits the whole graph on
-every save.
+every save. The same rule covers secrets referenced by name through `epicstaff_secret(<name>)`
+markers in `extra_headers`, and changing where a secret-bearing LLM, embedding or OpenAI
+realtime config sends its request (which custom model it uses, any routing field of that model, or its own `base_url`).
 
 If you are adding a new secret-referencing field, both mechanisms need updating — see §7,
 step 5, and the RBAC guide section above.

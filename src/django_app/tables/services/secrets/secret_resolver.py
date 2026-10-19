@@ -22,6 +22,24 @@ _HEADER_FIELDS = frozenset({"extra_headers"})
 _SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
 
+def secret_names_in_headers(headers: dict | None) -> frozenset[str]:
+    """Return the secret names that `epicstaff_secret(<name>)` markers in `headers` reference.
+
+    These are exactly the names `SecretResolver` turns into plaintext when it resolves
+    a payload, so a write guard comparing two of these sets sees the same secrets a
+    request would carry. Non-string header values hold no markers, and a value that is
+    not a dict at all (an unvalidated import file, a legacy row) holds none either --
+    rejecting its shape is the serializer's job, not this function's.
+    """
+    if not isinstance(headers, dict):
+        return frozenset()
+    names: set[str] = set()
+    for value in headers.values():
+        if isinstance(value, str):
+            names.update(_SECRET_MARKER_RE.findall(value))
+    return frozenset(names)
+
+
 class SecretResolver:
     """Turns Secret references into plaintext at the point of use."""
 
@@ -166,13 +184,7 @@ class SecretResolver:
     def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
         """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
         headers = getattr(model, field_name)
-        if not headers:
-            return
-
-        names: set[str] = set()
-        for value in headers.values():
-            if isinstance(value, str):
-                names.update(_SECRET_MARKER_RE.findall(value))
+        names = secret_names_in_headers(headers)
         if not names:
             return
 

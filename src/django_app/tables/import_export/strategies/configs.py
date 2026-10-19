@@ -27,6 +27,7 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tables.services.secrets.reference_guard import secret_reference_guard
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -185,6 +186,18 @@ class LLMConfigStrategy(BaseConfigStrategy):
     tag_entity = EntityType.LLM_CONFIG_TAG
     config_model = LLMConfig
     serializer_class = LLMConfigImportSerializer
+
+    def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        # Secret FKs never travel in a file, but header markers do, and they resolve
+        # by name against the importing org's secrets. A reused config (find_existing)
+        # changes nothing and never reaches this.
+        secret_reference_guard.assert_imported_header_markers_permitted(
+            user=kwargs.get("user"),
+            org_id=kwargs.get("org_id"),
+            headers=data.get("extra_headers"),
+            field_name="extra_headers",
+        )
+        return super().create_entity(data, id_mapper, **kwargs)
 
 
 class EmbeddingConfigStrategy(BaseConfigStrategy):

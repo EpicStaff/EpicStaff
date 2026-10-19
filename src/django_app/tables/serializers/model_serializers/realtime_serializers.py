@@ -163,6 +163,16 @@ class OpenAIRealtimeConfigSerializer(
         ]
         read_only_fields = ["org", "created_by", "created_at"]
 
+    def get_secret_destination(self, attrs) -> dict:
+        """The config's own base_url: ConverterService sends both API keys there."""
+        return {"base_url": self.value_after_save(attrs, "base_url")}
+
+    def carries_secret_reference(self, attrs) -> bool:
+        return any(
+            self.value_after_save(attrs, source, persisted_attribute=f"{source}_id") is not None
+            for source in ("api_key_secret", "transcription_api_key_secret")
+        )
+
 
 class ElevenLabsRealtimeConfigSerializer(
     AuthorStampingSerializerMixin,
