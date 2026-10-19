@@ -11,7 +11,7 @@ export interface EditorAction<Id extends string = EditorActionId> {
     readonly section: EditorActionSection;
     readonly defaultChords: readonly KeyChord[];
     readonly displayKeys?: readonly string[];
-    readonly rebindable: boolean;
+    readonly customizable: boolean;
     readonly nodeType?: MenuNodeType;
 }
 
@@ -21,7 +21,7 @@ function nodeAction<const Id extends `node.${string}`>(id: Id, nodeType: MenuNod
         label: NODE_MENU_LABELS[nodeType],
         section: 'Nodes',
         defaultChords: [chord],
-        rebindable: true,
+        customizable: true,
         nodeType,
     } as const satisfies EditorAction<Id>;
 }
@@ -41,44 +41,68 @@ export const EDITOR_ACTIONS = [
     nodeAction('node.telegram-trigger', NodeType.TELEGRAM_TRIGGER, 'Shift+KeyG'),
     nodeAction('node.audio-to-text', NodeType.AUDIO_TO_TEXT, 'Shift+KeyU'),
     nodeAction('node.end', NodeType.END, 'Shift+KeyE'),
-    { id: 'editing.save', label: 'Save', section: 'Editing', defaultChords: ['Mod+KeyS'], rebindable: false },
-    { id: 'editing.undo', label: 'Undo', section: 'Editing', defaultChords: ['Mod+KeyZ'], rebindable: false },
+    {
+        id: 'editing.save',
+        label: 'Save',
+        section: 'Editing',
+        defaultChords: ['Mod+KeyS'],
+        customizable: true,
+    },
+    {
+        id: 'editing.undo',
+        label: 'Undo',
+        section: 'Editing',
+        defaultChords: ['Mod+KeyZ'],
+        customizable: true,
+    },
     {
         id: 'editing.redo',
         label: 'Redo',
         section: 'Editing',
         defaultChords: ['Mod+Shift+KeyZ', 'Mod+KeyY'],
-        rebindable: false,
+        customizable: true,
     },
-    { id: 'editing.copy', label: 'Copy', section: 'Editing', defaultChords: ['Mod+KeyC'], rebindable: false },
-    { id: 'editing.paste', label: 'Paste', section: 'Editing', defaultChords: ['Mod+KeyV'], rebindable: false },
+    {
+        id: 'editing.copy',
+        label: 'Copy',
+        section: 'Editing',
+        defaultChords: ['Mod+KeyC'],
+        customizable: true,
+    },
+    {
+        id: 'editing.paste',
+        label: 'Paste',
+        section: 'Editing',
+        defaultChords: ['Mod+KeyV'],
+        customizable: true,
+    },
     {
         id: 'editing.delete',
         label: 'Delete',
         section: 'Editing',
         defaultChords: ['Delete', 'Backspace'],
-        rebindable: false,
+        customizable: true,
     },
     {
         id: 'editing.escape',
         label: 'Close panel / clear selection',
         section: 'Editing',
         defaultChords: ['Escape'],
-        rebindable: false,
+        customizable: false,
     },
     {
         id: 'navigating.node-search',
         label: 'Node search',
         section: 'Navigating',
         defaultChords: ['Mod+KeyF'],
-        rebindable: false,
+        customizable: true,
     },
     {
         id: 'navigating.shortcuts',
         label: 'Keyboard shortcuts',
         section: 'Navigating',
         defaultChords: ['Mod+Slash'],
-        rebindable: false,
+        customizable: true,
     },
     {
         id: 'navigating.node-menu',
@@ -86,7 +110,7 @@ export const EDITOR_ACTIONS = [
         section: 'Navigating',
         defaultChords: [],
         displayKeys: ['Right click'],
-        rebindable: false,
+        customizable: false,
     },
     {
         id: 'selection.toggle',
@@ -94,7 +118,7 @@ export const EDITOR_ACTIONS = [
         section: 'Selection',
         defaultChords: [],
         displayKeys: ['Mod', 'click'],
-        rebindable: false,
+        customizable: false,
     },
     {
         id: 'selection.zone',
@@ -102,7 +126,7 @@ export const EDITOR_ACTIONS = [
         section: 'Selection',
         defaultChords: [],
         displayKeys: ['Shift', 'drag'],
-        rebindable: false,
+        customizable: false,
     },
     {
         id: 'zoom.in',
@@ -110,7 +134,7 @@ export const EDITOR_ACTIONS = [
         section: 'Zoom',
         defaultChords: [],
         displayKeys: ['Mouse wheel up'],
-        rebindable: false,
+        customizable: false,
     },
     {
         id: 'zoom.out',
@@ -118,7 +142,7 @@ export const EDITOR_ACTIONS = [
         section: 'Zoom',
         defaultChords: [],
         displayKeys: ['Mouse wheel down'],
-        rebindable: false,
+        customizable: false,
     },
 ] as const satisfies readonly EditorAction<string>[];
 

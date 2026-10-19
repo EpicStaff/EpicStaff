@@ -1,7 +1,7 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ActivePermissions, GetMeResponse } from '@shared/models';
+import { ActivePermissions, GetMeResponse, ShortcutSettings } from '@shared/models';
 
 import { ConfigService } from '../config';
 import { ProfileService } from './profile.service';
@@ -27,12 +27,24 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: ACTIVE_PERMISSIONS,
     avatar_url: null,
-    shortcut_overrides: {},
+    custom_shortcuts: { custom: [] },
 };
 
-describe('ProfileService shortcut overrides', () => {
+describe('ProfileService shortcut settings', () => {
     let service: ProfileService;
     let httpMock: HttpTestingController;
+
+    const SAVED: ShortcutSettings = {
+        custom: [{ action: 'editing.save', keys: 'Alt+KeyS' }],
+    };
+
+    const EDITED: ShortcutSettings = {
+        custom: [
+            { action: 'editing.save', keys: 'Alt+KeyS' },
+            { action: 'node.task', keys: 'Shift+KeyP' },
+            { action: 'node.agent', keys: null },
+        ],
+    };
 
     beforeEach(() => {
         TestBed.configureTestingModule({
@@ -54,54 +66,50 @@ describe('ProfileService shortcut overrides', () => {
     }
 
     it('is empty when no user is loaded', () => {
-        expect(service.shortcutOverrides()).toEqual({});
+        expect(service.shortcutSettings()).toEqual({ custom: [] });
     });
 
-    it('is empty when the user has no overrides', () => {
-        loadUser(BASE_USER);
-        expect(service.shortcutOverrides()).toEqual({});
+    it('exposes the settings of the loaded user', () => {
+        loadUser({ ...BASE_USER, custom_shortcuts: SAVED });
+
+        expect(service.shortcutSettings()).toEqual(SAVED);
     });
 
-    it('exposes the overrides of the loaded user', () => {
-        loadUser({ ...BASE_USER, shortcut_overrides: { 'node.agent': 'Alt+KeyG' } });
-        expect(service.shortcutOverrides()).toEqual({ 'node.agent': 'Alt+KeyG' });
-    });
+    it('PATCHes the whole value and keeps the rest of the current user as it was', () => {
+        loadUser({ ...BASE_USER, custom_shortcuts: SAVED });
+        let saved: ShortcutSettings | undefined;
 
-    it('PATCHes the full map and keeps the rest of the current user as it was', () => {
-        loadUser({ ...BASE_USER, shortcut_overrides: { 'node.llm': 'Alt+KeyL' } });
-        let saved: Readonly<Record<string, string>> | undefined;
-
-        service.updateShortcutOverrides({ 'node.agent': 'Alt+KeyG' }).subscribe((result) => (saved = result));
+        service.updateShortcutSettings(EDITED).subscribe((result) => (saved = result));
         const request = httpMock.expectOne({ method: 'PATCH', url: PROFILE_URL });
-        expect(request.request.body).toEqual({ shortcut_overrides: { 'node.agent': 'Alt+KeyG' } });
+        expect(request.request.body).toEqual({ custom_shortcuts: EDITED });
         request.flush({
             ...BASE_USER,
             display_name: 'Changed elsewhere',
             active_organization_id: null,
             active_permissions: null,
-            shortcut_overrides: { 'node.agent': 'Alt+KeyG' },
+            custom_shortcuts: EDITED,
         });
 
-        expect(saved).toEqual({ 'node.agent': 'Alt+KeyG' });
-        expect(service.shortcutOverrides()).toEqual({ 'node.agent': 'Alt+KeyG' });
+        expect(saved).toEqual(EDITED);
+        expect(service.shortcutSettings()).toEqual(EDITED);
         const user = service.currentUserSignal();
         expect(user?.display_name).toBe('Jane Doe');
         expect(user?.active_organization_id).toBe(3);
         expect(user?.active_permissions).toEqual(ACTIVE_PERMISSIONS);
     });
 
-    it('keeps the previous overrides and reports the error when the save fails', () => {
-        loadUser({ ...BASE_USER, shortcut_overrides: { 'node.llm': 'Alt+KeyL' } });
+    it('keeps the previous settings and reports the error when the save fails', () => {
+        loadUser({ ...BASE_USER, custom_shortcuts: SAVED });
         let failedWith: HttpErrorResponse | undefined;
 
-        service.updateShortcutOverrides({ 'node.agent': 'Alt+KeyG' }).subscribe({
+        service.updateShortcutSettings(EDITED).subscribe({
             error: (error: HttpErrorResponse) => (failedWith = error),
         });
         httpMock
             .expectOne({ method: 'PATCH', url: PROFILE_URL })
-            .flush({ shortcut_overrides: ['Invalid'] }, { status: 400, statusText: 'Bad Request' });
+            .flush({ custom_shortcuts: ['Invalid'] }, { status: 400, statusText: 'Bad Request' });
 
         expect(failedWith?.status).toBe(400);
-        expect(service.shortcutOverrides()).toEqual({ 'node.llm': 'Alt+KeyL' });
+        expect(service.shortcutSettings()).toEqual(SAVED);
     });
 });

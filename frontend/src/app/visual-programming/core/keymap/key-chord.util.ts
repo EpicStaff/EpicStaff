@@ -113,7 +113,7 @@ export function isInsideSidePanel(element: Element): boolean {
     return !!element.closest('app-node-panel-shell');
 }
 
-export function checkUserChord(chord: KeyChord, takenBy: string | null): ChordRejection | null {
+export function checkUserChord(chord: KeyChord): ChordRejection | null {
     const match = WELL_FORMED_CHORD.exec(chord);
     if (!match || MODIFIER_CODES.has(match[1]) || MODIFIER_TOKENS.has(match[1])) {
         return 'invalid';
@@ -127,9 +127,6 @@ export function checkUserChord(chord: KeyChord, takenBy: string | null): ChordRe
     }
     if (modifiers.length === 0) {
         return 'bare-key';
-    }
-    if (takenBy !== null) {
-        return 'taken';
     }
     return null;
 }

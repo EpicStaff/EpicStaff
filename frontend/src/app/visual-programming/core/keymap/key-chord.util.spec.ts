@@ -95,13 +95,13 @@ describe('checkUserChord', () => {
         'Shift+Space',
         'Shift+Enter',
     ])('rejects reserved %s', (chord) => {
-        expect(checkUserChord(chord, null)).toBe('reserved');
+        expect(checkUserChord(chord)).toBe('reserved');
     });
 
     it.each(['KeyA', 'Digit1', 'F2', 'Tab', 'Enter', 'Space', 'Backspace', 'ArrowUp'])(
         'rejects the bare key %s',
         (chord) => {
-            expect(checkUserChord(chord, null)).toBe('bare-key');
+            expect(checkUserChord(chord)).toBe('bare-key');
         }
     );
 
@@ -120,28 +120,24 @@ describe('checkUserChord', () => {
         'Shift+keya',
         'Shift+1',
     ])('rejects the malformed chord "%s"', (chord) => {
-        expect(checkUserChord(chord, null)).toBe('invalid');
+        expect(checkUserChord(chord)).toBe('invalid');
     });
 
     it.each(['Ctrl+Shift+KeyA', 'Mod+Ctrl+KeyA', 'Ctrl+Alt+KeyA', 'Ctrl+KeyB'])(
         'rejects %s because a physical Ctrl key on a mac does not exist elsewhere',
         (chord) => {
-            expect(checkUserChord(chord, null)).toBe('mac-ctrl');
+            expect(checkUserChord(chord)).toBe('mac-ctrl');
         }
     );
 
-    it('checks the mac Ctrl rule before the reserved and taken rules', () => {
-        expect(checkUserChord('Ctrl+KeyS', 'node.agent')).toBe('mac-ctrl');
-    });
-
-    it('rejects a chord taken by another action', () => {
-        expect(checkUserChord('Shift+KeyT', 'node.task')).toBe('taken');
+    it('checks the mac Ctrl rule before the reserved rule', () => {
+        expect(checkUserChord('Ctrl+KeyS')).toBe('mac-ctrl');
     });
 
     it.each(['Shift+KeyB', 'Alt+KeyG', 'Mod+Shift+KeyB', 'Mod+Digit1', 'Shift+F2', 'Alt+Comma', 'Mod+Alt+Shift+KeyQ'])(
         'accepts %s',
         (chord) => {
-            expect(checkUserChord(chord, null)).toBeNull();
+            expect(checkUserChord(chord)).toBeNull();
         }
     );
 });

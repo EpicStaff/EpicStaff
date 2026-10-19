@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { GetMeResponse } from '@shared/models';
+import { GetMeResponse, ShortcutSettings } from '@shared/models';
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ConfigService } from '../../services/config';
@@ -24,7 +24,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    shortcut_overrides: {},
+    custom_shortcuts: { custom: [] },
 };
 
 describe('KeymapService', () => {
@@ -52,17 +52,25 @@ describe('KeymapService', () => {
         return TestBed.inject(KeymapService);
     }
 
-    function loadUser(overrides: Record<string, string>): void {
+    type CustomRow = readonly [string, string | null];
+
+    function shortcutSettings(...custom: readonly CustomRow[]): ShortcutSettings {
+        return { custom: custom.map(([action, keys]) => ({ action, keys })) };
+    }
+
+    function loadUser(...custom: readonly CustomRow[]): void {
         profile.getCurrentUser().subscribe();
-        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, shortcut_overrides: overrides });
+        httpMock
+            .expectOne({ method: 'GET', url: PROFILE_URL })
+            .flush({ ...BASE_USER, custom_shortcuts: shortcutSettings(...custom) });
     }
 
     function nextPatch(): { body: unknown; succeed: () => void; fail: () => void } {
         const request = httpMock.expectOne({ method: 'PATCH', url: PROFILE_URL });
-        const body = request.request.body as { shortcut_overrides: Record<string, string> };
+        const body = request.request.body as { custom_shortcuts: ShortcutSettings };
         return {
             body,
-            succeed: () => request.flush({ ...BASE_USER, shortcut_overrides: body.shortcut_overrides }),
+            succeed: () => request.flush({ ...BASE_USER, custom_shortcuts: body.custom_shortcuts }),
             fail: () => request.flush({ detail: 'boom' }, { status: 500, statusText: 'Server Error' }),
         };
     }
@@ -239,17 +247,6 @@ describe('KeymapService', () => {
             expect(handler).toHaveBeenCalledOnce();
         });
 
-        it('uses a rebound chord and frees the default', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB' });
-            const handler = vi.fn();
-            keymap().register('node.agent', handler);
-
-            press({ code: 'KeyA', shiftKey: true });
-            press({ code: 'KeyB', shiftKey: true });
-
-            expect(handler).toHaveBeenCalledOnce();
-        });
-
         it('removes a handler when the destroyRef passed with it is destroyed', () => {
             const componentInjector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
             const destroyed = vi.fn();
@@ -275,6 +272,34 @@ describe('KeymapService', () => {
         });
     });
 
+    describe('dispatch with custom shortcuts', () => {
+        beforeEach(() => setUp());
+
+        it('fires an action on its custom key and keeps its base key working', () => {
+            loadUser(['editing.save', 'Alt+KeyS']);
+            const save = vi.fn();
+            keymap().register('editing.save', save);
+
+            press({ code: 'KeyS', altKey: true });
+            press({ code: 'KeyS', ctrlKey: true });
+
+            expect(save).toHaveBeenCalledTimes(2);
+        });
+
+        it('sends a node key a custom row took to that row action, not to the node', () => {
+            loadUser(['node.task', 'Shift+KeyP']);
+            const python = vi.fn();
+            const task = vi.fn();
+            keymap().register('node.python', python);
+            keymap().register('node.task', task);
+
+            press({ code: 'KeyP', shiftKey: true });
+
+            expect(task).toHaveBeenCalledOnce();
+            expect(python).not.toHaveBeenCalled();
+        });
+    });
+
     describe('on mac', () => {
         beforeEach(() => setUp(true));
 
@@ -289,103 +314,60 @@ describe('KeymapService', () => {
         });
 
         it('refuses a physical Ctrl chord because it could never fire on Windows or Linux', () => {
-            loadUser({});
+            loadUser();
             const recorded = chordFromEvent(
                 new KeyboardEvent('keydown', { code: 'KeyA', ctrlKey: true, shiftKey: true }),
                 true
             );
 
-            expect(keymap().setOverride('node.agent', recorded ?? '')).toBe('mac-ctrl');
+            expect(keymap().addCustom('editing.save', recorded ?? '')).toMatchObject({ rejection: 'mac-ctrl' });
             httpMock.expectNone({ method: 'PATCH' });
-        });
-
-        it('ignores a stored physical Ctrl override', () => {
-            loadUser({ 'node.agent': 'Ctrl+Shift+KeyA' });
-
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
-            expect(keymap().overriddenIds().has('node.agent')).toBe(false);
         });
     });
 
     describe('bindings', () => {
         beforeEach(() => setUp());
 
-        it('lists the defaults when the user has no overrides', () => {
-            loadUser({});
-
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
-            expect(keymap().bindings().get('editing.redo')).toEqual(['Mod+Shift+KeyZ', 'Mod+KeyY']);
-        });
-
-        it('applies a valid override and drops the default for that action', () => {
-            loadUser({ 'node.agent': 'Alt+KeyG' });
-
-            expect(keymap().bindings().get('node.agent')).toEqual(['Alt+KeyG']);
-        });
-
-        it('picks up overrides loaded after the editor started', () => {
+        it('picks up custom shortcuts loaded after the editor started', () => {
             const service = keymap();
-            loadUser({ 'node.agent': 'Alt+KeyG' });
+            loadUser(['editing.save', 'Alt+KeyS'], ['node.task', null]);
 
-            expect(service.bindings().get('node.agent')).toEqual(['Alt+KeyG']);
+            expect(service.bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
+            expect(service.customShortcuts().map((row) => [row.action, row.chord])).toEqual([
+                ['editing.save', 'Alt+KeyS'],
+                ['node.task', null],
+            ]);
         });
 
-        it('ignores a stored physical Ctrl override outside mac too', () => {
-            loadUser({ 'node.agent': 'Ctrl+Shift+KeyA' });
+        it('separates the base key from custom keys and marks a node whose key was taken', () => {
+            loadUser(['node.python', 'Alt+KeyQ'], ['editing.save', 'Shift+KeyT']);
 
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
-        });
-
-        it('lists only actions whose chord comes from a valid stored override', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB', 'node.task': 'Mod+KeyS', 'node.note': 'Shift+KeyP' });
-
-            expect([...keymap().overriddenIds()]).toEqual(['node.agent']);
+            expect(keymap().builtInBindings().get('node.python')).toEqual(['Shift+KeyP']);
+            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyP', 'Alt+KeyQ']);
+            expect(keymap().builtInBindings().get('node.task')).toEqual([]);
+            expect([...keymap().unboundIds()]).toEqual(['node.task']);
         });
 
         it('tells which action holds a chord', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB' });
+            loadUser(['node.task', 'Shift+KeyP']);
 
-            expect(keymap().actionForChord('Shift+KeyB')).toBe('node.agent');
+            expect(keymap().actionForChord('Shift+KeyP')).toBe('node.task');
             expect(keymap().actionForChord('Mod+Shift+KeyZ')).toBe('editing.redo');
-            expect(keymap().actionForChord('Shift+KeyA')).toBeNull();
+            expect(keymap().actionForChord('Alt+KeyQ')).toBeNull();
         });
 
-        it('ignores invalid overrides: unknown id, not rebindable, malformed, reserved, bare, clashing', () => {
-            loadUser({
-                'gone.action': 'Shift+KeyQ',
-                'editing.undo': 'Shift+KeyQ',
-                'node.agent': 'Mod+KeyS',
-                'node.task': 'Shift+KeyP',
-                'node.note': 'Shift+Hyper+KeyN',
-                'node.key-value': 'KeyV',
-            });
+        it('does not crash on a stored value in an older shape', () => {
+            profile.getCurrentUser().subscribe();
+            httpMock
+                .expectOne({ method: 'GET', url: PROFILE_URL })
+                .flush({ ...BASE_USER, custom_shortcuts: { 'node.agent': 'Shift+KeyB' } });
 
-            const bindings = keymap().bindings();
-            expect(bindings.has('gone.action' as never)).toBe(false);
-            expect(bindings.get('editing.undo')).toEqual(['Mod+KeyZ']);
-            expect(bindings.get('node.agent')).toEqual(['Shift+KeyA']);
-            expect(bindings.get('node.task')).toEqual(['Shift+KeyT']);
-            expect(bindings.get('node.python')).toEqual(['Shift+KeyP']);
-            expect(bindings.get('node.note')).toEqual(['Shift+KeyN']);
-            expect(bindings.get('node.key-value')).toEqual(['Shift+KeyV']);
-        });
-
-        it('lets an action take a default that its owner gave up, whatever the key order', () => {
-            loadUser({ 'node.agent': 'Shift+KeyP', 'node.python': 'Shift+KeyB' });
-
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyP']);
-            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyB']);
-        });
-
-        it('gives a clashing chord to the action listed first', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB', 'node.python': 'Shift+KeyB' });
-
-            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyB']);
             expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
+            expect(keymap().customShortcuts()).toEqual([]);
         });
 
-        it('makes no HTTP request when the user has no overrides', () => {
-            loadUser({});
+        it('makes no HTTP request when the user has no custom shortcuts', () => {
+            loadUser();
             keymap().bindings();
             press({ code: 'KeyA', shiftKey: true });
 
@@ -393,169 +375,288 @@ describe('KeymapService', () => {
         });
     });
 
-    describe('editing overrides', () => {
+    describe('custom shortcuts', () => {
         beforeEach(() => setUp());
 
-        it('setOverride rejects without saving and saves on success', () => {
-            loadUser({});
+        it('addCustom shows the new key at once and PATCHes the whole list', () => {
+            loadUser(['editing.undo', 'Alt+KeyU']);
 
-            expect(keymap().setOverride('node.agent', 'Shift+KeyT')).toBe('taken');
-            expect(keymap().setOverride('node.agent', 'Mod+KeyS')).toBe('reserved');
-            expect(keymap().setOverride('node.agent', 'KeyB')).toBe('bare-key');
-            expect(keymap().setOverride('node.agent', 'Tab')).toBe('bare-key');
-            expect(keymap().actionForChord('Shift+KeyT')).toBe('node.task');
-            httpMock.expectNone({ method: 'PATCH' });
+            const result = keymap().addCustom('editing.save', 'Alt+KeyS');
 
-            expect(keymap().setOverride('node.agent', 'Shift+KeyB')).toBeNull();
+            expect(result).toMatchObject({ accepted: true, displaces: null });
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
             const patch = nextPatch();
-            expect(patch.body).toEqual({ shortcut_overrides: { 'node.agent': 'Shift+KeyB' } });
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
-
+            expect(patch.body).toEqual({
+                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyU'], ['editing.save', 'Alt+KeyS']),
+            });
             patch.succeed();
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
+            expect(keymap().customShortcuts().at(-1)?.id).toBe(result.accepted ? result.customShortcutId : undefined);
         });
 
-        it('refuses to rebind an action that is not rebindable', () => {
-            loadUser({});
+        it('adds a row without a key', () => {
+            loadUser();
 
-            expect(() => keymap().setOverride('editing.undo', 'Shift+KeyB')).toThrow();
+            expect(keymap().addCustom('node.task', null)).toMatchObject({ accepted: true, displaces: null });
+
+            expect(nextPatch().body).toEqual({ custom_shortcuts: shortcutSettings(['node.task', null]) });
+            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyT']);
+        });
+
+        it('says which node lost its key when a custom row takes it', () => {
+            loadUser();
+
+            expect(keymap().addCustom('node.task', 'Shift+KeyP')).toMatchObject({
+                accepted: true,
+                displaces: 'node.python',
+            });
+            nextPatch().succeed();
+
+            expect(keymap().builtInBindings().get('node.python')).toEqual([]);
+            expect(keymap().unboundIds().has('node.python')).toBe(true);
+        });
+
+        it('rejects a protected key, the action own key or a key another row has, without saving', () => {
+            loadUser(['editing.undo', 'Alt+KeyU']);
+
+            expect(keymap().addCustom('node.agent', 'Mod+KeyC')).toMatchObject({ rejection: 'reserved' });
+            expect(keymap().addCustom('editing.save', 'Mod+KeyS')).toMatchObject({
+                rejection: 'taken',
+                takenBy: { action: 'editing.save', source: 'default' },
+            });
+            expect(keymap().addCustom('node.agent', 'Alt+KeyU')).toMatchObject({
+                rejection: 'taken',
+                takenBy: { action: 'editing.undo', source: 'custom' },
+            });
             httpMock.expectNone({ method: 'PATCH' });
         });
 
-        it('does not save when the chord is already the action binding', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB' });
+        it('refuses an action that cannot have custom keys', () => {
+            loadUser();
 
-            expect(keymap().setOverride('node.agent', 'Shift+KeyB')).toBeNull();
+            expect(() => keymap().addCustom('editing.escape', 'Alt+KeyE')).toThrow();
             httpMock.expectNone({ method: 'PATCH' });
         });
 
-        it('a failed save restores the previous binding and tells the user', () => {
-            loadUser({ 'node.agent': 'Alt+KeyG' });
+        it('updateCustom changes the row in place, keeps its id and can clear its key', () => {
+            loadUser(['editing.undo', 'Alt+KeyU'], ['editing.save', 'Alt+KeyS']);
+            const [undo, save] = keymap().customShortcuts();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
+            expect(keymap().updateCustom(undo.id, { chord: 'Alt+KeyZ' })).toEqual({ accepted: true, displaces: null });
+            const first = nextPatch();
+            expect(first.body).toEqual({
+                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyZ'], ['editing.save', 'Alt+KeyS']),
+            });
+            first.succeed();
+
+            expect(keymap().updateCustom(save.id, { action: 'editing.redo', chord: null })).toMatchObject({
+                accepted: true,
+            });
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyZ'], ['editing.redo', null]),
+            });
+            expect(
+                keymap()
+                    .customShortcuts()
+                    .map((row) => row.id)
+            ).toEqual([undo.id, save.id]);
+        });
+
+        it('removeCustom drops the row and gives the node its key back', () => {
+            loadUser(['node.task', 'Shift+KeyP']);
+
+            keymap().removeCustom(keymap().customShortcuts()[0].id);
+
+            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyP']);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: shortcutSettings() });
+        });
+
+        it('drops rows for actions it does not know when saving', () => {
+            loadUser(['action.from-a-newer-version', 'Alt+KeyN']);
+
+            expect(keymap().addCustom('editing.save', 'Alt+KeyN')).toMatchObject({ accepted: true });
+
+            expect(nextPatch().body).toEqual({ custom_shortcuts: shortcutSettings(['editing.save', 'Alt+KeyN']) });
+        });
+
+        it('keeps a stored row whose key no longer works and saves it without a key', () => {
+            loadUser(['node.agent', 'Mod+KeyV']);
+
+            expect(
+                keymap()
+                    .customShortcuts()
+                    .map((row) => [row.action, row.chord])
+            ).toEqual([['node.agent', null]]);
+            keymap().addCustom('editing.save', 'Alt+KeyS');
+
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: shortcutSettings(['node.agent', null], ['editing.save', 'Alt+KeyS']),
+            });
+        });
+
+        it('a failed save restores the rows and tells the user', () => {
+            loadUser(['editing.undo', 'Alt+KeyU']);
+            const [undo] = keymap().customShortcuts();
+
+            keymap().addCustom('editing.save', 'Alt+KeyS');
             nextPatch().fail();
 
-            expect(keymap().bindings().get('node.agent')).toEqual(['Alt+KeyG']);
+            expect(keymap().customShortcuts()).toEqual([undo]);
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS']);
             expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([['error', 'Could not save shortcut']]);
         });
 
-        it('does not report a failure when a later save carries the same edit', () => {
-            loadUser({});
+        it('keeps the ids of untouched rows and answers "missing" for a row a failed save took back', () => {
+            loadUser(['editing.undo', 'Alt+KeyU'], ['editing.save', 'Alt+KeyS']);
+            const [undo, save] = keymap().customShortcuts();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyJ');
+            keymap().updateCustom(save.id, { chord: 'Alt+KeyD' });
+            nextPatch().fail();
+
+            const rows = keymap().customShortcuts();
+            expect(rows.map((row) => [row.action, row.chord])).toEqual([
+                ['editing.undo', 'Alt+KeyU'],
+                ['editing.save', 'Alt+KeyS'],
+            ]);
+            expect(rows[0].id).toBe(undo.id);
+            expect(keymap().updateCustom(save.id, { chord: 'Alt+KeyF' })).toEqual({
+                accepted: false,
+                rejection: 'missing',
+                takenBy: null,
+            });
+            expect(
+                keymap().checkChord('Alt+KeyF', { action: 'editing.save', customShortcutId: save.id })
+            ).toMatchObject({ rejection: 'missing' });
+            keymap().removeCustom(save.id);
+            httpMock.expectNone({ method: 'PATCH' });
+        });
+
+        it('does not report a failure when a later save carries the same edit', () => {
+            loadUser();
+
+            keymap().addCustom('editing.save', 'Alt+KeyS');
+            keymap().addCustom('editing.undo', 'Alt+KeyU');
             nextPatch().fail();
             const second = nextPatch();
             expect(second.body).toEqual({
-                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' },
+                custom_shortcuts: shortcutSettings(['editing.save', 'Alt+KeyS'], ['editing.undo', 'Alt+KeyU']),
             });
             second.succeed();
 
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
+            expect(keymap().customShortcuts()).toHaveLength(2);
             expect(toasts).toEqual([]);
         });
 
         it('reports a failure once when the last queued save fails too', () => {
-            loadUser({});
+            loadUser();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyJ');
+            keymap().addCustom('editing.save', 'Alt+KeyS');
+            keymap().addCustom('editing.undo', 'Alt+KeyU');
             nextPatch().fail();
             nextPatch().fail();
 
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
+            expect(keymap().customShortcuts()).toEqual([]);
             expect(toasts.map((toast) => toast.message)).toEqual(['Could not save shortcut']);
         });
 
-        it('marks an action as overridden as soon as it is edited and clears it on reset', () => {
-            loadUser({});
-
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-            expect(keymap().overriddenIds().has('node.agent')).toBe(true);
-            nextPatch().succeed();
-
-            keymap().resetOverride('node.agent');
-            expect(keymap().overriddenIds().has('node.agent')).toBe(false);
-            nextPatch().succeed();
-        });
-
         it('keeps saving after a failed save', () => {
-            loadUser({});
+            loadUser();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
+            keymap().addCustom('editing.save', 'Alt+KeyS');
             nextPatch().fail();
-            keymap().setOverride('node.task', 'Shift+KeyJ');
+            keymap().addCustom('editing.undo', 'Alt+KeyU');
 
-            expect(nextPatch().body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyJ' } });
-        });
-
-        it('two quick edits send two PATCHes in order and keep both', () => {
-            loadUser({});
-
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-            keymap().setOverride('node.task', 'Shift+KeyJ');
-
-            const first = nextPatch();
-            expect(first.body).toEqual({ shortcut_overrides: { 'node.agent': 'Shift+KeyB' } });
-            first.succeed();
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
-
-            const second = nextPatch();
-            expect(second.body).toEqual({
-                shortcut_overrides: { 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' },
-            });
-            second.succeed();
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
-            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyJ']);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyU']) });
         });
 
         it('a profile reload that lands while a save is pending does not undo the edit', () => {
-            loadUser({});
+            loadUser();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
+            keymap().addCustom('editing.save', 'Alt+KeyS');
             const patch = nextPatch();
-            loadUser({});
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
+            loadUser();
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
 
             patch.succeed();
-            expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyB']);
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
         });
 
-        it('resetOverride removes the key from the saved map', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB', 'node.task': 'Shift+KeyJ' });
+        it('takes a profile reload when nothing is pending', () => {
+            loadUser();
+            keymap().bindings();
 
-            expect(keymap().resetOverride('node.agent')).toBeNull();
+            loadUser(['editing.save', 'Alt+KeyS']);
 
-            const patch = nextPatch();
-            expect(patch.body).toEqual({ shortcut_overrides: { 'node.task': 'Shift+KeyJ' } });
-            patch.succeed();
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
+        });
+    });
+
+    describe('reset to defaults', () => {
+        beforeEach(() => setUp());
+
+        it('clears the keys of rows on node base keys in one PATCH and keeps unique keys', () => {
+            loadUser(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyS'], ['editing.undo', 'Shift+KeyA']);
+            expect(keymap().defaultsResetClearCount()).toBe(2);
+
+            keymap().resetToDefaults();
+
+            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyP']);
             expect(keymap().bindings().get('node.agent')).toEqual(['Shift+KeyA']);
+            expect([...keymap().unboundIds()]).toEqual([]);
+            expect(keymap().defaultsResetClearCount()).toBe(0);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: shortcutSettings(
+                    ['node.task', null],
+                    ['editing.save', 'Alt+KeyS'],
+                    ['editing.undo', null]
+                ),
+            });
         });
 
-        it('resetOverride refuses when another action now uses the default', () => {
-            loadUser({ 'node.python': 'Shift+KeyB', 'node.agent': 'Shift+KeyP' });
+        it('does nothing when there is nothing to reset', () => {
+            loadUser(['editing.save', 'Alt+KeyS']);
 
-            expect(keymap().resetOverride('node.python')).toBe('taken');
+            keymap().resetToDefaults();
+
             httpMock.expectNone({ method: 'PATCH' });
         });
 
-        it('setting an override back to its default removes the key instead of storing it', () => {
-            loadUser({ 'node.agent': 'Shift+KeyB' });
+        it('rolls a failed reset back', () => {
+            loadUser(['node.task', 'Shift+KeyP']);
 
-            keymap().setOverride('node.agent', 'Shift+KeyA');
+            keymap().resetToDefaults();
+            nextPatch().fail();
 
-            expect(nextPatch().body).toEqual({ shortcut_overrides: {} });
+            expect(keymap().bindings().get('node.task')).toEqual(['Shift+KeyT', 'Shift+KeyP']);
+            expect(keymap().unboundIds().has('node.python')).toBe(true);
+        });
+    });
+
+    describe('checkChord', () => {
+        beforeEach(() => setUp());
+
+        it('previews a change without saving it', () => {
+            loadUser(['editing.undo', 'Alt+KeyU']);
+
+            expect(keymap().checkChord('Shift+KeyP', { action: 'node.task' })).toEqual({
+                accepted: true,
+                displaces: 'node.python',
+            });
+            expect(keymap().checkChord('Alt+KeyU', { action: 'node.agent' })).toMatchObject({ rejection: 'taken' });
+            expect(keymap().checkChord('Backspace', { action: 'editing.save' })).toMatchObject({
+                rejection: 'reserved',
+            });
+
+            expect(keymap().bindings().get('node.python')).toEqual(['Shift+KeyP']);
+            httpMock.expectNone({ method: 'PATCH' });
         });
 
-        it('keeps overrides it does not know when saving', () => {
-            loadUser({ 'node.from-a-newer-version': 'Shift+KeyQ' });
+        it('does not count the edited row as holding its own key', () => {
+            loadUser(['editing.undo', 'Alt+KeyU']);
+            const [undo] = keymap().customShortcuts();
 
-            keymap().setOverride('node.agent', 'Shift+KeyB');
-
-            expect(nextPatch().body).toEqual({
-                shortcut_overrides: { 'node.from-a-newer-version': 'Shift+KeyQ', 'node.agent': 'Shift+KeyB' },
+            expect(keymap().checkChord('Alt+KeyU', { action: 'editing.redo', customShortcutId: undo.id })).toEqual({
+                accepted: true,
+                displaces: null,
             });
         });
     });

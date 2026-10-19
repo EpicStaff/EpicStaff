@@ -5,11 +5,13 @@ import {
     AccessToken,
     CreateApiKeyRequest,
     CreateApiKeyResponse,
+    EMPTY_SHORTCUT_SETTINGS,
     GetMeResponse,
     GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
+    ShortcutSettings,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -20,8 +22,6 @@ import { tap } from 'rxjs/operators';
 import { ConfigService } from '../config';
 import { ActiveOrgService } from './active-org.service';
 import { PermissionsService } from './permissions.service';
-
-const NO_SHORTCUT_OVERRIDES: Readonly<Record<string, string>> = {};
 
 @Injectable({
     providedIn: 'root',
@@ -42,8 +42,8 @@ export class ProfileService {
 
     isMeSuperAdmin = computed(() => this.currentUser()?.is_superadmin ?? false);
 
-    readonly shortcutOverrides = computed<Readonly<Record<string, string>>>(
-        () => this.currentUser()?.shortcut_overrides ?? NO_SHORTCUT_OVERRIDES
+    readonly shortcutSettings = computed<ShortcutSettings>(
+        () => this.currentUser()?.custom_shortcuts ?? EMPTY_SHORTCUT_SETTINGS
     );
 
     systemRole = computed(() => {
@@ -100,10 +100,10 @@ export class ProfileService {
         return this.http.patch<GetMeResponse>(this.baseUrl, dto).pipe(tap((user) => this.setUser(user)));
     }
 
-    updateShortcutOverrides(overrides: Readonly<Record<string, string>>): Observable<Readonly<Record<string, string>>> {
-        return this.http.patch<GetMeResponse>(this.baseUrl, { shortcut_overrides: overrides }).pipe(
-            map((user) => user.shortcut_overrides),
-            tap((saved) => this.updateUser({ shortcut_overrides: saved }))
+    updateShortcutSettings(settings: ShortcutSettings): Observable<ShortcutSettings> {
+        return this.http.patch<GetMeResponse>(this.baseUrl, { custom_shortcuts: settings }).pipe(
+            map((user) => user.custom_shortcuts),
+            tap((saved) => this.updateUser({ custom_shortcuts: saved }))
         );
     }
 

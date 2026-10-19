@@ -13,8 +13,19 @@ export interface GetMeResponse {
     active_organization_id: number | null;
     active_permissions: ActivePermissions | null;
     avatar_url: string | null;
-    shortcut_overrides: Record<string, string>;
+    custom_shortcuts: ShortcutSettings;
 }
+
+export interface CustomShortcutEntry {
+    readonly action: string;
+    readonly keys: string | null;
+}
+
+export interface ShortcutSettings {
+    readonly custom: readonly CustomShortcutEntry[];
+}
+
+export const EMPTY_SHORTCUT_SETTINGS: ShortcutSettings = { custom: [] };
 
 export interface UpdateMeRequest {
     display_name: string;

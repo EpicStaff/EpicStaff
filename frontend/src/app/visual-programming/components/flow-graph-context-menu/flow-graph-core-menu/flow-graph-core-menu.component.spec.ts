@@ -121,7 +121,7 @@ const USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    shortcut_overrides: {},
+    custom_shortcuts: { custom: [] },
 };
 
 describe('FlowGraphCoreMenuComponent key hint', () => {
@@ -182,36 +182,44 @@ describe('FlowGraphCoreMenuComponent key hint', () => {
         expect(keyHint('Python Code Node')).toBe('⇧P');
     });
 
-    it('shows a rebound key at once and keeps it after the save succeeds', () => {
+    it('shows the plus at once when a new custom shortcut takes the node key', () => {
         openMenu(false);
         const httpMock = TestBed.inject(HttpTestingController);
         TestBed.inject(ProfileService).getCurrentUser().subscribe();
         httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush(USER);
 
-        TestBed.inject(KeymapService).setOverride('node.python', 'Shift+KeyB');
+        TestBed.inject(KeymapService).addCustom('node.end', 'Shift+KeyP');
         fixture.detectChanges();
 
-        expect(keyHint('Python Code Node')).toBe('Shift+B');
+        expect(row('Python Code Node').querySelector('.plus-icon')).not.toBeNull();
+        expect(keyHint('End')).toBe('Shift+E');
 
         httpMock
             .expectOne({ method: 'PATCH', url: PROFILE_URL })
-            .flush({ ...USER, shortcut_overrides: { 'node.python': 'Shift+KeyB' } });
+            .flush({ ...USER, custom_shortcuts: { custom: [{ action: 'node.end', keys: 'Shift+KeyP' }] } });
         fixture.detectChanges();
 
-        expect(keyHint('Python Code Node')).toBe('Shift+B');
+        expect(row('Python Code Node').querySelector('.key-hint')).toBeNull();
         httpMock.verify();
     });
 
-    it('keeps the plus when saved overrides leave its node without a key', () => {
+    it('shows the custom key of a node whose base key another shortcut took', () => {
         openMenu(false);
         TestBed.inject(ProfileService).getCurrentUser().subscribe();
         TestBed.inject(HttpTestingController)
             .expectOne({ method: 'GET', url: PROFILE_URL })
-            .flush({ ...USER, shortcut_overrides: { 'node.python': 'Shift+KeyT', 'node.end': 'Shift+KeyP' } });
+            .flush({
+                ...USER,
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'node.end', keys: 'Shift+KeyP' },
+                        { action: 'node.python', keys: 'Alt+KeyP' },
+                    ],
+                },
+            });
         fixture.detectChanges();
 
-        expect(row('Python Code Node').querySelector('.plus-icon')).not.toBeNull();
-        expect(row('Python Code Node').querySelector('.key-hint')).toBeNull();
-        expect(keyHint('End')).toBe('Shift+P');
+        expect(keyHint('Python Code Node')).toBe('Alt+P');
+        expect(keyHint('End')).toBe('Shift+E');
     });
 });

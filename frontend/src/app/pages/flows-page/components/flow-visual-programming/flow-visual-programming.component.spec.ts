@@ -285,7 +285,10 @@ describe('FlowVisualProgrammingComponent', () => {
                 },
                 {
                     provide: ProfileService,
-                    useValue: { currentUserSignal: signal(null), shortcutOverrides: signal({}) },
+                    useValue: {
+                        currentUserSignal: signal(null),
+                        shortcutSettings: signal({ custom: [] }),
+                    },
                 },
                 { provide: FlowAssistantService, useValue: { isOpen: signal(false), toggle: vi.fn() } },
                 { provide: CdtExplanationsApiService, useValue: explanationsApi },

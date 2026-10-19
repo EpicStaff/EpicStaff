@@ -22,7 +22,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    shortcut_overrides: {},
+    custom_shortcuts: { custom: [] },
 };
 
 const NODE_LABELS_AND_LETTERS: readonly (readonly [string, string])[] = [
@@ -64,9 +64,9 @@ describe('ShortcutsModalComponent', () => {
         httpMock = TestBed.inject(HttpTestingController);
     }
 
-    function loadUser(overrides: Record<string, string>): void {
+    function loadUser(custom: { action: string; keys: string | null }[]): void {
         TestBed.inject(ProfileService).getCurrentUser().subscribe();
-        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, shortcut_overrides: overrides });
+        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, custom_shortcuts: { custom } });
     }
 
     function openModal(): void {
@@ -211,17 +211,23 @@ describe('ShortcutsModalComponent', () => {
         ]);
     });
 
-    it('shows the key a user has rebound instead of the default', () => {
+    it('shows a custom key after the base key', () => {
         setUp();
-        loadUser({ 'node.python': 'Shift+KeyB' });
+        loadUser([{ action: 'node.python', keys: 'Shift+KeyB' }]);
         openModal();
 
-        expect(rowsOf('Nodes')[0]).toEqual({ label: 'Python Code Node', chords: [['Shift', 'B']] });
+        expect(rowsOf('Nodes')[0]).toEqual({
+            label: 'Python Code Node',
+            chords: [
+                ['Shift', 'P'],
+                ['Shift', 'B'],
+            ],
+        });
     });
 
     it('keeps a node listed without keys when its default key went to another node', () => {
         setUp();
-        loadUser({ 'node.python': 'Shift+KeyT', 'node.agent': 'Shift+KeyP' });
+        loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
         openModal();
 
         const nodes = rowsOf('Nodes');
@@ -231,11 +237,10 @@ describe('ShortcutsModalComponent', () => {
         });
         expect(nodes.find((row) => row.label === 'Agent Node')).toEqual({
             label: 'Agent Node',
-            chords: [['Shift', 'P']],
-        });
-        expect(nodes.find((row) => row.label === 'Task Node')).toEqual({
-            label: 'Task Node',
-            chords: [['Shift', 'T']],
+            chords: [
+                ['Shift', 'A'],
+                ['Shift', 'P'],
+            ],
         });
     });
 
