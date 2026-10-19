@@ -31,6 +31,9 @@ export class FlowRoutingOrchestratorService {
     /** Connection id -> backward at the last reroute. An id missing here has no classification to flip from. */
     private readonly previousBackwardClassification = new Map<string, boolean>();
 
+    /** Edge style at the last reroute — a change clears user-adjusted waypoints. */
+    private previousEdgeStyle: string | undefined;
+
     /** Tracks whether a waypoint drag is in progress for a given connection. */
     private readonly draggingWaypointConnectionIds = new Set<string>();
 
@@ -71,6 +74,19 @@ export class FlowRoutingOrchestratorService {
      * routeAll(), adaptive-curve obstacle check, waypoint diff.
      */
     rerouteSegmentConnections(): void {
+        const currentEdgeStyle = this.flowSettings.edgeStyle();
+        const edgeStyleChanged = this.previousEdgeStyle && this.previousEdgeStyle !== currentEdgeStyle;
+        this.previousEdgeStyle = currentEdgeStyle;
+
+        if (edgeStyleChanged) {
+            for (const conn of this.flowService.connections()) {
+                if (conn.userAdjustedWaypoints) {
+                    this.flowService.updateConnectionWaypoints(conn.id, [], false);
+                    this.bumpConnectionRenderVersion(conn.id);
+                }
+            }
+        }
+
         const backwardIds = this.backwardConnectionIds();
         for (const conn of this.flowService.connections()) {
             const previousBackward = this.previousBackwardClassification.get(conn.id);
